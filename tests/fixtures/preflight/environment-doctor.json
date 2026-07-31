@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "description": "Synthetic outcomes for pure preflight report projection. Environment detection runners land with their owning runtime slice.",
+  "states": ["healthy", "unhealthy"]
+}
