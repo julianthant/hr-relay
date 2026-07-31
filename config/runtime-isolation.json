@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 3,
+  "note": "D93: the cross-tree bridge scan and its moduleFamilies/forbiddenBridgeClasses registry are RETIRED — two repositories share no module graph. What survives is operational isolation on one machine: distinct commands, state/artifact roots, ports, process locks, and browser profiles/sessions. `legacy.*` describes the legacy repo; `rebuild.*` describes this one.",
+  "legacy": {
+    "sourceRoot": "src",
+    "entrypoint": "src/cli.ts",
+    "commands": {
+      "dashboard": "tsx --env-file=.env src/cli.ts dashboard --capture-ngrok",
+      "dashboard:prod": "tsx --env-file=.env src/cli.ts dashboard --prod",
+      "dashboard:watch": "tsx watch --env-file=.env src/cli.ts dashboard --capture-ngrok"
+    },
+    "stateRoot": ".tracker",
+    "artifactRoot": ".tracker",
+    "backendPort": 3838,
+    "frontendPort": 5173,
+    "processLockRoot": ".tracker/daemons",
+    "browserProfileRoot": ".auth",
+    "browserSessionNamespace": "hrauto-legacy"
+  },
+  "rebuild": {
+    "sourceRoot": "src",
+    "entrypoint": "src/cli.ts",
+    "commands": {
+      "rebuild:dashboard": "tsx --env-file=.env src/cli.ts dashboard",
+      "rebuild:dashboard:prod": "tsx --env-file=.env src/cli.ts dashboard --prod",
+      "rebuild:cli": "tsx --env-file=.env src/cli.ts"
+    },
+    "stateRoot": ".tracker-rebuild",
+    "artifactRoot": ".tracker-rebuild/artifacts",
+    "backendPort": 3938,
+    "frontendPort": 5174,
+    "processLockRoot": ".tracker-rebuild/locks",
+    "browserProfileRoot": ".auth-rebuild",
+    "browserSessionNamespace": "hrauto-rebuild",
+    "runtimeConfig": {
+      "module": "src/config/runtime-isolation.ts",
+      "factory": "defineRuntimeIsolation",
+      "factoryModule": "src/config/define-runtime-isolation.ts",
+      "factoryExport": "defineRuntimeIsolation",
+      "exportName": "rebuildRuntimeIsolation"
+    },
+    "compositionRoots": [
+      {
+        "path": "src/cli.ts",
+        "factory": "startRebuildRuntime",
+        "factoryModule": "src/core/runtime-composition.ts",
+        "factoryExport": "startRebuildRuntime",
+        "bindingPath": "0.isolation"
+      }
+    ]
+  }
+}

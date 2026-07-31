@@ -1,0 +1,37 @@
+{
+  "name": "hr-automation-rebuild",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=26.0.0"
+  },
+  "scripts": {
+    "rebuild:dashboard": "tsx --env-file=.env src/cli.ts dashboard",
+    "rebuild:dashboard:prod": "tsx --env-file=.env src/cli.ts dashboard --prod",
+    "rebuild:cli": "tsx --env-file=.env src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests scripts --max-warnings 0",
+    "test": "vitest run --reporter=dot",
+    "test:architecture": "vitest run tests/unit/architecture --reporter=dot",
+    "test:coverage": "vitest run --coverage --reporter=dot && tsx scripts/suite-size.ts",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.6.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.2",
+    "@typescript-eslint/parser": "^8.59.2",
+    "@vitest/coverage-v8": "^4.1.9",
+    "eslint": "^10.3.0",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "globals": "^17.7.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.59.2",
+    "vitest": "^4.1.7"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  }
+}
