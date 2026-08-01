@@ -896,6 +896,9 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // them. Their DURABLE halves do have schemas: DelegationPolicySchema,
   // DelegationManifestRefSchema, ParallelBranchSpecSchema, GraphNodeKindSchema,
   // transactionOutcomeSchema(), and childRunOutcomeSchema() are all catalogued.
+  // A schema TYPE, like CanonicalJsonSchema above — it describes a validator,
+  // not a value that crosses a boundary, so it cannot itself be schema-derived.
+  "src/domain/workflow/canonical-input.ts:CanonicalInputSchema",
   "src/domain/workflow/graph.ts:ProofOf",
   "src/domain/workflow/graph.ts:WorkflowRef",
   "src/domain/workflow/graph.ts:AnyWorkflowRef",

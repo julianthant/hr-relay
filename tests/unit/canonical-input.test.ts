@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { z } from "zod";
 import { describe, it } from "vitest";
 import {
-  auditCanonicalInputSchema,
+  assertAuditedCanonicalInput,
   defineCanonicalInput,
   parseCanonicalInputSnapshot,
 } from "../../src/domain/workflow/canonical-input.js";
+import { auditCanonicalInputSchema } from "../../src/validation/canonical-input-schema.js";
 import { EidSchema } from "../../src/domain/ids.js";
 
 /** The doc 02 §2 worked example: ingress applies two defaults, canonical does not. */
@@ -151,6 +152,15 @@ describe("canonical input snapshots", () => {
     assert.throws(
       () => parseCanonicalInputSnapshot(canonical, { name: "Ada", keepNonHdh: false, includeCrmDates: "yes" }),
       /stored canonical input snapshot is invalid/,
+    );
+  });
+
+  it("only accepts a schema that actually went through the audit", () => {
+    const canonical = defineCanonicalInput(PersonLookupInput, PersonLookupCanonical, SAMPLES);
+    assert.doesNotThrow(() => { assertAuditedCanonicalInput(canonical); });
+    assert.throws(
+      () => { assertAuditedCanonicalInput(z.strictObject({ name: z.string() })); },
+      /requires the exact schema returned by defineCanonicalInput/,
     );
   });
 
