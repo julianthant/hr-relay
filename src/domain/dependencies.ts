@@ -10,13 +10,17 @@ import {
   PositiveIntSchema,
   RunIdSchema,
 } from "./ids.js";
-
-const DependencyPolicySchema = z.strictObject({
-  failure: z.enum(["fail-parent", "collect", "ignore"]),
-  cancel: z.enum(["cascade", "independent"]),
-  retry: z.enum(["retry-child", "replace-child", "parent-only"]),
-  visibility: z.enum(["member", "linked", "delegated"]),
-});
+/**
+ * D102: the durable dependency row stores doc 02 §3.2's delegation vocabulary
+ * verbatim — one vocabulary from builder through manifest, dependency row, and
+ * UI. The 1c shape (`failure: fail-parent|collect|ignore`,
+ * `retry: retry-child|replace-child|parent-only`,
+ * `visibility: member|linked|delegated`) was never ratified in any owning doc
+ * and had no arm for doc 02's `block-parent`, so it is replaced rather than
+ * mapped. The policy is a JSON payload validated here, not a SQL enum, so no
+ * migration version is consumed.
+ */
+import { DelegationPolicySchema } from "./workflow/delegation-policy.js";
 
 export const DependencyRecordSchema = z.strictObject({
   dependencyId: DependencyIdSchema,
@@ -25,7 +29,7 @@ export const DependencyRecordSchema = z.strictObject({
   parentRunId: RunIdSchema,
   childRunId: RunIdSchema,
   childItemId: ItemIdSchema,
-  policy: DependencyPolicySchema,
+  policy: DelegationPolicySchema,
   state: z.enum(["active", "satisfied", "failed", "cancelled"]),
   version: PositiveIntSchema,
   createdAt: IsoInstantSchema,

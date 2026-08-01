@@ -131,7 +131,12 @@ export const DEPENDENCY_RECORD = {
   parentRunId: UUID_3,
   childRunId: UUID_4,
   childItemId: UUID_5,
-  policy: { failure: "fail-parent", cancel: "cascade", retry: "retry-child", visibility: "delegated" },
+  policy: {
+    onChildFailed: "fail-parent",
+    cascadeCancel: "cascade",
+    afterChildRetry: "resume-parent",
+    visibility: "inline",
+  },
   state: "active",
   version: 1,
   createdAt: NOW,

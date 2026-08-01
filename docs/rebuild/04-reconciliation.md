@@ -640,6 +640,12 @@ records them and the same commit folds each into its owner. **One line each — 
 | **D100** | **PHASE-1D PROVIDERS ARE INTERFACES + DETERMINISTIC FAKES ONLY.** Admission/budgets land in 1f; production pools/consumers land in 2h. | doc 01; guard contract doc 10 |
 | **D101** | **CLOSED IDS ARE IMPORTED, NEVER REDECLARED.** Task/store/UI seams reuse existing browser-system, provider-capability, task, element, screen, state, and observation identities. | docs 01/12 |
 
+## Reconciliation round 15 (2026-08-01) — Phase 1e delegation-vocabulary closure, folded
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D102** | **ONE DELEGATION POLICY VOCABULARY, END TO END.** Doc 02 §3.2's `onChildFailed: fail-parent\|block-parent\|allow-partial`, `cascadeCancel: cascade\|independent`, `afterChildRetry: resume-parent\|manual-parent-resume`, and `visibility: inline\|linked\|hidden-unless-failed` are the ratified names, and the SAME shape is what the durable dependency row and fan-out manifest store — builder → manifest → dependency row → UI read one vocabulary. The shape 1c landed in `src/domain/dependencies.ts` (`failure: fail-parent\|collect\|ignore`, `retry: retry-child\|replace-child\|parent-only`, `visibility: member\|linked\|delegated`) appeared in NO owning doc and carried no arm for `block-parent`; it is REPLACED, not mapped, because a lossy translation at the enqueue boundary would silently drop a policy the operator can select. The policy is a JSON payload validated by zod rather than a SQL enum, so no authority migration version is consumed. The vocabulary lives in one leaf module (`src/domain/workflow/delegation-policy.ts`) that both the bundle-safe graph and the durable records import. | doc 02 §§1.1/3.2 (primary); doc 03 durable dependency/manifest records |
+
 **Two separate D-series exist — do not confuse them.** This memo's `D1–D101` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
 types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the

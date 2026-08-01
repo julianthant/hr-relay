@@ -604,7 +604,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "GraphNodeKind", schema: GraphNodeKindSchema, fixtures: ["task", "transaction", "branch", "parallel", "child-run", "gate"] },
   { name: "ChildVisibility", schema: ChildVisibilitySchema, fixtures: ["inline", "linked", "hidden-unless-failed"] },
   { name: "ParallelBranchSpec", schema: ParallelBranchSpecSchema, fixtures: [{ id: "org", nodes: ["search-person"] }] },
-  { name: "GraphDelegationPolicy", schema: DelegationPolicySchema, fixtures: [{
+  { name: "DelegationPolicy", schema: DelegationPolicySchema, fixtures: [{
     onChildFailed: "fail-parent", cascadeCancel: "cascade",
     afterChildRetry: "resume-parent", visibility: "inline",
   }] },

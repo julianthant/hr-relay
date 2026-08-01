@@ -8,6 +8,12 @@ import { LedgerEntryPayloadSchema, LedgerEntrySchema } from "../../src/domain/le
 import { NotificationRecordSchema } from "../../src/domain/notifications.js";
 import { AtomicOutboxRecordSchema } from "../../src/domain/outbox.js";
 import {
+  ChildFailurePolicySchema,
+  ChildRetryPolicySchema,
+  ChildVisibilitySchema,
+  DelegationPolicySchema,
+} from "../../src/domain/workflow/delegation-policy.js";
+import {
   CONFIG_SNAPSHOT,
   DELEGATION_MANIFEST,
   DEPENDENCY_RECORD,
@@ -70,5 +76,40 @@ describe("durable control and outbox records", () => {
     assert.equal(AtomicOutboxRecordSchema.safeParse(outbox).success, true);
     assert.equal(AtomicOutboxRecordSchema.safeParse({ ...outbox, payload: { kind: "generic", body: {} } }).success, false);
     assert.equal(AtomicOutboxRecordSchema.safeParse({ ...outbox, projection: { state: "projected" } }).success, false);
+  });
+});
+
+/**
+ * D102 — one delegation vocabulary, from builder through manifest, dependency
+ * row, and UI. If a future change re-splits these, this fails before the two
+ * halves can drift apart again the way 1c's `DependencyPolicySchema` did.
+ */
+describe("D102 single delegation policy vocabulary", () => {
+  it("stores the builder's exact policy shape on the durable dependency row", () => {
+    const policy = {
+      onChildFailed: "block-parent",
+      cascadeCancel: "independent",
+      afterChildRetry: "manual-parent-resume",
+      visibility: "hidden-unless-failed",
+    };
+    assert.deepEqual(DelegationPolicySchema.parse(policy), policy);
+    const record = DependencyRecordSchema.parse({ ...DEPENDENCY_RECORD, policy });
+    assert.deepEqual(record.policy, policy);
+  });
+
+  it("rejects the retired 1c vocabulary rather than silently accepting it", () => {
+    assert.throws(() => DependencyRecordSchema.parse({
+      ...DEPENDENCY_RECORD,
+      policy: { failure: "collect", cancel: "cascade", retry: "retry-child", visibility: "delegated" },
+    }));
+    for (const retired of ["collect", "ignore"]) {
+      assert.equal(ChildFailurePolicySchema.safeParse(retired).success, false, retired);
+    }
+    for (const retired of ["retry-child", "replace-child", "parent-only"]) {
+      assert.equal(ChildRetryPolicySchema.safeParse(retired).success, false, retired);
+    }
+    for (const retired of ["member", "delegated"]) {
+      assert.equal(ChildVisibilitySchema.safeParse(retired).success, false, retired);
+    }
   });
 });

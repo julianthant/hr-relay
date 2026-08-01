@@ -26,6 +26,51 @@ alongside the workflow version + fingerprint (D80 archive-on-bump, owned by doc 
 
 ---
 
+## Phase 1e ratified decisions (2026-08-01)
+
+- **D102 — one delegation policy vocabulary, end to end.** §1.1/§3.2's
+  `onChildFailed` / `cascadeCancel` / `afterChildRetry` / `visibility` names are ratified, and the
+  **same shape** is what the durable dependency row and fan-out manifest store: builder → manifest →
+  dependency row → UI read one vocabulary. The shape 1c landed in `src/domain/dependencies.ts`
+  (`failure: fail-parent|collect|ignore`, `retry: retry-child|replace-child|parent-only`,
+  `visibility: member|linked|delegated`) appeared in no owning doc and had no arm for `block-parent`;
+  it is **replaced, not mapped**, because a lossy translation at the enqueue boundary would silently
+  drop a policy the operator can select. The vocabulary lives in one leaf module,
+  `src/domain/workflow/delegation-policy.ts`, which both the bundle-safe graph and the durable
+  records import. The policy is a zod-validated JSON payload, not a SQL enum, so no authority
+  migration version is consumed.
+
+### Phase 1e as-built — the typed DAG builder (2026-08-01)
+
+`src/domain/workflow/graph.ts` owns the bundle-safe node vocabulary and `src/base/flow.ts` owns the
+single builder. The builder accumulates the exact `S` map (node id → `NodeEntry` of concrete output,
+conditionality, and owned contracts) and the exact `Nodes` tuple; every `bind`/`when`/`choose`/
+`derive` receives `Pick<S, D[number]>`, so reading an undeclared output fails `tsc`. Runtime
+backstops cover what a cast could smuggle past the types: duplicate node ids, forward or repeated
+dependencies, non-kebab ids, a one-case branch, a one-branch or duplicate-branch-id parallel, a
+non-positive `probeToFenceMaxMs`, a gate whose `subscribes` source disagrees with its resolver, and
+decorating an undeclared node.
+
+Two deviations from §3's sketch, both as-built:
+
+- **`NodeEntry`'s `Out` is unconstrained, not `extends JsonValue`.** Inside a generic method
+  `z.output<C["output"]>` is still `unknown`, so the constraint rejected every well-formed node
+  before its contract resolved. The canonical-JSON guarantee is enforced where it is checkable —
+  each task contract's `output` is a `CanonicalJsonSchema` audited recursively — and every other node
+  output is kernel-built from those outputs plus branded ids. `JsonValue` remains the runtime view.
+- **The graph type is `TypedTransactionOutcome<C>`, not `TransactionOutcome<C>`.** Doc 09 already
+  owns a durable `TransactionOutcome` that stores `output`/`proof` as schema-bound canonical values
+  with a settlement timestamp. Same event, two altitudes; the distinct name stops a second durable
+  schema being minted for it.
+
+`tests/types/flow-graph.typecheck.ts` is item 1e's mandated real-scale proof: a 21-node
+representative graph plus sixteen `@ts-expect-error` controls, so a transform that collapses to a top
+type fails the proof rather than passing it vacuously. `tests/unit/flow-type-budget.test.ts` records
+`tsc --extendedDiagnostics` over that file alone and fails outside the 5s / 1 GiB budget (measured
+0.47s / 215 MiB on the baseline machine).
+
+---
+
 ## 0. Grounding — what exists today, why it hurts
 
 Paths in this section are **legacy-repo** paths (`hr-automation`); unqualified `src/` in the design

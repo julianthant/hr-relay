@@ -30,6 +30,7 @@ import {
 } from "../ids.js";
 import type { DelegationEdgeId, FailureId, ItemId, NodeId, RunId, WorkflowId } from "../ids.js";
 import type { RetryPolicy } from "../session.js";
+import type { DelegationPolicy } from "./delegation-policy.js";
 
 /** The proof type a commit contract's completion arm produces. */
 export type ProofOf<C extends AnyCommitTaskContract> =
@@ -160,35 +161,21 @@ export interface ParallelNode extends GraphNodeBase {
   readonly join: "all" | "all-settled";
 }
 
-/**
- * Doc 02 §1.1/§3.2's builder-facing delegation vocabulary.
- *
- * UNRECONCILED (surfaced 2026-08-01): the durable `DependencyPolicySchema` in
- * `src/domain/dependencies.ts` (landed in 1c) uses a DIFFERENT vocabulary that
- * appears in no owning doc — `failure: fail-parent|collect|ignore`,
- * `retry: retry-child|replace-child|parent-only`,
- * `visibility: member|linked|delegated`. Doc 02 owns delegation policy
- * semantics (D1), so these enums are the ratified names, but the durable row is
- * a doc 03/09 schema behind an immutable migration chain. Until that is
- * reconciled by an explicit decision, this module declares the graph vocabulary
- * ONLY and mints no second durable schema.
- */
-export const ChildFailurePolicySchema = z.enum(["fail-parent", "block-parent", "allow-partial"]);
-export const ChildCancelPolicySchema = z.enum(["cascade", "independent"]);
-export const ChildRetryPolicySchema = z.enum(["resume-parent", "manual-parent-resume"]);
-export const ChildVisibilitySchema = z.enum(["inline", "linked", "hidden-unless-failed"]);
-export const DelegationPolicySchema = z.strictObject({
-  onChildFailed: ChildFailurePolicySchema,
-  cascadeCancel: ChildCancelPolicySchema,
-  afterChildRetry: ChildRetryPolicySchema,
-  visibility: ChildVisibilitySchema,
-});
-
-export type ChildFailurePolicy = z.infer<typeof ChildFailurePolicySchema>;
-export type ChildCancelPolicy = z.infer<typeof ChildCancelPolicySchema>;
-export type ChildRetryPolicy = z.infer<typeof ChildRetryPolicySchema>;
-export type ChildVisibility = z.infer<typeof ChildVisibilitySchema>;
-export type DelegationPolicy = z.infer<typeof DelegationPolicySchema>;
+/** One vocabulary, one owner — see `./delegation-policy.js` (D102). */
+export {
+  ChildCancelPolicySchema,
+  ChildFailurePolicySchema,
+  ChildRetryPolicySchema,
+  ChildVisibilitySchema,
+  DelegationPolicySchema,
+} from "./delegation-policy.js";
+export type {
+  ChildCancelPolicy,
+  ChildFailurePolicy,
+  ChildRetryPolicy,
+  ChildVisibility,
+  DelegationPolicy,
+} from "./delegation-policy.js";
 
 export type ChildRunOutcome<Target extends AnyWorkflowRef> =
   | Readonly<{ state: "done"; runId: RunId; itemId: ItemId; output: z.output<Target["result"]> }>
