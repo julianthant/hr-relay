@@ -49,6 +49,7 @@ describe("strict domain primitives", () => {
 
   it("accepts canonical JSON only and serializes object keys deterministically", () => {
     assert.equal(canonicalJsonStringify({ z: 1, a: { y: true, x: null } }), '{"a":{"x":null,"y":true},"z":1}');
+    assert.equal(canonicalJsonStringify({ "ä": 3, a: 2, Z: 1 }), '{"Z":1,"a":2,"ä":3}');
     assert.equal(JsonValueSchema.safeParse({ invalid: undefined }).success, false);
     assert.equal(JsonValueSchema.safeParse(Number.NaN).success, false);
     assert.equal(JsonValueSchema.safeParse(new Map()).success, false);

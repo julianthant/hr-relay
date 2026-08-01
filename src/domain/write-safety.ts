@@ -22,6 +22,20 @@ import {
   WriteIntentIdSchema,
 } from "./ids.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
+import {
+  AbsentEvidenceSchema,
+  NegativeSettlementPolicySchema,
+  probeVerdictSchema,
+} from "./write-safety-primitives.js";
+export {
+  AbsentEvidenceSchema,
+  NegativeSettlementPolicySchema,
+  probeVerdictSchema,
+} from "./write-safety-primitives.js";
+export type {
+  NegativeSettlementPolicy,
+  ProbeVerdict,
+} from "./write-safety-primitives.js";
 
 export const SpanPathSchema = z.string().regex(
   /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+$/,
@@ -105,15 +119,6 @@ export const WriteBindingProofSchema = z.discriminatedUnion("kind", [
   UnscopedBindingProofSchema,
 ]);
 
-export const AbsentEvidenceSchema = z.strictObject({
-  idempotencyKeyDigest: FingerprintSchema,
-  source: ObservationIdSchema,
-  sourceState: PageStateIdSchema,
-  observedAt: IsoInstantSchema,
-  queryDigest: FingerprintSchema,
-  evidenceRef: EvidenceRefSchema,
-});
-
 export const IdempotencyKeySchema = z.string().min(1).max(512).superRefine((key, context) => {
   if (key !== key.trim()) context.addIssue({ code: "custom", message: "idempotency key may not have leading or trailing whitespace" });
   if ([...key].some((character) => {
@@ -143,15 +148,6 @@ export function deriveWriteBindingProofDigest(proofInput: unknown): string {
     .digest("hex"));
 }
 
-export function probeVerdictSchema<ProofSchema extends z.ZodType>(proofSchema: ProofSchema) {
-  return z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("present"), proof: proofSchema }),
-    z.strictObject({ state: z.literal("absent"), evidence: AbsentEvidenceSchema }),
-    z.strictObject({ state: z.literal("ambiguous"), matches: z.number().int().min(2), observedAt: IsoInstantSchema, queryDigest: FingerprintSchema, evidence: z.array(EvidenceRefSchema).min(2) }),
-    z.strictObject({ state: z.literal("unknown"), reason: z.string().min(1), observedAt: IsoInstantSchema }),
-  ]);
-}
-
 export const PresentProofReferenceSchema = z.strictObject({
   proofSchemaHash: FingerprintSchema,
   proofFingerprint: FingerprintSchema,
@@ -159,17 +155,6 @@ export const PresentProofReferenceSchema = z.strictObject({
 });
 
 export const RecoveryProbeVerdictSchema = probeVerdictSchema(PresentProofReferenceSchema);
-
-export const NegativeSettlementPolicySchema = z.discriminatedUnion("kind", [
-  z.strictObject({
-    kind: z.literal("stabilized"),
-    minSinceFenceMs: z.number().int().positive(),
-    consistentReads: z.union([z.literal(2), z.literal(3)]),
-    minBetweenReadsMs: z.number().int().positive(),
-    requireSameSourceState: z.literal(true),
-  }),
-  z.strictObject({ kind: z.literal("operator-only"), reason: z.string().min(1) }),
-]);
 
 export const NegativeSettlementEvaluationInputSchema = z.strictObject({
   writeIntentId: WriteIntentIdSchema,
@@ -425,8 +410,6 @@ export type SubjectProof = z.infer<typeof SubjectProofSchema>;
 export type UnscopedBindingProof = z.infer<typeof UnscopedBindingProofSchema>;
 export type WriteBindingProof = z.infer<typeof WriteBindingProofSchema>;
 export type AbsentEvidence = z.infer<typeof AbsentEvidenceSchema>;
-export type ProbeVerdict<ProofSchema extends z.ZodType> = z.output<ReturnType<typeof probeVerdictSchema<ProofSchema>>>;
-export type NegativeSettlementPolicy = z.infer<typeof NegativeSettlementPolicySchema>;
 export type NegativeSettlementDecision = z.infer<typeof NegativeSettlementDecisionSchema>;
 export type WriteIntentRecord = z.infer<typeof WriteIntentRecordSchema>;
 export type WriteAttemptRecord = z.infer<typeof WriteAttemptRecordSchema>;

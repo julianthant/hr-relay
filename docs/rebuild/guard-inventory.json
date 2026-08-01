@@ -473,7 +473,7 @@
       "file": "tests/unit/architecture/task-contract-sealing.test.ts",
       "status": "active",
       "owner": "docs/rebuild/01-task-contract.md; docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "Read, prepare, and commit task contracts are minted only by the validating seal factory; contract modules remain bundle-safe and strict, examples/freshness/provenance/subject/write-safety metadata fail loud, declared error codes stay literal, and read/prepare contexts cannot acquire mutation capability.",
+      "invariant": "Read, prepare, and commit contracts are minted only by the validating deep-seal factory; recursive schemas reject nested open/any/unknown/record escapes, parsed canonical examples and closed write-safety proofs agree, schema-owned paths/tiers/references fail loud, inferred error codes stay literal, and an AST plus transitive import graph protects every src/**/contracts/** module from runtime imports, forged seals, casts, and dynamic-import bypasses.",
       "replacementRequired": true
     },
     {

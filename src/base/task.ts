@@ -1,5 +1,5 @@
 import type { MutationCapability } from "../domain/ui/driver.js";
-import type { TaskId } from "../domain/ids.js";
+import type { BrowserSystemId, TaskId } from "../domain/ids.js";
 import { TaskError } from "./errors.js";
 
 export interface TaskLogger {
@@ -20,24 +20,38 @@ export interface TaskCtxCommon<Codes extends readonly string[]> {
 
 export type PureTaskCtx<Codes extends readonly string[]> = TaskCtxCommon<Codes>;
 
-export interface BrowserTaskCtx<Driver, Codes extends readonly string[]> extends TaskCtxCommon<Codes> {
+export interface BrowserTaskCtx<
+  Driver extends { readonly system: BrowserSystemId },
+  Codes extends readonly string[],
+> extends TaskCtxCommon<Codes> {
   readonly driver: Driver;
 }
 
-export type ReadTaskCtx<Driver, Codes extends readonly string[]> = BrowserTaskCtx<Driver, Codes>;
+export type ReadTaskCtx<
+  Driver extends { readonly system: BrowserSystemId },
+  Codes extends readonly string[],
+> = BrowserTaskCtx<Driver, Codes>;
 
-export type PrepareTaskCtx<Driver, Codes extends readonly string[]> = BrowserTaskCtx<Driver, Codes>;
+export type PrepareTaskCtx<
+  Driver extends { readonly system: BrowserSystemId },
+  Codes extends readonly string[],
+> = BrowserTaskCtx<Driver, Codes>;
 
-export interface CommitTaskCtx<Driver, Codes extends readonly string[]> extends BrowserTaskCtx<Driver, Codes> {
+export interface CommitTaskCtx<
+  Driver extends { readonly system: BrowserSystemId },
+  Codes extends readonly string[],
+> extends BrowserTaskCtx<Driver, Codes> {
   readonly mutation: MutationCapability;
 }
 
-export function taskFailer<const Codes extends readonly string[]>(taskId: TaskId) {
+export function taskFailer<const Codes extends readonly [string, ...string[]]>(
+  contract: Readonly<{ id: TaskId; errorCodes: Codes }>,
+) {
   return (
     code: Codes[number],
     message: string,
     options?: Readonly<{ subject?: string; transient?: boolean; cause?: unknown }>,
   ): never => {
-    throw new TaskError(taskId, code, message, options);
+    throw new TaskError(contract.id, code, message, options);
   };
 }

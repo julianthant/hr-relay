@@ -84,18 +84,31 @@ owned by `src/domain/ids.ts`; it does not create a second type universe.
 
 `src/domain/contracts/` now owns one bundle-safe `defineTaskContract` factory with distinct read,
 prepare, and commit overloads. It validates the existing `TaskId` namespace, verb/effect agreement,
-strict input/output/proof schemas, canonical-JSON examples, literal unique error codes, browser-only
-subject observations, same-store probe/verifier references, and service-only provider declarations.
-Read contracts require freshness plus provenance and resolve every field override against their
-schema-parsed example. Prepare contracts are in-memory-only. Commit contracts require typed
-completion proof round-trips, permanent idempotency probe/recovery policy, and post-prepare subject
-timing. The factory alone stamps `__sealed` and shallow-freezes the definition; zod schema internals
-remain unfrozen so repeated validation cannot corrupt their regular-expression state.
+recursively strict input/output/proof schemas (including arrays, unions, lazy nodes, and wrappers),
+canonical-JSON examples, literal unique error codes, browser-only subject observations, typed
+same-store read-task probe/verifier references, and service-only provider declarations. `any`,
+`unknown`, open nested objects, and decision-bearing records/collections fail the recursive audit.
+Read contracts require freshness plus provenance and resolve every field override against actual
+own schema fields; subject input paths do the same and identity/match pairs must agree. Prepare
+contracts are in-memory-only. Commit contracts require a closed parsed `writeSafety` union,
+canonical proof↔output↔present-probe agreement, permanent idempotency recovery policy, and
+post-prepare subject timing. Browser/service/full tiers require scenarios; only a pure
+`workflow:<id>` light read may start empty. A store registry resolves all scenario/probe/verifier
+refs against its corpus; the definition-time read reference also rejects commit-verb ids.
+
+The factory alone stamps `__sealed`, replaces `example` with its parsed canonical output, and
+deep-copies/freezes declarative metadata. Zod schemas and proof/key functions retain their original
+unfrozen identities. `unverifiableByPage` requires `policy:"always-park"`, an
+operator-attestation proof arm, and an exact reviewed-policy entry (the seed policy is empty).
+Dynamic idempotency keys are deliberately validated only when execution has real parsed input;
+definition sealing makes no fake claim about an input-free key proof.
 
 `src/base/task.ts` exposes narrow pure/read/prepare/commit contexts. Only the commit context contains
 the opaque `MutationCapability`; none of these seams mints it. `TaskError` pins the
 `[task-id] code: message` form, defaults unknown failures to non-transient `unhandled`, and keeps
-declared error codes literal through `taskFailer`. This commit deliberately contains no task impl,
+declared error codes literal through `taskFailer(contract)` inference. Browser contexts accept only
+drivers carrying a `BrowserSystemId`; the store factory adds exact driver/store matching. This
+commit deliberately contains no task impl,
 store, session, artifact writer, provider adapter, or runtime mutation token; those remain in the
 next 1d slice or 1f as owned.
 

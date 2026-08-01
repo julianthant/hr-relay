@@ -4,25 +4,29 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { Config } from "./config/schema.js";
 import { deepFreeze } from "./immutability.js";
-
-export const EnvironmentSecretNameSchema = z.enum([
-  "ucpathUserId",
-  "ucpathPassword",
-  "timekeeperName",
-  "sharepointOnboardingRosterUrl",
-]);
-export const SecretNameSchema = z.union([
+import {
   EnvironmentSecretNameSchema,
-  z.literal("ngrokCredential"),
-]);
-export const SecretFamilyNameSchema = z.enum([
-  "geminiApiKeys",
-  "groqApiKeys",
-  "mistralApiKeys",
-  "openRouterApiKeys",
-  "sambaNovaApiKeys",
-]);
-export const SecretFileNameSchema = z.enum(["duoWebauthnCredential"]);
+  SecretFamilyNameSchema,
+  SecretFileNameSchema,
+  SecretNameSchema,
+} from "./secret-names.js";
+import type {
+  SecretFamilyName,
+  SecretFileName,
+  SecretName,
+} from "./secret-names.js";
+export {
+  EnvironmentSecretNameSchema,
+  SecretFamilyNameSchema,
+  SecretFileNameSchema,
+  SecretNameSchema,
+} from "./secret-names.js";
+export type {
+  EnvironmentSecretName,
+  SecretFamilyName,
+  SecretFileName,
+  SecretName,
+} from "./secret-names.js";
 const SecretSourceSchema = z.enum(["environment", "local-ngrok-config"]);
 
 export const SecretSpecSchema = z.discriminatedUnion("source", [
@@ -75,10 +79,6 @@ export const SECRET_FILE_SPECS = deepFreeze(SecretFileSpecSchema.array().parse([
   { name: "duoWebauthnCredential", configPath: "paths.duoCredential", classification: "credential-file", maximumBytes: 64_000 },
 ]));
 
-export type SecretName = z.infer<typeof SecretNameSchema>;
-export type EnvironmentSecretName = z.infer<typeof EnvironmentSecretNameSchema>;
-export type SecretFamilyName = z.infer<typeof SecretFamilyNameSchema>;
-export type SecretFileName = z.infer<typeof SecretFileNameSchema>;
 type SecretSpec = z.infer<typeof SecretSpecSchema>;
 type SecretFileMetadata = Pick<Stats, "isFile" | "mode" | "size">;
 

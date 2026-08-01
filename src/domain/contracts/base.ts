@@ -9,9 +9,19 @@ import {
   TaskIdSchema,
 } from "../ids.js";
 import type { TaskId } from "../ids.js";
-import { SecretNameSchema } from "../secrets.js";
-import { NegativeSettlementPolicySchema, probeVerdictSchema } from "../write-safety.js";
-import type { CanonicalJsonSchema, WriteSafety } from "./write-safety.js";
+import { SecretNameSchema } from "../secret-names.js";
+import { NegativeSettlementPolicySchema, probeVerdictSchema } from "../write-safety-primitives.js";
+import {
+  assertContractBoundarySchema,
+  assertSchemaOwnsPath,
+  sealDeclarativeMetadata,
+} from "../../validation/contract-boundary.js";
+import {
+  REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY,
+  ReadTaskReferenceSchema,
+  WriteSafetyRuntimeSchema,
+} from "./write-safety.js";
+import type { CanonicalJsonSchema, ReadTaskReference, WriteSafety } from "./write-safety.js";
 
 export {
   BrowserSystemIdSchema,
@@ -26,6 +36,7 @@ export type {
   TaskId,
   TaskStoreId,
 } from "../ids.js";
+export { auditContractBoundarySchema } from "../../validation/contract-boundary.js";
 
 export const TaskEffectSchema = z.enum(["read", "prepare", "commit"]);
 export const TaskErrorCodeSchema = z.string().regex(
@@ -79,6 +90,13 @@ export const SubjectBindingSpecSchema = z.discriminatedUnion("kind", [
     requiredAt: z.enum(["before-subject-read", "after-prepare-before-fence"]),
   }),
 ]);
+export const TaskContractResolutionCorpusSchema = z.strictObject({
+  scenarioIds: z.array(ScenarioIdSchema),
+  tasks: z.array(z.strictObject({
+    id: TaskIdSchema,
+    effect: TaskEffectSchema,
+  })),
+});
 
 export type TaskEffect = z.infer<typeof TaskEffectSchema>;
 export type TaskErrorCode = z.infer<typeof TaskErrorCodeSchema>;
@@ -139,26 +157,29 @@ export interface CommitTaskContract<
   readonly writeSafety: WriteSafety<Input, Output, Proof>;
 }
 
-type Sealed<Contract> = Contract & { readonly __sealed: true };
+type Sealed<Contract, Output extends z.ZodType> = Omit<Contract, "example"> & {
+  readonly example: z.output<Output>;
+  readonly __sealed: true;
+};
 export type SealedReadContract<
   Id extends TaskId,
   Input extends z.ZodType,
   Output extends z.ZodType,
   Codes extends ErrorCodes,
-> = Sealed<ReadTaskContract<Id, Input, Output, Codes>>;
+> = Sealed<ReadTaskContract<Id, Input, Output, Codes>, Output>;
 export type SealedPrepareContract<
   Id extends TaskId,
   Input extends z.ZodType,
   Output extends z.ZodType,
   Codes extends ErrorCodes,
-> = Sealed<PrepareTaskContract<Id, Input, Output, Codes>>;
+> = Sealed<PrepareTaskContract<Id, Input, Output, Codes>, Output>;
 export type SealedCommitContract<
   Id extends TaskId,
   Input extends z.ZodType,
   Output extends z.ZodType,
   Proof extends z.ZodType,
   Codes extends ErrorCodes,
-> = Sealed<CommitTaskContract<Id, Input, Output, Proof, Codes>>;
+> = Sealed<CommitTaskContract<Id, Input, Output, Proof, Codes>, Output>;
 
 interface RuntimeTaskContractBase {
   readonly id: TaskId;
@@ -184,7 +205,7 @@ interface RuntimePrepareTaskContract extends RuntimeTaskContractBase {
 }
 interface RuntimeCommitTaskContract extends RuntimeTaskContractBase {
   readonly effect: "commit";
-  readonly writeSafety: WriteSafety<z.ZodType, z.ZodType, z.ZodType>;
+  readonly writeSafety: z.output<typeof WriteSafetyRuntimeSchema>;
 }
 type RuntimeTaskContract = RuntimeReadTaskContract | RuntimePrepareTaskContract | RuntimeCommitTaskContract;
 
@@ -194,30 +215,6 @@ const EFFECT_VERBS: Readonly<Record<TaskEffect, readonly string[]>> = {
   commit: ["save", "submit", "upload", "create", "update", "delete"],
 };
 
-function assertStrictBoundarySchema(schema: z.core.$ZodType, label: string): void {
-  if (schema instanceof z.ZodObject) {
-    if (!(schema._zod.def.catchall instanceof z.ZodNever)) throw new Error(`${label} must use z.strictObject`);
-    return;
-  }
-  if (schema instanceof z.ZodUnion) {
-    for (const option of schema.options) assertStrictBoundarySchema(option, label);
-    return;
-  }
-  throw new Error(`${label} must be a strict object or strict-object union`);
-}
-
-function valueHasPath(value: unknown, parts: readonly string[]): boolean {
-  if (parts.length === 0) return true;
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const [head, ...tail] = parts;
-  if (!(head in value)) return false;
-  return valueHasPath(Reflect.get(value, head), tail);
-}
-
-function assertFieldPath(example: unknown, path: ContractFieldPath, owner: string): void {
-  if (!valueHasPath(example, path.split("."))) throw new Error(`${owner} references unknown output field ${path}`);
-}
-
 function namespaceOf(taskId: string): string {
   return taskId.slice(0, taskId.lastIndexOf("/"));
 }
@@ -226,11 +223,20 @@ function taskVerb(taskId: string): string {
   return taskId.slice(taskId.lastIndexOf("/") + 1).split("-")[0] ?? "";
 }
 
+function assertReadTaskReference(referenceInput: unknown, owner: string, namespace: string): ReadTaskReference {
+  const reference = ReadTaskReferenceSchema.parse(referenceInput);
+  if (namespaceOf(reference.taskId) !== namespace) throw new Error(`${owner} crosses stores`);
+  if (!EFFECT_VERBS.read.includes(taskVerb(reference.taskId))) {
+    throw new Error(`${owner} must reference a read-effect task id`);
+  }
+  return reference;
+}
+
 function assertCommon(contract: RuntimeTaskContract): void {
   const id = TaskIdSchema.parse(contract.id);
   if (contract.title.trim().length === 0) throw new Error(`${id} requires a non-empty title`);
-  assertStrictBoundarySchema(contract.input, `${id} input`);
-  assertStrictBoundarySchema(contract.output, `${id} output`);
+  assertContractBoundarySchema(contract.input, `${id} input`);
+  assertContractBoundarySchema(contract.output, `${id} output`);
   const parsedExample = contract.output.parse(contract.example);
   canonicalJsonStringify(parsedExample);
   const codes = contract.errorCodes.map((code) => TaskErrorCodeSchema.parse(code));
@@ -251,9 +257,21 @@ function assertCommon(contract: RuntimeTaskContract): void {
   if (contract.effect !== "read" && !browser.success) {
     throw new Error(`${id} ${contract.effect} contracts require a browser-system namespace`);
   }
+  if (!namespace.startsWith("workflow:") && contract.scenarios.length === 0) {
+    throw new Error(`${id} requires scenarios at its derived declaration tier`);
+  }
   if (subject.kind !== "none") {
     if (!browser.success) throw new Error(`${id} cannot bind a browser observation outside a browser store`);
     if (!subject.observe.startsWith(`${browser.data}.`)) throw new Error(`${id} subject observation crosses systems`);
+    assertSchemaOwnsPath(contract.input, subject.expected.fromInput, `${id} subject`);
+    if (subject.kind === "person") {
+      const expectedMatch = {
+        eid: "normalized-exact-eid",
+        name: "normalized-exact-name",
+        "eid-and-name": "eid-and-name",
+      }[subject.expected.identity];
+      if (subject.match !== expectedMatch) throw new Error(`${id} subject identity and match are incompatible`);
+    }
   }
   if (contract.effect === "commit" && subject.kind !== "none"
     && subject.requiredAt !== "after-prepare-before-fence") {
@@ -268,34 +286,78 @@ function assertCommon(contract: RuntimeTaskContract): void {
 function assertRead(contract: RuntimeReadTaskContract): void {
   const freshness = FreshnessPolicySchema.parse(contract.freshness);
   const provenance = ProvenancePolicySchema.parse(contract.provenance);
-  const example = contract.output.parse(contract.example);
-  for (const rule of freshness.byField ?? []) assertFieldPath(example, rule.path, `${contract.id} freshness`);
-  for (const rule of provenance.byField ?? []) assertFieldPath(example, rule.path, `${contract.id} provenance`);
+  for (const rule of freshness.byField ?? []) {
+    assertSchemaOwnsPath(contract.output, rule.path, `${contract.id} freshness`);
+  }
+  for (const rule of provenance.byField ?? []) {
+    assertSchemaOwnsPath(contract.output, rule.path, `${contract.id} provenance`);
+  }
 }
 
 function assertWriteSafety(contract: RuntimeCommitTaskContract): void {
+  WriteSafetyRuntimeSchema.parse(contract.writeSafety);
   const { completion, idempotency } = contract.writeSafety;
-  assertStrictBoundarySchema(completion.proofSchema, `${contract.id} completion proof`);
+  assertContractBoundarySchema(completion.proofSchema, `${contract.id} completion proof`);
   const parsedOutput = contract.output.parse(contract.example);
-  const proof = completion.proofSchema.parse(completion.proofFromOutput(parsedOutput));
-  canonicalJsonStringify(proof);
-  contract.output.parse(completion.outputFromProof(proof));
+  const proof = completion.proofSchema.parse(
+    Reflect.apply(completion.proofFromOutput, undefined, [parsedOutput]),
+  );
+  const proofCanonical = canonicalJsonStringify(proof);
+  const reconstructedOutput = contract.output.parse(
+    Reflect.apply(completion.outputFromProof, undefined, [proof]),
+  );
+  if (canonicalJsonStringify(parsedOutput) !== canonicalJsonStringify(reconstructedOutput)) {
+    throw new Error(`${contract.id} completion proof does not reconstruct the canonical output`);
+  }
   const verdict = probeVerdictSchema(completion.proofSchema).parse({ state: "present", proof });
   if (verdict.state !== "present") throw new Error(`${contract.id} present proof verdict did not remain present`);
-  completion.proofSchema.parse(completion.proofFromPresentProbe(verdict));
+  const probeProof = completion.proofSchema.parse(
+    Reflect.apply(completion.proofFromPresentProbe, undefined, [verdict]),
+  );
+  if (proofCanonical !== canonicalJsonStringify(probeProof)) {
+    throw new Error(`${contract.id} present-probe proof disagrees with output proof`);
+  }
   const namespace = namespaceOf(contract.id);
-  if (namespaceOf(idempotency.probe) !== namespace) throw new Error(`${contract.id} idempotency probe crosses stores`);
-  TaskIdSchema.parse(idempotency.probe);
+  assertReadTaskReference(idempotency.probe, `${contract.id} idempotency probe`, namespace);
   NegativeSettlementPolicySchema.parse(idempotency.recoveryAbsence);
   if (completion.kind !== "receipt") {
-    TaskIdSchema.parse(completion.verify);
-    if (namespaceOf(completion.verify) !== namespace) throw new Error(`${contract.id} completion verifier crosses stores`);
+    assertReadTaskReference(completion.verify, `${contract.id} completion verifier`, namespace);
   }
   if (completion.kind === "upload-verify" && completion.unverifiableByPage !== undefined) {
-    if (completion.unverifiableByPage.reason.trim().length === 0) {
-      throw new Error(`${contract.id} unverifiableByPage requires a reason`);
+    const reviewed = REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY.contracts.find(({ taskId }) => taskId === contract.id);
+    if (!reviewed || reviewed.reason !== completion.unverifiableByPage.reason) {
+      throw new Error(`${contract.id} unverifiableByPage is not in the reviewed always-park policy`);
     }
-    completion.proofSchema.parse(completion.unverifiableByPage.operatorAttestationExample);
+    const attestation = completion.proofSchema.parse(
+      completion.unverifiableByPage.operatorAttestationExample,
+    );
+    if (attestation === null || typeof attestation !== "object" || Array.isArray(attestation)
+      || !Object.hasOwn(attestation, "kind") || Reflect.get(attestation, "kind") !== "operator-attestation") {
+      throw new Error(`${contract.id} unverifiableByPage must exercise an operator-attestation proof arm`);
+    }
+    canonicalJsonStringify(attestation);
+  }
+}
+
+export function assertTaskContractReferences(
+  contract: RuntimeTaskContract,
+  corpusInput: unknown,
+): void {
+  const corpus = TaskContractResolutionCorpusSchema.parse(corpusInput);
+  const scenarioIds = new Set<string>(corpus.scenarioIds);
+  for (const scenario of contract.scenarios) {
+    if (!scenarioIds.has(scenario)) throw new Error(`${contract.id} references unresolved scenario ${scenario}`);
+  }
+  if (contract.effect !== "commit") return;
+  const references = [
+    contract.writeSafety.idempotency.probe,
+    ...(contract.writeSafety.completion.kind === "receipt" ? [] : [contract.writeSafety.completion.verify]),
+  ];
+  const tasks = new Map(corpus.tasks.map((task) => [task.id, task.effect]));
+  for (const reference of references) {
+    const effect = tasks.get(reference.taskId);
+    if (effect === undefined) throw new Error(`${contract.id} references unresolved read task ${reference.taskId}`);
+    if (effect !== "read") throw new Error(`${contract.id} reference ${reference.taskId} is not a read contract`);
   }
 }
 
@@ -322,5 +384,6 @@ export function defineTaskContract(contract: RuntimeTaskContract): RuntimeTaskCo
   assertCommon(contract);
   if (contract.effect === "read") assertRead(contract);
   if (contract.effect === "commit") assertWriteSafety(contract);
-  return Object.freeze({ ...contract, __sealed: true });
+  const parsedExample = contract.output.parse(contract.example);
+  return sealDeclarativeMetadata({ ...contract, example: parsedExample, __sealed: true as const });
 }

@@ -22,7 +22,7 @@ function serialize(value: JsonValue): string {
     return `[${value.map((item) => serialize(JsonValueSchema.parse(item))).join(",")}]`;
   }
   return `{${Object.entries(value)
-    .sort(([left], [right]) => left.localeCompare(right))
+    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
     .map(([key, item]) => `${JSON.stringify(key)}:${serialize(item)}`)
     .join(",")}}`;
 }

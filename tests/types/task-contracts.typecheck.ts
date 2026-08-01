@@ -5,6 +5,9 @@ import { ContractFieldPathSchema, defineTaskContract } from "../../src/domain/co
 import { EidSchema, ObservationIdSchema, ScenarioIdSchema, TaskIdSchema } from "../../src/domain/ids.js";
 import type { UcpathPersonOrgDriver } from "../../src/domain/ui/ucpath-person-org.js";
 
+// @ts-expect-error browser task contexts reject service-system drivers
+export type InvalidBrowserTaskContext = ReadTaskCtx<{ readonly system: "extraction" }, readonly ["invalid"]>;
+
 const input = z.strictObject({ eid: EidSchema });
 const output = z.strictObject({ eid: EidSchema });
 const contract = defineTaskContract({
@@ -27,7 +30,7 @@ const contract = defineTaskContract({
   example: { eid: "10800000" },
 });
 
-const fail = taskFailer<typeof contract.errorCodes>(contract.id);
+const fail = taskFailer(contract);
 export function typecheckTaskContexts(
   readCtx: ReadTaskCtx<UcpathPersonOrgDriver, typeof contract.errorCodes>,
   commitCtx: CommitTaskCtx<UcpathPersonOrgDriver, typeof contract.errorCodes>,
@@ -43,3 +46,6 @@ export function typecheckTaskContexts(
 
 // @ts-expect-error z.any cannot be a canonical task output schema
 defineTaskContract({ ...contract, output: z.any(), example: "unsafe" });
+
+// @ts-expect-error z.unknown cannot be a canonical task output schema
+defineTaskContract({ ...contract, output: z.unknown(), example: "unsafe" });
