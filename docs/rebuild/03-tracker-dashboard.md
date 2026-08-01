@@ -918,6 +918,38 @@ mechanism and its guard are doc 02's (§1.3/§1.4 there).
 
 ---
 
+## Phase 1e as-built completion + delegation-manifest delta (2026-08-01)
+
+`src/domain/workflow/completion.ts` implements §4. Three as-built points:
+
+- **`PerDocumentStage.deriveItemId` returns `ItemId`, not `string`.** §4.1's sketch types the
+  per-record stage's id as `ItemId` and the per-document stage's as a bare `string`; there is no
+  reason for two identity types on one program, and the loose one is the arm that could smuggle a
+  positional id.
+- **The program is sealed, and reveal is a named function.** §4.2's "branded opaque type whose
+  completion config is not structurally reachable" is implemented as a handle exposing `mode` and
+  `gate` only, plus `revealCompletionProgram`. `descriptor-coverage` additionally checks that no
+  workflow module calls it, so §4.2's second mechanism (no spec-to-spec reach) is mechanical too.
+- **Construction proves the chain against a mandatory sample**, including the §4.1 rule that stage
+  N+1 receives the ids stage N ACTUALLY enqueued after `eligible` filtering.
+
+**Durable delegation manifest (D105).** The 1c `DelegationManifestSchema` could not express what the
+1e planner writes, and all three gaps were silent losses rather than validation:
+
+- it recorded no `policy`, so the manifest — the authority a replay verifies against — was not the
+  durable home of the policy the operator selected (D102 says one vocabulary END TO END);
+- its `join` carried only `all`/`all-settled`, making an awaited one-child edge (`join:"one"`) and
+  an un-awaited fan-out (`join:"none"`) unwritable, even though the latter's manifest reference IS
+  the node's output;
+- `children` required `min(1)`, so a zero-child fan-out — a legitimate empty upstream list that
+  doc 02 §3.2 requires to stay an explicit satisfied join — had no writable record.
+
+All three are corrected in `src/domain/dependencies.ts`, with `join`/`cardinality` agreement
+enforced. Like D102 this is a zod-validated JSON payload, so no authority migration version is
+consumed by the shape change.
+
+---
+
 ## 4. Unified completion contract (replaces approveTo / approveDocumentTo / completeDelegatedRun)
 
 **Re-derived from `tracker/dashboard/ocr/approve.ts` + `prepare.ts` as-built (D11), not the OCR

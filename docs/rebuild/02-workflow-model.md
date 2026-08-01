@@ -107,12 +107,88 @@ un-awaited fan-out contributes no join-policy points, because it has no join).
 scenario claiming a point that no longer exists is a violation too — otherwise a renamed branch arm
 would keep a deleted path looking covered.
 
-**Still open in 1e** (not yet built): the completion (fan-out/approval) program union owned by doc
-03 §4, descriptor assembly with its build-manifest `contractFingerprint`, checkpoint storage and
-snapshot migrations (§5), the ingress `InputParserSpec` interpreters, and the architecture guards
-that enforce these across the tree (`descriptor-coverage`, `scenario-coverage`,
-`delegation-manifest`, `transaction-pairing`, `canonical-input-snapshot` remain `planned` in
-`guard-inventory.json` — each needs a real registered descriptor to check).
+### Phase 1e as-built — descriptor assembly, completion, ingress, checkpoints (2026-08-01)
+
+**The descriptor.** `src/base/workflow.ts` owns `WorkflowDescriptor` and `defineWorkflowDescriptor`;
+`src/domain/workflow/presentation.ts` owns the closed plain-data vocabularies (icons, categories,
+row shape, verdicts, enqueue/action policy, capabilities, detail and artifact projections);
+`src/domain/workflow/ingress.ts` owns the run-surface specs. `steps` (transactions contributing
+`<node>/prepare` and `<node>/commit` arms under one node id), `gates`, the browser-only `systems`
+union, and `requires` are DERIVED from the node tuple, so D2/D15's deleted hand list cannot return.
+What cannot be derived is proven at construction: detail and artifact-projection paths must resolve
+in the producing node's real output schema, parser and upload fields must resolve in the input
+schema, the terminal result and every gate result go through the recursive strict-boundary audit,
+and identity/presentation/subject resolution run against the audited canonical-input samples.
+
+Four deviations from §1.1/§3's sketch, each because the as-built rule it collided with is the one
+already landed and guarded:
+
+- **`identity` declares a match key only; `deriveItemId` is gone (D103).** A descriptor is
+  bundle-safe and cannot hash, so it cannot mint a UUID, and two independent derivations of one
+  identity are a drift surface by construction. The kernel mints `ItemId` from
+  `(workflowId, matchKey)` at enqueue — one derivation, one place. Fan-out `deriveItemId`
+  (doc 03 §4.1) is unaffected: completion derives are server-side.
+- **Meta rides the descriptor spec, not a `.meta()` link in the builder chain.** It contributes
+  nothing to the `S`/`Nodes` accumulators, and threading it through would re-open the exact
+  transform surface 1e's real-scale type proof pins. `details` stays typed over `S`, so a renamed
+  node is still a compile error.
+- **Branch cases and parallel branches take plain node ids, validated at `build()` (D104).** They
+  were typed `keyof S`, which admits only nodes ALREADY declared — i.e. upstream. A branch that can
+  only point backwards cannot select what runs next, and the graph it describes is cyclic. Targets
+  are now checked at `build()`: declared, and strictly downstream of their controller.
+- **Descriptor modules value-import zod + `src/domain/**` + the audited `src/base/**` builders**,
+  where `src/base/**` is itself proven to import only zod + `src/domain/**`. `flow()` and
+  `defineWorkflowDescriptor` live in `base`, so §1.4 #6's literal root set is one module deeper;
+  `descriptor-coverage` walks the whole closure in both halves.
+
+**Completion (doc 03 §4)** is `src/domain/workflow/completion.ts`. `defineCompletionProgram` returns
+a SEALED handle whose type exposes `mode` and `gate` and nothing else, so
+`otherDescriptor.completion.stages[0].eligible` is a compile error rather than a convention;
+`revealCompletionProgram` is the one named seam back, and `descriptor-coverage` checks that no
+workflow module calls it. Building a program PROVES the stage chain against a mandatory sample:
+each child input is parsed by the target's own schema, each `deriveItemId` must be stable across two
+calls, and the per-document stage receives the ids the record stage ACTUALLY enqueued — so a record
+`eligible` rejected never reaches it, which is the as-built rule the legacy approve route missed.
+
+**Ingress** specs are closed and serializable with exhaustive interpreters. Entry classification uses
+a NAMED pattern vocabulary rather than free regexes: a serialized regex is an unreviewable callback
+and a ReDoS surface reachable from operator-typed text. Parsing fails loud on an entry no rule
+claims, because a silently dropped entry is an EID the operator believes is queued. The parser
+returns typed entries and a raw submission; it never mints a validated input, so ingress stays the
+one gate.
+
+**`contractFingerprint` is build-manifest based** (`src/domain/workflow/build-manifest.ts`,
+generated into `src/domain/workflow/generated-build-manifest.ts` by `npm run build:manifest`). It
+hashes canonical `(repo-relative path, content)` tuples over the descriptor closure plus the
+INSTALLED toolchain versions; type-only imports are inside the closure on purpose, because a changed
+type is a changed contract; the generated module is excluded from its own closure so the hash has a
+fixed point. `descriptor-coverage` regenerates and fails on any diff.
+
+**Checkpoints (§5.5–§5.7)** are `src/domain/workflow/checkpoint.ts` over authority schema v3's
+`run_checkpoints`. The loader returns `{found: true, …} | {found: false, reason}`, so `?? {}` is
+unspellable. Descriptor version plus contract and impl fingerprints are mandatory and a mismatch
+refuses resume unless a checked-in, factory-sealed, version-to-version migration transforms the
+payload. The D8 freshness walk computes conservative forward reachability over the static graph and
+refuses a replayed fact that can reach a commit scheduled in THIS run, naming the checkpoint, its
+age, its limit, the consuming commit node, and the path between them; a derived fact ages from its
+oldest contributing live capture; an override reaches only an `override:"audited"` field and only
+the attempt it was minted for. Snapshot migrations get the same treatment — a canonical snapshot
+bound to an older schema hash is transformed by a checked-in chain or refused loud, never re-derived
+from ingress. The doc's `step_id` column is `node_id`: §5.7 puts the resume grain at graph nodes.
+
+**Scenarios.** `tests/scenario/` walks each path through the descriptor's own pure functions —
+`bind`, `when`, `choose`, gate `resolve`, delegation planning and joining, terminal `derive` —
+re-parsing every value through the schema that owns it, and REPORTS the coverage points it
+exercised. `scenario-coverage` audits that observed corpus against the derived points in both
+directions. Two fixture points are honestly out of a pure walk's reach and say so:
+`transaction:*/dry-run` and `transaction:*/subject-mismatch` are executor behaviours, pinned here as
+the obligation 1f must satisfy.
+
+**Impl binding.** Task implementations land with the workers in 1f. Until then every contract a
+registered descriptor uses is listed in `config/pending-impl-bindings.json` (D107), and
+`descriptor-coverage` checks it in BOTH directions — an unlisted unbound contract fails, and so does
+a listed contract a store has since bound. A missing impl is a legitimate mid-program state; a
+missing impl nobody is tracking is the drift a boot-time throw would only find in production.
 
 ---
 

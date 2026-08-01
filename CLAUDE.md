@@ -5,14 +5,14 @@ legacy repository at `/Users/julianhein/Projects/hr-automation` runs every real 
 stays the sole production authority until a single all-at-once cutover (D89/D93).
 
 Seeded 2026-07-31 from `hr-automation@5879004` (branch `feature/rebuild-phase1b`, which stays in the
-legacy repo as the pre-split record). Phase 1c completed 2026-08-01; Phase 1d is next.
+legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01; Phase 1f is next.
 
 ## Before you start
 
 **`docs/rebuild/` is the plan SSOT — read it, do not re-derive it.**
 
 - `docs/rebuild/07-master-plan.md` — phases, work items, exit criteria. §4 owns the two-repo model.
-- `docs/rebuild/04-reconciliation.md` — the decision changelog (D1–D94). A **pointer index**, not a
+- `docs/rebuild/04-reconciliation.md` — the decision changelog (D1–D107). A **pointer index**, not a
   spec: it tells you which doc owns a contract. Never implement from it.
 - `00-charter` · `01-task-contract` · `02-workflow-model` · `03-tracker-dashboard` ·
   `05-execution-parallelism` · `06-data-intake` · `08-foundation-gap-audit` · `09-write-safety` ·
@@ -37,7 +37,14 @@ npm run test:watch
 
 npm run rebuild:cli        # the isolated rebuild runtime (help | phase)
 npm run rebuild:dashboard  # reserved — lands with the 1g-spine BFF
+
+npm run build:manifest     # regenerate src/domain/workflow/generated-build-manifest.ts
 ```
+
+`build:manifest` recomputes every descriptor's `contractFingerprint` from its source closure. Run it
+after ANY edit under a descriptor's import closure (which includes `src/base/**` and most of
+`src/domain/**`) — `descriptor-coverage` regenerates and fails on a diff, so a stale manifest is a
+red gate, not a silent drift.
 
 The gate family is deliberately plain (`typecheck`/`lint`/`test`/`test:architecture`); the old
 `*:rebuild` names retired with D93. The **runtime** commands stay `rebuild:`-prefixed on purpose —
@@ -48,10 +55,12 @@ see "Operational isolation" below.
 | Path | Contents |
 |---|---|
 | `src/` | the rebuild runtime (`domain` → `infra`/`services`/`stores` → `core` → `control`/`workflows`) |
+| `src/workflows/<id>/` | `descriptor.ts` (bundle-safe) + `module.ts` (server composition value) |
+| `src/control/workflow-registry.ts` | the composition root: the ONE `WORKFLOW_MODULES` tuple every registry derives from |
 | `tests/unit/` | domain unit tests |
 | `tests/unit/architecture/` | the guard suite; every file registered in `docs/rebuild/guard-inventory.json` |
-| `tests/scenario/` | reserved for 1e's executable scenarios (absent until its first file — an empty root fails on purpose) |
-| `config/` | `legacy-change-accounting.json`, `legacy-capabilities.json`, `legacy-test-disposition.json`, `runtime-isolation.json` |
+| `tests/scenario/` | executable scenarios; each reports the coverage points it walked, and `scenario-coverage` audits that corpus against the graph |
+| `config/` | `legacy-change-accounting.json`, `legacy-capabilities.json`, `legacy-test-disposition.json`, `runtime-isolation.json`, `pending-impl-bindings.json` |
 | `docs/rebuild/` | the plan SSOT — kept at this exact path so every cross-doc link still resolves |
 | `duo-autopilot/` | the Duo MFA WebAuthn extension (vendored; credentials are gitignored) |
 
@@ -204,6 +213,12 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   test-only (`manual-clock-test-only.test.ts`).
 - Registry exports are recursively frozen at module load (`src/domain/immutability.ts`).
 - Structured errors, never `console.*` in `src/`.
+- A workflow descriptor value-imports only zod, `src/domain/**`, and the audited `src/base/**`
+  builders; `module.ts` is where anything server-side attaches (D106). Branch cases and parallel
+  branches name nodes DOWNSTREAM of their controller — forward references, checked at `build()`
+  (D104).
+- A contract a descriptor uses but no store implements yet must be listed in
+  `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
 
 ## After changes
 
