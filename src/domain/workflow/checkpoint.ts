@@ -469,7 +469,20 @@ export function migrateCanonicalInputSnapshot(
   );
 }
 
-/** The durable key of a checkpoint row — the logical item plus node plus attempt. */
+/**
+ * The durable key of a checkpoint row — the logical item plus node plus
+ * attempt. The separator is NUL because it cannot appear in any component, so
+ * two different tuples can never collide into one key.
+ */
+export function checkpointLookupKey(
+  workflowId: string,
+  itemId: string,
+  nodeId: string,
+  attempt: number,
+): string {
+  return [workflowId, itemId, nodeId, String(attempt)].join("\u0000");
+}
+
 export function checkpointRecordKey(record: RunCheckpointRecord): string {
-  return [record.workflowId, record.itemId, record.nodeId, String(record.attempt)].join(" ");
+  return checkpointLookupKey(record.workflowId, record.itemId, record.nodeId, record.attempt);
 }

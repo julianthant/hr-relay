@@ -21,6 +21,7 @@ import { GateResultRecordSchema } from "../../domain/gates.js";
 import { BrowserSystemIdSchema } from "../../domain/ids.js";
 import {
   RunCheckpointRecordSchema,
+  checkpointLookupKey,
   checkpointRecordKey,
   type RunCheckpointRecord,
 } from "../../domain/workflow/checkpoint.js";
@@ -910,7 +911,7 @@ export class AuthorityDatabase implements Disposable {
         },
         get: (workflowId: string, itemId: string, nodeId: string, attempt: number) => this.#readRecord(
           "run_checkpoints",
-          [workflowId, itemId, nodeId, String(attempt)].join(" "),
+          checkpointLookupKey(workflowId, itemId, nodeId, attempt),
           RunCheckpointRecordSchema,
         ),
         latest: (workflowId: string, itemId: string, nodeId: string) => {
