@@ -11,6 +11,7 @@ const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 describe("strict config resolution", () => {
   it("makes empty settings exactly equal schema defaults", () => {
     assert.deepEqual(resolveConfig({}, {}, CLOCK), ConfigSchema.parse({}));
+    assert.equal(resolveConfig({}, {}, CLOCK).timeouts.ukgNavigationMs, 60_000);
     assert.equal(ConfigSchema.safeParse({ unexpected: true }).success, false);
     assert.equal(ConfigSchema.safeParse({ urls: { unexpected: true } }).success, false);
     assert.equal(SettingsOverrideSchema.safeParse({ urls: { ucpath: { test: { typo: "https://example.test" } } } }).success, false);
@@ -27,12 +28,15 @@ describe("strict config resolution", () => {
     const resolved = resolveConfigWithProvenance({
       TIMEKEEPER_NAME: "env-name",
       HRAUTO_UCPATH_TEST_URL: "https://env-ucpath.example.test",
+      HRAUTO_UKG_NAVIGATION_MS: "75000",
     }, settings, CLOCK);
     assert.equal(resolved.config.operator.timekeeperName, "env-name");
     assert.equal(resolved.config.ocr.secondOpinionMax, 7);
     assert.equal(resolved.config.urls.ucpath.test?.smartHr, "https://env-ucpath.example.test");
+    assert.equal(resolved.config.timeouts.ukgNavigationMs, 75_000);
     assert.equal(resolved.provenance["operator.timekeeperName"], "env");
     assert.equal(resolved.provenance["ocr.secondOpinionMax"], "settings");
+    assert.equal(resolved.provenance["timeouts.ukgNavigationMs"], "env");
     assert.equal(resolved.provenance["timeouts.taskMs"], "default");
     assert.match(resolved.fingerprint, /^[0-9a-f]{64}$/);
     assert.equal(Object.keys(resolved.provenance).length > 70, true);

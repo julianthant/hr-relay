@@ -114,7 +114,12 @@ function normalize(path: string): string {
 
 function parse(file: string): ts.SourceFile {
   const kind = file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-  return ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, kind);
+  return parseContent(file, readFileSync(file, "utf8"), kind);
+}
+
+function parseContent(file: string, content: string, kind?: ts.ScriptKind): ts.SourceFile {
+  const scriptKind = kind ?? (file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  return ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, scriptKind);
 }
 
 function visit(node: ts.Node, callback: (node: ts.Node) => void): void {
@@ -123,39 +128,77 @@ function visit(node: ts.Node, callback: (node: ts.Node) => void): void {
 }
 
 function isBareDefault(node: ts.Expression): boolean {
-  return node.kind === ts.SyntaxKind.NullKeyword
-    || node.kind === ts.SyntaxKind.TrueKeyword
-    || node.kind === ts.SyntaxKind.FalseKeyword
-    || (ts.isIdentifier(node) && node.text === "undefined")
-    || (ts.isNumericLiteral(node) && node.text === "0")
-    || (ts.isStringLiteral(node) && node.text === "")
-    || (ts.isArrayLiteralExpression(node) && node.elements.length === 0)
-    || (ts.isObjectLiteralExpression(node) && node.properties.length === 0);
+  let expression = node;
+  while (ts.isParenthesizedExpression(expression)
+    || ts.isAsExpression(expression)
+    || ts.isSatisfiesExpression(expression)
+    || ts.isNonNullExpression(expression)) {
+    expression = expression.expression;
+  }
+  return expression.kind === ts.SyntaxKind.NullKeyword
+    || expression.kind === ts.SyntaxKind.TrueKeyword
+    || expression.kind === ts.SyntaxKind.FalseKeyword
+    || (ts.isIdentifier(expression) && expression.text === "undefined")
+    || (ts.isNumericLiteral(expression) && expression.text === "0")
+    || (ts.isStringLiteral(expression) && expression.text === "")
+    || (ts.isArrayLiteralExpression(expression) && expression.elements.length === 0)
+    || (ts.isObjectLiteralExpression(expression) && expression.properties.length === 0);
+}
+
+function visitHandlerBody(node: ts.Node, callback: (node: ts.Node) => void, root: ts.Node): void {
+  callback(node);
+  ts.forEachChild(node, (child) => {
+    if (child !== root && (ts.isFunctionLike(child) || ts.isCatchClause(child))) return;
+    visitHandlerBody(child, callback, root);
+  });
+}
+
+function defaultUsesInHandler(root: ts.Block): readonly string[] {
+  const uses: string[] = [];
+  visitHandlerBody(root, (node) => {
+    if (ts.isReturnStatement(node) && node.expression && isBareDefault(node.expression)) {
+      uses.push("returns");
+      return;
+    }
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      && isBareDefault(node.right)) {
+      uses.push("assigns");
+      return;
+    }
+    if (ts.isVariableDeclaration(node) && node.initializer && isBareDefault(node.initializer)) {
+      uses.push("initializes");
+    }
+  }, root);
+  return uses;
+}
+
+export function auditFailLoudCatchDefaults(path: string, content: string): readonly string[] {
+  const violations: string[] = [];
+  visit(parseContent(path, content), (node) => {
+    if (ts.isCatchClause(node)) {
+      for (const use of defaultUsesInHandler(node.block)) {
+        violations.push(`${path}: catch ${use} a bare default`);
+      }
+    }
+    if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)
+      || node.expression.name.text !== "catch") return;
+    const handler = node.arguments[0];
+    if (!handler || (!ts.isArrowFunction(handler) && !ts.isFunctionExpression(handler))) return;
+    if (ts.isBlock(handler.body)) {
+      for (const use of defaultUsesInHandler(handler.body)) {
+        violations.push(`${path}: promise catch ${use} a bare default`);
+      }
+    } else if (isBareDefault(handler.body)) {
+      violations.push(`${path}: promise catch returns a bare default`);
+    }
+  });
+  return violations;
 }
 
 function auditBareDefaults(files: readonly string[]): string[] {
   const violations: string[] = [];
   for (const file of files) {
-    visit(parse(file), (node) => {
-      if (ts.isCatchClause(node) && node.block.statements.length === 1) {
-        const statement = node.block.statements[0];
-        const expression = ts.isReturnStatement(statement)
-          ? statement.expression
-          : ts.isExpressionStatement(statement)
-            && ts.isBinaryExpression(statement.expression)
-            && statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
-            ? statement.expression.right
-            : undefined;
-        if (expression && isBareDefault(expression)) violations.push(`${file}: catch returns/assigns a bare default`);
-      }
-      if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)
-        || node.expression.name.text !== "catch") return;
-      const handler = node.arguments[0];
-      if (!handler || (!ts.isArrowFunction(handler) && !ts.isFunctionExpression(handler))) return;
-      if (!ts.isBlock(handler.body) && isBareDefault(handler.body)) {
-        violations.push(`${file}: promise catch returns a bare default`);
-      }
-    });
+    violations.push(...auditFailLoudCatchDefaults(file, readFileSync(file, "utf8")));
   }
   return violations;
 }

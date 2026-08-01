@@ -2,12 +2,12 @@ import { z } from "zod";
 import {
   ArtifactIdSchema,
   ErrorCodeSchema,
+  EvidenceEntryIdSchema,
   EvidenceReceiptIdSchema,
   EvidenceRefSchema,
   FailureIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
-  ObservationIdSchema,
   PositiveIntSchema,
   RunIdSchema,
   TaskIdSchema,
@@ -22,12 +22,12 @@ const EvidenceSourceSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("input"), inputFingerprint: FingerprintSchema }),
   z.strictObject({ kind: z.literal("system"), taskId: TaskIdSchema, observedAt: IsoInstantSchema }),
   z.strictObject({ kind: z.literal("checkpoint"), taskId: TaskIdSchema, checkpointFingerprint: FingerprintSchema, observedAt: IsoInstantSchema }),
-  z.strictObject({ kind: z.literal("operator-correction"), supersedes: ObservationIdSchema }),
+  z.strictObject({ kind: z.literal("operator-correction"), supersedes: EvidenceEntryIdSchema }),
   z.strictObject({ kind: z.literal("derived"), evidence: z.array(EvidenceRefSchema).min(1) }),
 ]);
 
 const EvidenceFactFields = {
-  id: ObservationIdSchema,
+  id: EvidenceEntryIdSchema,
   field: z.string().regex(/^[a-z][A-Za-z0-9]*$/),
   mandatory: z.boolean(),
   source: EvidenceSourceSchema,
@@ -39,7 +39,7 @@ export const EvidenceFactSchema = z.discriminatedUnion("state", [
 ]);
 
 export const DecisionEvidenceSchema = z.strictObject({
-  id: ObservationIdSchema,
+  id: EvidenceEntryIdSchema,
   kind: z.enum(["branch", "gate", "identity", "dedupe"]),
   outcome: z.enum(["taken", "not-taken", "blocked", "approved", "rejected"]),
   reason: z.string().min(1),
@@ -47,7 +47,7 @@ export const DecisionEvidenceSchema = z.strictObject({
 });
 
 export const ActionEvidenceSchema = z.strictObject({
-  id: ObservationIdSchema,
+  id: EvidenceEntryIdSchema,
   taskId: TaskIdSchema,
   kind: z.enum(["external-read", "prepare", "commit", "local-projection"]),
   writeState: WriteStateSchema,
@@ -64,7 +64,7 @@ export const ActionEvidenceSchema = z.strictObject({
 });
 
 export const VerificationEvidenceSchema = z.strictObject({
-  id: ObservationIdSchema,
+  id: EvidenceEntryIdSchema,
   obligation: z.string().regex(/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/),
   mandatory: z.boolean(),
   verdict: z.enum(["verified", "present", "absent", "unknown", "ambiguous"]),
@@ -76,7 +76,7 @@ export const VerificationEvidenceSchema = z.strictObject({
 });
 
 export const ReuseEvidenceSchema = z.strictObject({
-  id: ObservationIdSchema,
+  id: EvidenceEntryIdSchema,
   kind: z.enum(["fresh-live", "checkpoint", "corrected", "prior-proof"]),
   source: EvidenceRefSchema,
   ageMs: z.number().int().nonnegative(),
@@ -84,7 +84,7 @@ export const ReuseEvidenceSchema = z.strictObject({
 });
 
 export const UncertaintyEvidenceSchema = z.strictObject({
-  id: ObservationIdSchema,
+  id: EvidenceEntryIdSchema,
   code: ErrorCodeSchema,
   summary: z.string().min(1),
   loadBearing: z.boolean(),

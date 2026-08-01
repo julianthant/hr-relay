@@ -15,11 +15,18 @@ export const EvidenceReceiptIdSchema = brandedText<"EvidenceReceiptId">(UUID_PAT
 export const DiagnosticBundleIdSchema = brandedText<"DiagnosticBundleId">(UUID_PATTERN, "bundle id must be a UUID");
 export const ConfigSnapshotIdSchema = brandedText<"ConfigSnapshotId">(UUID_PATTERN, "config snapshot id must be a UUID");
 export const ArtifactIdSchema = brandedText<"ArtifactId">(UUID_PATTERN, "artifact id must be a UUID");
+export const EvidenceEntryIdSchema = brandedText<"EvidenceEntryId">(
+  UUID_PATTERN,
+  "evidence entry id must be a UUID",
+);
 const QUALIFIED_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)+$/;
 export const ElementIdSchema = brandedText<"ElementId">(QUALIFIED_ID_PATTERN, "element id must be dot-qualified kebab-case");
 export const PageStateIdSchema = brandedText<"PageStateId">(QUALIFIED_ID_PATTERN, "page-state id must be dot-qualified kebab-case");
 export const ScreenIdSchema = brandedText<"ScreenId">(QUALIFIED_ID_PATTERN, "screen id must be dot-qualified kebab-case");
-export const ObservationIdSchema = brandedText<"ObservationId">(UUID_PATTERN, "observation id must be a UUID");
+export const ObservationIdSchema = brandedText<"ObservationId">(
+  QUALIFIED_ID_PATTERN,
+  "observation id must be dot-qualified kebab-case",
+);
 export const ScenarioIdSchema = brandedText<"ScenarioId">(
   /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+$/,
   "scenario id must be a slash-delimited kebab-case path",
@@ -47,7 +54,7 @@ export const SourceSurfaceIdSchema = brandedText<"SourceSurfaceId">(SLUG_PATTERN
 export const WorkerIdSchema = brandedText<"WorkerId">(SLUG_PATTERN, "worker id must be kebab-case");
 
 export const TraceIdSchema = brandedText<"TraceId">(
-  /^[a-z0-9]{2}-[0-2][0-9][0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/,
+  /^[a-z0-9]{2}-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/,
   "trace id must be <code>-<HHMMSS>-<runId4>",
 );
 export const FingerprintSchema = brandedText<"Fingerprint">(/^[0-9a-f]{64}$/, "fingerprint must be SHA-256 hex");
@@ -112,6 +119,7 @@ export type FailureId = z.infer<typeof FailureIdSchema>;
 export type EvidenceReceiptId = z.infer<typeof EvidenceReceiptIdSchema>;
 export type DiagnosticBundleId = z.infer<typeof DiagnosticBundleIdSchema>;
 export type ArtifactId = z.infer<typeof ArtifactIdSchema>;
+export type EvidenceEntryId = z.infer<typeof EvidenceEntryIdSchema>;
 export type WorkflowId = z.infer<typeof WorkflowIdSchema>;
 export type ActorId = z.infer<typeof ActorIdSchema>;
 export type TraceId = z.infer<typeof TraceIdSchema>;

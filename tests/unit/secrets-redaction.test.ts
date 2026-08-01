@@ -3,6 +3,7 @@ import { describe, it } from "vitest";
 import {
   optionalSecret,
   optionalSecretFamily,
+  inspectSecret,
   requireSecret,
   requireSecretFamily,
   requireSecretFile,
@@ -30,6 +31,49 @@ describe("closed secret access", () => {
     assert.throws(() => requireSecret("ucpathPassword", env), /UCPATH_PASSWORD/);
     assert.throws(() => validateDescriptorSecrets(["ucpathUserId", "ucpathPassword"], [], env), /ucpathPassword/);
     assert.throws(() => requireSecretFamily("groqApiKeys", env), /GROQ_API_KEY/);
+  });
+
+  it("resolves the registered local ngrok source without exposing its value in preflight diagnostics", () => {
+    const access = {
+      homeDirectory: () => "/operator",
+      stat: () => ({ isFile: () => true, mode: 0o600, size: 48 }),
+      readText: () => "version: 3\nauthtoken: local-test-token\n",
+      readBytes: () => Buffer.from("unused"),
+    };
+    assert.equal(requireSecret("ngrokCredential", {}, access), "local-test-token");
+    assert.deepEqual(inspectSecret("ngrokCredential", {}, access), {
+      name: "ngrokCredential",
+      source: "local-ngrok-config",
+      state: "present",
+    });
+    assert.doesNotThrow(() => validateDescriptorSecrets(["ngrokCredential"], [], {}, access));
+  });
+
+  it("fails descriptor preflight with explicit missing and unknown local-source diagnostics", () => {
+    const missing = {
+      homeDirectory: () => "/operator",
+      stat: () => ({ isFile: () => true, mode: 0o600, size: 12 }),
+      readText: () => "version: 3\n",
+      readBytes: () => Buffer.from("unused"),
+    };
+    assert.throws(
+      () => validateDescriptorSecrets(["ngrokCredential"], [], {}, missing),
+      /ngrokCredential \[missing:.*local-ngrok-config/,
+    );
+
+    const unreadable = {
+      ...missing,
+      readText: () => {
+        throw new Error("fixture read denied");
+      },
+    };
+    const availability = inspectSecret("ngrokCredential", {}, unreadable);
+    assert.equal(availability.state, "unknown");
+    assert.equal(JSON.stringify(availability).includes("local-test-token"), false);
+    assert.throws(
+      () => validateDescriptorSecrets(["ngrokCredential"], [], {}, unreadable),
+      /ngrokCredential \[unknown:.*could not be resolved/,
+    );
   });
 
   it("keeps registry names and environment sources one-to-one", () => {

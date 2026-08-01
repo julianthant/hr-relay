@@ -125,6 +125,21 @@ describe("strict trust records", () => {
 
   it("enforces terminal receipt evidence and uncertainty invariants", () => {
     assert.equal(RunEvidenceReceiptSchema.safeParse(RECEIPT).success, true);
+    assert.equal(RunEvidenceReceiptSchema.safeParse({
+      ...RECEIPT,
+      input: [{ ...SATISFIED_FACT, id: "ucpath.person-search.employee-eid" }],
+    }).success, false);
+    assert.equal(RunEvidenceReceiptSchema.safeParse({
+      ...RECEIPT,
+      input: [{
+        ...SATISFIED_FACT,
+        source: { kind: "operator-correction", supersedes: "ucpath.person-search.employee-eid" },
+      }],
+    }).success, false);
+    assert.equal(RunEvidenceReceiptSchema.safeParse({
+      ...RECEIPT,
+      input: [{ ...SATISFIED_FACT, source: { kind: "operator-correction", supersedes: UUID_5 } }],
+    }).success, true);
     assert.equal(RunEvidenceReceiptSchema.safeParse({ ...RECEIPT, confidence: "partial" }).success, false);
     assert.equal(RunEvidenceReceiptSchema.safeParse({
       ...RECEIPT,

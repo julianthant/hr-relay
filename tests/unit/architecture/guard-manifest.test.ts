@@ -11,6 +11,7 @@ import {
 } from "../../../vitest.config.js";
 import { REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 import {
+  auditFailLoudCatchDefaults,
   auditRebuildRatchetArm,
   rebuildRatchetFixture,
   REQUIRED_REBUILD_RATCHET_NAMES,
@@ -209,6 +210,31 @@ describe("reviewed architecture guard manifest", () => {
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
+    }
+  });
+
+  it("keeps fail-loud catch scanning semantic across multi-statement and nested handlers", () => {
+    const violating = [
+      "try { work(); } catch { log.warn('failed'); return []; }",
+      "request().catch(() => { audit(); return {}; });",
+      "try { work(); } catch { if (retryable) { recovered = false; } throw new Error('failed'); }",
+      "request().catch(() => { if (missing) return 0; throw new Error('failed'); });",
+      "try { work(); } catch { audit(); const fallback = null; return fallback; }",
+    ];
+    for (const [index, content] of violating.entries()) {
+      assert.equal(auditFailLoudCatchDefaults(`fixture-${String(index)}.ts`, content).length > 0, true, content);
+    }
+
+    const allowed = [
+      "try { work(); } catch (error) { log.warn('failed'); throw error; }",
+      "request().catch((error) => { throw error; });",
+      "try { work(); } catch (error) { return { state: 'unknown', reason: error.message }; }",
+      "request().catch((error) => recoverKnownFailure(error));",
+      "try { work(); } catch (error) { const nested = () => []; log.warn('return []; catch { result = false; }'); throw error; }",
+      "const text = 'request.catch(() => { return []; })'; // catch { return {}; }",
+    ];
+    for (const [index, content] of allowed.entries()) {
+      assert.deepEqual(auditFailLoudCatchDefaults(`allowed-${String(index)}.ts`, content), [], content);
     }
   });
 });

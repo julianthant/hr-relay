@@ -1,4 +1,6 @@
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync, type Stats } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod";
 import type { Config } from "./config/schema.js";
 import { deepFreeze } from "./immutability.js";
@@ -21,6 +23,7 @@ export const SecretFamilyNameSchema = z.enum([
   "sambaNovaApiKeys",
 ]);
 export const SecretFileNameSchema = z.enum(["duoWebauthnCredential"]);
+const SecretSourceSchema = z.enum(["environment", "local-ngrok-config"]);
 
 export const SecretSpecSchema = z.discriminatedUnion("source", [
   z.strictObject({
@@ -35,6 +38,7 @@ export const SecretSpecSchema = z.discriminatedUnion("source", [
     source: z.literal("local-ngrok-config"),
     requiredAtBoot: z.boolean(),
     classification: z.literal("secret"),
+    maximumBytes: z.number().int().positive(),
   }),
 ]);
 export const SecretFamilySpecSchema = z.strictObject({
@@ -58,7 +62,7 @@ export const SECRET_SPECS = deepFreeze(SecretSpecSchema.array().parse([
   { name: "ucpathPassword", source: "environment", env: "UCPATH_PASSWORD", requiredAtBoot: false, classification: "secret" },
   { name: "timekeeperName", source: "environment", env: "TIMEKEEPER_NAME", requiredAtBoot: false, classification: "direct-identifier" },
   { name: "sharepointOnboardingRosterUrl", source: "environment", env: "ONBOARDING_ROSTER_URL", requiredAtBoot: false, classification: "secret" },
-  { name: "ngrokCredential", source: "local-ngrok-config", requiredAtBoot: false, classification: "secret" },
+  { name: "ngrokCredential", source: "local-ngrok-config", requiredAtBoot: false, classification: "secret", maximumBytes: 64_000 },
 ]));
 export const SECRET_FAMILY_SPECS = deepFreeze(SecretFamilySpecSchema.array().parse([
   { name: "geminiApiKeys", envPrefix: "GEMINI_API_KEY", modelsEnv: "OCR_GEMINI_MODELS", legacyModelEnv: "OCR_GEMINI_MODEL", maximum: 8, requiredAtBoot: false, classification: "secret" },
@@ -75,7 +79,39 @@ export type SecretName = z.infer<typeof SecretNameSchema>;
 export type EnvironmentSecretName = z.infer<typeof EnvironmentSecretNameSchema>;
 export type SecretFamilyName = z.infer<typeof SecretFamilyNameSchema>;
 export type SecretFileName = z.infer<typeof SecretFileNameSchema>;
-type EnvironmentSecretSpec = Extract<z.infer<typeof SecretSpecSchema>, { source: "environment" }>;
+type SecretSpec = z.infer<typeof SecretSpecSchema>;
+type SecretFileMetadata = Pick<Stats, "isFile" | "mode" | "size">;
+
+export const SecretAvailabilitySchema = z.discriminatedUnion("state", [
+  z.strictObject({ name: SecretNameSchema, source: SecretSourceSchema, state: z.literal("present") }),
+  z.strictObject({
+    name: SecretNameSchema,
+    source: SecretSourceSchema,
+    state: z.literal("missing"),
+    diagnostic: z.string().min(1),
+  }),
+  z.strictObject({
+    name: SecretNameSchema,
+    source: SecretSourceSchema,
+    state: z.literal("unknown"),
+    diagnostic: z.string().min(1),
+  }),
+]);
+export type SecretAvailability = z.infer<typeof SecretAvailabilitySchema>;
+
+interface SecretSourceAccess {
+  readonly homeDirectory: () => string;
+  readonly stat: (path: string) => SecretFileMetadata;
+  readonly readText: (path: string) => string;
+  readonly readBytes: (path: string) => Buffer;
+}
+
+const DEFAULT_SECRET_SOURCE_ACCESS: SecretSourceAccess = {
+  homeDirectory: homedir,
+  stat: statSync,
+  readText: (path) => readFileSync(path, "utf8"),
+  readBytes: (path) => readFileSync(path),
+};
 
 export class SecretMissingError extends Error {
   constructor(message: string) {
@@ -91,12 +127,15 @@ export class SecretFileError extends Error {
   }
 }
 
-function environmentSecretSpecs(): readonly EnvironmentSecretSpec[] {
-  return SECRET_SPECS.filter((spec): spec is EnvironmentSecretSpec => spec.source === "environment");
+export class SecretSourceError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "SecretSourceError";
+  }
 }
 
-function secretSpec(name: EnvironmentSecretName) {
-  const spec = environmentSecretSpecs().find((candidate) => candidate.name === name);
+function registeredSecretSpec(name: SecretName): SecretSpec {
+  const spec = SECRET_SPECS.find((candidate) => candidate.name === name);
   if (spec === undefined) throw new SecretMissingError(`secret registry has no entry for ${name}`);
   return spec;
 }
@@ -107,17 +146,110 @@ function familySpec(name: SecretFamilyName) {
   return spec;
 }
 
-export function optionalSecret(name: EnvironmentSecretName, env: NodeJS.ProcessEnv = process.env): string | undefined {
-  const spec = secretSpec(name);
+function assertReadableSecretFile(
+  name: string,
+  source: string,
+  path: string,
+  maximumBytes: number,
+  access: SecretSourceAccess,
+): void {
+  let metadata: SecretFileMetadata;
+  try {
+    metadata = access.stat(path);
+  } catch (error) {
+    throw new SecretSourceError(`${name} source ${source} is unavailable at its registered path`, { cause: error });
+  }
+  if (!metadata.isFile()) throw new SecretSourceError(`${name} source ${source} is not a regular file`);
+  if ((metadata.mode & 0o077) !== 0) throw new SecretSourceError(`${name} source ${source} permissions must be 0600 or stricter`);
+  if (metadata.size > maximumBytes) throw new SecretSourceError(`${name} source ${source} exceeds its registered size limit`);
+}
+
+function localNgrokCredential(access: SecretSourceAccess): string | undefined {
+  const spec = registeredSecretSpec("ngrokCredential");
+  if (spec.source !== "local-ngrok-config") throw new SecretSourceError("ngrokCredential has the wrong registered source kind");
+  const path = join(access.homeDirectory(), "Library", "Application Support", "ngrok", "ngrok.yml");
+  assertReadableSecretFile(spec.name, spec.source, path, spec.maximumBytes, access);
+  let content: string;
+  try {
+    content = access.readText(path);
+  } catch (error) {
+    throw new SecretSourceError("ngrokCredential source local-ngrok-config could not be read", { cause: error });
+  }
+  const tokenLines = content.split(/\r?\n/).filter((line) => /^\s*authtoken\s*:/.test(line));
+  if (tokenLines.length > 1) throw new SecretSourceError("ngrokCredential source local-ngrok-config declares authtoken more than once");
+  const tokenLine = tokenLines[0];
+  if (tokenLine === undefined) return undefined;
+  const separator = tokenLine.indexOf(":");
+  const encoded = tokenLine.slice(separator + 1).trim();
+  if (encoded === "") return undefined;
+  if (encoded.startsWith("\"") || encoded.startsWith("'")) {
+    const quote = encoded.startsWith("\"") ? "\"" : "'";
+    if (!encoded.endsWith(quote) || encoded.length < 3) {
+      throw new SecretSourceError("ngrokCredential source local-ngrok-config has a malformed quoted authtoken");
+    }
+    return encoded.slice(1, -1).trim() || undefined;
+  }
+  const token = encoded.replace(/\s+#.*$/, "").trim();
+  return token === "" ? undefined : token;
+}
+
+function resolveSecretValue(
+  name: SecretName,
+  env: NodeJS.ProcessEnv,
+  access: SecretSourceAccess,
+): string | undefined {
+  const spec = registeredSecretSpec(name);
+  if (spec.source === "local-ngrok-config") return localNgrokCredential(access);
   const value = env[spec.env]?.trim();
   return value === "" ? undefined : value;
 }
 
-export function requireSecret(name: EnvironmentSecretName, env: NodeJS.ProcessEnv = process.env): string {
-  const value = optionalSecret(name, env);
+export function inspectSecret(
+  name: SecretName,
+  env: NodeJS.ProcessEnv = process.env,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
+): SecretAvailability {
+  const spec = registeredSecretSpec(name);
+  try {
+    const value = resolveSecretValue(name, env, access);
+    if (value === undefined) {
+      return SecretAvailabilitySchema.parse({
+        name,
+        source: spec.source,
+        state: "missing",
+        diagnostic: `${name} is missing from ${spec.source}`,
+      });
+    }
+    return SecretAvailabilitySchema.parse({ name, source: spec.source, state: "present" });
+  } catch (error) {
+    if (!(error instanceof SecretSourceError)) throw error;
+    return SecretAvailabilitySchema.parse({
+      name,
+      source: spec.source,
+      state: "unknown",
+      diagnostic: `${name} could not be resolved from ${spec.source}: ${error.message}`,
+    });
+  }
+}
+
+export function optionalSecret(
+  name: SecretName,
+  env: NodeJS.ProcessEnv = process.env,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
+): string | undefined {
+  return resolveSecretValue(name, env, access);
+}
+
+export function requireSecret(
+  name: SecretName,
+  env: NodeJS.ProcessEnv = process.env,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
+): string {
+  const value = optionalSecret(name, env, access);
   if (value === undefined) {
-    const spec = secretSpec(name);
-    throw new SecretMissingError(`${name} is missing (${spec.env}); configure it in .env.example-compatible environment`);
+    const spec = registeredSecretSpec(name);
+    const source = spec.source === "environment" ? `${spec.source} ${spec.env}` : spec.source;
+    throw new SecretMissingError(`${name} is missing from registered source ${source}`);
   }
   return value;
 }
@@ -143,46 +275,54 @@ export function requireSecretFamily(name: SecretFamilyName, env: NodeJS.ProcessE
   return [first, ...values.slice(1)];
 }
 
-export function validateBootSecrets(env: NodeJS.ProcessEnv = process.env): void {
-  const missing = environmentSecretSpecs().filter(({ requiredAtBoot }) => requiredAtBoot)
-    .filter(({ name }) => optionalSecret(name, env) === undefined)
-    .map(({ env: key }) => key);
+function unresolvedDiagnostics(availabilities: readonly SecretAvailability[]): readonly string[] {
+  return availabilities
+    .filter((availability) => availability.state !== "present")
+    .map((availability) => `${availability.name} [${availability.state}: ${availability.diagnostic}]`);
+}
+
+export function validateBootSecrets(
+  env: NodeJS.ProcessEnv = process.env,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
+): void {
+  const unresolved = unresolvedDiagnostics(SECRET_SPECS.filter(({ requiredAtBoot }) => requiredAtBoot)
+    .map(({ name }) => inspectSecret(name, env, access)));
   const missingFamilies = SECRET_FAMILY_SPECS.filter(({ requiredAtBoot }) => requiredAtBoot)
     .filter(({ name }) => optionalSecretFamily(name, env).length === 0)
     .map(({ envPrefix }) => envPrefix);
-  const allMissing = [...missing, ...missingFamilies];
-  if (allMissing.length > 0) throw new SecretMissingError(`missing boot secrets: ${allMissing.join(", ")}`);
+  const allUnresolved = [...unresolved, ...missingFamilies.map((family) => `${family} [missing: environment family has no value]`)];
+  if (allUnresolved.length > 0) throw new SecretMissingError(`unresolved boot secrets: ${allUnresolved.join(", ")}`);
 }
 
 export function validateDescriptorSecrets(
-  names: readonly EnvironmentSecretName[],
+  names: readonly SecretName[],
   families: readonly SecretFamilyName[],
   env: NodeJS.ProcessEnv = process.env,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
 ): void {
-  const missing = names.filter((name) => optionalSecret(name, env) === undefined);
+  const unresolved = unresolvedDiagnostics(names.map((name) => inspectSecret(name, env, access)));
   const missingFamilies = families.filter((name) => optionalSecretFamily(name, env).length === 0);
-  if (missing.length > 0 || missingFamilies.length > 0) {
-    throw new SecretMissingError(`missing descriptor secrets: ${[...missing, ...missingFamilies].join(", ")}`);
+  if (unresolved.length > 0 || missingFamilies.length > 0) {
+    const diagnostics = [...unresolved, ...missingFamilies.map((family) => `${family} [missing: environment family has no value]`)];
+    throw new SecretMissingError(`unresolved descriptor secrets: ${diagnostics.join(", ")}`);
   }
 }
 
-export function requireSecretFile(name: SecretFileName, config: Config): Buffer {
+export function requireSecretFile(
+  name: SecretFileName,
+  config: Config,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
+): Buffer {
   const parsedName = SecretFileNameSchema.parse(name);
   const spec = SECRET_FILE_SPECS.find((candidate) => candidate.name === parsedName);
   if (spec === undefined) throw new SecretFileError(`${name} has no registered credential-file specification`);
-  let metadata;
   try {
-    metadata = statSync(config.paths.duoCredential);
+    assertReadableSecretFile(name, spec.classification, config.paths.duoCredential, spec.maximumBytes, access);
   } catch (error) {
     throw new SecretFileError(`${name} is unavailable at the registered rebuild credential path`, { cause: error });
   }
-  if (!metadata.isFile()) throw new SecretFileError(`${name} registered path is not a regular file`);
-  if ((metadata.mode & 0o077) !== 0) throw new SecretFileError(`${name} file permissions must be 0600 or stricter`);
-  if (metadata.size > spec.maximumBytes) {
-    throw new SecretFileError(`${name} file exceeds its registered size limit`);
-  }
   try {
-    return readFileSync(config.paths.duoCredential);
+    return access.readBytes(config.paths.duoCredential);
   } catch (error) {
     throw new SecretFileError(`${name} could not be read`, { cause: error });
   }

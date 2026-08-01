@@ -7,10 +7,13 @@ import { manualClock } from "../../src/domain/clock.js";
 import {
   ActorIdSchema,
   EidSchema,
+  EvidenceEntryIdSchema,
   FingerprintSchema,
+  ObservationIdSchema,
   ProjectionCursorSchema,
   RunIdSchema,
   TaskIdSchema,
+  TraceIdSchema,
 } from "../../src/domain/ids.js";
 
 describe("strict domain primitives", () => {
@@ -19,10 +22,29 @@ describe("strict domain primitives", () => {
     assert.equal(ActorIdSchema.parse("local-operator"), "local-operator");
     assert.equal(EidSchema.parse("10123456"), "10123456");
     assert.equal(TaskIdSchema.parse("ucpath/search-person-org"), "ucpath/search-person-org");
+    assert.equal(ObservationIdSchema.parse("new-kronos.timecard.employee-eid"), "new-kronos.timecard.employee-eid");
+    assert.equal(EvidenceEntryIdSchema.parse("11111111-1111-4111-8111-111111111111").length, 36);
+    assert.equal(ObservationIdSchema.safeParse("11111111-1111-4111-8111-111111111111").success, false);
+    assert.equal(EvidenceEntryIdSchema.safeParse("new-kronos.timecard.employee-eid").success, false);
     assert.equal(FingerprintSchema.safeParse("f".repeat(63)).success, false);
     assert.equal(ProjectionCursorSchema.safeParse("1").success, false);
     assert.equal(ProjectionCursorSchema.safeParse("pc:0").success, false);
     assert.equal(TaskIdSchema.safeParse("ucpath/search_person").success, false);
+  });
+
+  it("accepts only 00 through 23 as trace-id hours and rejects malformed time codes", () => {
+    assert.equal(TraceIdSchema.safeParse("on-000000-1a2b").success, true);
+    assert.equal(TraceIdSchema.safeParse("on-230000-1a2b").success, true);
+    for (const malformed of [
+      "on-240000-1a2b",
+      "on-290000-1a2b",
+      "on-126000-1a2b",
+      "on-125960-1a2b",
+      "on-95959-1a2b",
+      "on-120000-xyz1",
+    ]) {
+      assert.equal(TraceIdSchema.safeParse(malformed).success, false, malformed);
+    }
   });
 
   it("accepts canonical JSON only and serializes object keys deterministically", () => {

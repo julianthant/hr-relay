@@ -128,6 +128,11 @@ const CONFIG_ENV_BINDING_INPUTS: readonly ConfigEnvBinding[] = [
     apply: (config, raw) => parsed({ ...config, performance: { ...config.performance, navigationRetries: integer(raw) } }),
   },
   {
+    env: "HRAUTO_UKG_NAVIGATION_MS",
+    path: "timeouts.ukgNavigationMs",
+    apply: (config, raw) => parsed({ ...config, timeouts: { ...config.timeouts, ukgNavigationMs: integer(raw) } }),
+  },
+  {
     env: "HRAUTO_SEPARATION_TERMINATION_WINDOW_DAYS",
     path: "performance.separationTerminationWindowDays",
     apply: (config, raw) => parsed({ ...config, performance: { ...config.performance, separationTerminationWindowDays: integer(raw) } }),

@@ -8,7 +8,7 @@ export interface RebuildRuntimeStart {
 
 export function runtimeHelp(isolation: RuntimeIsolation): string {
   return [
-    "HR Automation rebuild foundation (Phase 1b)",
+    "HR Automation rebuild foundation (completed through 1b; active 1c)",
     "Commands:",
     "  help     show this contract surface",
     "  phase    print the active isolated runtime resources",
@@ -28,7 +28,8 @@ export function startRebuildRuntime(input: RebuildRuntimeStart): void {
   }
   if (command === "phase") {
     write(JSON.stringify({
-      phase: "1b",
+      completedThrough: "1b",
+      active: "1c",
       stateRoot: input.isolation.stateRoot,
       artifactRoot: input.isolation.artifactRoot,
       backendPort: input.isolation.backendPort,

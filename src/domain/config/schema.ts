@@ -123,6 +123,7 @@ export const ConfigSchema = z.strictObject({
   timeouts: z.strictObject({
     navigationMs: z.number().int().positive(),
     longNavigationMs: z.number().int().positive(),
+    ukgNavigationMs: z.number().int().positive(),
     taskMs: z.number().int().positive(),
     transactionMs: z.number().int().positive(),
     duoApprovalSeconds: z.number().int().positive(),
@@ -131,6 +132,7 @@ export const ConfigSchema = z.strictObject({
   }).default({
     navigationMs: 15_000,
     longNavigationMs: 30_000,
+    ukgNavigationMs: 60_000,
     taskMs: 180_000,
     transactionMs: 300_000,
     duoApprovalSeconds: 180,

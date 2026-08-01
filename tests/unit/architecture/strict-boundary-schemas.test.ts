@@ -34,10 +34,19 @@ import {
   SECRET_SPECS,
   SecretFamilySpecSchema,
   SecretFileSpecSchema,
+  SecretAvailabilitySchema,
   SecretSpecSchema,
 } from "../../../src/domain/secrets.js";
 import { DiagnosticBundleSchema } from "../../../src/domain/trust/diagnostic.js";
-import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
+import {
+  ActionEvidenceSchema,
+  DecisionEvidenceSchema,
+  EvidenceFactSchema,
+  ReuseEvidenceSchema,
+  RunEvidenceReceiptSchema,
+  UncertaintyEvidenceSchema,
+  VerificationEvidenceSchema,
+} from "../../../src/domain/trust/evidence.js";
 import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
 import { FixRecordSchema, KnowledgeRecordSchema } from "../../../src/domain/trust/knowledge.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../src/domain/trust/preflight-scenarios.js";
@@ -67,6 +76,49 @@ const RECEIPT = {
   retryOf: { state: "absent" }, failure: { state: "absent" }, input: [], observations: [], decisions: [],
   actions: [], verification: [{ id: UUID_3, obligation: "run.completed", mandatory: true, verdict: "verified", evidence: [`observation:${UUID_2}`] }],
   output: [], reuse: [], warnings: [], confidence: "verified", result: "verified-done",
+};
+const EVIDENCE_FACT = {
+  id: UUID_1,
+  field: "employeeId",
+  mandatory: true,
+  state: "satisfied",
+  source: { kind: "system", taskId: "ucpath/search-person", observedAt: NOW },
+  value: { state: "transformed", key: "employeeId", classification: "direct-identifier", transform: "last4", value: "1234" },
+};
+const DECISION_EVIDENCE = {
+  id: UUID_1,
+  kind: "identity",
+  outcome: "taken",
+  reason: "the observed EID matched",
+  evidence: [`observation:${UUID_2}`],
+};
+const ACTION_EVIDENCE = {
+  id: UUID_1,
+  taskId: "ucpath/search-person",
+  kind: "external-read",
+  writeState: "not-attempted",
+  occurredAt: NOW,
+};
+const VERIFICATION_EVIDENCE = {
+  id: UUID_1,
+  obligation: "person.match",
+  mandatory: true,
+  verdict: "verified",
+  evidence: [`observation:${UUID_2}`],
+};
+const REUSE_EVIDENCE = {
+  id: UUID_1,
+  kind: "checkpoint",
+  source: `observation:${UUID_2}`,
+  ageMs: 1_000,
+  freshnessLimitMs: 60_000,
+};
+const UNCERTAINTY_EVIDENCE = {
+  id: UUID_1,
+  code: "OPTIONAL_FACT_MISSING",
+  summary: "an optional note was absent",
+  loadBearing: false,
+  evidence: [],
 };
 
 const KNOWLEDGE = {
@@ -139,9 +191,16 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "SecretSpec", schema: SecretSpecSchema, fixtures: [SECRET_SPECS[0]] },
   { name: "SecretFamilySpec", schema: SecretFamilySpecSchema, fixtures: [SECRET_FAMILY_SPECS[0]] },
   { name: "SecretFileSpec", schema: SecretFileSpecSchema, fixtures: [SECRET_FILE_SPECS[0]] },
+  { name: "SecretAvailability", schema: SecretAvailabilitySchema, fixtures: [{ name: "ngrokCredential", source: "local-ngrok-config", state: "unknown", diagnostic: "registered source could not be read" }] },
   { name: "ScenarioManifest", schema: ScenarioManifestSchema, fixtures: [PREFLIGHT_SCENARIO_MANIFESTS[0]], openFixturePaths: ["input"] },
   { name: "FailureRecord", schema: FailureRecordSchema, fixtures: [FAILURE] },
   { name: "DiagnosticBundle", schema: DiagnosticBundleSchema, fixtures: [{ bundleId: UUID_1, runId: UUID_2, origin: { kind: "operator-request", requestedBy: "local-operator" }, createdAt: NOW, contentDigest: HASH_A, configFingerprint: HASH_A, descriptorFingerprint: HASH_B, redaction: { fields: [], warnings: [] }, attachments: [], retention: { kind: "pinned", reason: "fix" } }] },
+  { name: "EvidenceFact", schema: EvidenceFactSchema, fixtures: [EVIDENCE_FACT] },
+  { name: "DecisionEvidence", schema: DecisionEvidenceSchema, fixtures: [DECISION_EVIDENCE] },
+  { name: "ActionEvidence", schema: ActionEvidenceSchema, fixtures: [ACTION_EVIDENCE] },
+  { name: "VerificationEvidence", schema: VerificationEvidenceSchema, fixtures: [VERIFICATION_EVIDENCE] },
+  { name: "ReuseEvidence", schema: ReuseEvidenceSchema, fixtures: [REUSE_EVIDENCE] },
+  { name: "UncertaintyEvidence", schema: UncertaintyEvidenceSchema, fixtures: [UNCERTAINTY_EVIDENCE] },
   { name: "RunEvidenceReceipt", schema: RunEvidenceReceiptSchema, fixtures: [RECEIPT] },
   { name: "KnowledgeRecord", schema: KnowledgeRecordSchema, fixtures: [KNOWLEDGE] },
   { name: "FixRecord", schema: FixRecordSchema, fixtures: [FIX] },
