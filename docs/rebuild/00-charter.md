@@ -162,7 +162,8 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
 
 14. **Local artifacts are replay-safe, not hidden writes.** A `read` task may download or derive a
    content-addressed local artifact only through the kernel artifact writer (temp + fsync + atomic
-   rename); retries address the same bytes and cannot append mutable business state. Mutable local
+   no-replace publication + directory fsync); retries address the same bytes and cannot append
+   mutable business state. Mutable local
    outputs such as i9's retention workbook are projections of stable-keyed SQLite outboxes, written
    by a serialized projector. They are not mislabeled read-task side effects and cannot duplicate on
    task retry.

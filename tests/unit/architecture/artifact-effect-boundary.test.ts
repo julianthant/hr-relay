@@ -74,7 +74,8 @@ describe("content-addressed artifact boundary", () => {
     const durabilitySequence = [
       "handle.writeFile",
       "handle.sync",
-      "rename(tempPath, finalPath)",
+      "link(tempPath, finalPath)",
+      "unlink(tempPath)",
       "syncDirectory(root)",
     ].map((token) => {
       cursor = writer.indexOf(token, cursor + 1);

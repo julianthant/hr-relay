@@ -472,7 +472,7 @@ neither runtime reads or writes the other's root.
 ├── spans/   <workflow>-<date>.jsonl   span events (low volume — the queue/timeline truth)
 ├── notes/   <workflow>-<date>.jsonl   notes (high volume — logs, actions, screenshots, data points)
 ├── evidence/<runId>/                  run receipts + redacted diagnostic bundle manifests (doc 12)
-├── artifacts/sha256/<prefix>/<hash>    content-addressed task outputs; atomic, immutable bytes
+├── artifacts/<hash>.artifact          content-addressed task outputs; atomic, immutable bytes
 ├── ledger/  <system>-<date>.jsonl     immutable write receipts (D21; shape owned by doc 09 §6) —
 │                                      ordered, actor-attributed, append-only, per-SYSTEM+day,
 │                                      NEVER pruned (the audit floor; hash chain deferred by D79)
@@ -511,7 +511,7 @@ Rationale against alternatives:
   content-addressed bytes under `artifacts/` through doc 01's writer; the returned `{id,sha256,bytes,
   mediaType}` is canonical JSON and checkpoints reference it without exposing a filesystem path.
   Per D97, `id` remains the existing UUID-backed `ArtifactId`; `sha256` is the distinct content
-  identity and private `artifacts/sha256/<prefix>/<hash>` key. Byte-identical puts are idempotent and
+  identity and private `artifacts/<hash>.artifact` key. Byte-identical puts are idempotent and
   return the same public reference. The backing path is never part of a task, checkpoint, or wire
   contract.
   Mutable operator artifacts (for

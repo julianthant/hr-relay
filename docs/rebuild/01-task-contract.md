@@ -139,13 +139,17 @@ ready, the other eight driver declarations remain unwired, and OnBase alone requ
 
 The public artifact seam is strict `{id,sha256,bytes,mediaType}` and never exposes a root or backing
 path. The real writer accepts only `.tracker-rebuild/artifacts` beneath a non-symlinked absolute
-workspace, persists metadata+payload as one content-addressed object through temp write → file
-fsync → atomic rename → directory fsync, returns one stable UUID ref for byte-identical content
+workspace (the supplied workspace path itself is checked with `lstat`), persists metadata+payload
+as one content-addressed object through temp write → file fsync → atomic no-replace hard-link
+publication → temp unlink → directory fsync, returns one stable UUID ref for byte-identical content
 across writer instances, rejects conflicting media metadata, and reads only exact
-id+digest+metadata matches. Fault injection proves pre-rename cleanup and post-rename recovery at
-every write boundary. A concurrent same-digest put that encounters the short-lived write lock fails
-explicitly as in-progress rather than guessing; retry after the winner's atomic rename returns the
-winner's exact ref. The provider seam uses strict capability-tagged, schema-hash-bound canonical
+id+digest+metadata matches. Fault injection proves cleanup and recovery at every write boundary; a
+real child-process `SIGKILL` before publication proves retry recovery too. The protocol has no
+digest lock to strand: concurrent same-digest writers race at atomic publication, and every loser
+validates the winner before returning its exact ref. A crash may leave an unpublished temp whose
+name records its owner PID; a retry removes it only after the OS reports that PID absent, never
+because an age threshold elapsed. The provider seam uses strict capability-tagged,
+schema-hash-bound canonical
 request and `produced|unavailable|invalid-response` result envelopes; deterministic
 adapters/clients exhaust fail loud and never translate failure into an empty success. Provider
 admission/rate/concurrency/cost budgets, production adapters/pools/consumers, browser acquisition,
@@ -603,8 +607,8 @@ export interface ArtifactRef {
   mediaType: string;
 }
 export interface ContentAddressedArtifactWriter {
-  /** Writes temp → fsync → atomic rename under the private artifact root. Same bytes return the
-   * same ArtifactRef; callers never learn the backing path. */
+  /** Writes temp → fsync → atomic no-replace publication → directory fsync under the private
+   * artifact root. Same bytes return the same ArtifactRef; callers never learn the backing path. */
   put(source: Uint8Array | NodeJS.ReadableStream,
       meta: { mediaType: string }): Promise<ArtifactRef>;
   /** Reads by validated ref; contracts never receive or expose an operator filesystem path. */

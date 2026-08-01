@@ -1,12 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  link,
   lstat,
   mkdir,
   open,
   readFile,
+  readdir,
   realpath,
-  rename,
-  rmdir,
   unlink,
 } from "node:fs/promises";
 import { isAbsolute, join, resolve, sep } from "node:path";
@@ -29,7 +29,7 @@ const StoredArtifactSchema = z.strictObject({
 export type ArtifactWriteFaultStep =
   | "temp-written"
   | "temp-synced"
-  | "renamed"
+  | "published"
   | "directory-synced";
 
 export interface ContentAddressedArtifactWriterOptions {
@@ -64,6 +64,7 @@ async function initializeArtifactRoot(workspaceRoot: string, artifactRoot: strin
   if (!isAbsolute(workspaceRoot)) throw new Error("artifact workspaceRoot must be absolute");
   const workspace = resolve(workspaceRoot);
   if (workspace === sep) throw new Error("artifact workspaceRoot cannot be the filesystem root");
+  await rejectSymlink(workspace, "artifact workspace root");
   const trackerRoot = join(workspace, ".tracker-rebuild");
   const root = join(workspace, artifactRoot);
   await rejectSymlink(trackerRoot, "rebuild state root");
@@ -136,6 +137,41 @@ async function unlinkIfPresent(path: string): Promise<void> {
   }
 }
 
+function probeRecordedOwner(ownerPid: number): Readonly<{
+  state: "dead" | "not-proven-dead";
+}> {
+  try {
+    process.kill(ownerPid, 0);
+    return Object.freeze({ state: "not-proven-dead" });
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") {
+      return Object.freeze({ state: "dead" });
+    }
+    if (error instanceof Error && "code" in error && error.code === "EPERM") {
+      return Object.freeze({ state: "not-proven-dead" });
+    }
+    throw new Error(`cannot determine whether artifact temp owner ${ownerPid} is alive`, { cause: error });
+  }
+}
+
+async function reclaimDeadOwnerTemps(root: string, sha256: string): Promise<void> {
+  const prefix = `${sha256}.`;
+  for (const name of await readdir(root)) {
+    if (!name.startsWith(prefix) || !name.endsWith(".tmp")) continue;
+    const ownerText = name.slice(prefix.length, name.indexOf(".", prefix.length));
+    if (!/^[1-9][0-9]*$/u.test(ownerText)) continue;
+    const ownerPid = Number(ownerText);
+    if (!Number.isSafeInteger(ownerPid) || ownerPid === process.pid) continue;
+    if (probeRecordedOwner(ownerPid).state === "dead") await unlinkIfPresent(join(root, name));
+  }
+}
+
+function assertMatchingMediaType(stored: Readonly<{ ref: ArtifactRef }>, metadata: ArtifactPutMetadata): void {
+  if (stored.ref.mediaType !== metadata.mediaType) {
+    throw new Error(`artifact ${stored.ref.sha256} already exists with media type ${stored.ref.mediaType}`);
+  }
+}
+
 export function createContentAddressedArtifactWriter(
   options: ContentAddressedArtifactWriterOptions,
 ): ContentAddressedArtifactWriter {
@@ -148,34 +184,17 @@ export function createContentAddressedArtifactWriter(
       const sha256 = createHash("sha256").update(bytes).digest("hex");
       const root = await rootPromise;
       const finalPath = join(root, `${sha256}.artifact`);
+      await reclaimDeadOwnerTemps(root, sha256);
       const existing = await readIfPresent(finalPath, sha256);
       if (existing.state === "present") {
-        if (existing.value.ref.mediaType !== metadata.mediaType) {
-          throw new Error(`artifact ${sha256} already exists with media type ${existing.value.ref.mediaType}`);
-        }
+        assertMatchingMediaType(existing.value, metadata);
+        await syncDirectory(root);
         return existing.value.ref;
       }
 
-      const lockPath = join(root, `${sha256}.lock`);
+      const tempPath = join(root, `${sha256}.${process.pid}.${randomUUID()}.tmp`);
+      let tempPresent = false;
       try {
-        await mkdir(lockPath, { mode: 0o700 });
-      } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "EEXIST") {
-          throw new Error(`artifact ${sha256} is already being written`, { cause: error });
-        }
-        throw error;
-      }
-
-      const tempPath = join(root, `${sha256}.${randomUUID()}.tmp`);
-      let renamed = false;
-      try {
-        const raced = await readIfPresent(finalPath, sha256);
-        if (raced.state === "present") {
-          if (raced.value.ref.mediaType !== metadata.mediaType) {
-            throw new Error(`artifact ${sha256} already exists with media type ${raced.value.ref.mediaType}`);
-          }
-          return raced.value.ref;
-        }
         const ref = ArtifactRefSchema.parse({
           id: ArtifactIdSchema.parse(randomUUID()),
           sha256,
@@ -187,6 +206,7 @@ export function createContentAddressedArtifactWriter(
           payloadBase64: Buffer.from(bytes).toString("base64"),
         });
         const handle = await open(tempPath, "wx", 0o600);
+        tempPresent = true;
         try {
           await handle.writeFile(JSON.stringify(stored), "utf8");
           options.injectFault?.("temp-written");
@@ -195,15 +215,23 @@ export function createContentAddressedArtifactWriter(
         } finally {
           await handle.close();
         }
-        await rename(tempPath, finalPath);
-        renamed = true;
-        options.injectFault?.("renamed");
+        let result = Object.freeze(ref);
+        try {
+          await link(tempPath, finalPath);
+          options.injectFault?.("published");
+        } catch (error) {
+          if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+          const winner = await readStoredArtifact(finalPath, sha256);
+          assertMatchingMediaType(winner, metadata);
+          result = winner.ref;
+        }
+        await unlink(tempPath);
+        tempPresent = false;
         await syncDirectory(root);
         options.injectFault?.("directory-synced");
-        return Object.freeze(ref);
+        return result;
       } finally {
-        if (!renamed) await unlinkIfPresent(tempPath);
-        await rmdir(lockPath);
+        if (tempPresent) await unlinkIfPresent(tempPath);
       }
     },
     async open(refInput: ArtifactRef) {

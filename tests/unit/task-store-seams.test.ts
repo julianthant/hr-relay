@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -190,11 +192,11 @@ describe("task, store, session, provider, and artifact seams", () => {
     }
   });
 
-  it("cleans pre-rename faults and recovers committed artifacts after every write boundary", async () => {
+  it("cleans pre-publication faults and recovers committed artifacts after every write boundary", async () => {
     const steps: readonly ArtifactWriteFaultStep[] = [
       "temp-written",
       "temp-synced",
-      "renamed",
+      "published",
       "directory-synced",
     ];
     for (const step of steps) {
@@ -229,7 +231,66 @@ describe("task, store, session, provider, and artifact seams", () => {
     }
   });
 
-  it("rejects relative workspaces and symlinked rebuild roots before artifact persistence", async () => {
+  it("recovers after a child process is hard-killed before publication", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-hard-crash-"));
+    const bytes = new TextEncoder().encode("hard crash before publication");
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const writerModuleUrl = new URL(
+      "../../src/infra/artifacts/content-addressed-artifact-writer.ts",
+      import.meta.url,
+    ).href;
+    const childSource = `
+      import { createContentAddressedArtifactWriter } from ${JSON.stringify(writerModuleUrl)};
+      const writer = createContentAddressedArtifactWriter({
+        workspaceRoot: ${JSON.stringify(workspace)},
+        artifactRoot: ".tracker-rebuild/artifacts",
+        injectFault(step) {
+          if (step === "temp-synced") process.kill(process.pid, "SIGKILL");
+        },
+      });
+      await writer.put(new TextEncoder().encode("hard crash before publication"), { mediaType: "text/plain" });
+    `;
+    try {
+      const child = spawn(
+        process.execPath,
+        ["--import", "tsx", "--input-type=module", "--eval", childSource],
+        { stdio: ["ignore", "ignore", "pipe"] },
+      );
+      let stderr = "";
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => {
+        stderr += chunk;
+      });
+      const result = await new Promise<Readonly<{ code: number | null; signal: NodeJS.Signals | null }>>(
+        (resolveResult, rejectResult) => {
+          child.once("error", rejectResult);
+          child.once("close", (code, signal) => resolveResult({ code, signal }));
+        },
+      );
+      assert.deepEqual(result, { code: null, signal: "SIGKILL" }, stderr);
+      assert.notEqual(child.pid, undefined);
+
+      const root = join(workspace, ".tracker-rebuild/artifacts");
+      const crashEntries = await readdir(root);
+      assert.equal(crashEntries.some((name) => name.endsWith(".lock")), false);
+      assert.equal(crashEntries.includes(`${sha256}.artifact`), false);
+      assert.equal(crashEntries.length, 1);
+      assert.match(crashEntries[0] ?? "", new RegExp(`^${sha256}\\.${String(child.pid)}\\..+\\.tmp$`, "u"));
+
+      const recovery = createContentAddressedArtifactWriter({
+        workspaceRoot: workspace,
+        artifactRoot: ".tracker-rebuild/artifacts",
+      });
+      const ref = await recovery.put(bytes, { mediaType: "text/plain" });
+      assert.equal(ref.sha256, sha256);
+      assert.deepEqual(await readStream(await recovery.open(ref)), bytes);
+      assert.deepEqual(await readdir(root), [`${sha256}.artifact`]);
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects relative workspaces, a symlinked workspace, and symlinked rebuild roots", async () => {
     const relativeWriter = createContentAddressedArtifactWriter({
       workspaceRoot: "relative-workspace",
       artifactRoot: ".tracker-rebuild/artifacts",
@@ -240,9 +301,20 @@ describe("task, store, session, provider, and artifact seams", () => {
     );
 
     const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-symlink-"));
+    const aliasRoot = await mkdtemp(join(tmpdir(), "hrauto-artifact-alias-"));
     const outside = await mkdtemp(join(tmpdir(), "hrauto-artifact-outside-"));
     try {
-      await mkdir(join(workspace), { recursive: true });
+      const workspaceAlias = join(aliasRoot, "workspace");
+      await symlink(workspace, workspaceAlias, "dir");
+      const aliasWriter = createContentAddressedArtifactWriter({
+        workspaceRoot: workspaceAlias,
+        artifactRoot: ".tracker-rebuild/artifacts",
+      });
+      await assert.rejects(
+        aliasWriter.put(new Uint8Array(), { mediaType: "application/octet-stream" }),
+        /artifact workspace root cannot be a symbolic link/,
+      );
+
       await symlink(outside, join(workspace, ".tracker-rebuild"), "dir");
       const writer = createContentAddressedArtifactWriter({
         workspaceRoot: workspace,
@@ -254,6 +326,7 @@ describe("task, store, session, provider, and artifact seams", () => {
       );
     } finally {
       await rm(workspace, { recursive: true, force: true });
+      await rm(aliasRoot, { recursive: true, force: true });
       await rm(outside, { recursive: true, force: true });
     }
   });
@@ -288,7 +361,7 @@ describe("task, store, session, provider, and artifact seams", () => {
     }
   });
 
-  it("fails concurrent in-progress writes explicitly and converges on retry to the winner ref", async () => {
+  it("atomically converges concurrent same-digest writes on one winner ref", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-concurrent-"));
     try {
       const firstWriter = createContentAddressedArtifactWriter({
@@ -300,16 +373,17 @@ describe("task, store, session, provider, and artifact seams", () => {
         artifactRoot: ".tracker-rebuild/artifacts",
       });
       const bytes = new TextEncoder().encode("concurrent immutable bytes");
-      const results = await Promise.allSettled([
+      const results = await Promise.all([
         firstWriter.put(bytes, { mediaType: "text/plain" }),
         secondWriter.put(bytes, { mediaType: "text/plain" }),
       ]);
-      for (const result of results) {
-        if (result.status === "rejected") assert.match(String(result.reason), /already being written/);
-      }
+      assert.deepEqual(results[1], results[0]);
       const winner = await firstWriter.put(bytes, { mediaType: "text/plain" });
       const retried = await secondWriter.put(bytes, { mediaType: "text/plain" });
       assert.deepEqual(retried, winner);
+      assert.deepEqual(await readdir(join(workspace, ".tracker-rebuild/artifacts")), [
+        `${winner.sha256}.artifact`,
+      ]);
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }
