@@ -60,6 +60,14 @@ import { RUNTIME_DEPENDENCY_REGISTRY, RuntimeDependencyRegistrySchema } from "..
 import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema } from "../../../src/domain/runtime-environment.js";
 import { SchemaBoundCanonicalValueSchema } from "../../../src/domain/schema-bound-value.js";
 import {
+  ChildVisibilitySchema,
+  DelegationManifestRefSchema,
+  DelegationPolicySchema,
+  GraphNodeKindSchema,
+  ParallelBranchSpecSchema,
+  childRunOutcomeSchema,
+} from "../../../src/domain/workflow/graph.js";
+import {
   TimecardDateRangeSchema,
   TimecardMonthDaySchema,
   VisibleTimecardMonthDaysSchema,
@@ -593,6 +601,22 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     { system: "ucpath", access: "read", session: "reuse-worker" },
     { system: "onbase", access: "transaction", session: "fresh", exclusive: true, acceptDownloads: true },
   ] },
+  { name: "GraphNodeKind", schema: GraphNodeKindSchema, fixtures: ["task", "transaction", "branch", "parallel", "child-run", "gate"] },
+  { name: "ChildVisibility", schema: ChildVisibilitySchema, fixtures: ["inline", "linked", "hidden-unless-failed"] },
+  { name: "ParallelBranchSpec", schema: ParallelBranchSpecSchema, fixtures: [{ id: "org", nodes: ["search-person"] }] },
+  { name: "GraphDelegationPolicy", schema: DelegationPolicySchema, fixtures: [{
+    onChildFailed: "fail-parent", cascadeCancel: "cascade",
+    afterChildRetry: "resume-parent", visibility: "inline",
+  }] },
+  { name: "DelegationManifestRef", schema: DelegationManifestRefSchema, fixtures: [
+    { manifestId: UUID_1, edgeId: "sign-many", childCount: 3 },
+  ] },
+  { name: "ChildRunOutcome", schema: childRunOutcomeSchema(z.strictObject({ verified: z.boolean() })), fixtures: [
+    { state: "done", runId: UUID_1, itemId: UUID_2, output: { verified: true } },
+    { state: "failed", runId: UUID_1, itemId: UUID_2, failureId: UUID_3 },
+    { state: "cancelled", runId: UUID_1, itemId: UUID_2, reason: "operator cancelled", cancelledBy: "operator" },
+    { state: "blocked", runId: UUID_1, itemId: UUID_2, failureId: UUID_3, reason: "dependency failed" },
+  ] },
   { name: "TimecardMonthDay", schema: TimecardMonthDaySchema, fixtures: [{ month: 12, day: 30 }] },
   { name: "VisibleTimecardMonthDays", schema: VisibleTimecardMonthDaysSchema, fixtures: [
     { first: { month: 12, day: 16 }, last: { month: 1, day: 15 } },
@@ -867,6 +891,30 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/contracts/write-safety.ts:WriteSafety",
   "src/domain/ids.ts:LiteralTaskId",
   "src/domain/session.ts:SessionNeed",
+  // Workflow graph nodes carry pure functions (bind/choose/resolve) and are
+  // generic over contract/schema type parameters, so no zod schema can describe
+  // them. Their DURABLE halves do have schemas: DelegationPolicySchema,
+  // DelegationManifestRefSchema, ParallelBranchSpecSchema, GraphNodeKindSchema,
+  // transactionOutcomeSchema(), and childRunOutcomeSchema() are all catalogued.
+  "src/domain/workflow/graph.ts:ProofOf",
+  "src/domain/workflow/graph.ts:WorkflowRef",
+  "src/domain/workflow/graph.ts:AnyWorkflowRef",
+  "src/domain/workflow/graph.ts:RuntimeScope",
+  "src/domain/workflow/graph.ts:WorkflowGateSource",
+  "src/domain/workflow/graph.ts:ExternalGateSource",
+  "src/domain/workflow/graph.ts:GraphNodeBase",
+  "src/domain/workflow/graph.ts:TaskStepNode",
+  "src/domain/workflow/graph.ts:TypedTransactionOutcome",
+  "src/domain/workflow/graph.ts:TransactionNode",
+  "src/domain/workflow/graph.ts:BranchNode",
+  "src/domain/workflow/graph.ts:ParallelNode",
+  "src/domain/workflow/graph.ts:ChildRunOutcome",
+  "src/domain/workflow/graph.ts:ChildRunNode",
+  "src/domain/workflow/graph.ts:OperatorGateNode",
+  "src/domain/workflow/graph.ts:ChildrenGateNode",
+  "src/domain/workflow/graph.ts:ExternalGateNode",
+  "src/domain/workflow/graph.ts:AnyGateNode",
+  "src/domain/workflow/graph.ts:RuntimeFlowNode",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {
