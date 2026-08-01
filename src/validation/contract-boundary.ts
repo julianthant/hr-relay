@@ -85,7 +85,19 @@ export function assertContractBoundarySchema(schema: z.core.$ZodType, label: str
   if (issues.length > 0) throw new Error(issues.join("; "));
 }
 
-function schemaOwnsPath(schema: z.core.$ZodType, parts: readonly string[]): boolean {
+/**
+ * `every` — the path must resolve in EVERY union arm, which is what a consumer
+ * reading the value unconditionally requires.
+ * `some` — the path need only resolve in ONE arm. That is the right rule for an
+ * ingress surface: a `by-eid`/`by-name` input union has `emplId` in exactly one
+ * arm, and requiring it everywhere would make a discriminated submission
+ * unspellable.
+ */
+function schemaOwnsPath(
+  schema: z.core.$ZodType,
+  parts: readonly string[],
+  unionRule: "every" | "some" = "every",
+): boolean {
   const seen = new WeakMap<object, Set<string>>();
   function visit(current: z.core.$ZodType, remaining: readonly string[]): boolean {
     if (remaining.length === 0) return true;
@@ -104,7 +116,10 @@ function schemaOwnsPath(schema: z.core.$ZodType, parts: readonly string[]): bool
       return Object.hasOwn(shape, head) && visit(shape[head], tail);
     }
     if (type === "union") {
-      return (definition.options as z.core.$ZodType[]).every((option) => visit(option, remaining));
+      const options = definition.options as z.core.$ZodType[];
+      return unionRule === "every"
+        ? options.every((option) => visit(option, remaining))
+        : options.some((option) => visit(option, remaining));
     }
     if (type === "lazy") return visit((definition.getter as () => z.core.$ZodType)(), remaining);
     if (["optional", "nullable", "default", "readonly", "nonoptional", "catch"].includes(type)) {
@@ -122,6 +137,13 @@ function schemaOwnsPath(schema: z.core.$ZodType, parts: readonly string[]): bool
 
 export function assertSchemaOwnsPath(schema: z.core.$ZodType, path: string, owner: string): void {
   if (!schemaOwnsPath(schema, path.split("."))) throw new Error(`${owner} references unknown schema field ${path}`);
+}
+
+/** Like `assertSchemaOwnsPath`, but one union arm carrying the field is enough. */
+export function assertSchemaOffersPath(schema: z.core.$ZodType, path: string, owner: string): void {
+  if (!schemaOwnsPath(schema, path.split("."), "some")) {
+    throw new Error(`${owner} references unknown schema field ${path}`);
+  }
 }
 
 /** Copies/freezes declarations while preserving the mutable runtime identity of schemas/functions. */

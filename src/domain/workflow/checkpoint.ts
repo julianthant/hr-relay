@@ -30,7 +30,7 @@ import {
   RunIdSchema,
   WorkflowIdSchema,
 } from "../ids.js";
-import type { IsoInstant, NodeId } from "../ids.js";
+import type { NodeId } from "../ids.js";
 import { SchemaBoundCanonicalValueSchema } from "../schema-bound-value.js";
 import type { RuntimeFlowNode } from "./graph.js";
 

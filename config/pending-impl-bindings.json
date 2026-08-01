@@ -1,0 +1,26 @@
+{
+  "milestone": "1f",
+  "reason": "Task implementations bind to stores with the workers in 1f (doc 07 §3 item 1f). Phase 1e registers descriptors and their contracts; every contract below is declared and typechecked, and the descriptor-coverage guard fails in both directions — an unlisted unbound contract, or a listed contract a store has since bound — so no unbound arm can go quiet.",
+  "tasks": [
+    {
+      "taskId": "ucpath/search-person-org",
+      "workflowId": "person-lookup",
+      "note": "Needs the UCPath person-org driver's search recipe and a live session; the semantic registry landed in 1d, the impl binds in 1f."
+    },
+    {
+      "taskId": "crm/read-onboarding-record",
+      "workflowId": "person-lookup",
+      "note": "Needs the CRM driver, which is declared `unwired` in src/stores/crm/index.ts until 1f."
+    },
+    {
+      "taskId": "crm/read-onboarding-dates",
+      "workflowId": "person-lookup",
+      "note": "Same CRM driver as read-onboarding-record."
+    },
+    {
+      "taskId": "workflow:person-lookup/read-active-status",
+      "workflowId": "person-lookup",
+      "note": "Pure fold with no session; it needs only defineWorkflowStore, which lands with the impl registry in 1f."
+    }
+  ]
+}

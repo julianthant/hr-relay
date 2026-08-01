@@ -1,0 +1,217 @@
+/**
+ * person-lookup — doc 02 §8's worked example, and Phase 1's live exit slice.
+ *
+ * This module is bundle-safe: it value-imports only zod, `src/domain/**`, and
+ * the audited `src/base` builders, so the same declaration drives the daemon and
+ * the dashboard. Everything the legacy client hand-maintained for this workflow
+ * — its rail entry, icon, category, input panel and parser, session-card label,
+ * pipeline chips, and `notFound`/`inactive` statuses — is a projection of the
+ * object below.
+ *
+ * The contracts are imported by VALUE, so renaming a field on
+ * `ucpath/search-person-org` fails `tsc` here rather than at the first run.
+ */
+import { z } from "zod";
+import { flow } from "../../base/flow.js";
+import { defineWorkflowDescriptor, requireFact } from "../../base/workflow.js";
+import {
+  CrmReadOnboardingDates,
+  ReadOnboardingDatesOutputSchema,
+} from "../../domain/contracts/crm/read-onboarding-dates.js";
+import { CrmReadOnboardingRecord } from "../../domain/contracts/crm/read-onboarding-record.js";
+import {
+  ActiveStatusOutcomeSchema,
+  ReadActiveStatus,
+} from "../../domain/contracts/person-lookup/read-active-status.js";
+import { SearchPersonOrg } from "../../domain/contracts/ucpath/search-person-org.js";
+import { EidSchema, WorkflowIdSchema } from "../../domain/ids.js";
+import {
+  BUILD_MANIFEST,
+  resolveWorkflowFingerprint,
+} from "../../domain/workflow/build-manifest.js";
+import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
+
+/* ── workflow-constant input ─────────────────────────────────────────────── */
+
+/**
+ * The ingress schema — the ONE place defaults are applied (doc 02 §2). There is
+ * deliberately no `dryRun` field: that is kernel envelope state (D6), and a
+ * workflow that could declare it could also disagree with the executor about
+ * whether a run may commit.
+ */
+export const PersonLookupInput = z.union([
+  z.strictObject({
+    name: z.string().min(1),
+    keepNonHdh: z.boolean().default(false),
+    includeCrmDates: z.boolean().default(false),
+  }),
+  z.strictObject({
+    emplId: EidSchema,
+    name: z.string().min(1).optional(),
+    keepNonHdh: z.boolean().default(false),
+    includeCrmDates: z.boolean().default(false),
+  }),
+]);
+
+/**
+ * The validation-only view of the stored snapshot. Same shape, no defaults —
+ * so a redeployed default can never rewrite an in-flight run's input, and a
+ * snapshot that no longer matches fails loud instead of being re-derived.
+ */
+export const PersonLookupCanonicalInput = defineCanonicalInput(
+  PersonLookupInput,
+  z.union([
+    z.strictObject({
+      name: z.string().min(1),
+      keepNonHdh: z.boolean(),
+      includeCrmDates: z.boolean(),
+    }),
+    z.strictObject({
+      emplId: EidSchema,
+      name: z.string().min(1).optional(),
+      keepNonHdh: z.boolean(),
+      includeCrmDates: z.boolean(),
+    }),
+  ]),
+  [
+    { name: "Battistessa, Johnnie" },
+    { emplId: "10873698", includeCrmDates: true },
+    { emplId: "10001573", name: "Blirea, Glaundi", keepNonHdh: true, includeCrmDates: false },
+  ],
+);
+
+export const PersonLookupResultSchema = z.strictObject({
+  activeStatus: ActiveStatusOutcomeSchema,
+  crmDates: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("included"), dates: ReadOnboardingDatesOutputSchema }),
+    z.strictObject({ state: z.literal("not-requested") }),
+  ]),
+});
+
+/* ── the graph ───────────────────────────────────────────────────────────── */
+
+const personLookupFlow = flow(PersonLookupInput)
+  .step("searching", SearchPersonOrg, {
+    dependsOn: [],
+    replay: "checkpoint",
+    bind: ({ input }) => ("emplId" in input
+      ? { kind: "by-eid", emplId: input.emplId }
+      : { kind: "by-name", name: input.name, keepNonHdh: input.keepNonHdh }),
+  })
+  .step("cross-verify", CrmReadOnboardingRecord, {
+    label: "Cross Verification",
+    dependsOn: ["searching"],
+    replay: "checkpoint",
+    bind: ({ input, outputs }) => {
+      const selected = requireFact(outputs.searching.selection.selected, "searching", "selection.selected");
+      return {
+        eid: selected.emplId,
+        name: "emplId" in input ? input.name ?? selected.name : input.name,
+      };
+    },
+  })
+  .step("active-status", ReadActiveStatus, {
+    label: "Active Status",
+    dependsOn: ["searching", "cross-verify"],
+    // Pure, and cheap: re-running it on resume is strictly safer than replaying
+    // a fold whose meaning may have changed with the code that computes it.
+    replay: "always-rerun",
+    bind: ({ input, outputs }) => ({
+      person: outputs.searching,
+      crm: outputs["cross-verify"],
+      keepNonHdh: input.keepNonHdh,
+    }),
+  })
+  .step("crm-dates", CrmReadOnboardingDates, {
+    label: "CRM Dates",
+    dependsOn: ["searching"],
+    when: ({ input }) => input.includeCrmDates,
+    replay: "checkpoint",
+    bind: ({ outputs }) => ({
+      eid: requireFact(outputs.searching.selection.selected, "searching", "selection.selected").emplId,
+    }),
+  })
+  .build({
+    schema: PersonLookupResultSchema,
+    dependsOn: ["active-status", "crm-dates"],
+    derive: ({ input, outputs }) => ({
+      activeStatus: outputs["active-status"],
+      crmDates: input.includeCrmDates
+        ? {
+          state: "included" as const,
+          dates: requireFact(outputs["crm-dates"], "crm-dates", "conditional output"),
+        }
+        : { state: "not-requested" as const },
+    }),
+  });
+
+/* ── the descriptor ──────────────────────────────────────────────────────── */
+
+export const personLookupDescriptor = defineWorkflowDescriptor({
+  id: "person-lookup",
+  version: 1,
+  contractFingerprint: resolveWorkflowFingerprint(
+    BUILD_MANIFEST,
+    WorkflowIdSchema.parse("person-lookup"),
+  ),
+  code: "pl",
+  label: "Person Lookup",
+  icon: "Search",
+  category: "search",
+  canonicalInput: PersonLookupCanonicalInput,
+  inputSubject: (input) => ("emplId" in input ? "eid" : "name"),
+  surface: { shape: "single" },
+  enqueue: "reject-active",
+  actions: STANDARD_WORKFLOW_ACTIONS,
+  capabilities: { review: false, editData: true },
+  verdicts: [
+    { key: "not-found", label: "Not found", tone: "warning" },
+    { key: "inactive", label: "Inactive", tone: "warning", tag: true },
+  ],
+  surfaces: {
+    inputRun: {
+      placeholder: "Enter EIDs or names, semicolon-separated (e.g. 10873698; Battistessa, Johnnie)",
+      parser: {
+        split: { kind: "delimited", delimiters: [";", "\n"] },
+        rules: [
+          { when: { kind: "pattern", pattern: "eid" }, emit: "emplId" },
+          { when: { kind: "otherwise" }, emit: "name" },
+        ],
+        constants: [
+          { field: "keepNonHdh", value: { kind: "boolean", value: false } },
+          { field: "includeCrmDates", value: { kind: "boolean", value: false } },
+        ],
+      },
+      supportsDryRun: false,
+    },
+  },
+  details: [
+    {
+      key: "selection-status",
+      label: "Selection",
+      source: { nodeId: "searching", fieldPath: "selection.status" },
+      display: "badge",
+    },
+    {
+      key: "active-state",
+      label: "Active status",
+      source: { nodeId: "active-status", fieldPath: "state" },
+      display: "badge",
+    },
+  ],
+  identity: {
+    matchKey: (input) => ("emplId" in input ? `eid:${input.emplId}` : `name:${input.name}`),
+  },
+  presentation: {
+    title: (input) => ("emplId" in input ? `EID ${input.emplId}` : input.name),
+    subtitle: (input) => (input.includeCrmDates ? "with CRM dates" : "person lookup"),
+  },
+  scenarios: [
+    "person-lookup/happy-by-eid",
+    "person-lookup/ambiguous-name",
+    "person-lookup/not-found",
+    "person-lookup/crm-failure-retry",
+  ],
+  flow: personLookupFlow,
+});

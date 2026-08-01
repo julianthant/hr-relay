@@ -27,12 +27,11 @@ import type {
 import {
   BrowserSystemIdSchema,
   FingerprintSchema,
-  ItemIdSchema,
   NodeIdSchema,
   ScenarioIdSchema,
   WorkflowIdSchema,
 } from "../domain/ids.js";
-import type { Fingerprint, ItemId, ScenarioId, WorkflowId } from "../domain/ids.js";
+import type { Fingerprint, ScenarioId, WorkflowId } from "../domain/ids.js";
 import { SecretNameSchema } from "../domain/secret-names.js";
 import { assertAuditedCanonicalInput, canonicalInputSamples } from "../domain/workflow/canonical-input.js";
 import type { CanonicalInputSchema } from "../domain/workflow/canonical-input.js";
@@ -80,7 +79,7 @@ import type {
 } from "../domain/workflow/presentation.js";
 import { deriveGraphCoveragePoints } from "../domain/workflow/scenario-coverage.js";
 import type { GraphCoveragePoint } from "../domain/workflow/scenario-coverage.js";
-import { assertSchemaOwnsPath } from "../validation/contract-boundary.js";
+import { assertSchemaOffersPath, assertSchemaOwnsPath } from "../validation/contract-boundary.js";
 import type { AnyNodeEntry, BuiltFlow, WorkflowResultSpec } from "./flow.js";
 
 /* ── the authored halves that stay typed over the graph ──────────────────── */
@@ -112,13 +111,38 @@ export interface InputPreset<Input> {
 }
 
 /**
- * Server-only identity functions. They stay in the validated descriptor and
- * project only their resolved values to the client (doc 02 §1.1).
+ * The logical-item identity. Retries of the same work share the match key;
+ * rerun-with-different-input produces a different one and therefore a fresh
+ * item with zero checkpoints by construction.
+ *
+ * Deviation from doc 02 §1.1, which pairs `matchKey` with a `deriveItemId`
+ * returning an `ItemId`. A descriptor is bundle-safe and cannot hash, so it
+ * cannot mint a UUID; and two independent derivations of one identity are a
+ * drift surface by construction. The descriptor therefore declares the match key
+ * only, and the kernel mints `ItemId` from `(workflowId, matchKey)` at enqueue —
+ * one derivation, one place. Fan-out `deriveItemId` (doc 03 §4.1) is unaffected:
+ * completion derives are server-side.
  */
 export interface WorkflowIdentitySpec<Input> {
-  /** The logical-item match key — retries of the same work share it. */
   readonly matchKey: (input: Input) => string;
-  readonly deriveItemId: (input: Input) => ItemId;
+}
+
+/**
+ * Read a fact a bind depends on, or fail loud naming the node and path.
+ *
+ * This is the `require()` of doc 02 §8. Substituting a plausible default for a
+ * person nobody selected is the charter's single most dangerous pattern, so the
+ * only alternative to a value here is a thrown error.
+ */
+export function requireFact<Value>(
+  value: Value | null | undefined,
+  nodeId: string,
+  path: string,
+): Value {
+  if (value === null || value === undefined) {
+    throw new Error(`workflow bind requires ${nodeId}.${path}, which is ${value === null ? "null" : "absent"}`);
+  }
+  return value;
 }
 
 export interface WorkflowPresentationSpec<Input> {
@@ -170,15 +194,54 @@ export interface WorkflowDescriptor<
   readonly artifactProjections?: readonly DurableArtifactProjectionSpec<S>[];
 }
 
-/** The broad runtime view a composition root, projection, or guard switches on. */
-export type AnyWorkflowDescriptor = WorkflowDescriptor<
-  z.ZodType,
-  z.ZodType,
-  readonly GraphNodeBase[],
-  CompletionProgram | undefined,
-  Readonly<Record<string, AnyNodeEntry>>,
-  readonly string[]
->;
+/**
+ * The broad runtime view a composition root, projection, or guard switches on.
+ *
+ * It is declared structurally rather than as `WorkflowDescriptor<z.ZodType, …>`
+ * for the same reason `RuntimeFlowNode` is: `S` appears contravariantly in
+ * `result.derive` and in `details`' `keyof S`, so an exact descriptor is NOT
+ * assignable to a "broad" instantiation of its own generic. This view carries
+ * the fields a runtime consumer actually reads, and the exact descriptor is
+ * assignable to it. Everything generic — `result`, `identity`, `presentation`,
+ * `presets` — stays behind the exact type, where reading it is typed.
+ */
+export interface AnyWorkflowDescriptor {
+  readonly id: WorkflowId;
+  readonly version: number;
+  readonly contractFingerprint: Fingerprint;
+  readonly code: string;
+  readonly label: string;
+  readonly sessionLabel?: string;
+  readonly icon: IconName;
+  readonly category: WorkflowCategory;
+  readonly input: z.ZodType;
+  readonly canonicalInput: z.ZodType;
+  readonly inputSubject: InputSubject | ((input: never) => InputSubject);
+  readonly surface: SurfaceShape;
+  readonly nodes: readonly GraphNodeBase[];
+  readonly surfaces: WorkflowSurfaces;
+  readonly verdicts?: readonly VerdictDefinition[];
+  readonly completion?: Readonly<{ kind: "sealed-completion-program"; mode: string; gate: string }>;
+  readonly capabilities?: WorkflowCapabilities;
+  readonly details: readonly Readonly<{
+    key: string;
+    label: string;
+    source: Readonly<{ nodeId: string; fieldPath: string }>;
+    display: string;
+  }>[];
+  readonly enqueue: EnqueuePolicy;
+  readonly actions: WorkflowActionPolicy;
+  readonly coordinator?: CoordinatorPolicy;
+  readonly completionConsumes?: readonly CompletionConsumptionSpec[];
+  readonly scenarios: readonly [ScenarioId, ...ScenarioId[]];
+  readonly artifactProjections?: readonly Readonly<{
+    id: string;
+    source: Readonly<{ nodeId: string; fieldPath: string }>;
+    keyFields: readonly [string, ...string[]];
+    sink: ArtifactSinkId;
+    blocking: true;
+  }>[];
+}
 
 export interface WorkflowDescriptorSpec<
   InputSchema extends z.ZodType,
@@ -189,10 +252,12 @@ export interface WorkflowDescriptorSpec<
   D extends readonly (keyof S & string)[],
 > extends Omit<
   WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D>,
-  "id" | "contractFingerprint" | "input" | "result" | "nodes"
+  "id" | "contractFingerprint" | "input" | "result" | "nodes" | "scenarios"
 > {
   readonly id: string;
   readonly contractFingerprint: string;
+  /** Parsed into branded `ScenarioId`s by the factory, the way contracts do. */
+  readonly scenarios: readonly [string, ...string[]];
   /** The built graph — its exact node tuple, result spec, and accumulators. */
   readonly flow: BuiltFlow<InputSchema, ResultSchema, Nodes, S, D>;
 }
@@ -400,16 +465,16 @@ function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSur
   const inputRun = surfaces.inputRun;
   if (inputRun !== undefined) {
     for (const rule of inputRun.parser.rules) {
-      assertSchemaOwnsPath(input, rule.emit, `${id}: input-run parser rule`);
+      assertSchemaOffersPath(input, rule.emit, `${id}: input-run parser rule`);
     }
     for (const constant of inputRun.parser.constants ?? []) {
-      assertSchemaOwnsPath(input, constant.field, `${id}: input-run parser constant`);
+      assertSchemaOffersPath(input, constant.field, `${id}: input-run parser constant`);
     }
   }
   const uploadRun = surfaces.uploadRun;
   if (uploadRun !== undefined) {
     for (const field of uploadRun.fields) {
-      assertSchemaOwnsPath(input, field.field, `${id}: upload field`);
+      assertSchemaOffersPath(input, field.field, `${id}: upload field`);
     }
   }
 }
@@ -508,10 +573,6 @@ export function defineWorkflowDescriptor<
     if (spec.identity.matchKey(parsed) !== matchKey) {
       throw new Error(`${where} match key is not stable across two calls`);
     }
-    const itemId = ItemIdSchema.parse(spec.identity.deriveItemId(parsed));
-    if (ItemIdSchema.parse(spec.identity.deriveItemId(parsed)) !== itemId) {
-      throw new Error(`${where} deriveItemId is not stable across two calls`);
-    }
     if (spec.presentation.title(parsed).trim().length === 0) {
       throw new Error(`${where} produced an empty presentation title`);
     }
@@ -522,8 +583,11 @@ export function defineWorkflowDescriptor<
     if (typeof spec.inputSubject === "function") InputSubjectSchema.parse(spec.inputSubject(parsed));
   }
 
-  const declaredScenarios = spec.scenarios.map((scenario) => ScenarioIdSchema.parse(scenario));
-  if (declaredScenarios.length === 0) throw new Error(`${id}: at least one scenario must be registered`);
+  const [firstScenario, ...restScenarios] = spec.scenarios;
+  const declaredScenarios: readonly [ScenarioId, ...ScenarioId[]] = [
+    ScenarioIdSchema.parse(firstScenario),
+    ...restScenarios.map((scenario) => ScenarioIdSchema.parse(scenario)),
+  ];
   assertUnique(id, "scenarios", declaredScenarios);
 
   const contracts = nodes.flatMap(contractsOf);
@@ -545,7 +609,7 @@ export function defineWorkflowDescriptor<
     input: spec.flow.input,
     result: spec.flow.result,
     nodes: spec.flow.nodes,
-    scenarios: spec.scenarios,
+    scenarios: declaredScenarios,
   });
   PROJECTIONS.set(descriptor, Object.freeze({
     steps,
