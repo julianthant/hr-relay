@@ -1,8 +1,8 @@
 # 10 — Guard & Test Architecture SSOT (the rebuild repo)
 
 Status: **Phase 1a pre-tree scaffold implemented 2026-07-31; revised 2026-07-22 after the
-whole-plan/legacy-code review; amended 2026-07-31 (Round 10), and again 2026-07-31 (Round 11 — D93,
-standalone rebuild repo).** The rebuild source tree is still empty, but the reviewed guard
+whole-plan/legacy-code review; amended 2026-07-31 (Round 10), Round 11 (D93, standalone rebuild
+repo), and Round 12 (D94, commit-centred accounting closure).** The reviewed guard
 inventory, D58/D90/disposition manifests, semantic legacy-lint ratchet, operational-isolation
 contract, and rebuild lint/test/coverage launchers now exist. Source-scanning guard arms activate
 atomically with the first file in their target family. This document covers strict
@@ -441,14 +441,32 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   hidden in an uninvoked function is not proof. A shared port, lock, state root, or browser profile
   is a real collision that no repository boundary prevents, so this arm stays hard.
 
-  **`legacy-change-accounting` survives and becomes the program's only drift detector.** The legacy
-  repo remains editable: every touched legacy production/test path must map to affected capability
-  ids and a rebuild recheck/disposition in the rebuild repo's
-  `config/legacy-change-accounting.json`, keyed by the legacy repo's commit hashes; deletion fails
-  through initial cutover. Because D93 removes the same-tree scan that used to notice a legacy edit
-  incidentally, this accounting is now load-bearing rather than corroborating (doc 07 §5 risk 3).
-  The legacy repo's diagnostic ratchet still rejects new/replaced lint fingerprints in its tests;
-  rebuild source/tests retain their zero-debt gates in their own repo.
+  **`legacy-change-accounting` survives and becomes the program's only drift detector (D94).** The
+  guard lane resolves `HRAUTO_LEGACY_REPO`, defaulting to sibling `../hr-automation`, and fails loud
+  if it is absent or not a Git checkout (ratified F1). Mixed-root inventories qualify legacy paths
+  with `legacy:` while single-root legacy manifests remain unprefixed (F2; doc 11 §6). The explicit
+  Phase-0 commit is verified as an ancestor of legacy `HEAD`; its file/history authority is read
+  directly from `git ls-tree -r <baselineCommit> -- src tests` rather than resurrecting the retired
+  preservation cache (F3).
+
+  Schema v2 is **commit-centred**: enumerate `baseline..HEAD` in `git rev-list --reverse` order for
+  legacy `src/` and `tests/`, and require exactly one record for every `(commit,path)` pair. Each
+  record pins the named commit's first parent, change kind, SHA-256 of the parent blob (null only for
+  add), SHA-256 of the commit blob (null only for delete), affected capability ids, non-empty impact
+  rationale, and ids from a closed rebuild-recheck/evidence catalog. Repeated edits and reverts are
+  therefore visible even when the final tree diff cancels them. Unknown/missing commits, paths,
+  stale hashes, open/unknown evidence, and duplicate records fail.
+
+  A reviewed exact/prefix impact map is an independent minimum: each record's capability ids must
+  be a superset, with justified extras allowed (F4). Shared daemon runtime/docs/tests affect
+  `legacy-cli-daemon` plus every workflow registered through the daemon; OCR provider/environment
+  changes affect `legacy-service-ocr`, the OCR hub and all OCR-backed consumers/delegates. The
+  legacy `src/`/`tests/` worktree must be clean, including staged and untracked state: **commit the
+  legacy change first, then account that named commit**. Dirty work intentionally makes rebuild
+  guards red; in particular, a staged deletion cannot disappear from a working-tree file walk.
+  Deletion is modeled (`afterSha256: null`) so it is detected, then rejected through initial
+  cutover. The legacy diagnostic ratchet still rejects new/replaced test-lint fingerprints; rebuild
+  source/tests retain their zero-debt gates.
 
 **Two live-compatibility guard families remain rejected (D88).** Continuous real-tracker replay
 and a runtime legacy wire-schema adapter would legitimize the forbidden live lift/proxy. If an

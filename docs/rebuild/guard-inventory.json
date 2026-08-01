@@ -53,7 +53,7 @@
       "file": "tests/unit/architecture/legacy-change-accounting.test.ts",
       "status": "active",
       "owner": "docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "Every change from the explicit Phase-0 legacy baseline maps to capabilities and rebuild rechecks.",
+      "invariant": "Every ordered legacy src/tests commit and path since the Phase-0 baseline is commit-blob hash-bound, maps to reviewed affected-capability floors plus closed rebuild evidence, and is audited only from a clean deletion-free legacy worktree.",
       "replacementRequired": true
     },
     {

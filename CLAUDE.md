@@ -12,7 +12,7 @@ legacy repo as the pre-split record). Phase 1b is in flight.
 **`docs/rebuild/` is the plan SSOT — read it, do not re-derive it.**
 
 - `docs/rebuild/07-master-plan.md` — phases, work items, exit criteria. §4 owns the two-repo model.
-- `docs/rebuild/04-reconciliation.md` — the decision changelog (D1–D93). A **pointer index**, not a
+- `docs/rebuild/04-reconciliation.md` — the decision changelog (D1–D94). A **pointer index**, not a
   spec: it tells you which doc owns a contract. Never implement from it.
 - `00-charter` · `01-task-contract` · `02-workflow-model` · `03-tracker-dashboard` ·
   `05-execution-parallelism` · `06-data-intake` · `08-foundation-gap-audit` · `09-write-safety` ·
@@ -97,7 +97,7 @@ evaluate-named-fn, import cycles, layer matrix, code conventions, tailwind palet
 against a violating fixture by `guard-manifest.test.ts` so a dead arm cannot stand in for
 enforcement.
 
-## Cross-repo rules (D93)
+## Cross-repo rules (D93/D94)
 
 **The legacy repo is a frozen production reference, not a dependency.**
 
@@ -108,11 +108,13 @@ enforcement.
   parsing rule, a page-state fact), copy it and record **the legacy commit hash and source path** in
   the ported code. Never link it at runtime — which is impossible anyway.
 - **Every legacy maintenance change must be recorded HERE**, in
-  `config/legacy-change-accounting.json`, against the affected capability ids and the rebuild
-  evidence it may invalidate, keyed by the **legacy repo's** commit hashes. Doc 10 §3.13 makes this
-  the program's *only* drift detector now that the same-tree scan is retired — it is load-bearing,
-  not corroborating. `legacy-change-accounting.test.ts` fails when the manifest and the legacy repo
-  disagree.
+  `config/legacy-change-accounting.json`. Commit the legacy `src/`/`tests/` change first, then record
+  every path under that exact commit with its first-parent/commit blob hashes, affected capability
+  ids, impact rationale, and closed rebuild recheck evidence. The legacy `src/`/`tests/` worktree
+  must be clean; staged, unstaged, and untracked changes intentionally make the rebuild guards red
+  until the named legacy commit exists and is accounted. Doc 10 §3.13 makes this the program's
+  *only* drift detector now that the same-tree scan is retired — it is load-bearing, not
+  corroborating.
 - **Nothing in the legacy repo may be deleted** during the rebuild or the initial cutover. The whole
   repository is the D89 rollback asset.
 - The guard lane finds the legacy repo at `../hr-automation`, overridable with

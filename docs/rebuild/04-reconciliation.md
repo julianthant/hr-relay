@@ -1,19 +1,20 @@
 # Reconciliation memo — binding cross-doc decisions (2026-07-17 through 2026-07-31)
 
-Status: **binding revision 2026-07-31 (Round 11).** Earlier rounds remain as decision history;
+Status: **binding revision 2026-07-31 (Round 12).** Earlier rounds remain as decision history;
 Round 7 supersedes incompatible typing, UI-access, control, delegation, recovery, trust,
 knowledge, and workflow-editor claims; Round 9 supersedes the proposed executor-lane/session-pool
 capacity model; Round 10 supersedes D73 and ratifies isolated coexistence, one all-at-once cutover,
 legacy preservation/change accounting, coverage floors, and deferred probe milestones; Round 11
 moves the rebuild out of `temp_src/` into its own repository, superseding the in-tree half of D88
-and amending the mechanics of D89/D90.
+and amending the mechanics of D89/D90; Round 12 ratifies D94's fail-closed cross-repo accounting
+mechanics.
 
 > **What this doc is, as of Round 10: a decision CHANGELOG, not a specification.** Its job is to
 > record *what was decided, when, and which doc owns it* — so a reader can reconstruct why a
 > contract has its current shape. It is **not** where you read the current contract. The owning
 > doc (D1 matrix below) is the only readable current truth, and every ratified decision must be
 > folded into that doc **in the same commit that records it** (charter standing rule, added
-> 2026-07-26). Round 8–11 entries are therefore deliberately one-liners with a pointer: the normative
+> 2026-07-26). Round 8–12 entries are therefore deliberately one-liners with a pointer: the normative
 > text lives in the owner. Rounds 1–7 predate that rule and still carry normative prose; treat
 > the owning doc as authoritative wherever they differ.
 
@@ -24,7 +25,7 @@ Amendment agents rewrite each doc to comply; a doc may reference another doc's o
 must never redefine it.
 
 > **Implementation rule:** don't implement from this file. D1–D25 are historical rationale, not
-> copyable current API/DDL; D26–D72 amend each other in round order (later wins); D73–D93 are
+> copyable current API/DDL; D26–D72 amend each other in round order (later wins); D73–D94 are
 > pointers only. **Read the owning doc.** If an owning doc contradicts a decision here, the doc is
 > either correct (it was folded) or stale (it wasn't) — check the doc's amendment date against the
 > round date and fix the doc, never work from this memo. Current contract shapes live in owning
@@ -616,27 +617,13 @@ records them and the same commit folds each into its owner. **One line each — 
 |---|---|---|
 | **D93** | **STANDALONE REBUILD REPOSITORY; THE IN-TREE HALF OF D88 IS SUPERSEDED; D89/D90 MECHANICS AMENDED.** The rebuild leaves `temp_src/` for its own repository (`hr-automation-rebuild`, fresh history seeded from the `feature/rebuild-phase1b` tip, which stays in the legacy repo as the pre-split record): rebuild code at plain `src/`, tests at `tests/`, config at `config/`, plan docs still at `docs/rebuild/`, and the plain `typecheck`/`lint`/`test`/`test:architecture` gate family — the `*:rebuild` script names and the "present-but-empty `temp_src` fails" semantics retire. Isolation becomes physical, so the D88 bidirectional-ban guard family and the preservation manifest's same-tree strict-normal-form scanning of changed legacy files are RETIRED; distinct state/artifact roots, ports, process locks, and browser profiles/sessions remain REQUIRED (one machine). The legacy repo stays sole production authority, live-runnable and maintainable, and is preserved wholesale as the rollback asset. D90 accounting survives cross-repo in the rebuild repo's `config/legacy-change-accounting.json`, keyed by legacy-repo commit hashes; porting stays copy-with-provenance (legacy commit hash + path). The single cutover is unchanged in substance — mechanically, the normal production launcher is repointed at the rebuild repo. Phase definitions, gates, coverage floors (D91), and probe gates (D92) are unchanged; only the ADDRESS of the rebuild moves. | charter §Non-negotiables/§Migration strategy; doc 07 §4 (primary); docs 03 §5, 10 §§1/2/3.13/5, 13 §0 |
 
-### D93 execution findings (2026-07-31, migration) — MECHANISM GAPS, AWAITING OPERATOR RATIFICATION
+## Reconciliation round 12 (2026-07-31) — accounting closure, folded
 
-Executing D93 surfaced four things the decision's wording did not settle. Each was resolved to keep
-the guard suite green and truthful, and each is recorded here as a **proposal**, not a ratified
-decision — the charter rule (a decision is ratified only when folded into its owning doc) is
-deliberately NOT claimed for these. The implementing mechanism is live in the rebuild repo; if the
-operator ratifies, the normative text folds into doc 10 §3.13 and this block collapses to a D-row.
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D94** | **D93 ACCOUNTING IS COMMIT-CENTRED AND FAIL-CLOSED.** F1–F4 are ratified: the guard lane resolves the legacy checkout explicitly and fails loud; mixed-root inventories use `legacy:`; the Phase-0 file set comes from `git ls-tree`; and records name affected, not merely owning, capabilities. Every ordered legacy `src`/`tests` commit/path carries parent/commit blob hashes, impact rationale, and closed rebuild-recheck evidence; exact coverage, ancestry, reviewed impact floors, and a clean legacy `src`/`tests` worktree are mandatory. Commit legacy maintenance first, then account that commit. Deletion remains forbidden through initial cutover. | docs 10 §3.13 (primary), 07 §4; doc 11 §6 cross-reference |
 
-| # | Gap D93 left open | Resolution in force | Owner if ratified |
-|---|---|---|---|
-| **F1** | D93 requires D90 accounting to survive "cross-repo … keyed by legacy-repo commit hashes" but never says **how the rebuild repo locates the legacy repo**. Four guards need it: `legacy-change-accounting`, `legacy-capability-disposition`, `legacy-test-disposition`, and both halves of the environment/runtime-dependency inventories. | `HRAUTO_LEGACY_REPO`, defaulting to the sibling checkout `../hr-automation`, resolved once in `tests/unit/architecture/helpers/guard-files.ts`. It **fails loud** when the path is missing or is not a git checkout — doc 10 §3.13 makes this accounting the program's only drift detector, so a silently skipped legacy audit is exactly the failure D93 warns the split makes invisible. Test-lane only; no rebuild runtime module may read across. | doc 10 §3.13 |
-| **F2** | After the move **both repos have a `src/`**, and `src/cli.ts` exists in BOTH. Any inventory naming files on both sides is ambiguous. | An explicit **`legacy:` path scheme** for legacy-repo paths; unprefixed always means the rebuild repo. Applied where the two mix (`src/domain/runtime-environment.ts` reader ownership + computed readers). Single-rooted inventories (`legacy-capabilities`, `legacy-test-disposition`, `legacy-change-accounting`) stay unprefixed and say so in a header — the scheme is for disambiguation, not decoration. A legacy-production computed reader without the scheme is now a violation. | doc 11 §5 / doc 10 §3.13 |
-| **F3** | D93 retires `legacy-preservation.json` as "the same-tree strict-normal-form scanning" authority — but the manifest was **also** the baseline FILE SET for D90 accounting, which is not part of the retired scan. Retiring it wholesale would have left accounting with no fixed point. | The baseline is now read directly from the legacy repo's history (`git ls-tree -r <baselineCommit> -- src tests`). Strictly better than the cached copy: it cannot go stale, and it removes the manifest D93 deleted rather than resurrecting it. | doc 10 §3.13 |
-| **F4** | D90 demands a capability id for **every** changed path under legacy `src`/`tests`, but D58's capability inventory deliberately covers only capability SURFACES — workflows, services, routes, dashboard components, CLIs, tools. `src/core/**`, `src/systems/**`, and `tests/**` outside `tests/unit/architecture` are not surfaces. Before the split this never surfaced, because the only accounted legacy changes were architecture tests. | Read D90's wording literally — "**affected** capability ids", not owning ones. A `src/core/daemon` fix is accounted against `legacy-cli-daemon`; a `src/systems/new-kronos` fix against the three workflow capabilities that drive that system. D58's surface set is unchanged. | doc 10 §3.13 |
-
-**Also observed, not a decision:** the accounting guard reads the legacy **working tree**, so an
-uncommitted legacy edit turns the rebuild repo's guard suite red until it is recorded. That is the
-intended alarm under F1's fail-loud reading, but it couples the rebuild's green state to the other
-repo's transient state — flagged so the operator can choose otherwise.
-
-**Two separate D-series exist — do not confuse them.** This memo's `D1–D93` are cross-doc
+**Two separate D-series exist — do not confuse them.** This memo's `D1–D94` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
 types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the
 distinction at its §9 header; always cite the row-model series with the `row-model` prefix.

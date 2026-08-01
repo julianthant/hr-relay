@@ -1,8 +1,13 @@
 # 07 — Master Plan: the single phased build order for the rebuild repo
 
-Status: **Phase 0 ratified 2026-07-31 through Round 11. No rebuild implementation exists.**
+Status: **Phase 0 ratified 2026-07-31 through Round 12. Phase 1b is in flight.**
 This is the ONE plan the charter demands (§"One master plan"): every design doc converges here,
 and there must never be a competing plan. Phase 1 may begin with item 1a.
+
+**Round-12 amendment summary (operator ratification 2026-07-31).** D94 closes D93's accounting
+mechanics: F1–F4 are ratified, records are commit-centred and blob-hash-bound, the legacy
+`src/`/`tests/` worktree must be clean, and legacy maintenance is committed before its exact commit
+and paths are accounted. §4 owns the sequence; doc 10 §3.13 owns the guard contract.
 
 **Round-11 amendment summary (operator direction 2026-07-31).** D93 changes the rebuild's ADDRESS,
 not its plan. The rebuild lives in its own repository — `hr-automation-rebuild`, fresh git history
@@ -64,7 +69,7 @@ Every concept has exactly one owner (reconciliation `04` D1). Reference the owne
 | Task contract (`defineTaskContract`/`defineTask`), contract/impl split (D3), task-namespace grammar + closed `SystemId` union (D2), error taxonomy, three effects/dry-run mechanics, retry, decoration, system/service stores + pure workflow mini-stores, session providers + login signature, `stores/common/` leaf homes | **Doc 01** |
 | Workflow builder API (single), descriptor shape, `RunEnvelope`, run-state machine incl. gates/parks (D5), checkpoint/resume + freshness walk (D8), label precedence (D16) | **Doc 02** |
 | Span/event wire schema (D10), notes stream, storage layout, SQLite projection role (D14), SSE wire shapes, completion (fan-out/approval) union (D11), cross-repo runtime boundary + one-time import rules (D88/D89/D93), the ONE run/queue projection every count reads (D81), run versioning + archive-on-bump (D80), run display names (D83) | **Doc 03** |
-| Binding cross-doc reconciliation (D1–D93, through 2026-07-31 Round 11) | **Doc 04** |
+| Binding cross-doc reconciliation (D1–D94, through 2026-07-31 Round 12) | **Doc 04** |
 | One-item workers, queue dispatch/backpressure, explicit browser-session boundaries + driver leases, speed/sleep-tax contract, page/subject-isolation invariant | **Doc 05** |
 | Data-service systems: CSV/PDF extraction, typed contact/address normalization, roster matching, durable mobile capture, operator column mapping, immutable intake manifest/rerun, Edit Data checkpoint UI | **Doc 06** |
 | Cross-cutting gap findings memo (owns nothing — a design input) | **Doc 08** |
@@ -174,7 +179,7 @@ than inventing one mid-migration.
 
 | Phase | Headline deliverable | Gate to exit | Size |
 |---|---|---|---|
-| **0** | Corrected foundation design approved; empty rebuild repo | **COMPLETE 2026-07-31:** decisions reconciled through Round 11; testing policy ratified; executable feasibility + honest gate baseline recorded; write-proof probes carry explicit later milestone gates (§3.8) | **M** |
+| **0** | Corrected foundation design approved; empty rebuild repo | **COMPLETE 2026-07-31:** decisions reconciled through Round 12; testing policy ratified; executable feasibility + honest gate baseline recorded; write-proof probes carry explicit later milestone gates (§3.8) | **M** |
 | **1** | **The SPINE** — the minimum base that can carry one workflow end to end (1a–1f + the span/projection slice + the queue-surface slice) | **1a COMPLETE 2026-07-31:** pre-tree guards, exact legacy baselines, isolation/accounting/preservation, and inert non-vacuous rebuild gates landed with no rebuild source (D93 re-homes them into the rebuild repo and retires the runtime-isolation arm). Phase exit remains: **person-lookup runs LIVE on it** (D74 — a fixture cannot falsify a contract the way a real run can); full gates green; strict/subject/control/delegation/recovery/scenario fixtures pinned | **XL** |
 | **2** | **Transaction proof, then the deferred base tails** — controlled real commit + crash/recovery, *then* trust tails, data services/intake/capture, explorer | subject-bound dry-run and controlled commit/crash/outbox/ledger proof green; then evidence/notification/knowledge, intake/capture/Edit-Data, and read-only explorer land against a proven spine | **XL** |
 | **3+** | Per-workflow rebuild migration, one at a time (order §3.3), plus explicit non-workflow capability closure (§3.6) | each: §b questionnaire answered; isolated live dry-run + controlled write evidence where applicable; every capability inventory entry advances to native/replaced/retired; docs updated; legacy production remains authoritative until the final gate | **XL** |
@@ -196,7 +201,7 @@ offered for correction, not commitments.
 before any rebuild code is built (charter §Process: nothing is built before its design part is
 approved).
 
-**Status (2026-07-31).** **COMPLETE.** Docs 00–13 are reconciled through Round 11 (D1–D93); the
+**Status (2026-07-31).** **COMPLETE.** Docs 00–13 are reconciled through Round 12 (D1–D94); the
 operator ratified isolated coexistence, all-at-once cutover, the testing policy, and the later probe
 gates, then directed (D93) that the rebuild live in its own repository rather than in-tree. Phase 1
 has not started.
@@ -742,7 +747,7 @@ on `unverifiableByPage`, order-7 automation degrades to "operator manually confi
 
 ---
 
-## 4. Two-repo coexistence and all-at-once cutover (D88–D90, re-mechanized by D93)
+## 4. Two-repo coexistence and all-at-once cutover (D88–D94)
 
 **The two addresses.** The **legacy repo** (`hr-automation`) holds the production automation and
 remains the sole production authority — live-runnable, maintainable, and never deleted before
@@ -765,13 +770,19 @@ commands/entrypoints, distinct state/artifact roots, distinct ports, distinct pr
 distinct browser profiles/sessions. These remain REQUIRED and remain gated — a shared port or a
 shared browser profile is a real collision that no repository boundary prevents.
 
-**Legacy maintenance continues, accounted cross-repo (D90).** Production fixes and their matching
-legacy tests stay allowed. Every legacy maintenance change is recorded in the rebuild repo's
-`config/legacy-change-accounting.json` against the affected capability ids and rebuild evidence,
-referencing the legacy repo's commit hashes; the legacy repo's root `CLAUDE.md` carries that
-standing duty. Verified knowledge is ported by **copy with provenance** — the ported code records
-the legacy commit hash and source path — never linked at runtime, which is now impossible anyway.
-Legacy source and tests cannot be deleted during the rebuild or initial cutover.
+**Legacy maintenance continues, accounted cross-repo (D90/D94).** Production fixes and their
+matching legacy tests stay allowed. The sequence is mandatory: commit the legacy `src/`/`tests/`
+change first, then add schema-v2 records in the rebuild repo for every changed path under that exact
+legacy commit. Records bind first-parent/commit blob hashes, affected capability ids (at least the
+independent reviewed exact/prefix impact floor), non-empty impact rationale, and closed rebuild
+recheck/evidence ids. The guard enumerates the complete commit/path history since the Phase-0
+baseline in order and rejects omissions, extras, stale hashes, bad ancestry, or any dirty legacy
+`src/`/`tests/` state—including staged and untracked changes. This intentional red interval is the
+fail-closed handoff between the two commits, not permission to account an uncommitted tree. The
+legacy root `CLAUDE.md` carries the same duty. Verified knowledge is ported by **copy with
+provenance** (legacy commit hash + source path), never linked at runtime. Legacy source and tests
+cannot be deleted during the rebuild or initial cutover; deletion is representable so the guard
+can diagnose it, then always fails.
 
 The following are forbidden: continuous tracker lift, legacy API proxy/remount, a compatibility
 SPA, per-run engine/generation authority, workflow-scoped production flips, and any interval where

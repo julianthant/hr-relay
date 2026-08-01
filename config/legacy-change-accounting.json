@@ -1,368 +1,737 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "baselineCommit": "353739ac9e1db01cae9da8a13da53605cd767574",
-  "records": [
+  "accountedRoots": [
+    "src",
+    "tests"
+  ],
+  "deletionPolicy": "forbidden-through-initial-cutover",
+  "closedRecheckCatalog": [
     {
-      "path": "src/core/CLAUDE.md",
-      "changeKind": "modified",
-      "beforeSha256": "297f6aedc0d14b0ac4b24071334853d689332969f79a1f21c961eb33c3c604bb",
-      "afterSha256": "8356f31a3805f30f8185579a105bf99326d5682e80bd309787325e3461bb9ba4",
-      "capabilityIds": [
-        "legacy-cli-daemon"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "src/core/daemon/daemon.ts",
-      "changeKind": "modified",
-      "beforeSha256": "c533fac92e04406881966948f42c65c25d63f6e06f17febd6acec6b95060387a",
-      "afterSha256": "623d4e6b1eda3fa6283584d0498097a17cc11fdba62d01b7310f8e69aeba67b8",
-      "capabilityIds": [
-        "legacy-cli-daemon"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "src/services/ocr/env-keys.ts",
-      "changeKind": "modified",
-      "beforeSha256": "c9213498098dc6ef99904251deddf4d2e83d65cc6155e59a79a59fd8d29b2a8e",
-      "afterSha256": "a69ff1db9a461e773407bf1924bcd4b2ab2bb5ed54f6b7de35a2f405cb7ebc03",
-      "capabilityIds": [
-        "legacy-service-ocr",
-        "legacy-workflow-ocr"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture",
-        "npm:test"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "src/services/ocr/providers/gemini.ts",
-      "changeKind": "modified",
-      "beforeSha256": "3c9911d770894443491c4e2b22fb8e495809bd06128741844c79c4462031b9f0",
-      "afterSha256": "e4021daa23345638a1616cf0f1a42292b74a71f62f420e440b46cacb5605098c",
-      "capabilityIds": [
-        "legacy-service-ocr",
-        "legacy-workflow-ocr"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture",
-        "npm:test"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "src/systems/new-kronos/LESSONS.md",
-      "changeKind": "modified",
-      "beforeSha256": "780ab0ff7f3085b1b4570d01b11e1ce63fb6ed7636a5bf31c0da50136d372fe9",
-      "afterSha256": "e506a3c9e2527bbf4c7954be49b8fe67d0552de8dc47e2fb3d0947a560c32f9f",
-      "capabilityIds": [
-        "legacy-workflow-separations",
-        "legacy-workflow-kronos-pay-rule",
-        "legacy-workflow-old-kronos-reports"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture",
-        "npm:test"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "src/systems/new-kronos/navigate.ts",
-      "changeKind": "modified",
-      "beforeSha256": "49b2fa7c165bcc6a3c59620e192b0055ad46e758c412c5a1c8c655ebbe9508c6",
-      "afterSha256": "4f6710e71c06f07c620e0c422288729770073ba2ec6b67c10a5c60947164f494",
-      "capabilityIds": [
-        "legacy-workflow-separations",
-        "legacy-workflow-kronos-pay-rule",
-        "legacy-workflow-old-kronos-reports"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture",
-        "npm:test"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "src/workflows/separations/CLAUDE.md",
-      "changeKind": "modified",
-      "beforeSha256": "705842e6a4800e8775cd1b002207bfef73af656070dc1751bf539b1bee018893",
-      "afterSha256": "7187be6b5e61f14754ad47eb845b26b1e309327af180358251a3551d3fbd9f4d",
-      "capabilityIds": [
-        "legacy-workflow-separations"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "src/workflows/separations/steps/kuali-extract.ts",
-      "changeKind": "modified",
-      "beforeSha256": "8ff930b8618417235d08c2027e5ade6ca4706795be18ff45cb5feb468be68acf",
-      "afterSha256": "5076706e7d9cfd18904796b7e5d2ae736f02d5ae7ce0dcf8f1f7b5d9a6f770a8",
-      "capabilityIds": [
-        "legacy-workflow-separations"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "src/workflows/separations/workflow.ts",
-      "changeKind": "modified",
-      "beforeSha256": "96a8ec7d7047ac00917d4a04cfdaf32c15d8fa97155ff61bc87a1d6734bdc60e",
-      "afterSha256": "cfb82592c48e466216372600805b6cd22265bf51e999381d535628ee70f8b580",
-      "capabilityIds": [
-        "legacy-workflow-separations"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/fail-loud-catch-default.test.ts",
-      "changeKind": "modified",
-      "beforeSha256": "9048531e4eaf96e93986f587469b574c2de2f1b8cc2b9217449ce452fa4e49bd",
-      "afterSha256": "f99bdf9bd78097c7b28c827c329f1c89a202a30b9574e5226c5e55c18aece21d",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/gate-coverage.test.ts",
-      "changeKind": "modified",
-      "beforeSha256": "09bc9f5e896dc2865f753bf8ede99b0dc60498fbfb69caef4432e2ed9a10d016",
-      "afterSha256": "f5bc6665064acd3926eed8841d05a2ee36a7db514d6d57bcffadae5ea5309f34",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/guard-manifest.test.ts",
-      "changeKind": "added",
-      "beforeSha256": null,
-      "afterSha256": "a5aec3bd225a9619a9a873c1afb818efb0a8d6be3ab0492569f6bf7089fe61e4",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/helpers/guard-files.ts",
-      "changeKind": "added",
-      "beforeSha256": null,
-      "afterSha256": "8bc5833aea14d17737ceb72924fcc6a05e442b1e3a772941c6ddf1f2ae4b5748",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/helpers/rebuild-ratchet-arms.ts",
-      "changeKind": "added",
-      "beforeSha256": null,
-      "afterSha256": "7a9c3011f66c24b4d517600f840de8d4185ab807f655c6247e7b37bc1b8bbd79",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/helpers/runtime-isolation-audit.ts",
-      "changeKind": "added",
-      "beforeSha256": null,
-      "afterSha256": "fe673bd55a9e1f28515063eff2c4e32c6e44a1cf9f6bada4b6ec8ebed533af0c",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/inline-selectors-workflows.test.ts",
-      "changeKind": "modified",
-      "beforeSha256": "f0626dcc1d3a814e96777784fc32c8a0d00923c5dc4052b61f22563dc65ef7d4",
-      "afterSha256": "923541bbd3393945403e460ddca0aae83ce96fec0dec96d6306454a0488cb1f8",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/legacy-capability-disposition.test.ts",
-      "changeKind": "added",
-      "beforeSha256": null,
-      "afterSha256": "6af6b18d75b78ec9d577971acd6786486b4e1d4db2f3f62320ccd5f20acb9773",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/legacy-change-accounting.test.ts",
-      "changeKind": "added",
-      "beforeSha256": null,
-      "afterSha256": "5f4f9a0ffcb71c723021df4a82e2cc1e879a9dd69a9e1fc0c0d4215fb46dfe23",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/legacy-preservation.test.ts",
-      "changeKind": "added",
-      "beforeSha256": null,
-      "afterSha256": "f0ebd2559153a84dae89fb1cc46348a7c62e7a1366c7278ab44f76613528bb4f",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/legacy-test-disposition.test.ts",
-      "changeKind": "added",
-      "beforeSha256": null,
-      "afterSha256": "675b2523dc28ca2b925023718d2358bd1b6547f820b04e4bbfb7fbd5e133fcd2",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/legacy-test-lint-debt-ratchet.test.ts",
-      "changeKind": "added",
-      "beforeSha256": null,
-      "afterSha256": "d9f6249da11d545d4b54241c570ce39fc273d8e8b33006e0bc092102f1050193",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/nullish-literal-data-fallback.test.ts",
-      "changeKind": "modified",
-      "beforeSha256": "60ca6b0b8644e7367301482a7c9a1cec47f4210d035d262e5b2f219d4805a417",
-      "afterSha256": "e47e31669abcada1e829e79f8bea3b6710c6f1147f49c47e395473bffa3ba203",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/rebuild-gates.test.ts",
-      "changeKind": "added",
-      "beforeSha256": null,
-      "afterSha256": "35086eb59af822973c019ad9f373f7fb712f92e8cc41738616ce1b532f60b860",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/runtime-isolation.test.ts",
-      "changeKind": "added",
-      "beforeSha256": null,
-      "afterSha256": "b8014a3b47d9f31d44a4bcdb26b207eab9711500f207b3b497c40d7d651b936d",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/architecture/wait-for-timeout-allowlist.test.ts",
-      "changeKind": "modified",
-      "beforeSha256": "d0f3949d6e35ef2889bde2db6b68bc842ce33fce34b2a44aacd9353682e83b0f",
-      "afterSha256": "0a110e5fd6ca71bbabdd6f6b26eb027a8c6e2e1e55eb32c40547987852fbd696",
-      "capabilityIds": [
-        "legacy-dev-tool-architecture-guards"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/core/daemon.test.ts",
-      "changeKind": "modified",
-      "beforeSha256": "b9366fe7cb01c84f977a8948777d361c5b5f6ec69ff01655f20f04ca689d7012",
-      "afterSha256": "2b37d3813a5ce07f3746fe14e10d51bca018d4b1c3f33be22f6119ff1a4ee41a",
-      "capabilityIds": [
-        "legacy-cli-daemon"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
-    },
-    {
-      "path": "tests/unit/workflows/separations/dry-run.test.ts",
-      "changeKind": "modified",
-      "beforeSha256": "be2dc5e08e2d5169f681a85cc2ebf8f672ce777fedac7e01954585062b378a34",
-      "afterSha256": "f83419d349434a2a619dbbac92ae048c33e32ad2d209186f16599b9967c962bf",
-      "capabilityIds": [
-        "legacy-workflow-separations"
-      ],
-      "rebuildRecheckIds": [
-        "npm:test:architecture"
-      ],
-      "preservation": "preserved"
+      "id": "d94-full-gates-2026-07-31",
+      "closedAt": "2026-07-31",
+      "evidence": [
+        "npm run typecheck",
+        "npm run lint",
+        "npm run test",
+        "npm run test:architecture",
+        "npm run test:coverage",
+        "git diff --check"
+      ]
     }
   ],
-  "legacyRepoNote": "Every path is a LEGACY-repo path (D93). The manifest lives in the rebuild repo; its subject is the legacy repo, located via HRAUTO_LEGACY_REPO or the default sibling checkout."
+  "commits": [
+    {
+      "commit": "6c5b466d86ae183a967a087bf7e6ef6295cf1697",
+      "parentCommit": "353739ac9e1db01cae9da8a13da53605cd767574",
+      "changes": [
+        {
+          "path": "tests/unit/architecture/fail-loud-catch-default.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "9048531e4eaf96e93986f587469b574c2de2f1b8cc2b9217449ce452fa4e49bd",
+          "afterSha256": "f99bdf9bd78097c7b28c827c329f1c89a202a30b9574e5226c5e55c18aece21d",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/helpers/guard-files.ts",
+          "changeKind": "added",
+          "beforeSha256": null,
+          "afterSha256": "53420adeee3da1a3c5e213b7b82b0c15f4a93b143b4dd56f2f87bf3284e57929",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/inline-selectors-workflows.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "f0626dcc1d3a814e96777784fc32c8a0d00923c5dc4052b61f22563dc65ef7d4",
+          "afterSha256": "923541bbd3393945403e460ddca0aae83ce96fec0dec96d6306454a0488cb1f8",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/nullish-literal-data-fallback.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "60ca6b0b8644e7367301482a7c9a1cec47f4210d035d262e5b2f219d4805a417",
+          "afterSha256": "e47e31669abcada1e829e79f8bea3b6710c6f1147f49c47e395473bffa3ba203",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/wait-for-timeout-allowlist.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "d0f3949d6e35ef2889bde2db6b68bc842ce33fce34b2a44aacd9353682e83b0f",
+          "afterSha256": "98580dfc139b368651d33915b37b252d74cdab24dd5a36431bab23da74a46088",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "0f1ee4dda9eced56f1cf2494ee4d39a0e9465362",
+      "parentCommit": "2f66ce5da344a5de5ba7de6c4e3893ec2d58ae50",
+      "changes": [
+        {
+          "path": "tests/unit/architecture/gate-coverage.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "09bc9f5e896dc2865f753bf8ede99b0dc60498fbfb69caef4432e2ed9a10d016",
+          "afterSha256": "f5bc6665064acd3926eed8841d05a2ee36a7db514d6d57bcffadae5ea5309f34",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/guard-manifest.test.ts",
+          "changeKind": "added",
+          "beforeSha256": null,
+          "afterSha256": "8290095401aef8f08b857e2bccbfc9c76119c1c0449ff6551b518bf2848a0c92",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/legacy-capability-disposition.test.ts",
+          "changeKind": "added",
+          "beforeSha256": null,
+          "afterSha256": "124d4b39aa9ad24dc7cacc911821fc70e8fb88f629f5341c7a1dc3f47545f85a",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/legacy-change-accounting.test.ts",
+          "changeKind": "added",
+          "beforeSha256": null,
+          "afterSha256": "09e87d4dcebe5dc9ab8c1a7841c1025aef6908a966f1b3dd37dbf3d85d6f1393",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/legacy-preservation.test.ts",
+          "changeKind": "added",
+          "beforeSha256": null,
+          "afterSha256": "d5f094b78c05bfd02a80996592fc440eac5076e5afbba3ab5e257256db69121d",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/legacy-test-disposition.test.ts",
+          "changeKind": "added",
+          "beforeSha256": null,
+          "afterSha256": "bc18546507ca518fce82ba06b49561e4e92049c755e7d0b47c7a3cfb284a3a5b",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/legacy-test-lint-debt-ratchet.test.ts",
+          "changeKind": "added",
+          "beforeSha256": null,
+          "afterSha256": "d9f6249da11d545d4b54241c570ce39fc273d8e8b33006e0bc092102f1050193",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/rebuild-gates.test.ts",
+          "changeKind": "added",
+          "beforeSha256": null,
+          "afterSha256": "517b251b2ebccc407813920fbcc1c81d7ec35bc8031de8226084b6ebeea94591",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/runtime-isolation.test.ts",
+          "changeKind": "added",
+          "beforeSha256": null,
+          "afterSha256": "e69f5131f5e9d3b58cf04ed8f723682717c109c3e3a744ecf66b07279cb14749",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "b8a6407b7669c71c15df97ff071a426a2a50142d",
+      "parentCommit": "0f1ee4dda9eced56f1cf2494ee4d39a0e9465362",
+      "changes": [
+        {
+          "path": "tests/unit/architecture/guard-manifest.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "8290095401aef8f08b857e2bccbfc9c76119c1c0449ff6551b518bf2848a0c92",
+          "afterSha256": "a5aec3bd225a9619a9a873c1afb818efb0a8d6be3ab0492569f6bf7089fe61e4",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/helpers/rebuild-ratchet-arms.ts",
+          "changeKind": "added",
+          "beforeSha256": null,
+          "afterSha256": "7a9c3011f66c24b4d517600f840de8d4185ab807f655c6247e7b37bc1b8bbd79",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/helpers/runtime-isolation-audit.ts",
+          "changeKind": "added",
+          "beforeSha256": null,
+          "afterSha256": "91eb5023b4a237b3775e151724b355c1d28aa8b767dc32ab4518ccdfae01b04d",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/legacy-test-disposition.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "bc18546507ca518fce82ba06b49561e4e92049c755e7d0b47c7a3cfb284a3a5b",
+          "afterSha256": "675b2523dc28ca2b925023718d2358bd1b6547f820b04e4bbfb7fbd5e133fcd2",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/rebuild-gates.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "517b251b2ebccc407813920fbcc1c81d7ec35bc8031de8226084b6ebeea94591",
+          "afterSha256": "35086eb59af822973c019ad9f373f7fb712f92e8cc41738616ce1b532f60b860",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/runtime-isolation.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "e69f5131f5e9d3b58cf04ed8f723682717c109c3e3a744ecf66b07279cb14749",
+          "afterSha256": "b976283625ac20665e3e49efb2d1e5d6f69d9f6b3525cd3a01ffaec087081524",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "a004f99105caea5eee69135d9c7565c94b68047c",
+      "parentCommit": "b8a6407b7669c71c15df97ff071a426a2a50142d",
+      "changes": [
+        {
+          "path": "tests/unit/architecture/helpers/runtime-isolation-audit.ts",
+          "changeKind": "modified",
+          "beforeSha256": "91eb5023b4a237b3775e151724b355c1d28aa8b767dc32ab4518ccdfae01b04d",
+          "afterSha256": "7fea183b43967de551f852032e0c22d2964a35deea3cd10658b80a24524b8a31",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/runtime-isolation.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "b976283625ac20665e3e49efb2d1e5d6f69d9f6b3525cd3a01ffaec087081524",
+          "afterSha256": "3a6e5e18df8771423964cb83832103992a4344705d717009e2c91870981c3b24",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "4390b29fc6ea6ff01d37b4486bd3d86db7067a4f",
+      "parentCommit": "a004f99105caea5eee69135d9c7565c94b68047c",
+      "changes": [
+        {
+          "path": "tests/unit/architecture/helpers/runtime-isolation-audit.ts",
+          "changeKind": "modified",
+          "beforeSha256": "7fea183b43967de551f852032e0c22d2964a35deea3cd10658b80a24524b8a31",
+          "afterSha256": "56e7e519041bbef99555f6a3fe06641e9120b05bd0061a059a7f522a661a3ff8",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/runtime-isolation.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "3a6e5e18df8771423964cb83832103992a4344705d717009e2c91870981c3b24",
+          "afterSha256": "3e26371afb1702336edd0b4f4f927e821242d4122c1f2ded09ca37af41331e8e",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "189ea95724e57a3ed420b1047e5b8e860a3d28d5",
+      "parentCommit": "4390b29fc6ea6ff01d37b4486bd3d86db7067a4f",
+      "changes": [
+        {
+          "path": "tests/unit/architecture/helpers/runtime-isolation-audit.ts",
+          "changeKind": "modified",
+          "beforeSha256": "56e7e519041bbef99555f6a3fe06641e9120b05bd0061a059a7f522a661a3ff8",
+          "afterSha256": "04abf765dfa093756da40239b3abec7ebd2761cb2b563b6c95f44faa6aff3dad",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/runtime-isolation.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "3e26371afb1702336edd0b4f4f927e821242d4122c1f2ded09ca37af41331e8e",
+          "afterSha256": "79a8fb13365aeb59260796a94138f80a8fd64bfad3a24267d719e5a030e336ab",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "2e7f5ef5775724aea2d3cd8780046992bcb51fbb",
+      "parentCommit": "189ea95724e57a3ed420b1047e5b8e860a3d28d5",
+      "changes": [
+        {
+          "path": "tests/unit/architecture/helpers/runtime-isolation-audit.ts",
+          "changeKind": "modified",
+          "beforeSha256": "04abf765dfa093756da40239b3abec7ebd2761cb2b563b6c95f44faa6aff3dad",
+          "afterSha256": "fe673bd55a9e1f28515063eff2c4e32c6e44a1cf9f6bada4b6ec8ebed533af0c",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/legacy-preservation.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "d5f094b78c05bfd02a80996592fc440eac5076e5afbba3ab5e257256db69121d",
+          "afterSha256": "f0ebd2559153a84dae89fb1cc46348a7c62e7a1366c7278ab44f76613528bb4f",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/runtime-isolation.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "79a8fb13365aeb59260796a94138f80a8fd64bfad3a24267d719e5a030e336ab",
+          "afterSha256": "b8014a3b47d9f31d44a4bcdb26b207eab9711500f207b3b497c40d7d651b936d",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "1be040fcd76b09cc20603ee0baa0524861ad130c",
+      "parentCommit": "f992fc0eeba24aa711e4123356bf1062d8a8636b",
+      "changes": [
+        {
+          "path": "tests/unit/architecture/helpers/guard-files.ts",
+          "changeKind": "modified",
+          "beforeSha256": "53420adeee3da1a3c5e213b7b82b0c15f4a93b143b4dd56f2f87bf3284e57929",
+          "afterSha256": "8bc5833aea14d17737ceb72924fcc6a05e442b1e3a772941c6ddf1f2ae4b5748",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/legacy-capability-disposition.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "124d4b39aa9ad24dc7cacc911821fc70e8fb88f629f5341c7a1dc3f47545f85a",
+          "afterSha256": "6af6b18d75b78ec9d577971acd6786486b4e1d4db2f3f62320ccd5f20acb9773",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/legacy-change-accounting.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "09e87d4dcebe5dc9ab8c1a7841c1025aef6908a966f1b3dd37dbf3d85d6f1393",
+          "afterSha256": "5f4f9a0ffcb71c723021df4a82e2cc1e879a9dd69a9e1fc0c0d4215fb46dfe23",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "2f55a0a551606b21a92f3a6ba4ddc0a920c30a21",
+      "parentCommit": "1be040fcd76b09cc20603ee0baa0524861ad130c",
+      "changes": [
+        {
+          "path": "src/core/daemon/daemon.ts",
+          "changeKind": "modified",
+          "beforeSha256": "c533fac92e04406881966948f42c65c25d63f6e06f17febd6acec6b95060387a",
+          "afterSha256": "623d4e6b1eda3fa6283584d0498097a17cc11fdba62d01b7310f8e69aeba67b8",
+          "capabilityIds": [
+            "legacy-cli-daemon",
+            "legacy-workflow-crm-doc-download",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-i9-lookup",
+            "legacy-workflow-kronos-pay-rule",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-oath-upload",
+            "legacy-workflow-onbase",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "The shared daemon runtime and its owning contract/tests execute every registered daemon-backed workflow, so this change can invalidate CLI-daemon behavior and every workflow that runs through it.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/core/daemon.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "b9366fe7cb01c84f977a8948777d361c5b5f6ec69ff01655f20f04ca689d7012",
+          "afterSha256": "2b37d3813a5ce07f3746fe14e10d51bca018d4b1c3f33be22f6119ff1a4ee41a",
+          "capabilityIds": [
+            "legacy-cli-daemon",
+            "legacy-workflow-crm-doc-download",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-i9-lookup",
+            "legacy-workflow-kronos-pay-rule",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-oath-upload",
+            "legacy-workflow-onbase",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "The shared daemon runtime and its owning contract/tests execute every registered daemon-backed workflow, so this change can invalidate CLI-daemon behavior and every workflow that runs through it.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "b06cf4c39e7ba3805b23ca804d1831526f5236b5",
+      "parentCommit": "2f55a0a551606b21a92f3a6ba4ddc0a920c30a21",
+      "changes": [
+        {
+          "path": "src/workflows/separations/workflow.ts",
+          "changeKind": "modified",
+          "beforeSha256": "96a8ec7d7047ac00917d4a04cfdaf32c15d8fa97155ff61bc87a1d6734bdc60e",
+          "afterSha256": "cfb82592c48e466216372600805b6cd22265bf51e999381d535628ee70f8b580",
+          "capabilityIds": [
+            "legacy-workflow-separations"
+          ],
+          "impactRationale": "The path changes or verifies the separations workflow directly, so its rebuild parity and safety evidence require recheck.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/workflows/separations/dry-run.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "be2dc5e08e2d5169f681a85cc2ebf8f672ce777fedac7e01954585062b378a34",
+          "afterSha256": "f83419d349434a2a619dbbac92ae048c33e32ad2d209186f16599b9967c962bf",
+          "capabilityIds": [
+            "legacy-workflow-separations"
+          ],
+          "impactRationale": "The path changes or verifies the separations workflow directly, so its rebuild parity and safety evidence require recheck.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "44078a8512b443a378cce97408dfae7c0788bfbd",
+      "parentCommit": "b06cf4c39e7ba3805b23ca804d1831526f5236b5",
+      "changes": [
+        {
+          "path": "src/workflows/separations/steps/kuali-extract.ts",
+          "changeKind": "modified",
+          "beforeSha256": "8ff930b8618417235d08c2027e5ade6ca4706795be18ff45cb5feb468be68acf",
+          "afterSha256": "5076706e7d9cfd18904796b7e5d2ae736f02d5ae7ce0dcf8f1f7b5d9a6f770a8",
+          "capabilityIds": [
+            "legacy-workflow-separations"
+          ],
+          "impactRationale": "The path changes or verifies the separations workflow directly, so its rebuild parity and safety evidence require recheck.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "89b054f0cb700ed2d976d03aebd10963aefef27f",
+      "parentCommit": "44078a8512b443a378cce97408dfae7c0788bfbd",
+      "changes": [
+        {
+          "path": "src/core/CLAUDE.md",
+          "changeKind": "modified",
+          "beforeSha256": "297f6aedc0d14b0ac4b24071334853d689332969f79a1f21c961eb33c3c604bb",
+          "afterSha256": "8356f31a3805f30f8185579a105bf99326d5682e80bd309787325e3461bb9ba4",
+          "capabilityIds": [
+            "legacy-cli-daemon",
+            "legacy-workflow-crm-doc-download",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-i9-lookup",
+            "legacy-workflow-kronos-pay-rule",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-oath-upload",
+            "legacy-workflow-onbase",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "The shared daemon runtime and its owning contract/tests execute every registered daemon-backed workflow, so this change can invalidate CLI-daemon behavior and every workflow that runs through it.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "src/systems/new-kronos/LESSONS.md",
+          "changeKind": "modified",
+          "beforeSha256": "780ab0ff7f3085b1b4570d01b11e1ce63fb6ed7636a5bf31c0da50136d372fe9",
+          "afterSha256": "e506a3c9e2527bbf4c7954be49b8fe67d0552de8dc47e2fb3d0947a560c32f9f",
+          "capabilityIds": [
+            "legacy-workflow-kronos-pay-rule",
+            "legacy-workflow-old-kronos-reports",
+            "legacy-workflow-separations"
+          ],
+          "impactRationale": "The shared New Kronos system path is consumed by separations, Kronos pay-rule updates, and legacy Kronos reporting, so all three workflow capabilities are affected.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "src/workflows/separations/CLAUDE.md",
+          "changeKind": "modified",
+          "beforeSha256": "705842e6a4800e8775cd1b002207bfef73af656070dc1751bf539b1bee018893",
+          "afterSha256": "7187be6b5e61f14754ad47eb845b26b1e309327af180358251a3551d3fbd9f4d",
+          "capabilityIds": [
+            "legacy-workflow-separations"
+          ],
+          "impactRationale": "The path changes or verifies the separations workflow directly, so its rebuild parity and safety evidence require recheck.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "77a86aa212ce46ab9efb5550e67db9c7c5956153",
+      "parentCommit": "c553b03d1c4af7252c68bc79ba6f64b76e7371a2",
+      "changes": [
+        {
+          "path": "src/systems/new-kronos/navigate.ts",
+          "changeKind": "modified",
+          "beforeSha256": "49b2fa7c165bcc6a3c59620e192b0055ad46e758c412c5a1c8c655ebbe9508c6",
+          "afterSha256": "4f6710e71c06f07c620e0c422288729770073ba2ec6b67c10a5c60947164f494",
+          "capabilityIds": [
+            "legacy-workflow-kronos-pay-rule",
+            "legacy-workflow-old-kronos-reports",
+            "legacy-workflow-separations"
+          ],
+          "impactRationale": "The shared New Kronos system path is consumed by separations, Kronos pay-rule updates, and legacy Kronos reporting, so all three workflow capabilities are affected.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/wait-for-timeout-allowlist.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "98580dfc139b368651d33915b37b252d74cdab24dd5a36431bab23da74a46088",
+          "afterSha256": "0a110e5fd6ca71bbabdd6f6b26eb027a8c6e2e1e55eb32c40547987852fbd696",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "e88348a95cb22d04a7045ec4788fe47ea69ab966",
+      "parentCommit": "69c7cafab9ff3ac071c40ed66570a2f55db334fb",
+      "changes": [
+        {
+          "path": "src/services/ocr/env-keys.ts",
+          "changeKind": "modified",
+          "beforeSha256": "c9213498098dc6ef99904251deddf4d2e83d65cc6155e59a79a59fd8d29b2a8e",
+          "afterSha256": "a69ff1db9a461e773407bf1924bcd4b2ab2bb5ed54f6b7de35a2f405cb7ebc03",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-i9-lookup",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-oath-upload",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onbase",
+            "legacy-workflow-person-lookup"
+          ],
+          "impactRationale": "The OCR provider/environment layer serves the OCR workflow and every OCR-backed consumer; verify enrichment also delegates to Person Lookup and I-9 Lookup, so all listed consumers require recheck.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        },
+        {
+          "path": "src/services/ocr/providers/gemini.ts",
+          "changeKind": "modified",
+          "beforeSha256": "3c9911d770894443491c4e2b22fb8e495809bd06128741844c79c4462031b9f0",
+          "afterSha256": "e4021daa23345638a1616cf0f1a42292b74a71f62f420e440b46cacb5605098c",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-i9-lookup",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-oath-upload",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onbase",
+            "legacy-workflow-person-lookup"
+          ],
+          "impactRationale": "The OCR provider/environment layer serves the OCR workflow and every OCR-backed consumer; verify enrichment also delegates to Person Lookup and I-9 Lookup, so all listed consumers require recheck.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    }
+  ]
 }

@@ -376,6 +376,14 @@ locks, and open browser profiles on the same host. So two distinct `.env`/settin
 two distinct state/auth/profile roots stay an explicit REQUIREMENT of this doc — neither runtime may
 read the other's settings/state/auth files, and neither may reuse the other's port, lock, or browser
 profile.
+
+**D94 cross-repo naming/accounting cross-reference.** Runtime code never reads the legacy repo;
+only the guard lane may do so. In inventories that name both repositories, `legacy:` qualifies a
+legacy path and an unprefixed path means this rebuild repo (ratified F2). Single-root legacy
+manifests remain unprefixed. Doc 10 §3.13 owns checkout resolution, commit-centred change
+accounting, the clean-tree requirement, and the closed recheck/evidence catalog; this secrets doc
+only consumes that path-ownership convention.
+
 Within the rebuild repo's `src/`, the accessor covers environment variables and the rebuild Duo
 private-key file — replacing `validateEnv()` + `getTimekeeperName()` + ~20 files' inline
 `process.env.*` reads with one surface. No legacy-proxy secret/config class exists.
