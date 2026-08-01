@@ -60,6 +60,11 @@ import { RUNTIME_DEPENDENCY_REGISTRY, RuntimeDependencyRegistrySchema } from "..
 import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema } from "../../../src/domain/runtime-environment.js";
 import { SchemaBoundCanonicalValueSchema } from "../../../src/domain/schema-bound-value.js";
 import {
+  TimecardDateRangeSchema,
+  TimecardMonthDaySchema,
+  VisibleTimecardMonthDaysSchema,
+} from "../../../src/domain/timecard-period.js";
+import {
   IdleRefreshCadenceSchema,
   LoginResultSchema,
   RetryPolicySchema,
@@ -587,6 +592,13 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "SessionNeed", schema: SessionNeedSchema, fixtures: [
     { system: "ucpath", access: "read", session: "reuse-worker" },
     { system: "onbase", access: "transaction", session: "fresh", exclusive: true, acceptDownloads: true },
+  ] },
+  { name: "TimecardMonthDay", schema: TimecardMonthDaySchema, fixtures: [{ month: 12, day: 30 }] },
+  { name: "VisibleTimecardMonthDays", schema: VisibleTimecardMonthDaysSchema, fixtures: [
+    { first: { month: 12, day: 16 }, last: { month: 1, day: 15 } },
+  ] },
+  { name: "TimecardDateRange", schema: TimecardDateRangeSchema, fixtures: [
+    { start: new Date(2025, 11, 16), end: new Date(2026, 0, 15) },
   ] },
   { name: "LoginResult", schema: LoginResultSchema, fixtures: ["logged-in", "already-authenticated"] },
   { name: "IdleRefreshCadence", schema: IdleRefreshCadenceSchema, fixtures: [{ intervalMs: 30_000 }] },
