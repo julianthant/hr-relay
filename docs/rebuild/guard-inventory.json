@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "reviewedAt": "2026-07-31",
+  "reviewedAt": "2026-08-01",
   "architectureRoot": "tests/unit/architecture",
   "testScript": "test:architecture",
   "coveragePolicy": {
@@ -54,6 +54,14 @@
       "status": "active",
       "owner": "docs/rebuild/10-guard-test-architecture.md",
       "invariant": "Every ordered legacy src/tests commit and path since the Phase-0 baseline is commit-blob hash-bound, maps to reviewed affected-capability floors plus closed rebuild evidence, and is audited only from a clean deletion-free legacy worktree.",
+      "replacementRequired": true
+    },
+    {
+      "name": "legacy-selector-port-provenance",
+      "file": "tests/unit/architecture/legacy-selector-port-provenance.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/10-guard-test-architecture.md",
+      "invariant": "All 406 legacy selector keys are represented exactly once by recipe-free canonical-id/search intent and exact clean-commit source/catalog Git provenance; candidates cannot claim runtime verification.",
       "replacementRequired": true
     },
     {

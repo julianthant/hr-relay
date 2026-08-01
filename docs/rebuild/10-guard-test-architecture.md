@@ -166,6 +166,23 @@ recipes—and cannot enter the runtime registry/catalog without D98's fixture **
 evidence. UI scenario refs resolve through D99's strict UI-owned verification corpus using the
 canonical `ScenarioId` grammar and a global uniqueness audit.
 
+### Phase 1d Stage A as-built — selector provenance snapshot (2026-08-01)
+
+`config/ports/legacy-selector-port-map.json` now records all **406** legacy catalog keys exactly
+once at legacy commit `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc`: CRM 12, I-9 41, Kuali
+22, New Kronos 54, Old Kronos 23, OnBase 28, ServiceNow 11, SharePoint 10, and UCPath 205.
+Every system pins the exact selector-source and generated-catalog path plus SHA-1 Git blob; every
+row carries a unique candidate semantic id, non-empty search intent, source line, and the same exact
+blob provenance. The strict union permits only `candidate|ported|driver-internal|not-porting`;
+`ported` alone requires D98's dual evidence. Stage A intentionally leaves all 406 rows as candidates.
+
+The active `legacy-selector-port-provenance` guard regenerates the safe inventory from the pinned
+commit in the architecture lane, compares it byte-for-structure, and rejects omissions, duplicates,
+stale blobs, invented keys, canonical-id collisions, evidence-free port claims, and unknown recipe/
+capture fields. Its violating canaries prove those arms fail. Runtime code never reads across the
+repository boundary and the snapshot contains no locator strings, captured values, screenshots,
+secrets, or fallback recipes.
+
 ---
 
 ## 1. The suite today — what the rebuild repo inherits (grounded inventory)
