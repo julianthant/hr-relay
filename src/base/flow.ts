@@ -134,11 +134,18 @@ export interface TransactionOpts<
   readonly retryBeforeFence?: RetryPolicy;
 }
 
-export type BranchCases<S> = Readonly<Record<string, readonly (keyof S & string)[]>>;
+/**
+ * A branch case names the nodes that arm RUNS, which are declared after the
+ * branch — so the targets cannot be constrained to `keyof S`, whose keys are by
+ * definition the nodes already accumulated. Forward references are checked at
+ * `build()` instead: every target must be a declared node, and it must sit
+ * downstream of its controller.
+ */
+export type BranchCases = Readonly<Record<string, readonly string[]>>;
 export interface BranchOpts<
   InputSchema extends z.ZodType,
   S,
-  Cases extends BranchCases<S>,
+  Cases extends BranchCases,
   D extends readonly (keyof S & string)[],
 > {
   readonly label?: string;
@@ -147,9 +154,10 @@ export interface BranchOpts<
   readonly cases: Cases;
 }
 
-export type ParallelBranches<S> = readonly Readonly<{
+/** Same forward-reference rule as `BranchCases`: members run after the fork. */
+export type ParallelBranches = readonly Readonly<{
   id: string;
-  nodes: readonly (keyof S & string)[];
+  nodes: readonly string[];
 }>[];
 
 export type ChildRunOpts<
@@ -239,7 +247,7 @@ export type BranchOutput<Cases extends Readonly<Record<string, readonly string[]
   Readonly<{ selected: keyof Cases & string }>;
 
 /** A `parallel` join exposes each branch id mapped to the ids it ran. */
-export type ParallelOutput<B extends ParallelBranches<Readonly<Record<string, AnyNodeEntry>>>> =
+export type ParallelOutput<B extends ParallelBranches> =
   Readonly<{
     join: "all" | "all-settled";
     branches: Readonly<{ [K in B[number]["id"]]: readonly string[] }>;
@@ -270,7 +278,7 @@ export type AppendBranchNode<
   Nodes extends readonly GraphNodeBase[],
   InputSchema extends z.ZodType,
   S,
-  Cases extends BranchCases<S>,
+  Cases extends BranchCases,
   D extends readonly (keyof S & string)[],
 > = readonly [
   ...Nodes,
@@ -362,7 +370,7 @@ export interface FlowBuilder<
 
   branch<
     Id extends string,
-    const Cases extends BranchCases<S>,
+    const Cases extends BranchCases,
     const D extends readonly (keyof S & string)[],
   >(
     id: Id,
@@ -373,7 +381,7 @@ export interface FlowBuilder<
     AppendBranchNode<Nodes, InputSchema, S, Cases, D>
   >;
 
-  parallel<Id extends string, const B extends ParallelBranches<S>>(
+  parallel<Id extends string, const B extends ParallelBranches>(
     id: Id,
     branches: B,
     opts: Readonly<{ join: "all" | "all-settled" }>,
@@ -489,6 +497,43 @@ function assertDeclaredDependencies(state: MutableFlowState, id: NodeId, depends
   }
   if (new Set(dependsOn).size !== dependsOn.length) {
     throw new Error(`workflow node ${id} repeats a dependency`);
+  }
+}
+
+/**
+ * Branch cases and parallel branches name the nodes their path RUNS, so every
+ * target must be declared and must sit downstream of its controller. Only
+ * `build()` can check this: at push time the targets do not exist yet, and a
+ * case pointing backwards would make the graph cyclic.
+ */
+function assertControlFlowTargets(nodes: readonly GraphNodeBase[]): void {
+  const position = new Map(nodes.map((node, index) => [String(node.id), index]));
+  const assertDownstream = (owner: string, index: number, target: string): void => {
+    const targetIndex = position.get(target);
+    if (targetIndex === undefined) throw new Error(`${owner} targets undeclared node ${target}`);
+    if (targetIndex <= index) throw new Error(`${owner} targets ${target}, which is not downstream of it`);
+  };
+  for (const [index, node] of nodes.entries()) {
+    if (node.kind === "branch") {
+      const branch = node as unknown as BranchNode<never, Readonly<Record<string, readonly NodeId[]>>>;
+      for (const [caseName, targets] of Object.entries(branch.cases)) {
+        if (targets.length === 0) throw new Error(`branch ${node.id} case "${caseName}" joins no node`);
+        for (const target of targets) {
+          assertDownstream(`branch ${node.id} case "${caseName}"`, index, String(target));
+        }
+      }
+    }
+    if (node.kind === "parallel") {
+      const parallel = node as unknown as ParallelNode;
+      for (const branch of parallel.branches) {
+        if (branch.nodes.length === 0) {
+          throw new Error(`parallel ${node.id} branch "${branch.id}" runs no node`);
+        }
+        for (const member of branch.nodes) {
+          assertDownstream(`parallel ${node.id} branch "${branch.id}"`, index, String(member));
+        }
+      }
+    }
   }
 }
 
@@ -666,6 +711,7 @@ function makeBuilder(state: MutableFlowState): unknown {
     build(result: { dependsOn: readonly string[] }): unknown {
       assertDeclaredDependencies(state, nodeId("workflow-result"), nodeIds(result.dependsOn));
       if (state.nodes.length === 0) throw new Error("a workflow graph requires at least one node");
+      assertControlFlowTargets(state.nodes);
       return Object.freeze({
         input: state.input,
         nodes: Object.freeze([...state.nodes]),

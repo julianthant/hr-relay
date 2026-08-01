@@ -50,6 +50,24 @@ const DelegatedChildManifestEntrySchema = z.strictObject({
   canonicalInputFingerprint: FingerprintSchema,
 });
 
+/**
+ * Three shapes here changed when 1e built the planner that writes this record
+ * (D102's "one vocabulary end to end" applied to the manifest, not only the
+ * dependency row):
+ *
+ * - `policy` is recorded. Without it the manifest cannot verify on replay that
+ *   the fan-out still runs under the policy the operator selected, and the
+ *   dependency rows would be the only durable copy of a decision the manifest
+ *   is supposed to be authoritative for.
+ * - `join` carries all four arms. A `cardinality:"one"` awaited edge joins
+ *   `"one"`, and an un-awaited fan-out joins `"none"` while still minting a
+ *   manifest — that manifest reference IS the node's output
+ *   (`DelegationManifestRef`), so the record must be expressible.
+ * - `children` may be empty. A zero-child fan-out is a legitimate outcome of an
+ *   empty upstream list, and doc 02 §3.2 requires it to stay an explicit
+ *   satisfied join rather than an edge that silently vanished. `min(1)` made
+ *   the honest record unwritable.
+ */
 export const DelegationManifestSchema = z.strictObject({
   manifestId: DelegationManifestIdSchema,
   parentRunId: RunIdSchema,
@@ -57,8 +75,9 @@ export const DelegationManifestSchema = z.strictObject({
   inputSchemaHash: FingerprintSchema,
   resultSchemaHash: FingerprintSchema,
   cardinality: z.enum(["one", "many"]),
-  join: z.enum(["all", "all-settled"]),
-  children: z.array(DelegatedChildManifestEntrySchema).min(1),
+  join: z.enum(["one", "all", "all-settled", "none"]),
+  policy: DelegationPolicySchema,
+  children: z.array(DelegatedChildManifestEntrySchema),
   createdAt: IsoInstantSchema,
   manifestFingerprint: FingerprintSchema,
 }).superRefine((manifest, context) => {
@@ -70,6 +89,14 @@ export const DelegationManifestSchema = z.strictObject({
   }
   if (manifest.cardinality === "one" && manifest.children.length !== 1) {
     context.addIssue({ code: "custom", path: ["children"], message: "one-cardinality manifests require exactly one child" });
+  }
+  // `none` is the un-awaited arm and is legal at either cardinality; the awaited
+  // joins are not interchangeable.
+  if (manifest.join === "one" && manifest.cardinality !== "one") {
+    context.addIssue({ code: "custom", path: ["join"], message: "join \"one\" requires cardinality \"one\"" });
+  }
+  if ((manifest.join === "all" || manifest.join === "all-settled") && manifest.cardinality !== "many") {
+    context.addIssue({ code: "custom", path: ["join"], message: `join "${manifest.join}" requires cardinality "many"` });
   }
 });
 

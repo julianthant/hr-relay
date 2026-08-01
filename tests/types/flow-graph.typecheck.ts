@@ -226,16 +226,17 @@ export const typeProofGraph = flow(WORKFLOW_INPUT)
     }),
     replay: "checkpoint",
   })
-  // 5 — fork/join over two declared branches
+  // 5 — fork/join. Branch members are the nodes the fork RUNS, so they are
+  // declared after it; `build()` rejects a member that is not downstream.
   .parallel("enrichment-fan", [
-    { id: "org", nodes: ["search-person"] },
-    { id: "contact", nodes: ["read-contact"] },
+    { id: "org", nodes: ["verify-one"] },
+    { id: "contact", nodes: ["sign-many"] },
   ], { join: "all" })
-  // 6 — output-dependent branch
+  // 6 — output-dependent branch; both arms name downstream nodes
   .branch("mode-branch", {
     dependsOn: ["merge"],
     choose: ({ input }) => (input.mode === "terminate" ? "write" : "read-only"),
-    cases: { write: ["merge"], "read-only": ["merge"] },
+    cases: { write: ["approval"], "read-only": ["notify-many"] },
   })
   // 7 — one child run, awaited, cardinality one
   .childRun("verify-one", verifyChild, {
@@ -356,7 +357,7 @@ export const typeProofGraph = flow(WORKFLOW_INPUT)
     dependsOn: ["terminate", "recheck-4"],
     choose: ({ outputs }) =>
       (outputs.terminate.disposition === "committed" ? "committed" : "already-present"),
-    cases: { committed: ["recheck-4"], "already-present": ["recheck-4"] },
+    cases: { committed: ["verify-after"], "already-present": ["final-signoff"] },
   })
   .childRun("verify-after", verifyChild, {
     dependsOn: ["recheck-1"],

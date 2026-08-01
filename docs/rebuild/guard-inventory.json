@@ -183,11 +183,10 @@
     {
       "name": "canonical-input-snapshot",
       "file": "tests/unit/architecture/canonical-input-snapshot.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: canonical-input-snapshot.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/02-workflow-model.md",
+      "invariant": "Every registered canonical-input schema is transform-free anywhere in its graph and round-trips its ingress samples; a corrupted snapshot fails loud instead of being re-derived from ingress; and a snapshot only crosses schema hashes through a checked-in, factory-sealed, acyclic migration chain.",
+      "replacementRequired": true
     },
     {
       "name": "capture-durability-and-scope",
@@ -219,20 +218,18 @@
     {
       "name": "delegation-manifest",
       "file": "tests/unit/architecture/delegation-manifest.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: delegation-manifest.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/02-workflow-model.md",
+      "invariant": "Delegation edge ids are unique per workflow; one D102 policy vocabulary spans builder, manifest, dependency row, and UI; the plan fingerprint covers edge, cardinality, join, policy, and every child id and input; a drifted replay fails loud; a join runs only over the complete outcome set; and a zero-child fan-out stays an explicit satisfied join with a writable durable manifest.",
+      "replacementRequired": true
     },
     {
       "name": "descriptor-coverage",
       "file": "tests/unit/architecture/descriptor-coverage.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: descriptor-coverage.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/02-workflow-model.md",
+      "invariant": "Doc 02 §1.4: one table-driven sweep over DESCRIPTORS — unique ids/codes/icons, the module tuple agreeing with every derived registry in both directions, contract placement and examples, the derived browser-system union, concretely typed child-run targets, the bundle-safe value-import closure of every descriptor module, a current build manifest, and descriptor-to-impl pairing tracked explicitly rather than implicitly.",
+      "replacementRequired": true
     },
     {
       "name": "driver-lease-boundary",
@@ -417,11 +414,10 @@
     {
       "name": "scenario-coverage",
       "file": "tests/unit/architecture/scenario-coverage.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: scenario-coverage.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/02-workflow-model.md",
+      "invariant": "Every branch arm, gate open/resolve, delegation size/replay/policy, and transaction outcome derived from the node tuple is claimed by a registered scenario, and every claim resolves to a path that still exists — so a renamed arm cannot keep a deleted path looking covered.",
+      "replacementRequired": true
     },
     {
       "name": "semantic-ui-registry",
@@ -493,11 +489,10 @@
     {
       "name": "transaction-pairing",
       "file": "tests/unit/architecture/transaction-pairing.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: transaction-pairing.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/09-write-safety.md",
+      "invariant": "A transaction pairs prepare and commit arms from one system under one lease, binds the commit key from workflow input and declared upstream outputs only, declares a positive probe-to-fence budget and a dry-run policy, carries a same-system read probe, and no commit contract is reachable as a standalone step anywhere in src/.",
+      "replacementRequired": true
     },
     {
       "name": "worker-teardown-soak",

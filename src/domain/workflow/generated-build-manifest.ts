@@ -15,15 +15,15 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "cda99254fa12ff78cf8725318e9d85cca4266d3185bd6584e9f9bf926583e172",
+      "fingerprint": "8710ce707163a86225ad1e888d6f8ee83d99c6a6a63e344d2d594c15e4cddc16",
       "sources": [
         {
           "path": "src/base/flow.ts",
-          "sha256": "6041d6bc9e5caf98e952c20d4499dce74934741f19e1b593fea1e1c300c68d3c"
+          "sha256": "4db473ffb5976e0541ff9c05324f98d870ce41a9090853ad8f62139d8fa9aca4"
         },
         {
           "path": "src/base/workflow.ts",
-          "sha256": "ff31b53b8acba9767650785cb9873da25992048973ca2cdd4e34be5aa6ae4ad5"
+          "sha256": "dc8131626c824b9e7b42a1fb72e5d4fecd09b15cbb1440c63a4437ed787934ee"
         },
         {
           "path": "src/domain/canonical-json.ts",

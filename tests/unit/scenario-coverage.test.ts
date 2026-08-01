@@ -141,7 +141,7 @@ function graphNodes(): readonly RuntimeFlowNode[] {
     .branch("mode", {
       dependsOn: ["search"],
       choose: ({ input }) => (input.eid === "10800000" ? "write" : "read-only"),
-      cases: { write: ["search"], "read-only": ["contact"] },
+      cases: { write: ["approval"], "read-only": ["verify-many"] },
     })
     .gate("approval", {
       dependsOn: ["search"],

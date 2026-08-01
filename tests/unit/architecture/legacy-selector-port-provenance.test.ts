@@ -19,7 +19,9 @@ function readPortMap(): unknown {
   return JSON.parse(readFileSync(PORT_MAP_PATH, "utf8"));
 }
 
-describe("legacy selector port provenance", () => {
+// Same reason as legacy-change-accounting: this audit reads every pinned
+// legacy blob through git, which is slow under full-suite parallelism.
+describe("legacy selector port provenance", { timeout: 180_000 }, () => {
   it("pins all 406 keys exactly once to the clean legacy snapshot", () => {
     const portMap = LegacySelectorPortMapSchema.parse(readPortMap());
     assert.equal(portMap.legacyCommit, PINNED_LEGACY_SELECTOR_COMMIT);

@@ -246,17 +246,22 @@ describe("workflow flow builder", () => {
     }
   });
 
-  it("brands branch case targets and requires a real choice", () => {
+  it("brands branch case targets, requires a real choice, and rejects an upstream arm", () => {
     const built = base()
-      .step("contact", readTwo, {
-        dependsOn: ["search"],
-        bind: ({ outputs }) => ({ eid: outputs.search.eid }),
-        replay: "checkpoint",
-      })
       .branch("pick", {
         dependsOn: ["search"],
         choose: ({ outputs }) => (outputs.search.eid === "10800000" ? "left" : "right"),
-        cases: { left: ["search"], right: ["contact"] },
+        cases: { left: ["contact"], right: ["other"] },
+      })
+      .step("contact", readTwo, {
+        dependsOn: ["pick"],
+        bind: ({ outputs }) => ({ eid: outputs.pick.selected === "left" ? "10800000" : "10800001" }),
+        replay: "checkpoint",
+      })
+      .step("other", readTwo, {
+        dependsOn: ["pick"],
+        bind: () => ({ eid: "10800001" }),
+        replay: "checkpoint",
       })
       .build({
         schema: z.object({ selected: z.string() }),
@@ -266,7 +271,7 @@ describe("workflow flow builder", () => {
     const node = nodeById(built.nodes, "pick") as BranchNode<
       RuntimeScope, Readonly<Record<string, readonly NodeId[]>>
     >;
-    assert.deepEqual(node.cases, { left: ["search"], right: ["contact"] });
+    assert.deepEqual(node.cases, { left: ["contact"], right: ["other"] });
     assert.throws(
       () => base().branch("pick", {
         dependsOn: ["search"],
@@ -274,6 +279,22 @@ describe("workflow flow builder", () => {
         cases: { only: ["search"] },
       }),
       /requires at least two cases/,
+    );
+    // A case naming an UPSTREAM node would make the graph cyclic. The targets
+    // do not exist when the branch is pushed, so only build() can catch it.
+    assert.throws(
+      () => base()
+        .branch("pick", {
+          dependsOn: ["search"],
+          choose: () => "left",
+          cases: { left: ["search"], right: ["search"] },
+        })
+        .build({
+          schema: z.object({ selected: z.string() }),
+          dependsOn: ["pick"],
+          derive: ({ outputs }) => ({ selected: outputs.pick.selected }),
+        }),
+      /targets search, which is not downstream/,
     );
   });
 
@@ -394,9 +415,19 @@ describe("workflow flow builder", () => {
         replay: "checkpoint",
       })
       .parallel("fan", [
-        { id: "org", nodes: ["search"] },
-        { id: "contact", nodes: ["contact"] },
+        { id: "org", nodes: ["left-arm"] },
+        { id: "contact", nodes: ["right-arm"] },
       ], { join: "all-settled" })
+      .step("left-arm", readTwo, {
+        dependsOn: ["contact"],
+        bind: ({ outputs }) => ({ eid: outputs.contact.eid }),
+        replay: "checkpoint",
+      })
+      .step("right-arm", readTwo, {
+        dependsOn: ["contact"],
+        bind: ({ outputs }) => ({ eid: outputs.contact.eid }),
+        replay: "checkpoint",
+      })
       .build({
         schema: z.object({ join: z.string() }),
         dependsOn: ["fan"],

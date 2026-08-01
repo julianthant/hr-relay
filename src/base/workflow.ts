@@ -373,43 +373,6 @@ function systemOf(taskId: string): string {
 
 /* ── validation ──────────────────────────────────────────────────────────── */
 
-function assertGraphReferences(id: string, nodes: readonly RuntimeFlowNode[]): void {
-  const declared = new Set(nodes.map((node) => node.id));
-  for (const node of nodes) {
-    if (node.kind === "branch") {
-      for (const [caseName, targets] of Object.entries(node.cases)) {
-        if (targets.length === 0) {
-          throw new Error(`${id}: branch ${node.id} case "${caseName}" joins no node`);
-        }
-        for (const target of targets) {
-          if (!declared.has(target)) {
-            throw new Error(`${id}: branch ${node.id} case "${caseName}" targets undeclared node ${target}`);
-          }
-        }
-      }
-    }
-    if (node.kind === "parallel") {
-      for (const branch of node.branches) {
-        if (branch.nodes.length === 0) {
-          throw new Error(`${id}: parallel ${node.id} branch "${branch.id}" runs no node`);
-        }
-        for (const member of branch.nodes) {
-          if (!declared.has(NodeIdSchema.parse(member))) {
-            throw new Error(`${id}: parallel ${node.id} branch "${branch.id}" names undeclared node ${member}`);
-          }
-        }
-      }
-    }
-  }
-}
-
-/**
- * The effect placement rule is already structural — `step` takes only a read
- * contract, and prepare/commit contracts are accepted only by a transaction's
- * arms. The runtime check is the backstop for what a cast could smuggle past
- * the types, so the effect is read through a widened local: narrowed to its
- * literal it would be `never`, and a `never` check proves nothing.
- */
 function assertContractPlacement(id: string, nodes: readonly RuntimeFlowNode[]): void {
   for (const node of nodes) {
     if (node.kind === "task") {
@@ -512,7 +475,6 @@ export function defineWorkflowDescriptor<
   assertAuditedCanonicalInput(spec.canonicalInput);
 
   const nodes = runtimeNodes(spec.flow.nodes);
-  assertGraphReferences(id, nodes);
   assertContractPlacement(id, nodes);
 
   const steps = deriveSteps(nodes);

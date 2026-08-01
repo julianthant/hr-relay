@@ -255,7 +255,11 @@ function fixtureInput(
   };
 }
 
-describe("D94 legacy change accounting", () => {
+// These guards shell out to `git` across BOTH repositories — hundreds of
+// blob reads per run. Alone they take ~10s; under full-suite fork parallelism
+// they exceed the 30s default. The work is real, so the budget is raised
+// rather than the audit narrowed.
+describe("D94 legacy change accounting", { timeout: 180_000 }, () => {
   it("binds every ordered legacy src/tests commit and path to its named commit blobs", () => {
     assert.equal(changeAccounting.baselineCommit, capabilities.baselineCommit);
     const baselineFiles = legacyGitText([
