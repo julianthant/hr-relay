@@ -1061,6 +1061,17 @@ export class AuthorityDatabase implements Disposable {
       || canonicalJsonStringify(ledger.entry.proof) !== canonicalJsonStringify(input.completionProof)) {
       throw new Error(`atomic write outboxes do not match proof/timing for intent ${intent.writeIntentId}`);
     }
+    if (ledger.entry.traceId !== span.traceId) {
+      throw new Error(`atomic write outboxes do not share trace identity for intent ${intent.writeIntentId}`);
+    }
+    if (intent.bindingProof.kind === "subject-match") {
+      if (ledger.entry.subject.state !== "present"
+        || canonicalJsonStringify(ledger.entry.subject.value) !== canonicalJsonStringify(intent.bindingProof.expected)) {
+        throw new Error(`ledger subject does not match the fenced binding proof for intent ${intent.writeIntentId}`);
+      }
+    } else if (ledger.entry.subject.state !== "absent") {
+      throw new Error(`ledger subject must be absent for unscoped binding proof on intent ${intent.writeIntentId}`);
+    }
     if (input.ledgerOutbox.projection.state !== "pending"
       || input.terminalSpanOutbox.projection.state !== "pending"
       || input.ledgerOutbox.createdAt !== input.confirmedAt

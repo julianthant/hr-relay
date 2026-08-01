@@ -135,13 +135,14 @@ implementations and focused suites:
   evidence never grants retry authority.
 - `atomic-write-outbox` validates the successful intent+attempt+ledger+terminal-span transaction,
   injects failure after every storage step and proves total rollback plus unchanged authority
-  generation, and statically pins the narrow repository/no-standalone-insert surface.
+  generation, rejects cross-outbox trace disagreement and subject-bound/unscoped ledger-evidence
+  mismatch, and statically pins the narrow repository/no-standalone-insert surface.
 
 The strict-boundary catalog also covers the new natural-key, generic-outcome, fence, permanent-key
 resolution, atomic-input, storage-step, and commit-report schemas and recursively rejects unknown
-keys. Stage-D acceptance evidence is: focused guard/catalog 21/21, full unit+architecture 178/178,
-architecture 93/93, typecheck and zero-warning lint green, and coverage at 87.69% statements,
-76.51% branches, 92.08% functions, and 90.49% lines. The remaining command-handler, worker,
+keys. Hardened Stage-D acceptance evidence is: focused guard/catalog 24/24, full unit+architecture
+187/187, architecture 99/99, typecheck and zero-warning lint green, and coverage at 87.99%
+statements, 76.86% branches, 92.23% functions, and 90.75% lines. The remaining command-handler, worker,
 browser/driver, sequencer/projector, HTTP/UI, scenario, and live-lane guards remain planned; none was
 activated to make Phase 1c look broader than it is.
 

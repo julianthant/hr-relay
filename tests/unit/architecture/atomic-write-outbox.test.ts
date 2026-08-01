@@ -6,6 +6,10 @@ import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
 import { AtomicOutboxRecordSchema } from "../../../src/domain/outbox.js";
 import {
+  deriveIdempotencyKeyDigest,
+  deriveWriteBindingProofDigest,
+} from "../../../src/domain/write-safety.js";
+import {
   AtomicWriteCommitReportSchema,
   AtomicWriteCommitStorageStepSchema,
   AuthorityDatabase,
@@ -15,6 +19,8 @@ import {
   ATOMIC_WRITE_COMMIT,
   LEDGER_OUTBOX_RECORD,
   NOW,
+  SUBJECT_EVIDENCE,
+  UNSCOPED_PROOF,
   SPAN_OUTBOX_RECORD,
   UUID_4,
   UUID_7,
@@ -120,6 +126,100 @@ describe("Phase 1c atomic write authority commit", () => {
     assert.equal(database.getMeta().authorityGeneration, generationBeforeCommit);
     assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, "attempting");
     assert.equal(database.authority.durableOutbox.get(UUID_7), undefined);
+  });
+
+  it("rejects mismatched ledger/terminal trace identity before changing authority", () => {
+    const database = open(databasePath());
+    fence(database);
+    const generationBeforeCommit = database.getMeta().authorityGeneration;
+    assert.throws(() => database.commitWriteAttempt({
+      ...ATOMIC_WRITE_COMMIT,
+      ledgerOutbox: {
+        ...LEDGER_OUTBOX_RECORD,
+        payload: {
+          ...LEDGER_OUTBOX_RECORD.payload,
+          entry: { ...LEDGER_OUTBOX_RECORD.payload.entry, traceId: "se-120001-2222" },
+        },
+      },
+    }), /same trace identity/);
+    assert.equal(database.getMeta().authorityGeneration, generationBeforeCommit);
+    assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, "attempting");
+    assert.equal(database.authority.durableOutbox.get(UUID_7), undefined);
+  });
+
+  it("rejects ledger subject evidence that disagrees with the fenced subject proof", () => {
+    const database = open(databasePath());
+    fence(database);
+    const generationBeforeCommit = database.getMeta().authorityGeneration;
+    assert.throws(() => database.commitWriteAttempt({
+      ...ATOMIC_WRITE_COMMIT,
+      ledgerOutbox: {
+        ...LEDGER_OUTBOX_RECORD,
+        payload: {
+          ...LEDGER_OUTBOX_RECORD.payload,
+          entry: {
+            ...LEDGER_OUTBOX_RECORD.payload.entry,
+            subject: { state: "present", value: { ...SUBJECT_EVIDENCE, bindingDigest: "b".repeat(64) } },
+          },
+        },
+      },
+    }), /ledger subject does not match the fenced binding proof/);
+    assert.equal(database.getMeta().authorityGeneration, generationBeforeCommit);
+    assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, "attempting");
+    assert.equal(database.authority.durableOutbox.get(UUID_7), undefined);
+  });
+
+  it("rejects subject-bearing ledger output for an explicitly unscoped fence", () => {
+    const database = open(databasePath());
+    const idempotencyKey = "document-44444444|upload|2026-08-01";
+    const idempotencyKeyDigest = deriveIdempotencyKeyDigest("onbase", idempotencyKey);
+    const bindingProofDigest = deriveWriteBindingProofDigest(UNSCOPED_PROOF);
+    const intent = {
+      ...WRITE_INTENT_ATTEMPTING,
+      taskId: UNSCOPED_PROOF.taskId,
+      system: "onbase",
+      idempotencyKey,
+      idempotencyKeyDigest,
+      bindingProof: UNSCOPED_PROOF,
+      bindingProofDigest,
+    };
+    const attempt = {
+      ...WRITE_ATTEMPT,
+      bindingProof: UNSCOPED_PROOF,
+      bindingProofDigest,
+    };
+    assert.equal(database.authority.writeIntents.fenceAttempt({ intent, attempt }).state, "fenced");
+    const ledgerOutbox = {
+      ...LEDGER_OUTBOX_RECORD,
+      payload: {
+        ...LEDGER_OUTBOX_RECORD.payload,
+        entry: {
+          ...LEDGER_OUTBOX_RECORD.payload.entry,
+          system: "onbase",
+          idempotencyKey,
+          idempotencyKeyDigest,
+          bindingProofDigest,
+        },
+      },
+    };
+    const terminalSpanOutbox = {
+      ...SPAN_OUTBOX_RECORD,
+      payload: {
+        ...SPAN_OUTBOX_RECORD.payload,
+        system: "onbase",
+        idempotencyKey,
+        idempotencyKeyDigest,
+        bindingProofDigest,
+      },
+    };
+    const generationBeforeCommit = database.getMeta().authorityGeneration;
+    assert.throws(() => database.commitWriteAttempt({
+      ...ATOMIC_WRITE_COMMIT,
+      ledgerOutbox,
+      terminalSpanOutbox,
+    }), /ledger subject must be absent for unscoped binding proof/);
+    assert.equal(database.getMeta().authorityGeneration, generationBeforeCommit);
+    assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, "attempting");
   });
 
   it("keeps standalone attempt/outbox mutation private and routes the commit through one authority transaction", () => {

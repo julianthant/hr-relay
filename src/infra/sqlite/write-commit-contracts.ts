@@ -111,6 +111,11 @@ export const AtomicWriteCommitInputSchema = z.strictObject({
   } else if (canonicalJsonStringify(input.terminalSpanOutbox.payload.outcome) !== canonicalJsonStringify(input.outcome)) {
     context.addIssue({ code: "custom", path: ["terminalSpanOutbox", "payload", "outcome"], message: "terminal span outcome must equal the generic committed outcome shell" });
   }
+  if (input.ledgerOutbox.payload.kind === "ledger-entry"
+    && input.terminalSpanOutbox.payload.kind === "write-committed-span"
+    && input.ledgerOutbox.payload.entry.traceId !== input.terminalSpanOutbox.payload.traceId) {
+    context.addIssue({ code: "custom", path: ["terminalSpanOutbox", "payload", "traceId"], message: "ledger and terminal span outboxes must carry the same trace identity" });
+  }
   if (input.ledgerOutbox.outboxId === input.terminalSpanOutbox.outboxId) {
     context.addIssue({ code: "custom", path: ["terminalSpanOutbox", "outboxId"], message: "ledger and terminal span outboxes require distinct ids" });
   }

@@ -93,8 +93,10 @@ out-of-order, wrong-boundary, present, ambiguous, unknown, malformed, or operato
 cannot become `safe-to-retry`; inconsistent evidence parks and malformed boundary input fails loud.
 
 The strict generic `TransactionOutcome` and atomic-commit contracts bind the accepted completion
-proof to both durable outbox arms. One native transaction updates the current intent and attempt and
-inserts the ledger and terminal-span outboxes. Failure injected after each storage step proves
+proof to both durable outbox arms and require the ledger and terminal-span arms to carry one trace
+identity. At commit, subject-scoped ledger evidence must exactly equal the fenced proof's expected
+subject; an explicitly unscoped proof requires an explicitly absent ledger subject. One native
+transaction updates the current intent and attempt and inserts the ledger and terminal-span outboxes. Failure injected after each storage step proves
 all-or-none rollback with no generation advance. The active `permanent-key-dedupe`,
 `recovery-negative-proof-settlement`, and `atomic-write-outbox` guards pin these properties over
 real temporary SQLite databases and manual-Clock boundaries.
@@ -427,7 +429,7 @@ flowchart TD
 | **④ Fence** | Check `probeToFenceMaxMs` **and** that `WriteBindingProof` was created after prepare for this run/attempt/lease. INSERT the unseen key or CAS its `retryable` row to `attempting`, incrementing generation. Store the parsed binding proof and enqueue `write.attempting` in the same SQLite transaction. The permanent primary key is the same-key mutex. | durable intent + binding proof + span outbox | elapsed proof or binding mismatch ⇒ no click; CAS conflict ⇒ discard staged page/no click; no generic retry after a won fence |
 | **⑤ External commit** | The external-write helper requires the unforgeable `MutationCapability` bound to the open intent generation **and binding-proof digest**. | live HR side effect | missing/mismatched fence capability or binding digest ⇒ throw before click |
 | **⑥ Capture / verify** | Extract `proofFromOutput` or run the verify read on the retained transaction page; every completion kind parses through its `proofSchema`. | proof remains in memory | absent/ambiguous/unknown/throw/schema failure parks; no arm can return unvalidated proof |
-| **⑦ Atomic durable commit** | ONE SQLite transaction marks the intent committed and writes the schema-valid `TransactionOutcome` checkpoint, immutable ledger outbox row (including binding-proof digest), terminal-span outbox row, evidence receipt ref, and run state. JSONL ledger/span projectors run afterward. | all authorities/outboxes durable together | transaction failure leaves intent attempting and enters recovery; projector lag is repairable and never changes write outcome |
+| **⑦ Atomic durable commit** | ONE SQLite transaction marks the intent committed and writes the schema-valid `TransactionOutcome` checkpoint, immutable ledger outbox row (including binding-proof digest and the exact fenced subject/explicit absence), same-trace terminal-span outbox row, evidence receipt ref, and run state. JSONL ledger/span projectors run afterward. | all authorities/outboxes durable together | transaction failure leaves intent attempting and enters recovery; trace/subject mismatch fails before mutation; projector lag is repairable and never changes write outcome |
 
 **Ordering invariant:** stable commit input and live probe exist before page preparation; a fresh
 binding proof follows successful preparation on the same lease; the fence transaction in ④

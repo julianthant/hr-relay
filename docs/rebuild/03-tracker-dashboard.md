@@ -133,7 +133,9 @@ failure after each of those four storage steps rolls back every row and leaves
 click-blocking while creating no attempt and no ledger/span outbox. Sequential and independently
 opened competing connections resolve the same `(system,idempotency_key)` to the original permanent
 intent; mismatched natural-key, key-digest, binding-proof, generation, proof, outcome, or outbox
-identity fails before authority can advance.
+identity fails before authority can advance. The ledger and terminal-span arms must share one trace
+identity, and ledger subject evidence must exactly match the fenced subject proof (or be explicitly
+absent for an unscoped proof).
 
 This completes **Phase 1c**, not Phase 1. The command handler, enqueue/CAS services, task workers,
 browser mutation seam, run/checkpoint state changes, full recovery orchestrator, write sequencer,
