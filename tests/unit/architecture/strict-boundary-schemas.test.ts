@@ -918,6 +918,13 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/workflow/graph.ts:ExternalGateNode",
   "src/domain/workflow/graph.ts:AnyGateNode",
   "src/domain/workflow/graph.ts:RuntimeFlowNode",
+  // The pre-write fan-out plan is generic over its target workflow, so no static
+  // schema describes it. Its DURABLE counterpart is `DelegationManifestSchema`
+  // in `src/domain/dependencies.ts`, which is catalogued.
+  "src/domain/workflow/delegation.ts:PlannedChild",
+  "src/domain/workflow/delegation.ts:DelegationPlan",
+  "src/domain/workflow/delegation.ts:DelegationFanOutRequest",
+  "src/domain/workflow/delegation.ts:DelegationJoin",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {
