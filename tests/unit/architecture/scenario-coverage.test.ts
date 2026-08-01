@@ -26,11 +26,12 @@ import {
 import type { ScenarioCoverageClaim } from "../../../src/domain/workflow/scenario-coverage.js";
 import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
 import { fixtureDescriptor } from "./helpers/descriptor-fixtures.js";
+import { SCENARIO_COVERAGE_CLAIMS } from "../../scenario/coverage-claims.js";
 
 /**
- * The claim corpus for the fixture graph. In 1f these come off the registered
- * `ScenarioManifest` set; here they are declared beside the graph they cover so
- * the both-directions audit has something real to disagree with.
+ * A synthetic full-coverage corpus, used only to exercise the audit's own
+ * failure modes. The REAL corpus is `SCENARIO_COVERAGE_CLAIMS`, whose rows each
+ * executable scenario in `tests/scenario/` observes as it walks its path.
  */
 function fullClaims(pointIds: readonly string[]): readonly ScenarioCoverageClaim[] {
   return pointIds.map((pointId, index) => ({
@@ -86,14 +87,23 @@ describe("scenario coverage", () => {
     assert.match(renamed.join("\n"), /claims unknown coverage point branch-case:mode-branch\/renamed-arm/);
   });
 
-  it("holds every registered descriptor to its own derived paths", () => {
-    for (const descriptor of DESCRIPTORS) {
+  it("holds every registered descriptor to the executable scenario corpus", () => {
+    for (const descriptor of [...DESCRIPTORS, fixtureDescriptor]) {
+      const id = String(descriptor.id);
       const points = workflowProjections(descriptor).coveragePoints;
-      // Whatever the graph derives, a full claim set must satisfy it exactly —
-      // including the empty set for a workflow with no control flow.
-      assert.deepEqual(auditGraphScenarioCoverage(points, fullClaims(points.map((p) => p.id))), []);
-      assert.ok(descriptor.scenarios.length > 0, `${String(descriptor.id)} registers no scenario`);
+      const claims = SCENARIO_COVERAGE_CLAIMS[id];
+      assert.ok(claims !== undefined, `${id} has no scenario claim corpus`);
+      // Both directions, against the corpus the scenarios actually walk —
+      // including the empty corpus for a workflow with no control flow.
+      assert.deepEqual(auditGraphScenarioCoverage(points, claims), [], id);
+      assert.ok(descriptor.scenarios.length > 0, `${id} registers no scenario`);
     }
+  });
+
+  it("catches a claim corpus that drifted from the graph it covers", () => {
+    const points = workflowProjections(fixtureDescriptor).coveragePoints;
+    const dropped = SCENARIO_COVERAGE_CLAIMS["fixture-graph"].slice(1);
+    assert.ok(auditGraphScenarioCoverage(points, dropped).length > 0);
   });
 
   it("counts an un-awaited fan-out's join policies as no path at all", () => {

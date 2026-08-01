@@ -14,6 +14,7 @@ import { flow } from "../../../../src/base/flow.js";
 import { defineWorkflowDescriptor } from "../../../../src/base/workflow.js";
 import { defineTaskContract } from "../../../../src/domain/contracts/base.js";
 import { ContractFieldPathSchema } from "../../../../src/domain/contracts/base.js";
+import type { ItemId } from "../../../../src/domain/ids.js";
 import {
   DelegationEdgeIdSchema,
   EidSchema,
@@ -127,7 +128,15 @@ const FixtureCanonicalInput = defineCanonicalInput(
   [{ eid: "10800000", mode: "write" }, { eid: "10800001", mode: "read-only", notes: ["a"] }],
 );
 
-const CHILD_ITEM_ID = ItemIdSchema.parse("44444444-4444-4444-8444-444444444444");
+/** Derived per child, from the note — never an array index or a run id. */
+export function fixtureChildItemId(input: { readonly note: string }): ItemId {
+  const suffix = [...input.note]
+    .map((character) => character.codePointAt(0)?.toString(16) ?? "0")
+    .join("")
+    .padStart(12, "0")
+    .slice(-12);
+  return ItemIdSchema.parse(`00000000-0000-4000-8000-${suffix}`);
+}
 
 const fixtureFlow = flow(FixtureInput)
   .step("probe", FixtureReadReceipt, {
@@ -161,7 +170,7 @@ const fixtureFlow = flow(FixtureInput)
     edgeId: DelegationEdgeIdSchema.parse("notify-many"),
     cardinality: "many",
     bind: ({ input }) => input.notes.map((note) => ({ eid: input.eid, note })),
-    deriveChildItemId: () => CHILD_ITEM_ID,
+    deriveChildItemId: fixtureChildItemId,
     await: "terminal",
     join: "all-settled",
     policy: {

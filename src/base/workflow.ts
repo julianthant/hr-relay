@@ -79,7 +79,11 @@ import type {
 } from "../domain/workflow/presentation.js";
 import { deriveGraphCoveragePoints } from "../domain/workflow/scenario-coverage.js";
 import type { GraphCoveragePoint } from "../domain/workflow/scenario-coverage.js";
-import { assertSchemaOffersPath, assertSchemaOwnsPath } from "../validation/contract-boundary.js";
+import {
+  assertContractBoundarySchema,
+  assertSchemaOffersPath,
+  assertSchemaOwnsPath,
+} from "../validation/contract-boundary.js";
 import type { AnyNodeEntry, BuiltFlow, WorkflowResultSpec } from "./flow.js";
 
 /* ── the authored halves that stay typed over the graph ──────────────────── */
@@ -476,6 +480,16 @@ export function defineWorkflowDescriptor<
 
   const nodes = runtimeNodes(spec.flow.nodes);
   assertContractPlacement(id, nodes);
+
+  // The terminal result and every gate result are durable, replayable values —
+  // a parent reads the first as its child's typed output, and the second is
+  // stored run-state a resume re-parses. Both go through the same recursive
+  // strictness audit as a contract boundary, so neither can carry an open
+  // record, an `any`, or a value SQLite cannot round-trip.
+  assertContractBoundarySchema(spec.flow.result.schema, `${id}: workflow result`);
+  for (const node of nodes) {
+    if (node.kind === "gate") assertContractBoundarySchema(node.result, `${id}: gate ${node.id} result`);
+  }
 
   const steps = deriveSteps(nodes);
   assertUnique(id, "step keys", steps.map((step) => step.key));

@@ -15,7 +15,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "8710ce707163a86225ad1e888d6f8ee83d99c6a6a63e344d2d594c15e4cddc16",
+      "fingerprint": "35a590fa6754086064ebef3075837930f67c81469e6454373d5a0a888e1335f1",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -23,7 +23,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/workflow.ts",
-          "sha256": "dc8131626c824b9e7b42a1fb72e5d4fecd09b15cbb1440c63a4437ed787934ee"
+          "sha256": "8cb80e5d7320b5027bf7c987c5a31b5fa49e06239f9cbda8fe91225348266a41"
         },
         {
           "path": "src/domain/canonical-json.ts",
