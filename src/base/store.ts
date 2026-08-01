@@ -1,6 +1,16 @@
 import type { SessionProvider } from "./session.js";
-import { assertFactoryDefinedTask } from "./task.js";
-import type { AnyTask } from "./task.js";
+import {
+  assertFactoryDeclaredDriver,
+  assertFactoryDefinedTask,
+  declareDriver,
+  declareDriverFor,
+} from "./task.js";
+import type {
+  AnyTask,
+  BrowserDriver,
+  DriverDeclaration,
+  RuntimeDriverDeclaration,
+} from "./task.js";
 import {
   TaskContractResolutionCorpusSchema,
   assertTaskContractReferences,
@@ -15,18 +25,21 @@ import {
 import type { BrowserSystemId, ServiceSystemId } from "../domain/ids.js";
 import { deepFreeze } from "../domain/immutability.js";
 
-export interface DriverDeclaration<S extends BrowserSystemId> {
-  readonly system: S;
-  readonly status: "unwired" | "semantic-ready";
-}
+export { declareDriver, declareDriverFor };
+export type { DriverDeclaration };
+
+type BrowserTaskFor<Driver extends BrowserDriver> = AnyTask & Readonly<{
+  driver: DriverDeclaration<Driver>;
+}>;
 
 export interface BrowserTaskStore<
   S extends BrowserSystemId,
-  T extends Readonly<Record<string, AnyTask>>,
+  Driver extends BrowserDriver & Readonly<{ system: S }>,
+  T extends Readonly<Record<string, BrowserTaskFor<Driver>>>,
 > {
   readonly kind: "browser";
   readonly namespace: S;
-  readonly driver: DriverDeclaration<S>;
+  readonly driver: DriverDeclaration<Driver>;
   readonly session: SessionProvider<S>;
   readonly tasks: T;
 }
@@ -40,8 +53,16 @@ export interface HeadlessTaskStore<
   readonly tasks: T;
 }
 
+interface RegisteredBrowserTaskStore {
+  readonly kind: "browser";
+  readonly namespace: BrowserSystemId;
+  readonly driver: RuntimeDriverDeclaration;
+  readonly session: SessionProvider<BrowserSystemId>;
+  readonly tasks: Readonly<Record<string, AnyTask>>;
+}
+
 export type RegisteredTaskStore =
-  | BrowserTaskStore<BrowserSystemId, Readonly<Record<string, AnyTask>>>
+  | RegisteredBrowserTaskStore
   | HeadlessTaskStore<string, Readonly<Record<string, AnyTask>>>;
 const FACTORY_DEFINED_STORES = new WeakSet<object>();
 
@@ -50,21 +71,23 @@ export const EMPTY_TASK_CONTRACT_CORPUS = deepFreeze(TaskContractResolutionCorpu
   tasks: [],
 }));
 
-export function declareDriver<S extends BrowserSystemId>(
-  system: S,
-  status: DriverDeclaration<S>["status"],
-): DriverDeclaration<S> {
-  BrowserSystemIdSchema.parse(system);
-  return Object.freeze({ system, status });
-}
-
-function validateStoreTasks(namespace: string, tasks: Readonly<Record<string, AnyTask>>): void {
+function validateStoreTasks(
+  namespace: string,
+  tasks: Readonly<Record<string, AnyTask>>,
+  driver: RuntimeDriverDeclaration | undefined,
+): void {
   const ids = new Set<string>();
   for (const [key, task] of Object.entries(tasks)) {
     if (!/^[a-z][A-Za-z0-9]*$/.test(key)) throw new Error(`${namespace} store task key ${key} must be camelCase`);
     assertFactoryDefinedTask(task);
     if (!task.contract.id.startsWith(`${namespace}/`)) {
       throw new Error(`${task.contract.id} cannot be registered in ${namespace} store`);
+    }
+    if (driver === undefined && task.driver !== undefined) {
+      throw new Error(`${task.contract.id} driver-bound task cannot be registered in a headless store`);
+    }
+    if (driver !== undefined && task.driver !== driver) {
+      throw new Error(`${task.contract.id} must use the browser store's exact driver declaration`);
     }
     if (ids.has(task.contract.id)) throw new Error(`${namespace} store duplicates task id ${task.contract.id}`);
     ids.add(task.contract.id);
@@ -73,14 +96,16 @@ function validateStoreTasks(namespace: string, tasks: Readonly<Record<string, An
 
 export function defineBrowserStore<
   S extends BrowserSystemId,
-  T extends Readonly<Record<string, AnyTask>>,
+  Driver extends BrowserDriver & Readonly<{ system: S }>,
+  T extends Readonly<Record<string, BrowserTaskFor<Driver>>>,
 >(
   namespace: S,
-  driver: DriverDeclaration<S>,
+  driver: DriverDeclaration<Driver>,
   session: SessionProvider<S>,
   tasks: T,
-): BrowserTaskStore<S, T> {
+): BrowserTaskStore<S, Driver, T> {
   BrowserSystemIdSchema.parse(namespace);
+  assertFactoryDeclaredDriver(driver);
   if (driver.system !== namespace) throw new Error(`${namespace} store cannot use ${driver.system} driver`);
   if (session.system !== namespace) throw new Error(`${namespace} store cannot use ${session.system} session provider`);
   if (namespace === "onbase" && session.exclusive !== true) {
@@ -89,7 +114,7 @@ export function defineBrowserStore<
   if (namespace !== "onbase" && session.exclusive === true) {
     throw new Error(`${namespace} store cannot use an identity-exclusive session provider`);
   }
-  validateStoreTasks(namespace, tasks);
+  validateStoreTasks(namespace, tasks, driver);
   const store = Object.freeze({
     kind: "browser",
     namespace,
@@ -106,7 +131,7 @@ export function defineServiceStore<
   T extends Readonly<Record<string, AnyTask>>,
 >(namespace: S, tasks: T): HeadlessTaskStore<S, T> {
   ServiceSystemIdSchema.parse(namespace);
-  validateStoreTasks(namespace, tasks);
+  validateStoreTasks(namespace, tasks, undefined);
   for (const task of Object.values(tasks)) {
     if (task.contract.effect !== "read" || task.impl.sessions.length !== 0) {
       throw new Error(`${task.contract.id} service-store task must be a sessionless read`);
@@ -124,7 +149,7 @@ export function defineWorkflowStore<
   WorkflowIdSchema.parse(workflowId);
   const namespace = `workflow:${workflowId}` as const;
   TaskStoreIdSchema.parse(namespace);
-  validateStoreTasks(namespace, tasks);
+  validateStoreTasks(namespace, tasks, undefined);
   for (const task of Object.values(tasks)) {
     if (task.contract.effect !== "read" || task.impl.sessions.length !== 0) {
       throw new Error(`${task.contract.id} workflow mini-store task must be a sessionless read`);

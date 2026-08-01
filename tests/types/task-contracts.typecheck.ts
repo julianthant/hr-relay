@@ -1,8 +1,18 @@
 import { z } from "zod";
+import {
+  declareDriver,
+  declareDriverFor,
+  defineBrowserStore,
+} from "../../src/base/store.js";
+import { defineUnwiredSessionProvider } from "../../src/base/session.js";
 import type { CommitTaskCtx, ReadTaskCtx } from "../../src/base/task.js";
 import { defineTask, taskFailer } from "../../src/base/task.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../src/domain/contracts/base.js";
 import { EidSchema, ObservationIdSchema, ScenarioIdSchema, taskId } from "../../src/domain/ids.js";
+import {
+  UCPATH_PERSON_ORG_DISPLAYED_EID,
+  UCPATH_PERSON_ORG_SEARCH_SCREEN,
+} from "../../src/domain/ui/ucpath-person-org.js";
 import type { UcpathPersonOrgDriver } from "../../src/domain/ui/ucpath-person-org.js";
 
 // @ts-expect-error browser task contexts reject service-system drivers
@@ -50,20 +60,35 @@ defineTaskContract({ ...contract, output: z.any(), example: "unsafe" });
 // @ts-expect-error z.unknown cannot be a canonical task output schema
 defineTaskContract({ ...contract, output: z.unknown(), example: "unsafe" });
 
-export const typedReadTask = defineTask(contract, {
+const typedUcpathDriver = declareDriverFor<UcpathPersonOrgDriver>()("ucpath", "semantic-ready");
+
+export const typedReadTask = defineTask(typedUcpathDriver, contract, {
   sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
-  async run({ input }) {
-    return input;
+  async run({ ctx }) {
+    await ctx.driver.goto(UCPATH_PERSON_ORG_SEARCH_SCREEN);
+    return { eid: await ctx.driver.read(UCPATH_PERSON_ORG_DISPLAYED_EID) };
   },
 });
 
 // @ts-expect-error read task implementations cannot request transaction access
-defineTask(contract, {
+defineTask(typedUcpathDriver, contract, {
   sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
   async run({ input }) {
     return input;
   },
 });
+
+const crmDriver = declareDriver("crm", "unwired");
+// @ts-expect-error a UCPath task cannot bind a CRM driver
+defineTask(crmDriver, contract, typedReadTask.impl);
+
+const systemOnlyUcpathDriver = declareDriver("ucpath", "unwired");
+const ucpathSession = defineUnwiredSessionProvider("ucpath");
+// @ts-expect-error a task bound to the concrete semantic driver cannot enter a different driver store
+defineBrowserStore("ucpath", systemOnlyUcpathDriver, ucpathSession, { typedReadTask });
+
+// @ts-expect-error browser tasks require an explicit typed driver binding
+defineTask(contract, typedReadTask.impl);
 
 const providerContract = defineTaskContract({
   id: taskId("ocr/read-provider-fixture"),
@@ -84,8 +109,13 @@ export const typedProviderTask = defineTask(providerContract, {
   sessions: [],
   async run({ ctx }) {
     void ctx.providers["ocr.extract"];
+    // @ts-expect-error service tasks do not receive a browser driver
+    void ctx.driver;
     // @ts-expect-error provider clients are narrowed to the declared capability
     void ctx.providers["ai.advisory"];
     return { value: "fixture" };
   },
 });
+
+// @ts-expect-error service tasks cannot bind a browser driver
+defineTask(typedUcpathDriver, providerContract, typedProviderTask.impl);

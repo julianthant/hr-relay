@@ -9,6 +9,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import {
   declareDriver,
+  declareDriverFor,
   defineBrowserStore,
   defineServiceStore,
   defineTaskStoreRegistry,
@@ -20,6 +21,7 @@ import {
 import { defineTask } from "../../src/base/task.js";
 import { defineTaskContract } from "../../src/domain/contracts/base.js";
 import { FingerprintSchema, ScenarioIdSchema, taskId } from "../../src/domain/ids.js";
+import type { UcpathPersonOrgDriver } from "../../src/domain/ui/ucpath-person-org.js";
 import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import type { ArtifactWriteFaultStep } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createDeterministicProviderHarness } from "../../src/infra/providers/deterministic-provider.js";
@@ -28,6 +30,7 @@ import { browserStoreRegistry } from "../../src/stores/index.js";
 const SCENARIO = ScenarioIdSchema.parse("ucpath/store-fixture-happy");
 const INPUT = z.strictObject({ value: z.string().min(1) });
 const OUTPUT = z.strictObject({ value: z.string().min(1) });
+const FIXTURE_DRIVER = declareDriverFor<UcpathPersonOrgDriver>()("ucpath", "semantic-ready");
 
 function fixtureReadContract() {
   return defineTaskContract({
@@ -47,7 +50,7 @@ function fixtureReadContract() {
 
 function fixtureReadTask() {
   const contract = fixtureReadContract();
-  return defineTask(contract, {
+  return defineTask(FIXTURE_DRIVER, contract, {
     sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
     async run({ input }) {
       return input;
@@ -97,10 +100,12 @@ describe("task, store, session, provider, and artifact seams", () => {
     const session = createDeterministicSessionProvider("ucpath", ["logged-in"]).provider;
     const store = defineBrowserStore(
       "ucpath",
-      declareDriver("ucpath", "semantic-ready"),
+      FIXTURE_DRIVER,
       session,
       { searchStoreFixture: task },
     );
+    assert.equal(task.driver, FIXTURE_DRIVER);
+    assert.equal(store.tasks.searchStoreFixture.driver, store.driver);
     const corpus = {
       scenarioIds: [SCENARIO],
       tasks: [{ id: task.contract.id, effect: task.contract.effect }],
@@ -114,14 +119,23 @@ describe("task, store, session, provider, and artifact seams", () => {
       () => defineTaskStoreRegistry([store], { scenarioIds: [SCENARIO], tasks: [] }),
       /absent from the contract corpus/,
     );
-    assert.throws(() => Reflect.apply(defineTask, undefined, [task.contract, {
+    assert.throws(() => Reflect.apply(defineTask, undefined, [FIXTURE_DRIVER, task.contract, {
       sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
       run: async ({ input }: { input: z.output<typeof INPUT> }) => input,
     }]), /requires read session access/);
-    assert.throws(() => Reflect.apply(defineTask, undefined, [{ ...task.contract }, task.impl]),
+    assert.throws(() => Reflect.apply(defineTask, undefined, [FIXTURE_DRIVER, { ...task.contract }, task.impl]),
       /exact contract object returned by defineTaskContract/);
-    assert.throws(() => Reflect.apply(defineTask, undefined, [task.contract, { run: task.impl.run }]),
+    assert.throws(() => Reflect.apply(defineTask, undefined, [FIXTURE_DRIVER, task.contract, { run: task.impl.run }]),
       /requires sessions/);
+    assert.throws(
+      () => Reflect.apply(defineTask, undefined, [declareDriver("crm", "unwired"), task.contract, task.impl]),
+      /cannot bind crm driver/,
+    );
+    const replacementDriver = declareDriverFor<UcpathPersonOrgDriver>()("ucpath", "semantic-ready");
+    assert.throws(
+      () => defineBrowserStore("ucpath", replacementDriver, session, { searchStoreFixture: task }),
+      /must use the browser store's exact driver declaration/,
+    );
     assert.throws(
       () => defineBrowserStore("crm", declareDriver("crm", "unwired"), session, {}),
       /cannot use ucpath session provider/,
@@ -151,6 +165,10 @@ describe("task, store, session, provider, and artifact seams", () => {
       },
     });
     const store = defineServiceStore("ocr", { readProviderFixture: task });
+    assert.throws(
+      () => Reflect.apply(defineTask, undefined, [FIXTURE_DRIVER, contract, task.impl]),
+      /headless task cannot bind a browser driver/,
+    );
     assert.doesNotThrow(() => defineTaskStoreRegistry([store], {
       scenarioIds: [scenario],
       tasks: [{ id: contract.id, effect: "read" }],

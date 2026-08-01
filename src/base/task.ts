@@ -20,6 +20,72 @@ import type { RetryPolicy, SessionNeed } from "../domain/session.js";
 import type { MutationCapability } from "../domain/ui/driver.js";
 import { TaskError } from "./errors.js";
 
+export interface BrowserDriver {
+  readonly system: BrowserSystemId;
+}
+
+export type SystemOnlyDriver<S extends BrowserSystemId> = Readonly<{ system: S }>;
+
+const driverType: unique symbol = Symbol("task-driver-type");
+
+/**
+ * A factory-owned declaration that carries the concrete system-driver API without exposing a
+ * browser implementation to bundle-safe contracts. The private identity function makes Driver
+ * invariant, so a task bound to one concrete driver API cannot be registered against another.
+ */
+export interface DriverDeclaration<Driver extends BrowserDriver> {
+  readonly system: Driver["system"];
+  readonly status: "unwired" | "semantic-ready";
+  readonly [driverType]: (driver: Driver) => Driver;
+}
+
+export interface RuntimeDriverDeclaration {
+  readonly system: BrowserSystemId;
+  readonly status: DriverDeclaration<BrowserDriver>["status"];
+}
+
+const FACTORY_DECLARED_DRIVERS = new WeakSet<object>();
+
+function isFactoryDeclaredDriver(input: object): input is RuntimeDriverDeclaration {
+  return FACTORY_DECLARED_DRIVERS.has(input);
+}
+
+function createDriverDeclaration<Driver extends BrowserDriver>(
+  system: Driver["system"],
+  status: DriverDeclaration<Driver>["status"],
+): DriverDeclaration<Driver> {
+  BrowserSystemIdSchema.parse(system);
+  const declaration: DriverDeclaration<Driver> = Object.freeze({
+    system,
+    status,
+    [driverType]: (driver: Driver): Driver => driver,
+  });
+  FACTORY_DECLARED_DRIVERS.add(declaration);
+  return declaration;
+}
+
+/** Declares an empty/unwired driver surface for stores that do not have semantic operations yet. */
+export function declareDriver<const S extends BrowserSystemId>(
+  system: S,
+  status: DriverDeclaration<SystemOnlyDriver<S>>["status"],
+): DriverDeclaration<SystemOnlyDriver<S>> {
+  return createDriverDeclaration<SystemOnlyDriver<S>>(system, status);
+}
+
+/** Declares the concrete typed driver surface owned by a browser store. */
+export function declareDriverFor<Driver extends BrowserDriver>(): (
+  system: Driver["system"],
+  status: DriverDeclaration<Driver>["status"],
+) => DriverDeclaration<Driver> {
+  return createDriverDeclaration;
+}
+
+export function assertFactoryDeclaredDriver(input: unknown): asserts input is RuntimeDriverDeclaration {
+  if (input === null || typeof input !== "object" || !isFactoryDeclaredDriver(input)) {
+    throw new Error("browser task/store requires the exact declaration returned by a driver declaration factory");
+  }
+}
+
 export interface TaskLogger {
   readonly debug: (message: string, fields?: Readonly<Record<string, string | number | boolean>>) => void;
   readonly info: (message: string, fields?: Readonly<Record<string, string | number | boolean>>) => void;
@@ -97,61 +163,90 @@ export type SessionsFor<C extends AnyTaskContract> = [BrowserSystemOf<C>] extend
       ? readonly [TransactionSessionNeed<C>]
       : never;
 
-type DriverFor<C extends AnyTaskContract> = Readonly<{ system: BrowserSystemOf<C> }>;
-type ReadCtxFor<C extends AnyReadTaskContract> = [BrowserSystemOf<C>] extends [never]
+type ContractDriver<C extends AnyTaskContract> = Readonly<{ system: BrowserSystemOf<C> }>;
+type ReadCtxFor<
+  C extends AnyReadTaskContract,
+  Driver extends ContractDriver<C>,
+> = [BrowserSystemOf<C>] extends [never]
   ? NamespaceOf<C> extends `workflow:${string}`
     ? PureTaskCtx<C["errorCodes"]>
     : ServiceTaskCtx<C["errorCodes"], ProviderNeedsOf<C>>
-  : ReadTaskCtx<DriverFor<C>, C["errorCodes"]>;
+  : ReadTaskCtx<Driver, C["errorCodes"]>;
 type ArtifactCtxFor<C extends AnyReadTaskContract> = C extends { readonly artifacts: "content-addressed" }
   ? Readonly<{ artifacts: ContentAddressedArtifactWriter }>
   : Readonly<{ artifacts?: never }>;
 
-export interface ReadTaskImpl<C extends AnyReadTaskContract> {
+export interface ReadTaskImpl<
+  C extends AnyReadTaskContract,
+  Driver extends ContractDriver<C> = ContractDriver<C>,
+> {
   readonly sessions: SessionsFor<C>;
   readonly retry?: RetryPolicy;
   readonly run: (args: Readonly<{
     input: z.output<C["input"]>;
-    ctx: ReadCtxFor<C> & ArtifactCtxFor<C>;
+    ctx: ReadCtxFor<C, Driver> & ArtifactCtxFor<C>;
   }>) => Promise<z.input<C["output"]>>;
 }
 
-export interface PrepareTaskImpl<C extends AnyPrepareTaskContract> {
+export interface PrepareTaskImpl<
+  C extends AnyPrepareTaskContract,
+  Driver extends ContractDriver<C> = ContractDriver<C>,
+> {
   readonly sessions: SessionsFor<C>;
   readonly retry?: never;
   readonly run: (args: Readonly<{
     input: z.output<C["input"]>;
-    ctx: PrepareTaskCtx<DriverFor<C>, C["errorCodes"]>;
+    ctx: PrepareTaskCtx<Driver, C["errorCodes"]>;
   }>) => Promise<z.input<C["output"]>>;
 }
 
-export interface CommitTaskImpl<C extends AnyCommitTaskContract> {
+export interface CommitTaskImpl<
+  C extends AnyCommitTaskContract,
+  Driver extends ContractDriver<C> = ContractDriver<C>,
+> {
   readonly sessions: SessionsFor<C>;
   readonly retry?: never;
   readonly run: (args: Readonly<{
     input: z.output<C["input"]>;
-    ctx: CommitTaskCtx<DriverFor<C>, C["errorCodes"]>;
+    ctx: CommitTaskCtx<Driver, C["errorCodes"]>;
   }>) => Promise<z.input<C["output"]>>;
 }
 
-export type ImplFor<C extends AnyTaskContract> =
-  C extends AnyReadTaskContract ? ReadTaskImpl<C>
-    : C extends AnyPrepareTaskContract ? PrepareTaskImpl<C>
-      : C extends AnyCommitTaskContract ? CommitTaskImpl<C>
+export type ImplFor<
+  C extends AnyTaskContract,
+  Driver extends ContractDriver<C> = ContractDriver<C>,
+> = C extends AnyReadTaskContract ? ReadTaskImpl<C, Driver>
+    : C extends AnyPrepareTaskContract ? PrepareTaskImpl<C, Driver>
+      : C extends AnyCommitTaskContract ? CommitTaskImpl<C, Driver>
         : never;
 
-export type Task<C extends AnyTaskContract> = Readonly<{
+type TaskDriverBinding<
+  C extends AnyTaskContract,
+  Driver extends ContractDriver<C>,
+> = [BrowserSystemOf<C>] extends [never]
+  ? Readonly<{ driver?: never }>
+  : Readonly<{ driver: DriverDeclaration<Driver> }>;
+
+export type Task<
+  C extends AnyTaskContract,
+  Driver extends ContractDriver<C> = ContractDriver<C>,
+> = Readonly<{
   contract: C;
-  impl: ImplFor<C>;
+  impl: ImplFor<C, Driver>;
   __task: true;
-}>;
-export type AnyTask = Task<AnyTaskContract>;
+}> & TaskDriverBinding<C, Driver>;
 const FACTORY_DEFINED_TASKS = new WeakSet<object>();
 
 type RuntimeTaskImpl = Readonly<{
   sessions: readonly SessionNeed[];
   retry?: RetryPolicy;
   run: (args: never) => Promise<unknown>;
+}>;
+export type AnyTask = Readonly<{
+  contract: AnyTaskContract;
+  impl: RuntimeTaskImpl;
+  __task: true;
+  driver?: RuntimeDriverDeclaration;
 }>;
 const RuntimeTaskRunSchema = z.custom<RuntimeTaskImpl["run"]>(
   (value) => typeof value === "function",
@@ -162,7 +257,11 @@ function namespaceOf(taskIdValue: string): string {
   return taskIdValue.slice(0, taskIdValue.lastIndexOf("/"));
 }
 
-function validateTaskBinding(contract: AnyTaskContract, implInput: unknown): RuntimeTaskImpl {
+function validateTaskBinding(
+  contract: AnyTaskContract,
+  implInput: unknown,
+  driver: RuntimeDriverDeclaration | undefined,
+): RuntimeTaskImpl {
   assertFactorySealedTaskContract(contract);
   if (implInput === null || typeof implInput !== "object") {
     throw new Error(`${contract.id} task implementation must be an object`);
@@ -179,6 +278,11 @@ function validateTaskBinding(contract: AnyTaskContract, implInput: unknown): Run
   const browser = BrowserSystemIdSchema.safeParse(namespace);
   const service = ServiceSystemIdSchema.safeParse(namespace);
   if (browser.success) {
+    if (driver === undefined) throw new Error(`${contract.id} browser task requires a typed driver declaration`);
+    assertFactoryDeclaredDriver(driver);
+    if (driver.system !== browser.data) {
+      throw new Error(`${contract.id} cannot bind ${driver.system} driver`);
+    }
     if (sessions.length !== 1) throw new Error(`${contract.id} browser task requires exactly one session`);
     const need = sessions[0];
     if (need === undefined || need.system !== browser.data) {
@@ -199,6 +303,7 @@ function validateTaskBinding(contract: AnyTaskContract, implInput: unknown): Run
       throw new Error(`${contract.id} download sessions require a content-addressed read contract`);
     }
   } else {
+    if (driver !== undefined) throw new Error(`${contract.id} headless task cannot bind a browser driver`);
     if (!service.success && !namespace.startsWith("workflow:")) {
       throw new Error(`${contract.id} has an unknown task-store namespace`);
     }
@@ -220,15 +325,39 @@ function validateTaskBinding(contract: AnyTaskContract, implInput: unknown): Run
   });
 }
 
-export function defineTask<C extends AnyReadTaskContract>(contract: C, impl: ReadTaskImpl<C>): Task<C>;
-export function defineTask<C extends AnyPrepareTaskContract>(contract: C, impl: PrepareTaskImpl<C>): Task<C>;
-export function defineTask<C extends AnyCommitTaskContract>(contract: C, impl: CommitTaskImpl<C>): Task<C>;
+type HeadlessReadContract<C extends AnyReadTaskContract> = [BrowserSystemOf<C>] extends [never]
+  ? C
+  : never;
+
+export function defineTask<
+  C extends AnyReadTaskContract,
+  Driver extends ContractDriver<C>,
+>(driver: DriverDeclaration<Driver>, contract: C, impl: ReadTaskImpl<C, Driver>): Task<C, Driver>;
+export function defineTask<
+  C extends AnyPrepareTaskContract,
+  Driver extends ContractDriver<C>,
+>(driver: DriverDeclaration<Driver>, contract: C, impl: PrepareTaskImpl<C, Driver>): Task<C, Driver>;
+export function defineTask<
+  C extends AnyCommitTaskContract,
+  Driver extends ContractDriver<C>,
+>(driver: DriverDeclaration<Driver>, contract: C, impl: CommitTaskImpl<C, Driver>): Task<C, Driver>;
+export function defineTask<C extends AnyReadTaskContract>(
+  contract: HeadlessReadContract<C>,
+  impl: ReadTaskImpl<C>,
+): Task<C>;
 export function defineTask(
-  contract: AnyTaskContract,
-  impl: unknown,
-): Readonly<{ contract: AnyTaskContract; impl: RuntimeTaskImpl; __task: true }> {
-  const parsedImpl = validateTaskBinding(contract, impl);
-  const task = Object.freeze({ contract, impl: parsedImpl, __task: true as const });
+  driverOrContract: RuntimeDriverDeclaration | AnyTaskContract,
+  contractOrImpl: unknown,
+  browserImpl?: unknown,
+): AnyTask {
+  const driver = isFactoryDeclaredDriver(driverOrContract) ? driverOrContract : undefined;
+  const contractInput = driver === undefined ? driverOrContract : contractOrImpl;
+  assertFactorySealedTaskContract(contractInput);
+  const implInput = driver === undefined ? contractOrImpl : browserImpl;
+  const parsedImpl = validateTaskBinding(contractInput, implInput, driver);
+  const task = driver === undefined
+    ? Object.freeze({ contract: contractInput, impl: parsedImpl, __task: true as const })
+    : Object.freeze({ contract: contractInput, impl: parsedImpl, driver, __task: true as const });
   FACTORY_DEFINED_TASKS.add(task);
   return task;
 }

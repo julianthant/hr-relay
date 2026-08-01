@@ -62,7 +62,11 @@ describe("task/store/session declaration boundaries", () => {
     const fixture = readFileSync(resolve(REPO_ROOT, "tests/types/task-contracts.typecheck.ts"), "utf8");
     assert.match(fixture, /read task implementations cannot request transaction access/u);
     assert.match(fixture, /provider clients are narrowed to the declared capability/u);
-    assert.match(fixture, /defineTask\(contract/u);
+    assert.match(fixture, /ctx\.driver\.goto\(UCPATH_PERSON_ORG_SEARCH_SCREEN\)/u);
+    assert.match(fixture, /UCPath task cannot bind a CRM driver/u);
+    assert.match(fixture, /concrete semantic driver cannot enter a different driver store/u);
+    assert.match(fixture, /browser tasks require an explicit typed driver binding/u);
+    assert.match(fixture, /service tasks do not receive a browser driver/u);
   });
 
   it("catches missing, mismatched, duplicate, and wrongly exclusive browser declarations", () => {

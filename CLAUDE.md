@@ -196,6 +196,10 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 - `verbatimModuleSyntax` + `.js` extensions on relative imports.
 - Every durable / wire / config boundary is a recursively strict zod schema; no open records at a
   boundary, no `any`, no unchecked assertion (`strict-boundary-schemas.test.ts`).
+- Browser tasks bind the store's exact invariant `DriverDeclaration<ConcreteDriver>` through
+  `defineTask(driver, contract, impl)`; never project a semantic driver down to `{system}` or mint a
+  second declaration for tasks registered in the same store. Service/workflow tasks remain
+  `defineTask(contract, impl)` and receive no driver.
 - All time reads go through `src/domain/clock.ts` (`clock-single-source.test.ts`); `manualClock` is
   test-only (`manual-clock-test-only.test.ts`).
 - Registry exports are recursively frozen at module load (`src/domain/immutability.ts`).

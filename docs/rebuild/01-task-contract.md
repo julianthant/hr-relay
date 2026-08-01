@@ -112,8 +112,10 @@ definition sealing makes no fake claim about an input-free key proof.
 `src/base/task.ts` exposes narrow pure/read/prepare/commit contexts. Only the commit context contains
 the opaque `MutationCapability`; none of these seams mints it. `TaskError` pins the
 `[task-id] code: message` form, defaults unknown failures to non-transient `unhandled`, and keeps
-declared error codes literal through `taskFailer(contract)` inference. Browser contexts accept only
-drivers carrying a `BrowserSystemId`; the store factory adds exact driver/store matching. This
+declared error codes literal through `taskFailer(contract)` inference. Browser contexts carry the
+store's concrete semantic driver type, not a `{system}` projection. A factory-owned invariant
+`DriverDeclaration<Driver>` binds that type to `defineTask`; the store factory requires the same
+declaration and re-checks its identity plus exact driver/store system matching at runtime. This
 contract-core slice deliberately contained no task impl, store, session, artifact writer, provider
 adapter, or runtime mutation token; the bounded 1d seam below now owns the declarations while 1f
 still owns execution and mutation-token minting.
@@ -123,10 +125,14 @@ still owns execution and mutation-token minting.
 `src/base/task.ts` now binds sealed contracts to effect-specific implementations through
 `defineTask`. Literal-preserving `taskId(...)` values keep browser/service/workflow namespaces in
 the type system: reads request read access, prepare/commit request transaction access, headless
-tasks are sessionless, and provider clients are narrowed to the contract's exact declared
-capability keys. The runtime backstop independently checks effect/access/system agreement,
-OnBase-only exclusivity, download↔content-addressed-read agreement, read-only retry policy, and
-headless restrictions before freezing the task.
+tasks are sessionless, provider clients are narrowed to the contract's exact declared capability
+keys, and a browser implementation receives the concrete driver operations declared by its store.
+Browser `defineTask(driver, contract, impl)` and `defineBrowserStore(..., driver, ..., tasks)` must
+share the exact factory-owned driver declaration; this prevents both type-erasing a semantic driver
+to `{system}` and registering a task against a different same-system driver API. The runtime
+backstop independently checks declaration identity, effect/access/system agreement, OnBase-only
+exclusivity, download↔content-addressed-read agreement, read-only retry policy, and headless
+restrictions before freezing the task.
 
 `src/base/store.ts` declares browser, service, and workflow stores. The registry rejects duplicate
 namespaces/task ids, prefix/effect drift, unpaired corpus entries, and missing implementations, and
@@ -366,9 +372,11 @@ A task is **two files**:
   ONLY. E2e stubs derive their **minimum happy-path value** from `example` (schema-parsed); failure,
   cancellation, concurrency, delegation, mismatch, and recovery behavior comes from the checked-in
   `ScenarioManifest` corpus (doc 12). Examples are fixtures, never behavioral coverage.
-- **impl**—`run` + session needs + read retry, in the matching store's `tasks/`,
-  imports its typed system driver API. Only `stores/<system>/driver/**` and session infrastructure
-  import Playwright. `defineTask(contract, impl)` binds the pair; the store is the only impl registry.
+- **impl**—`run` + session needs + read retry, in the matching store's `tasks/`, imports its typed
+  system driver API and the store-owned driver declaration. Only `stores/<system>/driver/**` and
+  session infrastructure import Playwright. `defineTask(driver, contract, impl)` binds browser
+  implementations; headless service/workflow tasks use `defineTask(contract, impl)`. The store is
+  the only impl registry.
 
 ```ts
 // src/domain/contracts/base.ts (continued)
@@ -504,36 +512,56 @@ export type SessionsFor<C> = [BrowserSystemOf<C>] extends [never]
   : readonly [SessionNeed<BrowserSystemOf<C>>];
 export type ProviderNeedsOf<C> = C extends { providers: readonly ProviderCapabilityId[] }
   ? C["providers"] : readonly [];
-type BaseReadCtxFor<C extends AnyReadContract> = [BrowserSystemOf<C>] extends [never]
+type ContractDriver<C extends AnyContract> = { system: BrowserSystemOf<C> };
+type BaseReadCtxFor<
+  C extends AnyReadContract,
+  Driver extends ContractDriver<C>,
+> = [BrowserSystemOf<C>] extends [never]
   ? NamespaceOf<C> extends WorkflowStoreId
     ? PureTaskCtx<C["errorCodes"]>
     : ServiceTaskCtx<C["errorCodes"], ProviderNeedsOf<C>>
-  : ReadTaskCtx<BrowserSystemOf<C>, C["errorCodes"]>;
-export type ReadCtxFor<C extends AnyReadContract> = BaseReadCtxFor<C> &
+  : ReadTaskCtx<Driver, C["errorCodes"]>;
+export type ReadCtxFor<C extends AnyReadContract, Driver extends ContractDriver<C>> =
+  BaseReadCtxFor<C, Driver> &
   (C extends { artifacts: "content-addressed" }
     ? { artifacts: ContentAddressedArtifactWriter }
     : { artifacts?: never });
 
-export interface ReadTaskImpl<C extends AnyReadContract> {
+export interface DriverDeclaration<Driver extends { system: BrowserSystemId }> {
+  system: Driver["system"];
+  status: "unwired" | "semantic-ready";
+  // The factory owns a private invariant type member; callers cannot forge declarations.
+}
+
+export interface ReadTaskImpl<
+  C extends AnyReadContract,
+  Driver extends ContractDriver<C> = ContractDriver<C>,
+> {
   sessions: SessionsFor<C>; // browser store must name its own system; service/workflow store must be []
   retry?: RetryPolicy;
   /** Receives the PARSED input (z.output — defaults/transforms applied);
    *  returns a pre-parse value (z.input of the output schema) that the
    *  kernel parses through contract.output before anything downstream sees it. */
-  run: (args: { input: z.output<C["input"]>; ctx: ReadCtxFor<C> })
+  run: (args: { input: z.output<C["input"]>; ctx: ReadCtxFor<C, Driver> })
     => Promise<z.input<C["output"]>>;
 }
-export interface PrepareTaskImpl<C extends AnyPrepareContract> {
+export interface PrepareTaskImpl<
+  C extends AnyPrepareContract,
+  Driver extends ContractDriver<C> = ContractDriver<C>,
+> {
   sessions: readonly [SessionNeed<BrowserSystemOf<C>>];
   retry?: never; // transaction node owns whole-pair retry before a fence; never retry half-filled page state
-  run: (args: { input: z.output<C["input"]>; ctx: PrepareTaskCtx<BrowserSystemOf<C>, C["errorCodes"]> })
+  run: (args: { input: z.output<C["input"]>; ctx: PrepareTaskCtx<Driver, C["errorCodes"]> })
     => Promise<z.input<C["output"]>>;
 }
-export interface CommitTaskImpl<C extends AnyCommitContract> {
+export interface CommitTaskImpl<
+  C extends AnyCommitContract,
+  Driver extends ContractDriver<C> = ContractDriver<C>,
+> {
   sessions: readonly [SessionNeed<BrowserSystemOf<C>>];
   /** A commit attempt is never generically retried; doc 09 owns recovery. */
   retry?: never;
-  run: (args: { input: z.output<C["input"]>; ctx: CommitTaskCtx<BrowserSystemOf<C>, C["errorCodes"]> })
+  run: (args: { input: z.output<C["input"]>; ctx: CommitTaskCtx<Driver, C["errorCodes"]> })
     => Promise<z.input<C["output"]>>;
 }
 
@@ -541,18 +569,29 @@ export interface CommitTaskImpl<C extends AnyCommitContract> {
  *  impl (or vice versa) fails to compile — the ctx types differ. This is
  *  "compile-time where possible"; the factory's runtime checks are the
  *  always-on backstop. */
-export function defineTask<C extends AnyReadContract>(contract: C, impl: ReadTaskImpl<C>): Task<C>;
-export function defineTask<C extends AnyPrepareContract>(contract: C, impl: PrepareTaskImpl<C>): Task<C>;
-export function defineTask<C extends AnyCommitContract>(contract: C, impl: CommitTaskImpl<C>): Task<C>;
+export function defineTask<C extends AnyReadContract, Driver extends ContractDriver<C>>(
+  driver: DriverDeclaration<Driver>, contract: C, impl: ReadTaskImpl<C, Driver>,
+): Task<C, Driver>;
+export function defineTask<C extends AnyPrepareContract, Driver extends ContractDriver<C>>(
+  driver: DriverDeclaration<Driver>, contract: C, impl: PrepareTaskImpl<C, Driver>,
+): Task<C, Driver>;
+export function defineTask<C extends AnyCommitContract, Driver extends ContractDriver<C>>(
+  driver: DriverDeclaration<Driver>, contract: C, impl: CommitTaskImpl<C, Driver>,
+): Task<C, Driver>;
+type HeadlessReadContract<C extends AnyReadContract> =
+  [BrowserSystemOf<C>] extends [never] ? C : never;
+export function defineTask<C extends AnyReadContract>(
+  contract: HeadlessReadContract<C>, impl: ReadTaskImpl<C>,
+): Task<C>;
 
-export type Task<C extends AnyContract> =
-  Readonly<{ contract: C; impl: ImplFor<C> }> &
+export type Task<C extends AnyContract, Driver extends ContractDriver<C> = ContractDriver<C>> =
+  Readonly<{ contract: C; impl: ImplFor<C, Driver> }> &
   { readonly __task: true };
 
-export type ImplFor<C extends AnyContract> =
-  C extends AnyReadContract ? ReadTaskImpl<C> :
-  C extends AnyPrepareContract ? PrepareTaskImpl<C> :
-  C extends AnyCommitContract ? CommitTaskImpl<C> : never;
+export type ImplFor<C extends AnyContract, Driver extends ContractDriver<C>> =
+  C extends AnyReadContract ? ReadTaskImpl<C, Driver> :
+  C extends AnyPrepareContract ? PrepareTaskImpl<C, Driver> :
+  C extends AnyCommitContract ? CommitTaskImpl<C, Driver> : never;
 
 export type TaskInput<T> =
   T extends { input: infer I extends z.ZodType } ? z.input<I> :
@@ -615,21 +654,24 @@ export interface ContentAddressedArtifactWriter {
   open(ref: ArtifactRef): Promise<NodeJS.ReadableStream>;
 }
 
-export interface BrowserTaskCtx<S extends BrowserSystemId, Codes extends readonly string[]>
+export interface BrowserTaskCtx<
+  Driver extends { system: BrowserSystemId },
+  Codes extends readonly string[],
+>
   extends TaskCtxCommon<Codes> {
   /** Only the declared browser system. Raw Page/Locator access is confined to driver/session
    * infrastructure (doc 12); every operation is element/state/observation-addressed and traced. */
-  driver: SystemDriver<S>;
+  driver: Driver;
 }
 
-export interface ReadTaskCtx<S extends BrowserSystemId, Codes extends readonly string[]>
-  extends BrowserTaskCtx<S, Codes> {}
+export interface ReadTaskCtx<Driver extends { system: BrowserSystemId }, Codes extends readonly string[]>
+  extends BrowserTaskCtx<Driver, Codes> {}
 
-export interface PrepareTaskCtx<S extends BrowserSystemId, Codes extends readonly string[]>
-  extends BrowserTaskCtx<S, Codes> {} // no external mutation capability
+export interface PrepareTaskCtx<Driver extends { system: BrowserSystemId }, Codes extends readonly string[]>
+  extends BrowserTaskCtx<Driver, Codes> {} // no external mutation capability
 
-export interface CommitTaskCtx<S extends BrowserSystemId, Codes extends readonly string[]>
-  extends BrowserTaskCtx<S, Codes> {
+export interface CommitTaskCtx<Driver extends { system: BrowserSystemId }, Codes extends readonly string[]>
+  extends BrowserTaskCtx<Driver, Codes> {
   /** Only capability that can invoke an audited external-write primitive. */
   mutation: MutationCapability;
 }
@@ -766,7 +808,7 @@ src/                            # rebuild repo (hr-automation-rebuild) code root
   base/                       # task.ts (impl types + defineTask), store.ts, errors.ts, session.ts
   stores/
     ucpath/
-      index.ts                # defineStore("ucpath", { ...tasks }) — THE impl registry
+      index.ts                # defineBrowserStore("ucpath", driver, session, tasks) — THE impl registry
       session.ts              # SessionProvider: login/prepareLogin/resetUrl/idleRefresh/exclusive
       driver/                 # ONLY task-adjacent layer allowed raw Page/Locator access (doc 12)
         index.ts              # typed SystemDriver implementation + named complex operations
@@ -775,7 +817,7 @@ src/                            # rebuild repo (hr-automation-rebuild) code root
       UI-CATALOG.md           # generated; stable ids/labels/search terms/evidence/task uses
       impl/                   # verbatim-ported leaf drivers (person-org-summary.ts, ss-smart-hr.ts…)
       tasks/
-        search-person-org.task.ts      # defineTask(contract, impl) — binds the pair
+        search-person-org.task.ts      # defineTask(driver, contract, impl) — binds the pair
         save-oath-signature.task.ts
     onbase/ …   crm/ …   kuali/ …
     extraction/               # service store (D4, charter §11): CSV + PDF extraction — sessions: []
@@ -795,8 +837,13 @@ src/                            # rebuild repo (hr-automation-rebuild) code root
 
 ```ts
 // src/base/store.ts
-export interface BrowserTaskStore<S extends BrowserSystemId, T extends Record<string, AnyTaskFor<S>>> {
+export interface BrowserTaskStore<
+  S extends BrowserSystemId,
+  Driver extends { system: S },
+  T extends Record<string, AnyTaskFor<S, Driver>>,
+> {
   namespace: S;
+  driver: DriverDeclaration<Driver>;
   session: SessionProvider<S>;
   tasks: T;                            // typed bag — ucpathStore.tasks.searchPersonOrg
 }
@@ -807,9 +854,13 @@ export interface HeadlessTaskStore<N extends ServiceSystemId | WorkflowStoreId,
   tasks: T;
 }
 
-export function defineStore<S extends BrowserSystemId, T extends Record<string, AnyTaskFor<S>>>(
-  namespace: S, session: SessionProvider<S>, tasks: T,
-): BrowserTaskStore<S, T>;
+export function defineStore<
+  S extends BrowserSystemId,
+  Driver extends { system: S },
+  T extends Record<string, AnyTaskFor<S, Driver>>,
+>(
+  namespace: S, driver: DriverDeclaration<Driver>, session: SessionProvider<S>, tasks: T,
+): BrowserTaskStore<S, Driver, T>;
 export function defineStore<S extends ServiceSystemId, T extends Record<string, AnyReadTaskFor<S>>>(
   namespace: S, tasks: T,
 ): HeadlessTaskStore<S, T>;
@@ -819,8 +870,10 @@ export function defineWorkflowStore<Id extends string,
 ): HeadlessTaskStore<`workflow:${Id}`, T>;
 ```
 
-- `AnyTaskFor<S>` constrains every browser-store member's contract-id prefix and every
-  `SessionNeed.system` to `S`. `AnyReadTaskFor<N>` makes service/workflow stores read-only and
+- `AnyTaskFor<S, Driver>` constrains every browser-store member's contract-id prefix, concrete
+  driver declaration, and every `SessionNeed.system` to `S`. The runtime factory additionally
+  requires declaration object identity, so two separately declared same-system drivers cannot be
+  interchanged. `AnyReadTaskFor<N>` makes service/workflow stores read-only and
   sessionless; a workflow mini-store cannot obtain `page` or `MutationCapability`. The composition
   root also requires every `workflow:<id>` namespace to match a real descriptor id.
   **A store cannot contain a task that touches another store's system.**
@@ -1249,9 +1302,10 @@ export const SearchPersonOrg = defineTaskContract({
 // src/stores/ucpath/tasks/search-person-org.task.ts — server-side impl
 import { defineTask } from "../../../base/task.js";
 import { SearchPersonOrg } from "../../../domain/contracts/ucpath/search-person-org.js";
+import { ucpathDriver } from "../driver/declaration.js";
 import { lookupPersonInUcpath } from "../impl/person-lookup.js";   // ported primitive
 
-export const searchPersonOrg = defineTask(SearchPersonOrg, {
+export const searchPersonOrg = defineTask(ucpathDriver, SearchPersonOrg, {
   sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
   retry: { attempts: 2, backoffMs: 2000, retryOn: "transient" },
   run: async ({ input, ctx }) => {
@@ -1307,7 +1361,7 @@ export const SubmitImport = defineTaskContract({
   writeSafety: onBaseUploadSafety, // doc 09: typed state/artifact proof
 });
 
-export const fillImport = defineTask(FillImport, {
+export const fillImport = defineTask(onbaseDriver, FillImport, {
   sessions: [{ system: "onbase", access: "transaction", session: "reuse-worker", exclusive: true }],
   run: async ({ input, ctx }) => {
     await ctx.driver.goto("onbase.import.form");
@@ -1316,7 +1370,7 @@ export const fillImport = defineTask(FillImport, {
   },
 });
 
-export const submitImport = defineTask(SubmitImport, {
+export const submitImport = defineTask(onbaseDriver, SubmitImport, {
   sessions: [{ system: "onbase", access: "transaction", session: "reuse-worker", exclusive: true }],
   run: async ({ input, ctx }) => {
     await ctx.driver.commitImport("onbase.import.submit", ctx.mutation);
