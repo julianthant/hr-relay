@@ -13,6 +13,11 @@ import { buildSafeUiCatalog } from "../../src/stores/ucpath/driver/catalog.js";
  * replaced CLI disposition, so these exercise the real entry points as child
  * processes rather than re-testing the library functions in-process.
  */
+// Every case here spawns `tsx` as a child process, which is slow on its own and
+// slower still under coverage instrumentation and full-suite fork parallelism.
+// The work is real — these are behavioural CLI fixtures, not library calls — so
+// the budget moves rather than the fixtures narrowing to in-process tests.
+const CLI_TIMEOUT_MS = 180_000;
 const run = promisify(execFile);
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
 const CATALOG_JSON = resolve(REPO_ROOT, "generated/ui-catalog.json");
@@ -41,8 +46,8 @@ async function regenerate(): Promise<void> {
   assert.equal(result.code, 0, result.stderr);
 }
 
-describe("ui:catalog CLI", () => {
-  afterAll(regenerate);
+describe("ui:catalog CLI", { timeout: CLI_TIMEOUT_MS }, () => {
+  afterAll(regenerate, CLI_TIMEOUT_MS);
 
   it("regenerates both projections and reports the entry count", async () => {
     const result = await tsx("scripts/generate-ui-catalog.ts");
@@ -72,8 +77,8 @@ describe("ui:catalog CLI", () => {
   });
 });
 
-describe("selector:search CLI", () => {
-  afterAll(regenerate);
+describe("selector:search CLI", { timeout: CLI_TIMEOUT_MS }, () => {
+  afterAll(regenerate, CLI_TIMEOUT_MS);
 
   it("prints usage and fails when no intent is supplied", async () => {
     const result = await tsx("scripts/search-ui.ts");
