@@ -242,7 +242,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const newerPath = join(root, "newer.sqlite");
     openDatabase(newerPath).close();
     const newer = new DatabaseSync(newerPath);
-    newer.exec("PRAGMA user_version = 2");
+    newer.exec("PRAGMA user_version = 3");
     newer.close();
     paths.push([newerPath, "authority-schema-newer"]);
 

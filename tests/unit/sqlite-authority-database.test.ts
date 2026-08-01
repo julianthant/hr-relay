@@ -8,6 +8,7 @@ import { AUTHORITY_TABLE_REGISTRY, type AuthorityTableName } from "../../src/dom
 import { manualClock } from "../../src/domain/clock.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import {
   COMMAND_FIXTURES,
   ATOMIC_WRITE_COMMIT,
@@ -107,7 +108,7 @@ describe("native SQLite authority schema", () => {
     assert.deepEqual(inspection.tables, [...AUTHORITY_TABLE_REGISTRY]
       .sort((left, right) => left.name.localeCompare(right.name))
       .map(({ name, classification }) => ({ name, classification })));
-    assert.equal(inspection.schemaVersion, 1);
+    assert.equal(inspection.schemaVersion, 2);
     assert.equal(inspection.authorityGeneration, 0);
     assert.deepEqual(inspection.pragmas, {
       journalMode: "wal",
@@ -115,6 +116,59 @@ describe("native SQLite authority schema", () => {
       synchronous: 2,
       busyTimeoutMs: 250,
     });
+  });
+
+  it("upgrades the exact committed Stage-B v1 shape and preserves read/write authority", () => {
+    const path = databasePath("stage-b-v1.sqlite");
+    const legacy = new DatabaseSync(path);
+    legacy.exec("BEGIN EXCLUSIVE");
+    for (const statement of SQLITE_MIGRATIONS[0].statements) legacy.exec(statement);
+    legacy.prepare(`
+      INSERT INTO authority_meta (
+        singleton_id, schema_version, authority_generation, updated_at,
+        migration_owner, migration_started_at
+      ) VALUES (1, 1, 0, ?, NULL, NULL)
+    `).run(NOW);
+    legacy.prepare(`
+      INSERT INTO commands (record_key, family, record_json, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(UUID_1, "start", JSON.stringify(COMMAND_FIXTURES[0]), NOW);
+    legacy.prepare(`
+      INSERT INTO write_intents (
+        record_key, idempotency_key_digest, status, record_json, created_at
+      ) VALUES (?, ?, ?, ?, ?)
+    `).run(
+      OBSERVED_PRESENT_WRITE_INTENT.writeIntentId,
+      OBSERVED_PRESENT_WRITE_INTENT.idempotencyKeyDigest,
+      OBSERVED_PRESENT_WRITE_INTENT.status,
+      JSON.stringify(OBSERVED_PRESENT_WRITE_INTENT),
+      NOW,
+    );
+    legacy.exec("PRAGMA application_id = 1217249861");
+    legacy.exec("PRAGMA user_version = 1");
+    legacy.exec("COMMIT");
+    assert.deepEqual(
+      (legacy.prepare("PRAGMA table_info(write_intents)").all() as Array<{ name: string }>).map(({ name }) => name),
+      ["record_key", "idempotency_key_digest", "status", "record_json", "created_at"],
+    );
+    legacy.close();
+
+    const upgraded = openDatabase(path);
+    assert.equal(upgraded.inspectSchema().schemaVersion, 2);
+    assert.deepEqual(upgraded.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
+    assert.equal(
+      upgraded.authority.writeIntents.findByPermanentKey(
+        OBSERVED_PRESENT_WRITE_INTENT.system,
+        OBSERVED_PRESENT_WRITE_INTENT.idempotencyKey,
+      )?.writeIntentId,
+      OBSERVED_PRESENT_WRITE_INTENT.writeIntentId,
+    );
+    assert.equal(upgraded.authority.writeIntents.fenceAttempt({
+      intent: WRITE_INTENT_ATTEMPTING,
+      attempt: WRITE_ATTEMPT,
+    }).state, "fenced");
+    upgraded.commitWriteAttempt(ATOMIC_WRITE_COMMIT);
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(path).schemaVersion, 2);
   });
 
   it("reopens an already-current database without rerunning the migration", () => {
@@ -142,7 +196,7 @@ describe("native SQLite authority schema", () => {
     const newerPath = databasePath("newer.sqlite");
     openDatabase(newerPath).close();
     const newer = new DatabaseSync(newerPath);
-    newer.exec("PRAGMA user_version = 2");
+    newer.exec("PRAGMA user_version = 3");
     newer.close();
     assert.throws(() => openDatabase(newerPath), /newer than supported/);
 
@@ -245,6 +299,55 @@ describe("authority generation accounting", () => {
       });
     });
     assert.equal(database.getMeta().authorityGeneration, 1);
+  });
+
+  it("rolls back a caught nested fence failure to its savepoint without leaking an intent", () => {
+    const database = openDatabase();
+    database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+    const generationBefore = database.getMeta().authorityGeneration;
+    const competingKey = "10001573|termination|2026-08-03";
+    const competingIntent = {
+      ...WRITE_INTENT_ATTEMPTING,
+      writeIntentId: UUID_8,
+      idempotencyKey: competingKey,
+      idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", competingKey),
+    };
+    const competingAttempt = { ...WRITE_ATTEMPT, writeIntentId: UUID_8 };
+
+    database.withAuthorityTransaction(() => {
+      assert.throws(
+        () => database.authority.writeIntents.fenceAttempt({ intent: competingIntent, attempt: competingAttempt }),
+        /UNIQUE constraint failed: write_attempts.record_key/,
+      );
+    });
+
+    assert.equal(database.authority.writeIntents.get(UUID_8), undefined);
+    assert.equal(database.authority.writeIntents.get(UUID_1)?.status, "attempting");
+    assert.equal(database.getMeta().authorityGeneration, generationBefore);
+  });
+
+  it("rolls back a caught nested atomic outbox failure while committing unrelated outer work once", () => {
+    const path = databasePath();
+    const database = AuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
+      CLOCK,
+      { afterStorageStep: (step) => { if (step === "ledger-outbox") throw new Error("injected nested outbox failure"); } },
+    );
+    openDatabases.push(database);
+    database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+    const generationBefore = database.getMeta().authorityGeneration;
+
+    database.withAuthorityTransaction((authority) => {
+      authority.notifications.insert(NOTIFICATION);
+      assert.throws(() => database.commitWriteAttempt(ATOMIC_WRITE_COMMIT), /injected nested outbox failure/);
+    });
+
+    assert.deepEqual(database.authority.notifications.get(UUID_3), NOTIFICATION);
+    assert.equal(database.authority.writeIntents.get(UUID_1)?.status, "attempting");
+    assert.equal(database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId)?.outcome.state, "attempting");
+    assert.equal(database.authority.durableOutbox.get(UUID_7), undefined);
+    assert.equal(database.authority.durableOutbox.get(UUID_8), undefined);
+    assert.equal(database.getMeta().authorityGeneration, generationBefore + 1);
   });
 
   it("leaves generation unchanged for empty, projection-only, idempotent, and rolled-back work", () => {

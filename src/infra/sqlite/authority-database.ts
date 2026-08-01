@@ -397,6 +397,7 @@ export class AuthorityDatabase implements Disposable {
   #busyTimeoutMs: number;
   #closed = false;
   #transactionDepth = 0;
+  #savepointSequence = 0;
   #transactionMode: "authority" | "projection" | undefined;
   #authorityDirty = false;
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
@@ -672,9 +673,19 @@ export class AuthorityDatabase implements Disposable {
       if (this.#transactionMode === "projection" && mode === "authority") {
         throw new Error("authority mutation cannot run inside a projection transaction");
       }
+      const savepoint = `authority_nested_${String(this.#savepointSequence += 1)}`;
+      const dirtyBefore = this.#authorityDirty;
+      this.#database.exec(`SAVEPOINT ${savepoint}`);
       this.#transactionDepth += 1;
       try {
-        return work();
+        const result = work();
+        this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
+        return result;
+      } catch (error) {
+        this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+        this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
+        this.#authorityDirty = dirtyBefore;
+        throw error;
       } finally {
         this.#transactionDepth -= 1;
       }

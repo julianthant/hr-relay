@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 1;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 2;
 
 const jsonRecordTable = (name: string): string => `
   CREATE TABLE ${name} (
@@ -63,13 +63,10 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   write_intents: `
     CREATE TABLE write_intents (
       record_key TEXT PRIMARY KEY,
-      system TEXT NOT NULL,
-      idempotency_key TEXT NOT NULL,
       idempotency_key_digest TEXT NOT NULL UNIQUE,
       status TEXT NOT NULL,
       record_json TEXT NOT NULL CHECK (json_valid(record_json)),
-      created_at TEXT NOT NULL,
-      UNIQUE (system, idempotency_key)
+      created_at TEXT NOT NULL
     ) STRICT
   `,
   write_attempts: `
@@ -127,16 +124,40 @@ const TABLE_ORDER = [
   "runs_view",
 ] as const satisfies readonly TableName[];
 
-export const SQLITE_MIGRATIONS = deepFreeze([{
-  version: 1,
-  statements: [
-    ...TABLE_ORDER.map((name) => SQLITE_TABLE_DDL[name]),
-    "CREATE INDEX dependencies_manifest_id_idx ON dependencies(manifest_id)",
-    "CREATE INDEX command_audits_command_id_idx ON command_audits(command_id)",
-    "CREATE INDEX write_attempts_intent_id_idx ON write_attempts(write_intent_id)",
-    "CREATE INDEX durable_outbox_intent_id_idx ON durable_outbox(write_intent_id)",
-  ],
-}] as const);
+export const SQLITE_MIGRATIONS = deepFreeze([
+  {
+    // This is the committed Stage-B schema. Never edit a released migration in place.
+    version: 1,
+    statements: [
+      ...TABLE_ORDER.map((name) => SQLITE_TABLE_DDL[name]),
+      "CREATE INDEX dependencies_manifest_id_idx ON dependencies(manifest_id)",
+      "CREATE INDEX command_audits_command_id_idx ON command_audits(command_id)",
+      "CREATE INDEX write_attempts_intent_id_idx ON write_attempts(write_intent_id)",
+      "CREATE INDEX durable_outbox_intent_id_idx ON durable_outbox(write_intent_id)",
+    ],
+  },
+  {
+    version: 2,
+    statements: [
+      "ALTER TABLE write_intents ADD COLUMN system TEXT",
+      "ALTER TABLE write_intents ADD COLUMN idempotency_key TEXT",
+      "UPDATE write_intents SET system = json_extract(record_json, '$.system'), idempotency_key = json_extract(record_json, '$.idempotencyKey')",
+      "CREATE UNIQUE INDEX write_intents_system_idempotency_key_idx ON write_intents(system, idempotency_key)",
+      `CREATE TRIGGER write_intents_require_permanent_key_insert
+        BEFORE INSERT ON write_intents
+        WHEN NEW.system IS NULL OR NEW.idempotency_key IS NULL
+        BEGIN
+          SELECT RAISE(ABORT, 'write_intents requires system and idempotency_key');
+        END`,
+      `CREATE TRIGGER write_intents_require_permanent_key_update
+        BEFORE UPDATE OF system, idempotency_key ON write_intents
+        WHEN NEW.system IS NULL OR NEW.idempotency_key IS NULL
+        BEGIN
+          SELECT RAISE(ABORT, 'write_intents requires system and idempotency_key');
+        END`,
+    ],
+  },
+] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
   const violations: string[] = [];
