@@ -1,11 +1,11 @@
 # 10 — Guard & Test Architecture SSOT (the rebuild repo)
 
-Status: **Phase 1a pre-tree scaffold implemented 2026-07-31; revised 2026-07-22 after the
+Status: **Phase 1b guard foundation implemented 2026-07-31; revised 2026-07-22 after the
 whole-plan/legacy-code review; amended 2026-07-31 (Round 10), Round 11 (D93, standalone rebuild
 repo), and Round 12 (D94, commit-centred accounting closure).** The reviewed guard
 inventory, D58/D90/disposition manifests, semantic legacy-lint ratchet, operational-isolation
-contract, and rebuild lint/test/coverage launchers now exist. Source-scanning guard arms activate
-atomically with the first file in their target family. This document covers strict
+contract, and rebuild lint/test/coverage launchers now exist. Whole-`src` source-scanning arms are
+active and non-vacuous; later owner roots still activate atomically with their first file. This document covers strict
 schemas, semantic UI/driver boundaries, subject binding, queue commands/delegation,
 evidence/scenarios, notifications, and authority-store recovery in addition to the existing rebuild
 safety promises. **Round 10 amends §3.13** to replace frozen-tree enforcement with strict runtime
@@ -36,6 +36,24 @@ ratchets onto the rebuild `src/`, replaces the need for parallel rebuild parity 
 descriptor projection coverage, leaves the legacy repo's guards intact through initial cutover, and
 adds the cross-cutting safety suite: dry-run composition, transaction pairing, typed write safety,
 permanent-key dedupe, atomic outbox/ledger projection, field provenance, and stable identity.
+
+---
+
+## Phase 1b as-built guard delta (2026-07-31)
+
+The rebuild guard lane is no longer a pre-tree promise. The reviewed manifest discovers every
+architecture test recursively and runs active whole-`src` arms over real source; typecheck, ESLint,
+unit/architecture tests, coverage floors, operational isolation, strict boundaries, clock/config/
+secret single-source rules, runtime dependency/environment closure, redaction, and D94 legacy
+change accounting all execute from the rebuild repo's plain gate family. Every active arm resolves
+a non-empty file set, and each ratchet still proves itself against a violating fixture.
+
+`fail-loud-catch-default` now uses the TypeScript AST across every executable statement in a catch
+block and in both expression- and block-bodied Promise `.catch` handlers. Logging or branching
+before a bare-default return/assignment/initializer no longer bypasses it. Pure adversarial fixtures
+pin multi-statement handlers, nesting, comments/strings, and safe propagating or distinguishable
+non-default returns. No allowlist was added. Guards belonging to later absent roots remain planned;
+their future contracts are not reported as implemented by 1b.
 
 ---
 

@@ -1,6 +1,7 @@
 # 11 — Clock, Config & Secrets
 
-Status: **revised 2026-07-22 after the whole-plan/legacy-code review.** Configuration is now
+Status: **Phase 1b clock/config/secrets foundation implemented 2026-07-31; revised 2026-07-22 after
+the whole-plan/legacy-code review.** Configuration is now
 recursively strict/branded, diagnostic redaction is part of the secret contract, and scope is
 explicitly a loopback-only single-operator tool—no RBAC/multi-user infrastructure in the base.
 **Amended 2026-07-31 (Round 10):** legacy and rebuild config/secret worlds remain isolated.
@@ -31,6 +32,27 @@ event wire schema (`ts: string` on `Base` — this doc supplies the value); doc 
 backpressure knobs (narrow this doc's config, don't re-declare precedence); doc 09 write-safety
 ledger (`write.attempting`/`write.committed` timestamps — this doc's Clock, doc 09's events); doc
 12 evidence/diagnostic bundles consume this doc's redaction classifications.
+
+---
+
+## Phase 1b as-built foundation (2026-07-31)
+
+`src/domain/clock.ts` is the sole production time source and exposes wall/local/monotonic/fiscal
+operations; test-only `manualClock` is import-guarded. Config is one recursively strict schema and
+one resolver with `env > settings > default` provenance and a canonical fingerprint. Closed system
+routes, explicit prod/test instance refusal, current-fiscal-year validation, runtime environment and
+dependency registries, provider/feature prerequisites, and strict preflight report schemas are
+implemented and bidirectionally audited.
+
+The production `timeouts.ukgNavigationMs` contract is retained explicitly: rebuild default
+`60_000`, sparse settings override, optional `HRAUTO_UKG_NAVIGATION_MS` environment override, and
+per-leaf provenance all resolve through the same closed config path. Secret access covers every
+registered source kind. Environment names/families, the registered macOS local ngrok config source,
+and named credential files share typed fail-loud access; file/source I/O is injected for tests.
+Presence-only `present | missing | unknown` diagnostics feed descriptor preflight without exposing
+values, so a missing/unreadable ngrok source blocks selected capture instead of passing because it
+was not an environment secret. Redaction canaries and single-source guards are active. Immutable
+per-run snapshots and the consumers that use these leaves still land with their owning later items.
 
 ---
 
@@ -181,10 +203,13 @@ export const ConfigSchema = z.strictObject({
   }),
   timeouts: z.strictObject({
     navigationMs: z.number().int().positive(),
+    longNavigationMs: z.number().int().positive(),
+    ukgNavigationMs: z.number().int().positive(),
     taskMs: z.number().int().positive(),
     transactionMs: z.number().int().positive(),
     /* … */
-  }).default({ navigationMs: 15_000, taskMs: 180_000,
+  }).default({ navigationMs: 15_000, longNavigationMs: 30_000,
+                        ukgNavigationMs: 60_000, taskMs: 180_000,
                         transactionMs: 300_000, /* every required sibling */ }),
   paths: z.strictObject({ reportsDir: AbsolutePathSchema, stateBackupDir: AbsolutePathSchema,
                           /* … */ }).default({ /* full user-agnostic defaults */ }),
@@ -221,6 +246,7 @@ const ENV_KEY_MAP = {
   "annualDates.*.kronosDefaultEndDate": "KRONOS_DEFAULT_END_DATE",
   "annualDates.*.kronosDefaultStartDate": "KRONOS_DEFAULT_START_DATE",
   "operator.timekeeperName": "TIMEKEEPER_NAME",
+  "timeouts.ukgNavigationMs": "HRAUTO_UKG_NAVIGATION_MS",
   "ocr.secondOpinionMax": "OCR_SECOND_OPINION_MAX",
   // … every OperatorSettingsOverride ↔ env-var pair from applyOperatorSettingsEnv, ported verbatim
 } as const satisfies Partial<Record<EnvBackedConfigLeafPath, EnvVarName>>;
@@ -384,8 +410,9 @@ manifests remain unprefixed. Doc 10 §3.13 owns checkout resolution, commit-cent
 accounting, the clean-tree requirement, and the closed recheck/evidence catalog; this secrets doc
 only consumes that path-ownership convention.
 
-Within the rebuild repo's `src/`, the accessor covers environment variables and the rebuild Duo
-private-key file — replacing `validateEnv()` + `getTimekeeperName()` + ~20 files' inline
+Within the rebuild repo's `src/`, the accessor covers environment variables, the registered local
+ngrok config source, and the rebuild Duo private-key file — replacing `validateEnv()` +
+`getTimekeeperName()` + ~20 files' inline
 `process.env.*` reads with one surface. No legacy-proxy secret/config class exists.
 
 ```ts
@@ -429,7 +456,7 @@ export function validateBootSecrets(): void { /* batch-report missing requiredAt
 
 /** Enqueue/daemon preflight batch-reports the descriptor-derived secret subset before launch. */
 export function validateDescriptorSecrets(names: readonly SecretName[]): void {
-  /* resolve registered env/family/local sources; throw once with every missing requirement */
+  /* resolve registered env/family/local sources; throw once with every missing/unknown requirement */
 }
 
 /** Named file secrets only—callers cannot turn this into an arbitrary path reader. */
@@ -450,6 +477,10 @@ cell.
   calls `validateDescriptorSecrets()` for the selected descriptor-derived capability subset and
   reports every missing requirement at once. An unused workflow credential never blocks dashboard
   boot, while a selected workflow still fails before spending Duo/browser work.
+- **Local source failures stay distinguishable.** The ngrok resolver checks the one registered
+  config path as a regular `0600`-or-stricter bounded file and parses exactly one `authtoken`.
+  Descriptor preflight reports `missing` when no token is configured and `unknown` when the source
+  cannot be inspected or read; neither state includes the credential value or passes as healthy.
 - **Never logged.** The accessor is the only function permitted to read a secret's raw value; every
   other module receives it as an opaque string to hand to a login/fill call, never to `log.*`. A
   grep-ratchet guard (below) backstops this structurally.

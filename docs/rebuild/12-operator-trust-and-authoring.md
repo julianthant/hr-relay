@@ -1,6 +1,7 @@
 # 12 — Operator Trust, Semantic UI Vocabulary, Diagnostics, Knowledge & Workflow Authoring
 
-Status: **Phase 0 binding design — added 2026-07-22 after the whole-plan/legacy-code review;
+Status: **Binding design with the Phase 1b trust-schema foundation implemented 2026-07-31 — added
+2026-07-22 after the whole-plan/legacy-code review;
 amended 2026-07-26 (Round 8).** This document owns the human-facing foundation that turns the typed
 executor into a system the single operator can understand, debug, extend, and trust. It is
 **local-first with deliberate multi-user seams** (D75, §7): it does not add RBAC, user management,
@@ -37,6 +38,18 @@ types are inferred from those schemas. The registry, scenario, failure, evidence
 knowledge, fix, editor-draft, and generated-catalog boundaries reject unknown keys recursively.
 Canonical ids/digests/instants are branded. A generic metadata map may exist only inside an opaque,
 schema-versioned diagnostic attachment that no workflow, command, projection, or policy reads.
+
+---
+
+## Phase 1b as-built trust-schema subset (2026-07-31)
+
+Strict schemas now exist for failures, redacted diagnostic bundles, terminal evidence receipts,
+scenario manifests, preflight scenarios, and knowledge/fix records. Receipt invariants reject false
+verified completion, unresolved mandatory evidence, invalid warning/failure combinations, and
+duplicate evidence-entry identities. Every top-level evidence row schema is present in the strict
+boundary catalog and exercised against recursive unknown-key injection. This is the schema
+foundation only: evidence persistence/projection, `explain`, semantic UI registries/drivers, and
+authoring/explorer surfaces remain with their later owning work items.
 
 ---
 
@@ -88,6 +101,10 @@ IDs are stable kebab-case dotted names, never generated from a TypeScript file/p
 source rename does not rename the operator vocabulary. Every id has one canonical human label and
 zero or more search terms. Search terms help humans/AI find the canonical id; they never create another
 identity.
+
+These semantic ids are definitions, not event occurrences. Receipt/evidence rows therefore carry a
+separate UUID-backed `EvidenceEntryId`; operator-correction `supersedes` links point to that prior
+entry id. `ObservationId` is never a UUID and is never reused as generic evidence-row identity.
 
 ### 1.2 Registry record
 
@@ -271,6 +288,10 @@ case. Restricted fields are redacted at capture time. Redaction is not deferred 
 ### 2.3 `RunEvidenceReceipt`
 
 Every terminal run—success, failure, cancellation, or partial outcome—has a server-derived receipt:
+
+Every `EvidenceFact`, `DecisionEvidence`, `ActionEvidence`, `VerificationEvidence`, `ReuseEvidence`,
+and `UncertaintyEvidence` row has its own `id: EvidenceEntryId`. The semantic observation that a row
+refers to remains a dotted `ObservationId` in the UI/task vocabulary.
 
 ```ts
 export interface RunEvidenceReceipt {

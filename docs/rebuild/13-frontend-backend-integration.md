@@ -1,6 +1,7 @@
 # 13 — Production frontend/backend integration contract
 
-Status: **integration design ratified through Round 11 on 2026-07-31; Phase 1a is next.**
+Status: **integration design ratified through Round 11; Phase 1b wire primitives implemented
+2026-07-31; Phase 1c is next.**
 
 This document is the production-wiring companion for the rebuild demo. It answers one question:
 **how do we make the rebuilt product render the approved frontend exactly, while ensuring every
@@ -28,6 +29,18 @@ surfaces and primitives are ported into the rebuild repo's `src/dashboard/`; moc
 stay test-only and are preserved with the legacy/design-oracle tree through initial cutover. Ported
 production code owns its own copies and provenance (legacy-repo commit hash + source path); no
 runtime import or proxy is permitted.
+
+---
+
+## Phase 1b as-built integration subset (2026-07-31)
+
+The rebuild now owns strict wire primitives for frontend bootstrap, day/queue projection, run
+detail sections, artifact/capture resources, and topic snapshot/patch/subscription envelopes.
+Versions, revisions, projection cursors, explicit capability availability/absence, closed status/
+panel/topic unions, and nested unknown-key rejection are schema-pinned with fixtures. These are
+transport-neutral domain contracts: 1b does not claim a BFF, SSE server, command routes, React
+client, or rendered surface. Command type shells are next in 1c; the serving/wiring and exact shell
+remain in `1g-spine` and `1i-spine`.
 
 ---
 

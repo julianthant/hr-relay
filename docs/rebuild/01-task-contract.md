@@ -1,6 +1,7 @@
 # 01 — The Task Contract & Per-System Task Stores
 
-Status: **Phase 0 revised design — 2026-07-22 whole-plan/legacy-code corrections integrated;
+Status: **Binding design with the Phase 1b domain foundation implemented 2026-07-31 —
+2026-07-22 whole-plan/legacy-code corrections integrated;
 amended 2026-07-26 (Round 8, §2.7 — the three-tier authoring floor + scaffold generators, D79f),
 2026-07-31 (Round 10 — isolated copy/port with legacy preservation, D88/D90), and 2026-07-31
 (Round 11 — standalone rebuild repo, D93: the rebuild lives in its own `hr-automation-rebuild`
@@ -41,6 +42,20 @@ to imitate), `src/systems/ucpath/selectors.ts` (registry pattern + `// verified`
 `src/systems/onbase/LESSONS.md` (single-app-session-per-identity constraint),
 `src/workflows/ocr/orchestrator.ts:1562` (`operationTraceCode` — the cautionary stringly
 re-encoding switch).
+
+---
+
+## Phase 1b as-built domain foundation (2026-07-31)
+
+Work item 1b implements the task contract's shared leaf vocabulary, not the task factory/store work
+scheduled for 1d. The rebuild now has strict branded schemas for core ids and scalars, canonical
+JSON, explicit absence/uncertainty, and structured boundary failures. Semantic UI observations use
+stable dotted `ObservationId` values owned by doc 12; dynamic receipt/evidence rows use the separate
+UUID-backed `EvidenceEntryId`, so a row occurrence can never masquerade as an observation recipe.
+`TraceId` accepts local `HHMMSS` hours only from `00` through `23`. Unit and strict-boundary tests
+pin the neighboring invalid shapes, recursively reject unknown object keys, and keep exported
+boundary types schema-derived. Task effects, contracts, stores, and subject-binding execution remain
+future 1d work and are not claimed complete here.
 
 ---
 
