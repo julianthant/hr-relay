@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 2;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 3;
 
 const jsonRecordTable = (name: string): string => `
   CREATE TABLE ${name} (
@@ -56,6 +56,24 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   config_snapshots: jsonRecordTable("config_snapshots"),
   version_plans: jsonRecordTable("version_plans"),
   checkpoint_payloads: jsonRecordTable("checkpoint_payloads"),
+  // Doc 02 §5.7. The logical item is (workflow, item_id) — retries share it,
+  // rerun-with-new-input gets a fresh one — and the resume grain is a graph
+  // NODE, so the doc's `step_id` column is `node_id` here. Payloads are
+  // system-of-record under D14: pruned only on logical-item deletion, never on
+  // the 7-day JSONL clock.
+  run_checkpoints: `
+    CREATE TABLE run_checkpoints (
+      record_key TEXT PRIMARY KEY,
+      workflow TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      node_id TEXT NOT NULL,
+      attempt INTEGER NOT NULL CHECK (attempt >= 1),
+      run_id TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      UNIQUE (workflow, item_id, node_id, attempt)
+    ) STRICT
+  `,
   ocr_approvals: jsonRecordTable("ocr_approvals"),
   capture_sessions: jsonRecordTable("capture_sessions"),
   capture_photo_order: jsonRecordTable("capture_photo_order"),
@@ -97,7 +115,8 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   runs_view: jsonRecordTable("runs_view"),
 } as const satisfies Record<TableName, string>);
 
-const TABLE_ORDER = [
+/** The tables migration 1 created, in dependency order. A released migration is never edited. */
+const V1_TABLE_ORDER = [
   "authority_meta",
   "commands",
   "delegation_manifests",
@@ -124,12 +143,17 @@ const TABLE_ORDER = [
   "runs_view",
 ] as const satisfies readonly TableName[];
 
+/** Tables created after v1, in the migration that created them. */
+const POST_V1_TABLE_ORDER = ["run_checkpoints"] as const satisfies readonly TableName[];
+
+const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
+
 export const SQLITE_MIGRATIONS = deepFreeze([
   {
     // This is the committed Stage-B schema. Never edit a released migration in place.
     version: 1,
     statements: [
-      ...TABLE_ORDER.map((name) => SQLITE_TABLE_DDL[name]),
+      ...V1_TABLE_ORDER.map((name) => SQLITE_TABLE_DDL[name]),
       "CREATE INDEX dependencies_manifest_id_idx ON dependencies(manifest_id)",
       "CREATE INDEX command_audits_command_id_idx ON command_audits(command_id)",
       "CREATE INDEX write_attempts_intent_id_idx ON write_attempts(write_intent_id)",
@@ -155,6 +179,15 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEGIN
           SELECT RAISE(ABORT, 'write_intents requires system and idempotency_key');
         END`,
+    ],
+  },
+  {
+    // Doc 02 §5.7's checkpoint store. The descending-attempt index is what makes
+    // "latest compatible attempt wins" a lookup rather than a scan-and-sort.
+    version: 3,
+    statements: [
+      SQLITE_TABLE_DDL.run_checkpoints,
+      "CREATE INDEX run_checkpoints_item_node_idx ON run_checkpoints(workflow, item_id, node_id, attempt DESC)",
     ],
   },
 ] as const);

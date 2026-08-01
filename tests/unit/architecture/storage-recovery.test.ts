@@ -46,6 +46,7 @@ import {
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "../fixtures/phase1c-contract-fixtures.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
 const roots: string[] = [];
@@ -278,7 +279,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const newerPath = join(root, "newer.sqlite");
     openDatabase(newerPath).close();
     const newer = new DatabaseSync(newerPath);
-    newer.exec("PRAGMA user_version = 3");
+    newer.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`);
     newer.close();
     paths.push([newerPath, "authority-schema-newer"]);
 

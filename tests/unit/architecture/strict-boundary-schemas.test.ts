@@ -98,6 +98,13 @@ import {
   SourceHashSchema,
 } from "../../../src/domain/workflow/build-manifest.js";
 import {
+  CheckpointExpectationSchema,
+  CheckpointMissReasonSchema,
+  FactProvenanceSchema,
+  FreshnessOverrideSchema,
+  RunCheckpointRecordSchema,
+} from "../../../src/domain/workflow/checkpoint.js";
+import {
   ChildVisibilitySchema,
   DelegationManifestRefSchema,
   DelegationPolicySchema,
@@ -206,6 +213,7 @@ import {
   VersionPlanStorageRecordSchema,
   WriteFenceInputSchema,
 } from "../../../src/infra/sqlite/index.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
 import { buildSafeUiCatalog } from "../../../src/stores/ucpath/driver/catalog.js";
 import { UCPATH_UI_REGISTRY } from "../../../src/stores/ucpath/driver/ui-registry.js";
 import {
@@ -248,6 +256,24 @@ const APPROVE_CONTEXT = {
   sourceArtifactId: "11111111-1111-4111-8111-111111111111",
   approvedBy: "local-operator",
   approvedAt: "2026-07-31T17:00:00.000Z",
+};
+const RUN_CHECKPOINT = {
+  workflowId: "person-lookup",
+  itemId: "33333333-3333-4333-8333-333333333333",
+  nodeId: "searching",
+  attempt: 1,
+  runId: "22222222-2222-4222-8222-222222222222",
+  output: { schemaHash: "a".repeat(64), value: { verified: true } },
+  descriptorVersion: 1,
+  contractFingerprint: "a".repeat(64),
+  implFingerprint: "b".repeat(64),
+  provenance: [{
+    path: "selection.selected",
+    source: "live",
+    observedAt: "2026-07-31T17:00:00.000Z",
+    originalObservedAt: "2026-07-31T17:00:00.000Z",
+  }],
+  writtenAt: "2026-07-31T17:00:00.000Z",
 };
 const PERSON_LOOKUP_PARSER = {
   split: { kind: "delimited", delimiters: [";", "\n"] },
@@ -474,7 +500,7 @@ const atomicOutbox = (payload: unknown) => ({
 });
 const SQLITE_SCHEMA_INSPECTION = {
   applicationId: 1_217_249_861,
-  schemaVersion: 2,
+  schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
   authorityGeneration: 0,
   pragmas: { journalMode: "wal", foreignKeys: 1, synchronous: 2, busyTimeoutMs: 250 },
   tables: AUTHORITY_TABLE_REGISTRY.map(({ name, classification }) => ({ name, classification })),
@@ -516,7 +542,7 @@ const AUTHORITY_PENDING_COUNTS = {
 };
 const AUTHORITY_COPY_INSPECTION = {
   applicationId: 1_217_249_861,
-  schemaVersion: 2,
+  schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
   pageCount: 24,
   authorityGeneration: 4,
   authorityContentFingerprint: HASH_A,
@@ -531,7 +557,7 @@ const BACKUP_VERIFICATION = {
   observedFrom: "backup-copy",
   observedAt: NOW,
   applicationId: 1_217_249_861,
-  schemaVersion: 2,
+  schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
   pageCount: 24,
   authorityGeneration: 4,
   authorityContentFingerprint: HASH_A,
@@ -546,7 +572,7 @@ const BACKUP_MANIFEST = {
   backupFileName: "authority-g4.sqlite",
   sourceDatabaseIdentity: HASH_B,
   applicationId: 1_217_249_861,
-  schemaVersion: 2,
+  schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
   pageCount: 24,
   authorityGeneration: 4,
   authorityContentFingerprint: HASH_A,
@@ -610,7 +636,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "AuthorityTableSpec", schema: TableSpecSchema, fixtures: AUTHORITY_TABLE_REGISTRY },
   { name: "AuthorityTableRegistry", schema: AuthorityTableRegistrySchema, fixtures: [AUTHORITY_TABLE_REGISTRY] },
   { name: "AuthorityDatabaseOptions", schema: AuthorityDatabaseOptionsSchema, fixtures: [{ path: "/tmp/authority.sqlite", busyTimeoutMs: 250, migrationOwner: "unit-test" }] },
-  { name: "AuthorityMeta", schema: AuthorityMetaSchema, fixtures: [{ schemaVersion: 2, authorityGeneration: 0, updatedAt: NOW }] },
+  { name: "AuthorityMeta", schema: AuthorityMetaSchema, fixtures: [{ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, authorityGeneration: 0, updatedAt: NOW }] },
   { name: "AuthoritySchemaInspection", schema: AuthoritySchemaInspectionSchema, fixtures: [SQLITE_SCHEMA_INSPECTION] },
   { name: "ImmutableInsertDisposition", schema: ImmutableInsertDispositionSchema, fixtures: ["inserted", "existing"] },
   { name: "SqliteStorageRecordId", schema: SqliteStorageRecordIdSchema, fixtures: [UUID_1] },
@@ -750,6 +776,18 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   ] },
   { name: "GateProjectionDefinition", schema: GateProjectionDefinitionSchema, fixtures: [
     { nodeId: "approval", label: "Approval", statusKey: "needsReview", resolvedBy: "operator" },
+  ] },
+  { name: "FactProvenance", schema: FactProvenanceSchema, fixtures: [
+    { path: "selection.selected", source: "live", observedAt: NOW, originalObservedAt: NOW },
+    { path: "selection.selected", source: "operator", observedAt: NOW, originalObservedAt: NOW, correctedAt: NOW, supersedes: NOW },
+  ] },
+  { name: "RunCheckpointRecord", schema: RunCheckpointRecordSchema, fixtures: [RUN_CHECKPOINT], openFixturePaths: ["output.value"] },
+  { name: "CheckpointExpectation", schema: CheckpointExpectationSchema, fixtures: [
+    { descriptorVersion: 1, contractFingerprint: HASH_A, implFingerprint: HASH_B, outputSchemaHash: HASH_A },
+  ] },
+  { name: "CheckpointMissReason", schema: CheckpointMissReasonSchema, fixtures: CheckpointMissReasonSchema.options },
+  { name: "FreshnessOverride", schema: FreshnessOverrideSchema, fixtures: [
+    { nodeId: "searching", fieldPaths: ["selection.selected"], confirmedAt: NOW, reason: "confirmed with the operator", validForAttempt: 2 },
   ] },
   { name: "SourceHash", schema: SourceHashSchema, fixtures: [{ path: "src/domain/ids.ts", sha256: HASH_A }] },
   { name: "BuildManifest", schema: BuildManifestSchema, fixtures: [BUILD_MANIFEST] },
@@ -1094,6 +1132,16 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/workflow/completion.ts:CompletionProgram",
   "src/domain/workflow/completion.ts:CompletionRevealKey",
   "src/domain/workflow/completion.ts:SealedCompletionProgram",
+  // The checkpoint LOAD result and its migrations are generic over the producing
+  // contract's exact output type, which no static schema describes — that is the
+  // point of the discriminated `{found}` union. The durable halves have schemas:
+  // RunCheckpointRecordSchema, FactProvenanceSchema, CheckpointExpectationSchema,
+  // CheckpointMissReasonSchema, and FreshnessOverrideSchema are catalogued.
+  "src/domain/workflow/checkpoint.ts:CheckpointLoad",
+  "src/domain/workflow/checkpoint.ts:CheckpointMigration",
+  "src/domain/workflow/checkpoint.ts:CanonicalInputSnapshotMigration",
+  "src/domain/workflow/checkpoint.ts:ReplayedCheckpoint",
+  "src/domain/workflow/checkpoint.ts:FreshnessWalkInput",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {

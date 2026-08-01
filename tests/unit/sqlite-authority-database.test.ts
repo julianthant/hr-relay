@@ -8,7 +8,7 @@ import { AUTHORITY_TABLE_REGISTRY, type AuthorityTableName } from "../../src/dom
 import { manualClock } from "../../src/domain/clock.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import {
   COMMAND_FIXTURES,
   ATOMIC_WRITE_COMMIT,
@@ -55,6 +55,19 @@ const ARTIFACT_OUTBOX = {
   createdAt: NOW,
 };
 const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
+const RUN_CHECKPOINT = {
+  workflowId: "person-lookup",
+  itemId: UUID_3,
+  nodeId: "searching",
+  attempt: 1,
+  runId: UUID_1,
+  output: SCHEMA_BOUND_VALUE,
+  descriptorVersion: 1,
+  contractFingerprint: HASH_A,
+  implFingerprint: HASH_B,
+  provenance: [{ path: "verified", source: "live", observedAt: NOW, originalObservedAt: NOW }],
+  writtenAt: NOW,
+};
 const COMMAND_AUDIT = {
   auditId: UUID_2,
   request: COMMAND_FIXTURES[0],
@@ -108,7 +121,7 @@ describe("native SQLite authority schema", () => {
     assert.deepEqual(inspection.tables, [...AUTHORITY_TABLE_REGISTRY]
       .sort((left, right) => left.name.localeCompare(right.name))
       .map(({ name, classification }) => ({ name, classification })));
-    assert.equal(inspection.schemaVersion, 2);
+    assert.equal(inspection.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(inspection.authorityGeneration, 0);
     assert.deepEqual(inspection.pragmas, {
       journalMode: "wal",
@@ -154,7 +167,7 @@ describe("native SQLite authority schema", () => {
     legacy.close();
 
     const upgraded = openDatabase(path);
-    assert.equal(upgraded.inspectSchema().schemaVersion, 2);
+    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(upgraded.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
     assert.equal(
       upgraded.authority.writeIntents.findByPermanentKey(
@@ -168,7 +181,7 @@ describe("native SQLite authority schema", () => {
       attempt: WRITE_ATTEMPT,
     }).state, "fenced");
     upgraded.commitWriteAttempt(ATOMIC_WRITE_COMMIT);
-    assert.equal(AuthorityDatabase.inspectExistingReadOnly(path).schemaVersion, 2);
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
 
   it("reopens an already-current database without rerunning the migration", () => {
@@ -196,7 +209,7 @@ describe("native SQLite authority schema", () => {
     const newerPath = databasePath("newer.sqlite");
     openDatabase(newerPath).close();
     const newer = new DatabaseSync(newerPath);
-    newer.exec("PRAGMA user_version = 3");
+    newer.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`);
     newer.close();
     assert.throws(() => openDatabase(newerPath), /newer than supported/);
 
@@ -260,6 +273,7 @@ describe("authority generation accounting", () => {
     { table: "config_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
     { table: "version_plans", mutate: (db) => { db.authority.versionPlans.insert(VERSION_PLAN); } },
     { table: "checkpoint_payloads", mutate: (db) => { db.authority.gateResults.insert(GATE_RESULT); } },
+    { table: "run_checkpoints", mutate: (db) => { db.authority.runCheckpoints.insert(RUN_CHECKPOINT); } },
     { table: "ocr_approvals", mutate: (db) => { db.authority.opaque.ocrApprovals.insert(OPAQUE_RECORD); } },
     { table: "capture_sessions", mutate: (db) => { db.authority.opaque.captureSessions.insert(OPAQUE_RECORD); } },
     { table: "capture_photo_order", mutate: (db) => { db.authority.opaque.capturePhotoOrder.insert(OPAQUE_RECORD); } },

@@ -19,6 +19,11 @@ import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
 import { BrowserSystemIdSchema } from "../../domain/ids.js";
+import {
+  RunCheckpointRecordSchema,
+  checkpointRecordKey,
+  type RunCheckpointRecord,
+} from "../../domain/workflow/checkpoint.js";
 import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
 import { NotificationRecordSchema } from "../../domain/notifications.js";
 import {
@@ -120,6 +125,18 @@ export interface AuthorityWriteCommitHooks {
   afterStorageStep(step: AtomicWriteCommitStorageStep): void;
 }
 
+/**
+ * Doc 02 §5.7. `latest` answers "latest compatible attempt wins" — it returns
+ * the highest-numbered attempt for a logical item's node, and returns
+ * `undefined` rather than an empty record when nothing was written, so the
+ * caller's discriminated `loadCheckpoint` branch is the only way forward.
+ */
+type RunCheckpointRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<RunCheckpointRecord>;
+  get(workflowId: string, itemId: string, nodeId: string, attempt: number): RunCheckpointRecord | undefined;
+  latest(workflowId: string, itemId: string, nodeId: string): RunCheckpointRecord | undefined;
+}>;
+
 type OpaqueAuthorityRepositories = Readonly<{
   tasks: ImmutableRepository<OpaqueAuthorityRecord>;
   leases: ImmutableRepository<OpaqueAuthorityRecord>;
@@ -136,6 +153,7 @@ export type AuthorityRepositories = Readonly<{
   dependencies: ImmutableRepository<z.infer<typeof DependencyRecordSchema>>;
   delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
   gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>>;
+  runCheckpoints: RunCheckpointRepository;
   notifications: ImmutableRepository<z.infer<typeof NotificationRecordSchema>>;
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
   versionPlans: ImmutableRepository<VersionPlanStorageRecord>;
@@ -865,6 +883,45 @@ export class AuthorityDatabase implements Disposable {
           return this.#insertSimpleRecord("checkpoint_payloads", `${record.runId}:${record.gateId}`, record, GateResultRecordSchema, record.resolvedAt);
         },
         get: (recordKey: string) => this.#readRecord("checkpoint_payloads", recordKey, GateResultRecordSchema),
+      }),
+      runCheckpoints: Object.freeze({
+        insert: (input: unknown) => {
+          const record = RunCheckpointRecordSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          const recordKey = checkpointRecordKey(record);
+          return this.#authorityWrite("run_checkpoints", () => {
+            const existing = this.#readRecord("run_checkpoints", recordKey, RunCheckpointRecordSchema);
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`run checkpoint ${recordKey} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO run_checkpoints
+                (record_key, workflow, item_id, node_id, attempt, run_id, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              recordKey, record.workflowId, record.itemId, record.nodeId,
+              record.attempt, record.runId, json, record.writtenAt,
+            );
+            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
+          });
+        },
+        get: (workflowId: string, itemId: string, nodeId: string, attempt: number) => this.#readRecord(
+          "run_checkpoints",
+          [workflowId, itemId, nodeId, String(attempt)].join(" "),
+          RunCheckpointRecordSchema,
+        ),
+        latest: (workflowId: string, itemId: string, nodeId: string) => {
+          const row = this.#database.prepare(`
+            SELECT record_json FROM run_checkpoints
+            WHERE workflow = ? AND item_id = ? AND node_id = ?
+            ORDER BY attempt DESC LIMIT 1
+          `).get(workflowId, itemId, nodeId);
+          if (row === undefined) return undefined;
+          return parseJsonRecord(RunCheckpointRecordSchema, JsonRowSchema.parse(row).record_json);
+        },
       }),
       notifications: Object.freeze({
         insert: (input: unknown) => {

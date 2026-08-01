@@ -13,6 +13,7 @@ export const AuthorityTableNameSchema = z.enum([
   "config_snapshots",
   "version_plans",
   "checkpoint_payloads",
+  "run_checkpoints",
   "ocr_approvals",
   "capture_sessions",
   "capture_photo_order",

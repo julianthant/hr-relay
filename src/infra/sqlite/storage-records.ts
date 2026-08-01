@@ -15,6 +15,7 @@ import {
 import { NotificationRecordSchema } from "../../domain/notifications.js";
 import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
 import { SchemaBoundCanonicalValueSchema } from "../../domain/schema-bound-value.js";
+import { RunCheckpointRecordSchema } from "../../domain/workflow/checkpoint.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../domain/write-safety.js";
 
 export const SqliteStorageRecordIdSchema = z.string().uuid().brand<"SqliteStorageRecordId">();
@@ -63,6 +64,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   config_snapshots: ConfigSnapshotRecordSchema,
   version_plans: VersionPlanStorageRecordSchema,
   checkpoint_payloads: GateResultRecordSchema,
+  run_checkpoints: RunCheckpointRecordSchema,
   ocr_approvals: OpaqueAuthorityRecordSchema,
   capture_sessions: OpaqueAuthorityRecordSchema,
   capture_photo_order: OpaqueAuthorityRecordSchema,
