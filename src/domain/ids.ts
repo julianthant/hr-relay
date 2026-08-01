@@ -134,6 +134,16 @@ export const TaskIdSchema = brandedText<"TaskId">(
   "task id must be <registered-store>/<kebab-case-operation>",
 );
 
+declare const taskIdLiteralBrand: unique symbol;
+export type LiteralTaskId<Value extends string> = z.infer<typeof TaskIdSchema> & {
+  readonly [taskIdLiteralBrand]: Value;
+};
+
+export function taskId<const Value extends string>(value: Value): LiteralTaskId<Value>;
+export function taskId(value: string): z.infer<typeof TaskIdSchema> {
+  return TaskIdSchema.parse(value);
+}
+
 export type RunId = z.infer<typeof RunIdSchema>;
 export type ItemId = z.infer<typeof ItemIdSchema>;
 export type CommandId = z.infer<typeof CommandIdSchema>;

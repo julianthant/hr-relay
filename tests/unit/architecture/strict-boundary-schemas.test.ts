@@ -5,6 +5,8 @@ import ts from "typescript";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableRegistrySchema, TableSpecSchema } from "../../../src/domain/authority.js";
+import { RebuildArtifactRootSchema } from "../../../src/config/define-runtime-isolation.js";
+import { ArtifactPutMetadataSchema, ArtifactRefSchema } from "../../../src/domain/artifacts.js";
 import { BoundaryFailureSchema } from "../../../src/domain/boundary-failure.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
@@ -45,6 +47,7 @@ import { GateResultRecordSchema } from "../../../src/domain/gates.js";
 import { LedgerEntryPayloadSchema, LedgerEntrySchema, LedgerOutboxPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from "../../../src/domain/ledger.js";
 import { NotificationRecordSchema } from "../../../src/domain/notifications.js";
 import { AtomicOutboxPayloadSchema, AtomicOutboxRecordSchema } from "../../../src/domain/outbox.js";
+import { ProviderRequestEnvelopeSchema, ProviderResponseEnvelopeSchema } from "../../../src/domain/providers.js";
 import {
   buildPreflightReport,
   PreflightObservationSchema,
@@ -56,6 +59,12 @@ import { ClassifiedDiagnosticValueSchema, RedactionResultSchema } from "../../..
 import { RUNTIME_DEPENDENCY_REGISTRY, RuntimeDependencyRegistrySchema } from "../../../src/domain/runtime-dependencies.js";
 import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema } from "../../../src/domain/runtime-environment.js";
 import { SchemaBoundCanonicalValueSchema } from "../../../src/domain/schema-bound-value.js";
+import {
+  IdleRefreshCadenceSchema,
+  LoginResultSchema,
+  RetryPolicySchema,
+  SessionNeedSchema,
+} from "../../../src/domain/session.js";
 import {
   FreshnessPolicySchema,
   ProvenancePolicySchema,
@@ -572,6 +581,22 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "OfflineRestoreRequest", schema: OfflineRestoreRequestSchema, fixtures: [{ manifestPath: "/tmp/authority.manifest.json", stoppedSystemProof: STOPPED_SYSTEM_PROOF }] },
   { name: "OfflineRestoreReport", schema: OfflineRestoreReportSchema, fixtures: [{ state: "restored", restoredAt: NOW, manifestFileName: "authority-g4.sqlite.manifest.json", backupFileName: "authority-g4.sqlite", suspectFileName: "suspect-state.sqlite", sourceDatabaseIdentity: HASH_B, authorityGeneration: 4, projectionRebuilt: true, authorityPreservedAcrossProjectionRebuild: true }] },
   { name: "SchemaBoundCanonicalValue", schema: SchemaBoundCanonicalValueSchema, fixtures: [{ schemaHash: HASH_A, value: "approved" }] },
+  { name: "RebuildArtifactRoot", schema: RebuildArtifactRootSchema, fixtures: [".tracker-rebuild/artifacts"] },
+  { name: "ContentAddressedArtifactRef", schema: ArtifactRefSchema, fixtures: [{ id: UUID_1, sha256: HASH_A, bytes: 7, mediaType: "text/plain" }] },
+  { name: "ArtifactPutMetadata", schema: ArtifactPutMetadataSchema, fixtures: [{ mediaType: "application/pdf" }] },
+  { name: "SessionNeed", schema: SessionNeedSchema, fixtures: [
+    { system: "ucpath", access: "read", session: "reuse-worker" },
+    { system: "onbase", access: "transaction", session: "fresh", exclusive: true, acceptDownloads: true },
+  ] },
+  { name: "LoginResult", schema: LoginResultSchema, fixtures: ["logged-in", "already-authenticated"] },
+  { name: "IdleRefreshCadence", schema: IdleRefreshCadenceSchema, fixtures: [{ intervalMs: 30_000 }] },
+  { name: "RetryPolicy", schema: RetryPolicySchema, fixtures: [{ attempts: 2, backoffMs: 500, retryOn: "transient" }] },
+  { name: "ProviderRequestEnvelope", schema: ProviderRequestEnvelopeSchema, fixtures: [{ capability: "ocr.extract", payload: { schemaHash: HASH_A, value: "redacted fixture" } }] },
+  { name: "ProviderResponseEnvelope", schema: ProviderResponseEnvelopeSchema, fixtures: [
+    { state: "produced", value: { schemaHash: HASH_A, value: "recognized fixture" } },
+    { state: "unavailable", reason: "no configured provider" },
+    { state: "invalid-response", reason: "response did not match the requested schema" },
+  ] },
   { name: "CommandEnvelope", schema: CommandEnvelopeSchema, fixtures: [COMMAND_ENVELOPE] },
   { name: "StartCommandRequest", schema: StartCommandRequestSchema, fixtures: commandFixtures("start") },
   { name: "IntakeCommandRequest", schema: IntakeCommandRequestSchema, fixtures: commandFixtures("intake") },
@@ -815,6 +840,10 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/contracts/base.ts:SealedReadContract",
   "src/domain/contracts/base.ts:SealedPrepareContract",
   "src/domain/contracts/base.ts:SealedCommitContract",
+  "src/domain/contracts/base.ts:AnyReadTaskContract",
+  "src/domain/contracts/base.ts:AnyPrepareTaskContract",
+  "src/domain/contracts/base.ts:AnyCommitTaskContract",
+  "src/domain/contracts/base.ts:AnyTaskContract",
   "src/domain/contracts/write-safety.ts:CanonicalJsonSchema",
   "src/domain/contracts/write-safety.ts:ProbeVerdict",
   "src/domain/contracts/write-safety.ts:ProofCheck",
@@ -824,6 +853,8 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/contracts/write-safety.ts:CompletionCheck",
   "src/domain/contracts/write-safety.ts:Idempotency",
   "src/domain/contracts/write-safety.ts:WriteSafety",
+  "src/domain/ids.ts:LiteralTaskId",
+  "src/domain/session.ts:SessionNeed",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {

@@ -1,0 +1,355 @@
+import assert from "node:assert/strict";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
+import { describe, it } from "vitest";
+import { z } from "zod";
+import {
+  declareDriver,
+  defineBrowserStore,
+  defineServiceStore,
+  defineTaskStoreRegistry,
+} from "../../src/base/store.js";
+import {
+  createDeterministicSessionProvider,
+  defineUnwiredSessionProvider,
+} from "../../src/base/session.js";
+import { defineTask } from "../../src/base/task.js";
+import { defineTaskContract } from "../../src/domain/contracts/base.js";
+import { FingerprintSchema, ScenarioIdSchema, taskId } from "../../src/domain/ids.js";
+import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import type { ArtifactWriteFaultStep } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { createDeterministicProviderHarness } from "../../src/infra/providers/deterministic-provider.js";
+import { browserStoreRegistry } from "../../src/stores/index.js";
+
+const SCENARIO = ScenarioIdSchema.parse("ucpath/store-fixture-happy");
+const INPUT = z.strictObject({ value: z.string().min(1) });
+const OUTPUT = z.strictObject({ value: z.string().min(1) });
+
+function fixtureReadContract() {
+  return defineTaskContract({
+    id: taskId("ucpath/search-store-fixture"),
+    title: "Search store fixture",
+    effect: "read",
+    input: INPUT,
+    output: OUTPUT,
+    errorCodes: ["fixture-missing"] as const,
+    subject: { kind: "none", reason: "registry resolution fixture" },
+    scenarios: [SCENARIO],
+    freshness: { defaultMaxAgeMs: 0 },
+    provenance: { default: "live" },
+    example: { value: "fixture" },
+  });
+}
+
+function fixtureReadTask() {
+  const contract = fixtureReadContract();
+  return defineTask(contract, {
+    sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
+    async run({ input }) {
+      return input;
+    },
+  });
+}
+
+async function readStream(stream: Readable): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of stream) {
+    if (!(chunk instanceof Uint8Array)) throw new Error("test artifact stream emitted non-bytes");
+    chunks.push(Uint8Array.from(chunk));
+  }
+  return Uint8Array.from(Buffer.concat(chunks));
+}
+
+describe("task, store, session, provider, and artifact seams", () => {
+  it("declares all nine browser stores with OnBase-only exclusivity and fail-loud unwired login", async () => {
+    const expected = [
+      "crm",
+      "i9",
+      "kuali",
+      "new-kronos",
+      "old-kronos",
+      "onbase",
+      "servicenow",
+      "sharepoint",
+      "ucpath",
+    ];
+    assert.deepEqual(browserStoreRegistry.stores.map(({ namespace }) => namespace).sort(), expected);
+    for (const store of browserStoreRegistry.stores) {
+      assert.equal(store.kind, "browser");
+      assert.equal(store.driver.system, store.namespace);
+      assert.equal(store.session.system, store.namespace);
+      assert.equal(store.session.exclusive === true, store.namespace === "onbase");
+      await assert.rejects(store.session.login(undefined, {}), new RegExp(`${store.namespace}.*unwired`));
+    }
+    assert.throws(() => defineUnwiredSessionProvider("onbase"), /must declare exclusive:true/);
+    assert.throws(
+      () => defineUnwiredSessionProvider("ucpath", { exclusive: true }),
+      /cannot declare exclusive:true/,
+    );
+  });
+
+  it("binds tasks to exact effects/sessions and resolves corpus references in the store registry", () => {
+    const task = fixtureReadTask();
+    const session = createDeterministicSessionProvider("ucpath", ["logged-in"]).provider;
+    const store = defineBrowserStore(
+      "ucpath",
+      declareDriver("ucpath", "semantic-ready"),
+      session,
+      { searchStoreFixture: task },
+    );
+    const corpus = {
+      scenarioIds: [SCENARIO],
+      tasks: [{ id: task.contract.id, effect: task.contract.effect }],
+    };
+    assert.doesNotThrow(() => defineTaskStoreRegistry([store], corpus));
+    assert.throws(
+      () => defineTaskStoreRegistry([store], { ...corpus, scenarioIds: [] }),
+      /unresolved scenario/,
+    );
+    assert.throws(
+      () => defineTaskStoreRegistry([store], { scenarioIds: [SCENARIO], tasks: [] }),
+      /absent from the contract corpus/,
+    );
+    assert.throws(() => Reflect.apply(defineTask, undefined, [task.contract, {
+      sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
+      run: async ({ input }: { input: z.output<typeof INPUT> }) => input,
+    }]), /requires read session access/);
+    assert.throws(() => Reflect.apply(defineTask, undefined, [{ ...task.contract }, task.impl]),
+      /exact contract object returned by defineTaskContract/);
+    assert.throws(() => Reflect.apply(defineTask, undefined, [task.contract, { run: task.impl.run }]),
+      /requires sessions/);
+    assert.throws(
+      () => defineBrowserStore("crm", declareDriver("crm", "unwired"), session, {}),
+      /cannot use ucpath session provider/,
+    );
+  });
+
+  it("keeps service tasks sessionless and provider declarations capability-narrowed", () => {
+    const scenario = ScenarioIdSchema.parse("ocr/provider-fixture-happy");
+    const contract = defineTaskContract({
+      id: taskId("ocr/read-provider-fixture"),
+      title: "Read provider fixture",
+      effect: "read",
+      input: z.strictObject({}),
+      output: OUTPUT,
+      errorCodes: ["provider-unavailable"] as const,
+      providers: ["ocr.extract"] as const,
+      subject: { kind: "none", reason: "service provider fixture" },
+      scenarios: [scenario],
+      freshness: { defaultMaxAgeMs: 0 },
+      provenance: { default: "derived" },
+      example: { value: "fixture" },
+    });
+    const task = defineTask(contract, {
+      sessions: [],
+      async run() {
+        return { value: "fixture" };
+      },
+    });
+    const store = defineServiceStore("ocr", { readProviderFixture: task });
+    assert.doesNotThrow(() => defineTaskStoreRegistry([store], {
+      scenarioIds: [scenario],
+      tasks: [{ id: contract.id, effect: "read" }],
+    }));
+  });
+
+  it("atomically persists and deduplicates content bytes without exposing a backing path", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifacts-"));
+    try {
+      assert.throws(() => createContentAddressedArtifactWriter({
+        workspaceRoot: workspace,
+        artifactRoot: ".tracker/artifacts",
+      }), /Invalid input/);
+      const writer = createContentAddressedArtifactWriter({
+        workspaceRoot: workspace,
+        artifactRoot: ".tracker-rebuild/artifacts",
+      });
+      const bytes = new TextEncoder().encode("same immutable bytes");
+      const first = await writer.put(bytes, { mediaType: "text/plain" });
+      const reopenedWriter = createContentAddressedArtifactWriter({
+        workspaceRoot: workspace,
+        artifactRoot: ".tracker-rebuild/artifacts",
+      });
+      const second = await reopenedWriter.put(Readable.from([bytes]), { mediaType: "text/plain" });
+      assert.deepEqual(second, first);
+      assert.equal(Object.hasOwn(first, "path"), false);
+      assert.equal(Object.hasOwn(writer, "root"), false);
+      assert.deepEqual(await readStream(await reopenedWriter.open(first)), bytes);
+      await assert.rejects(
+        writer.put(bytes, { mediaType: "application/json" }),
+        /already exists with media type text\/plain/,
+      );
+      assert.deepEqual(
+        (await readdir(join(workspace, ".tracker-rebuild/artifacts"))).sort(),
+        [`${first.sha256}.artifact`],
+      );
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("cleans pre-rename faults and recovers committed artifacts after every write boundary", async () => {
+    const steps: readonly ArtifactWriteFaultStep[] = [
+      "temp-written",
+      "temp-synced",
+      "renamed",
+      "directory-synced",
+    ];
+    for (const step of steps) {
+      const workspace = await mkdtemp(join(tmpdir(), `hrauto-artifact-${step}-`));
+      const bytes = new TextEncoder().encode(`fault fixture ${step}`);
+      let armed = true;
+      try {
+        const faulting = createContentAddressedArtifactWriter({
+          workspaceRoot: workspace,
+          artifactRoot: ".tracker-rebuild/artifacts",
+          injectFault(actual) {
+            if (armed && actual === step) {
+              armed = false;
+              throw new Error(`injected ${step}`);
+            }
+          },
+        });
+        await assert.rejects(faulting.put(bytes, { mediaType: "text/plain" }), new RegExp(`injected ${step}`));
+        const recovery = createContentAddressedArtifactWriter({
+          workspaceRoot: workspace,
+          artifactRoot: ".tracker-rebuild/artifacts",
+        });
+        const ref = await recovery.put(bytes, { mediaType: "text/plain" });
+        assert.deepEqual(await readStream(await recovery.open(ref)), bytes);
+        assert.deepEqual(
+          (await readdir(join(workspace, ".tracker-rebuild/artifacts"))).sort(),
+          [`${ref.sha256}.artifact`],
+        );
+      } finally {
+        await rm(workspace, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("rejects relative workspaces and symlinked rebuild roots before artifact persistence", async () => {
+    const relativeWriter = createContentAddressedArtifactWriter({
+      workspaceRoot: "relative-workspace",
+      artifactRoot: ".tracker-rebuild/artifacts",
+    });
+    await assert.rejects(
+      relativeWriter.put(new Uint8Array(), { mediaType: "application/octet-stream" }),
+      /workspaceRoot must be absolute/,
+    );
+
+    const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-symlink-"));
+    const outside = await mkdtemp(join(tmpdir(), "hrauto-artifact-outside-"));
+    try {
+      await mkdir(join(workspace), { recursive: true });
+      await symlink(outside, join(workspace, ".tracker-rebuild"), "dir");
+      const writer = createContentAddressedArtifactWriter({
+        workspaceRoot: workspace,
+        artifactRoot: ".tracker-rebuild/artifacts",
+      });
+      await assert.rejects(
+        writer.put(new Uint8Array(), { mediaType: "application/octet-stream" }),
+        /cannot be a symbolic link/,
+      );
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("fails loud on corrupted artifact JSON, digest, payload, and length metadata", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-corrupt-"));
+    try {
+      const writer = createContentAddressedArtifactWriter({
+        workspaceRoot: workspace,
+        artifactRoot: ".tracker-rebuild/artifacts",
+      });
+      const bytes = new TextEncoder().encode("corruption fixture");
+      const ref = await writer.put(bytes, { mediaType: "text/plain" });
+      const path = join(workspace, ".tracker-rebuild/artifacts", `${ref.sha256}.artifact`);
+      const original = await readFile(path, "utf8");
+
+      await writeFile(path, "not-json", "utf8");
+      await assert.rejects(writer.open(ref), /not valid JSON/);
+
+      await writeFile(path, original.replace(ref.sha256, "b".repeat(64)), "utf8");
+      await assert.rejects(writer.open(ref), /content digest does not match/);
+
+      const encoded = Buffer.from(bytes).toString("base64");
+      const changedPayload = Buffer.from("different bytes").toString("base64");
+      await writeFile(path, original.replace(encoded, changedPayload), "utf8");
+      await assert.rejects(writer.open(ref), /content digest does not match/);
+
+      await writeFile(path, original.replace(`"bytes":${ref.bytes}`, `"bytes":${ref.bytes + 1}`), "utf8");
+      await assert.rejects(writer.open(ref), /byte length does not match/);
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("fails concurrent in-progress writes explicitly and converges on retry to the winner ref", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-concurrent-"));
+    try {
+      const firstWriter = createContentAddressedArtifactWriter({
+        workspaceRoot: workspace,
+        artifactRoot: ".tracker-rebuild/artifacts",
+      });
+      const secondWriter = createContentAddressedArtifactWriter({
+        workspaceRoot: workspace,
+        artifactRoot: ".tracker-rebuild/artifacts",
+      });
+      const bytes = new TextEncoder().encode("concurrent immutable bytes");
+      const results = await Promise.allSettled([
+        firstWriter.put(bytes, { mediaType: "text/plain" }),
+        secondWriter.put(bytes, { mediaType: "text/plain" }),
+      ]);
+      for (const result of results) {
+        if (result.status === "rejected") assert.match(String(result.reason), /already being written/);
+      }
+      const winner = await firstWriter.put(bytes, { mediaType: "text/plain" });
+      const retried = await secondWriter.put(bytes, { mediaType: "text/plain" });
+      assert.deepEqual(retried, winner);
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("validates deterministic provider envelopes and fails loud when scripted outcomes end", async () => {
+    const hash = FingerprintSchema.parse("a".repeat(64));
+    const response = {
+      state: "produced" as const,
+      value: { schemaHash: hash, value: { text: "recognized" } },
+    };
+    const harness = createDeterministicProviderHarness("ocr.extract", [response]);
+    const signal = new AbortController().signal;
+    assert.deepEqual(
+      await harness.client.call({ schemaHash: hash, value: { artifact: "fixture" } }, { signal }),
+      response,
+    );
+    assert.equal(harness.calls().length, 1);
+    await assert.rejects(
+      harness.client.call({ schemaHash: hash, value: { artifact: "fixture" } }, { signal }),
+      /no queued response/,
+    );
+    await assert.rejects(
+      harness.adapter.invoke({
+        capability: "ai.advisory",
+        payload: { schemaHash: hash, value: "fixture" },
+      }, { signal }),
+      /cannot invoke capability ai\.advisory/,
+    );
+  });
+
+  it("records deterministic session calls without manufacturing fallback results", async () => {
+    const harness = createDeterministicSessionProvider(
+      "onbase",
+      ["already-authenticated", "logged-in"],
+      { exclusive: true },
+    );
+    assert.equal(await harness.provider.login(undefined, { instance: "test" }), "already-authenticated");
+    assert.equal(await harness.provider.login(undefined, {}), "logged-in");
+    assert.equal(harness.calls().length, 2);
+    await assert.rejects(harness.provider.login(undefined, {}), /no queued login result/);
+  });
+});

@@ -149,11 +149,10 @@
     {
       "name": "artifact-effect-boundary",
       "file": "tests/unit/architecture/artifact-effect-boundary.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: artifact-effect-boundary.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/01-task-contract.md; docs/rebuild/10-guard-test-architecture.md",
+      "invariant": "Artifact references expose stable UUID identity plus immutable digest/size/media type and no root or path; the real writer accepts only a non-symlinked rebuild-isolated artifact root, writes one metadata+payload object via temp→file-fsync→atomic-rename→directory-fsync, recovers cleanly across injected boundaries, returns the same ref for byte-identical content, and keeps task/workflow implementations away from direct mutable filesystem primitives.",
+      "replacementRequired": true
     },
     {
       "name": "atomic-write-outbox",
@@ -382,11 +381,10 @@
     {
       "name": "provider-capability-boundary",
       "file": "tests/unit/architecture/provider-capability-boundary.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: provider-capability-boundary.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/01-task-contract.md; docs/rebuild/10-guard-test-architecture.md",
+      "invariant": "Provider calls cross strict capability-tagged request/result envelopes; task contexts expose only declared capability clients, and raw network/provider modules plus ProviderAdapter implementations remain confined to infra/providers. Phase 1d supplies interfaces and deterministic fakes only, not admission, budgets, pools, or production consumers.",
+      "replacementRequired": true
     },
     {
       "name": "rebuild-gates",
@@ -482,6 +480,14 @@
       "status": "active",
       "owner": "docs/rebuild/12-operator-trust-and-authoring.md; docs/rebuild/10-guard-test-architecture.md",
       "invariant": "AST and transitive import-graph audits confine static/dynamic Playwright access, raw browser types, locator/frame/getBy/newPage/evaluate/$ operations, and private driver/session ownership to per-system driver/session modules; task/workflow code consumes typed semantic ids and proofs, while MutationCapability forgery and commit implementations remain prohibited until the Phase-1f validator.",
+      "replacementRequired": true
+    },
+    {
+      "name": "task-store-boundaries",
+      "file": "tests/unit/architecture/task-store-boundaries.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/01-task-contract.md; docs/rebuild/05-execution-parallelism.md; docs/rebuild/10-guard-test-architecture.md",
+      "invariant": "All nine closed browser systems have exactly one declared store and fail-loud unwired session provider; driver/session/store systems match, OnBase alone is identity-exclusive, typed task bindings enforce effect/access/session/provider boundaries, and the registry exact-matches implementations to the contract corpus while resolving every scenario/probe/verifier reference.",
       "replacementRequired": true
     },
     {

@@ -1,0 +1,87 @@
+import { z } from "zod";
+import { BrowserSystemIdSchema } from "../domain/ids.js";
+import type { BrowserSystemId } from "../domain/ids.js";
+import {
+  IdleRefreshCadenceSchema,
+  LoginResultSchema,
+} from "../domain/session.js";
+import type { IdleRefreshCadence, LoginResult } from "../domain/session.js";
+
+export interface SessionLoginOptions {
+  readonly instance?: string;
+  readonly signal?: AbortSignal;
+}
+
+export interface SessionProvider<S extends BrowserSystemId, Handle = unknown> {
+  readonly system: S;
+  readonly login: (handle: Handle, options: SessionLoginOptions) => Promise<LoginResult>;
+  readonly prepareLogin?: (handle: Handle) => Promise<void>;
+  readonly resetUrl?: string;
+  readonly idleRefresh?: IdleRefreshCadence;
+  readonly exclusive?: true;
+}
+
+const SessionProviderRuntimeSchema = z.strictObject({
+  system: BrowserSystemIdSchema,
+  login: z.custom<SessionProvider<BrowserSystemId>["login"]>((value) => typeof value === "function"),
+  prepareLogin: z.custom<NonNullable<SessionProvider<BrowserSystemId>["prepareLogin"]>>(
+    (value) => typeof value === "function",
+  ).optional(),
+  resetUrl: z.url().optional(),
+  idleRefresh: IdleRefreshCadenceSchema.optional(),
+  exclusive: z.literal(true).optional(),
+});
+
+export function defineSessionProvider<S extends BrowserSystemId, Handle>(
+  provider: SessionProvider<S, Handle>,
+): SessionProvider<S, Handle> {
+  SessionProviderRuntimeSchema.parse(provider);
+  if (provider.system === "onbase" && provider.exclusive !== true) {
+    throw new Error("onbase session provider must declare exclusive:true");
+  }
+  if (provider.system !== "onbase" && provider.exclusive === true) {
+    throw new Error(`${provider.system} session provider cannot declare exclusive:true`);
+  }
+  return Object.freeze({ ...provider });
+}
+
+export function defineUnwiredSessionProvider<S extends BrowserSystemId>(
+  system: S,
+  options: Readonly<{ exclusive?: true }> = {},
+): SessionProvider<S> {
+  return defineSessionProvider({
+    system,
+    ...options,
+    async login() {
+      throw new Error(`${system} session login is declared but unwired in Phase 1d`);
+    },
+  });
+}
+
+export interface DeterministicSessionHarness<S extends BrowserSystemId> {
+  readonly provider: SessionProvider<S>;
+  readonly calls: () => readonly SessionLoginOptions[];
+}
+
+export function createDeterministicSessionProvider<S extends BrowserSystemId>(
+  system: S,
+  results: readonly LoginResult[],
+  options: Readonly<{ exclusive?: true }> = {},
+): DeterministicSessionHarness<S> {
+  const queue = results.map((result) => LoginResultSchema.parse(result));
+  const calls: SessionLoginOptions[] = [];
+  const provider = defineSessionProvider({
+    system,
+    ...options,
+    async login(_handle, loginOptions) {
+      calls.push(Object.freeze({ ...loginOptions }));
+      const result = queue.shift();
+      if (result === undefined) throw new Error(`${system} deterministic session has no queued login result`);
+      return result;
+    },
+  });
+  return Object.freeze({
+    provider,
+    calls: () => Object.freeze(calls.map((call) => Object.freeze({ ...call }))),
+  });
+}

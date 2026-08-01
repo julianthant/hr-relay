@@ -114,9 +114,42 @@ the opaque `MutationCapability`; none of these seams mints it. `TaskError` pins 
 `[task-id] code: message` form, defaults unknown failures to non-transient `unhandled`, and keeps
 declared error codes literal through `taskFailer(contract)` inference. Browser contexts accept only
 drivers carrying a `BrowserSystemId`; the store factory adds exact driver/store matching. This
-commit deliberately contains no task impl,
-store, session, artifact writer, provider adapter, or runtime mutation token; those remain in the
-next 1d slice or 1f as owned.
+contract-core slice deliberately contained no task impl, store, session, artifact writer, provider
+adapter, or runtime mutation token; the bounded 1d seam below now owns the declarations while 1f
+still owns execution and mutation-token minting.
+
+### Phase 1d as-built — bounded task/store/session/provider/artifact seam (2026-08-01)
+
+`src/base/task.ts` now binds sealed contracts to effect-specific implementations through
+`defineTask`. Literal-preserving `taskId(...)` values keep browser/service/workflow namespaces in
+the type system: reads request read access, prepare/commit request transaction access, headless
+tasks are sessionless, and provider clients are narrowed to the contract's exact declared
+capability keys. The runtime backstop independently checks effect/access/system agreement,
+OnBase-only exclusivity, download↔content-addressed-read agreement, read-only retry policy, and
+headless restrictions before freezing the task.
+
+`src/base/store.ts` declares browser, service, and workflow stores. The registry rejects duplicate
+namespaces/task ids, prefix/effect drift, unpaired corpus entries, and missing implementations, and
+calls `assertTaskContractReferences` for every registered task so scenario/probe/verifier
+resolution cannot be skipped at composition. All nine browser systems now have explicit store and
+session declarations. Their login callbacks fail loud as intentionally unwired Phase-1d seams;
+they are not operational auth implementations. UCPath records the existing semantic driver as
+ready, the other eight driver declarations remain unwired, and OnBase alone requires
+`exclusive:true`. No declaration imports or exports a raw Playwright page.
+
+The public artifact seam is strict `{id,sha256,bytes,mediaType}` and never exposes a root or backing
+path. The real writer accepts only `.tracker-rebuild/artifacts` beneath a non-symlinked absolute
+workspace, persists metadata+payload as one content-addressed object through temp write → file
+fsync → atomic rename → directory fsync, returns one stable UUID ref for byte-identical content
+across writer instances, rejects conflicting media metadata, and reads only exact
+id+digest+metadata matches. Fault injection proves pre-rename cleanup and post-rename recovery at
+every write boundary. A concurrent same-digest put that encounters the short-lived write lock fails
+explicitly as in-progress rather than guessing; retry after the winner's atomic rename returns the
+winner's exact ref. The provider seam uses strict capability-tagged, schema-hash-bound canonical
+request and `produced|unavailable|invalid-response` result envelopes; deterministic
+adapters/clients exhaust fail loud and never translate failure into an empty success. Provider
+admission/rate/concurrency/cost budgets, production adapters/pools/consumers, browser acquisition,
+login wiring, session lifecycle, and worker execution remain owned by 1f/2h.
 
 ---
 

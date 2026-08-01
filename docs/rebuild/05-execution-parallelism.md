@@ -37,6 +37,13 @@ OnBase is the only identity-exclusive provider declaration. Phase 1d may declare
 fail-loud unwired login callbacks; acquisition, close ordering, fresh-boundary execution, and
 cross-process lease behavior remain 1f runtime work.
 
+As built on 2026-08-01, each of the nine browser stores declares exactly one matching
+`SessionProvider`. Every placeholder login rejects with an explicit "declared but unwired in Phase
+1d" error; none creates a browser or claims authentication. OnBase alone declares and requires
+`exclusive:true`. The store/task boundary validates the full `SessionNeed` shape and effect/access
+agreement now, while worker-owned acquisition, reuse, close/reset, and cross-process leases remain
+absent until 1f.
+
 ---
 
 ## 0. Settled decision

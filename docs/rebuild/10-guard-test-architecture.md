@@ -220,6 +220,26 @@ read-context mutation access fail `tsc`. Freshness/provenance/subject/effect sch
 in the recursive strict-boundary catalog. Browser execution, store/session binding, and mutation
 token mint/validation remain absent, so their 1f guards stay planned.
 
+### Phase 1d Stage D as-built — bounded stores, sessions, providers, and artifacts (2026-08-01)
+
+`task-store-boundaries` now proves the closed nine-browser-system declaration set, exact
+driver/session/store matching, fail-loud unwired login placeholders, OnBase-only exclusivity, and
+the compile-time effect/access plus provider-client narrowing fixtures. The store registry exact
+matches implementations to its contract corpus and exercises the contract reference resolver for
+every registered task; synthetic unit tests prove missing scenarios and missing/mismatched corpus
+tasks fail loud.
+
+`artifact-effect-boundary` pins the path-free content-addressed ref, rebuild-only non-symlinked
+root, temp→fsync→atomic-rename durability sequence, crash-boundary recovery, and byte-identical
+idempotency; its AST canary rejects direct mutable filesystem access from task/workflow
+implementations.
+`provider-capability-boundary` confines raw network/provider modules and adapter implementations to
+`infra/providers`, pins exact capability client narrowing, and has a direct-network/forged-adapter
+canary. The recursive strict-boundary catalog now includes session, retry, artifact, provider, and
+artifact-root schemas. These active guards cover only the real 1d interfaces/declarations,
+artifact writer, and provider deterministic fakes: 1f admission/budget/worker/session-runtime
+guards and 2h production provider-pool/consumer guards remain planned.
+
 ---
 
 ## 1. The suite today — what the rebuild repo inherits (grounded inventory)

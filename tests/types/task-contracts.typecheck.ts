@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { CommitTaskCtx, ReadTaskCtx } from "../../src/base/task.js";
-import { taskFailer } from "../../src/base/task.js";
+import { defineTask, taskFailer } from "../../src/base/task.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../src/domain/contracts/base.js";
-import { EidSchema, ObservationIdSchema, ScenarioIdSchema, TaskIdSchema } from "../../src/domain/ids.js";
+import { EidSchema, ObservationIdSchema, ScenarioIdSchema, taskId } from "../../src/domain/ids.js";
 import type { UcpathPersonOrgDriver } from "../../src/domain/ui/ucpath-person-org.js";
 
 // @ts-expect-error browser task contexts reject service-system drivers
@@ -11,7 +11,7 @@ export type InvalidBrowserTaskContext = ReadTaskCtx<{ readonly system: "extracti
 const input = z.strictObject({ eid: EidSchema });
 const output = z.strictObject({ eid: EidSchema });
 const contract = defineTaskContract({
-  id: TaskIdSchema.parse("ucpath/search-person-org"),
+  id: taskId("ucpath/search-person-org"),
   title: "Search Person Org",
   effect: "read",
   input,
@@ -49,3 +49,43 @@ defineTaskContract({ ...contract, output: z.any(), example: "unsafe" });
 
 // @ts-expect-error z.unknown cannot be a canonical task output schema
 defineTaskContract({ ...contract, output: z.unknown(), example: "unsafe" });
+
+export const typedReadTask = defineTask(contract, {
+  sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
+  async run({ input }) {
+    return input;
+  },
+});
+
+// @ts-expect-error read task implementations cannot request transaction access
+defineTask(contract, {
+  sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
+  async run({ input }) {
+    return input;
+  },
+});
+
+const providerContract = defineTaskContract({
+  id: taskId("ocr/read-provider-fixture"),
+  title: "Read provider fixture",
+  effect: "read",
+  input: z.strictObject({}),
+  output: z.strictObject({ value: z.string() }),
+  errorCodes: ["provider-unavailable"] as const,
+  providers: ["ocr.extract"] as const,
+  subject: { kind: "none", reason: "provider type fixture" },
+  scenarios: [ScenarioIdSchema.parse("ocr/provider-fixture-happy")],
+  freshness: { defaultMaxAgeMs: 0 },
+  provenance: { default: "derived" },
+  example: { value: "fixture" },
+});
+
+export const typedProviderTask = defineTask(providerContract, {
+  sessions: [],
+  async run({ ctx }) {
+    void ctx.providers["ocr.extract"];
+    // @ts-expect-error provider clients are narrowed to the declared capability
+    void ctx.providers["ai.advisory"];
+    return { value: "fixture" };
+  },
+});

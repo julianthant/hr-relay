@@ -112,6 +112,7 @@ export type ContractFieldPath = z.infer<typeof ContractFieldPathSchema>;
 export type FreshnessPolicy = z.infer<typeof FreshnessPolicySchema>;
 export type ProvenancePolicy = z.infer<typeof ProvenancePolicySchema>;
 export type SubjectBindingSpec = z.infer<typeof SubjectBindingSpecSchema>;
+export type TaskContractResolutionCorpus = z.infer<typeof TaskContractResolutionCorpusSchema>;
 
 type ErrorCodes = readonly [string, ...string[]];
 interface TaskContractBase<
@@ -215,7 +216,16 @@ interface RuntimeCommitTaskContract extends RuntimeTaskContractBase {
   readonly effect: "commit";
   readonly writeSafety: z.output<typeof WriteSafetyRuntimeSchema>;
 }
+export type AnyReadTaskContract = RuntimeReadTaskContract & { readonly __sealed: true };
+export type AnyPrepareTaskContract = RuntimePrepareTaskContract & { readonly __sealed: true };
+export type AnyCommitTaskContract = RuntimeCommitTaskContract & { readonly __sealed: true };
+export type AnyTaskContract = AnyReadTaskContract | AnyPrepareTaskContract | AnyCommitTaskContract;
 type RuntimeTaskContract = RuntimeReadTaskContract | RuntimePrepareTaskContract | RuntimeCommitTaskContract;
+const FACTORY_SEALED_TASK_CONTRACTS = new WeakSet<object>();
+type ReadTaskDefinitionShape = Omit<
+  ReadTaskContract<TaskId, z.ZodType, z.ZodType, ErrorCodes>,
+  "output" | "example"
+> & Readonly<{ output: z.ZodType; example: unknown }>;
 
 const RuntimeZodSchema = z.custom<z.ZodType>(
   (value) => value instanceof z.ZodType,
@@ -415,12 +425,18 @@ export function assertTaskContractReferences(
   }
 }
 
+export function assertFactorySealedTaskContract(input: unknown): asserts input is AnyTaskContract {
+  if (input === null || typeof input !== "object" || !FACTORY_SEALED_TASK_CONTRACTS.has(input)) {
+    throw new Error("defineTask requires the exact contract object returned by defineTaskContract");
+  }
+}
+
 export function defineTaskContract<
-  Id extends TaskId,
-  Input extends z.ZodType,
-  Output extends z.ZodType,
-  const Codes extends ErrorCodes,
->(contract: ReadTaskContract<Id, Input, Output, Codes>): SealedReadContract<Id, Input, Output, Codes>;
+  const Contract extends ReadTaskDefinitionShape,
+>(contract: Contract & Readonly<{
+  output: CanonicalJsonSchema<Contract["output"]>;
+  example: z.input<Contract["output"]>;
+}>): Sealed<Contract, Contract["output"]>;
 export function defineTaskContract<
   Id extends TaskId,
   Input extends z.ZodType,
@@ -440,5 +456,7 @@ export function defineTaskContract(contract: RuntimeTaskContract): RuntimeTaskCo
   if (contract.effect === "read") assertRead(contract);
   if (contract.effect === "commit") assertWriteSafety(contract);
   const parsedExample = contract.output.parse(contract.example);
-  return sealDeclarativeMetadata({ ...contract, example: parsedExample, __sealed: true as const });
+  const sealed = sealDeclarativeMetadata({ ...contract, example: parsedExample, __sealed: true as const });
+  FACTORY_SEALED_TASK_CONTRACTS.add(sealed);
+  return sealed;
 }

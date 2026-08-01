@@ -1,8 +1,10 @@
 import { z } from "zod";
 
+export const RebuildArtifactRootSchema = z.literal(".tracker-rebuild/artifacts");
+
 const RuntimeIsolationSchema = z.strictObject({
   stateRoot: z.literal(".tracker-rebuild"),
-  artifactRoot: z.literal(".tracker-rebuild/artifacts"),
+  artifactRoot: RebuildArtifactRootSchema,
   backendPort: z.literal(3938),
   frontendPort: z.literal(5174),
   processLockRoot: z.literal(".tracker-rebuild/locks"),
