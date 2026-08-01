@@ -97,6 +97,23 @@ because "still running" and "finished" must never be indistinguishable — with 
 the parent the full typed array, `block-parent` blocking rather than failing, and a zero-child
 fan-out staying an explicit satisfied join rather than a vanished edge.
 
+**Graph scenario coverage** is `src/domain/workflow/scenario-coverage.ts`. Task-level coverage is
+already `defineTaskContract`'s job; what it cannot see is the graph, so
+`deriveGraphCoveragePoints` reads the paths off the runtime node view — one point per branch arm,
+open+resolve per gate, zero/one/many fan-out plus replay per delegation, one per declared policy on
+an awaited edge, and dry-run / subject-mismatch / committed / already-present per transaction (an
+un-awaited fan-out contributes no join-policy points, because it has no join).
+`auditGraphScenarioCoverage` checks both directions: uncovered paths are reported in full, and a
+scenario claiming a point that no longer exists is a violation too — otherwise a renamed branch arm
+would keep a deleted path looking covered.
+
+**Still open in 1e** (not yet built): the completion (fan-out/approval) program union owned by doc
+03 §4, descriptor assembly with its build-manifest `contractFingerprint`, checkpoint storage and
+snapshot migrations (§5), the ingress `InputParserSpec` interpreters, and the architecture guards
+that enforce these across the tree (`descriptor-coverage`, `scenario-coverage`,
+`delegation-manifest`, `transaction-pairing`, `canonical-input-snapshot` remain `planned` in
+`guard-inventory.json` — each needs a real registered descriptor to check).
+
 ---
 
 ## 0. Grounding — what exists today, why it hurts
