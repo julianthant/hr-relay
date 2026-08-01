@@ -60,6 +60,10 @@ import { RUNTIME_DEPENDENCY_REGISTRY, RuntimeDependencyRegistrySchema } from "..
 import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema } from "../../../src/domain/runtime-environment.js";
 import { SchemaBoundCanonicalValueSchema } from "../../../src/domain/schema-bound-value.js";
 import {
+  GraphCoveragePointSchema,
+  ScenarioCoverageClaimSchema,
+} from "../../../src/domain/workflow/scenario-coverage.js";
+import {
   ChildVisibilitySchema,
   DelegationManifestRefSchema,
   DelegationPolicySchema,
@@ -600,6 +604,12 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "SessionNeed", schema: SessionNeedSchema, fixtures: [
     { system: "ucpath", access: "read", session: "reuse-worker" },
     { system: "onbase", access: "transaction", session: "fresh", exclusive: true, acceptDownloads: true },
+  ] },
+  { name: "GraphCoveragePoint", schema: GraphCoveragePointSchema, fixtures: [
+    { id: "branch-case:mode-branch/write", kind: "branch-case", nodeId: "mode-branch", detail: "branch mode-branch selects \"write\"" },
+  ] },
+  { name: "ScenarioCoverageClaim", schema: ScenarioCoverageClaimSchema, fixtures: [
+    { scenarioId: "workflow/person-lookup-write-arm", covers: ["branch-case:mode-branch/write"] },
   ] },
   { name: "GraphNodeKind", schema: GraphNodeKindSchema, fixtures: ["task", "transaction", "branch", "parallel", "child-run", "gate"] },
   { name: "ChildVisibility", schema: ChildVisibilitySchema, fixtures: ["inline", "linked", "hidden-unless-failed"] },
