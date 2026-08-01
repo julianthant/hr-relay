@@ -209,6 +209,17 @@ global/non-vacuous UI scenarios, dual evidence, candidate exclusion, catalog byt
 raw Playwright confinement. UI catalog/evidence/scenario schemas are also in the recursive strict
 boundary catalog.
 
+### Phase 1d Stage C as-built — sealed task contracts and contexts (2026-08-01)
+
+The bundle-safe contract core now seals `read|prepare|commit` definitions only after runtime
+validation of effect/verb, strict schemas, canonical examples, error taxonomy, freshness,
+provenance, subject, and typed write-safety metadata. The active `task-contract-sealing` guard scans
+the real contract source family, rejects server/Playwright imports and direct seal forgery, and has
+a violating fixture. Its checked type fixture proves undeclared error codes, `z.any()` outputs, and
+read-context mutation access fail `tsc`. Freshness/provenance/subject/effect schemas are registered
+in the recursive strict-boundary catalog. Browser execution, store/session binding, and mutation
+token mint/validation remain absent, so their 1f guards stay planned.
+
 ---
 
 ## 1. The suite today — what the rebuild repo inherits (grounded inventory)

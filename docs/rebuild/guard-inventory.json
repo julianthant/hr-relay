@@ -469,6 +469,14 @@
       "activationMilestone": "phase-1-or-later"
     },
     {
+      "name": "task-contract-sealing",
+      "file": "tests/unit/architecture/task-contract-sealing.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/01-task-contract.md; docs/rebuild/10-guard-test-architecture.md",
+      "invariant": "Read, prepare, and commit task contracts are minted only by the validating seal factory; contract modules remain bundle-safe and strict, examples/freshness/provenance/subject/write-safety metadata fail loud, declared error codes stay literal, and read/prepare contexts cannot acquire mutation capability.",
+      "replacementRequired": true
+    },
+    {
       "name": "task-driver-boundary",
       "file": "tests/unit/architecture/task-driver-boundary.test.ts",
       "status": "active",

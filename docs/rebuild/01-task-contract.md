@@ -80,6 +80,25 @@ owned by `src/domain/ids.ts`; it does not create a second type universe.
   ids are imported/re-exported from their existing domain owners. Contract/store modules never
   redeclare their unions.
 
+### Phase 1d as-built — sealed task-contract core (2026-08-01)
+
+`src/domain/contracts/` now owns one bundle-safe `defineTaskContract` factory with distinct read,
+prepare, and commit overloads. It validates the existing `TaskId` namespace, verb/effect agreement,
+strict input/output/proof schemas, canonical-JSON examples, literal unique error codes, browser-only
+subject observations, same-store probe/verifier references, and service-only provider declarations.
+Read contracts require freshness plus provenance and resolve every field override against their
+schema-parsed example. Prepare contracts are in-memory-only. Commit contracts require typed
+completion proof round-trips, permanent idempotency probe/recovery policy, and post-prepare subject
+timing. The factory alone stamps `__sealed` and shallow-freezes the definition; zod schema internals
+remain unfrozen so repeated validation cannot corrupt their regular-expression state.
+
+`src/base/task.ts` exposes narrow pure/read/prepare/commit contexts. Only the commit context contains
+the opaque `MutationCapability`; none of these seams mints it. `TaskError` pins the
+`[task-id] code: message` form, defaults unknown failures to non-transient `unhandled`, and keeps
+declared error codes literal through `taskFailer`. This commit deliberately contains no task impl,
+store, session, artifact writer, provider adapter, or runtime mutation token; those remain in the
+next 1d slice or 1f as owned.
+
 ---
 
 ## 1. What today's code teaches us (the problems the contract must kill)

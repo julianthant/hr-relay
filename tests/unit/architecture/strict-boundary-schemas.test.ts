@@ -57,6 +57,12 @@ import { RUNTIME_DEPENDENCY_REGISTRY, RuntimeDependencyRegistrySchema } from "..
 import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema } from "../../../src/domain/runtime-environment.js";
 import { SchemaBoundCanonicalValueSchema } from "../../../src/domain/schema-bound-value.js";
 import {
+  FreshnessPolicySchema,
+  ProvenancePolicySchema,
+  SubjectBindingSpecSchema,
+  TaskEffectSchema,
+} from "../../../src/domain/contracts/base.js";
+import {
   UiCatalogSchema,
   UiVerificationEvidenceManifestSchema,
   UiVerificationScenarioSchema,
@@ -689,6 +695,14 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "PreflightReport", schema: PreflightReportSchema, fixtures: [PREFLIGHT_REPORT] },
   { name: "RuntimeEnvironmentRegistry", schema: RuntimeEnvironmentRegistrySchema, fixtures: [RUNTIME_ENVIRONMENT_REGISTRY] },
   { name: "RuntimeDependencyRegistry", schema: RuntimeDependencyRegistrySchema, fixtures: [RUNTIME_DEPENDENCY_REGISTRY] },
+  { name: "TaskEffect", schema: TaskEffectSchema, fixtures: ["read", "prepare", "commit"] },
+  { name: "FreshnessPolicy", schema: FreshnessPolicySchema, fixtures: [{ defaultMaxAgeMs: 0, byField: [{ path: "eid", maxAgeMs: 0 }] }] },
+  { name: "ProvenancePolicy", schema: ProvenancePolicySchema, fixtures: [{ default: "live", byField: [{ path: "eid", source: "live" }] }] },
+  { name: "SubjectBindingSpec", schema: SubjectBindingSpecSchema, fixtures: [
+    { kind: "none", reason: "global read" },
+    { kind: "person", expected: { fromInput: "eid", identity: "eid" }, observe: "ucpath.person-org.displayed-eid", match: "normalized-exact-eid", requiredAt: "before-subject-read" },
+    { kind: "artifact", expected: { fromInput: "artifactId", identity: "artifact-id" }, observe: "onbase.import.staged-artifact", match: "exact", requiredAt: "after-prepare-before-fence" },
+  ] },
   { name: "UiCatalog", schema: UiCatalogSchema, fixtures: [buildSafeUiCatalog()] },
   { name: "UiVerificationEvidenceManifest", schema: UiVerificationEvidenceManifestSchema, fixtures: [UI_EVIDENCE] },
   { name: "UiVerificationScenario", schema: UiVerificationScenarioSchema, fixtures: UCPATH_UI_REGISTRY.scenarios },
@@ -794,6 +808,21 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/ui/ucpath-person-org.ts:UcpathPersonOrgFields",
   "src/domain/ui/ucpath-person-org.ts:UcpathPersonOrgObservations",
   "src/domain/ui/ucpath-person-org.ts:UcpathPersonOrgDriver",
+  "src/domain/contracts/base.ts:ReadTaskContract",
+  "src/domain/contracts/base.ts:PrepareTaskContract",
+  "src/domain/contracts/base.ts:CommitTaskContract",
+  "src/domain/contracts/base.ts:SealedReadContract",
+  "src/domain/contracts/base.ts:SealedPrepareContract",
+  "src/domain/contracts/base.ts:SealedCommitContract",
+  "src/domain/contracts/write-safety.ts:CanonicalJsonSchema",
+  "src/domain/contracts/write-safety.ts:ProbeVerdict",
+  "src/domain/contracts/write-safety.ts:ProofCheck",
+  "src/domain/contracts/write-safety.ts:ReceiptCheck",
+  "src/domain/contracts/write-safety.ts:SaveVerifyCheck",
+  "src/domain/contracts/write-safety.ts:UploadVerifyCheck",
+  "src/domain/contracts/write-safety.ts:CompletionCheck",
+  "src/domain/contracts/write-safety.ts:Idempotency",
+  "src/domain/contracts/write-safety.ts:WriteSafety",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {
