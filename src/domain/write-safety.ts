@@ -282,7 +282,19 @@ const WriteIntentAttemptFields = {
   updatedAt: IsoInstantSchema,
 } as const;
 
+const WriteIntentObservedPresentFields = {
+  ...WriteIntentIdentityFields,
+  generation: PositiveIntSchema,
+  status: z.literal("observed-present"),
+  observedProof: SchemaBoundCanonicalValueSchema,
+  observedAt: IsoInstantSchema,
+  version: PositiveIntSchema,
+  createdAt: IsoInstantSchema,
+  updatedAt: IsoInstantSchema,
+} as const;
+
 export const WriteIntentRecordSchema = z.discriminatedUnion("status", [
+  z.strictObject(WriteIntentObservedPresentFields),
   z.strictObject({ ...WriteIntentAttemptFields, status: z.literal("attempting") }),
   z.strictObject({ ...WriteIntentAttemptFields, status: z.literal("committed"), completionProof: SchemaBoundCanonicalValueSchema, confirmedAt: IsoInstantSchema }),
   z.strictObject({ ...WriteIntentAttemptFields, status: z.literal("retryable"), settlement: SafeToRetrySettlementSchema, resolvedAt: IsoInstantSchema }),

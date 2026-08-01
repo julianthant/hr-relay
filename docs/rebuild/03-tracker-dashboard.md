@@ -48,6 +48,37 @@ a later Stage-B delta.
 
 ---
 
+## Phase 1c Stage B as-built storage delta (2026-07-31)
+
+Stage B lands the native authority adapter, deterministic schema migration, and narrow repository
+surface in `src/infra/sqlite/`. The runtime remains Node `>=26.0.0`; the Node 26 declaration package
+is pinned exactly to the official-registry release `@types/node@26.1.2`. One
+`AuthorityDatabase` privately owns its `node:sqlite` `DatabaseSync`; callers receive only typed
+authority/projection repositories, transaction callbacks, schema inspection, and metadata. No raw
+connection, SQL callback, or `DatabaseSync` type crosses the adapter boundary.
+
+Schema version 1 creates every table in the Stage-A authority registry with its exact authority or
+projection classification. Opening configures WAL, foreign keys, a positive busy timeout, and
+`synchronous=FULL`; migration runs under `BEGIN EXCLUSIVE`, records/validates its owner marker, and
+fails loud for empty or foreign existing files, newer/contradictory versions, a retained migration
+marker, corruption, foreign-key violations, or registry/schema drift. It never replaces an invalid
+existing file with a fresh database.
+
+Every successful outer transaction that actually mutates authority increments
+`authority_generation` once in the same commit. Nested authority repositories share that unit;
+empty/idempotent transactions and projection upsert/clear do not increment it, and rollback changes
+neither records nor generation. Permanent write-intent insertion deduplicates by the durable
+idempotency-key digest for both `committed` and preflight `observed-present` records. Authority
+repositories deliberately expose no cleanup/delete operation; projection repositories alone expose
+`clear`.
+
+This is not the recovery service. Stage B includes no backup, manifest/checksum, doctor,
+read-only-degraded boot mode, restore, worker, command handler, projector loop, browser, route, UI,
+or live-system wiring. Phase 1c therefore remains in progress; those later stages must not infer
+completion from the existence of `state.db` authority.
+
+---
+
 ## 0. What exists today (and what specifically hurts)
 
 | Today | Mechanism | Pain |

@@ -96,6 +96,17 @@ import {
   WriteIntentRecordSchema,
 } from "../../../src/domain/write-safety.js";
 import {
+  ArtifactOutboxStorageRecordSchema,
+  AuthorityDatabaseOptionsSchema,
+  AuthorityMetaSchema,
+  AuthoritySchemaInspectionSchema,
+  ImmutableInsertDispositionSchema,
+  OpaqueAuthorityRecordSchema,
+  ProjectionStorageRecordSchema,
+  SqliteStorageRecordIdSchema,
+  VersionPlanStorageRecordSchema,
+} from "../../../src/infra/sqlite/index.js";
+import {
   ABSENCE_1,
   ABSENCE_2,
   COMMAND_FIXTURES,
@@ -287,6 +298,21 @@ const SAFE_SETTLEMENT = {
   evidence: [ABSENCE_1, ABSENCE_2],
 };
 const WRITE_INTENT_FIXTURES = [
+  {
+    writeIntentId: UUID_1,
+    workflowId: "separation",
+    itemId: UUID_3,
+    taskId: "ucpath/terminate-person",
+    system: "ucpath",
+    idempotencyKeyDigest: HASH_A,
+    generation: 1,
+    status: "observed-present",
+    observedProof: { schemaHash: HASH_A, value: "T123" },
+    observedAt: NOW,
+    version: 1,
+    createdAt: NOW,
+    updatedAt: NOW,
+  },
   WRITE_INTENT_ATTEMPTING,
   { ...WRITE_INTENT_ATTEMPTING, status: "committed", completionProof: { schemaHash: HASH_A, value: "T123" }, confirmedAt: ABSENCE_1.observedAt },
   { ...WRITE_INTENT_ATTEMPTING, status: "retryable", settlement: SAFE_SETTLEMENT, resolvedAt: ABSENCE_2.observedAt },
@@ -306,6 +332,40 @@ const atomicOutbox = (payload: unknown) => ({
   projection: { state: "pending" },
   createdAt: NOW,
 });
+const SQLITE_SCHEMA_INSPECTION = {
+  applicationId: 1_217_249_861,
+  schemaVersion: 1,
+  authorityGeneration: 0,
+  pragmas: { journalMode: "wal", foreignKeys: 1, synchronous: 2, busyTimeoutMs: 250 },
+  tables: AUTHORITY_TABLE_REGISTRY.map(({ name, classification }) => ({ name, classification })),
+};
+const SQLITE_OPAQUE_RECORD = {
+  recordId: UUID_1,
+  payload: { schemaHash: HASH_A, value: { reserved: true } },
+  createdAt: NOW,
+};
+const SQLITE_VERSION_PLAN = {
+  versionPlanId: UUID_1,
+  version: 1,
+  planFingerprint: HASH_A,
+  state: "planned",
+  payload: { schemaHash: HASH_A, value: { target: "1.1.0" } },
+  createdAt: NOW,
+};
+const SQLITE_ARTIFACT_OUTBOX = {
+  outboxId: UUID_1,
+  artifactId: UUID_2,
+  stableKeyFingerprint: HASH_B,
+  sinkId: "evidence-ledger",
+  state: "pending",
+  payload: { schemaHash: HASH_A, value: { artifact: UUID_2 } },
+  createdAt: NOW,
+};
+const SQLITE_PROJECTION = {
+  projectionKey: HASH_A,
+  payload: { schemaHash: HASH_B, value: { status: "running" } },
+  updatedAt: NOW,
+};
 
 interface BoundaryCatalogEntry {
   readonly name: string;
@@ -318,6 +378,15 @@ interface BoundaryCatalogEntry {
 const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "AuthorityTableSpec", schema: TableSpecSchema, fixtures: AUTHORITY_TABLE_REGISTRY },
   { name: "AuthorityTableRegistry", schema: AuthorityTableRegistrySchema, fixtures: [AUTHORITY_TABLE_REGISTRY] },
+  { name: "AuthorityDatabaseOptions", schema: AuthorityDatabaseOptionsSchema, fixtures: [{ path: "/tmp/authority.sqlite", busyTimeoutMs: 250, migrationOwner: "unit-test" }] },
+  { name: "AuthorityMeta", schema: AuthorityMetaSchema, fixtures: [{ schemaVersion: 1, authorityGeneration: 0, updatedAt: NOW }] },
+  { name: "AuthoritySchemaInspection", schema: AuthoritySchemaInspectionSchema, fixtures: [SQLITE_SCHEMA_INSPECTION] },
+  { name: "ImmutableInsertDisposition", schema: ImmutableInsertDispositionSchema, fixtures: ["inserted", "existing"] },
+  { name: "SqliteStorageRecordId", schema: SqliteStorageRecordIdSchema, fixtures: [UUID_1] },
+  { name: "OpaqueAuthorityRecord", schema: OpaqueAuthorityRecordSchema, fixtures: [SQLITE_OPAQUE_RECORD], openFixturePaths: ["payload.value"] },
+  { name: "VersionPlanStorageRecord", schema: VersionPlanStorageRecordSchema, fixtures: [SQLITE_VERSION_PLAN], openFixturePaths: ["payload.value"] },
+  { name: "ArtifactOutboxStorageRecord", schema: ArtifactOutboxStorageRecordSchema, fixtures: [SQLITE_ARTIFACT_OUTBOX], openFixturePaths: ["payload.value"] },
+  { name: "ProjectionStorageRecord", schema: ProjectionStorageRecordSchema, fixtures: [SQLITE_PROJECTION], openFixturePaths: ["payload.value"] },
   { name: "SchemaBoundCanonicalValue", schema: SchemaBoundCanonicalValueSchema, fixtures: [{ schemaHash: HASH_A, value: "approved" }] },
   { name: "CommandEnvelope", schema: CommandEnvelopeSchema, fixtures: [COMMAND_ENVELOPE] },
   { name: "StartCommandRequest", schema: StartCommandRequestSchema, fixtures: commandFixtures("start") },

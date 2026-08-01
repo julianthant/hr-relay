@@ -75,6 +75,26 @@ injection, and projector tests remain later Phase-1c/1f work; Stage A does not m
 
 ---
 
+## Phase 1c Stage B as-built guard delta (2026-07-31)
+
+Stage B extends the existing `strict-boundary-schemas.test.ts` catalog with the adapter options,
+metadata/inspection, immutable-insert disposition, and strict SQLite storage-record shells. It also
+adds focused unit proof in `sqlite-authority-database.test.ts` for exact table classification and
+pragmas, existing-file/version/migration-marker/schema/lock failure, foreign keys, idempotent
+commands, permanent committed/`observed-present` write keys, every registered authority repository
+mutator, nested/empty/rollback generation accounting, and projection upsert/clear. A separate static
+unit test, `sqlite-authority-boundary.test.ts`, proves that only the private adapter imports or names
+`DatabaseSync` and that its public entrypoint exposes no raw connection or SQL escape hatch.
+
+The planned `storage-recovery` guard remains planned and unchanged in
+`docs/rebuild/guard-inventory.json`. Its contract also owns backup/checksum/manifest verification,
+degraded boot, restore drills, and projection rebuild after restore; none of those Stage-C concerns
+exist yet, so activating that umbrella now would overclaim recovery. Phase 1c remains incomplete,
+as do command-handler single-path, write-sequencer crash injection, workers, projectors, browser,
+HTTP/UI, and live lanes.
+
+---
+
 ## 1. The suite today — what the rebuild repo inherits (grounded inventory)
 
 In the legacy repo, `npm run test:architecture` runs `tests/unit/architecture/**` (dot reporter).

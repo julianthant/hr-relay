@@ -97,4 +97,5 @@ export function auditAuthorityTableRegistry(input: unknown): readonly string[] {
 
 export type AuthorityTableName = z.infer<typeof AuthorityTableNameSchema>;
 export type ProjectionTableName = z.infer<typeof ProjectionTableNameSchema>;
+export type TableName = z.infer<typeof TableNameSchema>;
 export type TableSpec = z.infer<typeof TableSpecSchema>;
