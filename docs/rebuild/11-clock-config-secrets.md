@@ -65,6 +65,23 @@ later spine work and Phase 1c is not complete.
 
 ---
 
+## Phase 1c Stage C as-built storage-health delta (2026-08-01)
+
+The registered `authority.health` preflight runner now consumes the same read-only storage doctor
+used for recovery decisions. It reports healthy only when the authority inspection is healthy and
+the newest backup is verified and current; missing, corrupt, foreign, newer-schema,
+foreign-key-invalid, invariant-invalid, missing-backup, stale-backup, and generation-gap states
+remain distinct strict health causes. Operator-facing summaries are fixed redacted text, while the
+injected `Clock` supplies report timestamps and backup-age calculations. The runner checks abort
+signals before and after inspection and does not repair storage, read environment/config directly,
+or contact any external system.
+
+This is the runner primitive, not the full operator surface. CLI/dashboard doctor presentation,
+scheduled backup wiring, command/worker/projector integration, and a complete offline recovery
+orchestrator remain Stage-D or later work; Phase 1c is not complete.
+
+---
+
 ## 1. Grounding — what exists today, why it hurts
 
 - **No central clock.** `grep -c "new Date(" src` = 238, `grep -c "Date\.now(" src` = 207 → **445

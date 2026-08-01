@@ -1,0 +1,227 @@
+import { z } from "zod";
+import { AuthorityTableNameSchema, ProjectionTableNameSchema } from "../../domain/authority.js";
+import {
+  ActorIdSchema,
+  FingerprintSchema,
+  IsoInstantSchema,
+  PositiveIntSchema,
+} from "../../domain/ids.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+
+const NonNegativeIntSchema = z.number().int().nonnegative();
+const SafeFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+
+export const AuthorityPendingCountsSchema = z.strictObject({
+  pendingCommands: NonNegativeIntSchema,
+  unresolvedWriteIntents: NonNegativeIntSchema,
+  leases: NonNegativeIntSchema,
+  durableOutbox: NonNegativeIntSchema,
+  artifactOutbox: NonNegativeIntSchema,
+  captureFinalizationOutboxes: NonNegativeIntSchema,
+});
+
+export const AuthorityInvariantResultSchema = z.strictObject({
+  state: z.literal("valid"),
+  violations: z.array(z.never()).max(0),
+});
+
+export const AuthorityCopyInspectionSchema = z.strictObject({
+  applicationId: z.literal(AUTHORITY_APPLICATION_ID),
+  schemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+  pageCount: PositiveIntSchema,
+  authorityGeneration: NonNegativeIntSchema,
+  authorityContentFingerprint: FingerprintSchema,
+  quickCheck: z.literal("ok"),
+  foreignKeyViolations: z.literal(0),
+  invariants: AuthorityInvariantResultSchema,
+  tables: z.array(z.strictObject({
+    name: z.union([AuthorityTableNameSchema, ProjectionTableNameSchema]),
+    classification: z.enum(["authority", "projection"]),
+  })),
+  counts: AuthorityPendingCountsSchema,
+});
+
+export const BackupVerificationSchema = z.strictObject({
+  state: z.literal("verified"),
+  observedFrom: z.literal("backup-copy"),
+  observedAt: IsoInstantSchema,
+  applicationId: z.literal(AUTHORITY_APPLICATION_ID),
+  schemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+  pageCount: PositiveIntSchema,
+  authorityGeneration: NonNegativeIntSchema,
+  authorityContentFingerprint: FingerprintSchema,
+  quickCheck: z.literal("ok"),
+  foreignKeyViolations: z.literal(0),
+  invariantViolations: z.array(z.never()).max(0),
+  exactTableRegistry: z.literal(true),
+});
+
+export const AuthorityBackupManifestSchema = z.strictObject({
+  kind: z.literal("hrauto-authority-backup"),
+  manifestVersion: z.literal(1),
+  backupFileName: SafeFileNameSchema,
+  sourceDatabaseIdentity: FingerprintSchema,
+  applicationId: z.literal(AUTHORITY_APPLICATION_ID),
+  schemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+  pageCount: PositiveIntSchema,
+  authorityGeneration: NonNegativeIntSchema,
+  authorityContentFingerprint: FingerprintSchema,
+  createdAt: IsoInstantSchema,
+  byteSize: PositiveIntSchema,
+  sha256: FingerprintSchema,
+  verification: BackupVerificationSchema,
+}).superRefine((manifest, context) => {
+  for (const field of ["applicationId", "schemaVersion", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
+    if (manifest[field] !== manifest.verification[field]) {
+      context.addIssue({ code: "custom", path: ["verification", field], message: `${field} must equal the value observed from the backup copy` });
+    }
+  }
+});
+
+export const AuthorityBackupRequestSchema = z.strictObject({
+  trigger: z.enum(["interval", "schema-migration", "external-write", "capture-handoff", "graceful-drain", "operator"]),
+  requiredGeneration: NonNegativeIntSchema,
+});
+
+export const AuthorityBackupRunReportSchema = z.strictObject({
+  state: z.literal("verified"),
+  requestedGeneration: NonNegativeIntSchema,
+  finalGeneration: NonNegativeIntSchema,
+  coalescedRequests: PositiveIntSchema,
+  followUpPerformed: z.boolean(),
+  manifests: z.array(AuthorityBackupManifestSchema).min(1).max(2),
+});
+
+export const StorageHealthCauseSchema = z.strictObject({
+  code: z.enum([
+    "authority-empty",
+    "authority-not-sqlite",
+    "authority-corrupt",
+    "authority-foreign-key",
+    "authority-invariant",
+    "authority-schema-newer",
+    "authority-schema-mismatch",
+    "authority-migration-locked",
+    "authority-locked",
+    "authority-unavailable",
+    "backup-missing",
+    "backup-stale",
+    "backup-invalid",
+  ]),
+  summary: z.string().min(1),
+});
+
+export const AuthorityBootReportSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("healthy"),
+    checkedAt: IsoInstantSchema,
+    mutationAvailability: z.literal("available"),
+    inspection: AuthorityCopyInspectionSchema,
+  }),
+  z.strictObject({
+    state: z.literal("degraded-read-only"),
+    checkedAt: IsoInstantSchema,
+    mutationAvailability: z.literal("blocked"),
+    cause: StorageHealthCauseSchema,
+  }),
+]);
+
+export const RestoreCandidateSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("verified-compatible"),
+    manifestFileName: SafeFileNameSchema,
+    backupFileName: SafeFileNameSchema,
+    createdAt: IsoInstantSchema,
+    authorityGeneration: NonNegativeIntSchema,
+    ageMs: NonNegativeIntSchema,
+    generationGap: z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("known"), value: NonNegativeIntSchema }),
+      z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+    ]),
+  }),
+  z.strictObject({
+    state: z.literal("invalid"),
+    manifestFileName: SafeFileNameSchema,
+    cause: StorageHealthCauseSchema,
+  }),
+]);
+
+export const BackupHealthSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("current"),
+    latest: RestoreCandidateSchema.options[0],
+  }),
+  z.strictObject({
+    state: z.literal("stale"),
+    latest: RestoreCandidateSchema.options[0],
+    cause: StorageHealthCauseSchema,
+  }),
+  z.strictObject({
+    state: z.literal("missing"),
+    cause: StorageHealthCauseSchema,
+  }),
+  z.strictObject({
+    state: z.literal("invalid"),
+    cause: StorageHealthCauseSchema,
+  }),
+]);
+
+const DoctorCountsSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("available"), values: AuthorityPendingCountsSchema }),
+  z.strictObject({ state: z.literal("unavailable"), cause: StorageHealthCauseSchema }),
+]);
+
+const DoctorAuthoritySchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("healthy"), inspection: AuthorityCopyInspectionSchema }),
+  z.strictObject({ state: z.literal("degraded"), cause: StorageHealthCauseSchema }),
+]);
+
+export const StorageDoctorReportSchema = z.strictObject({
+  kind: z.literal("authority-storage-doctor"),
+  mode: z.literal("read-only"),
+  checkedAt: IsoInstantSchema,
+  sourceDatabaseIdentity: FingerprintSchema,
+  authority: DoctorAuthoritySchema,
+  counts: DoctorCountsSchema,
+  backup: BackupHealthSchema,
+  restoreCandidates: z.array(RestoreCandidateSchema),
+});
+
+export const StoppedSystemProofSchema = z.strictObject({
+  state: z.literal("stopped"),
+  proofId: z.string().uuid(),
+  observedAt: IsoInstantSchema,
+  observedBy: ActorIdSchema,
+  sourceDatabaseIdentity: FingerprintSchema,
+  serverStopped: z.literal(true),
+  workersStopped: z.literal(true),
+});
+
+export const OfflineRestoreRequestSchema = z.strictObject({
+  manifestPath: z.string().min(1),
+  stoppedSystemProof: StoppedSystemProofSchema,
+});
+
+export const OfflineRestoreReportSchema = z.strictObject({
+  state: z.literal("restored"),
+  restoredAt: IsoInstantSchema,
+  manifestFileName: SafeFileNameSchema,
+  backupFileName: SafeFileNameSchema,
+  suspectFileName: SafeFileNameSchema,
+  sourceDatabaseIdentity: FingerprintSchema,
+  authorityGeneration: NonNegativeIntSchema,
+  projectionRebuilt: z.literal(true),
+  authorityPreservedAcrossProjectionRebuild: z.literal(true),
+});
+
+export type AuthorityPendingCounts = z.infer<typeof AuthorityPendingCountsSchema>;
+export type AuthorityCopyInspection = z.infer<typeof AuthorityCopyInspectionSchema>;
+export type AuthorityBackupManifest = z.infer<typeof AuthorityBackupManifestSchema>;
+export type AuthorityBackupRequest = z.infer<typeof AuthorityBackupRequestSchema>;
+export type AuthorityBackupRunReport = z.infer<typeof AuthorityBackupRunReportSchema>;
+export type StorageHealthCause = z.infer<typeof StorageHealthCauseSchema>;
+export type AuthorityBootReport = z.infer<typeof AuthorityBootReportSchema>;
+export type RestoreCandidate = z.infer<typeof RestoreCandidateSchema>;
+export type StorageDoctorReport = z.infer<typeof StorageDoctorReportSchema>;
+export type StoppedSystemProof = z.infer<typeof StoppedSystemProofSchema>;
+export type OfflineRestoreReport = z.infer<typeof OfflineRestoreReportSchema>;

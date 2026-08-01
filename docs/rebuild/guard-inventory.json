@@ -450,11 +450,10 @@
     {
       "name": "storage-recovery",
       "file": "tests/unit/architecture/storage-recovery.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: storage-recovery.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/03-tracker-dashboard.md",
+      "invariant": "Native online backups self-verify the completed copy, bind immutable manifests to final bytes, coalesce generation-follow-up work, fail closed into read-only degraded authority, keep doctor read-only, and permit only stopped-proof offline restore from an exact verified compatible backup without exposing DatabaseSync or using live-WAL copy/VACUUM fallbacks.",
+      "replacementRequired": true
     },
     {
       "name": "subject-before-fence",

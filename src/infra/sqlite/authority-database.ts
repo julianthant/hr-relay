@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+import { resolve } from "node:path";
+import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import {
   AUTHORITY_TABLE_REGISTRY,
@@ -26,6 +28,10 @@ import {
   auditMigrationTableCoverage,
   tableClassification,
 } from "./migrations.js";
+import {
+  AuthorityCopyInspectionSchema,
+  type AuthorityCopyInspection,
+} from "./recovery-contracts.js";
 import {
   ArtifactOutboxStorageRecordSchema,
   OpaqueAuthorityRecordSchema,
@@ -148,6 +154,18 @@ const MetaRowSchema = z.strictObject({
   migration_started_at: z.string().nullable(),
 });
 const TableNameRowSchema = z.strictObject({ name: z.string() });
+const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
+const PageCountRowSchema = z.strictObject({ page_count: z.number().int().positive() });
+const QuickCheckRowSchema = z.strictObject({ quick_check: z.literal("ok") });
+const AuthorityRecordFingerprintRowSchema = z.strictObject({ record_key: z.string(), record_json: z.string() });
+const AuthorityMetaFingerprintRowSchema = z.strictObject({
+  singleton_id: z.literal(1),
+  schema_version: z.number().int().positive(),
+  authority_generation: z.number().int().nonnegative(),
+  updated_at: z.string(),
+  migration_owner: z.string().nullable(),
+  migration_started_at: z.string().nullable(),
+});
 
 function parseJsonRecord<Schema extends z.ZodType>(schema: Schema, text: string): z.output<Schema> {
   return schema.parse(JSON.parse(text));
@@ -162,9 +180,195 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function readIntPragma(
+  database: DatabaseSync,
+  name: "application_id" | "user_version" | "foreign_keys" | "synchronous" | "busy_timeout",
+): number {
+  const row = IntPragmaRowSchema.parse(database.prepare(`PRAGMA ${name}`).get());
+  const value = row[name === "busy_timeout" ? "timeout" : name];
+  if (value === undefined) throw new Error(`PRAGMA ${name} returned no value`);
+  return value;
+}
+
+function readTextPragma(database: DatabaseSync, name: "journal_mode"): string {
+  const row = TextPragmaRowSchema.parse(database.prepare(`PRAGMA ${name}`).get());
+  const value = row[name];
+  if (value === undefined) throw new Error(`PRAGMA ${name} returned no value`);
+  return value;
+}
+
+function tableNames(database: DatabaseSync): TableName[] {
+  const rows = database.prepare(`
+    SELECT name FROM sqlite_master
+    WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+    ORDER BY name
+  `).all();
+  return z.array(z.union([AuthorityTableNameSchema, ProjectionTableNameSchema])).parse(
+    rows.map((row) => TableNameRowSchema.parse(row).name),
+  );
+}
+
+function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
+  return MetaRowSchema.parse(database.prepare(`
+    SELECT schema_version, authority_generation, updated_at, migration_owner, migration_started_at
+    FROM authority_meta WHERE singleton_id = 1
+  `).get());
+}
+
+const INVARIANT_QUERIES = Object.freeze([
+  {
+    name: "commands-family-column-matches-record",
+    sql: "SELECT count(*) AS count FROM commands WHERE family <> json_extract(record_json, '$.family')",
+  },
+  {
+    name: "command-audit-parent-column-matches-record",
+    sql: "SELECT count(*) AS count FROM command_audits WHERE command_id <> json_extract(record_json, '$.request.commandId')",
+  },
+  {
+    name: "dependency-manifest-column-matches-record",
+    sql: "SELECT count(*) AS count FROM dependencies WHERE manifest_id <> json_extract(record_json, '$.manifestId')",
+  },
+  {
+    name: "write-intent-columns-match-record",
+    sql: "SELECT count(*) AS count FROM write_intents WHERE idempotency_key_digest <> json_extract(record_json, '$.idempotencyKeyDigest') OR status <> json_extract(record_json, '$.status')",
+  },
+  {
+    name: "write-attempt-columns-match-record",
+    sql: "SELECT count(*) AS count FROM write_attempts WHERE write_intent_id <> json_extract(record_json, '$.writeIntentId') OR generation <> json_extract(record_json, '$.generation')",
+  },
+  {
+    name: "durable-outbox-columns-match-record",
+    sql: "SELECT count(*) AS count FROM durable_outbox WHERE write_intent_id <> json_extract(record_json, '$.aggregate.writeIntentId') OR generation <> json_extract(record_json, '$.aggregate.generation') OR kind <> json_extract(record_json, '$.payload.kind')",
+  },
+  {
+    name: "attempting-write-has-current-attempt",
+    sql: `
+      SELECT count(*) AS count FROM write_intents AS intent
+      WHERE intent.status = 'attempting' AND NOT EXISTS (
+        SELECT 1 FROM write_attempts AS attempt
+        WHERE attempt.record_key = json_extract(intent.record_json, '$.currentAttemptId')
+          AND attempt.write_intent_id = intent.record_key
+          AND attempt.generation = json_extract(intent.record_json, '$.generation')
+      )
+    `,
+  },
+] as const);
+
+function invariantViolations(database: DatabaseSync): readonly string[] {
+  return INVARIANT_QUERIES.flatMap(({ name, sql }) => {
+    const { count } = CountRowSchema.parse(database.prepare(sql).get());
+    return count === 0 ? [] : [`${name} failed for ${String(count)} row(s)`];
+  });
+}
+
+function authorityContentFingerprint(database: DatabaseSync): string {
+  const authorityRows = AuthorityTableNameSchema.options.map((name) => {
+    if (name === "authority_meta") {
+      const row = AuthorityMetaFingerprintRowSchema.parse(database.prepare(`
+        SELECT singleton_id, schema_version, authority_generation, updated_at,
+               migration_owner, migration_started_at
+        FROM authority_meta WHERE singleton_id = 1
+      `).get());
+      return [name, row] as const;
+    }
+    const rows = z.array(AuthorityRecordFingerprintRowSchema).parse(database.prepare(`
+      SELECT record_key, record_json FROM ${name} ORDER BY record_key
+    `).all());
+    return [name, rows] as const;
+  });
+  return createHash("sha256").update(canonicalJsonStringify(authorityRows)).digest("hex");
+}
+
+function pendingCounts(database: DatabaseSync) {
+  const count = (sql: string): number => CountRowSchema.parse(database.prepare(sql).get()).count;
+  return {
+    pendingCommands: count("SELECT count(*) AS count FROM commands AS command WHERE NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
+    unresolvedWriteIntents: count("SELECT count(*) AS count FROM write_intents WHERE status NOT IN ('committed', 'observed-present')"),
+    leases: count("SELECT count(*) AS count FROM leases"),
+    durableOutbox: count("SELECT count(*) AS count FROM durable_outbox WHERE json_extract(record_json, '$.projection.state') = 'pending'"),
+    artifactOutbox: count("SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
+    captureFinalizationOutboxes: count("SELECT count(*) AS count FROM capture_finalization_outboxes"),
+  };
+}
+
+function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: boolean): AuthorityCopyInspection {
+  const applicationId = readIntPragma(database, "application_id");
+  if (applicationId !== AUTHORITY_APPLICATION_ID) {
+    throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
+  }
+  const schemaVersion = readIntPragma(database, "user_version");
+  if (schemaVersion > CURRENT_AUTHORITY_SCHEMA_VERSION) {
+    throw new Error(`authority schema ${String(schemaVersion)} is newer than supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+  }
+  if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
+    throw new Error(`authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+  }
+  QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
+  const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
+  if (foreignKeyFailures.length > 0) throw new Error(`authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`);
+  const names = tableNames(database);
+  const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+  if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
+    throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
+  }
+  const meta = readMetaRow(database);
+  if (meta.schema_version !== schemaVersion) {
+    throw new Error(`authority schema metadata ${String(meta.schema_version)} disagrees with user_version ${String(schemaVersion)}`);
+  }
+  if (meta.migration_owner !== null || meta.migration_started_at !== null) {
+    throw new Error(`authority database is locked by migration owner ${String(meta.migration_owner)}`);
+  }
+  const violations = invariantViolations(database);
+  if (violations.length > 0) throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
+  if (readIntPragma(database, "foreign_keys") !== 1) throw new Error("authority database foreign keys are disabled");
+  if (requireOperationalPragmas) {
+    if (readTextPragma(database, "journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
+    if (readIntPragma(database, "synchronous") !== 2) throw new Error("authority database synchronous mode is not FULL");
+  }
+  return AuthorityCopyInspectionSchema.parse({
+    applicationId,
+    schemaVersion,
+    pageCount: PageCountRowSchema.parse(database.prepare("PRAGMA page_count").get()).page_count,
+    authorityGeneration: meta.authority_generation,
+    authorityContentFingerprint: authorityContentFingerprint(database),
+    quickCheck: "ok",
+    foreignKeyViolations: 0,
+    invariants: { state: "valid", violations: [] },
+    tables: names.map((name) => ({ name, classification: tableClassification(name) })),
+    counts: pendingCounts(database),
+  });
+}
+
+function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): AuthorityCopyInspection {
+  const parsedPath = z.string().min(1).parse(path);
+  if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
+    throw new Error(`authority database ${parsedPath} is missing or empty`);
+  }
+  const database = new DatabaseSync(parsedPath, {
+    readOnly: true,
+    enableForeignKeyConstraints: true,
+    enableDoubleQuotedStringLiterals: false,
+    allowExtension: false,
+    timeout: z.number().int().positive().parse(busyTimeoutMs),
+    readBigInts: false,
+    returnArrays: false,
+    allowBareNamedParameters: false,
+    allowUnknownNamedParameters: false,
+    defensive: true,
+  });
+  try {
+    database.exec("PRAGMA foreign_keys = ON");
+    database.exec("PRAGMA query_only = ON");
+    return inspectOpenDatabase(database, false);
+  } finally {
+    database.close();
+  }
+}
+
 export class AuthorityDatabase implements Disposable {
   #database: DatabaseSync;
   #clock: Clock;
+  #path: string;
   #busyTimeoutMs: number;
   #closed = false;
   #transactionDepth = 0;
@@ -181,6 +385,7 @@ export class AuthorityDatabase implements Disposable {
       throw new Error(`authority database ${options.path} exists but is empty; refusing to replace it`);
     }
     this.#clock = clock;
+    this.#path = options.path;
     this.#busyTimeoutMs = options.busyTimeoutMs;
     this.#database = new DatabaseSync(options.path, {
       enableForeignKeyConstraints: true,
@@ -209,6 +414,26 @@ export class AuthorityDatabase implements Disposable {
 
   static open(input: unknown, clock: Clock = systemClock): AuthorityDatabase {
     return new AuthorityDatabase(input, clock);
+  }
+
+  static sourceDatabaseIdentity(path: string): string {
+    return createHash("sha256")
+      .update(`${String(AUTHORITY_APPLICATION_ID)}:${resolve(z.string().min(1).parse(path))}`)
+      .digest("hex");
+  }
+
+  static inspectExistingReadOnly(path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
+    return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
+  }
+
+  getSourceDatabaseIdentity(): string {
+    return AuthorityDatabase.sourceDatabaseIdentity(this.#path);
+  }
+
+  async onlineBackupTo(destinationPath: string): Promise<number> {
+    this.#assertOpen();
+    const destination = z.string().min(1).parse(destinationPath);
+    return sqliteBackup(this.#database, destination, { rate: 100 });
   }
 
   close(): void {
@@ -331,55 +556,23 @@ export class AuthorityDatabase implements Disposable {
   #validateDatabase(): void {
     const migrationViolations = auditMigrationTableCoverage();
     if (migrationViolations.length > 0) throw new Error(migrationViolations.join("; "));
-    const quick = this.#database.prepare("PRAGMA quick_check(1)").get();
-    const QuickCheckRowSchema = z.strictObject({ quick_check: z.literal("ok") });
-    QuickCheckRowSchema.parse(quick);
-    const foreignKeyFailures = this.#database.prepare("PRAGMA foreign_key_check").all();
-    if (foreignKeyFailures.length > 0) throw new Error("authority database foreign-key validation failed");
-    const names = this.#tableNames();
-    const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
-    if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
-      throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
-    }
-    const meta = this.#readMetaRow();
-    if (meta.schema_version !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
-      throw new Error(`authority meta schema version ${String(meta.schema_version)} is unsupported`);
-    }
-    if (this.#readIntPragma("foreign_keys") !== 1) throw new Error("authority database foreign keys are disabled");
-    if (this.#readTextPragma("journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
-    if (this.#readIntPragma("synchronous") !== 2) throw new Error("authority database synchronous mode is not FULL");
+    inspectOpenDatabase(this.#database, true);
   }
 
   #tableNames(): TableName[] {
-    const rows = this.#database.prepare(`
-      SELECT name FROM sqlite_master
-      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-      ORDER BY name
-    `).all();
-    return z.array(z.union([AuthorityTableNameSchema, ProjectionTableNameSchema])).parse(
-      rows.map((row) => TableNameRowSchema.parse(row).name),
-    );
+    return tableNames(this.#database);
   }
 
   #readMetaRow(): z.infer<typeof MetaRowSchema> {
-    return MetaRowSchema.parse(this.#database.prepare(`
-      SELECT schema_version, authority_generation, updated_at, migration_owner, migration_started_at
-      FROM authority_meta WHERE singleton_id = 1
-    `).get());
+    return readMetaRow(this.#database);
   }
 
   #readIntPragma(name: "application_id" | "user_version" | "foreign_keys" | "synchronous" | "busy_timeout"): number {
-    const row = IntPragmaRowSchema.parse(this.#database.prepare(`PRAGMA ${name}`).get());
-    const value = row[name === "busy_timeout" ? "timeout" : name];
-    if (value === undefined) throw new Error(`PRAGMA ${name} returned no value`);
-    return value;
+    return readIntPragma(this.#database, name);
   }
 
   #readTextPragma(name: "journal_mode"): string {
-    const row = TextPragmaRowSchema.parse(this.#database.prepare(`PRAGMA ${name}`).get());
-    const value = row[name];
-    if (value === undefined) throw new Error(`PRAGMA ${name} returned no value`);
-    return value;
+    return readTextPragma(this.#database, name);
   }
 
   #now(): string {

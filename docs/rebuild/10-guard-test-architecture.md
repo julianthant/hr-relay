@@ -95,6 +95,26 @@ HTTP/UI, and live lanes.
 
 ---
 
+## Phase 1c Stage C as-built guard delta (2026-08-01)
+
+Stage C activates the existing `storage-recovery` inventory arm and gives it a non-empty focused
+architecture suite over real temporary SQLite databases and the official native online-backup API.
+The suite pins successful self-inspected copies and manifests, request coalescing plus the bounded
+generation follow-up, backup interruption cleanup, byte/manifest tampering, corrupt/truncated/
+foreign/newer/foreign-key/invariant-invalid degraded boot, all four mutation refusals, exact doctor
+counts and candidate ordering, and stopped-proof restore with suspect-file preservation and
+projection-only rebuild verification. It also exercises missing proof, exact-candidate rejection,
+projection-rebuild failure, and atomic-swap failure.
+
+Static boundary proof keeps `DatabaseSync` and `node:sqlite` private to the adapter, requires the
+official backup symbol, and bans `VACUUM INTO` and filesystem-copy backup fallbacks. The strict
+boundary catalog registers every new recovery config, durable record, report, health-cause, and
+union arm. This activation covers storage recovery only; command-handler single-path,
+write-sequencer crash injection, workers, projectors, browser, HTTP/UI, and live lanes remain open
+Stage-D or later work, so Phase 1c is still incomplete.
+
+---
+
 ## 1. The suite today — what the rebuild repo inherits (grounded inventory)
 
 In the legacy repo, `npm run test:architecture` runs `tests/unit/architecture/**` (dot reporter).

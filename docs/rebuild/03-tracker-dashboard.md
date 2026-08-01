@@ -79,6 +79,35 @@ completion from the existence of `state.db` authority.
 
 ---
 
+## Phase 1c Stage C as-built recovery delta (2026-08-01)
+
+Stage C adds a verified online-backup path around the private native SQLite adapter. It uses
+Node's official online-backup API, writes a unique temporary copy, opens that copy read-only for
+quick-check, foreign-key, registry, schema, typed-JSON, write-attempt, generation, and page-count
+inspection, then fsyncs and atomically renames it. A strict self-describing manifest pins the
+source identity, authority generation, schema/application identity, byte size, SHA-256 digest,
+copy fingerprint, and verification result. The public surface still exposes neither the raw
+database handle nor a SQL callback, and there is no `VACUUM INTO` or filesystem-copy fallback.
+Concurrent requests coalesce behind one flight; a generation watermark can cause exactly one
+follow-up copy, and failure to reach that watermark fails loud.
+
+Existing authority files are inspected read-only before writable boot. Empty, corrupt, foreign,
+newer-schema, foreign-key-invalid, or invariant-invalid files enter structured
+`degraded-read-only` mode without being replaced; enqueue, claim, commit, and control mutation
+entry points all fail with the same typed storage-health cause. The read-only doctor reports exact
+pending command/write/outbox/notification counts and explicit restore candidates. It verifies
+every discovered manifest and treats the newest invalid candidate as an invalid backup state
+instead of silently falling back to an older plausible copy.
+
+Offline restore is deliberately only a stopped-system primitive. It requires matching stopped
+proof, preserves the suspect authority file and exact WAL/SHM companions, verifies the exact
+requested manifest/copy, stages in the live directory, invokes an injected projection rebuild,
+then proves the authority generation and content fingerprint did not change before the atomic
+swap. It does not stop processes, choose a backup, delete preserved evidence, expose an HTTP/UI
+surface, or contact a live system. Phase 1c remains incomplete until the later Stage-D spine work.
+
+---
+
 ## 0. What exists today (and what specifically hurts)
 
 | Today | Mechanism | Pain |
