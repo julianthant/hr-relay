@@ -1,6 +1,7 @@
 # 09 — Write-Safety: Fenced, Fail-Closed Real HR Mutations
 
-Status: **revised 2026-07-22 after the whole-plan/legacy-code review; amended 2026-07-26
+Status: **Phase 1c write-safety authority shell completed 2026-08-01; revised 2026-07-22 after the
+whole-plan/legacy-code review; amended 2026-07-26
 (Round 8), 2026-07-31 (Round 10 — ordered actor-attributed ledger now; hash/tail tamper evidence
 deferred by D79), and 2026-07-31 (Round 11 — standalone rebuild repo, D93: every path below is
 inside the rebuild repo, so rebuild code sits at plain `src/` and the fence/authority database is
@@ -69,6 +70,40 @@ the two closed atomic beat-⑦ payload arms (`ledger-entry` and `write-committed
 durable shapes only. Stage A includes no browser commit task, mutation capability, fence store,
 sequencer, projector, recovery service, or external HR call, and therefore does not claim the write
 sequence is implemented. Phase 1c remains in progress.
+
+---
+
+## Phase 1c Stage D as-built authority-write delta (2026-08-01)
+
+Stage D implements the storage-level write-safety invariants item 1c owns. Natural idempotency keys
+are strict, system-scoped values; their SHA-256 digest is derived with a versioned domain separator
+and is revalidated anywhere an intent, ledger payload, or terminal span crosses a schema boundary.
+Binding-proof digests are derived from canonical parsed proof JSON and revalidated on both intent
+and attempt. The native authority adapter serializes unseen-key fencing with `BEGIN IMMEDIATE` and
+the durable `(system,idempotency_key)` uniqueness constraint, so later sequential starters and
+independently opened competing connections observe the original intent across `attempting`,
+`committed`, and `observed-present` states. A live `observed-present` record creates no attempt and
+no write ledger/span outbox.
+
+The Clock-injected negative-settlement evaluator now counts only distinct, schema-valid
+observations at or after `fencedAt + minSinceFenceMs`, separated by at least
+`minBetweenReadsMs`, and bound to the exact fenced digest, authoritative query, observation source,
+and source state. Early or single observations have zero retry authority. Duplicate, future,
+out-of-order, wrong-boundary, present, ambiguous, unknown, malformed, or operator-only evidence
+cannot become `safe-to-retry`; inconsistent evidence parks and malformed boundary input fails loud.
+
+The strict generic `TransactionOutcome` and atomic-commit contracts bind the accepted completion
+proof to both durable outbox arms. One native transaction updates the current intent and attempt and
+inserts the ledger and terminal-span outboxes. Failure injected after each storage step proves
+all-or-none rollback with no generation advance. The active `permanent-key-dedupe`,
+`recovery-negative-proof-settlement`, and `atomic-write-outbox` guards pin these properties over
+real temporary SQLite databases and manual-Clock boundaries.
+
+This completes **Phase 1c's type and authority-storage shell only**. No commit task, mutation
+capability, browser click, live probe, positive-recovery service, parked-intent command, worker,
+sequencer/projector, route, UI, or external HR transaction exists yet. The complete kernel write
+sequence remains item 1f; ordered ledger/span projection remains 1g-spine; controlled external-write
+proof remains Phase 2. Phase 1d is next, and Phase 1 is not complete.
 
 ---
 

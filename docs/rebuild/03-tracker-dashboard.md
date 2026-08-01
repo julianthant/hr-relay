@@ -1,6 +1,7 @@
 # 03 — Tracker/Event Layer + Dashboard Contract (span rebuild)
 
-Status: **revised 2026-07-22 after the whole-plan/legacy-code review.** The span rebuild now also
+Status: **Phase 1c authority/recovery shell completed 2026-08-01; revised 2026-07-22 after the
+whole-plan/legacy-code review.** The span rebuild now also
 owns a closed control-command protocol, durable notifications, strict boundary schemas, and an
 explicit backup/restore contract for the non-rebuildable SQLite state. **Amended 2026-07-25:** §9
 carries the operator-ratified delegation and presentation decisions (row-model series D6–D20).
@@ -105,6 +106,34 @@ requested manifest/copy, stages in the live directory, invokes an injected proje
 then proves the authority generation and content fingerprint did not change before the atomic
 swap. It does not stop processes, choose a backup, delete preserved evidence, expose an HTTP/UI
 surface, or contact a live system. Phase 1c remains incomplete until the later Stage-D spine work.
+
+---
+
+## Phase 1c Stage D as-built authority-write delta (2026-08-01)
+
+Stage D closes item 1c's authority-write storage seam. Schema version 1 now persists the strict
+natural idempotency key beside its derived digest and enforces both digest uniqueness and
+`UNIQUE(system,idempotency_key)`. The public adapter offers only narrow permanent-key operations:
+record an unseen `observed-present` intent, fence one consistent intent/attempt pair, read by exact
+permanent key, and commit the current fenced attempt. Standalone attempt insertion, durable-outbox
+insertion, raw SQL, and native handles remain private.
+
+`commitWriteAttempt` performs the 1c-owned portion of beat ⑦ in one outer authority transaction:
+the intent becomes `committed`, its current attempt records the same accepted proof, and one valid
+ledger outbox plus one valid terminal-span/generic-outcome outbox become durable together. Injected
+failure after each of those four storage steps rolls back every row and leaves
+`authority_generation` unchanged. An unseen live `present` result remains permanently
+click-blocking while creating no attempt and no ledger/span outbox. Sequential and independently
+opened competing connections resolve the same `(system,idempotency_key)` to the original permanent
+intent; mismatched natural-key, key-digest, binding-proof, generation, proof, outcome, or outbox
+identity fails before authority can advance.
+
+This completes **Phase 1c**, not Phase 1. The command handler, enqueue/CAS services, task workers,
+browser mutation seam, run/checkpoint state changes, full recovery orchestrator, write sequencer,
+ledger/span projectors, HTTP routes, dashboard, and live-system wiring remain owned by 1d–1i-spine
+or Phase 2. In particular, Stage D does not implement 1f's probe→prepare→bind→click sequence or
+1g's outbox sequencing/projection; it makes the authority operations those later consumers must use
+atomic and fail-closed. Phase 1d is next.
 
 ---
 

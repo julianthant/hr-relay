@@ -1,6 +1,7 @@
 # 10 — Guard & Test Architecture SSOT (the rebuild repo)
 
-Status: **Phase 1b guard foundation implemented 2026-07-31; revised 2026-07-22 after the
+Status: **Phase 1c guard acceptance completed 2026-08-01; Phase 1b guard foundation implemented
+2026-07-31; revised 2026-07-22 after the
 whole-plan/legacy-code review; amended 2026-07-31 (Round 10), Round 11 (D93, standalone rebuild
 repo), and Round 12 (D94, commit-centred accounting closure).** The reviewed guard
 inventory, D58/D90/disposition manifests, semantic legacy-lint ratchet, operational-isolation
@@ -112,6 +113,35 @@ boundary catalog registers every new recovery config, durable record, report, he
 union arm. This activation covers storage recovery only; command-handler single-path,
 write-sequencer crash injection, workers, projectors, browser, HTTP/UI, and live lanes remain open
 Stage-D or later work, so Phase 1c is still incomplete.
+
+---
+
+## Phase 1c Stage D as-built guard delta (2026-08-01)
+
+Stage D activates exactly three previously planned inventory entries in the same commit as their
+implementations and focused suites:
+
+- `permanent-key-dedupe` exercises sequential and independently opened competing SQLite
+  connections, committed and `observed-present` permanence, the observed-present zero-attempt/
+  zero-write-outbox rule, and natural-key/digest/binding-digest mismatch refusal.
+- `recovery-negative-proof-settlement` crosses the exact propagation and read-spacing boundaries
+  with an injected manual Clock and proves that early, single, duplicated, malformed, future,
+  out-of-order, wrong-key/query/source/source-state, present, ambiguous, unknown, and operator-only
+  evidence never grants retry authority.
+- `atomic-write-outbox` validates the successful intent+attempt+ledger+terminal-span transaction,
+  injects failure after every storage step and proves total rollback plus unchanged authority
+  generation, and statically pins the narrow repository/no-standalone-insert surface.
+
+The strict-boundary catalog also covers the new natural-key, generic-outcome, fence, permanent-key
+resolution, atomic-input, storage-step, and commit-report schemas and recursively rejects unknown
+keys. Stage-D acceptance evidence is: focused guard/catalog 21/21, full unit+architecture 178/178,
+architecture 93/93, typecheck and zero-warning lint green, and coverage at 87.69% statements,
+76.51% branches, 92.08% functions, and 90.49% lines. The remaining command-handler, worker,
+browser/driver, sequencer/projector, HTTP/UI, scenario, and live-lane guards remain planned; none was
+activated to make Phase 1c look broader than it is.
+
+These results complete **Phase 1c**. They do not complete Phase 1, whose next item is 1d and whose
+exit remains the live Person Lookup spine proof.
 
 ---
 

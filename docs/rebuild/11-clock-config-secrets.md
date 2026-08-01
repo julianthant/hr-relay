@@ -1,6 +1,7 @@
 # 11 — Clock, Config & Secrets
 
-Status: **Phase 1b clock/config/secrets foundation implemented 2026-07-31; revised 2026-07-22 after
+Status: **Phase 1c Clock/acceptance delta completed 2026-08-01; Phase 1b clock/config/secrets
+foundation implemented 2026-07-31; revised 2026-07-22 after
 the whole-plan/legacy-code review.** Configuration is now
 recursively strict/branded, diagnostic redaction is part of the secret contract, and scope is
 explicitly a loopback-only single-operator tool—no RBAC/multi-user infrastructure in the base.
@@ -79,6 +80,23 @@ or contact any external system.
 This is the runner primitive, not the full operator surface. CLI/dashboard doctor presentation,
 scheduled backup wiring, command/worker/projector integration, and a complete offline recovery
 orchestrator remain Stage-D or later work; Phase 1c is not complete.
+
+---
+
+## Phase 1c Stage D as-built Clock/acceptance delta (2026-08-01)
+
+The negative-settlement safety decision is now fully deterministic under the injected `Clock`:
+`decidedAt`, the post-fence propagation boundary, rejection of future observations, and exact
+read-spacing boundaries require no wall-clock read or sleeping test. The authority adapter uses its
+injected Clock for transaction metadata and accepts already schema-validated external confirmation
+instants; no new direct `Date`, environment, settings, or secret read site was introduced. The
+existing Clock single-source and manual-Clock-test-only guards remain green.
+
+Phase 1c acceptance advances the isolated runtime status to `completedThrough:"1c"` and
+`active:"1d"`. It does not create a second config/secret world, browser profile, port, state root,
+or production launcher, and it does not wire run snapshots or external systems. Those consumers
+remain with their named later spine items. Phase 1c is complete; Phase 1 and production cutover are
+not.
 
 ---
 

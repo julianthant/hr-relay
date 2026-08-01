@@ -5,7 +5,7 @@ legacy repository at `/Users/julianhein/Projects/hr-automation` runs every real 
 stays the sole production authority until a single all-at-once cutover (D89/D93).
 
 Seeded 2026-07-31 from `hr-automation@5879004` (branch `feature/rebuild-phase1b`, which stays in the
-legacy repo as the pre-split record). Phase 1b completed 2026-07-31; Phase 1c is next.
+legacy repo as the pre-split record). Phase 1c completed 2026-08-01; Phase 1d is next.
 
 ## Before you start
 
