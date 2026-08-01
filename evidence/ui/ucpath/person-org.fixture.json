@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "deterministic-fixture",
+  "system": "ucpath",
+  "screens": [
+    "ucpath.person-org.search",
+    "ucpath.person-org.detail"
+  ],
+  "verifiedAt": "2026-08-01",
+  "method": "deterministic-driver",
+  "assertions": [
+    {
+      "semanticId": "ucpath.person-org.eid-input",
+      "assertion": "accepts-canonical-eid",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.displayed-eid",
+      "assertion": "displayed-eid-equals-query",
+      "matchedCount": 1,
+      "capturedValue": false
+    }
+  ],
+  "externalWriteAttempted": false,
+  "sanitized": true
+}

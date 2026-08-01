@@ -27,12 +27,35 @@ describe("legacy selector port provenance", () => {
     ]);
     assert.equal(portMap.entries.length, 406);
     assert.deepEqual(auditLegacySelectorPortMap(portMap, LEGACY_ROOT), []);
-    assert.equal(portMap.entries.every((entry) => entry.disposition === "candidate"), true);
+    assert.equal(portMap.entries.filter((entry) => entry.disposition === "candidate").length, 403);
+    assert.equal(portMap.entries.filter((entry) => entry.disposition === "ported").length, 2);
+    assert.equal(portMap.entries.filter((entry) => entry.disposition === "driver-internal").length, 1);
   });
 
-  it("rebuilds the exact safe candidate inventory without locator recipes", () => {
+  it("rebuilds exact provenance while keeping path-derived proposals non-authoritative", () => {
     const generated = buildLegacySelectorPortMap(LEGACY_ROOT);
-    assert.deepEqual(generated, readPortMap());
+    const checkedIn = LegacySelectorPortMapSchema.parse(readPortMap());
+    const generatedProposals = generated.entries.map((entry) => {
+      if (entry.disposition !== "candidate") throw new Error("generated port-map entry was classified unexpectedly");
+      return { system: entry.system, legacyKey: entry.legacyKey, candidateId: entry.candidateId };
+    });
+    assert.deepEqual(
+      generatedProposals,
+      checkedIn.entries.map((entry) => {
+        const generatedEntry = generated.entries.find(
+          (candidate) => candidate.system === entry.system && candidate.legacyKey === entry.legacyKey,
+        );
+        if (!generatedEntry || generatedEntry.disposition !== "candidate") {
+          throw new Error(`missing generated candidate proposal for ${entry.system}:${entry.legacyKey}`);
+        }
+        return {
+          system: entry.system,
+          legacyKey: entry.legacyKey,
+          candidateId: generatedEntry.candidateId,
+        };
+      }),
+    );
+    assert.equal(generated.entries.every((entry) => entry.semanticKind === "unclassified"), true);
     const serialized = JSON.stringify(generated);
     assert.doesNotMatch(serialized, /locator\(|getByRole\(|xpath=|css=|screenshot|password\s*[:=]/i);
   });
@@ -63,7 +86,21 @@ describe("legacy selector port provenance", () => {
     const valid = LegacySelectorPortMapSchema.parse(readPortMap());
     const malformedPorted = structuredClone(valid) as Record<string, unknown>;
     const entries = malformedPorted.entries as Record<string, unknown>[];
-    entries[0] = { ...entries[0], disposition: "ported" };
+    entries[0] = {
+      ...entries[0],
+      disposition: "ported",
+      semanticKind: "element",
+      canonicalId: "crm.search.result-rows",
+    };
+    delete entries[0]?.candidateId;
     assert.notEqual(auditLegacySelectorPortMap(malformedPorted, LEGACY_ROOT).length, 0);
+  });
+
+  it("does not treat candidate proposals as classified semantic ids", () => {
+    const valid = LegacySelectorPortMapSchema.parse(readPortMap());
+    const candidate = valid.entries.find((entry) => entry.disposition === "candidate");
+    assert.ok(candidate);
+    assert.equal(candidate.semanticKind, "unclassified");
+    assert.equal("canonicalId" in candidate, false);
   });
 });

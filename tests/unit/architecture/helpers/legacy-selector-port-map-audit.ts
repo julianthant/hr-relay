@@ -1,6 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { z } from "zod";
-import { BrowserSystemIdSchema, DateOnlySchema, ElementIdSchema } from "../../../../src/domain/ids.js";
+import {
+  BrowserSystemIdSchema,
+  DateOnlySchema,
+  ElementIdSchema,
+  ObservationIdSchema,
+  PageStateIdSchema,
+  ScreenIdSchema,
+} from "../../../../src/domain/ids.js";
 
 export const PINNED_LEGACY_SELECTOR_COMMIT = "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc";
 
@@ -22,7 +29,7 @@ const LegacyPathSchema = z.string().regex(
 );
 const LegacyKeySchema = z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/);
 const SearchTermSchema = z.string().regex(/^[a-z0-9]+(?:[ -][a-z0-9]+)*$/);
-const EvidenceReferenceSchema = z.string().regex(/^evidence\/ui\/[a-z0-9/_-]+\.[a-z0-9]+$/);
+const EvidenceReferenceSchema = z.string().regex(/^evidence\/ui\/[a-z0-9/_.-]+\.[a-z0-9]+$/);
 
 export const LegacySelectorSystemSnapshotSchema = z.strictObject({
   system: BrowserSystemIdSchema,
@@ -33,10 +40,9 @@ export const LegacySelectorSystemSnapshotSchema = z.strictObject({
   catalogBlob: GitBlobSchema,
 });
 
-const EntryBaseSchema = z.strictObject({
+const EntryProvenanceSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   legacyKey: LegacyKeySchema,
-  canonicalId: ElementIdSchema,
   searchTerms: z.array(SearchTermSchema).min(1),
   sourcePath: LegacyPathSchema,
   sourceLine: z.number().int().positive(),
@@ -51,11 +57,51 @@ const VerificationEvidenceSchema = z.strictObject({
   liveReadOnlyEvidenceRef: EvidenceReferenceSchema,
 });
 
-export const LegacySelectorPortEntrySchema = z.discriminatedUnion("disposition", [
-  EntryBaseSchema.extend({ disposition: z.literal("candidate") }),
-  EntryBaseSchema.extend({ disposition: z.literal("ported"), evidence: VerificationEvidenceSchema }),
-  EntryBaseSchema.extend({ disposition: z.literal("driver-internal"), reason: z.string().min(1) }),
-  EntryBaseSchema.extend({ disposition: z.literal("not-porting"), reason: z.string().min(1) }),
+const CandidateProposalIdSchema = z.string().regex(
+  /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)+$/,
+  "candidate proposal id must be qualified but is not a semantic UI id",
+);
+
+export const LegacySelectorPortEntrySchema = z.union([
+  EntryProvenanceSchema.extend({
+    disposition: z.literal("candidate"),
+    semanticKind: z.literal("unclassified"),
+    candidateId: CandidateProposalIdSchema,
+  }),
+  EntryProvenanceSchema.extend({
+    disposition: z.literal("ported"),
+    semanticKind: z.literal("screen"),
+    canonicalId: ScreenIdSchema,
+    evidence: VerificationEvidenceSchema,
+  }),
+  EntryProvenanceSchema.extend({
+    disposition: z.literal("ported"),
+    semanticKind: z.literal("element"),
+    canonicalId: ElementIdSchema,
+    evidence: VerificationEvidenceSchema,
+  }),
+  EntryProvenanceSchema.extend({
+    disposition: z.literal("ported"),
+    semanticKind: z.literal("page-state"),
+    canonicalId: PageStateIdSchema,
+    evidence: VerificationEvidenceSchema,
+  }),
+  EntryProvenanceSchema.extend({
+    disposition: z.literal("ported"),
+    semanticKind: z.literal("observation"),
+    canonicalId: ObservationIdSchema,
+    evidence: VerificationEvidenceSchema,
+  }),
+  EntryProvenanceSchema.extend({
+    disposition: z.literal("driver-internal"),
+    semanticKind: z.literal("driver-internal"),
+    reason: z.string().min(1),
+  }),
+  EntryProvenanceSchema.extend({
+    disposition: z.literal("not-porting"),
+    semanticKind: z.literal("not-porting"),
+    reason: z.string().min(1),
+  }),
 ]);
 
 export const LegacySelectorPortMapSchema = z.strictObject({
@@ -80,9 +126,9 @@ function camelToKebab(value: string): string {
     .toLowerCase();
 }
 
-function canonicalId(system: keyof typeof EXPECTED_COUNTS, legacyKey: string): string {
+function candidateId(system: keyof typeof EXPECTED_COUNTS, legacyKey: string): string {
   const path = legacyKey.slice(0, -2).split(".").map(camelToKebab).join(".");
-  return ElementIdSchema.parse(`${system}.${path}`);
+  return CandidateProposalIdSchema.parse(`${system}.${path}`);
 }
 
 function parseCatalog(system: keyof typeof EXPECTED_COUNTS, catalog: string): readonly {
@@ -141,7 +187,7 @@ export function buildLegacySelectorPortMap(legacyRoot: string): LegacySelectorPo
     return parseCatalog(snapshot.system, catalog).map((entry) => ({
       system: snapshot.system,
       legacyKey: entry.legacyKey,
-      canonicalId: canonicalId(snapshot.system, entry.legacyKey),
+      candidateId: candidateId(snapshot.system, entry.legacyKey),
       searchTerms: entry.searchTerms,
       sourcePath: snapshot.sourcePath,
       sourceLine: entry.sourceLine,
@@ -149,6 +195,7 @@ export function buildLegacySelectorPortMap(legacyRoot: string): LegacySelectorPo
       catalogPath: snapshot.catalogPath,
       catalogBlob: snapshot.catalogBlob,
       disposition: "candidate" as const,
+      semanticKind: "unclassified" as const,
     }));
   });
   return LegacySelectorPortMapSchema.parse({
@@ -181,8 +228,13 @@ export function auditLegacySelectorPortMap(input: unknown, legacyRoot: string): 
   const identity = (entry: LegacySelectorPortEntry): string => `${entry.system}:${entry.legacyKey}`;
   const identities = actual.entries.map(identity);
   if (new Set(identities).size !== identities.length) issues.push("every legacy selector key must appear exactly once");
-  if (new Set(actual.entries.map((entry) => entry.canonicalId)).size !== actual.entries.length) {
-    issues.push("candidate canonical ids must be globally unique");
+  const candidateIds = actual.entries.flatMap((entry) => entry.disposition === "candidate" ? [entry.candidateId] : []);
+  if (new Set(candidateIds).size !== candidateIds.length) {
+    issues.push("non-authoritative candidate proposal ids must be globally unique");
+  }
+  const canonicalIds = actual.entries.flatMap((entry) => entry.disposition === "ported" ? [entry.canonicalId] : []);
+  if (new Set(canonicalIds).size !== canonicalIds.length) {
+    issues.push("ported semantic ids must be globally unique");
   }
   if (JSON.stringify(actual.systems) !== JSON.stringify(expected.systems)) {
     issues.push("system paths, counts, or git blobs differ from the pinned legacy commit");
@@ -194,19 +246,37 @@ export function auditLegacySelectorPortMap(input: unknown, legacyRoot: string): 
       issues.push(`unknown legacy selector key ${identity(entry)}`);
       continue;
     }
+    if (expectedEntry.disposition !== "candidate") {
+      issues.push(`generated selector inventory unexpectedly classified ${identity(entry)}`);
+      continue;
+    }
     const stableActual = {
       system: entry.system,
       legacyKey: entry.legacyKey,
-      canonicalId: entry.canonicalId,
       searchTerms: entry.searchTerms,
       sourcePath: entry.sourcePath,
       sourceLine: entry.sourceLine,
       sourceBlob: entry.sourceBlob,
       catalogPath: entry.catalogPath,
       catalogBlob: entry.catalogBlob,
+      candidateId: expectedEntry.candidateId,
       disposition: "candidate" as const,
+      semanticKind: "unclassified" as const,
     };
-    if (JSON.stringify(stableActual) !== JSON.stringify(expectedEntry)) {
+    const stableExpected = {
+      system: expectedEntry.system,
+      legacyKey: expectedEntry.legacyKey,
+      searchTerms: expectedEntry.searchTerms,
+      sourcePath: expectedEntry.sourcePath,
+      sourceLine: expectedEntry.sourceLine,
+      sourceBlob: expectedEntry.sourceBlob,
+      catalogPath: expectedEntry.catalogPath,
+      catalogBlob: expectedEntry.catalogBlob,
+      candidateId: expectedEntry.candidateId,
+      disposition: "candidate" as const,
+      semanticKind: "unclassified" as const,
+    };
+    if (JSON.stringify(stableActual) !== JSON.stringify(stableExpected)) {
       issues.push(`provenance or canonical search intent drifted for ${identity(entry)}`);
     }
   }

@@ -66,6 +66,23 @@ authoring/explorer surfaces remain with their later owning work items.
   `ScreenId`, `PageStateId`, and `ObservationId` schemas/types from `src/domain/ids.ts`; no driver or
   registry redeclares those closed identities.
 
+### Phase 1d as-built seed (2026-08-01)
+
+The first real registry/driver slice is intentionally narrow and submit-free: UCPath Person
+Organizational Summary owns semantic ids for its search/detail screens, EID input/display elements,
+ready states, and authoritative displayed-EID observation. Only the two reviewed legacy selector
+rows are classified as ported; `getContentFrame()` is private driver-root infrastructure and all
+other path-derived selector proposals remain unclassified candidates. The server registry owns the
+closed locator/state/read recipes and exact pinned legacy provenance. Bundle-safe domain modules
+export only schemas, stable ids, typed proofs, and the `UcpathPersonOrgDriver` contract.
+
+The deterministic fake proves search → canonical EID fill → detail → displayed-EID equality. A
+headless live/read-only Duo-Autopilot check independently proved exactly one iframe-scoped `Empl ID`
+textbox and exactly one authoritative `#PERSON_NPC_VW_EMPLID` whose text equaled the searched EID;
+the sanitized evidence manifests record no captured value and no external write attempt. Generated
+JSON/Markdown catalogs and `selector:search` consume the recipe-free projection only. Active guards
+make candidates unable to enter that catalog and keep raw Playwright calls in driver/session owners.
+
 ---
 
 ## 0. Why this is foundation work, not dashboard polish

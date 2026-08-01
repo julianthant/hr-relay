@@ -10,6 +10,8 @@
     "rebuild:dashboard": "tsx --env-file=.env src/cli.ts dashboard",
     "rebuild:dashboard:prod": "tsx --env-file=.env src/cli.ts dashboard --prod",
     "rebuild:cli": "tsx --env-file=.env src/cli.ts",
+    "ui:catalog": "tsx scripts/generate-ui-catalog.ts",
+    "selector:search": "tsx scripts/search-ui.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tests scripts --max-warnings 0",
     "test": "vitest run --reporter=dot",
@@ -32,6 +34,7 @@
     "vitest": "^4.1.7"
   },
   "dependencies": {
+    "playwright": "^1.61.1",
     "zod": "^4.3.6"
   }
 }

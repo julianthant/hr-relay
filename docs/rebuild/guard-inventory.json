@@ -61,7 +61,7 @@
       "file": "tests/unit/architecture/legacy-selector-port-provenance.test.ts",
       "status": "active",
       "owner": "docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "All 406 legacy selector keys are represented exactly once by recipe-free canonical-id/search intent and exact clean-commit source/catalog Git provenance; candidates cannot claim runtime verification.",
+      "invariant": "All 406 legacy selector keys are represented exactly once with recipe-free search intent and exact clean-commit source/catalog Git provenance; path-derived candidate proposals remain unclassified and non-authoritative, while ported semantic ids require dual evidence.",
       "replacementRequired": true
     },
     {
@@ -428,11 +428,10 @@
     {
       "name": "semantic-ui-registry",
       "file": "tests/unit/architecture/semantic-ui-registry.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: semantic-ui-registry.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/12-operator-trust-and-authoring.md; docs/rebuild/10-guard-test-architecture.md",
+      "invariant": "Every server-private semantic UI definition has a globally unique classified id, collision-free search intent, resolved same-system dependencies, non-vacuous globally unique verification scenarios, dual sanitized evidence, and byte-fresh recipe-free generated catalogs; legacy candidates cannot enter the runtime catalog.",
+      "replacementRequired": true
     },
     {
       "name": "single-flight-login",
@@ -472,11 +471,10 @@
     {
       "name": "task-driver-boundary",
       "file": "tests/unit/architecture/task-driver-boundary.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: task-driver-boundary.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/12-operator-trust-and-authoring.md; docs/rebuild/10-guard-test-architecture.md",
+      "invariant": "Playwright types and raw locator operations remain confined to per-system driver/session owners; tasks and workflows consume only typed semantic ids, proofs, observations, and mutation-capability-gated commit signatures.",
+      "replacementRequired": true
     },
     {
       "name": "transaction-pairing",

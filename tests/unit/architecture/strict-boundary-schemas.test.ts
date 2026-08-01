@@ -57,6 +57,11 @@ import { RUNTIME_DEPENDENCY_REGISTRY, RuntimeDependencyRegistrySchema } from "..
 import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema } from "../../../src/domain/runtime-environment.js";
 import { SchemaBoundCanonicalValueSchema } from "../../../src/domain/schema-bound-value.js";
 import {
+  UiCatalogSchema,
+  UiVerificationEvidenceManifestSchema,
+  UiVerificationScenarioSchema,
+} from "../../../src/domain/ui/contracts.js";
+import {
   SECRET_FAMILY_SPECS,
   SECRET_FILE_SPECS,
   SECRET_SPECS,
@@ -135,6 +140,8 @@ import {
   VersionPlanStorageRecordSchema,
   WriteFenceInputSchema,
 } from "../../../src/infra/sqlite/index.js";
+import { buildSafeUiCatalog } from "../../../src/stores/ucpath/driver/catalog.js";
+import { UCPATH_UI_REGISTRY } from "../../../src/stores/ucpath/driver/ui-registry.js";
 import {
   ABSENCE_1,
   ABSENCE_2,
@@ -168,6 +175,10 @@ const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
 const NOW = "2026-07-31T17:00:00.000Z";
 const CLOCK = manualClock(new Date("2026-07-31T10:00:00-07:00"));
+const UI_EVIDENCE = JSON.parse(readFileSync(
+  join(REPO_ROOT, "evidence/ui/ucpath/person-org.fixture.json"),
+  "utf8",
+)) as unknown;
 
 const FAILURE = {
   failureId: UUID_1, fingerprint: HASH_B, runId: UUID_2, traceId: "on-120000-2222", attempt: 1,
@@ -678,6 +689,9 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "PreflightReport", schema: PreflightReportSchema, fixtures: [PREFLIGHT_REPORT] },
   { name: "RuntimeEnvironmentRegistry", schema: RuntimeEnvironmentRegistrySchema, fixtures: [RUNTIME_ENVIRONMENT_REGISTRY] },
   { name: "RuntimeDependencyRegistry", schema: RuntimeDependencyRegistrySchema, fixtures: [RUNTIME_DEPENDENCY_REGISTRY] },
+  { name: "UiCatalog", schema: UiCatalogSchema, fixtures: [buildSafeUiCatalog()] },
+  { name: "UiVerificationEvidenceManifest", schema: UiVerificationEvidenceManifestSchema, fixtures: [UI_EVIDENCE] },
+  { name: "UiVerificationScenario", schema: UiVerificationScenarioSchema, fixtures: UCPATH_UI_REGISTRY.scenarios },
   { name: "SecretSpec", schema: SecretSpecSchema, fixtures: [SECRET_SPECS[0]] },
   { name: "SecretFamilySpec", schema: SecretFamilySpecSchema, fixtures: [SECRET_FAMILY_SPECS[0]] },
   { name: "SecretFileSpec", schema: SecretFileSpecSchema, fixtures: [SECRET_FILE_SPECS[0]] },
@@ -773,6 +787,13 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/preflight.ts:BuildPreflightReportInput",
   "src/domain/preflight.ts:PreflightRunner",
   "src/domain/preflight.ts:PreflightRunnerContext",
+  "src/domain/ui/driver.ts:MutationCapability",
+  "src/domain/ui/driver.ts:SystemDriver",
+  "src/domain/ui/ucpath-person-org.ts:UcpathPersonOrgScreens",
+  "src/domain/ui/ucpath-person-org.ts:UcpathPersonOrgStates",
+  "src/domain/ui/ucpath-person-org.ts:UcpathPersonOrgFields",
+  "src/domain/ui/ucpath-person-org.ts:UcpathPersonOrgObservations",
+  "src/domain/ui/ucpath-person-org.ts:UcpathPersonOrgDriver",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {
@@ -784,13 +805,16 @@ export function boundarySourceViolations(path: string, content: string): readonl
       if (!EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST.has(identity)) violations.push(`${identity}: exported boundary interface has no schema`);
     }
     if (node.kind === ts.SyntaxKind.AnyKeyword) violations.push(`${path}: any is forbidden at a boundary`);
-    if (ts.isTypeAliasDeclaration(node) && node.modifiers?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword)
-      && !(path === "src/domain/canonical-json.ts" && node.name.text === "JsonValue")) {
+    if (ts.isTypeAliasDeclaration(node) && node.modifiers?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword)) {
+      const identity = `${path}:${node.name.text}`;
       const type = node.type;
       const schemaDerived = ts.isTypeReferenceNode(type) && ts.isQualifiedName(type.typeName)
         && ts.isIdentifier(type.typeName.left) && type.typeName.left.text === "z"
         && ["infer", "input", "output"].includes(type.typeName.right.text);
-      if (!schemaDerived) violations.push(`${path}:${node.name.text}: exported boundary type is not schema-derived`);
+      if (!schemaDerived && !EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST.has(identity)
+        && !(path === "src/domain/canonical-json.ts" && node.name.text === "JsonValue")) {
+        violations.push(`${identity}: exported boundary type is not schema-derived`);
+      }
     }
     if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName) && node.typeName.text === "Record"
       && node.typeArguments?.length === 2) {

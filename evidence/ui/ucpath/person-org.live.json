@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "live-read-only",
+  "system": "ucpath",
+  "screens": [
+    "ucpath.person-org.search",
+    "ucpath.person-org.detail"
+  ],
+  "verifiedAt": "2026-08-01",
+  "method": "playwright-cli-duo-autopilot",
+  "assertions": [
+    {
+      "semanticId": "ucpath.person-org.eid-input",
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.displayed-eid",
+      "assertion": "displayed-eid-equals-query",
+      "matchedCount": 1,
+      "capturedValue": false
+    }
+  ],
+  "externalWriteAttempted": false,
+  "sanitized": true
+}
