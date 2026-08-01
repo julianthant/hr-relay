@@ -69,6 +69,34 @@ type fails the proof rather than passing it vacuously. `tests/unit/flow-type-bud
 `tsc --extendedDiagnostics` over that file alone and fails outside the 5s / 1 GiB budget (measured
 0.47s / 215 MiB on the baseline machine).
 
+### Phase 1e as-built — canonical input and delegation (2026-08-01)
+
+**Canonical input (§2 / D62)** is `src/domain/workflow/canonical-input.ts`, with its zod-internals
+walker in `src/validation/canonical-input-schema.ts` (the strict-boundary guard bars type assertions
+inside `src/domain/**`, and reading `_zod.def` requires them). `auditCanonicalInputSchema` rejects
+`default`, `prefault`, `catch`, `transform`, `pipe`, `success`, and coercion **anywhere** in the
+graph — one buried under an array element or a union arm re-applies on exactly the same read as a
+top-level one. `defineCanonicalInput` additionally proves `input → canonicalInput → canonically
+identical value` against mandatory ingress samples, so a canonical schema that drifts from its
+ingress schema fails at build rather than at the first resume; `assertAuditedCanonicalInput` (a
+WeakSet, mirroring `assertFactorySealedTaskContract`) stops an unaudited schema reaching a
+descriptor. `parseCanonicalInputSnapshot` fails loud on a corrupted snapshot rather than re-deriving
+it from ingress. Only the schema's OUTPUT is pinned to `z.output<InputSchema>`: a branded field makes
+zod's declared input type the unbranded primitive, so `ZodType<Out, Out>` would reject every schema
+carrying an `Eid` — the transform-free audit, not the type parameter, is what keeps the two identical.
+
+**Delegation (§3.2)** is `src/domain/workflow/delegation.ts`. `planDelegationFanOut` computes the
+whole fan-out before the caller writes anything: each child input is parsed by the *target's own*
+schema **before** its id is derived (an id derived from unvalidated input would key the dependency
+table off a value the child later rejects), ids must be unique as well as stable, and the returned
+`planFingerprint` covers edge, target, cardinality, join, policy, and every child id and input in
+order. `assertDelegationReplayMatches` compares a re-plan against that fingerprint, so a list that
+changed after enqueue fails loud instead of silently attaching new children beside orphaned ones.
+`joinDelegationOutcomes` applies the join over the COMPLETE outcome set — a partial set throws,
+because "still running" and "finished" must never be indistinguishable — with `all-settled` handing
+the parent the full typed array, `block-parent` blocking rather than failing, and a zero-child
+fan-out staying an explicit satisfied join rather than a vanished edge.
+
 ---
 
 ## 0. Grounding — what exists today, why it hurts
