@@ -1,0 +1,173 @@
+/**
+ * The plain-data presentation/policy vocabularies a descriptor carries.
+ *
+ * Doc 03 §3.2 contributes the semantics; doc 02 §1.1 owns the descriptor field
+ * that holds them. Every one of these is a CLOSED union, never a free string:
+ * that is what turns each of today's hand-maintained parallel registries
+ * (`WORKFLOW_ICONS`, `INSTANCE_LABELS`, `queue-row-status-index.ts`, the step
+ * label switches) into a projection of the descriptor set with a coverage guard
+ * instead of a list that fails at runtime (doc 02 §1.3).
+ */
+import { z } from "zod";
+import { ContractFieldPathSchema } from "../contracts/base.js";
+import { NodeIdSchema, TaskIdSchema } from "../ids.js";
+
+/**
+ * Compile-time icon union. The dashboard's icon map is
+ * `Record<IconName, LucideIcon>` and exhaustive, so a name added here without a
+ * component fails to compile rather than rendering a hole.
+ */
+export const ICON_NAMES = [
+  "Search", "Users", "UserMinus", "UserPlus", "FileScan", "FileText",
+  "ClipboardCheck", "Upload", "CalendarClock", "ShieldCheck", "Building2",
+] as const;
+export const IconNameSchema = z.enum(ICON_NAMES);
+export type IconName = z.infer<typeof IconNameSchema>;
+
+export const WorkflowCategorySchema = z.enum([
+  "search", "onboarding", "separation", "documents", "timekeeping", "operations",
+]);
+export type WorkflowCategory = z.infer<typeof WorkflowCategorySchema>;
+
+/** What a run is *about* — drives the subject column and the delegation subject. */
+export const InputSubjectSchema = z.enum(["eid", "name", "email", "document", "none"]);
+export type InputSubject = z.infer<typeof InputSubjectSchema>;
+
+/** Doc 03's queue row model. `by-input` defers the shape to a per-run resolution. */
+export const RowShapeSchema = z.enum(["single", "preview", "operation", "operation-member"]);
+export type RowShape = z.infer<typeof RowShapeSchema>;
+
+export const SurfaceShapeSchema = z.union([
+  z.strictObject({ shape: RowShapeSchema }),
+  z.strictObject({ resolveShape: z.literal("by-input") }),
+]);
+export type SurfaceShape = z.infer<typeof SurfaceShapeSchema>;
+
+/**
+ * Verdict mappings replace the legacy `statusExtensions` function registry:
+ * person-lookup's `notFound` becomes plain data over `span.ended.verdict`, and
+ * `SpanEnded` may emit only this descriptor-derived union (doc 03 §3.2).
+ */
+export const VerdictDefinitionSchema = z.strictObject({
+  key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "verdict key must be kebab-case"),
+  label: z.string().min(1),
+  tone: z.enum(["success", "warning", "danger", "neutral"]),
+  /** Renders as an inline tag beside the status rather than replacing it. */
+  tag: z.boolean().optional(),
+});
+export type VerdictDefinition = z.infer<typeof VerdictDefinitionSchema>;
+
+/* ── command / action policy (doc 03 §2.4) ───────────────────────────────── */
+
+export const EnqueuePolicySchema = z.enum(["reject-active", "supersede-active", "allow-parallel"]);
+export type EnqueuePolicy = z.infer<typeof EnqueuePolicySchema>;
+
+export const CommandActionIdSchema = z.enum([
+  "retry", "cancel", "bump", "rename", "hide", "unhide",
+  "edit-checkpoint", "resolve-write-present", "resolve-write-absent",
+]);
+export const NavigationActionIdSchema = z.enum(["open-review", "open-evidence"]);
+export const WorkflowActionIdSchema = z.enum([
+  ...CommandActionIdSchema.options,
+  ...NavigationActionIdSchema.options,
+]);
+export type WorkflowActionId = z.infer<typeof WorkflowActionIdSchema>;
+
+/**
+ * A condition is a closed rule over projected run state, never a callback: the
+ * client must be able to decide whether an action is offered without executing
+ * descriptor code.
+ */
+export const ActionConditionRuleSchema = z.strictObject({
+  action: WorkflowActionIdSchema,
+  requires: z.enum(["gate-open", "write-parked", "failed", "terminal", "has-review-panel"]),
+});
+export type ActionConditionRule = z.infer<typeof ActionConditionRuleSchema>;
+
+export const WorkflowActionPolicySchema = z.strictObject({
+  enabled: z.array(WorkflowActionIdSchema).min(1),
+  conditions: z.array(ActionConditionRuleSchema).optional(),
+});
+export type WorkflowActionPolicy = z.infer<typeof WorkflowActionPolicySchema>;
+
+/** The action set every ordinary workflow gets; a descriptor opts into more, never fewer by accident. */
+export const STANDARD_WORKFLOW_ACTIONS: WorkflowActionPolicy = Object.freeze(
+  WorkflowActionPolicySchema.parse({
+    enabled: ["retry", "cancel", "bump", "rename", "hide", "unhide"],
+  }),
+);
+
+export const WorkflowCapabilitiesSchema = z.strictObject({
+  /** A Review panel exists for this workflow's rows. */
+  review: z.boolean(),
+  /** Checkpoint fields may be corrected from the Context rail (doc 06). */
+  editData: z.boolean(),
+  /** How this workflow's children render when it delegates. */
+  delegationDisplay: z.enum(["inline", "linked", "hidden-unless-failed"]).optional(),
+});
+export type WorkflowCapabilities = z.infer<typeof WorkflowCapabilitiesSchema>;
+
+/* ── projections over node outputs ───────────────────────────────────────── */
+
+/**
+ * The declared patch set: doc 03 validates every `SpanPatched` key against this
+ * list, and the coverage guard proves every `fieldPath` exists in the producing
+ * node's exact output schema.
+ */
+export const DetailProjectionSpecRuntimeSchema = z.strictObject({
+  key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "detail key must be kebab-case"),
+  label: z.string().min(1),
+  source: z.strictObject({
+    nodeId: NodeIdSchema,
+    fieldPath: ContractFieldPathSchema,
+  }),
+  display: z.enum(["text", "eid", "date", "count", "badge"]),
+});
+export type DetailProjectionSpecRuntime = z.infer<typeof DetailProjectionSpecRuntimeSchema>;
+
+/** Sinks are a closed infrastructure registry, deliberately keyed by sink kind, never by workflow. */
+export const ArtifactSinkIdSchema = z.enum(["xlsx-retention"]);
+export type ArtifactSinkId = z.infer<typeof ArtifactSinkIdSchema>;
+
+export const DurableArtifactProjectionSpecRuntimeSchema = z.strictObject({
+  id: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "artifact projection id must be kebab-case"),
+  source: z.strictObject({
+    nodeId: NodeIdSchema,
+    fieldPath: ContractFieldPathSchema,
+  }),
+  keyFields: z.array(ContractFieldPathSchema).min(1),
+  sink: ArtifactSinkIdSchema,
+  /** `blocking:false` is not legal — a durable projection that may silently lag is not durable. */
+  blocking: z.literal(true),
+});
+export type DurableArtifactProjectionSpecRuntime =
+  z.infer<typeof DurableArtifactProjectionSpecRuntimeSchema>;
+
+/* ── derived projections doc 03 consumes ─────────────────────────────────── */
+
+export const StepProjectionSchema = z.strictObject({
+  /**
+   * The span key doc 03 validates `SpanEnded.name` against. A transaction owns
+   * two child entries (`<node>/prepare`, `<node>/commit`) under one node id, so
+   * the key — not the node id — is what is unique.
+   */
+  key: z.string().regex(
+    /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/(?:prepare|commit))?$/,
+    "step key must be a node id with an optional /prepare or /commit arm",
+  ),
+  nodeId: NodeIdSchema,
+  label: z.string().min(1),
+  kind: z.enum(["task", "prepare", "commit", "branch", "parallel", "child-run", "gate"]),
+  /** Present for task/prepare/commit entries; control nodes own no contract. */
+  taskId: TaskIdSchema.optional(),
+  conditional: z.boolean(),
+});
+export type StepProjection = z.infer<typeof StepProjectionSchema>;
+
+export const GateProjectionDefinitionSchema = z.strictObject({
+  nodeId: NodeIdSchema,
+  label: z.string().min(1),
+  statusKey: z.string().regex(/^[a-z][A-Za-z0-9]*$/, "status key must be camelCase").optional(),
+  resolvedBy: z.enum(["operator", "children-terminal", "external"]),
+});
+export type GateProjectionDefinition = z.infer<typeof GateProjectionDefinitionSchema>;

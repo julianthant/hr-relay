@@ -64,6 +64,40 @@ import {
   ScenarioCoverageClaimSchema,
 } from "../../../src/domain/workflow/scenario-coverage.js";
 import {
+  ApproveContextSchema,
+  ApprovedDocumentSchema,
+  CompletionConsumptionSpecSchema,
+  CompletionProgramSampleSchema,
+  ExtractedFieldSchema,
+  MemberPlanEntrySchema,
+  PreviewRecordSchema,
+} from "../../../src/domain/workflow/completion.js";
+import {
+  FileAcceptSpecSchema,
+  InputParserSpecSchema,
+  ParsedInputEntrySchema,
+  SurfaceFieldSchema,
+  TextTemplateSchema,
+  UploadFieldSpecSchema,
+  UploadedFileSchema,
+  WorkflowSurfacesSchema,
+} from "../../../src/domain/workflow/ingress.js";
+import {
+  DetailProjectionSpecRuntimeSchema,
+  DurableArtifactProjectionSpecRuntimeSchema,
+  GateProjectionDefinitionSchema,
+  StepProjectionSchema,
+  SurfaceShapeSchema,
+  VerdictDefinitionSchema,
+  WorkflowActionPolicySchema,
+  WorkflowCapabilitiesSchema,
+} from "../../../src/domain/workflow/presentation.js";
+import {
+  BUILD_MANIFEST,
+  BuildManifestSchema,
+  SourceHashSchema,
+} from "../../../src/domain/workflow/build-manifest.js";
+import {
   ChildVisibilitySchema,
   DelegationManifestRefSchema,
   DelegationPolicySchema,
@@ -199,6 +233,30 @@ import {
   WRITE_INTENT_ATTEMPTING,
 } from "../fixtures/phase1c-contract-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
+
+const STABLE_RECORD_ID = `${"c".repeat(64)}#oath-signature#1`;
+const PREVIEW_RECORD = {
+  recordId: STABLE_RECORD_ID,
+  sourceArtifactId: "11111111-1111-4111-8111-111111111111",
+  page: 1,
+  fields: [{ key: "employee-id", value: { state: "present", text: "10873698" } }],
+};
+const APPROVE_CONTEXT = {
+  parentRunId: "22222222-2222-4222-8222-222222222222",
+  parentItemId: "33333333-3333-4333-8333-333333333333",
+  intakeSessionId: "11111111-1111-4111-8111-111111111111",
+  sourceArtifactId: "11111111-1111-4111-8111-111111111111",
+  approvedBy: "local-operator",
+  approvedAt: "2026-07-31T17:00:00.000Z",
+};
+const PERSON_LOOKUP_PARSER = {
+  split: { kind: "delimited", delimiters: [";", "\n"] },
+  rules: [
+    { when: { kind: "pattern", pattern: "eid" }, emit: "emplId" },
+    { when: { kind: "otherwise" }, emit: "name" },
+  ],
+  constants: [{ field: "keepNonHdh", value: { kind: "boolean", value: false } }],
+};
 
 const UUID_1 = "11111111-1111-4111-8111-111111111111";
 const UUID_2 = "22222222-2222-4222-8222-222222222222";
@@ -611,6 +669,90 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ScenarioCoverageClaim", schema: ScenarioCoverageClaimSchema, fixtures: [
     { scenarioId: "workflow/person-lookup-write-arm", covers: ["branch-case:mode-branch/write"] },
   ] },
+  { name: "ExtractedField", schema: ExtractedFieldSchema, fixtures: [
+    { key: "employee-id", value: { state: "present", text: "10873698" } },
+    { key: "signature", value: { state: "absent" } },
+  ] },
+  { name: "PreviewRecord", schema: PreviewRecordSchema, fixtures: [PREVIEW_RECORD] },
+  { name: "ApproveContext", schema: ApproveContextSchema, fixtures: [APPROVE_CONTEXT] },
+  { name: "ApprovedDocument", schema: ApprovedDocumentSchema, fixtures: [{
+    sourceArtifactId: UUID_1, intakeSessionId: UUID_2, context: APPROVE_CONTEXT, perRecordItemIds: [UUID_3],
+  }] },
+  { name: "MemberPlanEntry", schema: MemberPlanEntrySchema, fixtures: [
+    { recordId: STABLE_RECORD_ID, itemId: UUID_1, parentRunId: UUID_2, delegatedRunId: UUID_3, sourceArtifactId: UUID_1, subject: { kind: "eid", emplId: "10873698" } },
+    { recordId: STABLE_RECORD_ID, itemId: UUID_1, parentRunId: UUID_2, delegatedRunId: UUID_3, sourceArtifactId: UUID_1, subject: { kind: "name", name: "Battistessa, Johnnie" } },
+  ] },
+  { name: "CompletionProgramSample", schema: CompletionProgramSampleSchema, fixtures: [
+    { mode: "staged-fanout", record: PREVIEW_RECORD, context: APPROVE_CONTEXT, document: { sourceArtifactId: UUID_1, intakeSessionId: UUID_2, context: APPROVE_CONTEXT } },
+    { mode: "complete-then-enqueue", plan: { recordId: STABLE_RECORD_ID, itemId: UUID_1, parentRunId: UUID_2, delegatedRunId: UUID_3, sourceArtifactId: UUID_1, subject: { kind: "eid", emplId: "10873698" } } },
+  ] },
+  { name: "CompletionConsumptionSpec", schema: CompletionConsumptionSpecSchema, fixtures: [
+    { memberShape: "operation-member" },
+    { memberShape: "natural", suppress: ["document"] },
+  ] },
+  { name: "TextTemplate", schema: TextTemplateSchema, fixtures: [{ segments: [
+    { kind: "literal", text: "Uploaded " },
+    { kind: "count", field: "pages", singular: "page", plural: "pages" },
+    { kind: "field", field: "documentName" },
+  ] }] },
+  { name: "SurfaceField", schema: SurfaceFieldSchema, fixtures: [
+    { field: "name", value: { kind: "text", text: "Battistessa, Johnnie" } },
+    { field: "keepNonHdh", value: { kind: "boolean", value: false } },
+    { field: "pages", value: { kind: "count", value: 2 } },
+  ] },
+  { name: "InputParserSpec", schema: InputParserSpecSchema, fixtures: [PERSON_LOOKUP_PARSER] },
+  { name: "ParsedInputEntry", schema: ParsedInputEntrySchema, fixtures: [
+    { index: 0, sourceText: "10873698", fields: [{ field: "emplId", value: { kind: "text", text: "10873698" } }] },
+  ] },
+  { name: "UploadFieldSpec", schema: UploadFieldSpecSchema, fixtures: [
+    { kind: "text", field: "documentName", label: "Document", required: true },
+    { kind: "boolean", field: "keepNonHdh", label: "Keep non-HDH", initial: false },
+    { kind: "select", field: "mode", label: "Mode", required: true, options: [{ value: "sign", label: "Sign" }] },
+  ] },
+  { name: "FileAcceptSpec", schema: FileAcceptSpecSchema, fixtures: [
+    { mediaType: "application/pdf", extensions: [".pdf"], maxBytes: 10_000_000 },
+  ] },
+  { name: "UploadedFile", schema: UploadedFileSchema, fixtures: [
+    { fileName: "packet.pdf", mediaType: "application/pdf", byteLength: 2048 },
+  ] },
+  { name: "WorkflowSurfaces", schema: WorkflowSurfacesSchema, fixtures: [
+    {},
+    { inputRun: { placeholder: "Enter EIDs or names", parser: PERSON_LOOKUP_PARSER, supportsDryRun: true } },
+    { uploadRun: {
+      title: { segments: [{ kind: "literal", text: "Upload packet" }] },
+      fields: [{ kind: "text", field: "documentName", label: "Document", required: true }],
+      accepts: [{ mediaType: "application/pdf", extensions: [".pdf"], maxBytes: 10_000_000 }],
+      successMessage: { segments: [{ kind: "literal", text: "Queued" }] },
+    } },
+  ] },
+  { name: "SurfaceShape", schema: SurfaceShapeSchema, fixtures: [{ shape: "single" }, { resolveShape: "by-input" }] },
+  { name: "VerdictDefinition", schema: VerdictDefinitionSchema, fixtures: [
+    { key: "not-found", label: "Not found", tone: "warning" },
+    { key: "inactive", label: "Inactive", tone: "warning", tag: true },
+  ] },
+  { name: "WorkflowActionPolicy", schema: WorkflowActionPolicySchema, fixtures: [
+    { enabled: ["retry", "cancel"] },
+    { enabled: ["retry", "open-review"], conditions: [{ action: "open-review", requires: "has-review-panel" }] },
+  ] },
+  { name: "WorkflowCapabilities", schema: WorkflowCapabilitiesSchema, fixtures: [
+    { review: false, editData: true },
+    { review: true, editData: true, delegationDisplay: "inline" },
+  ] },
+  { name: "DetailProjectionSpecRuntime", schema: DetailProjectionSpecRuntimeSchema, fixtures: [
+    { key: "resolved-eid", label: "EID", source: { nodeId: "searching", fieldPath: "selection.selected" }, display: "eid" },
+  ] },
+  { name: "DurableArtifactProjectionSpecRuntime", schema: DurableArtifactProjectionSpecRuntimeSchema, fixtures: [
+    { id: "retention-row", source: { nodeId: "searching", fieldPath: "selection" }, keyFields: ["selection"], sink: "xlsx-retention", blocking: true },
+  ] },
+  { name: "StepProjection", schema: StepProjectionSchema, fixtures: [
+    { key: "searching", nodeId: "searching", label: "Searching", kind: "task", taskId: "ucpath/search-person-org", conditional: false },
+    { key: "submit/commit", nodeId: "submit", label: "Submit — commit", kind: "commit", taskId: "ucpath/submit-termination", conditional: false },
+  ] },
+  { name: "GateProjectionDefinition", schema: GateProjectionDefinitionSchema, fixtures: [
+    { nodeId: "approval", label: "Approval", statusKey: "needsReview", resolvedBy: "operator" },
+  ] },
+  { name: "SourceHash", schema: SourceHashSchema, fixtures: [{ path: "src/domain/ids.ts", sha256: HASH_A }] },
+  { name: "BuildManifest", schema: BuildManifestSchema, fixtures: [BUILD_MANIFEST] },
   { name: "GraphNodeKind", schema: GraphNodeKindSchema, fixtures: ["task", "transaction", "branch", "parallel", "child-run", "gate"] },
   { name: "ChildVisibility", schema: ChildVisibilitySchema, fixtures: ["inline", "linked", "hidden-unless-failed"] },
   { name: "ParallelBranchSpec", schema: ParallelBranchSpecSchema, fixtures: [{ id: "org", nodes: ["search-person"] }] },
@@ -935,6 +1077,23 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/workflow/delegation.ts:DelegationPlan",
   "src/domain/workflow/delegation.ts:DelegationFanOutRequest",
   "src/domain/workflow/delegation.ts:DelegationJoin",
+  // The completion program is generic over its target workflow refs and carries
+  // pure derive/eligibility functions, so no static schema describes it. What
+  // DOES cross a boundary has one: PreviewRecordSchema, ApproveContextSchema,
+  // ApprovedDocumentSchema, MemberPlanEntrySchema, CompletionProgramSampleSchema,
+  // CompletionConsumptionSpecSchema, and CoordinatorPolicySchema are catalogued.
+  // `SealedCompletionProgram` is deliberately opaque — a schema for it would
+  // re-expose exactly the structure doc 03 §4.2 closes.
+  "src/domain/workflow/completion.ts:NamedPredicate",
+  "src/domain/workflow/completion.ts:PerRecordStage",
+  "src/domain/workflow/completion.ts:PerDocumentStage",
+  "src/domain/workflow/completion.ts:AnyFanOutStage",
+  "src/domain/workflow/completion.ts:FanOutStages",
+  "src/domain/workflow/completion.ts:StagedFanOut",
+  "src/domain/workflow/completion.ts:CompleteThenEnqueue",
+  "src/domain/workflow/completion.ts:CompletionProgram",
+  "src/domain/workflow/completion.ts:CompletionRevealKey",
+  "src/domain/workflow/completion.ts:SealedCompletionProgram",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {

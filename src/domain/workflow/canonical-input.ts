@@ -36,7 +36,13 @@ import { auditCanonicalInputSchema } from "../../validation/canonical-input-sche
  */
 export type CanonicalInputSchema<InputSchema extends z.ZodType> = z.ZodType<z.output<InputSchema>>;
 
-const AUDITED_CANONICAL_INPUTS = new WeakSet<object>();
+/**
+ * The parsed round-trip samples, retained per audited schema. Descriptor
+ * construction reuses them to prove identity, presentation, and subject
+ * resolution against real inputs instead of re-declaring a second sample set
+ * that could drift from this one.
+ */
+const AUDITED_CANONICAL_INPUTS = new WeakMap<object, readonly unknown[]>();
 
 /**
  * Bind a workflow's ingress schema to its canonical-input validator.
@@ -64,6 +70,7 @@ export function defineCanonicalInput<InputSchema extends z.ZodType>(
   if (samples.length === 0) {
     throw new Error("canonical input requires at least one ingress sample to prove the round-trip");
   }
+  const parsedSamples: unknown[] = [];
   for (const [index, sample] of samples.entries()) {
     const parsed: unknown = input.parse(sample);
     const revalidated: unknown = canonical.parse(parsed);
@@ -73,8 +80,9 @@ export function defineCanonicalInput<InputSchema extends z.ZodType>(
         + `${canonicalJsonStringify(parsed)} became ${canonicalJsonStringify(revalidated)}`,
       );
     }
+    parsedSamples.push(parsed);
   }
-  AUDITED_CANONICAL_INPUTS.add(canonical);
+  AUDITED_CANONICAL_INPUTS.set(canonical, Object.freeze(parsedSamples));
   return canonical;
 }
 
@@ -83,6 +91,15 @@ export function assertAuditedCanonicalInput(schema: object): void {
   if (!AUDITED_CANONICAL_INPUTS.has(schema)) {
     throw new Error("descriptor requires the exact schema returned by defineCanonicalInput");
   }
+}
+
+/** The audited round-trip samples, as parsed `z.output` values. Fails loud when unaudited. */
+export function canonicalInputSamples(schema: object): readonly unknown[] {
+  const samples = AUDITED_CANONICAL_INPUTS.get(schema);
+  if (samples === undefined) {
+    throw new Error("canonical input samples require the exact schema returned by defineCanonicalInput");
+  }
+  return samples;
 }
 
 /**

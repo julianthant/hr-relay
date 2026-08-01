@@ -58,6 +58,18 @@ export const OutboxIdSchema = brandedText<"OutboxId">(UUID_PATTERN, "outbox id m
 export const WriteIntentIdSchema = brandedText<"WriteIntentId">(UUID_PATTERN, "write intent id must be a UUID");
 export const WriteAttemptIdSchema = brandedText<"WriteAttemptId">(UUID_PATTERN, "write attempt id must be a UUID");
 
+/**
+ * A record's identity inside an extracted document — derived at admission from
+ * the source-artifact digest plus stable page/form identity (doc 03 §4.1). The
+ * shape is deliberately structural so an array index or a run id cannot be
+ * spelled as one.
+ */
+export const StableRecordIdSchema = brandedText<"StableRecordId">(
+  /^[0-9a-f]{64}#[a-z0-9]+(?:-[a-z0-9]+)*#[1-9]\d*$/,
+  "stable record id must be <source-sha256>#<form-slug>#<page>",
+);
+export const PredicateIdSchema = brandedText<"PredicateId">(SLUG_PATTERN, "predicate id must be kebab-case");
+
 export const WorkflowIdSchema = brandedText<"WorkflowId">(SLUG_PATTERN, "workflow id must be kebab-case");
 export const ActorIdSchema = brandedText<"ActorId">(SLUG_PATTERN, "actor id must be kebab-case");
 export const LOCAL_OPERATOR_ACTOR_ID = ActorIdSchema.parse("local-operator");
@@ -169,6 +181,8 @@ export type CommandAuditId = z.infer<typeof CommandAuditIdSchema>;
 export type OutboxId = z.infer<typeof OutboxIdSchema>;
 export type WriteIntentId = z.infer<typeof WriteIntentIdSchema>;
 export type WriteAttemptId = z.infer<typeof WriteAttemptIdSchema>;
+export type StableRecordId = z.infer<typeof StableRecordIdSchema>;
+export type PredicateId = z.infer<typeof PredicateIdSchema>;
 export type WorkflowId = z.infer<typeof WorkflowIdSchema>;
 export type NodeId = z.infer<typeof NodeIdSchema>;
 export type GateId = z.infer<typeof GateIdSchema>;

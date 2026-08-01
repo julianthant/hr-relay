@@ -10,6 +10,7 @@
     "rebuild:dashboard": "tsx --env-file=.env src/cli.ts dashboard",
     "rebuild:dashboard:prod": "tsx --env-file=.env src/cli.ts dashboard --prod",
     "rebuild:cli": "tsx --env-file=.env src/cli.ts",
+    "build:manifest": "tsx scripts/generate-build-manifest.ts",
     "ui:catalog": "tsx scripts/generate-ui-catalog.ts",
     "selector:search": "tsx scripts/search-ui.ts",
     "typecheck": "tsc --noEmit",
