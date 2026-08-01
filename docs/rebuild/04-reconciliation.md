@@ -623,7 +623,13 @@ records them and the same commit folds each into its owner. **One line each — 
 |---|---|---|
 | **D94** | **D93 ACCOUNTING IS COMMIT-CENTRED AND FAIL-CLOSED.** F1–F4 are ratified: the guard lane resolves the legacy checkout explicitly and fails loud; mixed-root inventories use `legacy:`; the Phase-0 file set comes from `git ls-tree`; and records name affected, not merely owning, capabilities. Every ordered legacy `src`/`tests` commit/path carries parent/commit blob hashes, impact rationale, and closed rebuild-recheck evidence; exact coverage, ancestry, reviewed impact floors, and a clean legacy `src`/`tests` worktree are mandatory. Commit legacy maintenance first, then account that commit. Deletion remains forbidden through initial cutover. | docs 10 §3.13 (primary), 07 §4; doc 11 §6 cross-reference |
 
-**Two separate D-series exist — do not confuse them.** This memo's `D1–D94` are cross-doc
+## Reconciliation round 13 (2026-07-31) — command-family ambiguity closure, folded
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D95** | **RUN PRIORITY AND VERSION/ARCHIVE NEVER SHARE A `bump` ARM.** Run `bump` remains priority/claim-order only; version work is a reviewable `plan-version-bump` followed by `apply-version-bump`. Run `rename` is added with one strict bounded display-name payload, and the exhaustive start/intake/worker-browser/settings/version-archive/run/gate/notification/capture target families are ratified before routes exist. | doc 03 §§2.4/10.2–10.3 (primary); doc 07 item 1c/§7.2 |
+
+**Two separate D-series exist — do not confuse them.** This memo's `D1–D95` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
 types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the
 distinction at its §9 header; always cite the row-model series with the `row-model` prefix.

@@ -510,7 +510,7 @@ closed policies; workflows never own cancel/delete/retry/bump/update implementat
 ```ts
 export type EnqueuePolicy = "reject-active" | "supersede-active" | "allow-parallel";
 export type CommandActionId =
-  | "retry" | "cancel" | "bump" | "hide" | "unhide"
+  | "retry" | "cancel" | "bump" | "rename" | "hide" | "unhide"
   | "edit-checkpoint" | "resolve-write-present" | "resolve-write-absent";
 export type NavigationActionId = "open-review" | "open-evidence";
 export type WorkflowActionId = CommandActionId | NavigationActionId;
@@ -531,6 +531,12 @@ export type RunCommandRequest = CommandEnvelope & (
       target: { runId: RunId; expectedVersion: PositiveInt };
       type: "retry" | "cancel" | "bump" | "hide" | "unhide";
       payload?: never;
+    }
+  | {
+      target: { runId: RunId; expectedVersion: PositiveInt };
+      type: "rename";
+      /** Trimmed NFC text, 1..120 Unicode code points, with control characters forbidden. */
+      payload: { displayName: RunDisplayName };
     }
   | { target: { runId: RunId; expectedVersion: PositiveInt };
       type: "edit-checkpoint"; payload: EditCheckpointCommand }
@@ -554,7 +560,9 @@ export type NotificationCommandRequest = CommandEnvelope & (
       payload: { until: IsoInstant } }
 );
 export type CommandRequest =
-  | RunCommandRequest | GateCommandRequest | NotificationCommandRequest | CaptureCommandRequest;
+  | StartCommandRequest | IntakeCommandRequest | WorkerBrowserCommandRequest
+  | SettingsCommandRequest | VersionArchiveCommandRequest | RunCommandRequest
+  | GateCommandRequest | NotificationCommandRequest | CaptureCommandRequest;
 // CaptureCommandRequest is owned by doc 06 and uses this envelope's idempotency, version-stamp,
 // and transactional current-state validation; it is not a blanket CAS arm.
 
@@ -600,7 +608,8 @@ Command semantics are binding:
 | Enqueue | Validate raw input once, derive stable item id, then apply descriptor policy in one transaction. `reject-active` returns the existing active run; `supersede-active` terminalizes the exact active generation and creates the new run atomically; `allow-parallel` still requires a distinct stable item/variant key. An authority read error aborts—never “continue and enqueue anyway.” |
 | Retry | Creates a new run linked by `retryOf`, reuses immutable parsed input/config, validates checkpoints/freshness, and preserves the logical item. A parked unknown write uses resolution actions, never generic retry. |
 | Cancel | Resolves the full dependency tree from authoritative SQLite, applies every edge's doc 02 cancel policy, and commits state transitions together. If the tree is unavailable/inconsistent, no target is cancelled. Visible queue roots are never an authority fallback. |
-| Bump | Changes priority/claim order through an idempotent transactional command; it does not fabricate a requeue or mutate business input. Running work returns a typed rejection unless the scheduler explicitly supports cooperative yield. Version drift alone does not conflict. |
+| Bump | **Run-family only:** changes priority/claim order through an idempotent transactional command; it does not fabricate a requeue, mutate business input, change a descriptor version, or archive anything. Running work returns a typed rejection unless the scheduler explicitly supports cooperative yield. Version drift alone does not conflict. |
+| Rename | Replaces only the operator-visible run display name with a strict `RunDisplayName` payload: NFC-normalized, already trimmed, 1–120 Unicode code points, and no control characters. Empty, whitespace-padded, overlong, non-normalized, or unknown-key payloads fail boundary parsing. Identity and trace id never change. |
 | Hide / Unhide | A reversible presentation tombstone only. It changes no run outcome, task, dependency, checkpoint, intent, or evidence. The UI label is **Hide**, never Delete. |
 | Purge | Not a row action. `cli purge-run <exact-run-id> --backup <path>` is an offline maintenance command requiring a fresh verified backup and refusing any active/dependency/write-authority reference. It writes a purge receipt. |
 | Edit checkpoint | Uses doc 06's field-level patch/provenance model, creates a new run/attempt as specified there, and never mutates original input or a completed proof. |
@@ -620,6 +629,30 @@ none. `best-effort` writes a child command/result per requested target and retur
 applied/conflict/rejected vector; the UI may never collapse a partial result into “Done.” Bulk cancel
 defaults to `all-or-none`; bulk hide defaults to `best-effort`. There is no client loop whose last
 response overwrites earlier errors.
+
+**D95 — command-family closure and the two meanings formerly called bump (2026-07-31).** Every
+command arm carries exactly one closed target family; an id valid for one family cannot be erased
+to a generic string target. Phase 1c ratifies the following complete family shell before any route
+or handler exists:
+
+| Target family | Closed action shell and authoritative target |
+|---|---|
+| `start` | `start-run`; exact workflow/start-plan token and its bound descriptor/config/input fingerprints |
+| `intake` | inspect/confirm mapping, correct/exclude/validate, and enqueue-manifest actions; exact intake artifact/session/manifest id plus observed version |
+| `worker-browser` | plan/spawn/stop/pause/resume worker and refresh/reopen browser; exact worker id, or worker id + browser session id, plus observed version where authority is mutable |
+| `settings` | `apply-settings`; one expected config revision plus one strict atomic multi-leaf patch—never per-field route writes |
+| `version-archive` | `plan-version-bump`, `apply-version-bump`, and archived-run relaunch; the plan action names an exact workflow/app scope and fingerprints, while apply consumes one immutable plan id/version and refuses blockers or drift |
+| `run` | retry/cancel/**priority `bump`**/rename/hide/unhide/edit-checkpoint/write resolution; exact run id + observed version |
+| `gate` | resolve one exact `(runId, gateId)` with schema-hash-bound result + observed version |
+| `notification` | read/unread/snooze one exact actor-owned notification + observed version |
+| `capture` | the closed doc 06 session/photo/finalize/discard arms; exact capture session/photo ids + observed version |
+
+The string **`bump` is permanently reserved for run priority/claim order**. Descriptor/app version
+work uses only `plan-version-bump` then `apply-version-bump`; the plan is reviewable and immutable,
+and apply cannot be synthesized from a run-priority command. No union arm, bulk action, route, or UI
+descriptor may use one `bump` discriminant for both meanings. Start, intake, worker/browser,
+settings, version/archive, run, gate, notification, and capture are the exhaustive product mutation
+families; adding another family is a contract change in this owner doc, not a route-local string.
 
 ### 2.5 Non-rebuildable SQLite recovery contract
 
@@ -1858,6 +1891,10 @@ Four hard rules:
 4. **Hide/Unhide still exists** for same-version runs (reversible presentation tombstone, D49).
    Archive-on-bump is the automatic path; Hide is the manual one.
 
+**D95 command naming:** this lifecycle is executed only through the `version-archive` family's
+`plan-version-bump` and `apply-version-bump` actions. The run-family `bump` action in §2.4 remains
+queue priority/claim order only and can never plan, apply, or imply version/archive work.
+
 The scope of a bump is declared by whoever makes the change — single-workflow, multi-workflow, or
 dashboard — and recorded in that update's change record (same store as fix records: what, why,
 version, commit).
@@ -1867,7 +1904,9 @@ version, commit).
 Any run can be renamed by the operator. The label rides the **row and the receipt**; the trace id is
 preserved underneath and remains the join key for spans, notes, and the ledger. A rename is a
 command arm (D67), is actor-attributed (D75), and never mutates identity — it is presentation over
-a stable id, exactly like the presentation-override layer (D16).
+a stable id, exactly like the presentation-override layer (D16). Per D95, its payload is one strict
+`displayName`: NFC-normalized, already trimmed, 1–120 Unicode code points, no control characters,
+and no unknown keys.
 
 ### 10.4 Notification model (D79b + D86)
 
