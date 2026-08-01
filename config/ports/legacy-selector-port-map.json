@@ -94,7 +94,7 @@
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "crm.search.result-rows"
+      "candidateId": "candidate:crm/search.result-rows"
     },
     {
       "system": "crm",
@@ -114,7 +114,7 @@
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "crm.search.nth-result-row"
+      "candidateId": "candidate:crm/search.nth-result-row"
     },
     {
       "system": "crm",
@@ -134,7 +134,7 @@
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "crm.search.result-row-cells"
+      "candidateId": "candidate:crm/search.result-row-cells"
     },
     {
       "system": "crm",
@@ -154,7 +154,7 @@
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "crm.search.result-row-name-link"
+      "candidateId": "candidate:crm/search.result-row-name-link"
     },
     {
       "system": "crm",
@@ -175,7 +175,7 @@
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "crm.record.th-label-following-td"
+      "candidateId": "candidate:crm/record.th-label-following-td"
     },
     {
       "system": "crm",
@@ -197,7 +197,7 @@
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "crm.record.td-label-following-td"
+      "candidateId": "candidate:crm/record.td-label-following-td"
     },
     {
       "system": "crm",
@@ -220,7 +220,7 @@
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "crm.record.cell-label-following-td"
+      "candidateId": "candidate:crm/record.cell-label-following-td"
     },
     {
       "system": "crm",
@@ -243,7 +243,7 @@
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "crm.record.row-label-last-cell"
+      "candidateId": "candidate:crm/record.row-label-last-cell"
     },
     {
       "system": "crm",
@@ -265,7 +265,7 @@
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "crm.record.lightning-field-value"
+      "candidateId": "candidate:crm/record.lightning-field-value"
     },
     {
       "system": "crm",
@@ -286,7 +286,7 @@
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "crm.section-nav.by-name"
+      "candidateId": "candidate:crm/section-nav.by-name"
     },
     {
       "system": "crm",
@@ -305,7 +305,7 @@
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "crm.onboarding-history.show-history-button"
+      "candidateId": "candidate:crm/onboarding-history.show-history-button"
     },
     {
       "system": "crm",
@@ -325,7 +325,7 @@
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "crm.onboarding-history.history-rows"
+      "candidateId": "candidate:crm/onboarding-history.history-rows"
     },
     {
       "system": "i9",
@@ -345,7 +345,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.login.app-launch-link"
+      "candidateId": "candidate:i9/login.app-launch-link"
     },
     {
       "system": "i9",
@@ -366,7 +366,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.login.idp-select"
+      "candidateId": "candidate:i9/login.idp-select"
     },
     {
       "system": "i9",
@@ -387,7 +387,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.login.idp-select-button"
+      "candidateId": "candidate:i9/login.idp-select-button"
     },
     {
       "system": "i9",
@@ -406,7 +406,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.login.dismiss-notification-button"
+      "candidateId": "candidate:i9/login.dismiss-notification-button"
     },
     {
       "system": "i9",
@@ -426,7 +426,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.login.confirm-yes-button"
+      "candidateId": "candidate:i9/login.confirm-yes-button"
     },
     {
       "system": "i9",
@@ -446,7 +446,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.dashboard.create-new-i9-link"
+      "candidateId": "candidate:i9/dashboard.create-new-i9-link"
     },
     {
       "system": "i9",
@@ -465,7 +465,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.dashboard.search-options-button"
+      "candidateId": "candidate:i9/dashboard.search-options-button"
     },
     {
       "system": "i9",
@@ -485,7 +485,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.first-name"
+      "candidateId": "candidate:i9/profile.first-name"
     },
     {
       "system": "i9",
@@ -504,7 +504,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.middle-name"
+      "candidateId": "candidate:i9/profile.middle-name"
     },
     {
       "system": "i9",
@@ -524,7 +524,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.last-name"
+      "candidateId": "candidate:i9/profile.last-name"
     },
     {
       "system": "i9",
@@ -543,7 +543,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.ssn"
+      "candidateId": "candidate:i9/profile.ssn"
     },
     {
       "system": "i9",
@@ -562,7 +562,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.dob"
+      "candidateId": "candidate:i9/profile.dob"
     },
     {
       "system": "i9",
@@ -581,7 +581,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.email"
+      "candidateId": "candidate:i9/profile.email"
     },
     {
       "system": "i9",
@@ -599,7 +599,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.worksite-listbox"
+      "candidateId": "candidate:i9/profile.worksite-listbox"
     },
     {
       "system": "i9",
@@ -618,7 +618,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.worksite-option"
+      "candidateId": "candidate:i9/profile.worksite-option"
     },
     {
       "system": "i9",
@@ -637,7 +637,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.save-continue-button"
+      "candidateId": "candidate:i9/profile.save-continue-button"
     },
     {
       "system": "i9",
@@ -657,7 +657,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.error-summary"
+      "candidateId": "candidate:i9/profile.error-summary"
     },
     {
       "system": "i9",
@@ -677,7 +677,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.ok-button-first"
+      "candidateId": "candidate:i9/profile.ok-button-first"
     },
     {
       "system": "i9",
@@ -696,7 +696,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.loader-overlay"
+      "candidateId": "candidate:i9/profile.loader-overlay"
     },
     {
       "system": "i9",
@@ -715,7 +715,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.duplicate-dialog"
+      "candidateId": "candidate:i9/profile.duplicate-dialog"
     },
     {
       "system": "i9",
@@ -735,7 +735,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.duplicate-first-row"
+      "candidateId": "candidate:i9/profile.duplicate-first-row"
     },
     {
       "system": "i9",
@@ -757,7 +757,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.profile.view-edit-selected-button"
+      "candidateId": "candidate:i9/profile.view-edit-selected-button"
     },
     {
       "system": "i9",
@@ -775,7 +775,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.remote-i9.remote-section1-only-radio"
+      "candidateId": "candidate:i9/remote-i9.remote-section1-only-radio"
     },
     {
       "system": "i9",
@@ -794,7 +794,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.remote-i9.start-date-input"
+      "candidateId": "candidate:i9/remote-i9.start-date-input"
     },
     {
       "system": "i9",
@@ -812,7 +812,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.remote-i9.create-i9-button"
+      "candidateId": "candidate:i9/remote-i9.create-i9-button"
     },
     {
       "system": "i9",
@@ -831,7 +831,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.remote-i9.create-i9-ok-button"
+      "candidateId": "candidate:i9/remote-i9.create-i9-ok-button"
     },
     {
       "system": "i9",
@@ -851,7 +851,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.remote-i9.create-success-confirmation"
+      "candidateId": "candidate:i9/remote-i9.create-success-confirmation"
     },
     {
       "system": "i9",
@@ -870,7 +870,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.remote-i9.create-error-message"
+      "candidateId": "candidate:i9/remote-i9.create-error-message"
     },
     {
       "system": "i9",
@@ -887,7 +887,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.search.dialog"
+      "candidateId": "candidate:i9/search.dialog"
     },
     {
       "system": "i9",
@@ -906,7 +906,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.search.clear-filters-link"
+      "candidateId": "candidate:i9/search.clear-filters-link"
     },
     {
       "system": "i9",
@@ -925,7 +925,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.search.last-name-input"
+      "candidateId": "candidate:i9/search.last-name-input"
     },
     {
       "system": "i9",
@@ -944,7 +944,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.search.first-name-input"
+      "candidateId": "candidate:i9/search.first-name-input"
     },
     {
       "system": "i9",
@@ -963,7 +963,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.search.ssn-input"
+      "candidateId": "candidate:i9/search.ssn-input"
     },
     {
       "system": "i9",
@@ -982,7 +982,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.search.profile-id-input"
+      "candidateId": "candidate:i9/search.profile-id-input"
     },
     {
       "system": "i9",
@@ -1001,7 +1001,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.search.employee-id-input"
+      "candidateId": "candidate:i9/search.employee-id-input"
     },
     {
       "system": "i9",
@@ -1019,7 +1019,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.search.submit-button"
+      "candidateId": "candidate:i9/search.submit-button"
     },
     {
       "system": "i9",
@@ -1040,7 +1040,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.search.access-restricted-alert"
+      "candidateId": "candidate:i9/search.access-restricted-alert"
     },
     {
       "system": "i9",
@@ -1059,7 +1059,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.search.result-rows"
+      "candidateId": "candidate:i9/search.result-rows"
     },
     {
       "system": "i9",
@@ -1077,7 +1077,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.summary.heading"
+      "candidateId": "candidate:i9/summary.heading"
     },
     {
       "system": "i9",
@@ -1096,7 +1096,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.summary.audit-trail-header-row"
+      "candidateId": "candidate:i9/summary.audit-trail-header-row"
     },
     {
       "system": "i9",
@@ -1115,7 +1115,7 @@
       "catalogBlob": "0302ce0eb941aa62a4a5739a39e6b1c2fd6ef76b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "i9.summary.signed-section2-row"
+      "candidateId": "candidate:i9/summary.signed-section2-row"
     },
     {
       "system": "kuali",
@@ -1133,7 +1133,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.action-list.menu-item"
+      "candidateId": "candidate:kuali/action-list.menu-item"
     },
     {
       "system": "kuali",
@@ -1153,7 +1153,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.action-list.doc-link"
+      "candidateId": "candidate:kuali/action-list.doc-link"
     },
     {
       "system": "kuali",
@@ -1174,7 +1174,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.action-list.doc-links"
+      "candidateId": "candidate:kuali/action-list.doc-links"
     },
     {
       "system": "kuali",
@@ -1194,7 +1194,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.action-list.search-input"
+      "candidateId": "candidate:kuali/action-list.search-input"
     },
     {
       "system": "kuali",
@@ -1214,7 +1214,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.action-list.search-go-button"
+      "candidateId": "candidate:kuali/action-list.search-go-button"
     },
     {
       "system": "kuali",
@@ -1235,7 +1235,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.separation-form.employee-name"
+      "candidateId": "candidate:kuali/separation-form.employee-name"
     },
     {
       "system": "kuali",
@@ -1255,7 +1255,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.separation-form.eid"
+      "candidateId": "candidate:kuali/separation-form.eid"
     },
     {
       "system": "kuali",
@@ -1275,7 +1275,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.separation-form.last-day-worked"
+      "candidateId": "candidate:kuali/separation-form.last-day-worked"
     },
     {
       "system": "kuali",
@@ -1293,7 +1293,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.separation-form.separation-date"
+      "candidateId": "candidate:kuali/separation-form.separation-date"
     },
     {
       "system": "kuali",
@@ -1312,7 +1312,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.separation-form.termination-type"
+      "candidateId": "candidate:kuali/separation-form.termination-type"
     },
     {
       "system": "kuali",
@@ -1330,7 +1330,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.separation-form.location"
+      "candidateId": "candidate:kuali/separation-form.location"
     },
     {
       "system": "kuali",
@@ -1349,7 +1349,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.timekeeper-tasks.request-acknowledged-checkbox"
+      "candidateId": "candidate:kuali/timekeeper-tasks.request-acknowledged-checkbox"
     },
     {
       "system": "kuali",
@@ -1367,7 +1367,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.timekeeper-tasks.timekeeper-name"
+      "candidateId": "candidate:kuali/timekeeper-tasks.timekeeper-name"
     },
     {
       "system": "kuali",
@@ -1386,7 +1386,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.timekeeper-tasks.timekeeper-comments"
+      "candidateId": "candidate:kuali/timekeeper-tasks.timekeeper-comments"
     },
     {
       "system": "kuali",
@@ -1406,7 +1406,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.final-transactions.termination-eff-date"
+      "candidateId": "candidate:kuali/final-transactions.termination-eff-date"
     },
     {
       "system": "kuali",
@@ -1424,7 +1424,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.final-transactions.department"
+      "candidateId": "candidate:kuali/final-transactions.department"
     },
     {
       "system": "kuali",
@@ -1444,7 +1444,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.final-transactions.payroll-title-code"
+      "candidateId": "candidate:kuali/final-transactions.payroll-title-code"
     },
     {
       "system": "kuali",
@@ -1463,7 +1463,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.final-transactions.payroll-title"
+      "candidateId": "candidate:kuali/final-transactions.payroll-title"
     },
     {
       "system": "kuali",
@@ -1483,7 +1483,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.transaction-results.submitted-template-checkbox"
+      "candidateId": "candidate:kuali/transaction-results.submitted-template-checkbox"
     },
     {
       "system": "kuali",
@@ -1501,7 +1501,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.transaction-results.transaction-number"
+      "candidateId": "candidate:kuali/transaction-results.transaction-number"
     },
     {
       "system": "kuali",
@@ -1521,7 +1521,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.transaction-results.does-not-need-final-pay-radio"
+      "candidateId": "candidate:kuali/transaction-results.does-not-need-final-pay-radio"
     },
     {
       "system": "kuali",
@@ -1540,7 +1540,7 @@
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "kuali.save.navbar-save-button"
+      "candidateId": "candidate:kuali/save.navbar-save-button"
     },
     {
       "system": "new-kronos",
@@ -1560,7 +1560,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.search-frame"
+      "candidateId": "candidate:new-kronos/search-frame"
     },
     {
       "system": "new-kronos",
@@ -1581,7 +1581,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.loading-overlay.overlay"
+      "candidateId": "candidate:new-kronos/loading-overlay.overlay"
     },
     {
       "system": "new-kronos",
@@ -1601,7 +1601,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.navbar.employee-search-button"
+      "candidateId": "candidate:new-kronos/navbar.employee-search-button"
     },
     {
       "system": "new-kronos",
@@ -1622,7 +1622,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.search.search-input"
+      "candidateId": "candidate:new-kronos/search.search-input"
     },
     {
       "system": "new-kronos",
@@ -1640,7 +1640,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.search.search-submit-button"
+      "candidateId": "candidate:new-kronos/search.search-submit-button"
     },
     {
       "system": "new-kronos",
@@ -1660,7 +1660,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.search.no-results-text"
+      "candidateId": "candidate:new-kronos/search.no-results-text"
     },
     {
       "system": "new-kronos",
@@ -1680,7 +1680,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.search.first-result-checkbox"
+      "candidateId": "candidate:new-kronos/search.first-result-checkbox"
     },
     {
       "system": "new-kronos",
@@ -1701,7 +1701,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.search.first-result-row"
+      "candidateId": "candidate:new-kronos/search.first-result-row"
     },
     {
       "system": "new-kronos",
@@ -1723,7 +1723,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.search.first-result-slat"
+      "candidateId": "candidate:new-kronos/search.first-result-slat"
     },
     {
       "system": "new-kronos",
@@ -1744,7 +1744,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.search.result-employee-id"
+      "candidateId": "candidate:new-kronos/search.result-employee-id"
     },
     {
       "system": "new-kronos",
@@ -1763,7 +1763,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.search.close-button"
+      "candidateId": "candidate:new-kronos/search.close-button"
     },
     {
       "system": "new-kronos",
@@ -1785,7 +1785,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.go-to-menu.go-to-button-on-page"
+      "candidateId": "candidate:new-kronos/go-to-menu.go-to-button-on-page"
     },
     {
       "system": "new-kronos",
@@ -1807,7 +1807,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.go-to-menu.go-to-button-in-frame"
+      "candidateId": "candidate:new-kronos/go-to-menu.go-to-button-in-frame"
     },
     {
       "system": "new-kronos",
@@ -1827,7 +1827,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.go-to-menu.timecard-item"
+      "candidateId": "candidate:new-kronos/go-to-menu.timecard-item"
     },
     {
       "system": "new-kronos",
@@ -1847,7 +1847,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.go-to-menu.people-item"
+      "candidateId": "candidate:new-kronos/go-to-menu.people-item"
     },
     {
       "system": "new-kronos",
@@ -1867,7 +1867,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.timecard.loaded-employee-id"
+      "candidateId": "candidate:new-kronos/timecard.loaded-employee-id"
     },
     {
       "system": "new-kronos",
@@ -1887,7 +1887,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.timecard.pay-period-trigger-button"
+      "candidateId": "candidate:new-kronos/timecard.pay-period-trigger-button"
     },
     {
       "system": "new-kronos",
@@ -1908,7 +1908,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.timecard.pay-period-label"
+      "candidateId": "candidate:new-kronos/timecard.pay-period-label"
     },
     {
       "system": "new-kronos",
@@ -1928,7 +1928,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.timecard.previous-pay-period-option"
+      "candidateId": "candidate:new-kronos/timecard.previous-pay-period-option"
     },
     {
       "system": "new-kronos",
@@ -1949,7 +1949,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.timecard.select-range-button"
+      "candidateId": "candidate:new-kronos/timecard.select-range-button"
     },
     {
       "system": "new-kronos",
@@ -1970,7 +1970,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.timecard.start-date-input"
+      "candidateId": "candidate:new-kronos/timecard.start-date-input"
     },
     {
       "system": "new-kronos",
@@ -1991,7 +1991,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.timecard.end-date-input"
+      "candidateId": "candidate:new-kronos/timecard.end-date-input"
     },
     {
       "system": "new-kronos",
@@ -2011,7 +2011,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.timecard.calendar-month-header"
+      "candidateId": "candidate:new-kronos/timecard.calendar-month-header"
     },
     {
       "system": "new-kronos",
@@ -2032,7 +2032,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.timecard.calendar-prev-month"
+      "candidateId": "candidate:new-kronos/timecard.calendar-prev-month"
     },
     {
       "system": "new-kronos",
@@ -2053,7 +2053,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.timecard.calendar-next-month"
+      "candidateId": "candidate:new-kronos/timecard.calendar-next-month"
     },
     {
       "system": "new-kronos",
@@ -2074,7 +2074,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.timecard.calendar-day-cell"
+      "candidateId": "candidate:new-kronos/timecard.calendar-day-cell"
     },
     {
       "system": "new-kronos",
@@ -2093,7 +2093,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.timecard.apply-button"
+      "candidateId": "candidate:new-kronos/timecard.apply-button"
     },
     {
       "system": "new-kronos",
@@ -2109,7 +2109,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people-frame"
+      "candidateId": "candidate:new-kronos/people-frame"
     },
     {
       "system": "new-kronos",
@@ -2126,7 +2126,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.resolve-people-root"
+      "candidateId": "candidate:new-kronos/resolve-people-root"
     },
     {
       "system": "new-kronos",
@@ -2146,7 +2146,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.timekeeper-panel"
+      "candidateId": "candidate:new-kronos/people.timekeeper-panel"
     },
     {
       "system": "new-kronos",
@@ -2166,7 +2166,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.timekeeper-section"
+      "candidateId": "candidate:new-kronos/people.timekeeper-section"
     },
     {
       "system": "new-kronos",
@@ -2187,7 +2187,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-column-header"
+      "candidateId": "candidate:new-kronos/people.pay-rule-column-header"
     },
     {
       "system": "new-kronos",
@@ -2208,7 +2208,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-grid"
+      "candidateId": "candidate:new-kronos/people.pay-rule-grid"
     },
     {
       "system": "new-kronos",
@@ -2229,7 +2229,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-add-button"
+      "candidateId": "candidate:new-kronos/people.pay-rule-add-button"
     },
     {
       "system": "new-kronos",
@@ -2250,7 +2250,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-empty-cell"
+      "candidateId": "candidate:new-kronos/people.pay-rule-empty-cell"
     },
     {
       "system": "new-kronos",
@@ -2272,7 +2272,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-code-cell"
+      "candidateId": "candidate:new-kronos/people.pay-rule-code-cell"
     },
     {
       "system": "new-kronos",
@@ -2293,7 +2293,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-dropdown-list"
+      "candidateId": "candidate:new-kronos/people.pay-rule-dropdown-list"
     },
     {
       "system": "new-kronos",
@@ -2314,7 +2314,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-dropdown-popup"
+      "candidateId": "candidate:new-kronos/people.pay-rule-dropdown-popup"
     },
     {
       "system": "new-kronos",
@@ -2335,7 +2335,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-search-option"
+      "candidateId": "candidate:new-kronos/people.pay-rule-search-option"
     },
     {
       "system": "new-kronos",
@@ -2357,7 +2357,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-search-input"
+      "candidateId": "candidate:new-kronos/people.pay-rule-search-input"
     },
     {
       "system": "new-kronos",
@@ -2378,7 +2378,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-search-modal"
+      "candidateId": "candidate:new-kronos/people.pay-rule-search-modal"
     },
     {
       "system": "new-kronos",
@@ -2400,7 +2400,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-search-result-row"
+      "candidateId": "candidate:new-kronos/people.pay-rule-search-result-row"
     },
     {
       "system": "new-kronos",
@@ -2423,7 +2423,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-search-ok"
+      "candidateId": "candidate:new-kronos/people.pay-rule-search-ok"
     },
     {
       "system": "new-kronos",
@@ -2444,7 +2444,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.effective-date-cell"
+      "candidateId": "candidate:new-kronos/people.effective-date-cell"
     },
     {
       "system": "new-kronos",
@@ -2466,7 +2466,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.effective-date-editor"
+      "candidateId": "candidate:new-kronos/people.effective-date-editor"
     },
     {
       "system": "new-kronos",
@@ -2489,7 +2489,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.effective-date-calendar-button"
+      "candidateId": "candidate:new-kronos/people.effective-date-calendar-button"
     },
     {
       "system": "new-kronos",
@@ -2512,7 +2512,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-date-picker"
+      "candidateId": "candidate:new-kronos/people.pay-rule-date-picker"
     },
     {
       "system": "new-kronos",
@@ -2535,7 +2535,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-date-picker-title"
+      "candidateId": "candidate:new-kronos/people.pay-rule-date-picker-title"
     },
     {
       "system": "new-kronos",
@@ -2558,7 +2558,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-date-picker-prev-month"
+      "candidateId": "candidate:new-kronos/people.pay-rule-date-picker-prev-month"
     },
     {
       "system": "new-kronos",
@@ -2581,7 +2581,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-date-picker-next-month"
+      "candidateId": "candidate:new-kronos/people.pay-rule-date-picker-next-month"
     },
     {
       "system": "new-kronos",
@@ -2604,7 +2604,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.pay-rule-date-picker-day"
+      "candidateId": "candidate:new-kronos/people.pay-rule-date-picker-day"
     },
     {
       "system": "new-kronos",
@@ -2625,7 +2625,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.effective-date-input"
+      "candidateId": "candidate:new-kronos/people.effective-date-input"
     },
     {
       "system": "new-kronos",
@@ -2644,7 +2644,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.save-button"
+      "candidateId": "candidate:new-kronos/people.save-button"
     },
     {
       "system": "new-kronos",
@@ -2666,7 +2666,7 @@
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "new-kronos.people.loaded-employee-name"
+      "candidateId": "candidate:new-kronos/people.loaded-employee-name"
     },
     {
       "system": "old-kronos",
@@ -2686,7 +2686,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.sso-probe.sso-field"
+      "candidateId": "candidate:old-kronos/sso-probe.sso-field"
     },
     {
       "system": "old-kronos",
@@ -2706,7 +2706,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.employee-grid.quick-find-input"
+      "candidateId": "candidate:old-kronos/employee-grid.quick-find-input"
     },
     {
       "system": "old-kronos",
@@ -2727,7 +2727,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.employee-grid.quick-find-submit-button"
+      "candidateId": "candidate:old-kronos/employee-grid.quick-find-submit-button"
     },
     {
       "system": "old-kronos",
@@ -2748,7 +2748,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.employee-grid.first-row"
+      "candidateId": "candidate:old-kronos/employee-grid.first-row"
     },
     {
       "system": "old-kronos",
@@ -2768,7 +2768,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.employee-grid.all-rows-by-role"
+      "candidateId": "candidate:old-kronos/employee-grid.all-rows-by-role"
     },
     {
       "system": "old-kronos",
@@ -2788,7 +2788,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.employee-grid.cell-by-employee-id"
+      "candidateId": "candidate:old-kronos/employee-grid.cell-by-employee-id"
     },
     {
       "system": "old-kronos",
@@ -2808,7 +2808,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.employee-grid.network-change-error"
+      "candidateId": "candidate:old-kronos/employee-grid.network-change-error"
     },
     {
       "system": "old-kronos",
@@ -2828,7 +2828,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.modal-dismiss.ok-button"
+      "candidateId": "candidate:old-kronos/modal-dismiss.ok-button"
     },
     {
       "system": "old-kronos",
@@ -2848,7 +2848,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.modal-dismiss.close-button"
+      "candidateId": "candidate:old-kronos/modal-dismiss.close-button"
     },
     {
       "system": "old-kronos",
@@ -2868,7 +2868,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.modal-dismiss.no-matches-text"
+      "candidateId": "candidate:old-kronos/modal-dismiss.no-matches-text"
     },
     {
       "system": "old-kronos",
@@ -2889,7 +2889,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.date-range.calendar-button"
+      "candidateId": "candidate:old-kronos/date-range.calendar-button"
     },
     {
       "system": "old-kronos",
@@ -2910,7 +2910,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.date-range.date-inputs"
+      "candidateId": "candidate:old-kronos/date-range.date-inputs"
     },
     {
       "system": "old-kronos",
@@ -2931,7 +2931,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.date-range.apply-button"
+      "candidateId": "candidate:old-kronos/date-range.apply-button"
     },
     {
       "system": "old-kronos",
@@ -2950,7 +2950,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.go-to-menu.go-to-trigger"
+      "candidateId": "candidate:old-kronos/go-to-menu.go-to-trigger"
     },
     {
       "system": "old-kronos",
@@ -2970,7 +2970,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.go-to-menu.dropdown-toggles"
+      "candidateId": "candidate:old-kronos/go-to-menu.dropdown-toggles"
     },
     {
       "system": "old-kronos",
@@ -2989,7 +2989,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.go-to-menu.reports-item"
+      "candidateId": "candidate:old-kronos/go-to-menu.reports-item"
     },
     {
       "system": "old-kronos",
@@ -3008,7 +3008,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.go-to-menu.sidebar-reports"
+      "candidateId": "candidate:old-kronos/go-to-menu.sidebar-reports"
     },
     {
       "system": "old-kronos",
@@ -3027,7 +3027,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.go-to-menu.timecards-item"
+      "candidateId": "candidate:old-kronos/go-to-menu.timecards-item"
     },
     {
       "system": "old-kronos",
@@ -3048,7 +3048,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.timecard.previous-pay-period-link"
+      "candidateId": "candidate:old-kronos/timecard.previous-pay-period-link"
     },
     {
       "system": "old-kronos",
@@ -3070,7 +3070,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.timecard.period-selector-input"
+      "candidateId": "candidate:old-kronos/timecard.period-selector-input"
     },
     {
       "system": "old-kronos",
@@ -3090,7 +3090,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.workspace.manage-dept-tab"
+      "candidateId": "candidate:old-kronos/workspace.manage-dept-tab"
     },
     {
       "system": "old-kronos",
@@ -3111,7 +3111,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.workspace.manage-dept-li"
+      "candidateId": "candidate:old-kronos/workspace.manage-dept-li"
     },
     {
       "system": "old-kronos",
@@ -3132,7 +3132,7 @@
       "catalogBlob": "07ad175356d1597eb5cf88649babe51c55b9bb81",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "old-kronos.reports-page.timecard-nav-tree-entry"
+      "candidateId": "candidate:old-kronos/reports-page.timecard-nav-tree-entry"
     },
     {
       "system": "onbase",
@@ -3152,7 +3152,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.nav.main-menu-button"
+      "candidateId": "candidate:onbase/nav.main-menu-button"
     },
     {
       "system": "onbase",
@@ -3172,7 +3172,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.nav.import-document-menu-item"
+      "candidateId": "candidate:onbase/nav.import-document-menu-item"
     },
     {
       "system": "onbase",
@@ -3192,7 +3192,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.nav.document-retrieval-menu-item"
+      "candidateId": "candidate:onbase/nav.document-retrieval-menu-item"
     },
     {
       "system": "onbase",
@@ -3211,7 +3211,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.frame"
+      "candidateId": "candidate:onbase/import-form.frame"
     },
     {
       "system": "onbase",
@@ -3230,7 +3230,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.file-input"
+      "candidateId": "candidate:onbase/import-form.file-input"
     },
     {
       "system": "onbase",
@@ -3249,7 +3249,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.document-type-groups-select"
+      "candidateId": "candidate:onbase/import-form.document-type-groups-select"
     },
     {
       "system": "onbase",
@@ -3269,7 +3269,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.document-types-select"
+      "candidateId": "candidate:onbase/import-form.document-types-select"
     },
     {
       "system": "onbase",
@@ -3289,7 +3289,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.file-type-select"
+      "candidateId": "candidate:onbase/import-form.file-type-select"
     },
     {
       "system": "onbase",
@@ -3309,7 +3309,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.keyset-lookup-select"
+      "candidateId": "candidate:onbase/import-form.keyset-lookup-select"
     },
     {
       "system": "onbase",
@@ -3328,7 +3328,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.keyset-apply-button"
+      "candidateId": "candidate:onbase/import-form.keyset-apply-button"
     },
     {
       "system": "onbase",
@@ -3347,7 +3347,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.keyword-input"
+      "candidateId": "candidate:onbase/import-form.keyword-input"
     },
     {
       "system": "onbase",
@@ -3368,7 +3368,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.keyword-combobox"
+      "candidateId": "candidate:onbase/import-form.keyword-combobox"
     },
     {
       "system": "onbase",
@@ -3388,7 +3388,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.ucpath-id-input"
+      "candidateId": "candidate:onbase/import-form.ucpath-id-input"
     },
     {
       "system": "onbase",
@@ -3407,7 +3407,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.document-name-input"
+      "candidateId": "candidate:onbase/import-form.document-name-input"
     },
     {
       "system": "onbase",
@@ -3425,7 +3425,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.import-button"
+      "candidateId": "candidate:onbase/import-form.import-button"
     },
     {
       "system": "onbase",
@@ -3444,7 +3444,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.clear-keywords-button"
+      "candidateId": "candidate:onbase/import-form.clear-keywords-button"
     },
     {
       "system": "onbase",
@@ -3464,7 +3464,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.import-form.clear-all-button"
+      "candidateId": "candidate:onbase/import-form.clear-all-button"
     },
     {
       "system": "onbase",
@@ -3483,7 +3483,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.keyset-lookup.dialog"
+      "candidateId": "candidate:onbase/keyset-lookup.dialog"
     },
     {
       "system": "onbase",
@@ -3503,7 +3503,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.keyset-lookup.frame"
+      "candidateId": "candidate:onbase/keyset-lookup.frame"
     },
     {
       "system": "onbase",
@@ -3524,7 +3524,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.keyset-lookup.ucpath-id-input"
+      "candidateId": "candidate:onbase/keyset-lookup.ucpath-id-input"
     },
     {
       "system": "onbase",
@@ -3545,7 +3545,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.keyset-lookup.find-button"
+      "candidateId": "candidate:onbase/keyset-lookup.find-button"
     },
     {
       "system": "onbase",
@@ -3565,7 +3565,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.keyset-lookup.select-employee-button"
+      "candidateId": "candidate:onbase/keyset-lookup.select-employee-button"
     },
     {
       "system": "onbase",
@@ -3586,7 +3586,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.keyset-lookup.close-button"
+      "candidateId": "candidate:onbase/keyset-lookup.close-button"
     },
     {
       "system": "onbase",
@@ -3606,7 +3606,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.keyset-lookup.no-match-message"
+      "candidateId": "candidate:onbase/keyset-lookup.no-match-message"
     },
     {
       "system": "onbase",
@@ -3627,7 +3627,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.keyset-lookup.no-match-ok-button"
+      "candidateId": "candidate:onbase/keyset-lookup.no-match-ok-button"
     },
     {
       "system": "onbase",
@@ -3647,7 +3647,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.document-queue.frame"
+      "candidateId": "candidate:onbase/document-queue.frame"
     },
     {
       "system": "onbase",
@@ -3668,7 +3668,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.document-queue.queued-row"
+      "candidateId": "candidate:onbase/document-queue.queued-row"
     },
     {
       "system": "onbase",
@@ -3688,7 +3688,7 @@
       "catalogBlob": "2d0cdd0dbd7e6ae9dac77b863d04f86251be921c",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "onbase.document-queue.remove-buttons"
+      "candidateId": "candidate:onbase/document-queue.remove-buttons"
     },
     {
       "system": "servicenow",
@@ -3706,7 +3706,7 @@
       "catalogBlob": "b8458941ed8465196dbd2565d8ca55d057031c9d",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "servicenow.hr-inquiry.subject-input"
+      "candidateId": "candidate:servicenow/hr-inquiry.subject-input"
     },
     {
       "system": "servicenow",
@@ -3724,7 +3724,7 @@
       "catalogBlob": "b8458941ed8465196dbd2565d8ca55d057031c9d",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "servicenow.hr-inquiry.description-input"
+      "candidateId": "candidate:servicenow/hr-inquiry.description-input"
     },
     {
       "system": "servicenow",
@@ -3742,7 +3742,7 @@
       "catalogBlob": "b8458941ed8465196dbd2565d8ca55d057031c9d",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "servicenow.hr-inquiry.specifically-input"
+      "candidateId": "candidate:servicenow/hr-inquiry.specifically-input"
     },
     {
       "system": "servicenow",
@@ -3760,7 +3760,7 @@
       "catalogBlob": "b8458941ed8465196dbd2565d8ca55d057031c9d",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "servicenow.hr-inquiry.specifically-choice"
+      "candidateId": "candidate:servicenow/hr-inquiry.specifically-choice"
     },
     {
       "system": "servicenow",
@@ -3778,7 +3778,7 @@
       "catalogBlob": "b8458941ed8465196dbd2565d8ca55d057031c9d",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "servicenow.hr-inquiry.category-input"
+      "candidateId": "candidate:servicenow/hr-inquiry.category-input"
     },
     {
       "system": "servicenow",
@@ -3796,7 +3796,7 @@
       "catalogBlob": "b8458941ed8465196dbd2565d8ca55d057031c9d",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "servicenow.hr-inquiry.category-choice"
+      "candidateId": "candidate:servicenow/hr-inquiry.category-choice"
     },
     {
       "system": "servicenow",
@@ -3815,7 +3815,7 @@
       "catalogBlob": "b8458941ed8465196dbd2565d8ca55d057031c9d",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "servicenow.hr-inquiry.select2-drop-search"
+      "candidateId": "candidate:servicenow/hr-inquiry.select2-drop-search"
     },
     {
       "system": "servicenow",
@@ -3834,7 +3834,7 @@
       "catalogBlob": "b8458941ed8465196dbd2565d8ca55d057031c9d",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "servicenow.hr-inquiry.select2-result-option"
+      "candidateId": "candidate:servicenow/hr-inquiry.select2-result-option"
     },
     {
       "system": "servicenow",
@@ -3852,7 +3852,7 @@
       "catalogBlob": "b8458941ed8465196dbd2565d8ca55d057031c9d",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "servicenow.hr-inquiry.file-input"
+      "candidateId": "candidate:servicenow/hr-inquiry.file-input"
     },
     {
       "system": "servicenow",
@@ -3870,7 +3870,7 @@
       "catalogBlob": "b8458941ed8465196dbd2565d8ca55d057031c9d",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "servicenow.hr-inquiry.submit-button"
+      "candidateId": "candidate:servicenow/hr-inquiry.submit-button"
     },
     {
       "system": "servicenow",
@@ -3889,7 +3889,7 @@
       "catalogBlob": "b8458941ed8465196dbd2565d8ca55d057031c9d",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "servicenow.hr-inquiry.attachment-confirmation-text"
+      "candidateId": "candidate:servicenow/hr-inquiry.attachment-confirmation-text"
     },
     {
       "system": "sharepoint",
@@ -3907,7 +3907,7 @@
       "catalogBlob": "c29f4e2f80b18e1ff040f2b36cc6e72636fd5a7b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "sharepoint.microsoft.email-input"
+      "candidateId": "candidate:sharepoint/microsoft.email-input"
     },
     {
       "system": "sharepoint",
@@ -3925,7 +3925,7 @@
       "catalogBlob": "c29f4e2f80b18e1ff040f2b36cc6e72636fd5a7b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "sharepoint.microsoft.next-button"
+      "candidateId": "candidate:sharepoint/microsoft.next-button"
     },
     {
       "system": "sharepoint",
@@ -3945,7 +3945,7 @@
       "catalogBlob": "c29f4e2f80b18e1ff040f2b36cc6e72636fd5a7b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "sharepoint.adfs.username-input"
+      "candidateId": "candidate:sharepoint/adfs.username-input"
     },
     {
       "system": "sharepoint",
@@ -3965,7 +3965,7 @@
       "catalogBlob": "c29f4e2f80b18e1ff040f2b36cc6e72636fd5a7b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "sharepoint.adfs.password-input"
+      "candidateId": "candidate:sharepoint/adfs.password-input"
     },
     {
       "system": "sharepoint",
@@ -3986,7 +3986,7 @@
       "catalogBlob": "c29f4e2f80b18e1ff040f2b36cc6e72636fd5a7b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "sharepoint.adfs.submit-button"
+      "candidateId": "candidate:sharepoint/adfs.submit-button"
     },
     {
       "system": "sharepoint",
@@ -4005,7 +4005,7 @@
       "catalogBlob": "c29f4e2f80b18e1ff040f2b36cc6e72636fd5a7b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "sharepoint.kmsi.no-button"
+      "candidateId": "candidate:sharepoint/kmsi.no-button"
     },
     {
       "system": "sharepoint",
@@ -4023,7 +4023,7 @@
       "catalogBlob": "c29f4e2f80b18e1ff040f2b36cc6e72636fd5a7b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "sharepoint.get-excel-frame"
+      "candidateId": "candidate:sharepoint/get-excel-frame"
     },
     {
       "system": "sharepoint",
@@ -4041,7 +4041,7 @@
       "catalogBlob": "c29f4e2f80b18e1ff040f2b36cc6e72636fd5a7b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "sharepoint.excel-online.file-button"
+      "candidateId": "candidate:sharepoint/excel-online.file-button"
     },
     {
       "system": "sharepoint",
@@ -4060,7 +4060,7 @@
       "catalogBlob": "c29f4e2f80b18e1ff040f2b36cc6e72636fd5a7b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "sharepoint.file-menu.create-a-copy"
+      "candidateId": "candidate:sharepoint/file-menu.create-a-copy"
     },
     {
       "system": "sharepoint",
@@ -4080,7 +4080,7 @@
       "catalogBlob": "c29f4e2f80b18e1ff040f2b36cc6e72636fd5a7b",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "sharepoint.file-menu.download-a-copy"
+      "candidateId": "candidate:sharepoint/file-menu.download-a-copy"
     },
     {
       "system": "ucpath",
@@ -4116,7 +4116,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.sidebar-navigation-toggle"
+      "candidateId": "candidate:ucpath/smart-hr.sidebar-navigation-toggle"
     },
     {
       "system": "ucpath",
@@ -4134,7 +4134,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.template-input"
+      "candidateId": "candidate:ucpath/smart-hr.template-input"
     },
     {
       "system": "ucpath",
@@ -4152,7 +4152,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.effective-date-input"
+      "candidateId": "candidate:ucpath/smart-hr.effective-date-input"
     },
     {
       "system": "ucpath",
@@ -4170,7 +4170,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.create-transaction-button"
+      "candidateId": "candidate:ucpath/smart-hr.create-transaction-button"
     },
     {
       "system": "ucpath",
@@ -4188,7 +4188,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.reason-code-select"
+      "candidateId": "candidate:ucpath/smart-hr.reason-code-select"
     },
     {
       "system": "ucpath",
@@ -4206,7 +4206,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.continue-button"
+      "candidateId": "candidate:ucpath/smart-hr.continue-button"
     },
     {
       "system": "ucpath",
@@ -4224,7 +4224,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.tab.personal-data"
+      "candidateId": "candidate:ucpath/smart-hr.tab.personal-data"
     },
     {
       "system": "ucpath",
@@ -4242,7 +4242,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.tab.job-data"
+      "candidateId": "candidate:ucpath/smart-hr.tab.job-data"
     },
     {
       "system": "ucpath",
@@ -4261,7 +4261,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.tab.earns-dist"
+      "candidateId": "candidate:ucpath/smart-hr.tab.earns-dist"
     },
     {
       "system": "ucpath",
@@ -4279,7 +4279,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.tab.employee-experience"
+      "candidateId": "candidate:ucpath/smart-hr.tab.employee-experience"
     },
     {
       "system": "ucpath",
@@ -4297,7 +4297,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.save-and-submit-button"
+      "candidateId": "candidate:ucpath/smart-hr.save-and-submit-button"
     },
     {
       "system": "ucpath",
@@ -4316,7 +4316,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.confirmation-ok-button"
+      "candidateId": "candidate:ucpath/smart-hr.confirmation-ok-button"
     },
     {
       "system": "ucpath",
@@ -4334,7 +4334,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.error-banner"
+      "candidateId": "candidate:ucpath/smart-hr.error-banner"
     },
     {
       "system": "ucpath",
@@ -4354,7 +4354,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr.delete-selected-transactions-button"
+      "candidateId": "candidate:ucpath/smart-hr.delete-selected-transactions-button"
     },
     {
       "system": "ucpath",
@@ -4373,7 +4373,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.legal-first-name"
+      "candidateId": "candidate:ucpath/personal-data.legal-first-name"
     },
     {
       "system": "ucpath",
@@ -4392,7 +4392,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.legal-last-name"
+      "candidateId": "candidate:ucpath/personal-data.legal-last-name"
     },
     {
       "system": "ucpath",
@@ -4411,7 +4411,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.legal-middle-name"
+      "candidateId": "candidate:ucpath/personal-data.legal-middle-name"
     },
     {
       "system": "ucpath",
@@ -4431,7 +4431,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.preferred-first-name"
+      "candidateId": "candidate:ucpath/personal-data.preferred-first-name"
     },
     {
       "system": "ucpath",
@@ -4451,7 +4451,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.preferred-last-name"
+      "candidateId": "candidate:ucpath/personal-data.preferred-last-name"
     },
     {
       "system": "ucpath",
@@ -4471,7 +4471,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.preferred-middle-name"
+      "candidateId": "candidate:ucpath/personal-data.preferred-middle-name"
     },
     {
       "system": "ucpath",
@@ -4490,7 +4490,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.date-of-birth"
+      "candidateId": "candidate:ucpath/personal-data.date-of-birth"
     },
     {
       "system": "ucpath",
@@ -4508,7 +4508,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.national-id"
+      "candidateId": "candidate:ucpath/personal-data.national-id"
     },
     {
       "system": "ucpath",
@@ -4526,7 +4526,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.address-line1"
+      "candidateId": "candidate:ucpath/personal-data.address-line1"
     },
     {
       "system": "ucpath",
@@ -4544,7 +4544,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.city"
+      "candidateId": "candidate:ucpath/personal-data.city"
     },
     {
       "system": "ucpath",
@@ -4562,7 +4562,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.state"
+      "candidateId": "candidate:ucpath/personal-data.state"
     },
     {
       "system": "ucpath",
@@ -4582,7 +4582,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.postal-code"
+      "candidateId": "candidate:ucpath/personal-data.postal-code"
     },
     {
       "system": "ucpath",
@@ -4601,7 +4601,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.phone-type-select"
+      "candidateId": "candidate:ucpath/personal-data.phone-type-select"
     },
     {
       "system": "ucpath",
@@ -4620,7 +4620,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.phone-number-input"
+      "candidateId": "candidate:ucpath/personal-data.phone-number-input"
     },
     {
       "system": "ucpath",
@@ -4639,7 +4639,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.phone-preferred-checkbox"
+      "candidateId": "candidate:ucpath/personal-data.phone-preferred-checkbox"
     },
     {
       "system": "ucpath",
@@ -4658,7 +4658,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.email-type-select"
+      "candidateId": "candidate:ucpath/personal-data.email-type-select"
     },
     {
       "system": "ucpath",
@@ -4677,7 +4677,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.email-address-input"
+      "candidateId": "candidate:ucpath/personal-data.email-address-input"
     },
     {
       "system": "ucpath",
@@ -4696,7 +4696,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.personal-data.tracker-profile-id-input"
+      "candidateId": "candidate:ucpath/personal-data.tracker-profile-id-input"
     },
     {
       "system": "ucpath",
@@ -4713,7 +4713,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.comments.comments-textarea"
+      "candidateId": "candidate:ucpath/comments.comments-textarea"
     },
     {
       "system": "ucpath",
@@ -4731,7 +4731,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.comments.initiator-comments-textarea"
+      "candidateId": "candidate:ucpath/comments.initiator-comments-textarea"
     },
     {
       "system": "ucpath",
@@ -4750,7 +4750,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.termination.override-last-date-worked-checkbox"
+      "candidateId": "candidate:ucpath/termination.override-last-date-worked-checkbox"
     },
     {
       "system": "ucpath",
@@ -4769,7 +4769,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.termination.last-date-worked-input"
+      "candidateId": "candidate:ucpath/termination.last-date-worked-input"
     },
     {
       "system": "ucpath",
@@ -4788,7 +4788,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-data.position-number-input"
+      "candidateId": "candidate:ucpath/job-data.position-number-input"
     },
     {
       "system": "ucpath",
@@ -4806,7 +4806,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-data.employee-classification-input"
+      "candidateId": "candidate:ucpath/job-data.employee-classification-input"
     },
     {
       "system": "ucpath",
@@ -4828,7 +4828,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-data.comp-rate-code-input"
+      "candidateId": "candidate:ucpath/job-data.comp-rate-code-input"
     },
     {
       "system": "ucpath",
@@ -4848,7 +4848,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-data.compensation-rate-input"
+      "candidateId": "candidate:ucpath/job-data.compensation-rate-input"
     },
     {
       "system": "ucpath",
@@ -4867,7 +4867,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-data.compensation-frequency-input"
+      "candidateId": "candidate:ucpath/job-data.compensation-frequency-input"
     },
     {
       "system": "ucpath",
@@ -4887,7 +4887,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-data.expected-job-end-date-input"
+      "candidateId": "candidate:ucpath/job-data.expected-job-end-date-input"
     },
     {
       "system": "ucpath",
@@ -4905,7 +4905,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-search.search-type-select"
+      "candidateId": "candidate:ucpath/person-search.search-type-select"
     },
     {
       "system": "ucpath",
@@ -4924,7 +4924,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-search.parameter-code-input"
+      "candidateId": "candidate:ucpath/person-search.parameter-code-input"
     },
     {
       "system": "ucpath",
@@ -4943,7 +4943,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-search.load-form-button"
+      "candidateId": "candidate:ucpath/person-search.load-form-button"
     },
     {
       "system": "ucpath",
@@ -4962,7 +4962,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-search.result-code-input"
+      "candidateId": "candidate:ucpath/person-search.result-code-input"
     },
     {
       "system": "ucpath",
@@ -4980,7 +4980,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-search.ssn-input"
+      "candidateId": "candidate:ucpath/person-search.ssn-input"
     },
     {
       "system": "ucpath",
@@ -4999,7 +4999,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-search.first-name-input"
+      "candidateId": "candidate:ucpath/person-search.first-name-input"
     },
     {
       "system": "ucpath",
@@ -5018,7 +5018,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-search.last-name-input"
+      "candidateId": "candidate:ucpath/person-search.last-name-input"
     },
     {
       "system": "ucpath",
@@ -5038,7 +5038,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-search.dob-input"
+      "candidateId": "candidate:ucpath/person-search.dob-input"
     },
     {
       "system": "ucpath",
@@ -5058,7 +5058,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-search.ssn-lookup-button"
+      "candidateId": "candidate:ucpath/person-search.ssn-lookup-button"
     },
     {
       "system": "ucpath",
@@ -5076,7 +5076,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-search.search-submit-button"
+      "candidateId": "candidate:ucpath/person-search.search-submit-button"
     },
     {
       "system": "ucpath",
@@ -5096,7 +5096,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-search.result-empl-id-cells"
+      "candidateId": "candidate:ucpath/person-search.result-empl-id-cells"
     },
     {
       "system": "ucpath",
@@ -5115,7 +5115,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-summary.campus-discovery-ucsd-link"
+      "candidateId": "candidate:ucpath/job-summary.campus-discovery-ucsd-link"
     },
     {
       "system": "ucpath",
@@ -5134,7 +5134,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-summary.empl-id-input"
+      "candidateId": "candidate:ucpath/job-summary.empl-id-input"
     },
     {
       "system": "ucpath",
@@ -5151,7 +5151,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-summary.search-button"
+      "candidateId": "candidate:ucpath/job-summary.search-button"
     },
     {
       "system": "ucpath",
@@ -5170,7 +5170,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-summary.work-location-tab"
+      "candidateId": "candidate:ucpath/job-summary.work-location-tab"
     },
     {
       "system": "ucpath",
@@ -5189,7 +5189,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-summary.job-information-tab"
+      "candidateId": "candidate:ucpath/job-summary.job-information-tab"
     },
     {
       "system": "ucpath",
@@ -5209,7 +5209,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-summary.person-name"
+      "candidateId": "candidate:ucpath/job-summary.person-name"
     },
     {
       "system": "ucpath",
@@ -5226,7 +5226,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-summary.main-target-iframe-probe"
+      "candidateId": "candidate:ucpath/job-summary.main-target-iframe-probe"
     },
     {
       "system": "ucpath",
@@ -5246,7 +5246,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-summary.search-results-grid"
+      "candidateId": "candidate:ucpath/job-summary.search-results-grid"
     },
     {
       "system": "ucpath",
@@ -5267,7 +5267,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-summary.search-result-rows"
+      "candidateId": "candidate:ucpath/job-summary.search-result-rows"
     },
     {
       "system": "ucpath",
@@ -5289,7 +5289,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-summary.row-hr-status-cell"
+      "candidateId": "candidate:ucpath/job-summary.row-hr-status-cell"
     },
     {
       "system": "ucpath",
@@ -5309,7 +5309,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-summary.row-drill-in-link"
+      "candidateId": "candidate:ucpath/job-summary.row-drill-in-link"
     },
     {
       "system": "ucpath",
@@ -5331,7 +5331,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.job-summary.result-drill-links"
+      "candidateId": "candidate:ucpath/job-summary.result-drill-links"
     },
     {
       "system": "ucpath",
@@ -5349,7 +5349,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.tile"
+      "candidateId": "candidate:ucpath/hr-tasks.tile"
     },
     {
       "system": "ucpath",
@@ -5367,7 +5367,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.item-list"
+      "candidateId": "candidate:ucpath/hr-tasks.item-list"
     },
     {
       "system": "ucpath",
@@ -5386,7 +5386,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.search-person-link"
+      "candidateId": "candidate:ucpath/hr-tasks.search-person-link"
     },
     {
       "system": "ucpath",
@@ -5404,7 +5404,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.person-org-summary-link"
+      "candidateId": "candidate:ucpath/hr-tasks.person-org-summary-link"
     },
     {
       "system": "ucpath",
@@ -5423,7 +5423,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.contract-pay-link"
+      "candidateId": "candidate:ucpath/hr-tasks.contract-pay-link"
     },
     {
       "system": "ucpath",
@@ -5442,7 +5442,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.contract-payment-details-link"
+      "candidateId": "candidate:ucpath/hr-tasks.contract-payment-details-link"
     },
     {
       "system": "ucpath",
@@ -5461,7 +5461,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.update-contract-pay-na-link"
+      "candidateId": "candidate:ucpath/hr-tasks.update-contract-pay-na-link"
     },
     {
       "system": "ucpath",
@@ -5481,7 +5481,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.pay-path-link"
+      "candidateId": "candidate:ucpath/hr-tasks.pay-path-link"
     },
     {
       "system": "ucpath",
@@ -5501,7 +5501,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.create-additional-pay-link"
+      "candidateId": "candidate:ucpath/hr-tasks.create-additional-pay-link"
     },
     {
       "system": "ucpath",
@@ -5521,7 +5521,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.self-service-additional-pay-link"
+      "candidateId": "candidate:ucpath/hr-tasks.self-service-additional-pay-link"
     },
     {
       "system": "ucpath",
@@ -5540,7 +5540,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.pay-path-actions-link"
+      "candidateId": "candidate:ucpath/hr-tasks.pay-path-actions-link"
     },
     {
       "system": "ucpath",
@@ -5560,7 +5560,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.pay-path-actions-acad-link"
+      "candidateId": "candidate:ucpath/hr-tasks.pay-path-actions-acad-link"
     },
     {
       "system": "ucpath",
@@ -5580,7 +5580,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.pay-path-actions-staff-link"
+      "candidateId": "candidate:ucpath/hr-tasks.pay-path-actions-staff-link"
     },
     {
       "system": "ucpath",
@@ -5599,7 +5599,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.job-data-related-link"
+      "candidateId": "candidate:ucpath/hr-tasks.job-data-related-link"
     },
     {
       "system": "ucpath",
@@ -5617,7 +5617,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.job-data-link"
+      "candidateId": "candidate:ucpath/hr-tasks.job-data-link"
     },
     {
       "system": "ucpath",
@@ -5636,7 +5636,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.uc-employee-review-link"
+      "candidateId": "candidate:ucpath/hr-tasks.uc-employee-review-link"
     },
     {
       "system": "ucpath",
@@ -5656,7 +5656,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.workforce-job-summary-link"
+      "candidateId": "candidate:ucpath/hr-tasks.workforce-job-summary-link"
     },
     {
       "system": "ucpath",
@@ -5675,7 +5675,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.personal-data-related-link"
+      "candidateId": "candidate:ucpath/hr-tasks.personal-data-related-link"
     },
     {
       "system": "ucpath",
@@ -5694,7 +5694,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.activities-link"
+      "candidateId": "candidate:ucpath/hr-tasks.activities-link"
     },
     {
       "system": "ucpath",
@@ -5713,7 +5713,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.emergency-contact-link"
+      "candidateId": "candidate:ucpath/hr-tasks.emergency-contact-link"
     },
     {
       "system": "ucpath",
@@ -5732,7 +5732,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.identification-data-link"
+      "candidateId": "candidate:ucpath/hr-tasks.identification-data-link"
     },
     {
       "system": "ucpath",
@@ -5751,7 +5751,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.modify-a-person-link"
+      "candidateId": "candidate:ucpath/hr-tasks.modify-a-person-link"
     },
     {
       "system": "ucpath",
@@ -5770,7 +5770,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.person-checklist-link"
+      "candidateId": "candidate:ucpath/hr-tasks.person-checklist-link"
     },
     {
       "system": "ucpath",
@@ -5790,7 +5790,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.person-profiles-link"
+      "candidateId": "candidate:ucpath/hr-tasks.person-profiles-link"
     },
     {
       "system": "ucpath",
@@ -5809,7 +5809,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.security-clearance-link"
+      "candidateId": "candidate:ucpath/hr-tasks.security-clearance-link"
     },
     {
       "system": "ucpath",
@@ -5828,7 +5828,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.uc-external-system-ids-link"
+      "candidateId": "candidate:ucpath/hr-tasks.uc-external-system-ids-link"
     },
     {
       "system": "ucpath",
@@ -5848,7 +5848,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.smart-hr-templates-link"
+      "candidateId": "candidate:ucpath/hr-tasks.smart-hr-templates-link"
     },
     {
       "system": "ucpath",
@@ -5867,7 +5867,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.smart-hr-transactions-link"
+      "candidateId": "candidate:ucpath/hr-tasks.smart-hr-transactions-link"
     },
     {
       "system": "ucpath",
@@ -5887,7 +5887,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.ss-smart-hr-transactions-link"
+      "candidateId": "candidate:ucpath/hr-tasks.ss-smart-hr-transactions-link"
     },
     {
       "system": "ucpath",
@@ -5907,7 +5907,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.hr-tasks.smart-hr-transaction-status-link"
+      "candidateId": "candidate:ucpath/hr-tasks.smart-hr-transaction-status-link"
     },
     {
       "system": "ucpath",
@@ -5949,7 +5949,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.last-name-input"
+      "candidateId": "candidate:ucpath/person-org-summary.last-name-input"
     },
     {
       "system": "ucpath",
@@ -5968,7 +5968,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.name-input"
+      "candidateId": "candidate:ucpath/person-org-summary.name-input"
     },
     {
       "system": "ucpath",
@@ -5986,7 +5986,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.case-sensitive-checkbox"
+      "candidateId": "candidate:ucpath/person-org-summary.case-sensitive-checkbox"
     },
     {
       "system": "ucpath",
@@ -6004,7 +6004,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.search-button"
+      "candidateId": "candidate:ucpath/person-org-summary.search-button"
     },
     {
       "system": "ucpath",
@@ -6021,7 +6021,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.clear-button"
+      "candidateId": "candidate:ucpath/person-org-summary.clear-button"
     },
     {
       "system": "ucpath",
@@ -6063,7 +6063,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.person-name-value"
+      "candidateId": "candidate:ucpath/person-org-summary.person-name-value"
     },
     {
       "system": "ucpath",
@@ -6081,7 +6081,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.body"
+      "candidateId": "candidate:ucpath/person-org-summary.body"
     },
     {
       "system": "ucpath",
@@ -6099,7 +6099,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.last-hire-date"
+      "candidateId": "candidate:ucpath/person-org-summary.last-hire-date"
     },
     {
       "system": "ucpath",
@@ -6117,7 +6117,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.termination-date"
+      "candidateId": "candidate:ucpath/person-org-summary.termination-date"
     },
     {
       "system": "ucpath",
@@ -6136,7 +6136,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.termination-reason"
+      "candidateId": "candidate:ucpath/person-org-summary.termination-reason"
     },
     {
       "system": "ucpath",
@@ -6153,7 +6153,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.nothing-yet-text"
+      "candidateId": "candidate:ucpath/person-org-summary.nothing-yet-text"
     },
     {
       "system": "ucpath",
@@ -6170,7 +6170,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.no-matching-values-text"
+      "candidateId": "candidate:ucpath/person-org-summary.no-matching-values-text"
     },
     {
       "system": "ucpath",
@@ -6187,7 +6187,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.view-all-link"
+      "candidateId": "candidate:ucpath/person-org-summary.view-all-link"
     },
     {
       "system": "ucpath",
@@ -6205,7 +6205,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.results-table"
+      "candidateId": "candidate:ucpath/person-org-summary.results-table"
     },
     {
       "system": "ucpath",
@@ -6222,7 +6222,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.drill-in-button"
+      "candidateId": "candidate:ucpath/person-org-summary.drill-in-button"
     },
     {
       "system": "ucpath",
@@ -6240,7 +6240,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.person-org-summary.return-to-search-button"
+      "candidateId": "candidate:ucpath/person-org-summary.return-to-search-button"
     },
     {
       "system": "ucpath",
@@ -6259,7 +6259,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.empl-id-input"
+      "candidateId": "candidate:ucpath/pay-path-actions.empl-id-input"
     },
     {
       "system": "ucpath",
@@ -6277,7 +6277,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.empl-record-input"
+      "candidateId": "candidate:ucpath/pay-path-actions.empl-record-input"
     },
     {
       "system": "ucpath",
@@ -6294,7 +6294,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.name-input"
+      "candidateId": "candidate:ucpath/pay-path-actions.name-input"
     },
     {
       "system": "ucpath",
@@ -6311,7 +6311,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.business-unit-input"
+      "candidateId": "candidate:ucpath/pay-path-actions.business-unit-input"
     },
     {
       "system": "ucpath",
@@ -6329,7 +6329,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.business-unit-lookup-button"
+      "candidateId": "candidate:ucpath/pay-path-actions.business-unit-lookup-button"
     },
     {
       "system": "ucpath",
@@ -6347,7 +6347,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.position-number-input"
+      "candidateId": "candidate:ucpath/pay-path-actions.position-number-input"
     },
     {
       "system": "ucpath",
@@ -6366,7 +6366,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.position-number-lookup-button"
+      "candidateId": "candidate:ucpath/pay-path-actions.position-number-lookup-button"
     },
     {
       "system": "ucpath",
@@ -6383,7 +6383,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.department-input"
+      "candidateId": "candidate:ucpath/pay-path-actions.department-input"
     },
     {
       "system": "ucpath",
@@ -6401,7 +6401,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.department-lookup-button"
+      "candidateId": "candidate:ucpath/pay-path-actions.department-lookup-button"
     },
     {
       "system": "ucpath",
@@ -6418,7 +6418,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.job-code-input"
+      "candidateId": "candidate:ucpath/pay-path-actions.job-code-input"
     },
     {
       "system": "ucpath",
@@ -6436,7 +6436,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.job-code-lookup-button"
+      "candidateId": "candidate:ucpath/pay-path-actions.job-code-lookup-button"
     },
     {
       "system": "ucpath",
@@ -6454,7 +6454,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.employee-classification-input"
+      "candidateId": "candidate:ucpath/pay-path-actions.employee-classification-input"
     },
     {
       "system": "ucpath",
@@ -6473,7 +6473,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.employee-classification-lookup-button"
+      "candidateId": "candidate:ucpath/pay-path-actions.employee-classification-lookup-button"
     },
     {
       "system": "ucpath",
@@ -6491,7 +6491,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.employee-status-select"
+      "candidateId": "candidate:ucpath/pay-path-actions.employee-status-select"
     },
     {
       "system": "ucpath",
@@ -6509,7 +6509,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.case-sensitive-checkbox"
+      "candidateId": "candidate:ucpath/pay-path-actions.case-sensitive-checkbox"
     },
     {
       "system": "ucpath",
@@ -6527,7 +6527,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.search-button"
+      "candidateId": "candidate:ucpath/pay-path-actions.search-button"
     },
     {
       "system": "ucpath",
@@ -6544,7 +6544,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.clear-button"
+      "candidateId": "candidate:ucpath/pay-path-actions.clear-button"
     },
     {
       "system": "ucpath",
@@ -6563,7 +6563,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.save-and-submit-button"
+      "candidateId": "candidate:ucpath/pay-path-actions.save-and-submit-button"
     },
     {
       "system": "ucpath",
@@ -6582,7 +6582,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.alert-ok-button"
+      "candidateId": "candidate:ucpath/pay-path-actions.alert-ok-button"
     },
     {
       "system": "ucpath",
@@ -6601,7 +6601,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.employee-name-display"
+      "candidateId": "candidate:ucpath/pay-path-actions.employee-name-display"
     },
     {
       "system": "ucpath",
@@ -6619,7 +6619,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.effective-date-input"
+      "candidateId": "candidate:ucpath/pay-path-actions.effective-date-input"
     },
     {
       "system": "ucpath",
@@ -6638,7 +6638,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.position-change-reason-input"
+      "candidateId": "candidate:ucpath/pay-path-actions.position-change-reason-input"
     },
     {
       "system": "ucpath",
@@ -6657,7 +6657,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.position-pool-input"
+      "candidateId": "candidate:ucpath/pay-path-actions.position-pool-input"
     },
     {
       "system": "ucpath",
@@ -6674,7 +6674,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.job-data-tab"
+      "candidateId": "candidate:ucpath/pay-path-actions.job-data-tab"
     },
     {
       "system": "ucpath",
@@ -6692,7 +6692,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.job-data-comments-input"
+      "candidateId": "candidate:ucpath/pay-path-actions.job-data-comments-input"
     },
     {
       "system": "ucpath",
@@ -6709,7 +6709,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.additional-pay-data-tab"
+      "candidateId": "candidate:ucpath/pay-path-actions.additional-pay-data-tab"
     },
     {
       "system": "ucpath",
@@ -6727,7 +6727,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.pay-path-actions.initiators-comments-input"
+      "candidateId": "candidate:ucpath/pay-path-actions.initiators-comments-input"
     },
     {
       "system": "ucpath",
@@ -6745,7 +6745,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.ss-smart-hr-transactions.txn-number-textbox"
+      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.txn-number-textbox"
     },
     {
       "system": "ucpath",
@@ -6762,7 +6762,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.ss-smart-hr-transactions.name-input"
+      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.name-input"
     },
     {
       "system": "ucpath",
@@ -6781,7 +6781,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.ss-smart-hr-transactions.empl-id-input"
+      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.empl-id-input"
     },
     {
       "system": "ucpath",
@@ -6799,7 +6799,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.ss-smart-hr-transactions.action-input"
+      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.action-input"
     },
     {
       "system": "ucpath",
@@ -6817,7 +6817,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.ss-smart-hr-transactions.action-lookup-button"
+      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.action-lookup-button"
     },
     {
       "system": "ucpath",
@@ -6835,7 +6835,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.ss-smart-hr-transactions.approval-status-select"
+      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.approval-status-select"
     },
     {
       "system": "ucpath",
@@ -6852,7 +6852,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.ss-smart-hr-transactions.business-unit-input"
+      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.business-unit-input"
     },
     {
       "system": "ucpath",
@@ -6870,7 +6870,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.ss-smart-hr-transactions.business-unit-lookup-button"
+      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.business-unit-lookup-button"
     },
     {
       "system": "ucpath",
@@ -6888,7 +6888,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.ss-smart-hr-transactions.case-sensitive-checkbox"
+      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.case-sensitive-checkbox"
     },
     {
       "system": "ucpath",
@@ -6906,7 +6906,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.ss-smart-hr-transactions.search-button"
+      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.search-button"
     },
     {
       "system": "ucpath",
@@ -6923,7 +6923,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.ss-smart-hr-transactions.clear-button"
+      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.clear-button"
     },
     {
       "system": "ucpath",
@@ -6944,7 +6944,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.ss-smart-hr-transactions.transaction-result-row"
+      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.transaction-result-row"
     },
     {
       "system": "ucpath",
@@ -6962,7 +6962,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.hr-review-status-select"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.hr-review-status-select"
     },
     {
       "system": "ucpath",
@@ -6979,7 +6979,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.business-unit-input"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.business-unit-input"
     },
     {
       "system": "ucpath",
@@ -6997,7 +6997,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.business-unit-lookup-button"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.business-unit-lookup-button"
     },
     {
       "system": "ucpath",
@@ -7014,7 +7014,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.transaction-type-select"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.transaction-type-select"
     },
     {
       "system": "ucpath",
@@ -7033,7 +7033,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.empl-id-input"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.empl-id-input"
     },
     {
       "system": "ucpath",
@@ -7050,7 +7050,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.transaction-status-select"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.transaction-status-select"
     },
     {
       "system": "ucpath",
@@ -7068,7 +7068,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.first-name-input"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.first-name-input"
     },
     {
       "system": "ucpath",
@@ -7087,7 +7087,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.start-date-from-input"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.start-date-from-input"
     },
     {
       "system": "ucpath",
@@ -7106,7 +7106,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.start-date-from-calendar-button"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.start-date-from-calendar-button"
     },
     {
       "system": "ucpath",
@@ -7125,7 +7125,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.to-date-input"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.to-date-input"
     },
     {
       "system": "ucpath",
@@ -7144,7 +7144,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.to-date-calendar-button"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.to-date-calendar-button"
     },
     {
       "system": "ucpath",
@@ -7162,7 +7162,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.last-name-input"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.last-name-input"
     },
     {
       "system": "ucpath",
@@ -7179,7 +7179,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.download-button"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.download-button"
     },
     {
       "system": "ucpath",
@@ -7196,7 +7196,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.refresh-button"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.refresh-button"
     },
     {
       "system": "ucpath",
@@ -7213,7 +7213,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.clear-button"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.clear-button"
     },
     {
       "system": "ucpath",
@@ -7232,7 +7232,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.download-to-excel-button"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.download-to-excel-button"
     },
     {
       "system": "ucpath",
@@ -7250,7 +7250,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.smart-hr-transaction-status.return-to-smart-hr-link"
+      "candidateId": "candidate:ucpath/smart-hr-transaction-status.return-to-smart-hr-link"
     },
     {
       "system": "ucpath",
@@ -7269,7 +7269,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.empl-id-input"
+      "candidateId": "candidate:ucpath/emergency-contact.empl-id-input"
     },
     {
       "system": "ucpath",
@@ -7286,7 +7286,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.search-button"
+      "candidateId": "candidate:ucpath/emergency-contact.search-button"
     },
     {
       "system": "ucpath",
@@ -7304,7 +7304,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.no-match-message"
+      "candidateId": "candidate:ucpath/emergency-contact.no-match-message"
     },
     {
       "system": "ucpath",
@@ -7322,7 +7322,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.drill-in-link"
+      "candidateId": "candidate:ucpath/emergency-contact.drill-in-link"
     },
     {
       "system": "ucpath",
@@ -7341,7 +7341,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.contact-name-inputs"
+      "candidateId": "candidate:ucpath/emergency-contact.contact-name-inputs"
     },
     {
       "system": "ucpath",
@@ -7360,7 +7360,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.primary-contact-checkboxes"
+      "candidateId": "candidate:ucpath/emergency-contact.primary-contact-checkboxes"
     },
     {
       "system": "ucpath",
@@ -7377,7 +7377,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.save-button"
+      "candidateId": "candidate:ucpath/emergency-contact.save-button"
     },
     {
       "system": "ucpath",
@@ -7397,7 +7397,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.message-dialog"
+      "candidateId": "candidate:ucpath/emergency-contact.message-dialog"
     },
     {
       "system": "ucpath",
@@ -7416,7 +7416,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.message-dialog-ok-button"
+      "candidateId": "candidate:ucpath/emergency-contact.message-dialog-ok-button"
     },
     {
       "system": "ucpath",
@@ -7435,7 +7435,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.save-error-banner"
+      "candidateId": "candidate:ucpath/emergency-contact.save-error-banner"
     },
     {
       "system": "ucpath",
@@ -7454,7 +7454,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.add-new-row-button"
+      "candidateId": "candidate:ucpath/emergency-contact.add-new-row-button"
     },
     {
       "system": "ucpath",
@@ -7471,7 +7471,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.relationship-combo-box"
+      "candidateId": "candidate:ucpath/emergency-contact.relationship-combo-box"
     },
     {
       "system": "ucpath",
@@ -7490,7 +7490,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.same-address-as-employee-checkbox"
+      "candidateId": "candidate:ucpath/emergency-contact.same-address-as-employee-checkbox"
     },
     {
       "system": "ucpath",
@@ -7508,7 +7508,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.edit-address-button"
+      "candidateId": "candidate:ucpath/emergency-contact.edit-address-button"
     },
     {
       "system": "ucpath",
@@ -7527,7 +7527,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.address1-input"
+      "candidateId": "candidate:ucpath/emergency-contact.address1-input"
     },
     {
       "system": "ucpath",
@@ -7546,7 +7546,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.city-input"
+      "candidateId": "candidate:ucpath/emergency-contact.city-input"
     },
     {
       "system": "ucpath",
@@ -7565,7 +7565,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.state-input"
+      "candidateId": "candidate:ucpath/emergency-contact.state-input"
     },
     {
       "system": "ucpath",
@@ -7585,7 +7585,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.postal-input"
+      "candidateId": "candidate:ucpath/emergency-contact.postal-input"
     },
     {
       "system": "ucpath",
@@ -7603,7 +7603,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.edit-address-ok-button"
+      "candidateId": "candidate:ucpath/emergency-contact.edit-address-ok-button"
     },
     {
       "system": "ucpath",
@@ -7620,7 +7620,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.phone-input"
+      "candidateId": "candidate:ucpath/emergency-contact.phone-input"
     },
     {
       "system": "ucpath",
@@ -7639,7 +7639,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.emergency-contact.person-id-text"
+      "candidateId": "candidate:ucpath/emergency-contact.person-id-text"
     },
     {
       "system": "ucpath",
@@ -7657,7 +7657,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.get-person-profile-frame"
+      "candidateId": "candidate:ucpath/oath-signature.get-person-profile-frame"
     },
     {
       "system": "ucpath",
@@ -7677,7 +7677,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.empl-id-input"
+      "candidateId": "candidate:ucpath/oath-signature.empl-id-input"
     },
     {
       "system": "ucpath",
@@ -7694,7 +7694,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.search-button"
+      "candidateId": "candidate:ucpath/oath-signature.search-button"
     },
     {
       "system": "ucpath",
@@ -7712,7 +7712,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.clear-search-button"
+      "candidateId": "candidate:ucpath/oath-signature.clear-search-button"
     },
     {
       "system": "ucpath",
@@ -7732,7 +7732,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.add-new-oath-link"
+      "candidateId": "candidate:ucpath/oath-signature.add-new-oath-link"
     },
     {
       "system": "ucpath",
@@ -7752,7 +7752,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.no-oath-sentinel"
+      "candidateId": "candidate:ucpath/oath-signature.no-oath-sentinel"
     },
     {
       "system": "ucpath",
@@ -7772,7 +7772,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.oath-date-input"
+      "candidateId": "candidate:ucpath/oath-signature.oath-date-input"
     },
     {
       "system": "ucpath",
@@ -7791,7 +7791,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.oath-ok-button"
+      "candidateId": "candidate:ucpath/oath-signature.oath-ok-button"
     },
     {
       "system": "ucpath",
@@ -7810,7 +7810,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.oath-cancel-button"
+      "candidateId": "candidate:ucpath/oath-signature.oath-cancel-button"
     },
     {
       "system": "ucpath",
@@ -7827,7 +7827,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.save-button"
+      "candidateId": "candidate:ucpath/oath-signature.save-button"
     },
     {
       "system": "ucpath",
@@ -7845,7 +7845,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.return-to-search-button"
+      "candidateId": "candidate:ucpath/oath-signature.return-to-search-button"
     },
     {
       "system": "ucpath",
@@ -7863,7 +7863,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.employee-name-display"
+      "candidateId": "candidate:ucpath/oath-signature.employee-name-display"
     },
     {
       "system": "ucpath",
@@ -7884,7 +7884,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.existing-oath-date"
+      "candidateId": "candidate:ucpath/oath-signature.existing-oath-date"
     },
     {
       "system": "ucpath",
@@ -7903,7 +7903,7 @@
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
       "disposition": "candidate",
       "semanticKind": "unclassified",
-      "candidateId": "ucpath.oath-signature.empl-id-display"
+      "candidateId": "candidate:ucpath/oath-signature.empl-id-display"
     }
   ]
 }

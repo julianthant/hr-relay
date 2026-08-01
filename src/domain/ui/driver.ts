@@ -39,7 +39,6 @@ export interface SystemDriver<
   Fields extends Readonly<Record<string, string>>,
   Observations extends Readonly<Record<string, string>>,
   Clicks extends ElementId = never,
-  Commits extends ElementId = never,
 > {
   readonly system: S;
   goto(screen: Screens): Promise<PageStateProof>;
@@ -47,5 +46,9 @@ export interface SystemDriver<
   fill<I extends keyof Fields & ElementId>(id: I, value: Fields[I]): Promise<UiActionProof>;
   read<I extends keyof Observations & ObservationId>(id: I): Promise<Observations[I]>;
   click(id: Clicks): Promise<UiActionProof>;
+}
+
+/** Phase 1f may implement this only after runtime-minted token validation exists. */
+export interface CommitCapableSystemDriver<Commits extends ElementId = never> {
   commit(id: Commits, capability: MutationCapability): Promise<UiActionProof>;
 }

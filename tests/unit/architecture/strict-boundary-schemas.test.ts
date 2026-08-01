@@ -802,6 +802,7 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/preflight.ts:PreflightRunner",
   "src/domain/preflight.ts:PreflightRunnerContext",
   "src/domain/ui/driver.ts:MutationCapability",
+  "src/domain/ui/driver.ts:CommitCapableSystemDriver",
   "src/domain/ui/driver.ts:SystemDriver",
   "src/domain/ui/ucpath-person-org.ts:UcpathPersonOrgScreens",
   "src/domain/ui/ucpath-person-org.ts:UcpathPersonOrgStates",

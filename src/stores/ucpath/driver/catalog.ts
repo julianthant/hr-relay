@@ -4,6 +4,15 @@ import { UCPATH_UI_REGISTRY } from "./ui-registry.js";
 
 const SOURCE_LINK = "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY";
 
+function safeVerification(verification: (typeof UCPATH_UI_REGISTRY.screens)[number]["verification"]) {
+  return {
+    verifiedAt: verification.verifiedAt,
+    fixtureEvidenceRef: verification.fixtureEvidenceRef,
+    liveReadOnlyEvidenceRef: verification.liveReadOnlyEvidenceRef,
+    scenarios: verification.scenarios,
+  };
+}
+
 export function buildSafeUiCatalog(): UiCatalog {
   const taskUses: never[] = [];
   const entries: UiCatalogEntry[] = [
@@ -14,7 +23,7 @@ export function buildSafeUiCatalog(): UiCatalog {
       label: screen.label,
       searchTerms: screen.searchTerms,
       sensitivity: screen.sensitivity,
-      verification: screen.verification,
+      verification: safeVerification(screen.verification),
       taskUses,
       sourceLink: SOURCE_LINK,
     })),
@@ -28,7 +37,7 @@ export function buildSafeUiCatalog(): UiCatalog {
       role: element.role,
       effect: element.effect,
       sensitivity: element.sensitivity,
-      verification: element.verification,
+      verification: safeVerification(element.verification),
       taskUses,
       sourceLink: SOURCE_LINK,
     })),
@@ -40,7 +49,7 @@ export function buildSafeUiCatalog(): UiCatalog {
       label: state.label,
       searchTerms: state.searchTerms,
       sensitivity: state.sensitivity,
-      verification: state.verification,
+      verification: safeVerification(state.verification),
       taskUses,
       sourceLink: SOURCE_LINK,
     })),
@@ -52,13 +61,22 @@ export function buildSafeUiCatalog(): UiCatalog {
       label: observation.label,
       searchTerms: observation.searchTerms,
       sensitivity: observation.sensitivity,
-      verification: observation.verification,
+      verification: safeVerification(observation.verification),
       taskUses,
       sourceLink: SOURCE_LINK,
       authoritativeFor: observation.authoritativeFor,
     })),
   ];
   return UiCatalogSchema.parse({ schemaVersion: 1, entries });
+}
+
+export function assertSafeUiCatalogFresh(input: unknown): UiCatalog {
+  const generated = UiCatalogSchema.parse(input);
+  const current = buildSafeUiCatalog();
+  if (JSON.stringify(generated) !== JSON.stringify(current)) {
+    throw new Error("generated UI catalog is stale; run npm run ui:catalog");
+  }
+  return generated;
 }
 
 export function renderSystemUiCatalogMarkdown(catalog: UiCatalog, system: "ucpath"): string {

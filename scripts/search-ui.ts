@@ -1,12 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { UiCatalogSchema } from "../src/domain/ui/contracts.js";
+import { assertSafeUiCatalogFresh } from "../src/stores/ucpath/driver/catalog.js";
 
 const query = process.argv.slice(2).join(" ").trim().toLowerCase();
 if (query.length === 0) throw new Error("usage: npm run selector:search -- \"<intent>\"");
 
 const catalogPath = resolve(import.meta.dirname, "../generated/ui-catalog.json");
-const catalog = UiCatalogSchema.parse(JSON.parse(await readFile(catalogPath, "utf8")));
+const catalog = assertSafeUiCatalogFresh(JSON.parse(await readFile(catalogPath, "utf8")));
 const tokens = query.split(/\s+/u);
 const ranked = catalog.entries
   .map((entry) => {

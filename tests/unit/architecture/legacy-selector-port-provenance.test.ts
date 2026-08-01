@@ -3,8 +3,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "vitest";
 import {
+  CandidateProposalIdSchema,
   LegacySelectorPortMapSchema,
   PINNED_LEGACY_SELECTOR_COMMIT,
+  assertLegacySelectorDefinitionAtLine,
   auditLegacySelectorPortMap,
   buildLegacySelectorPortMap,
 } from "./helpers/legacy-selector-port-map-audit.js";
@@ -102,5 +104,20 @@ describe("legacy selector port provenance", () => {
     assert.ok(candidate);
     assert.equal(candidate.semanticKind, "unclassified");
     assert.equal("canonicalId" in candidate, false);
+    assert.equal(CandidateProposalIdSchema.safeParse("ucpath.person-org.eid-input").success, false);
+    assert.equal(CandidateProposalIdSchema.safeParse(candidate.candidateId).success, true);
+  });
+
+  it("binds source provenance to the selector definition at the pinned line", () => {
+    const source = [
+      "export const selectors = {",
+      "  emplIdInput: () => undefined,",
+      "};",
+    ].join("\n");
+    assert.doesNotThrow(() => assertLegacySelectorDefinitionAtLine(source, "personOrgSummary.emplIdInput()", 2));
+    assert.throws(
+      () => assertLegacySelectorDefinitionAtLine(source, "personOrgSummary.emplIdInput()", 1),
+      /no selector definition at pinned source line/,
+    );
   });
 });

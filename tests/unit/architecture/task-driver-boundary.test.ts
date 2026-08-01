@@ -12,16 +12,39 @@ describe("task to system-driver boundary", () => {
     assert.deepEqual(auditTaskDriverBoundary(REPO_ROOT), []);
   });
 
-  it("catches a task that bypasses semantic ids and the typed driver", () => {
+  it("catches dynamic imports, newPage/$ bypasses, and an indirect private-driver import", () => {
     const root = resolve(tmpdir(), `hrauto-ui-boundary-${String(process.pid)}-${String(Date.now())}`);
-    const path = resolve(root, "src/tasks/ucpath/bad.ts");
+    const path = resolve(root, "src/stores/ucpath/tasks/bad.ts");
+    const helper = resolve(root, "src/stores/ucpath/helper.ts");
+    const driver = resolve(root, "src/stores/ucpath/driver/interpreter.ts");
     try {
       mkdirSync(dirname(path), { recursive: true });
+      mkdirSync(dirname(driver), { recursive: true });
       writeFileSync(
         path,
-        'import type { Page } from "playwright";\nexport function bad(page: Page) { return page.locator("#raw"); }\n',
+        'import { helper } from "../helper.js";\nexport async function bad(context: { newPage(): Promise<{ $(value: string): unknown }> }) { const api = await import("playwright"); const page = await context["newPage"](); page.$("#raw"); return [api, helper]; }\n',
       );
-      assert.match(auditTaskDriverBoundary(root).join("\n"), /Playwright import|raw browser/);
+      writeFileSync(helper, 'export { helper } from "./driver/interpreter.js";\n');
+      writeFileSync(driver, "export const helper = true;\n");
+      const issues = auditTaskDriverBoundary(root).join("\n");
+      assert.match(issues, /dynamic Playwright import/);
+      assert.match(issues, /newPage/);
+      assert.match(issues, /\.\$/);
+      assert.match(issues, /import graph reaches private raw-browser owner/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("catches premature capability forgery and commit implementations", () => {
+    const root = resolve(tmpdir(), `hrauto-ui-capability-${String(process.pid)}-${String(Date.now())}`);
+    const path = resolve(root, "src/stores/ucpath/driver/bad.ts");
+    try {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, "const token = {} as MutationCapability;\nexport const driver = { commit: async () => token };\n");
+      const issues = auditTaskDriverBoundary(root).join("\n");
+      assert.match(issues, /cannot be minted by type assertion/);
+      assert.match(issues, /commit implementation is forbidden/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "vitest";
+import type { Page } from "playwright";
 import { UiCatalogSchema, UiVerificationEvidenceManifestSchema } from "../../src/domain/ui/contracts.js";
 import {
   UCPATH_PERSON_ORG_DETAIL_READY,
@@ -12,11 +13,54 @@ import {
   UCPATH_PERSON_ORG_SEARCH_SCREEN,
   parseUcpathPersonOrgEid,
 } from "../../src/domain/ui/ucpath-person-org.js";
-import { buildSafeUiCatalog } from "../../src/stores/ucpath/driver/catalog.js";
+import { assertSafeUiCatalogFresh, buildSafeUiCatalog } from "../../src/stores/ucpath/driver/catalog.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
+import { createUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/interpreter.js";
 import { UCPATH_UI_REGISTRY, auditUcpathUiRegistry } from "../../src/stores/ucpath/driver/ui-registry.js";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
+
+function recordingPage(events: string[]): Page {
+  function locator(label: string): {
+    or(other: unknown): unknown;
+    waitFor(): Promise<void>;
+    fill(value: string): Promise<void>;
+    textContent(): Promise<string>;
+  } {
+    return {
+      or() {
+        events.push(`or:${label}`);
+        return locator(`${label}|fallback`);
+      },
+      async waitFor() {
+        events.push(`wait:${label}`);
+      },
+      async fill(value) {
+        events.push(`fill:${label}:${value}`);
+      },
+      async textContent() {
+        events.push(`read:${label}`);
+        return "10800000";
+      },
+    };
+  }
+  return {
+    frameLocator(selector: string) {
+      events.push(`frame:${selector}`);
+      return {
+        getByRole(_role: string, options: { name?: string }) {
+          const label = `role:${options.name ?? "unnamed"}`;
+          events.push(`locate:${label}`);
+          return locator(label);
+        },
+        locator(selectorValue: string) {
+          events.push(`locate:${selectorValue}`);
+          return locator(selectorValue);
+        },
+      };
+    },
+  } as unknown as Page;
+}
 
 describe("semantic UI registry", () => {
   it("resolves every Person Org semantic dependency without collisions", () => {
@@ -58,6 +102,37 @@ describe("semantic UI registry", () => {
       serialized,
       /#main_target_win0|PERSON_NPC_VW_EMPLID|Empl ID|legacyKey|locator|selector|capturedValue|valueType|timeoutMs/,
     );
+  });
+
+  it("enforces element states immediately and preserves the legacy display fallback order", async () => {
+    const events: string[] = [];
+    const driver = createUcpathPersonOrgDriver(recordingPage(events));
+    await driver.fill(UCPATH_PERSON_ORG_EID_INPUT, parseUcpathPersonOrgEid("10800000"));
+    assert.equal(events.findIndex((event) => event.startsWith("wait:"))
+      < events.findIndex((event) => event.startsWith("fill:")), true);
+
+    events.length = 0;
+    assert.equal(await driver.read(UCPATH_PERSON_ORG_DISPLAYED_EID), "10800000");
+    assert.deepEqual(events.filter((event) => event.startsWith("locate:#")), [
+      "locate:#PERSON_NPC_VW_EMPLID",
+      "locate:#PER_INST_EMP_VW_OPRID\\$0",
+      "locate:#PER_INST_EMP_VW_EMPLID\\$0",
+      "locate:#PERSON_NPC_VW_EMPLID",
+      "locate:#PER_INST_EMP_VW_OPRID\\$0",
+      "locate:#PER_INST_EMP_VW_EMPLID\\$0",
+    ]);
+    assert.equal(events.findIndex((event) => event.startsWith("wait:"))
+      < events.findIndex((event) => event.startsWith("read:")), true);
+  });
+
+  it("fails selector search freshness checks on a stale generated catalog", () => {
+    const generated = UiCatalogSchema.parse(
+      JSON.parse(readFileSync(resolve(REPO_ROOT, "generated/ui-catalog.json"), "utf8")),
+    );
+    assert.doesNotThrow(() => assertSafeUiCatalogFresh(generated));
+    const stale = structuredClone(generated);
+    stale.entries.pop();
+    assert.throws(() => assertSafeUiCatalogFresh(stale), /generated UI catalog is stale/);
   });
 
   it("keeps both fixture and live evidence sanitized and write-free", () => {

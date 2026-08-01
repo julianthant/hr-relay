@@ -81,7 +81,14 @@ headless live/read-only Duo-Autopilot check independently proved exactly one ifr
 textbox and exactly one authoritative `#PERSON_NPC_VW_EMPLID` whose text equaled the searched EID;
 the sanitized evidence manifests record no captured value and no external write attempt. Generated
 JSON/Markdown catalogs and `selector:search` consume the recipe-free projection only. Active guards
-make candidates unable to enter that catalog and keep raw Playwright calls in driver/session owners.
+make the disjoint `candidate:<system>/<proposal>` namespace unable to enter any catalog kind and
+keep raw Playwright calls in driver/session owners through AST plus transitive import-graph checks.
+`selector:search` fails loud when its generated catalog is stale. Each published fact is bound to
+one exact fixture and live assertion carrying the same system, screen, scenario, date, and port-map
+row; same-screen state dependencies and acyclic `supersedes` edges are audited. Driver `fill` and
+`read` enforce required states immediately before interaction, and the displayed-EID recipe retains
+the full reviewed legacy three-arm `.or(...)` fallback order. External-commit implementations and
+`MutationCapability` assertions remain prohibited until the Phase-1f runtime token validator exists.
 
 ---
 

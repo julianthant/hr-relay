@@ -37,12 +37,19 @@ export const UiEvidenceReferenceSchema = z.string().regex(
 export const UiSourceLinkSchema = z.string().regex(
   /^src\/stores\/[a-z0-9-]+\/driver\/[a-z0-9-]+\.ts#[A-Z0-9_]+$/,
 );
+export const UiPortMapRowReferenceSchema = z.strictObject({
+  system: BrowserSystemIdSchema,
+  legacyKey: z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/),
+});
 
-export const UiVerificationSchema = z.strictObject({
+export const UiCatalogVerificationSchema = z.strictObject({
   verifiedAt: DateOnlySchema,
   fixtureEvidenceRef: UiEvidenceReferenceSchema,
   liveReadOnlyEvidenceRef: UiEvidenceReferenceSchema,
   scenarios: z.array(ScenarioIdSchema).min(1),
+});
+export const UiVerificationSchema = UiCatalogVerificationSchema.extend({
+  portMapRows: z.array(UiPortMapRowReferenceSchema).min(1),
 });
 
 export const UiVerificationAssertionSchema = z.enum([
@@ -60,7 +67,10 @@ export const UiVerificationEvidenceManifestSchema = z.strictObject({
   verifiedAt: DateOnlySchema,
   method: z.enum(["deterministic-driver", "playwright-cli-duo-autopilot"]),
   assertions: z.array(z.strictObject({
-    semanticId: z.union([ElementIdSchema, PageStateIdSchema, ObservationIdSchema]),
+    semanticId: z.union([ScreenIdSchema, ElementIdSchema, PageStateIdSchema, ObservationIdSchema]),
+    screen: ScreenIdSchema,
+    scenarioId: ScenarioIdSchema,
+    portMapRows: z.array(UiPortMapRowReferenceSchema).min(1),
     assertion: UiVerificationAssertionSchema,
     matchedCount: z.literal(1),
     capturedValue: z.literal(false),
@@ -85,7 +95,7 @@ const CatalogCommonSchema = z.strictObject({
   label: z.string().min(1),
   searchTerms: z.array(z.string().min(1)).min(1),
   sensitivity: UiSensitivitySchema,
-  verification: UiVerificationSchema,
+  verification: UiCatalogVerificationSchema,
   taskUses: z.array(TaskIdSchema),
   sourceLink: UiSourceLinkSchema,
 });

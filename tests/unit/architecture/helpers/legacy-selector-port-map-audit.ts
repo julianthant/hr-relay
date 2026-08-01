@@ -57,9 +57,9 @@ const VerificationEvidenceSchema = z.strictObject({
   liveReadOnlyEvidenceRef: EvidenceReferenceSchema,
 });
 
-const CandidateProposalIdSchema = z.string().regex(
-  /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)+$/,
-  "candidate proposal id must be qualified but is not a semantic UI id",
+export const CandidateProposalIdSchema = z.string().regex(
+  /^candidate:(?:ucpath|crm|onbase|kuali|servicenow|i9|new-kronos|old-kronos|sharepoint)\/[a-z0-9]+(?:[.-][a-z0-9]+)*$/,
+  "candidate proposal id must use the candidate:<system>/<proposal> namespace",
 );
 
 export const LegacySelectorPortEntrySchema = z.union([
@@ -128,7 +128,20 @@ function camelToKebab(value: string): string {
 
 function candidateId(system: keyof typeof EXPECTED_COUNTS, legacyKey: string): string {
   const path = legacyKey.slice(0, -2).split(".").map(camelToKebab).join(".");
-  return CandidateProposalIdSchema.parse(`${system}.${path}`);
+  return CandidateProposalIdSchema.parse(`candidate:${system}/${path}`);
+}
+
+export function assertLegacySelectorDefinitionAtLine(
+  source: string,
+  legacyKey: string,
+  sourceLine: number,
+): void {
+  const method = legacyKey.slice(0, -2).split(".").at(-1);
+  const line = source.split("\n")[sourceLine - 1];
+  if (method === undefined || line === undefined
+    || (!line.includes(`${method}:`) && !line.includes(`function ${method}(`))) {
+    throw new Error(`${legacyKey} has no selector definition at pinned source line ${String(sourceLine)}`);
+  }
 }
 
 function parseCatalog(system: keyof typeof EXPECTED_COUNTS, catalog: string): readonly {
@@ -184,19 +197,23 @@ export function buildLegacySelectorPortMap(legacyRoot: string): LegacySelectorPo
   });
   const entries = systems.flatMap((snapshot) => {
     const catalog = git(legacyRoot, ["show", `${PINNED_LEGACY_SELECTOR_COMMIT}:${snapshot.catalogPath}`]);
-    return parseCatalog(snapshot.system, catalog).map((entry) => ({
-      system: snapshot.system,
-      legacyKey: entry.legacyKey,
-      candidateId: candidateId(snapshot.system, entry.legacyKey),
-      searchTerms: entry.searchTerms,
-      sourcePath: snapshot.sourcePath,
-      sourceLine: entry.sourceLine,
-      sourceBlob: snapshot.sourceBlob,
-      catalogPath: snapshot.catalogPath,
-      catalogBlob: snapshot.catalogBlob,
-      disposition: "candidate" as const,
-      semanticKind: "unclassified" as const,
-    }));
+    const source = git(legacyRoot, ["show", `${PINNED_LEGACY_SELECTOR_COMMIT}:${snapshot.sourcePath}`]);
+    return parseCatalog(snapshot.system, catalog).map((entry) => {
+      assertLegacySelectorDefinitionAtLine(source, entry.legacyKey, entry.sourceLine);
+      return {
+        system: snapshot.system,
+        legacyKey: entry.legacyKey,
+        candidateId: candidateId(snapshot.system, entry.legacyKey),
+        searchTerms: entry.searchTerms,
+        sourcePath: snapshot.sourcePath,
+        sourceLine: entry.sourceLine,
+        sourceBlob: snapshot.sourceBlob,
+        catalogPath: snapshot.catalogPath,
+        catalogBlob: snapshot.catalogBlob,
+        disposition: "candidate" as const,
+        semanticKind: "unclassified" as const,
+      };
+    });
   });
   return LegacySelectorPortMapSchema.parse({
     schemaVersion: 1,

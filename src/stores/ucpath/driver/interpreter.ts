@@ -2,7 +2,7 @@ import type { FrameLocator, Locator, Page } from "playwright";
 import { EidSchema } from "../../../domain/ids.js";
 import type { ElementId, PageStateId } from "../../../domain/ids.js";
 import { PageStateProofSchema, UiActionProofSchema } from "../../../domain/ui/driver.js";
-import type { MutationCapability, PageStateProof, UiActionProof } from "../../../domain/ui/driver.js";
+import type { PageStateProof, UiActionProof } from "../../../domain/ui/driver.js";
 import {
   UCPATH_PERSON_ORG_DETAIL_READY,
   UCPATH_PERSON_ORG_DETAIL_SCREEN,
@@ -35,6 +35,14 @@ function resolveLocator(page: Page, element: ElementDefinition): Locator {
       exact: element.locator.exact,
     });
   }
+  if (element.locator.kind === "css-fallback") {
+    const [first, ...rest] = element.locator.selectors;
+    if (first === undefined) throw new Error(`${element.id} has an empty CSS fallback recipe`);
+    return rest.reduce(
+      (locator, selector) => locator.or(root.locator(selector)),
+      root.locator(first),
+    );
+  }
   return root.locator(element.locator.selector);
 }
 
@@ -42,6 +50,21 @@ function stateById(id: PageStateId) {
   const state = UCPATH_UI_REGISTRY.states.find((candidate) => candidate.id === id);
   if (!state) throw new Error(`UCPath UI registry has no page state ${id}`);
   return state;
+}
+
+async function waitForState(page: Page, stateId: PageStateId): Promise<PageStateProof> {
+  const state = stateById(stateId);
+  for (const evidence of state.evidence) {
+    await resolveLocator(page, elementById(evidence.element)).waitFor({
+      state: "visible",
+      timeout: state.timeoutMs,
+    });
+  }
+  return PageStateProofSchema.parse({ system: "ucpath", stateId, matched: true });
+}
+
+async function waitForElementStates(page: Page, element: ElementDefinition): Promise<void> {
+  for (const stateId of element.requiredStates) await waitForState(page, stateId);
 }
 
 export function createUcpathPersonOrgDriver(page: Page): UcpathPersonOrgDriver {
@@ -54,20 +77,14 @@ export function createUcpathPersonOrgDriver(page: Page): UcpathPersonOrgDriver {
       throw new Error(`UCPath Person Org navigation for ${screen} is not yet wired; session-owned navigation lands in Phase 1f`);
     },
     async waitFor(stateId) {
-      const state = stateById(stateId);
-      for (const evidence of state.evidence) {
-        await resolveLocator(page, elementById(evidence.element)).waitFor({
-          state: "visible",
-          timeout: state.timeoutMs,
-        });
-      }
-      return PageStateProofSchema.parse({ system: "ucpath", stateId, matched: true });
+      return waitForState(page, stateId);
     },
     async fill(id, value) {
       if (id !== UCPATH_PERSON_ORG_EID_INPUT) throw new Error(`UCPath Person Org cannot fill ${id}`);
       const eid = EidSchema.parse(value);
       const element = elementById(id);
       if (element.effect !== "prepare") throw new Error(`${id} is not a prepare-class field`);
+      await waitForElementStates(page, element);
       await resolveLocator(page, element).fill(eid);
       return UiActionProofSchema.parse({ elementId: id, effect: "prepare", performed: true });
     },
@@ -75,15 +92,14 @@ export function createUcpathPersonOrgDriver(page: Page): UcpathPersonOrgDriver {
       if (id !== UCPATH_PERSON_ORG_DISPLAYED_EID) throw new Error(`UCPath Person Org cannot read ${id}`);
       const observation = UCPATH_UI_REGISTRY.observations.find((candidate) => candidate.id === id);
       if (!observation) throw new Error(`UCPath UI registry has no observation ${id}`);
-      const text = await resolveLocator(page, elementById(observation.read.element)).textContent();
+      const element = elementById(observation.read.element);
+      await waitForElementStates(page, element);
+      const text = await resolveLocator(page, element).textContent();
       if (text === null) throw new Error(`${id} rendered without text`);
       return EidSchema.parse(text.trim());
     },
     async click(id: never): Promise<UiActionProof> {
       throw new Error(`UCPath Person Org has no registered non-commit click ${String(id)}`);
-    },
-    async commit(id: never, _capability: MutationCapability): Promise<UiActionProof> {
-      throw new Error(`UCPath Person Org has no registered external-commit element ${String(id)}`);
     },
   };
 }

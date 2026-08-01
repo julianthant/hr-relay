@@ -1,6 +1,6 @@
 import { EidSchema } from "../../../domain/ids.js";
 import { PageStateProofSchema, UiActionProofSchema } from "../../../domain/ui/driver.js";
-import type { MutationCapability, UiActionProof } from "../../../domain/ui/driver.js";
+import type { UiActionProof } from "../../../domain/ui/driver.js";
 import {
   UCPATH_PERSON_ORG_DETAIL_READY,
   UCPATH_PERSON_ORG_DETAIL_SCREEN,
@@ -43,9 +43,6 @@ export function createDeterministicUcpathPersonOrgDriver(): UcpathPersonOrgDrive
     },
     async click(id: never): Promise<UiActionProof> {
       throw new Error(`fixture has no registered non-commit click ${String(id)}`);
-    },
-    async commit(id: never, _capability: MutationCapability): Promise<UiActionProof> {
-      throw new Error(`fixture has no registered external-commit element ${String(id)}`);
     },
   };
 }

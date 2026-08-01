@@ -61,7 +61,7 @@
       "file": "tests/unit/architecture/legacy-selector-port-provenance.test.ts",
       "status": "active",
       "owner": "docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "All 406 legacy selector keys are represented exactly once with recipe-free search intent and exact clean-commit source/catalog Git provenance; path-derived candidate proposals remain unclassified and non-authoritative, while ported semantic ids require dual evidence.",
+      "invariant": "All 406 legacy selector keys are represented exactly once with recipe-free search intent, exact clean-commit source/catalog Git provenance, and a selector definition at the pinned source line; disjoint candidate:<system>/<proposal> ids remain unclassified and cannot collide with any catalog kind, while ported semantic ids require exact fixture/live evidence bindings.",
       "replacementRequired": true
     },
     {
@@ -430,7 +430,7 @@
       "file": "tests/unit/architecture/semantic-ui-registry.test.ts",
       "status": "active",
       "owner": "docs/rebuild/12-operator-trust-and-authoring.md; docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "Every server-private semantic UI definition has a globally unique classified id, collision-free search intent, resolved same-system dependencies, non-vacuous globally unique verification scenarios, dual sanitized evidence, and byte-fresh recipe-free generated catalogs; legacy candidates cannot enter the runtime catalog.",
+      "invariant": "Every server-private semantic UI definition has a globally unique classified id, collision-free search intent, resolved same-system/same-screen acyclic dependencies, non-vacuous globally unique verification scenarios, exact dual sanitized evidence-to-screen/scenario/date/port-row bindings, and byte-fresh recipe-free generated catalogs; disjoint legacy candidate ids cannot enter any runtime catalog kind.",
       "replacementRequired": true
     },
     {
@@ -481,7 +481,7 @@
       "file": "tests/unit/architecture/task-driver-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/12-operator-trust-and-authoring.md; docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "Playwright types and raw locator operations remain confined to per-system driver/session owners; tasks and workflows consume only typed semantic ids, proofs, observations, and mutation-capability-gated commit signatures.",
+      "invariant": "AST and transitive import-graph audits confine static/dynamic Playwright access, raw browser types, locator/frame/getBy/newPage/evaluate/$ operations, and private driver/session ownership to per-system driver/session modules; task/workflow code consumes typed semantic ids and proofs, while MutationCapability forgery and commit implementations remain prohibited until the Phase-1f validator.",
       "replacementRequired": true
     },
     {
