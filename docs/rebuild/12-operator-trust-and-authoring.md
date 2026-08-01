@@ -83,7 +83,11 @@ the sanitized evidence manifests record no captured value and no external write 
 JSON/Markdown catalogs and `selector:search` consume the recipe-free projection only. Active guards
 make the disjoint `candidate:<system>/<proposal>` namespace unable to enter any catalog kind and
 keep raw Playwright calls in driver/session owners through AST plus transitive import-graph checks.
-`selector:search` fails loud when its generated catalog is stale. Each published fact is bound to
+`selector:search` fails loud when its generated catalog is stale, on a zero-match intent, and
+without an intent argument; behavioural CLI fixtures exercise both scripts as real child processes
+and assert the projection leaks no locator recipe, closing the legacy
+`src/scripts/selectors/{catalog,search,search-lib}.ts` capabilities as `replaced` (§3.6). Each
+published fact is bound to
 one exact fixture and live assertion carrying the same system, screen, scenario, date, and port-map
 row; same-screen state dependencies and acyclic `supersedes` edges are audited. Driver `fill` and
 `read` enforce required states immediately before interaction, and the displayed-EID recipe retains

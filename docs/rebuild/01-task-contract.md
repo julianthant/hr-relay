@@ -161,6 +161,34 @@ adapters/clients exhaust fail loud and never translate failure into an empty suc
 admission/rate/concurrency/cost budgets, production adapters/pools/consumers, browser acquisition,
 login wiring, session lifecycle, and worker execution remain owned by 1f/2h.
 
+### Phase 1d as-built — the first `stores/common/` leaf (2026-08-01)
+
+`src/stores/common/` is now populated by its first shared leaf: the Kronos timecard check, ported
+with provenance from legacy `src/services/timecard/index.ts`
+(commit `793abe1f`, blob `91c5b930`). The port splits along this doc's own boundary — pure
+Clock-injected period/date resolution lives in `src/domain/timecard-period.ts`, and the
+orchestration helper that both Kronos stores will bind lives in `src/stores/common/timecard.ts`.
+
+Four boundary changes were made in the port; each removes a silent fallback or a banned primitive
+rather than reshaping the algorithm, and each is pinned by a test:
+
+- **No raw `Page`.** Legacy `TimecardDriver` took `(page, …)` on every method. `SemanticTimecardDriver`
+  is page-free; concrete Kronos drivers own their Playwright internals (doc 12 §1.4).
+- **No `waitForTimeout`.** The legacy orchestration slept 3s after navigation and after a period
+  switch. Settling is a semantic page-state wait owned by the driver operation; the helper never sleeps.
+- **Navigation failure throws.** `goToTimecard(): Promise<boolean>` returning `false` made "could not
+  open the timecard" indistinguishable from "no punch entries exist" — both surfaced as `null`.
+- **The driver cannot assert its own switch.** `switchPeriod(): Promise<boolean>` becomes a typed
+  `TimecardPeriodSwitch` carrying the before/after period labels, which the helper compares (doc 12
+  §1.4). "There is no previous period" is a declared named arm, never inferred from a bare `false`.
+
+The window helper also computes its bounds in calendar days rather than `n * 86_400_000` ms: the
+legacy arithmetic lands an hour off local midnight across a DST transition, which can shift a bound
+by a whole day once day-granularity rounding applies. `TimecardDateRange`, `TimecardMonthDay`, and
+`VisibleTimecardMonthDays` are strict schemas in the boundary catalog, because the month/day half of
+every timecard date is parsed from an untrusted Kronos grid. The Old Kronos adapter closes its
+capability at migration order 2 and New Kronos at order 8; this helper is the seam both bind to.
+
 ---
 
 ## 1. What today's code teaches us (the problems the contract must kill)

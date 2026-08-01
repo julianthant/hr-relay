@@ -15,15 +15,15 @@ describe("isolated rebuild runtime composition after Phase 1c", () => {
       browserSessionNamespace: "hrauto-rebuild",
     });
     assert.match(runtimeHelp(rebuildRuntimeIsolation), /1g-spine/);
-    assert.match(runtimeHelp(rebuildRuntimeIsolation), /completed through 1c; active 1d/);
+    assert.match(runtimeHelp(rebuildRuntimeIsolation), /completed through 1d; active 1e/);
   });
 
   it("executes only the currently owned CLI surface and fails loud for future runtime work", () => {
     const output: string[] = [];
     startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["phase"], write: (value) => output.push(value) });
     assert.deepEqual(JSON.parse(output[0] ?? ""), {
-      completedThrough: "1c",
-      active: "1d",
+      completedThrough: "1d",
+      active: "1e",
       stateRoot: ".tracker-rebuild",
       artifactRoot: ".tracker-rebuild/artifacts",
       backendPort: 3938,
@@ -63,8 +63,8 @@ describe("isolated rebuild runtime composition after Phase 1c", () => {
     assert.equal(written.length, 1);
     assert.equal(written[0]?.endsWith("\n"), true);
     assert.deepEqual(JSON.parse(written[0] ?? ""), {
-      completedThrough: "1c",
-      active: "1d",
+      completedThrough: "1d",
+      active: "1e",
       stateRoot: ".tracker-rebuild",
       artifactRoot: ".tracker-rebuild/artifacts",
       backendPort: 3938,
