@@ -9,6 +9,7 @@ export {
   type ProjectionRepositories,
 } from "./authority-database.js";
 export {
+  AUTHORITY_RECORD_SCHEMA_REGISTRY,
   ArtifactOutboxStorageRecordSchema,
   OpaqueAuthorityRecordSchema,
   ProjectionStorageRecordSchema,
@@ -33,6 +34,11 @@ export {
   type OfflineRestoreFileOperations,
 } from "./offline-restore.js";
 export {
+  RecoveryStopProofStore,
+  RecoveryStopProofStoreOptionsSchema,
+  StoppedSystemProofIssueRequestSchema,
+} from "./recovery-stop-proof.js";
+export {
   AuthorityBackupManifestSchema,
   AuthorityBackupRequestSchema,
   AuthorityBackupRunReportSchema,
@@ -45,6 +51,8 @@ export {
   OfflineRestoreReportSchema,
   OfflineRestoreRequestSchema,
   RestoreCandidateSchema,
+  RecoveryProcessLockStateSchema,
+  RecoveryRuntimeLockSnapshotSchema,
   StoppedSystemProofSchema,
   StorageDoctorReportSchema,
   StorageHealthCauseSchema,
@@ -56,6 +64,7 @@ export {
   type AuthorityPendingCounts,
   type OfflineRestoreReport,
   type RestoreCandidate,
+  type RecoveryRuntimeLockSnapshot,
   type StoppedSystemProof,
   type StorageDoctorReport,
   type StorageHealthCause,

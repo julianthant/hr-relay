@@ -41,6 +41,7 @@ import {
 } from "./recovery-contracts.js";
 import {
   ArtifactOutboxStorageRecordSchema,
+  AUTHORITY_RECORD_SCHEMA_REGISTRY,
   OpaqueAuthorityRecordSchema,
   ProjectionStorageRecordSchema,
   VersionPlanStorageRecordSchema,
@@ -286,6 +287,27 @@ function invariantViolations(database: DatabaseSync): readonly string[] {
   });
 }
 
+function validateAuthorityRecordSchemas(database: DatabaseSync): number {
+  let validated = 0;
+  for (const [table, schema] of Object.entries(AUTHORITY_RECORD_SCHEMA_REGISTRY)) {
+    const rows = z.array(AuthorityRecordFingerprintRowSchema).parse(database.prepare(`
+      SELECT record_key, record_json FROM ${table} ORDER BY record_key
+    `).all());
+    for (const row of rows) {
+      try {
+        parseJsonRecord(schema, row.record_json);
+      } catch (error) {
+        throw new Error(
+          `authority table ${table} record ${row.record_key} failed strict record schema validation: ${errorMessage(error)}`,
+          { cause: error },
+        );
+      }
+      validated += 1;
+    }
+  }
+  return validated;
+}
+
 function authorityContentFingerprint(database: DatabaseSync): string {
   const authorityRows = AuthorityTableNameSchema.options.map((name) => {
     if (name === "authority_meta") {
@@ -343,6 +365,7 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
   if (meta.migration_owner !== null || meta.migration_started_at !== null) {
     throw new Error(`authority database is locked by migration owner ${String(meta.migration_owner)}`);
   }
+  validateAuthorityRecordSchemas(database);
   const violations = invariantViolations(database);
   if (violations.length > 0) throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
   if (readIntPragma(database, "foreign_keys") !== 1) throw new Error("authority database foreign keys are disabled");

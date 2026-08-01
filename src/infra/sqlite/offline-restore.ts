@@ -22,11 +22,14 @@ import {
   OfflineRestoreRequestSchema,
   type OfflineRestoreReport,
 } from "./recovery-contracts.js";
+import { RecoveryStopProofStore } from "./recovery-stop-proof.js";
 
 export const OfflineRestoreOptionsSchema = z.strictObject({
   authorityPath: z.string().min(1),
   suspectDirectory: z.string().min(1),
   busyTimeoutMs: z.number().int().positive(),
+  processLockRoot: z.string().min(1),
+  stoppedProofMaxAgeMs: z.number().int().positive(),
 });
 
 export interface OfflineRestoreFileOperations {
@@ -65,6 +68,7 @@ export class OfflineAuthorityRestoreService {
   #projectionRebuild: (stagedAuthorityPath: string) => Promise<void>;
   #clock: Clock;
   #fileOperations: OfflineRestoreFileOperations;
+  #stopProofStore: RecoveryStopProofStore;
 
   constructor(
     input: unknown,
@@ -79,17 +83,21 @@ export class OfflineAuthorityRestoreService {
     this.#projectionRebuild = projectionRebuild;
     this.#clock = clock;
     this.#fileOperations = fileOperations;
+    this.#stopProofStore = new RecoveryStopProofStore({
+      processLockRoot: options.processLockRoot,
+      maxProofAgeMs: options.stoppedProofMaxAgeMs,
+    }, clock);
   }
 
   async restore(input: unknown): Promise<OfflineRestoreReport> {
     const request = OfflineRestoreRequestSchema.parse(input);
     const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(this.#authorityPath);
-    if (request.stoppedSystemProof.sourceDatabaseIdentity !== sourceDatabaseIdentity) {
-      throw new Error("stopped-system proof belongs to a different authority database");
-    }
     if (!existsSync(this.#authorityPath) || statSync(this.#authorityPath).size === 0) {
       throw new Error(`suspect authority database ${this.#authorityPath} is missing or empty`);
     }
+
+    const verified = await verifyBackupManifestAtPath(request.manifestPath, sourceDatabaseIdentity);
+    this.#stopProofStore.consume(request.stoppedSystemProof);
 
     mkdirSync(this.#suspectDirectory, { recursive: true, mode: 0o700 });
     const token = randomUUID();
@@ -103,7 +111,6 @@ export class OfflineAuthorityRestoreService {
     }
     fsyncPath(this.#suspectDirectory);
 
-    const verified = await verifyBackupManifestAtPath(request.manifestPath, sourceDatabaseIdentity);
     const authorityDirectory = dirname(this.#authorityPath);
     const stagedPath = join(authorityDirectory, `.restore-${token}.sqlite.tmp`);
     try {

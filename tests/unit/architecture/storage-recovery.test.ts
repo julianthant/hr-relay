@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   appendFileSync,
   copyFileSync,
@@ -8,6 +9,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   truncateSync,
   utimesSync,
   writeFileSync,
@@ -25,6 +27,7 @@ import {
   AuthorityHealthPreflightRunner,
   AuthorityMutationUnavailableError,
   OfflineAuthorityRestoreService,
+  RecoveryStopProofStore,
   doctorAuthorityStorage,
   verifyBackupManifestAtPath,
 } from "../../../src/infra/sqlite/index.js";
@@ -95,16 +98,34 @@ function manifestPaths(directory: string): string[] {
     .map((name) => join(directory, name));
 }
 
-function stoppedProof(authorityPath: string) {
+function restoreOptions(root: string, authorityPath: string, suspects = join(root, "suspects")) {
   return {
-    state: "stopped",
-    proofId: UUID_2,
-    observedAt: NOW,
-    observedBy: "local-operator",
-    sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(authorityPath),
-    serverStopped: true,
-    workersStopped: true,
+    authorityPath,
+    suspectDirectory: suspects,
+    busyTimeoutMs: 100,
+    processLockRoot: join(root, "locks"),
+    stoppedProofMaxAgeMs: 60_000,
   };
+}
+
+function stoppedProof(root: string, authorityPath: string, clock = CLOCK) {
+  const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
+  const store = new RecoveryStopProofStore({
+    processLockRoot: join(root, "locks"),
+    maxProofAgeMs: 60_000,
+  }, clock);
+  store.recordRuntimeState({
+    schemaVersion: 1,
+    runtimeNamespace: "hrauto-rebuild",
+    runtimeGeneration: 7,
+    sourceDatabaseIdentity,
+    recordedAt: clock.now().toISOString(),
+    processLocks: {
+      server: { state: "stopped", generation: 11 },
+      workers: { state: "stopped", generation: 13 },
+    },
+  });
+  return store.issue({ observedBy: "local-operator", sourceDatabaseIdentity });
 }
 
 async function createBackup(database: AuthorityDatabase, directory: string) {
@@ -223,10 +244,25 @@ describe("verified native online backups", () => {
     writeFileSync(second.manifestPath, JSON.stringify({ ...parsed, sha256: HASH_B }));
     await assert.rejects(verifyBackupManifestAtPath(second.manifestPath), /checksum does not match/);
   });
+
+  it("rejects a native backup whose JSON-valid command record fails its strict schema", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    database.authority.commands.insert(COMMAND_FIXTURES[0]);
+    const corruption = new DatabaseSync(authorityPath);
+    corruption.prepare("UPDATE commands SET record_json = ? WHERE record_key = ?")
+      .run(JSON.stringify({ family: "start" }), UUID_1);
+    corruption.close();
+
+    await assert.rejects(createBackup(database, directory), /commands record .* failed strict record schema validation/);
+    assert.deepEqual(readdirSync(directory), []);
+  });
 });
 
 describe("fail-closed degraded boot and read-only doctor", () => {
-  it("opens corrupt, truncated, newer, foreign-key-invalid, and invariant-invalid files degraded", () => {
+  it("opens corrupt, truncated, newer, foreign-key-invalid, invariant-invalid, and record-invalid files degraded", async () => {
     const root = testRoot();
     const paths: Array<readonly [string, string]> = [];
 
@@ -265,6 +301,16 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     badInvariant.close();
     paths.push([invariantPath, "authority-invariant"]);
 
+    const recordSchemaPath = join(root, "record-schema.sqlite");
+    const recordSchemaDatabase = openDatabase(recordSchemaPath);
+    recordSchemaDatabase.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+    recordSchemaDatabase.close();
+    const badRecordSchema = new DatabaseSync(recordSchemaPath);
+    badRecordSchema.prepare("UPDATE write_intents SET record_json = ? WHERE record_key = ?")
+      .run(JSON.stringify({ status: "attempting" }), WRITE_INTENT_ATTEMPTING.writeIntentId);
+    badRecordSchema.close();
+    paths.push([recordSchemaPath, "authority-record-invalid"]);
+
     for (const [path, expectedCode] of paths) {
       const before = readFileSync(path);
       const store = openBootStore(path);
@@ -282,6 +328,15 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       }
       assert.deepEqual(readFileSync(path), before, `${path} was modified during degraded boot`);
     }
+    const doctor = await doctorAuthorityStorage({
+      authorityPath: recordSchemaPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+    assert.equal(doctor.authority.state, "degraded");
+    if (doctor.authority.state !== "degraded") throw new Error("record-invalid authority must degrade doctor");
+    assert.equal(doctor.authority.cause.code, "authority-record-invalid");
   });
 
   it("reports counts, backup freshness/gap, candidates, and a newer bad manifest without mutation", async () => {
@@ -367,16 +422,12 @@ describe("offline exact-backup restore", () => {
     writeFileSync(`${authorityPath}-wal`, "suspect wal bytes");
     writeFileSync(`${authorityPath}-shm`, "suspect shm bytes");
 
-    const restore = new OfflineAuthorityRestoreService({
-      authorityPath,
-      suspectDirectory: suspects,
-      busyTimeoutMs: 100,
-    }, async (stagedPath) => {
+    const restore = new OfflineAuthorityRestoreService(restoreOptions(root, authorityPath, suspects), async (stagedPath) => {
       const staged = AuthorityDatabase.open(databaseOptions(stagedPath), CLOCK);
       staged.projections.spans.upsert(PROJECTION_RECORD);
       staged.close();
     }, CLOCK);
-    const report = await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(authorityPath) });
+    const report = await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
     assert.equal(report.state, "restored");
     assert.equal(report.authorityGeneration, 1);
     assert.equal(existsSync(join(suspects, report.suspectFileName)), true);
@@ -399,11 +450,12 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     const before = readFileSync(authorityPath);
-    const restore = new OfflineAuthorityRestoreService({ authorityPath, suspectDirectory: suspects, busyTimeoutMs: 100 }, async () => undefined, CLOCK);
+    const restore = new OfflineAuthorityRestoreService(restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK);
+    const proof = stoppedProof(root, authorityPath);
     await assert.rejects(restore.restore({
       manifestPath,
-      stoppedSystemProof: { ...stoppedProof(authorityPath), serverStopped: false },
-    }));
+      stoppedSystemProof: { ...proof, runtimeGeneration: proof.runtimeGeneration + 1 },
+    }), /does not match its issued one-time record/);
     assert.deepEqual(readFileSync(authorityPath), before);
     assert.equal(existsSync(suspects), false);
   });
@@ -418,12 +470,12 @@ describe("offline exact-backup restore", () => {
     database.close();
     const badManifestPath = join(directory, "newest-bad.manifest.json");
     writeFileSync(badManifestPath, "{ invalid");
-    const restore = new OfflineAuthorityRestoreService({ authorityPath, suspectDirectory: suspects, busyTimeoutMs: 100 }, async () => undefined, CLOCK);
+    const restore = new OfflineAuthorityRestoreService(restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK);
     await assert.rejects(
-      restore.restore({ manifestPath: badManifestPath, stoppedSystemProof: stoppedProof(authorityPath) }),
+      restore.restore({ manifestPath: badManifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
     );
     assert.equal(manifestPaths(directory).length, 2);
-    assert.equal(readdirSync(suspects).some((name) => name.startsWith("suspect-")), true);
+    assert.equal(existsSync(suspects), false);
     assert.equal(AuthorityDatabase.inspectExistingReadOnly(authorityPath).authorityGeneration, 0);
   });
 
@@ -440,9 +492,9 @@ describe("offline exact-backup restore", () => {
     const liveGeneration = AuthorityDatabase.inspectExistingReadOnly(authorityPath).authorityGeneration;
     writeFileSync(`${authorityPath}-wal`, "live wal bytes");
     writeFileSync(`${authorityPath}-shm`, "live shm bytes");
-    const restore = new OfflineAuthorityRestoreService({ authorityPath, suspectDirectory: suspects, busyTimeoutMs: 100 }, () => Promise.reject(new Error("injected projection rebuild failure")), CLOCK);
+    const restore = new OfflineAuthorityRestoreService(restoreOptions(root, authorityPath, suspects), () => Promise.reject(new Error("injected projection rebuild failure")), CLOCK);
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(authorityPath) }),
+      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
       /injected projection rebuild failure/,
     );
     assert.equal(AuthorityDatabase.inspectExistingReadOnly(authorityPath).authorityGeneration, liveGeneration);
@@ -464,7 +516,7 @@ describe("offline exact-backup restore", () => {
     writeFileSync(`${authorityPath}-wal`, "live wal bytes");
     writeFileSync(`${authorityPath}-shm`, "live shm bytes");
     const restore = new OfflineAuthorityRestoreService(
-      { authorityPath, suspectDirectory: suspects, busyTimeoutMs: 100 },
+      restoreOptions(root, authorityPath, suspects),
       async () => undefined,
       CLOCK,
       {
@@ -473,13 +525,131 @@ describe("offline exact-backup restore", () => {
       },
     );
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(authorityPath) }),
+      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
       /injected atomic swap failure/,
     );
     assert.equal(readFileSync(`${authorityPath}-wal`, "utf8"), "live wal bytes");
     assert.equal(readFileSync(`${authorityPath}-shm`, "utf8"), "live shm bytes");
     assert.equal(AuthorityDatabase.inspectExistingReadOnly(authorityPath).authorityGeneration, liveGeneration);
     assert.equal(readdirSync(suspects).length > 0, true);
+  });
+
+  it("rejects stale, replayed, generation-mismatched, and currently-active process-lock proofs", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const suspects = join(root, "suspects");
+    const database = openDatabase(authorityPath);
+    const { manifestPath } = await createBackup(database, directory);
+    database.close();
+
+    const staleClock = manualClock(new Date(NOW));
+    const staleProof = stoppedProof(root, authorityPath, staleClock);
+    staleClock.advanceWall(60_001);
+    const staleRestore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath, suspects),
+      async () => undefined,
+      staleClock,
+    );
+    await assert.rejects(
+      staleRestore.restore({ manifestPath, stoppedSystemProof: staleProof }),
+      /proof .* is stale/,
+    );
+    assert.equal(existsSync(suspects), false);
+
+    const currentProof = stoppedProof(root, authorityPath);
+    const store = new RecoveryStopProofStore({ processLockRoot: join(root, "locks"), maxProofAgeMs: 60_000 }, CLOCK);
+    store.recordRuntimeState({
+      schemaVersion: 1,
+      runtimeNamespace: "hrauto-rebuild",
+      runtimeGeneration: currentProof.runtimeGeneration + 1,
+      sourceDatabaseIdentity: currentProof.sourceDatabaseIdentity,
+      recordedAt: NOW,
+      processLocks: {
+        server: { state: "stopped", generation: currentProof.processLockGenerations.server },
+        workers: { state: "stopped", generation: currentProof.processLockGenerations.workers },
+      },
+    });
+    const mismatchedRestore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath, suspects),
+      async () => undefined,
+      CLOCK,
+    );
+    await assert.rejects(
+      mismatchedRestore.restore({ manifestPath, stoppedSystemProof: currentProof }),
+      /does not match current runtime and process-lock generations/,
+    );
+    assert.equal(existsSync(suspects), false);
+
+    const activeProof = stoppedProof(root, authorityPath);
+    store.recordRuntimeState({
+      schemaVersion: 1,
+      runtimeNamespace: "hrauto-rebuild",
+      runtimeGeneration: activeProof.runtimeGeneration,
+      sourceDatabaseIdentity: activeProof.sourceDatabaseIdentity,
+      recordedAt: NOW,
+      processLocks: {
+        server: { state: "active", generation: activeProof.processLockGenerations.server, pid: process.pid },
+        workers: { state: "stopped", generation: activeProof.processLockGenerations.workers },
+      },
+    });
+    const activeRestore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath, suspects),
+      async () => undefined,
+      CLOCK,
+    );
+    await assert.rejects(
+      activeRestore.restore({ manifestPath, stoppedSystemProof: activeProof }),
+      /server process lock generation .* is active for pid/,
+    );
+    assert.equal(existsSync(suspects), false);
+
+    const replayProof = stoppedProof(root, authorityPath);
+    const replayRestore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath, suspects),
+      async () => undefined,
+      CLOCK,
+    );
+    await replayRestore.restore({ manifestPath, stoppedSystemProof: replayProof });
+    const suspectsAfterFirstRestore = readdirSync(suspects).length;
+    await assert.rejects(
+      replayRestore.restore({ manifestPath, stoppedSystemProof: replayProof }),
+      /was already consumed/,
+    );
+    assert.equal(readdirSync(suspects).length, suspectsAfterFirstRestore);
+  });
+
+  it("rejects a checksum-valid restore copy whose authority record is schema-invalid", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const suspects = join(root, "suspects");
+    const database = openDatabase(authorityPath);
+    const { manifestPath } = await createBackup(database, directory);
+    database.close();
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown> & { backupFileName: string };
+    const backupPath = join(directory, manifest.backupFileName);
+    const corruptBackup = new DatabaseSync(backupPath);
+    corruptBackup.prepare("INSERT INTO tasks (record_key, record_json, created_at) VALUES (?, ?, ?)")
+      .run(UUID_8, JSON.stringify({ recordId: UUID_8 }), NOW);
+    corruptBackup.close();
+    const bytes = readFileSync(backupPath);
+    writeFileSync(manifestPath, JSON.stringify({
+      ...manifest,
+      byteSize: statSync(backupPath).size,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    }));
+
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath, suspects),
+      async () => undefined,
+      CLOCK,
+    );
+    await assert.rejects(
+      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      /tasks record .* failed strict record schema validation/,
+    );
+    assert.equal(existsSync(suspects), false);
   });
 });
 

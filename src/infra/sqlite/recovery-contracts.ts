@@ -99,6 +99,7 @@ export const StorageHealthCauseSchema = z.strictObject({
     "authority-corrupt",
     "authority-foreign-key",
     "authority-invariant",
+    "authority-record-invalid",
     "authority-schema-newer",
     "authority-schema-mismatch",
     "authority-migration-locked",
@@ -187,14 +188,36 @@ export const StorageDoctorReportSchema = z.strictObject({
   restoreCandidates: z.array(RestoreCandidateSchema),
 });
 
+export const RecoveryProcessLockStateSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("stopped"), generation: PositiveIntSchema }),
+  z.strictObject({ state: z.literal("active"), generation: PositiveIntSchema, pid: PositiveIntSchema }),
+]);
+
+export const RecoveryRuntimeLockSnapshotSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  runtimeNamespace: z.literal("hrauto-rebuild"),
+  runtimeGeneration: PositiveIntSchema,
+  sourceDatabaseIdentity: FingerprintSchema,
+  recordedAt: IsoInstantSchema,
+  processLocks: z.strictObject({
+    server: RecoveryProcessLockStateSchema,
+    workers: RecoveryProcessLockStateSchema,
+  }),
+});
+
 export const StoppedSystemProofSchema = z.strictObject({
   state: z.literal("stopped"),
   proofId: z.string().uuid(),
   observedAt: IsoInstantSchema,
   observedBy: ActorIdSchema,
   sourceDatabaseIdentity: FingerprintSchema,
-  serverStopped: z.literal(true),
-  workersStopped: z.literal(true),
+  runtimeNamespace: z.literal("hrauto-rebuild"),
+  runtimeGeneration: PositiveIntSchema,
+  runtimeStateFingerprint: FingerprintSchema,
+  processLockGenerations: z.strictObject({
+    server: PositiveIntSchema,
+    workers: PositiveIntSchema,
+  }),
 });
 
 export const OfflineRestoreRequestSchema = z.strictObject({
@@ -223,5 +246,6 @@ export type StorageHealthCause = z.infer<typeof StorageHealthCauseSchema>;
 export type AuthorityBootReport = z.infer<typeof AuthorityBootReportSchema>;
 export type RestoreCandidate = z.infer<typeof RestoreCandidateSchema>;
 export type StorageDoctorReport = z.infer<typeof StorageDoctorReportSchema>;
+export type RecoveryRuntimeLockSnapshot = z.infer<typeof RecoveryRuntimeLockSnapshotSchema>;
 export type StoppedSystemProof = z.infer<typeof StoppedSystemProofSchema>;
 export type OfflineRestoreReport = z.infer<typeof OfflineRestoreReportSchema>;

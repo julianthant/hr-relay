@@ -66,9 +66,10 @@ marker, corruption, foreign-key violations, or registry/schema drift. It never r
 existing file with a fresh database.
 
 Every successful outer transaction that actually mutates authority increments
-`authority_generation` once in the same commit. Nested authority repositories share that unit;
-empty/idempotent transactions and projection upsert/clear do not increment it, and rollback changes
-neither records nor generation. Permanent write-intent insertion deduplicates by the durable
+`authority_generation` once in the same commit. Nested authority repositories use real SQLite
+savepoints, so an outer callback that catches a failed nested fence/commit cannot retain that
+operation's partial rows or dirty-generation state; empty/idempotent transactions and projection
+upsert/clear do not increment it, and rollback changes neither records nor generation. Permanent write-intent insertion deduplicates by the durable
 idempotency-key digest for both `committed` and preflight `observed-present` records. Authority
 repositories deliberately expose no cleanup/delete operation; projection repositories alone expose
 `clear`.
@@ -100,20 +101,26 @@ pending command/write/outbox/notification counts and explicit restore candidates
 every discovered manifest and treats the newest invalid candidate as an invalid backup state
 instead of silently falling back to an older plausible copy.
 
-Offline restore is deliberately only a stopped-system primitive. It requires matching stopped
-proof, preserves the suspect authority file and exact WAL/SHM companions, verifies the exact
-requested manifest/copy, stages in the live directory, invokes an injected projection rebuild,
-then proves the authority generation and content fingerprint did not change before the atomic
-swap. It does not stop processes, choose a backup, delete preserved evidence, expose an HTTP/UI
-surface, or contact a live system. Phase 1c remains incomplete until the later Stage-D spine work.
+Inspection parses every durable `record_json` through the strict schema registered for its authority
+table; JSON validity alone is never backup, doctor, or restore authority. Offline restore is
+deliberately only a stopped-system primitive. It first verifies the exact requested manifest/copy
+without mutation, then atomically consumes a fresh one-time proof issued from the isolated rebuild
+process-lock root. The proof binds source-database identity, `hrauto-rebuild`, current runtime
+generation, and current server/worker lock generations; stale, replayed, mismatched, or active-lock
+proofs fail before suspect preservation or staging. A valid restore preserves the suspect authority
+file and exact WAL/SHM companions, stages in the live directory, invokes an injected projection
+rebuild, then proves the authority generation and content fingerprint did not change before the
+atomic swap. It does not stop processes, choose a backup, delete preserved evidence, expose an
+HTTP/UI surface, or contact a live system. Phase 1c remains incomplete until the later Stage-D spine work.
 
 ---
 
 ## Phase 1c Stage D as-built authority-write delta (2026-08-01)
 
-Stage D closes item 1c's authority-write storage seam. Schema version 1 now persists the strict
-natural idempotency key beside its derived digest and enforces both digest uniqueness and
-`UNIQUE(system,idempotency_key)`. The public adapter offers only narrow permanent-key operations:
+Stage D closes item 1c's authority-write storage seam. The committed Stage-B version-1 DDL remains
+immutable; schema migration 2 adds and backfills the strict natural idempotency-key columns beside
+the derived digest and adds the unique `(system,idempotency_key)` index. An exact old-v1 fixture is
+opened, migrated, validated, read, and written in the focused suite. The public adapter offers only narrow permanent-key operations:
 record an unseen `observed-present` intent, fence one consistent intent/attempt pair, read by exact
 permanent key, and commit the current fenced attempt. Standalone attempt insertion, durable-outbox
 insertion, raw SQL, and native handles remain private.
@@ -768,7 +775,8 @@ of erasing claim, delegation, checkpoint, and write-fence truth. The base theref
 
 1. SQLite runs with WAL, foreign keys on, a busy timeout, and `synchronous=FULL` for authority
    transactions. Schema migrations run only under an exclusive migration lease.
-2. Boot runs `PRAGMA quick_check`, schema-version validation, foreign-key checks, and invariant
+2. Boot runs `PRAGMA quick_check`, schema-version validation, foreign-key checks, parses every
+   authority table's durable `record_json` through its registered strict schema, and runs invariant
    queries (one active claim per run, manifest children match dependencies, every attempting write
    has an attempt, every outbox references authority, every finalizing capture has exactly one live
    bundle/handoff outbox, and every finalized capture references one intake handoff). Any failure starts the dashboard read-only
@@ -793,8 +801,9 @@ of erasing claim, delegation, checkpoint, and write-fence truth. The base theref
    the verified copy's authority generation/RPO gap.
 5. `cli storage doctor` is read-only and reports checks, backup freshness, pending commands,
    unresolved writes, leases, outboxes, and restore candidates. `cli storage restore --from
-   <exact-backup>` first preserves the suspect DB, restores into a temp path, repeats all checks,
-   and atomically swaps only while workers/server are stopped.
+   <exact-backup>` verifies the exact backup first, then consumes a fresh one-time rebuild-runtime
+   proof bound to current runtime/server/worker lock generations before preserving the suspect DB;
+   it restores into a temp path, repeats all checks, and atomically swaps only while those locks remain stopped.
 6. Restore reconciliation replays JSONL into **projection tables only**. It never invents lost
    authority from spans. Runs/events newer than the restored authority generation are surfaced as
    `authority-unknown`; any possible external write is parked for doc 09's live probe/operator

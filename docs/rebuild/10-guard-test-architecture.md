@@ -81,9 +81,10 @@ injection, and projector tests remain later Phase-1c/1f work; Stage A does not m
 Stage B extends the existing `strict-boundary-schemas.test.ts` catalog with the adapter options,
 metadata/inspection, immutable-insert disposition, and strict SQLite storage-record shells. It also
 adds focused unit proof in `sqlite-authority-database.test.ts` for exact table classification and
-pragmas, existing-file/version/migration-marker/schema/lock failure, foreign keys, idempotent
-commands, permanent committed/`observed-present` write keys, every registered authority repository
-mutator, nested/empty/rollback generation accounting, and projection upsert/clear. A separate static
+pragmas, the exact committed-v1 → v2 migration fixture, existing-file/version/migration-marker/
+schema/lock failure, foreign keys, idempotent commands, permanent committed/`observed-present`
+write keys, every registered authority repository mutator, savepoint-isolated caught nested
+fence/commit failures, empty/rollback generation accounting, and projection upsert/clear. A separate static
 unit test, `sqlite-authority-boundary.test.ts`, proves that only the private adapter imports or names
 `DatabaseSync` and that its public entrypoint exposes no raw connection or SQL escape hatch.
 
@@ -104,8 +105,12 @@ The suite pins successful self-inspected copies and manifests, request coalescin
 generation follow-up, backup interruption cleanup, byte/manifest tampering, corrupt/truncated/
 foreign/newer/foreign-key/invariant-invalid degraded boot, all four mutation refusals, exact doctor
 counts and candidate ordering, and stopped-proof restore with suspect-file preservation and
-projection-only rebuild verification. It also exercises missing proof, exact-candidate rejection,
-projection-rebuild failure, and atomic-swap failure.
+projection-only rebuild verification. Every authority record is strict-schema parsed during copy
+inspection; JSON-valid/schema-invalid command, write-intent, and opaque-family corruption fixtures
+make backup, boot/doctor, and restore fail closed. Restore proof fixtures cover stale, replayed,
+runtime/process-generation-mismatched, forged, and active-process states and prove refusal before
+suspect/staging mutation. The suite also exercises exact-candidate rejection, projection-rebuild
+failure, and atomic-swap failure.
 
 Static boundary proof keeps `DatabaseSync` and `node:sqlite` private to the adapter, requires the
 official backup symbol, and bans `VACUUM INTO` and filesystem-copy backup fallbacks. The strict

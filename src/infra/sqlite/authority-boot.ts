@@ -15,6 +15,7 @@ export function storageHealthCauseFromError(error: unknown): StorageHealthCause 
   if (/empty|missing/i.test(summary)) code = "authority-empty";
   else if (/not a database|file is not a database|not the HR authority store/i.test(summary)) code = "authority-not-sqlite";
   else if (/newer than supported/i.test(summary)) code = "authority-schema-newer";
+  else if (/strict record schema validation/i.test(summary)) code = "authority-record-invalid";
   else if (/schema|tables do not match registry|user_version/i.test(summary)) code = "authority-schema-mismatch";
   else if (/migration owner/i.test(summary)) code = "authority-migration-locked";
   else if (/foreign-key/i.test(summary)) code = "authority-foreign-key";

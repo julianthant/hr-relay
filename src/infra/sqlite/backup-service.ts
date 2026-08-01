@@ -226,11 +226,17 @@ export class AuthorityBackupService {
       return manifest;
     } catch (error) {
       if (finalManifestPath !== undefined && existsSync(finalManifestPath)) rmSync(finalManifestPath);
-      if (finalBackupPath !== undefined && existsSync(finalBackupPath)) rmSync(finalBackupPath);
+      if (finalBackupPath !== undefined) {
+        for (const path of [finalBackupPath, `${finalBackupPath}-wal`, `${finalBackupPath}-shm`]) {
+          if (existsSync(path)) rmSync(path);
+        }
+      }
       throw error;
     } finally {
       if (existsSync(temporaryManifestPath)) rmSync(temporaryManifestPath);
-      if (existsSync(temporaryBackupPath)) rmSync(temporaryBackupPath);
+      for (const path of [temporaryBackupPath, `${temporaryBackupPath}-wal`, `${temporaryBackupPath}-shm`]) {
+        if (existsSync(path)) rmSync(path);
+      }
     }
   }
 }
