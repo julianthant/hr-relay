@@ -54,6 +54,15 @@ values, so a missing/unreadable ngrok source blocks selected capture instead of 
 was not an environment secret. Redaction canaries and single-source guards are active. Immutable
 per-run snapshots and the consumers that use these leaves still land with their owning later items.
 
+## Phase 1c Stage A as-built config delta (2026-07-31)
+
+`src/domain/config/snapshot.ts` now defines the immutable durable snapshot shell: strict snapshot
+id/revision/fingerprint/timestamp/actor, the complete already-resolved non-secret `Config`, and the
+typed per-leaf provenance map from the one resolver. This records the exact value/source world a
+future run will bind without re-reading mutable settings. Stage A adds no snapshot repository,
+enqueue integration, settings handler, or browser-context partitioning; those consumers remain
+later spine work and Phase 1c is not complete.
+
 ---
 
 ## 1. Grounding — what exists today, why it hurts

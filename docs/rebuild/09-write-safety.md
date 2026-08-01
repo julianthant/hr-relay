@@ -55,6 +55,23 @@ Amendments at sibling seams (each is a one-owner-per-concept addition, not a red
 
 ---
 
+## Phase 1c Stage A as-built contract delta (2026-07-31)
+
+`src/domain/write-safety.ts` now implements the dependency-free strict shell described below:
+evidence-qualified `ProbeVerdict`, stabilized versus operator-only negative-settlement policy, a
+Clock-injected pure evaluator, the closed `SubjectProof | UnscopedBindingProof` union, reviewed
+unscoped-reason registry, and permanent intent/attempt record schemas. A bare `absent`, an early or
+single negative, an ambiguous/unknown/present verdict, a different key/query/source/state, or an
+operator-only policy cannot produce `safe-to-retry`.
+
+`src/domain/ledger.ts` and `src/domain/outbox.ts` add strict schema-hash-bound ledger payloads and
+the two closed atomic beat-⑦ payload arms (`ledger-entry` and `write-committed-span`). They are
+durable shapes only. Stage A includes no browser commit task, mutation capability, fence store,
+sequencer, projector, recovery service, or external HR call, and therefore does not claim the write
+sequence is implemented. Phase 1c remains in progress.
+
+---
+
 ## 0. Grounding — what exists today (the port inventory, real code)
 
 Every row below is live-verified leaf knowledge the charter forbids re-deriving. It ports, wrapped.

@@ -4,8 +4,29 @@ import { join } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
 import { z } from "zod";
+import { AUTHORITY_TABLE_REGISTRY, AuthorityTableRegistrySchema, TableSpecSchema } from "../../../src/domain/authority.js";
 import { BoundaryFailureSchema } from "../../../src/domain/boundary-failure.js";
 import { manualClock } from "../../../src/domain/clock.js";
+import {
+  BulkRunCommandRequestSchema,
+  COMMAND_FAMILY_REGISTRY,
+  CaptureCommandRequestSchema,
+  CommandAuditRecordSchema,
+  CommandEnvelopeSchema,
+  CommandFamilyRegistrySchema,
+  CommandFamilySpecSchema,
+  CommandRequestSchema,
+  CommandResultSchema,
+  CommandTargetReferenceSchema,
+  GateCommandRequestSchema,
+  IntakeCommandRequestSchema,
+  NotificationCommandRequestSchema,
+  RunCommandRequestSchema,
+  SettingsCommandRequestSchema,
+  StartCommandRequestSchema,
+  VersionArchiveCommandRequestSchema,
+  WorkerBrowserCommandRequestSchema,
+} from "../../../src/domain/commands.js";
 import {
   CONFIG_ENV_BINDINGS,
   ConfigEnvBindingRegistrySchema,
@@ -13,11 +34,17 @@ import {
   resolveConfigWithProvenance,
 } from "../../../src/domain/config/resolve.js";
 import { ConfigSchema, SettingsOverrideSchema } from "../../../src/domain/config/schema.js";
+import { ConfigSnapshotRecordSchema } from "../../../src/domain/config/snapshot.js";
 import { ArtifactRefWireSchema, ArtifactResourceWireSchema, CapturePointerWireSchema } from "../../../src/domain/dashboard/artifacts.js";
 import { FrontendBootstrapWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { DashboardStreamEnvelopeSchema, DashboardTopicPatchSchema, DashboardTopicSnapshotSchema } from "../../../src/domain/dashboard/subscription.js";
+import { DelegationManifestSchema, DependencyRecordSchema } from "../../../src/domain/dependencies.js";
+import { GateResultRecordSchema } from "../../../src/domain/gates.js";
+import { LedgerEntryPayloadSchema, LedgerEntrySchema, LedgerOutboxPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from "../../../src/domain/ledger.js";
+import { NotificationRecordSchema } from "../../../src/domain/notifications.js";
+import { AtomicOutboxPayloadSchema, AtomicOutboxRecordSchema } from "../../../src/domain/outbox.js";
 import {
   buildPreflightReport,
   PreflightObservationSchema,
@@ -28,6 +55,7 @@ import {
 import { ClassifiedDiagnosticValueSchema, RedactionResultSchema } from "../../../src/domain/redaction.js";
 import { RUNTIME_DEPENDENCY_REGISTRY, RuntimeDependencyRegistrySchema } from "../../../src/domain/runtime-dependencies.js";
 import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema } from "../../../src/domain/runtime-environment.js";
+import { SchemaBoundCanonicalValueSchema } from "../../../src/domain/schema-bound-value.js";
 import {
   SECRET_FAMILY_SPECS,
   SECRET_FILE_SPECS,
@@ -51,6 +79,40 @@ import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
 import { FixRecordSchema, KnowledgeRecordSchema } from "../../../src/domain/trust/knowledge.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../src/domain/trust/preflight-scenarios.js";
 import { ScenarioManifestSchema } from "../../../src/domain/trust/scenario.js";
+import {
+  AbsentEvidenceSchema,
+  NegativeSettlementDecisionSchema,
+  NegativeSettlementEvaluationInputSchema,
+  NegativeSettlementPolicySchema,
+  PresentProofReferenceSchema,
+  RecoveryProbeVerdictSchema,
+  SubjectEvidenceSchema,
+  SubjectProofSchema,
+  UNSCOPED_COMMIT_REASON_REGISTRY,
+  UnscopedBindingProofSchema,
+  UnscopedCommitReasonSpecSchema,
+  WriteAttemptRecordSchema,
+  WriteBindingProofSchema,
+  WriteIntentRecordSchema,
+} from "../../../src/domain/write-safety.js";
+import {
+  ABSENCE_1,
+  ABSENCE_2,
+  COMMAND_FIXTURES,
+  CONFIG_SNAPSHOT,
+  DELEGATION_MANIFEST,
+  DEPENDENCY_RECORD,
+  GATE_RESULT,
+  LEDGER_OUTBOX_PAYLOAD,
+  LEDGER_PAYLOAD,
+  NOTIFICATION,
+  SPAN_OUTBOX_PAYLOAD,
+  SUBJECT_EVIDENCE,
+  SUBJECT_PROOF,
+  UNSCOPED_PROOF,
+  WRITE_ATTEMPT,
+  WRITE_INTENT_ATTEMPTING,
+} from "../fixtures/phase1c-contract-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
 const UUID_1 = "11111111-1111-4111-8111-111111111111";
@@ -167,6 +229,84 @@ const PREFLIGHT_REPORT = buildPreflightReport({
   configFingerprint: HASH_A, requestedCapabilities, observations: preflightObservations, clock: CLOCK,
 });
 
+const commandFixtures = (family: string): readonly unknown[] => COMMAND_FIXTURES.filter(
+  (fixture) => (fixture as { readonly family: string }).family === family,
+);
+const COMMAND_ENVELOPE = {
+  commandId: UUID_1,
+  requestedAt: NOW,
+  requestedBy: "local-operator",
+  source: "dashboard",
+};
+const COMMAND_RESULT = {
+  state: "applied",
+  commandId: UUID_1,
+  affectedTargets: [{ family: "start", workflowId: "onboarding", startPlanId: UUID_3 }],
+};
+const COMMAND_AUDIT = {
+  auditId: UUID_2,
+  request: COMMAND_FIXTURES[0],
+  result: COMMAND_RESULT,
+  completedAt: NOW,
+  versionChanges: [],
+  affectedDependencyIds: [],
+};
+const BULK_RUN_COMMAND = {
+  ...COMMAND_ENVELOPE,
+  bulkCommandId: UUID_2,
+  family: "run",
+  type: "bump",
+  targets: [{ runId: UUID_3, expectedVersion: 1 }],
+  mode: "all-or-none",
+};
+const PRESENT_PROOF_REFERENCE = {
+  proofSchemaHash: HASH_A,
+  proofFingerprint: HASH_B,
+  evidenceRef: `observation:${UUID_3}`,
+};
+const STABILIZED_POLICY = {
+  kind: "stabilized",
+  minSinceFenceMs: 60_000,
+  consistentReads: 2,
+  minBetweenReadsMs: 60_000,
+  requireSameSourceState: true,
+};
+const NEGATIVE_EVALUATION = {
+  writeIntentId: UUID_1,
+  generation: 1,
+  idempotencyKeyDigest: HASH_A,
+  fencedAt: NOW,
+  policy: STABILIZED_POLICY,
+  verdicts: [{ state: "absent", evidence: ABSENCE_1 }, { state: "absent", evidence: ABSENCE_2 }],
+};
+const SAFE_SETTLEMENT = {
+  state: "safe-to-retry",
+  writeIntentId: UUID_1,
+  generation: 1,
+  decidedAt: "2026-07-31T17:03:00.000Z",
+  evidence: [ABSENCE_1, ABSENCE_2],
+};
+const WRITE_INTENT_FIXTURES = [
+  WRITE_INTENT_ATTEMPTING,
+  { ...WRITE_INTENT_ATTEMPTING, status: "committed", completionProof: { schemaHash: HASH_A, value: "T123" }, confirmedAt: ABSENCE_1.observedAt },
+  { ...WRITE_INTENT_ATTEMPTING, status: "retryable", settlement: SAFE_SETTLEMENT, resolvedAt: ABSENCE_2.observedAt },
+  { ...WRITE_INTENT_ATTEMPTING, status: "parked", parkedCode: "operator-required", message: "Manual confirmation required" },
+];
+const WRITE_ATTEMPT_FIXTURES = [
+  WRITE_ATTEMPT,
+  { ...WRITE_ATTEMPT, outcome: { state: "committed", completionProof: { schemaHash: HASH_A, value: "T123" }, confirmedAt: ABSENCE_1.observedAt } },
+  { ...WRITE_ATTEMPT, outcome: { state: "safe-to-retry", settlement: SAFE_SETTLEMENT } },
+  { ...WRITE_ATTEMPT, outcome: { state: "parked", code: "operator-required", message: "Manual confirmation required" } },
+];
+const LEDGER_ENTRY = { outboxId: UUID_1, seq: 0, payload: LEDGER_PAYLOAD };
+const atomicOutbox = (payload: unknown) => ({
+  outboxId: UUID_1,
+  aggregate: { kind: "write-intent", writeIntentId: UUID_1, generation: 1 },
+  payload,
+  projection: { state: "pending" },
+  createdAt: NOW,
+});
+
 interface BoundaryCatalogEntry {
   readonly name: string;
   readonly schema: z.ZodType;
@@ -176,6 +316,87 @@ interface BoundaryCatalogEntry {
 }
 
 const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
+  { name: "AuthorityTableSpec", schema: TableSpecSchema, fixtures: AUTHORITY_TABLE_REGISTRY },
+  { name: "AuthorityTableRegistry", schema: AuthorityTableRegistrySchema, fixtures: [AUTHORITY_TABLE_REGISTRY] },
+  { name: "SchemaBoundCanonicalValue", schema: SchemaBoundCanonicalValueSchema, fixtures: [{ schemaHash: HASH_A, value: "approved" }] },
+  { name: "CommandEnvelope", schema: CommandEnvelopeSchema, fixtures: [COMMAND_ENVELOPE] },
+  { name: "StartCommandRequest", schema: StartCommandRequestSchema, fixtures: commandFixtures("start") },
+  { name: "IntakeCommandRequest", schema: IntakeCommandRequestSchema, fixtures: commandFixtures("intake") },
+  { name: "WorkerBrowserCommandRequest", schema: WorkerBrowserCommandRequestSchema, fixtures: commandFixtures("worker-browser") },
+  { name: "SettingsCommandRequest", schema: SettingsCommandRequestSchema, fixtures: commandFixtures("settings") },
+  { name: "VersionArchiveCommandRequest", schema: VersionArchiveCommandRequestSchema, fixtures: commandFixtures("version-archive") },
+  { name: "RunCommandRequest", schema: RunCommandRequestSchema, fixtures: commandFixtures("run") },
+  { name: "GateCommandRequest", schema: GateCommandRequestSchema, fixtures: commandFixtures("gate") },
+  { name: "NotificationCommandRequest", schema: NotificationCommandRequestSchema, fixtures: commandFixtures("notification") },
+  { name: "CaptureCommandRequest", schema: CaptureCommandRequestSchema, fixtures: commandFixtures("capture") },
+  { name: "CommandRequest", schema: CommandRequestSchema, fixtures: COMMAND_FIXTURES },
+  { name: "CommandTargetReference", schema: CommandTargetReferenceSchema, fixtures: [
+    { family: "start", workflowId: "onboarding", startPlanId: UUID_1 },
+    { family: "intake", intakeSessionId: UUID_1 },
+    { family: "worker-browser", workerId: "worker-1" },
+    { family: "settings", revision: 1 },
+    { family: "version-archive", versionPlanId: UUID_1 },
+    { family: "run", runId: UUID_1 },
+    { family: "gate", runId: UUID_1, gateId: "identity-approval" },
+    { family: "notification", notificationId: UUID_1 },
+    { family: "capture", captureSessionId: UUID_1 },
+  ] },
+  { name: "CommandResult", schema: CommandResultSchema, fixtures: [
+    COMMAND_RESULT,
+    { state: "conflict", commandId: UUID_1, currentVersion: 2, message: "Target changed" },
+    { state: "rejected", commandId: UUID_1, code: "policy-refused", message: "Policy refused the command" },
+  ] },
+  { name: "CommandAuditRecord", schema: CommandAuditRecordSchema, fixtures: [COMMAND_AUDIT] },
+  { name: "BulkRunCommandRequest", schema: BulkRunCommandRequestSchema, fixtures: [BULK_RUN_COMMAND] },
+  { name: "CommandFamilySpec", schema: CommandFamilySpecSchema, fixtures: COMMAND_FAMILY_REGISTRY },
+  { name: "CommandFamilyRegistry", schema: CommandFamilyRegistrySchema, fixtures: [COMMAND_FAMILY_REGISTRY] },
+  { name: "DependencyRecord", schema: DependencyRecordSchema, fixtures: [DEPENDENCY_RECORD] },
+  { name: "DelegationManifest", schema: DelegationManifestSchema, fixtures: [DELEGATION_MANIFEST] },
+  { name: "GateResultRecord", schema: GateResultRecordSchema, fixtures: [GATE_RESULT] },
+  { name: "NotificationRecord", schema: NotificationRecordSchema, fixtures: [
+    NOTIFICATION,
+    { ...NOTIFICATION, notificationId: UUID_1, trigger: "verified-done", channel: "inbox", status: "read", snooze: { state: "snoozed", until: "2026-07-31T18:00:00.000Z" }, links: [{ kind: "failure", failureId: UUID_2, runId: UUID_3 }] },
+    { ...NOTIFICATION, notificationId: UUID_2, links: [{ kind: "storage", diagnosticFingerprint: HASH_B }] },
+  ] },
+  { name: "ConfigSnapshotRecord", schema: ConfigSnapshotRecordSchema, fixtures: [CONFIG_SNAPSHOT] },
+  { name: "SubjectEvidence", schema: SubjectEvidenceSchema, fixtures: [
+    SUBJECT_EVIDENCE,
+    { kind: "artifact", artifactId: UUID_1, bindingDigest: HASH_A },
+    { kind: "catalog", catalogKey: "annual-dates", bindingDigest: HASH_A },
+  ] },
+  { name: "SubjectProof", schema: SubjectProofSchema, fixtures: [SUBJECT_PROOF] },
+  { name: "UnscopedCommitReasonSpec", schema: UnscopedCommitReasonSpecSchema, fixtures: UNSCOPED_COMMIT_REASON_REGISTRY },
+  { name: "UnscopedBindingProof", schema: UnscopedBindingProofSchema, fixtures: [UNSCOPED_PROOF] },
+  { name: "WriteBindingProof", schema: WriteBindingProofSchema, fixtures: [SUBJECT_PROOF, UNSCOPED_PROOF] },
+  { name: "AbsentEvidence", schema: AbsentEvidenceSchema, fixtures: [ABSENCE_1, ABSENCE_2] },
+  { name: "PresentProofReference", schema: PresentProofReferenceSchema, fixtures: [PRESENT_PROOF_REFERENCE] },
+  { name: "RecoveryProbeVerdict", schema: RecoveryProbeVerdictSchema, fixtures: [
+    { state: "present", proof: PRESENT_PROOF_REFERENCE },
+    { state: "absent", evidence: ABSENCE_1 },
+    { state: "ambiguous", matches: 2, observedAt: ABSENCE_1.observedAt, queryDigest: HASH_A, evidence: [`observation:${UUID_1}`, `observation:${UUID_2}`] },
+    { state: "unknown", reason: "probe timed out", observedAt: ABSENCE_1.observedAt },
+  ] },
+  { name: "NegativeSettlementPolicy", schema: NegativeSettlementPolicySchema, fixtures: [STABILIZED_POLICY, { kind: "operator-only", reason: "no trustworthy negative read" }] },
+  { name: "NegativeSettlementEvaluationInput", schema: NegativeSettlementEvaluationInputSchema, fixtures: [NEGATIVE_EVALUATION] },
+  { name: "NegativeSettlementDecision", schema: NegativeSettlementDecisionSchema, fixtures: [
+    SAFE_SETTLEMENT,
+    { state: "wait", writeIntentId: UUID_1, generation: 1, decidedAt: NOW, notBefore: ABSENCE_1.observedAt, observationsNeeded: 1 },
+    { state: "parked", writeIntentId: UUID_1, generation: 1, decidedAt: NOW, code: "unknown", reason: "probe timed out" },
+  ] },
+  { name: "WriteIntentRecord", schema: WriteIntentRecordSchema, fixtures: WRITE_INTENT_FIXTURES },
+  { name: "WriteAttemptRecord", schema: WriteAttemptRecordSchema, fixtures: WRITE_ATTEMPT_FIXTURES },
+  { name: "LedgerEntryPayload", schema: LedgerEntryPayloadSchema, fixtures: [
+    LEDGER_PAYLOAD,
+    { ...LEDGER_PAYLOAD, subject: { state: "absent" }, externalOccurredAt: { state: "present", value: ABSENCE_1.observedAt } },
+  ] },
+  { name: "LedgerEntry", schema: LedgerEntrySchema, fixtures: [LEDGER_ENTRY] },
+  { name: "LedgerOutboxPayload", schema: LedgerOutboxPayloadSchema, fixtures: [LEDGER_OUTBOX_PAYLOAD] },
+  { name: "WriteCommittedSpanOutboxPayload", schema: WriteCommittedSpanOutboxPayloadSchema, fixtures: [SPAN_OUTBOX_PAYLOAD] },
+  { name: "AtomicOutboxPayload", schema: AtomicOutboxPayloadSchema, fixtures: [LEDGER_OUTBOX_PAYLOAD, SPAN_OUTBOX_PAYLOAD] },
+  { name: "AtomicOutboxRecord", schema: AtomicOutboxRecordSchema, fixtures: [
+    atomicOutbox(LEDGER_OUTBOX_PAYLOAD),
+    { ...atomicOutbox(SPAN_OUTBOX_PAYLOAD), projection: { state: "projected", projectedAt: ABSENCE_1.observedAt, projectionFingerprint: HASH_A } },
+  ] },
   { name: "BoundaryFailure", schema: BoundaryFailureSchema, fixtures: [{ kind: "boundary-failure", source: "config", summary: "invalid config", issues: [{ path: ["urls"], code: "invalid", message: "invalid URL" }] }] },
   { name: "Config", schema: ConfigSchema, fixtures: [ConfigSchema.parse({})] },
   { name: "SettingsOverride", schema: SettingsOverrideSchema, fixtures: [{}] },

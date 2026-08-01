@@ -30,6 +30,24 @@ operational separation stays gated.
 
 ---
 
+## Phase 1c Stage A as-built contract delta (2026-07-31)
+
+Stage A lands the domain shell, not the storage service. `src/domain/authority.ts` now classifies an
+exhaustive, recursively frozen registry of authority versus rebuildable projection table names;
+there is deliberately no DDL, `node:sqlite`, repository, backup, doctor, or restore implementation
+yet. Strict Zod-derived schemas now cover dependency records and immutable delegation manifests,
+schema-hash-bound gate results, actor-keyed notifications, command results/audits, and the closed
+atomic write-outbox arms.
+
+`src/domain/commands.ts` implements D95's nine exhaustive target families and actor-stamped
+idempotent envelope. Run `bump` is priority-only, version/archive uses only
+`plan-version-bump` → `apply-version-bump`, and run `rename` accepts only the bounded normalized
+display-name payload in §2.4. These are type shells: no route, handler, projector, worker, or UI
+uses them in Stage A. Phase 1c remains in progress; the native authority/recovery implementation is
+a later Stage-B delta.
+
+---
+
 ## 0. What exists today (and what specifically hurts)
 
 | Today | Mechanism | Pain |

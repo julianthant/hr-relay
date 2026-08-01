@@ -40,6 +40,23 @@ export const WriteBindingProofIdSchema = brandedText<"WriteBindingProofId">(
   UUID_PATTERN,
   "write-binding proof id must be a UUID",
 );
+export const LeaseIdSchema = brandedText<"LeaseId">(UUID_PATTERN, "lease id must be a UUID");
+export const DependencyIdSchema = brandedText<"DependencyId">(UUID_PATTERN, "dependency id must be a UUID");
+export const DelegationManifestIdSchema = brandedText<"DelegationManifestId">(
+  UUID_PATTERN,
+  "delegation manifest id must be a UUID",
+);
+export const StartPlanIdSchema = brandedText<"StartPlanId">(UUID_PATTERN, "start plan id must be a UUID");
+export const IntakeSessionIdSchema = brandedText<"IntakeSessionId">(UUID_PATTERN, "intake session id must be a UUID");
+export const IntakeManifestIdSchema = brandedText<"IntakeManifestId">(UUID_PATTERN, "intake manifest id must be a UUID");
+export const BrowserSessionIdSchema = brandedText<"BrowserSessionId">(UUID_PATTERN, "browser session id must be a UUID");
+export const CaptureSessionIdSchema = brandedText<"CaptureSessionId">(UUID_PATTERN, "capture session id must be a UUID");
+export const CapturePhotoIdSchema = brandedText<"CapturePhotoId">(UUID_PATTERN, "capture photo id must be a UUID");
+export const VersionPlanIdSchema = brandedText<"VersionPlanId">(UUID_PATTERN, "version plan id must be a UUID");
+export const CommandAuditIdSchema = brandedText<"CommandAuditId">(UUID_PATTERN, "command audit id must be a UUID");
+export const OutboxIdSchema = brandedText<"OutboxId">(UUID_PATTERN, "outbox id must be a UUID");
+export const WriteIntentIdSchema = brandedText<"WriteIntentId">(UUID_PATTERN, "write intent id must be a UUID");
+export const WriteAttemptIdSchema = brandedText<"WriteAttemptId">(UUID_PATTERN, "write attempt id must be a UUID");
 
 export const WorkflowIdSchema = brandedText<"WorkflowId">(SLUG_PATTERN, "workflow id must be kebab-case");
 export const ActorIdSchema = brandedText<"ActorId">(SLUG_PATTERN, "actor id must be kebab-case");
@@ -52,6 +69,11 @@ export const NodeIdSchema = brandedText<"NodeId">(SLUG_PATTERN, "node id must be
 export const ScenarioAssertionIdSchema = brandedText<"ScenarioAssertionId">(SLUG_PATTERN, "assertion id must be kebab-case");
 export const SourceSurfaceIdSchema = brandedText<"SourceSurfaceId">(SLUG_PATTERN, "source surface id must be kebab-case");
 export const WorkerIdSchema = brandedText<"WorkerId">(SLUG_PATTERN, "worker id must be kebab-case");
+export const GateIdSchema = brandedText<"GateId">(SLUG_PATTERN, "gate id must be kebab-case");
+export const DelegationEdgeIdSchema = brandedText<"DelegationEdgeId">(
+  SLUG_PATTERN,
+  "delegation edge id must be kebab-case",
+);
 
 export const TraceIdSchema = brandedText<"TraceId">(
   /^[a-z0-9]{2}-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/,
@@ -120,6 +142,23 @@ export type EvidenceReceiptId = z.infer<typeof EvidenceReceiptIdSchema>;
 export type DiagnosticBundleId = z.infer<typeof DiagnosticBundleIdSchema>;
 export type ArtifactId = z.infer<typeof ArtifactIdSchema>;
 export type EvidenceEntryId = z.infer<typeof EvidenceEntryIdSchema>;
+export type ConfigSnapshotId = z.infer<typeof ConfigSnapshotIdSchema>;
+export type NotificationId = z.infer<typeof NotificationIdSchema>;
+export type WriteBindingProofId = z.infer<typeof WriteBindingProofIdSchema>;
+export type LeaseId = z.infer<typeof LeaseIdSchema>;
+export type DependencyId = z.infer<typeof DependencyIdSchema>;
+export type DelegationManifestId = z.infer<typeof DelegationManifestIdSchema>;
+export type StartPlanId = z.infer<typeof StartPlanIdSchema>;
+export type IntakeSessionId = z.infer<typeof IntakeSessionIdSchema>;
+export type IntakeManifestId = z.infer<typeof IntakeManifestIdSchema>;
+export type BrowserSessionId = z.infer<typeof BrowserSessionIdSchema>;
+export type CaptureSessionId = z.infer<typeof CaptureSessionIdSchema>;
+export type CapturePhotoId = z.infer<typeof CapturePhotoIdSchema>;
+export type VersionPlanId = z.infer<typeof VersionPlanIdSchema>;
+export type CommandAuditId = z.infer<typeof CommandAuditIdSchema>;
+export type OutboxId = z.infer<typeof OutboxIdSchema>;
+export type WriteIntentId = z.infer<typeof WriteIntentIdSchema>;
+export type WriteAttemptId = z.infer<typeof WriteAttemptIdSchema>;
 export type WorkflowId = z.infer<typeof WorkflowIdSchema>;
 export type ActorId = z.infer<typeof ActorIdSchema>;
 export type TraceId = z.infer<typeof TraceIdSchema>;

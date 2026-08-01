@@ -57,6 +57,24 @@ their future contracts are not reported as implemented by 1b.
 
 ---
 
+## Phase 1c Stage A as-built guard delta (2026-07-31)
+
+The existing `strict-boundary-schemas.test.ts` catalog now registers every Stage-A durable/wire
+schema and exercises every command, proof, probe, settlement, intent/attempt, notification,
+gate-result, ledger, and outbox union arm. Its recursive unknown-key mutation now covers the new
+nested objects as well as malformed IDs/timestamps and schema-bound canonical values. No new
+architecture guard file was needed, so the guard inventory is unchanged rather than padded with a
+duplicate guard.
+
+Focused unit/adversarial tests pin D95 family closure, priority/version bump separation, strict
+rename normalization, immutable manifest freezing, generic gate schema hashes, notification
+routing, dry-run-impossible ledger payloads, erased proof rejection, and the rule that pre-window,
+single, ambiguous, unknown, present, or inconsistent negative observations cannot unlock retry.
+Storage/recovery, command-handler single-path, write-sequencer ordering, atomic-transaction crash
+injection, and projector tests remain later Phase-1c/1f work; Stage A does not mark them green.
+
+---
+
 ## 1. The suite today — what the rebuild repo inherits (grounded inventory)
 
 In the legacy repo, `npm run test:architecture` runs `tests/unit/architecture/**` (dot reporter).
