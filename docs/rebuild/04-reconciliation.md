@@ -629,7 +629,18 @@ records them and the same commit folds each into its owner. **One line each — 
 |---|---|---|
 | **D95** | **RUN PRIORITY AND VERSION/ARCHIVE NEVER SHARE A `bump` ARM.** Run `bump` remains priority/claim-order only; version work is a reviewable `plan-version-bump` followed by `apply-version-bump`. Run `rename` is added with one strict bounded display-name payload, and the exhaustive start/intake/worker-browser/settings/version-archive/run/gate/notification/capture target families are ratified before routes exist. | doc 03 §§2.4/10.2–10.3 (primary); doc 07 item 1c/§7.2 |
 
-**Two separate D-series exist — do not confuse them.** This memo's `D1–D95` are cross-doc
+## Reconciliation round 14 (2026-08-01) — Phase 1d seam closure, folded
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D96** | **ONE SESSION-NEED SHAPE.** Browser tasks declare system, read/transaction access, reuse/fresh policy, and optional download/exclusive flags; effect/access mismatches fail, and OnBase alone is identity-exclusive. | docs 01/05 |
+| **D97** | **ARTIFACT UUID IDENTITY IS DISTINCT FROM SHA-256 CONTENT IDENTITY.** Byte-identical puts are idempotent under the private content-addressed root; public contracts expose no path. | docs 01/03 |
+| **D98** | **RUNTIME UI FACTS REQUIRE FIXTURE AND LIVE-READ-ONLY EVIDENCE.** Candidate inventory rows have neither and cannot enter runtime/catalog; singular `verified` is retired. | doc 12; guard contract doc 10 |
+| **D99** | **UI VERIFICATION SCENARIOS ARE UI-OWNED.** A small strict corpus reuses canonical `ScenarioId` grammar, is globally unique with trust scenarios, and resolves registry refs without distorting Phase-1e `ScenarioManifest`. | doc 12; guard contract doc 10 |
+| **D100** | **PHASE-1D PROVIDERS ARE INTERFACES + DETERMINISTIC FAKES ONLY.** Admission/budgets land in 1f; production pools/consumers land in 2h. | doc 01; guard contract doc 10 |
+| **D101** | **CLOSED IDS ARE IMPORTED, NEVER REDECLARED.** Task/store/UI seams reuse existing browser-system, provider-capability, task, element, screen, state, and observation identities. | docs 01/12 |
+
+**Two separate D-series exist — do not confuse them.** This memo's `D1–D101` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
 types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the
 distinction at its §9 header; always cite the row-model series with the `row-model` prefix.

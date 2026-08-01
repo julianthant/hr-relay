@@ -57,6 +57,29 @@ pin the neighboring invalid shapes, recursively reject unknown object keys, and 
 boundary types schema-derived. Task effects, contracts, stores, and subject-binding execution remain
 future 1d work and are not claimed complete here.
 
+## Phase 1d ratified seam decisions (2026-08-01)
+
+Phase 1d implements one task/store/session vocabulary and imports the closed identities already
+owned by `src/domain/ids.ts`; it does not create a second type universe.
+
+- **D96 — one `SessionNeed`.** Every browser task uses
+  `{system, access:"read"|"transaction", session:"reuse-worker"|"fresh", exclusive?:true,
+  acceptDownloads?:true}`. A read contract requires `access:"read"`; prepare and commit require
+  `access:"transaction"`. Store/factory validation rejects an effect/access mismatch, a session
+  system that differs from the store, or `exclusive:true` anywhere except OnBase. OnBase is the
+  only identity-exclusive session-provider declaration.
+- **D97 — artifact identity and content identity remain separate.** Public artifact references use
+  the existing UUID-backed `ArtifactId`; SHA-256 is the immutable content identity and private
+  content-addressed storage key. Byte-identical puts return the same reference, but no public
+  contract exposes a filesystem path.
+- **D100 — provider scope stops at the seam.** Phase 1d lands capability/client/adapter interfaces
+  and deterministic fakes. Admission, rate/concurrency/cost budgets belong to 1f; production
+  provider pools and consumers belong to 2h. A 1d declaration must not pretend either later layer
+  is operational.
+- **D101 — reuse closed ids.** `BrowserSystemId`, `ProviderCapabilityId`, `TaskId`, and UI semantic
+  ids are imported/re-exported from their existing domain owners. Contract/store modules never
+  redeclare their unions.
+
 ---
 
 ## 1. What today's code teaches us (the problems the contract must kill)
@@ -222,6 +245,10 @@ export type SubjectBindingSpec =
 // src/base/task.ts — server-side (may import Playwright types)
 export interface SessionNeed<S extends BrowserSystemId = BrowserSystemId> {
   system: S;
+  /** Must agree with the task effect: read→read; prepare/commit→transaction. */
+  access: "read" | "transaction";
+  /** Worker-session reuse is normal; a fresh boundary is explicit. */
+  session: "reuse-worker" | "fresh";
   /**
    * OnBase-style constraint: one live app session per identity. Enforced by a
    * CROSS-PROCESS SQLite lease from day one (D15) — daemons are separate OS
@@ -497,13 +524,16 @@ export interface ServiceTaskCtx<Codes extends readonly string[],
 }
 
 export interface ArtifactRef {
-  id: `sha256:${string}`;
+  /** Stable UUID identity; never a digest or filesystem path. */
+  id: ArtifactId;
+  /** Immutable content identity and private content-addressed storage key. */
   sha256: string;
   bytes: number;
   mediaType: string;
 }
 export interface ContentAddressedArtifactWriter {
-  /** Writes temp → fsync → atomic rename under the artifact root. Same bytes = same path. */
+  /** Writes temp → fsync → atomic rename under the private artifact root. Same bytes return the
+   * same ArtifactRef; callers never learn the backing path. */
   put(source: Uint8Array | NodeJS.ReadableStream,
       meta: { mediaType: string }): Promise<ArtifactRef>;
   /** Reads by validated ref; contracts never receive or expose an operator filesystem path. */
@@ -1147,7 +1177,7 @@ import { SearchPersonOrg } from "../../../domain/contracts/ucpath/search-person-
 import { lookupPersonInUcpath } from "../impl/person-lookup.js";   // ported primitive
 
 export const searchPersonOrg = defineTask(SearchPersonOrg, {
-  sessions: [{ system: "ucpath" }],
+  sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
   retry: { attempts: 2, backoffMs: 2000, retryOn: "transient" },
   run: async ({ input, ctx }) => {
     // Named driver operation wraps the verbatim-ported employment-instance expansion and
@@ -1203,7 +1233,7 @@ export const SubmitImport = defineTaskContract({
 });
 
 export const fillImport = defineTask(FillImport, {
-  sessions: [{ system: "onbase", exclusive: true }],
+  sessions: [{ system: "onbase", access: "transaction", session: "reuse-worker", exclusive: true }],
   run: async ({ input, ctx }) => {
     await ctx.driver.goto("onbase.import.form");
     const staged = await ctx.driver.fillImportFields(input);
@@ -1212,7 +1242,7 @@ export const fillImport = defineTask(FillImport, {
 });
 
 export const submitImport = defineTask(SubmitImport, {
-  sessions: [{ system: "onbase", exclusive: true }],
+  sessions: [{ system: "onbase", access: "transaction", session: "reuse-worker", exclusive: true }],
   run: async ({ input, ctx }) => {
     await ctx.driver.commitImport("onbase.import.submit", ctx.mutation);
     return { proof: await ctx.driver.verifyImportedDocument(input) };

@@ -26,6 +26,17 @@ more workers; workflows explicitly declare steps that require a fresh browser se
 Grounding: today's daemon already has one `state.activeRun` per process. The rebuild keeps that
 understandable ownership model and removes the proposed scheduler inside each process.
 
+## Phase 1d session seam ratification (2026-08-01)
+
+**D96 replaces the partial shapes in earlier drafts with one imported doc-01 `SessionNeed`:**
+`{system, access:"read"|"transaction", session:"reuse-worker"|"fresh", exclusive?:true,
+acceptDownloads?:true}`. This doc owns worker/session behavior but does not redefine that type.
+Read tasks require read access; prepare/commit tasks require transaction access; mismatches fail at
+the task/store boundary before an executor exists. `exclusive:true` is legal only for OnBase, and
+OnBase is the only identity-exclusive provider declaration. Phase 1d may declare sessions and
+fail-loud unwired login callbacks; acquisition, close ordering, fresh-boundary execution, and
+cross-process lease behavior remain 1f runtime work.
+
 ---
 
 ## 0. Settled decision
@@ -73,6 +84,8 @@ export interface SessionNeed<S extends BrowserSystemId> {
   system: S;
   access: "read" | "transaction";
   session: "reuse-worker" | "fresh";
+  exclusive?: true;
+  acceptDownloads?: true;
 }
 ```
 

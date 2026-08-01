@@ -51,6 +51,21 @@ boundary catalog and exercised against recursive unknown-key injection. This is 
 foundation only: evidence persistence/projection, `explain`, semantic UI registries/drivers, and
 authoring/explorer surfaces remain with their later owning work items.
 
+## Phase 1d UI seam ratification (2026-08-01)
+
+- **D98 — verification is conjunctive, not singular.** Every runtime/catalog element recipe,
+  page-state rule, or observation recipe carries both a required deterministic fixture-evidence ref
+  and a required read-only live-evidence ref. Candidate port-inventory rows carry neither and cannot
+  enter a runtime registry or generated catalog. The old singular `verified` field is retired.
+- **D99 — UI verification scenarios are UI-owned.** Registry scenario refs resolve against a small,
+  strict UI verification-scenario schema/corpus owned beside the UI registry. It imports the
+  canonical `ScenarioId` grammar and enforces global uniqueness with the existing trust scenario
+  corpus; it does not distort `ScenarioManifest` before 1e. Every actual registry fact resolves at
+  least one scenario non-vacuously.
+- **D101 — semantic ids are imported.** UI modules import/re-export the existing `ElementId`,
+  `ScreenId`, `PageStateId`, and `ObservationId` schemas/types from `src/domain/ids.ts`; no driver or
+  registry redeclares those closed identities.
+
 ---
 
 ## 0. Why this is foundation work, not dashboard polish
@@ -123,7 +138,12 @@ export interface UiElementDefinition<ValueSchema extends z.ZodType = z.ZodType> 
   sensitivity: "public" | "hr" | "restricted"; // controls logs/screenshots/diagnostic export
   locator: LocatorRecipe;                // closed recipe union, interpreted by the driver
   requiredStates: readonly PageStateId[];
-  verified: { at: DateOnly; method: "live" | "fixture"; evidenceRef: string };
+  verification: {
+    verifiedAt: DateOnly;
+    fixtureEvidenceRef: string;
+    liveReadOnlyEvidenceRef: string;
+    scenarios: readonly [ScenarioId, ...ScenarioId[]];
+  };
   supersedes?: readonly ElementId[];
 }
 
@@ -134,6 +154,12 @@ export interface PageStateDefinition {
   label: string;
   evidence: readonly StateEvidenceRule[]; // closed all/any/not locator/URL/observation rules
   timeoutMs: number;
+  verification: {
+    verifiedAt: DateOnly;
+    fixtureEvidenceRef: string;
+    liveReadOnlyEvidenceRef: string;
+    scenarios: readonly [ScenarioId, ...ScenarioId[]];
+  };
 }
 
 export interface UiObservationDefinition<S extends z.ZodType> {
@@ -148,6 +174,12 @@ export interface UiObservationDefinition<S extends z.ZodType> {
     ...("subject" | "completion" | "page-state")[],
   ];
   sensitivity: "public" | "hr" | "restricted";
+  verification: {
+    verifiedAt: DateOnly;
+    fixtureEvidenceRef: string;
+    liveReadOnlyEvidenceRef: string;
+    scenarios: readonly [ScenarioId, ...ScenarioId[]];
+  };
 }
 ```
 
@@ -162,7 +194,7 @@ from the same system registry and carry a fixture/test.
 
 The build generates a **safe projection** at `generated/ui-catalog.json` and per-system
 `UI-CATALOG.md` from the server registry. Each entry includes canonical id, label, search terms,
-screen/state, role/effect, verified date/method, sensitivity classification, tasks that use it,
+screen/state, role/effect, verified date plus fixture/live evidence refs, sensitivity classification, tasks that use it,
 related observations, and an exact registry source link. It deliberately omits locator/state/read
 recipes and captured values. Search resolves labels and search terms to exactly one canonical id; a
 search-term collision fails generation with both definitions named. The dashboard receives this projection; it

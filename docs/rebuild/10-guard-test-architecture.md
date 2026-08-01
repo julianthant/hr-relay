@@ -149,6 +149,23 @@ activated to make Phase 1c look broader than it is.
 These results complete **Phase 1c**. They do not complete Phase 1, whose next item is 1d and whose
 exit remains the live Person Lookup spine proof.
 
+## Phase 1d guard-activation boundary (ratified 2026-08-01)
+
+Phase 1d activates only guards whose real seam exists: port provenance, semantic UI registry and
+safe catalog freshness, task/driver boundary, effect-contract/example/error/freshness/provenance/
+subject/capability/store/provider/artifact/no-`any` boundaries, and OnBase-only exclusivity. Each
+active arm has a violating canary and a non-empty production target. Runtime descriptor/worker/
+fence-ordering guards remain planned for 1e/1f; provider admission/budget guards remain planned for
+1f; production provider-pool/consumer guards remain planned for 2h. A planned guard is never made
+active merely to make 1d look broader than its implementation.
+
+The selector port inventory is a strict checked-in architecture-lane input pinned to one clean
+legacy commit plus exact source/catalog paths and blob ids. Candidate rows contain provenance and
+search intent only—never locator strings, captured values, screenshots, secrets, or fallback
+recipes—and cannot enter the runtime registry/catalog without D98's fixture **and** live-read-only
+evidence. UI scenario refs resolve through D99's strict UI-owned verification corpus using the
+canonical `ScenarioId` grammar and a global uniqueness audit.
+
 ---
 
 ## 1. The suite today — what the rebuild repo inherits (grounded inventory)

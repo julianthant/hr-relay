@@ -510,6 +510,10 @@ Rationale against alternatives:
 - **Local artifacts are not hidden task writes (D45).** A read task may create only immutable,
   content-addressed bytes under `artifacts/` through doc 01's writer; the returned `{id,sha256,bytes,
   mediaType}` is canonical JSON and checkpoints reference it without exposing a filesystem path.
+  Per D97, `id` remains the existing UUID-backed `ArtifactId`; `sha256` is the distinct content
+  identity and private `artifacts/sha256/<prefix>/<hash>` key. Byte-identical puts are idempotent and
+  return the same public reference. The backing path is never part of a task, checkpoint, or wire
+  contract.
   Mutable operator artifacts (for
   example i9's retention workbook) are different: the node checkpoint and a stable-keyed
   `artifact_outbox` row commit atomically in SQLite, then a single sink projector performs
