@@ -7,6 +7,10 @@ import {
   auditContractBoundarySchema,
   defineTaskContract,
 } from "../../src/domain/contracts/base.js";
+import {
+  REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY,
+  defineReviewedUnverifiableByPagePolicy,
+} from "../../src/domain/contracts/write-safety.js";
 import { EidSchema, ObservationIdSchema, ScenarioIdSchema, TaskIdSchema } from "../../src/domain/ids.js";
 import { taskFailer } from "../../src/base/task.js";
 import { TaskError, wrapUnhandledTaskError } from "../../src/base/errors.js";
@@ -57,19 +61,23 @@ function readContract() {
   return defineTaskContract(readDefinition());
 }
 
-function prepareContract() {
-  return defineTaskContract({
+function prepareDefinition() {
+  return {
     id: TaskIdSchema.parse("ucpath/fill-person-org"),
     title: "Fill Person Organizational Summary",
-    effect: "prepare",
+    effect: "prepare" as const,
     input: INPUT,
     output: z.strictObject({ staged: z.literal(true) }),
     errorCodes: ["unexpected-page-state"] as const,
     subject: personSubject("after-prepare-before-fence"),
     scenarios: [SCENARIO],
-    checkpoint: "in-memory-only",
-    example: { staged: true },
-  });
+    checkpoint: "in-memory-only" as const,
+    example: { staged: true as const },
+  };
+}
+
+function prepareContract() {
+  return defineTaskContract(prepareDefinition());
 }
 
 function commitDefinition() {
@@ -133,6 +141,25 @@ describe("sealed task contracts", () => {
       output: z.strictObject({ count: z.number().int().positive() }),
       example: { count: 0 },
     }), /too_small|Too small/);
+  });
+
+  it("rejects raw-JS outer-shape and effect-specific escapes", () => {
+    assert.throws(() => Reflect.apply(defineTaskContract, undefined, [{
+      ...readDefinition(),
+      unexpected: true,
+    }]), /unrecognized|Unrecognized/);
+    assert.throws(() => Reflect.apply(defineTaskContract, undefined, [{
+      ...readDefinition(),
+      errorCodes: [],
+    }]), /too_small|Too small/);
+    assert.throws(() => Reflect.apply(defineTaskContract, undefined, [{
+      ...prepareDefinition(),
+      checkpoint: "durable",
+    }]), /invalid_value|Invalid input/);
+    assert.throws(() => Reflect.apply(defineTaskContract, undefined, [{
+      ...commitDefinition(),
+      artifacts: "content-addressed",
+    }]), /unrecognized|Unrecognized/);
   });
 
   it("recursively rejects nested open, any/unknown, record, and lazy schema escapes", () => {
@@ -219,6 +246,14 @@ describe("sealed task contracts", () => {
         },
       },
     }), /read-effect task id/);
+    assert.throws(() => defineTaskContract({
+      ...commitDefinition(),
+      subject: { kind: "none", reason: "the page has no subject" },
+    }), /reviewed UnscopedCommitReasonId, not free text/);
+    assert.doesNotThrow(() => defineTaskContract({
+      ...commitDefinition(),
+      subject: { kind: "none", reviewedReasonId: "catalog-global-write" },
+    }));
   });
 
   it("parses closed write safety and requires canonical proof/output agreement", () => {
@@ -315,6 +350,23 @@ describe("sealed task contracts", () => {
     assert.deepEqual(transformed.example, { label: "padded" });
     assert.equal(Object.isFrozen(transformed.example), true);
     assert.equal(transformed.output, transformedOutput);
+  });
+
+  it("recursively freezes reviewed unverifiable-by-page policy entries", () => {
+    const policy = defineReviewedUnverifiableByPagePolicy({
+      schemaVersion: 1,
+      contracts: [{
+        taskId: TaskIdSchema.parse("onbase/upload-document"),
+        reason: "the reviewed page cannot expose a durable receipt",
+      }],
+    });
+    assert.equal(Object.isFrozen(policy), true);
+    assert.equal(Object.isFrozen(policy.contracts), true);
+    assert.equal(Object.isFrozen(policy.contracts[0]), true);
+    assert.equal(Reflect.set(policy.contracts[0], "reason", "mutated"), false);
+    assert.equal(policy.contracts[0]?.reason, "the reviewed page cannot expose a durable receipt");
+    assert.equal(Object.isFrozen(REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY), true);
+    assert.equal(Object.isFrozen(REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY.contracts), true);
   });
 
   it("enforces derived scenario tiers and resolves scenario/probe references when a corpus exists", () => {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { NegativeSettlementPolicySchema, probeVerdictSchema } from "../write-safety-primitives.js";
 import type { JsonValue } from "../canonical-json.js";
+import { deepFreeze } from "../immutability.js";
 import { TaskIdSchema } from "../ids.js";
 
 type IsAny<Value> = 0 extends (1 & Value) ? true : false;
@@ -123,9 +124,10 @@ export const ReviewedUnverifiableByPagePolicySchema = z.strictObject({
 });
 
 /** Empty until a store earns an argued always-park exception through review. */
-const reviewedUnverifiableByPagePolicy = ReviewedUnverifiableByPagePolicySchema.parse({
+export function defineReviewedUnverifiableByPagePolicy(input: unknown) {
+  return deepFreeze(ReviewedUnverifiableByPagePolicySchema.parse(input));
+}
+export const REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY = defineReviewedUnverifiableByPagePolicy({
   schemaVersion: 1,
   contracts: [],
 });
-Object.freeze(reviewedUnverifiableByPagePolicy.contracts);
-export const REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY = Object.freeze(reviewedUnverifiableByPagePolicy);

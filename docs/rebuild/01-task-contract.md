@@ -88,16 +88,22 @@ recursively strict input/output/proof schemas (including arrays, unions, lazy no
 canonical-JSON examples, literal unique error codes, browser-only subject observations, typed
 same-store read-task probe/verifier references, and service-only provider declarations. `any`,
 `unknown`, open nested objects, and decision-bearing records/collections fail the recursive audit.
+The runtime definition parser is an exact effect-discriminated union too: raw JavaScript callers
+cannot add outer keys, submit empty error-code lists, use a durable prepare checkpoint, or attach
+read-only artifact metadata to a write contract.
 Read contracts require freshness plus provenance and resolve every field override against actual
 own schema fields; subject input paths do the same and identity/match pairs must agree. Prepare
 contracts are in-memory-only. Commit contracts require a closed parsed `writeSafety` union,
 canonical proof↔output↔present-probe agreement, permanent idempotency recovery policy, and
-post-prepare subject timing. Browser/service/full tiers require scenarios; only a pure
+post-prepare subject timing. An unscoped commit must name a closed reviewed
+`UnscopedCommitReasonId`; free-text `subject.none` remains available only to non-commit contracts.
+Browser/service/full tiers require scenarios; only a pure
 `workflow:<id>` light read may start empty. A store registry resolves all scenario/probe/verifier
 refs against its corpus; the definition-time read reference also rejects commit-verb ids.
 
 The factory alone stamps `__sealed`, replaces `example` with its parsed canonical output, and
-deep-copies/freezes declarative metadata. Zod schemas and proof/key functions retain their original
+deep-copies/freezes declarative metadata, including reviewed policy arrays and their future entry
+objects. Zod schemas and proof/key functions retain their original
 unfrozen identities. `unverifiableByPage` requires `policy:"always-park"`, an
 operator-attestation proof arm, and an exact reviewed-policy entry (the seed policy is empty).
 Dynamic idempotency keys are deliberately validated only when execution has real parsed input;

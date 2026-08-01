@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Clock } from "./clock.js";
-import { deepFreeze } from "./immutability.js";
 import {
   ArtifactIdSchema,
   BrowserSystemIdSchema,
@@ -22,6 +21,12 @@ import {
   WriteIntentIdSchema,
 } from "./ids.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
+import { UnscopedCommitReasonIdSchema } from "./unscoped-commit.js";
+export {
+  UNSCOPED_COMMIT_REASON_REGISTRY,
+  UnscopedCommitReasonIdSchema,
+  UnscopedCommitReasonSpecSchema,
+} from "./unscoped-commit.js";
 import {
   AbsentEvidenceSchema,
   NegativeSettlementPolicySchema,
@@ -81,24 +86,6 @@ export const SubjectProofSchema = z.strictObject({
     context.addIssue({ code: "custom", path: ["observed"], message: "subject-match proof requires identical expected and observed binding evidence" });
   }
 });
-
-export const UnscopedCommitReasonIdSchema = z.enum([
-  "catalog-global-write",
-  "system-global-configuration",
-  "document-without-person-scope",
-]);
-
-export const UnscopedCommitReasonSpecSchema = z.strictObject({
-  id: UnscopedCommitReasonIdSchema,
-  reviewed: z.literal(true),
-  rationale: z.string().min(1),
-});
-
-export const UNSCOPED_COMMIT_REASON_REGISTRY = deepFreeze(UnscopedCommitReasonSpecSchema.array().parse([
-  { id: "catalog-global-write", reviewed: true, rationale: "The target is an explicitly global catalog record with no person or artifact subject." },
-  { id: "system-global-configuration", reviewed: true, rationale: "The target is a reviewed system-wide configuration surface." },
-  { id: "document-without-person-scope", reviewed: true, rationale: "The destination accepts one document whose staged page exposes no stronger subject identity." },
-]));
 
 export const UnscopedBindingProofSchema = z.strictObject({
   kind: z.literal("unscoped"),

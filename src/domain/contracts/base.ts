@@ -10,6 +10,10 @@ import {
 } from "../ids.js";
 import type { TaskId } from "../ids.js";
 import { SecretNameSchema } from "../secret-names.js";
+import {
+  UNSCOPED_COMMIT_REASON_REGISTRY,
+  UnscopedCommitReasonIdSchema,
+} from "../unscoped-commit.js";
 import { NegativeSettlementPolicySchema, probeVerdictSchema } from "../write-safety-primitives.js";
 import {
   assertContractBoundarySchema,
@@ -68,7 +72,11 @@ export const ProvenancePolicySchema = z.strictObject({
   })).optional(),
 });
 export const SubjectBindingSpecSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("none"), reason: z.string().min(1) }),
+  z.strictObject({
+    kind: z.literal("none"),
+    reason: z.string().min(1).optional(),
+    reviewedReasonId: UnscopedCommitReasonIdSchema.optional(),
+  }),
   z.strictObject({
     kind: z.literal("person"),
     expected: z.strictObject({
@@ -209,6 +217,43 @@ interface RuntimeCommitTaskContract extends RuntimeTaskContractBase {
 }
 type RuntimeTaskContract = RuntimeReadTaskContract | RuntimePrepareTaskContract | RuntimeCommitTaskContract;
 
+const RuntimeZodSchema = z.custom<z.ZodType>(
+  (value) => value instanceof z.ZodType,
+  "expected a Zod schema",
+);
+const RuntimeDeferredExampleSchema = z.custom<unknown>(() => true);
+const RuntimeTaskContractCommonShape = {
+  id: TaskIdSchema,
+  title: z.string().min(1),
+  input: RuntimeZodSchema,
+  output: RuntimeZodSchema,
+  errorCodes: z.array(TaskErrorCodeSchema).min(1),
+  requires: z.array(SecretNameSchema).optional(),
+  providers: z.array(ProviderCapabilityIdSchema).optional(),
+  subject: SubjectBindingSpecSchema,
+  scenarios: z.array(ScenarioIdSchema),
+  example: RuntimeDeferredExampleSchema,
+};
+export const RuntimeTaskContractDefinitionSchema = z.discriminatedUnion("effect", [
+  z.strictObject({
+    ...RuntimeTaskContractCommonShape,
+    effect: z.literal("read"),
+    freshness: FreshnessPolicySchema,
+    provenance: ProvenancePolicySchema,
+    artifacts: z.literal("content-addressed").optional(),
+  }),
+  z.strictObject({
+    ...RuntimeTaskContractCommonShape,
+    effect: z.literal("prepare"),
+    checkpoint: z.literal("in-memory-only"),
+  }),
+  z.strictObject({
+    ...RuntimeTaskContractCommonShape,
+    effect: z.literal("commit"),
+    writeSafety: WriteSafetyRuntimeSchema,
+  }),
+]);
+
 const EFFECT_VERBS: Readonly<Record<TaskEffect, readonly string[]>> = {
   read: ["read", "search", "list", "extract", "match", "verify"],
   prepare: ["fill", "stage"],
@@ -272,6 +317,15 @@ function assertCommon(contract: RuntimeTaskContract): void {
       }[subject.expected.identity];
       if (subject.match !== expectedMatch) throw new Error(`${id} subject identity and match are incompatible`);
     }
+  } else if (contract.effect === "commit") {
+    if (subject.reason !== undefined || subject.reviewedReasonId === undefined) {
+      throw new Error(`${id} unscoped commit requires a reviewed UnscopedCommitReasonId, not free text`);
+    }
+    if (!UNSCOPED_COMMIT_REASON_REGISTRY.some(({ id: reasonId }) => reasonId === subject.reviewedReasonId)) {
+      throw new Error(`${id} references an unreviewed unscoped commit reason`);
+    }
+  } else if (subject.reason === undefined || subject.reviewedReasonId !== undefined) {
+    throw new Error(`${id} non-commit subject.none requires a reason and cannot claim commit review`);
   }
   if (contract.effect === "commit" && subject.kind !== "none"
     && subject.requiredAt !== "after-prepare-before-fence") {
@@ -381,6 +435,7 @@ export function defineTaskContract<
   const Codes extends ErrorCodes,
 >(contract: CommitTaskContract<Id, Input, Output, Proof, Codes>): SealedCommitContract<Id, Input, Output, Proof, Codes>;
 export function defineTaskContract(contract: RuntimeTaskContract): RuntimeTaskContract & { readonly __sealed: true } {
+  RuntimeTaskContractDefinitionSchema.parse(contract);
   assertCommon(contract);
   if (contract.effect === "read") assertRead(contract);
   if (contract.effect === "commit") assertWriteSafety(contract);
