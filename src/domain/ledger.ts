@@ -14,7 +14,12 @@ import {
   WriteIntentIdSchema,
 } from "./ids.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
-import { SubjectEvidenceSchema } from "./write-safety.js";
+import {
+  IdempotencyKeySchema,
+  SubjectEvidenceSchema,
+  TransactionOutcomeSchema,
+  deriveIdempotencyKeyDigest,
+} from "./write-safety.js";
 
 const OptionalSubjectEvidenceSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent") }),
@@ -30,6 +35,7 @@ export const LedgerEntryPayloadSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   itemId: ItemIdSchema,
   system: BrowserSystemIdSchema,
+  idempotencyKey: IdempotencyKeySchema,
   idempotencyKeyDigest: FingerprintSchema,
   writeIntentId: WriteIntentIdSchema,
   intentGeneration: PositiveIntSchema,
@@ -51,6 +57,9 @@ export const LedgerEntryPayloadSchema = z.strictObject({
 }).superRefine((entry, context) => {
   if (Date.parse(entry.confirmedAt) < Date.parse(entry.fencedAt)) {
     context.addIssue({ code: "custom", path: ["confirmedAt"], message: "ledger confirmation cannot precede the write fence" });
+  }
+  if (entry.idempotencyKeyDigest !== deriveIdempotencyKeyDigest(entry.system, entry.idempotencyKey)) {
+    context.addIssue({ code: "custom", path: ["idempotencyKeyDigest"], message: "ledger idempotency key digest does not match the exact system and natural key" });
   }
 });
 
@@ -75,9 +84,15 @@ export const WriteCommittedSpanOutboxPayloadSchema = z.strictObject({
   itemId: ItemIdSchema,
   attempt: PositiveIntSchema,
   system: BrowserSystemIdSchema,
+  idempotencyKey: IdempotencyKeySchema,
   idempotencyKeyDigest: FingerprintSchema,
   bindingProofDigest: FingerprintSchema,
   occurredAt: IsoInstantSchema,
+  outcome: TransactionOutcomeSchema,
+}).superRefine((payload, context) => {
+  if (payload.idempotencyKeyDigest !== deriveIdempotencyKeyDigest(payload.system, payload.idempotencyKey)) {
+    context.addIssue({ code: "custom", path: ["idempotencyKeyDigest"], message: "span idempotency key digest does not match the exact system and natural key" });
+  }
 });
 
 export type LedgerEntryPayload = z.infer<typeof LedgerEntryPayloadSchema>;

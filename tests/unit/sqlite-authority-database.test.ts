@@ -6,16 +6,18 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { AUTHORITY_TABLE_REGISTRY, type AuthorityTableName } from "../../src/domain/authority.js";
 import { manualClock } from "../../src/domain/clock.js";
+import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   COMMAND_FIXTURES,
+  ATOMIC_WRITE_COMMIT,
   CONFIG_SNAPSHOT,
   DELEGATION_MANIFEST,
   DEPENDENCY_RECORD,
   GATE_RESULT,
   HASH_A,
   HASH_B,
-  LEDGER_OUTBOX_PAYLOAD,
+  IDEMPOTENCY_KEY,
   NOTIFICATION,
   NOW,
   UUID_1,
@@ -64,19 +66,14 @@ const COMMAND_AUDIT = {
   versionChanges: [],
   affectedDependencyIds: [],
 };
-const COMMITTED_WRITE_INTENT = {
-  ...WRITE_INTENT_ATTEMPTING,
-  status: "committed",
-  completionProof: { schemaHash: HASH_B, value: "receipt-123" },
-  confirmedAt: NOW,
-};
 const OBSERVED_PRESENT_WRITE_INTENT = {
   writeIntentId: UUID_7,
   workflowId: "separation",
   itemId: UUID_5,
   taskId: "ucpath/terminate-person",
   system: "ucpath",
-  idempotencyKeyDigest: HASH_B,
+  idempotencyKey: "10001573|termination|2026-08-02",
+  idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", "10001573|termination|2026-08-02"),
   generation: 1,
   status: "observed-present",
   observedProof: { schemaHash: HASH_A, value: "receipt-seen-during-recovery" },
@@ -84,13 +81,6 @@ const OBSERVED_PRESENT_WRITE_INTENT = {
   version: 1,
   createdAt: NOW,
   updatedAt: NOW,
-};
-const DURABLE_OUTBOX = {
-  outboxId: UUID_7,
-  aggregate: { kind: "write-intent", writeIntentId: UUID_1, generation: 1 },
-  payload: LEDGER_OUTBOX_PAYLOAD,
-  projection: { state: "pending" },
-  createdAt: NOW,
 };
 
 function databasePath(name = "authority.sqlite"): string {
@@ -220,9 +210,13 @@ describe("authority generation accounting", () => {
     { table: "capture_sessions", mutate: (db) => { db.authority.opaque.captureSessions.insert(OPAQUE_RECORD); } },
     { table: "capture_photo_order", mutate: (db) => { db.authority.opaque.capturePhotoOrder.insert(OPAQUE_RECORD); } },
     { table: "capture_finalization_outboxes", mutate: (db) => { db.authority.opaque.captureFinalizationOutboxes.insert(OPAQUE_RECORD); } },
-    { table: "write_intents", mutate: (db) => { db.authority.writeIntents.insertPermanent(COMMITTED_WRITE_INTENT); } },
-    { table: "write_attempts", prepare: (db) => { db.authority.writeIntents.insertPermanent(COMMITTED_WRITE_INTENT); }, mutate: (db) => { db.authority.writeAttempts.insert(WRITE_ATTEMPT); } },
-    { table: "durable_outbox", prepare: (db) => { db.authority.writeIntents.insertPermanent(COMMITTED_WRITE_INTENT); }, mutate: (db) => { db.authority.durableOutbox.insert(DURABLE_OUTBOX); } },
+    { table: "write_intents", mutate: (db) => { db.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT); } },
+    { table: "write_attempts", mutate: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); } },
+    {
+      table: "durable_outbox",
+      prepare: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); },
+      mutate: (db) => { db.commitWriteAttempt(ATOMIC_WRITE_COMMIT); },
+    },
     { table: "artifact_outbox", mutate: (db) => { db.authority.artifactOutbox.insert(ARTIFACT_OUTBOX); } },
     { table: "artifact_sink_heads", mutate: (db) => { db.authority.opaque.artifactSinkHeads.insert(OPAQUE_RECORD); } },
   ];
@@ -305,24 +299,30 @@ describe("authority persistence invariants", () => {
 
   it("keeps committed and observed-present idempotency keys permanent", () => {
     const database = openDatabase();
-    assert.equal(database.authority.writeIntents.insertPermanent(COMMITTED_WRITE_INTENT).state, "inserted");
-    const committedReplay = { ...COMMITTED_WRITE_INTENT, writeIntentId: UUID_8 };
-    assert.equal(database.authority.writeIntents.insertPermanent(committedReplay).state, "existing");
-    assert.equal(database.authority.writeIntents.findByIdempotencyKeyDigest(HASH_A)?.writeIntentId, UUID_1);
+    assert.equal(database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }).state, "fenced");
+    database.commitWriteAttempt(ATOMIC_WRITE_COMMIT);
+    const committedReplay = {
+      intent: { ...WRITE_INTENT_ATTEMPTING, writeIntentId: UUID_8, currentAttemptId: UUID_6 },
+      attempt: { ...WRITE_ATTEMPT, writeIntentId: UUID_8, writeAttemptId: UUID_6 },
+    };
+    assert.equal(database.authority.writeIntents.fenceAttempt(committedReplay).state, "existing");
+    assert.equal(database.authority.writeIntents.findByPermanentKey("ucpath", IDEMPOTENCY_KEY)?.writeIntentId, UUID_1);
 
-    assert.equal(database.authority.writeIntents.insertPermanent(OBSERVED_PRESENT_WRITE_INTENT).state, "inserted");
+    assert.equal(database.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT).state, "recorded-observed-present");
     const observedReplay = { ...OBSERVED_PRESENT_WRITE_INTENT, writeIntentId: UUID_6 };
-    assert.equal(database.authority.writeIntents.insertPermanent(observedReplay).state, "existing");
-    assert.equal(database.authority.writeIntents.findByIdempotencyKeyDigest(HASH_B)?.writeIntentId, UUID_7);
-    assert.equal(database.getMeta().authorityGeneration, 2);
+    assert.equal(database.authority.writeIntents.recordObservedPresent(observedReplay).state, "existing");
+    assert.equal(database.authority.writeIntents.findByPermanentKey("ucpath", OBSERVED_PRESENT_WRITE_INTENT.idempotencyKey)?.writeIntentId, UUID_7);
+    assert.equal(database.getMeta().authorityGeneration, 3);
   });
 
   it("enforces command, delegation, write-attempt, and outbox foreign keys", () => {
     const database = openDatabase();
     assert.throws(() => database.authority.commandAudits.insert(COMMAND_AUDIT), /FOREIGN KEY constraint failed/);
     assert.throws(() => database.authority.dependencies.insert(DEPENDENCY_RECORD), /FOREIGN KEY constraint failed/);
-    assert.throws(() => database.authority.writeAttempts.insert(WRITE_ATTEMPT), /FOREIGN KEY constraint failed/);
-    assert.throws(() => database.authority.durableOutbox.insert(DURABLE_OUTBOX), /FOREIGN KEY constraint failed/);
+    assert.throws(
+      () => database.commitWriteAttempt(ATOMIC_WRITE_COMMIT),
+      /write intent .* does not exist/,
+    );
     assert.equal(database.getMeta().authorityGeneration, 0);
   });
 

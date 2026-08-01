@@ -18,9 +18,16 @@ import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/com
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
+import { BrowserSystemIdSchema } from "../../domain/ids.js";
 import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
 import { NotificationRecordSchema } from "../../domain/notifications.js";
-import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../domain/write-safety.js";
+import {
+  IdempotencyKeySchema,
+  WriteAttemptRecordSchema,
+  WriteIntentRecordSchema,
+  type WriteAttemptRecord,
+  type WriteIntentRecord,
+} from "../../domain/write-safety.js";
 import {
   AUTHORITY_APPLICATION_ID,
   CURRENT_AUTHORITY_SCHEMA_VERSION,
@@ -42,6 +49,15 @@ import {
   type ProjectionStorageRecord,
   type VersionPlanStorageRecord,
 } from "./storage-records.js";
+import {
+  AtomicWriteCommitInputSchema,
+  AtomicWriteCommitReportSchema,
+  PermanentWriteResolutionSchema,
+  WriteFenceInputSchema,
+  type AtomicWriteCommitReport,
+  type AtomicWriteCommitStorageStep,
+  type PermanentWriteResolution,
+} from "./write-commit-contracts.js";
 
 export const AuthorityDatabaseOptionsSchema = z.strictObject({
   path: z.string().min(1),
@@ -83,16 +99,25 @@ type ImmutableRepository<RecordValue> = Readonly<{
   get(recordKey: string): RecordValue | undefined;
 }>;
 
+type ReadRepository<RecordValue> = Readonly<{
+  get(recordKey: string): RecordValue | undefined;
+}>;
+
 type CommandRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandRequestSchema>>;
   get(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
 }>;
 
 type WriteIntentRepository = Readonly<{
-  insertPermanent(input: unknown): ImmutableInsertResult<z.infer<typeof WriteIntentRecordSchema>>;
+  recordObservedPresent(input: unknown): PermanentWriteResolution;
+  fenceAttempt(input: unknown): PermanentWriteResolution;
   get(writeIntentId: string): z.infer<typeof WriteIntentRecordSchema> | undefined;
-  findByIdempotencyKeyDigest(digest: string): z.infer<typeof WriteIntentRecordSchema> | undefined;
+  findByPermanentKey(system: unknown, idempotencyKey: unknown): z.infer<typeof WriteIntentRecordSchema> | undefined;
 }>;
+
+export interface AuthorityWriteCommitHooks {
+  afterStorageStep(step: AtomicWriteCommitStorageStep): void;
+}
 
 type OpaqueAuthorityRepositories = Readonly<{
   tasks: ImmutableRepository<OpaqueAuthorityRecord>;
@@ -114,8 +139,8 @@ export type AuthorityRepositories = Readonly<{
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
   versionPlans: ImmutableRepository<VersionPlanStorageRecord>;
   writeIntents: WriteIntentRepository;
-  writeAttempts: ImmutableRepository<z.infer<typeof WriteAttemptRecordSchema>>;
-  durableOutbox: ImmutableRepository<z.infer<typeof AtomicOutboxRecordSchema>>;
+  writeAttempts: ReadRepository<z.infer<typeof WriteAttemptRecordSchema>>;
+  durableOutbox: ReadRepository<z.infer<typeof AtomicOutboxRecordSchema>>;
   artifactOutbox: ImmutableRepository<ArtifactOutboxStorageRecord>;
   opaque: OpaqueAuthorityRepositories;
 }>;
@@ -230,7 +255,7 @@ const INVARIANT_QUERIES = Object.freeze([
   },
   {
     name: "write-intent-columns-match-record",
-    sql: "SELECT count(*) AS count FROM write_intents WHERE idempotency_key_digest <> json_extract(record_json, '$.idempotencyKeyDigest') OR status <> json_extract(record_json, '$.status')",
+    sql: "SELECT count(*) AS count FROM write_intents WHERE system <> json_extract(record_json, '$.system') OR idempotency_key <> json_extract(record_json, '$.idempotencyKey') OR idempotency_key_digest <> json_extract(record_json, '$.idempotencyKeyDigest') OR status <> json_extract(record_json, '$.status')",
   },
   {
     name: "write-attempt-columns-match-record",
@@ -374,17 +399,19 @@ export class AuthorityDatabase implements Disposable {
   #transactionDepth = 0;
   #transactionMode: "authority" | "projection" | undefined;
   #authorityDirty = false;
+  #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
 
   readonly authority: AuthorityRepositories;
   readonly projections: ProjectionRepositories;
 
-  private constructor(input: unknown, clock: Clock) {
+  private constructor(input: unknown, clock: Clock, writeCommitHooks?: AuthorityWriteCommitHooks) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     const existed = options.path !== ":memory:" && existsSync(options.path);
     if (existed && statSync(options.path).size === 0) {
       throw new Error(`authority database ${options.path} exists but is empty; refusing to replace it`);
     }
     this.#clock = clock;
+    this.#writeCommitHooks = writeCommitHooks;
     this.#path = options.path;
     this.#busyTimeoutMs = options.busyTimeoutMs;
     this.#database = new DatabaseSync(options.path, {
@@ -412,8 +439,12 @@ export class AuthorityDatabase implements Disposable {
     this.projections = this.#buildProjectionRepositories();
   }
 
-  static open(input: unknown, clock: Clock = systemClock): AuthorityDatabase {
-    return new AuthorityDatabase(input, clock);
+  static open(
+    input: unknown,
+    clock: Clock = systemClock,
+    writeCommitHooks?: AuthorityWriteCommitHooks,
+  ): AuthorityDatabase {
+    return new AuthorityDatabase(input, clock, writeCommitHooks);
   }
 
   static sourceDatabaseIdentity(path: string): string {
@@ -481,6 +512,62 @@ export class AuthorityDatabase implements Disposable {
 
   withProjectionTransaction<Result>(work: (repositories: ProjectionRepositories) => Result): Result {
     return this.#withTransaction("projection", () => work(this.projections));
+  }
+
+  commitWriteAttempt(input: unknown): AtomicWriteCommitReport {
+    const parsed = AtomicWriteCommitInputSchema.parse(input);
+    return this.withAuthorityTransaction(() => {
+      const currentIntent = this.#readRecord("write_intents", parsed.writeIntentId, WriteIntentRecordSchema);
+      if (currentIntent === undefined) throw new Error(`write intent ${parsed.writeIntentId} does not exist`);
+      if (currentIntent.status !== "attempting") {
+        throw new Error(`write intent ${parsed.writeIntentId} is ${currentIntent.status}; only attempting may commit`);
+      }
+      if (currentIntent.generation !== parsed.generation) {
+        throw new Error(`write intent ${parsed.writeIntentId} generation ${String(currentIntent.generation)} does not match commit generation ${String(parsed.generation)}`);
+      }
+      const currentAttempt = this.#readRecord("write_attempts", currentIntent.currentAttemptId, WriteAttemptRecordSchema);
+      if (currentAttempt === undefined) throw new Error(`current write attempt ${currentIntent.currentAttemptId} does not exist`);
+      if (currentAttempt.outcome.state !== "attempting") {
+        throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; only attempting may commit`);
+      }
+      WriteFenceInputSchema.parse({ intent: currentIntent, attempt: currentAttempt });
+      this.#assertAtomicCommitMatchesIntent(parsed, currentIntent);
+
+      const committedIntent = WriteIntentRecordSchema.parse({
+        ...currentIntent,
+        status: "committed",
+        completionProof: parsed.completionProof,
+        confirmedAt: parsed.confirmedAt,
+        version: currentIntent.version + 1,
+        updatedAt: parsed.confirmedAt,
+      });
+      const committedAttempt = WriteAttemptRecordSchema.parse({
+        ...currentAttempt,
+        outcome: {
+          state: "committed",
+          completionProof: parsed.completionProof,
+          confirmedAt: parsed.confirmedAt,
+        },
+        recordedAt: parsed.confirmedAt,
+      });
+
+      this.#replaceWriteIntent(committedIntent);
+      this.#writeCommitHooks?.afterStorageStep("intent-state");
+      this.#replaceWriteAttempt(committedAttempt);
+      this.#writeCommitHooks?.afterStorageStep("attempt-state");
+      this.#insertDurableOutbox(parsed.ledgerOutbox);
+      this.#writeCommitHooks?.afterStorageStep("ledger-outbox");
+      this.#insertDurableOutbox(parsed.terminalSpanOutbox);
+      this.#writeCommitHooks?.afterStorageStep("terminal-span-outbox");
+
+      return AtomicWriteCommitReportSchema.parse({
+        state: "committed",
+        intent: committedIntent,
+        attempt: committedAttempt,
+        ledgerOutbox: parsed.ledgerOutbox,
+        terminalSpanOutbox: parsed.terminalSpanOutbox,
+      });
+    });
   }
 
   #assertOpen(): void {
@@ -767,65 +854,42 @@ export class AuthorityDatabase implements Disposable {
         get: (versionPlanId: string) => this.#readRecord("version_plans", versionPlanId, VersionPlanStorageRecordSchema),
       }),
       writeIntents: Object.freeze({
-        insertPermanent: (input: unknown) => {
+        recordObservedPresent: (input: unknown) => {
           const record = WriteIntentRecordSchema.parse(input);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("write_intents", () => {
-            const existingByKey = this.#findWriteIntentByDigest(record.idempotencyKeyDigest);
-            if (existingByKey !== undefined) {
-              return { result: Object.freeze({ state: "existing" as const, record: existingByKey }), changes: 0 };
+          if (record.status !== "observed-present") {
+            throw new Error(`recordObservedPresent requires observed-present status, received ${record.status}`);
+          }
+          return this.withAuthorityTransaction(() => {
+            const existing = this.#findPermanentWriteIntent(record.system, record.idempotencyKey);
+            if (existing !== undefined) {
+              return PermanentWriteResolutionSchema.parse({ state: "existing", intent: existing });
             }
-            const existingById = this.#readRecord("write_intents", record.writeIntentId, WriteIntentRecordSchema);
-            if (existingById !== undefined) throw new Error(`write intent id ${record.writeIntentId} already exists with a different permanent key`);
-            const result = this.#database.prepare(`
-              INSERT INTO write_intents (
-                record_key, idempotency_key_digest, status, record_json, created_at
-              ) VALUES (?, ?, ?, ?, ?)
-            `).run(record.writeIntentId, record.idempotencyKeyDigest, record.status, json, record.createdAt);
-            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
+            this.#insertWriteIntent(record);
+            return PermanentWriteResolutionSchema.parse({ state: "recorded-observed-present", intent: record });
+          });
+        },
+        fenceAttempt: (input: unknown) => {
+          const { intent, attempt } = WriteFenceInputSchema.parse(input);
+          return this.withAuthorityTransaction(() => {
+            const existing = this.#findPermanentWriteIntent(intent.system, intent.idempotencyKey);
+            if (existing !== undefined) {
+              return PermanentWriteResolutionSchema.parse({ state: "existing", intent: existing });
+            }
+            this.#insertWriteIntent(intent);
+            this.#insertWriteAttempt(attempt);
+            return PermanentWriteResolutionSchema.parse({ state: "fenced", intent, attempt });
           });
         },
         get: (writeIntentId: string) => this.#readRecord("write_intents", writeIntentId, WriteIntentRecordSchema),
-        findByIdempotencyKeyDigest: (digest: string) => this.#findWriteIntentByDigest(digest),
+        findByPermanentKey: (system: unknown, idempotencyKey: unknown) => this.#findPermanentWriteIntent(
+          BrowserSystemIdSchema.parse(system),
+          IdempotencyKeySchema.parse(idempotencyKey),
+        ),
       }),
       writeAttempts: Object.freeze({
-        insert: (input: unknown) => {
-          const record = WriteAttemptRecordSchema.parse(input);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("write_attempts", () => {
-            const existing = this.#readRecord("write_attempts", record.writeAttemptId, WriteAttemptRecordSchema);
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) throw new Error(`write attempt ${record.writeAttemptId} already exists with different content`);
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const result = this.#database.prepare(`
-              INSERT INTO write_attempts (
-                record_key, write_intent_id, generation, record_json, created_at
-              ) VALUES (?, ?, ?, ?, ?)
-            `).run(record.writeAttemptId, record.writeIntentId, record.generation, json, record.recordedAt);
-            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
-          });
-        },
         get: (writeAttemptId: string) => this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema),
       }),
       durableOutbox: Object.freeze({
-        insert: (input: unknown) => {
-          const record = AtomicOutboxRecordSchema.parse(input);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("durable_outbox", () => {
-            const existing = this.#readRecord("durable_outbox", record.outboxId, AtomicOutboxRecordSchema);
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) throw new Error(`durable outbox ${record.outboxId} already exists with different content`);
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const result = this.#database.prepare(`
-              INSERT INTO durable_outbox (
-                record_key, write_intent_id, generation, kind, record_json, created_at
-              ) VALUES (?, ?, ?, ?, ?, ?)
-            `).run(record.outboxId, record.aggregate.writeIntentId, record.aggregate.generation, record.payload.kind, json, record.createdAt);
-            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
-          });
-        },
         get: (outboxId: string) => this.#readRecord("durable_outbox", outboxId, AtomicOutboxRecordSchema),
       }),
       artifactOutbox: Object.freeze({
@@ -847,13 +911,128 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #findWriteIntentByDigest(digest: string): z.infer<typeof WriteIntentRecordSchema> | undefined {
-    const parsedDigest = z.string().regex(/^[0-9a-f]{64}$/).parse(digest);
+  #findPermanentWriteIntent(system: string, idempotencyKey: string): WriteIntentRecord | undefined {
     const row = this.#database.prepare(`
-      SELECT record_json FROM write_intents WHERE idempotency_key_digest = ?
-    `).get(parsedDigest);
+      SELECT record_json FROM write_intents WHERE system = ? AND idempotency_key = ?
+    `).get(system, idempotencyKey);
     if (row === undefined) return undefined;
     return parseJsonRecord(WriteIntentRecordSchema, JsonRowSchema.parse(row).record_json);
+  }
+
+  #insertWriteIntent(record: WriteIntentRecord): void {
+    const json = canonicalJsonStringify(record);
+    this.#authorityWrite("write_intents", () => {
+      const existingById = this.#readRecord("write_intents", record.writeIntentId, WriteIntentRecordSchema);
+      if (existingById !== undefined) throw new Error(`write intent id ${record.writeIntentId} already exists with a different permanent key`);
+      const digestCollision = this.#database.prepare(`
+        SELECT system, idempotency_key FROM write_intents WHERE idempotency_key_digest = ?
+      `).get(record.idempotencyKeyDigest);
+      if (digestCollision !== undefined) {
+        throw new Error(`write intent digest ${record.idempotencyKeyDigest} is already bound to a different permanent key`);
+      }
+      const result = this.#database.prepare(`
+        INSERT INTO write_intents (
+          record_key, system, idempotency_key, idempotency_key_digest, status, record_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        record.writeIntentId,
+        record.system,
+        record.idempotencyKey,
+        record.idempotencyKeyDigest,
+        record.status,
+        json,
+        record.createdAt,
+      );
+      return { result: undefined, changes: sqliteChanges(result.changes) };
+    });
+  }
+
+  #insertWriteAttempt(record: WriteAttemptRecord): void {
+    const json = canonicalJsonStringify(record);
+    this.#authorityWrite("write_attempts", () => {
+      const result = this.#database.prepare(`
+        INSERT INTO write_attempts (
+          record_key, write_intent_id, generation, record_json, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+      `).run(record.writeAttemptId, record.writeIntentId, record.generation, json, record.recordedAt);
+      return { result: undefined, changes: sqliteChanges(result.changes) };
+    });
+  }
+
+  #replaceWriteIntent(record: WriteIntentRecord): void {
+    const result = this.#database.prepare(`
+      UPDATE write_intents
+      SET status = ?, record_json = ?
+      WHERE record_key = ? AND idempotency_key_digest = ?
+    `).run(record.status, canonicalJsonStringify(record), record.writeIntentId, record.idempotencyKeyDigest);
+    const changes = sqliteChanges(result.changes);
+    if (changes !== 1) throw new Error(`write intent ${record.writeIntentId} atomic state update affected ${String(changes)} rows`);
+    this.#authorityDirty = true;
+  }
+
+  #replaceWriteAttempt(record: WriteAttemptRecord): void {
+    const result = this.#database.prepare(`
+      UPDATE write_attempts SET record_json = ?
+      WHERE record_key = ? AND write_intent_id = ? AND generation = ?
+    `).run(canonicalJsonStringify(record), record.writeAttemptId, record.writeIntentId, record.generation);
+    const changes = sqliteChanges(result.changes);
+    if (changes !== 1) throw new Error(`write attempt ${record.writeAttemptId} atomic state update affected ${String(changes)} rows`);
+    this.#authorityDirty = true;
+  }
+
+  #insertDurableOutbox(record: z.infer<typeof AtomicOutboxRecordSchema>): void {
+    const json = canonicalJsonStringify(record);
+    const result = this.#database.prepare(`
+      INSERT INTO durable_outbox (
+        record_key, write_intent_id, generation, kind, record_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(record.outboxId, record.aggregate.writeIntentId, record.aggregate.generation, record.payload.kind, json, record.createdAt);
+    const changes = sqliteChanges(result.changes);
+    if (changes !== 1) throw new Error(`durable outbox ${record.outboxId} insertion affected ${String(changes)} rows`);
+    this.#authorityDirty = true;
+  }
+
+  #assertAtomicCommitMatchesIntent(
+    input: z.infer<typeof AtomicWriteCommitInputSchema>,
+    intent: Extract<WriteIntentRecord, { status: "attempting" }>,
+  ): void {
+    const ledger = input.ledgerOutbox.payload;
+    const span = input.terminalSpanOutbox.payload;
+    if (ledger.kind !== "ledger-entry" || span.kind !== "write-committed-span" || input.outcome.disposition !== "committed") {
+      throw new Error("atomic write commit payload arms were not narrowed after strict parsing");
+    }
+    const expected = {
+      writeIntentId: intent.writeIntentId,
+      intentGeneration: intent.generation,
+      workflowId: intent.workflowId,
+      itemId: intent.itemId,
+      system: intent.system,
+      idempotencyKey: intent.idempotencyKey,
+      idempotencyKeyDigest: intent.idempotencyKeyDigest,
+      bindingProofDigest: intent.bindingProofDigest,
+      runId: intent.runId,
+      attempt: intent.runAttempt,
+    };
+    for (const [field, value] of Object.entries(expected)) {
+      const ledgerValue = ledger.entry[field as keyof typeof ledger.entry];
+      const spanValue = span[field as keyof typeof span];
+      if (ledgerValue !== value || spanValue !== value) {
+        throw new Error(`atomic write outboxes ${field} do not match intent ${intent.writeIntentId}`);
+      }
+    }
+    if (ledger.entry.fencedAt !== intent.fencedAt
+      || ledger.entry.confirmedAt !== input.confirmedAt
+      || ledger.entry.proofSource !== input.outcome.proofSource
+      || span.occurredAt !== input.confirmedAt
+      || canonicalJsonStringify(ledger.entry.proof) !== canonicalJsonStringify(input.completionProof)) {
+      throw new Error(`atomic write outboxes do not match proof/timing for intent ${intent.writeIntentId}`);
+    }
+    if (input.ledgerOutbox.projection.state !== "pending"
+      || input.terminalSpanOutbox.projection.state !== "pending"
+      || input.ledgerOutbox.createdAt !== input.confirmedAt
+      || input.terminalSpanOutbox.createdAt !== input.confirmedAt) {
+      throw new Error(`atomic write outboxes must begin pending at confirmation time for intent ${intent.writeIntentId}`);
+    }
   }
 
   #buildProjectionRepositories(): ProjectionRepositories {

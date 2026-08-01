@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Clock } from "./clock.js";
@@ -113,6 +114,35 @@ export const AbsentEvidenceSchema = z.strictObject({
   evidenceRef: EvidenceRefSchema,
 });
 
+export const IdempotencyKeySchema = z.string().min(1).max(512).superRefine((key, context) => {
+  if (key !== key.trim()) context.addIssue({ code: "custom", message: "idempotency key may not have leading or trailing whitespace" });
+  if ([...key].some((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined && (codePoint <= 31 || codePoint === 127);
+  })) {
+    context.addIssue({ code: "custom", message: "idempotency key may not contain control characters" });
+  }
+});
+
+export function deriveIdempotencyKeyDigest(systemInput: unknown, keyInput: unknown): string {
+  const system = BrowserSystemIdSchema.parse(systemInput);
+  const key = IdempotencyKeySchema.parse(keyInput);
+  return FingerprintSchema.parse(createHash("sha256")
+    .update("hrauto:permanent-write-key:v1\0")
+    .update(system)
+    .update("\0")
+    .update(key)
+    .digest("hex"));
+}
+
+export function deriveWriteBindingProofDigest(proofInput: unknown): string {
+  const proof = WriteBindingProofSchema.parse(proofInput);
+  return FingerprintSchema.parse(createHash("sha256")
+    .update("hrauto:write-binding-proof:v1\0")
+    .update(canonicalJsonStringify(proof))
+    .digest("hex"));
+}
+
 export function probeVerdictSchema<ProofSchema extends z.ZodType>(proofSchema: ProofSchema) {
   return z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), proof: proofSchema }),
@@ -145,6 +175,9 @@ export const NegativeSettlementEvaluationInputSchema = z.strictObject({
   writeIntentId: WriteIntentIdSchema,
   generation: PositiveIntSchema,
   idempotencyKeyDigest: FingerprintSchema,
+  authoritativeSource: ObservationIdSchema,
+  authoritativeSourceState: PageStateIdSchema,
+  queryDigest: FingerprintSchema,
   fencedAt: IsoInstantSchema,
   policy: NegativeSettlementPolicySchema,
   verdicts: z.array(RecoveryProbeVerdictSchema),
@@ -213,8 +246,16 @@ export function evaluateNegativeSettlement(
 
   const absences = parsed.verdicts.map((verdict) => verdict.state === "absent" ? verdict.evidence : undefined)
     .filter((evidence): evidence is z.infer<typeof AbsentEvidenceSchema> => evidence !== undefined);
-  if (absences.some(({ idempotencyKeyDigest }) => idempotencyKeyDigest !== parsed.idempotencyKeyDigest)) {
-    return NegativeSettlementDecisionSchema.parse({ ...base, state: "parked", code: "inconsistent-evidence", reason: "negative evidence does not bind the fenced idempotency key" });
+  if (absences.some((evidence) => (
+    evidence.idempotencyKeyDigest !== parsed.idempotencyKeyDigest
+    || evidence.queryDigest !== parsed.queryDigest
+    || evidence.source !== parsed.authoritativeSource
+    || evidence.sourceState !== parsed.authoritativeSourceState
+  ))) {
+    return NegativeSettlementDecisionSchema.parse({ ...base, state: "parked", code: "inconsistent-evidence", reason: "negative evidence does not bind the exact fenced key, query, authoritative source, and source state" });
+  }
+  if (absences.some(({ observedAt }) => Date.parse(observedAt) > clock.nowMs())) {
+    return NegativeSettlementDecisionSchema.parse({ ...base, state: "parked", code: "inconsistent-evidence", reason: "negative evidence claims an observation after the settlement decision time" });
   }
   for (let index = 1; index < absences.length; index += 1) {
     if (Date.parse(absences[index].observedAt) < Date.parse(absences[index - 1].observedAt)) {
@@ -224,6 +265,9 @@ export function evaluateNegativeSettlement(
 
   const earliestQualifiedMs = Date.parse(parsed.fencedAt) + parsed.policy.minSinceFenceMs;
   const qualifying = absences.filter(({ observedAt }) => Date.parse(observedAt) >= earliestQualifiedMs);
+  if (new Set(qualifying.map(({ evidenceRef }) => evidenceRef)).size !== qualifying.length) {
+    return NegativeSettlementDecisionSchema.parse({ ...base, state: "parked", code: "inconsistent-evidence", reason: "negative settlement requires distinct qualifying observation evidence" });
+  }
   const first = qualifying[0];
   if (first !== undefined && qualifying.some((evidence) => (
     evidence.queryDigest !== first.queryDigest
@@ -266,6 +310,7 @@ const WriteIntentIdentityFields = {
   itemId: ItemIdSchema,
   taskId: TaskIdSchema,
   system: BrowserSystemIdSchema,
+  idempotencyKey: IdempotencyKeySchema,
   idempotencyKeyDigest: FingerprintSchema,
 } as const;
 
@@ -276,6 +321,7 @@ const WriteIntentAttemptFields = {
   runId: RunIdSchema,
   runAttempt: PositiveIntSchema,
   bindingProof: WriteBindingProofSchema,
+  bindingProofDigest: FingerprintSchema,
   fencedAt: IsoInstantSchema,
   version: PositiveIntSchema,
   createdAt: IsoInstantSchema,
@@ -293,13 +339,43 @@ const WriteIntentObservedPresentFields = {
   updatedAt: IsoInstantSchema,
 } as const;
 
+const ObservedPresentWriteIntentRecordSchema = z.strictObject(WriteIntentObservedPresentFields);
+const AttemptingWriteIntentRecordSchema = z.strictObject({ ...WriteIntentAttemptFields, status: z.literal("attempting") });
+const CommittedWriteIntentRecordSchema = z.strictObject({
+  ...WriteIntentAttemptFields,
+  status: z.literal("committed"),
+  completionProof: SchemaBoundCanonicalValueSchema,
+  confirmedAt: IsoInstantSchema,
+});
+const RetryableWriteIntentRecordSchema = z.strictObject({
+  ...WriteIntentAttemptFields,
+  status: z.literal("retryable"),
+  settlement: SafeToRetrySettlementSchema,
+  resolvedAt: IsoInstantSchema,
+});
+const ParkedWriteIntentRecordSchema = z.strictObject({
+  ...WriteIntentAttemptFields,
+  status: z.literal("parked"),
+  parkedCode: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]),
+  message: z.string().min(1),
+});
+
 export const WriteIntentRecordSchema = z.discriminatedUnion("status", [
-  z.strictObject(WriteIntentObservedPresentFields),
-  z.strictObject({ ...WriteIntentAttemptFields, status: z.literal("attempting") }),
-  z.strictObject({ ...WriteIntentAttemptFields, status: z.literal("committed"), completionProof: SchemaBoundCanonicalValueSchema, confirmedAt: IsoInstantSchema }),
-  z.strictObject({ ...WriteIntentAttemptFields, status: z.literal("retryable"), settlement: SafeToRetrySettlementSchema, resolvedAt: IsoInstantSchema }),
-  z.strictObject({ ...WriteIntentAttemptFields, status: z.literal("parked"), parkedCode: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]), message: z.string().min(1) }),
-]);
+  ObservedPresentWriteIntentRecordSchema,
+  AttemptingWriteIntentRecordSchema,
+  CommittedWriteIntentRecordSchema,
+  RetryableWriteIntentRecordSchema,
+  ParkedWriteIntentRecordSchema,
+]).superRefine((record, context) => {
+  const expectedDigest = deriveIdempotencyKeyDigest(record.system, record.idempotencyKey);
+  if (record.idempotencyKeyDigest !== expectedDigest) {
+    context.addIssue({ code: "custom", path: ["idempotencyKeyDigest"], message: "idempotency key digest does not match the exact system and natural key" });
+  }
+  if (record.status !== "observed-present"
+    && record.bindingProofDigest !== deriveWriteBindingProofDigest(record.bindingProof)) {
+    context.addIssue({ code: "custom", path: ["bindingProofDigest"], message: "binding proof digest does not match the stored proof" });
+  }
+});
 
 const WriteAttemptFields = {
   writeAttemptId: WriteAttemptIdSchema,
@@ -309,6 +385,7 @@ const WriteAttemptFields = {
   runAttempt: PositiveIntSchema,
   leaseId: LeaseIdSchema,
   bindingProof: WriteBindingProofSchema,
+  bindingProofDigest: FingerprintSchema,
   fencedAt: IsoInstantSchema,
 } as const;
 
@@ -321,7 +398,28 @@ export const WriteAttemptRecordSchema = z.strictObject({
     z.strictObject({ state: z.literal("parked"), code: z.string().regex(/^[a-z]+(?:-[a-z]+)*$/), message: z.string().min(1) }),
   ]),
   recordedAt: IsoInstantSchema,
+}).superRefine((record, context) => {
+  if (record.bindingProofDigest !== deriveWriteBindingProofDigest(record.bindingProof)) {
+    context.addIssue({ code: "custom", path: ["bindingProofDigest"], message: "binding proof digest does not match the stored proof" });
+  }
 });
+
+export const TransactionOutcomeSchema = z.discriminatedUnion("disposition", [
+  z.strictObject({
+    disposition: z.literal("committed"),
+    proofSource: z.enum(["normal-output", "recovery-probe", "operator-attestation"]),
+    proof: SchemaBoundCanonicalValueSchema,
+    output: SchemaBoundCanonicalValueSchema,
+    confirmedAt: IsoInstantSchema,
+  }),
+  z.strictObject({
+    disposition: z.literal("already-present"),
+    proofSource: z.enum(["live-probe", "durable-intent"]),
+    proof: SchemaBoundCanonicalValueSchema,
+    output: SchemaBoundCanonicalValueSchema,
+    observedAt: IsoInstantSchema,
+  }),
+]);
 
 export type SubjectProof = z.infer<typeof SubjectProofSchema>;
 export type UnscopedBindingProof = z.infer<typeof UnscopedBindingProofSchema>;
@@ -332,3 +430,4 @@ export type NegativeSettlementPolicy = z.infer<typeof NegativeSettlementPolicySc
 export type NegativeSettlementDecision = z.infer<typeof NegativeSettlementDecisionSchema>;
 export type WriteIntentRecord = z.infer<typeof WriteIntentRecordSchema>;
 export type WriteAttemptRecord = z.infer<typeof WriteAttemptRecordSchema>;
+export type TransactionOutcome = z.infer<typeof TransactionOutcomeSchema>;

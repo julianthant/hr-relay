@@ -5,6 +5,7 @@ export {
   AuthoritySchemaInspectionSchema,
   ImmutableInsertDispositionSchema,
   type AuthorityRepositories,
+  type AuthorityWriteCommitHooks,
   type ProjectionRepositories,
 } from "./authority-database.js";
 export {
@@ -63,3 +64,15 @@ export {
   doctorAuthorityStorage,
   StorageDoctorOptionsSchema,
 } from "./storage-doctor.js";
+export {
+  AtomicWriteCommitInputSchema,
+  AtomicWriteCommitReportSchema,
+  AtomicWriteCommitStorageStepSchema,
+  PermanentWriteResolutionSchema,
+  WriteFenceInputSchema,
+  type AtomicWriteCommitInput,
+  type AtomicWriteCommitReport,
+  type AtomicWriteCommitStorageStep,
+  type PermanentWriteResolution,
+  type WriteFenceInput,
+} from "./write-commit-contracts.js";

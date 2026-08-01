@@ -1,4 +1,8 @@
 import { ConfigSchema } from "../../../src/domain/config/schema.js";
+import {
+  deriveIdempotencyKeyDigest,
+  deriveWriteBindingProofDigest,
+} from "../../../src/domain/write-safety.js";
 
 export const UUID_1 = "11111111-1111-4111-8111-111111111111";
 export const UUID_2 = "22222222-2222-4222-8222-222222222222";
@@ -14,6 +18,8 @@ export const HASH_C = "c".repeat(64);
 export const NOW = "2026-07-31T17:00:00.000Z";
 export const LATER = "2026-07-31T17:01:00.000Z";
 export const LATEST = "2026-07-31T17:02:00.000Z";
+export const IDEMPOTENCY_KEY = "10001573|termination|2026-08-01";
+export const IDEMPOTENCY_KEY_DIGEST = deriveIdempotencyKeyDigest("ucpath", IDEMPOTENCY_KEY);
 
 const BASE_COMMAND = {
   commandId: UUID_1,
@@ -87,6 +93,7 @@ export const SUBJECT_PROOF = {
   observedAt: NOW,
   afterPrepareSpanPath: "termination/prepare",
 };
+export const BINDING_PROOF_DIGEST = deriveWriteBindingProofDigest(SUBJECT_PROOF);
 
 export const UNSCOPED_PROOF = {
   kind: "unscoped",
@@ -103,7 +110,7 @@ export const UNSCOPED_PROOF = {
 };
 
 export const ABSENCE_1 = {
-  idempotencyKeyDigest: HASH_A,
+  idempotencyKeyDigest: IDEMPOTENCY_KEY_DIGEST,
   source: "ucpath.termination.search",
   sourceState: "ucpath.termination-results",
   observedAt: LATER,
@@ -187,12 +194,14 @@ export const WRITE_INTENT_ATTEMPTING = {
   itemId: UUID_3,
   taskId: "ucpath/terminate-person",
   system: "ucpath",
-  idempotencyKeyDigest: HASH_A,
+  idempotencyKey: IDEMPOTENCY_KEY,
+  idempotencyKeyDigest: IDEMPOTENCY_KEY_DIGEST,
   currentAttemptId: UUID_4,
   generation: 1,
   runId: UUID_2,
   runAttempt: 1,
   bindingProof: SUBJECT_PROOF,
+  bindingProofDigest: BINDING_PROOF_DIGEST,
   fencedAt: NOW,
   version: 1,
   createdAt: NOW,
@@ -208,6 +217,7 @@ export const WRITE_ATTEMPT = {
   runAttempt: 1,
   leaseId: UUID_6,
   bindingProof: SUBJECT_PROOF,
+  bindingProofDigest: BINDING_PROOF_DIGEST,
   fencedAt: NOW,
   outcome: { state: "attempting" },
   recordedAt: NOW,
@@ -217,13 +227,14 @@ export const LEDGER_PAYLOAD = {
   workflowId: "separation",
   itemId: UUID_3,
   system: "ucpath",
-  idempotencyKeyDigest: HASH_A,
+  idempotencyKey: IDEMPOTENCY_KEY,
+  idempotencyKeyDigest: IDEMPOTENCY_KEY_DIGEST,
   writeIntentId: UUID_1,
   intentGeneration: 1,
   proof: { schemaHash: HASH_B, value: "T123456" },
   completionKind: "receipt",
   proofSource: "normal-output",
-  bindingProofDigest: HASH_C,
+  bindingProofDigest: BINDING_PROOF_DIGEST,
   subject: { state: "present", value: SUBJECT_EVIDENCE },
   runId: UUID_2,
   traceId: "se-120000-2222",
@@ -238,6 +249,13 @@ export const LEDGER_PAYLOAD = {
 };
 
 export const LEDGER_OUTBOX_PAYLOAD = { kind: "ledger-entry", entry: LEDGER_PAYLOAD };
+export const COMMITTED_OUTCOME = {
+  disposition: "committed",
+  proofSource: "normal-output",
+  proof: LEDGER_PAYLOAD.proof,
+  output: { schemaHash: HASH_C, value: { transactionId: "T123456" } },
+  confirmedAt: LATER,
+};
 export const SPAN_OUTBOX_PAYLOAD = {
   kind: "write-committed-span",
   writeIntentId: UUID_1,
@@ -248,7 +266,35 @@ export const SPAN_OUTBOX_PAYLOAD = {
   itemId: UUID_3,
   attempt: 1,
   system: "ucpath",
-  idempotencyKeyDigest: HASH_A,
-  bindingProofDigest: HASH_C,
+  idempotencyKey: IDEMPOTENCY_KEY,
+  idempotencyKeyDigest: IDEMPOTENCY_KEY_DIGEST,
+  bindingProofDigest: BINDING_PROOF_DIGEST,
   occurredAt: LATER,
+  outcome: COMMITTED_OUTCOME,
+};
+
+export const LEDGER_OUTBOX_RECORD = {
+  outboxId: UUID_7,
+  aggregate: { kind: "write-intent", writeIntentId: UUID_1, generation: 1 },
+  payload: LEDGER_OUTBOX_PAYLOAD,
+  projection: { state: "pending" },
+  createdAt: LATER,
+};
+
+export const SPAN_OUTBOX_RECORD = {
+  outboxId: UUID_8,
+  aggregate: { kind: "write-intent", writeIntentId: UUID_1, generation: 1 },
+  payload: SPAN_OUTBOX_PAYLOAD,
+  projection: { state: "pending" },
+  createdAt: LATER,
+};
+
+export const ATOMIC_WRITE_COMMIT = {
+  writeIntentId: UUID_1,
+  generation: 1,
+  completionProof: LEDGER_PAYLOAD.proof,
+  confirmedAt: LATER,
+  outcome: COMMITTED_OUTCOME,
+  ledgerOutbox: LEDGER_OUTBOX_RECORD,
+  terminalSpanOutbox: SPAN_OUTBOX_RECORD,
 };

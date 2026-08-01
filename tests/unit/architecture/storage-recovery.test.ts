@@ -29,10 +29,10 @@ import {
   verifyBackupManifestAtPath,
 } from "../../../src/infra/sqlite/index.js";
 import {
+  ATOMIC_WRITE_COMMIT,
   COMMAND_FIXTURES,
   HASH_A,
   HASH_B,
-  LEDGER_OUTBOX_PAYLOAD,
   NOTIFICATION,
   NOW,
   UUID_1,
@@ -40,6 +40,7 @@ import {
   UUID_3,
   UUID_7,
   UUID_8,
+  WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "../fixtures/phase1c-contract-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
@@ -51,19 +52,6 @@ const CLOCK = manualClock(new Date(NOW));
 const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
 const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
 const OPAQUE_RECORD = { recordId: UUID_8, payload: SCHEMA_BOUND_VALUE, createdAt: NOW };
-const PARKED_WRITE_INTENT = {
-  ...WRITE_INTENT_ATTEMPTING,
-  status: "parked",
-  parkedCode: "operator-required",
-  message: "Manual recovery review required",
-};
-const DURABLE_OUTBOX = {
-  outboxId: UUID_7,
-  aggregate: { kind: "write-intent", writeIntentId: UUID_1, generation: 1 },
-  payload: LEDGER_OUTBOX_PAYLOAD,
-  projection: { state: "pending" },
-  createdAt: NOW,
-};
 const ARTIFACT_OUTBOX = {
   outboxId: UUID_7,
   artifactId: UUID_8,
@@ -302,9 +290,9 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
     database.authority.commands.insert(COMMAND_FIXTURES[0]);
-    database.authority.writeIntents.insertPermanent(PARKED_WRITE_INTENT);
+    database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+    database.commitWriteAttempt(ATOMIC_WRITE_COMMIT);
     database.authority.opaque.leases.insert(OPAQUE_RECORD);
-    database.authority.durableOutbox.insert(DURABLE_OUTBOX);
     database.authority.artifactOutbox.insert(ARTIFACT_OUTBOX);
     await createBackup(database, directory);
     const generationBeforeDoctor = database.getMeta().authorityGeneration;
@@ -321,9 +309,9 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     if (report.counts.state !== "available") throw new Error("doctor counts should be available");
     assert.deepEqual(report.counts.values, {
       pendingCommands: 1,
-      unresolvedWriteIntents: 1,
+      unresolvedWriteIntents: 0,
       leases: 1,
-      durableOutbox: 1,
+      durableOutbox: 2,
       artifactOutbox: 1,
       captureFinalizationOutboxes: 0,
     });

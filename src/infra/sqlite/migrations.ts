@@ -63,10 +63,13 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   write_intents: `
     CREATE TABLE write_intents (
       record_key TEXT PRIMARY KEY,
+      system TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
       idempotency_key_digest TEXT NOT NULL UNIQUE,
       status TEXT NOT NULL,
       record_json TEXT NOT NULL CHECK (json_valid(record_json)),
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      UNIQUE (system, idempotency_key)
     ) STRICT
   `,
   write_attempts: `

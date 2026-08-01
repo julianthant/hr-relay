@@ -150,11 +150,10 @@
     {
       "name": "atomic-write-outbox",
       "file": "tests/unit/architecture/atomic-write-outbox.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: atomic-write-outbox.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/09-write-safety.md; docs/rebuild/03-tracker-dashboard.md",
+      "invariant": "Phase 1c atomic authority commit updates the fenced intent and attempt and inserts one schema-valid ledger outbox plus one terminal-span/generic-outcome outbox in one outer authority transaction; injected failure after every storage step rolls back every change and leaves authority generation unchanged. Browser sequencing and projection remain deferred to Phase 1f.",
+      "replacementRequired": true
     },
     {
       "name": "authority-target-no-fallback",
@@ -358,11 +357,10 @@
     {
       "name": "permanent-key-dedupe",
       "file": "tests/unit/architecture/permanent-key-dedupe.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: permanent-key-dedupe.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/09-write-safety.md",
+      "invariant": "A strict system-scoped natural idempotency key and its derived digest identify one permanent SQLite intent across sequential and independent competing connections; committed and observed-present rows cannot be reopened, observed-present creates no attempt or write ledger/span outbox, and any key/digest mismatch fails loud.",
+      "replacementRequired": true
     },
     {
       "name": "preflight-coverage",
@@ -395,11 +393,10 @@
     {
       "name": "recovery-negative-proof-settlement",
       "file": "tests/unit/architecture/recovery-negative-proof-settlement.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: recovery-negative-proof-settlement.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/09-write-safety.md",
+      "invariant": "Retry authority requires the exact configured number of schema-valid post-window observations at or beyond both injected-Clock timing boundaries, all bound to the fenced key and exact authoritative query/source/source-state; early, single, malformed, future, inconsistent, wrong-boundary, ambiguous, unknown, present, and operator-only evidence never becomes retryable.",
+      "replacementRequired": true
     },
     {
       "name": "runtime-isolation",

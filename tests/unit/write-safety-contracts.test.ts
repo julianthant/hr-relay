@@ -37,7 +37,10 @@ const CLOCK = manualClock(new Date("2026-07-31T17:03:00.000Z"));
 const evaluation = (verdicts: readonly unknown[], policy: unknown = POLICY) => ({
   writeIntentId: UUID_1,
   generation: 1,
-  idempotencyKeyDigest: HASH_A,
+  idempotencyKeyDigest: ABSENCE_1.idempotencyKeyDigest,
+  authoritativeSource: ABSENCE_1.source,
+  authoritativeSourceState: ABSENCE_1.sourceState,
+  queryDigest: ABSENCE_1.queryDigest,
   fencedAt: NOW,
   policy,
   verdicts,
@@ -92,7 +95,7 @@ describe("write-safety type shell", () => {
     const present = evaluateNegativeSettlement(evaluation([{ state: "present", proof: { proofSchemaHash: HASH_A, proofFingerprint: HASH_B, evidenceRef: `observation:${UUID_1}` } }]), CLOCK);
     assert.deepEqual({ state: present.state, code: "code" in present ? present.code : "" }, { state: "parked", code: "present" });
 
-    const wrongKey = evaluateNegativeSettlement(evaluation([{ state: "absent", evidence: { ...ABSENCE_1, idempotencyKeyDigest: HASH_B } }]), CLOCK);
+    const wrongKey = evaluateNegativeSettlement(evaluation([{ state: "absent", evidence: { ...ABSENCE_1, idempotencyKeyDigest: HASH_A } }]), CLOCK);
     assert.deepEqual({ state: wrongKey.state, code: "code" in wrongKey ? wrongKey.code : "" }, { state: "parked", code: "inconsistent-evidence" });
 
     const inconsistent = evaluateNegativeSettlement(evaluation([
