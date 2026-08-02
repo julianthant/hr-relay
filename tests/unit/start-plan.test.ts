@@ -1,0 +1,271 @@
+/**
+ * Start planning and plan consumption (doc 13 §5.1).
+ *
+ * The property under test throughout is that the operator acts on the truth:
+ * what the plan says will start is what starts, what it refuses is named with a
+ * reason, and a confirmation that no longer describes reality refuses rather
+ * than starting something else.
+ */
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, it } from "vitest";
+import { manualClock } from "../../src/domain/clock.js";
+import { deriveItemId, deriveTraceId } from "../../src/domain/identifiers.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { buildQueuedRun } from "../../src/services/runs/enqueue.js";
+import {
+  derivePlannedInputFingerprint,
+  planStart,
+  resolveInstances,
+  supportsDryRun,
+} from "../../src/services/start/plan.js";
+import {
+  PersonLookupCanonicalInput,
+  PersonLookupInput,
+  personLookupDescriptor,
+} from "../../src/workflows/person-lookup/descriptor.js";
+import { HASH_A, HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+
+const CLOCK = manualClock(new Date(NOW));
+const PLAN_TTL_MS = 10 * 60 * 1000;
+const roots: string[] = [];
+const databases: AuthorityDatabase[] = [];
+
+function openDatabase(): AuthorityDatabase {
+  const root = mkdtempSync(join(tmpdir(), "hrauto-rebuild-start-"));
+  roots.push(root);
+  const database = AuthorityDatabase.open(
+    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    CLOCK,
+  );
+  databases.push(database);
+  return database;
+}
+
+function plannerDeps(authority: AuthorityDatabase, ids = sequentialIdFactory()) {
+  return { authority, clock: CLOCK, ids, planTtlMs: PLAN_TTL_MS };
+}
+
+function baseRequest(submissions: readonly unknown[], overrides: Record<string, unknown> = {}) {
+  return {
+    descriptor: personLookupDescriptor,
+    submissions,
+    dryRun: false,
+    priority: "bulk" as const,
+    shape: "single" as const,
+    configFingerprint: HASH_A,
+    configSnapshotId: UUID_4,
+    plannedBy: "local-operator",
+    ...overrides,
+  };
+}
+
+afterEach(() => {
+  while (databases.length > 0) databases.pop()?.close();
+  while (roots.length > 0) {
+    const root = roots.pop();
+    if (root !== undefined) rmSync(root, { recursive: true, force: true });
+  }
+});
+
+describe("derived identity", () => {
+  it("derives one logical item per match key, stably", () => {
+    const first = deriveItemId("person-lookup", "eid:10873698");
+    assert.equal(first, deriveItemId("person-lookup", "eid:10873698"));
+    assert.notEqual(first, deriveItemId("person-lookup", "eid:10001573"));
+    assert.notEqual(first, deriveItemId("separation", "eid:10873698"));
+  });
+
+  it("derives a trace id bound to the run it names", () => {
+    const runId = "abcdef01-2345-4678-8abc-def012345678";
+    const traceId = deriveTraceId("pl", runId, CLOCK);
+    assert.match(traceId, /^pl-\d{6}-abcd$/);
+  });
+
+  it("hashes a schema by its shape, and reads ingress and canonical as different shapes", () => {
+    const ingress = deriveSchemaHash(PersonLookupInput, "input");
+    const canonical = deriveSchemaHash(PersonLookupCanonicalInput, "output");
+    assert.notEqual(ingress, canonical, "defaults applied is not the same shape as defaults resolved");
+    assert.equal(ingress, deriveSchemaHash(PersonLookupInput, "input"));
+  });
+});
+
+describe("start planning", () => {
+  it("plans every valid submission and derives its identity from the workflow's own match key", () => {
+    const database = openDatabase();
+    const plan = planStart(plannerDeps(database), baseRequest([
+      { emplId: "10873698" },
+      { name: "Battistessa, Johnnie" },
+    ]));
+    assert.equal(plan.planned.length, 2);
+    assert.equal(plan.refused.length, 0);
+    assert.deepEqual(plan.planned.map(({ matchKey }) => matchKey), [
+      "eid:10873698",
+      "name:Battistessa, Johnnie",
+    ]);
+    assert.equal(plan.planned[0].itemId, deriveItemId("person-lookup", "eid:10873698"));
+    assert.equal(plan.planned[0].title, "EID 10873698");
+    assert.equal(plan.planned[0].subtitle, "person lookup");
+    // The canonical snapshot carries resolved defaults, bound to the canonical
+    // schema's own hash rather than the ingress schema's.
+    assert.deepEqual(plan.planned[0].input.value, {
+      emplId: "10873698",
+      keepNonHdh: false,
+      includeCrmDates: false,
+    });
+    assert.equal(plan.planned[0].input.schemaHash, deriveSchemaHash(PersonLookupCanonicalInput, "output"));
+  });
+
+  it("refuses an unparseable submission by name instead of dropping it", () => {
+    const database = openDatabase();
+    const plan = planStart(plannerDeps(database), baseRequest([
+      { emplId: "10873698" },
+      { emplId: "99" },
+    ]));
+    assert.equal(plan.planned.length, 1);
+    assert.equal(plan.refused.length, 1);
+    assert.equal(plan.refused[0].entry, 2);
+    assert.equal(plan.refused[0].code, "input-invalid");
+  });
+
+  it("refuses a repeat of a logical item already in the same plan", () => {
+    const database = openDatabase();
+    const plan = planStart(plannerDeps(database), baseRequest([
+      { emplId: "10873698" },
+      { emplId: "10873698", includeCrmDates: true },
+    ]));
+    assert.equal(plan.planned.length, 1);
+    assert.deepEqual(plan.refused.map(({ code }) => code), ["active-run-exists"]);
+  });
+
+  it("refuses a submission whose logical item already has an active run", () => {
+    const database = openDatabase();
+    const itemId = deriveItemId("person-lookup", "eid:10873698");
+    database.authority.runs.enqueue(buildQueuedRun({
+      descriptor: personLookupDescriptor,
+      runId: "aaaaaaaa-0001-4000-8000-000100000000",
+      itemId,
+      traceId: "pl-170000-aaaa",
+      rawInput: { emplId: "10873698" },
+      canonicalInput: {
+        schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
+        value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
+      },
+      ingressSchemaHash: deriveSchemaHash(PersonLookupInput, "input"),
+      configFingerprint: HASH_A,
+      configSnapshotId: UUID_4,
+      resolvedInstance: { ucpath: "prod", crm: "prod" },
+      shape: "single",
+      priority: "bulk",
+      dryRun: false,
+      now: NOW,
+    }));
+
+    const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
+    assert.equal(plan.planned.length, 0);
+    assert.equal(plan.refused[0].code, "active-run-exists");
+    assert.match(plan.refused[0].message, /pl-170000-aaaa/);
+  });
+
+  it("refuses a dry run the descriptor does not offer", () => {
+    const database = openDatabase();
+    assert.equal(supportsDryRun(personLookupDescriptor), false);
+    const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }], { dryRun: true }));
+    assert.equal(plan.planned.length, 0);
+    assert.equal(plan.refused[0].code, "dry-run-unsupported");
+  });
+
+  it("resolves every reached system to production unless test is requested", () => {
+    assert.deepEqual(resolveInstances(personLookupDescriptor, undefined), { ucpath: "prod", crm: "prod" });
+    assert.deepEqual(resolveInstances(personLookupDescriptor, { crm: "test" }), { ucpath: "prod", crm: "test" });
+    assert.throws(
+      () => resolveInstances(personLookupDescriptor, { kuali: "test" }),
+      /never reaches kuali/,
+    );
+  });
+
+  it("fingerprints the planned set so a re-plan cannot be started by an old confirmation", () => {
+    const database = openDatabase();
+    const one = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
+    const two = planStart(plannerDeps(database), baseRequest([
+      { emplId: "10873698" },
+      { emplId: "10001573" },
+    ]));
+    assert.notEqual(one.inputFingerprint, two.inputFingerprint);
+    assert.equal(one.inputFingerprint, derivePlannedInputFingerprint(one.planned));
+  });
+});
+
+describe("start plan consumption", () => {
+  function storedPlan(database: AuthorityDatabase) {
+    const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
+    const stored = database.authority.startPlans.create(plan);
+    assert.equal(stored.state, "inserted");
+    return plan;
+  }
+
+  function consumeRequest(plan: ReturnType<typeof storedPlan>, overrides: Record<string, unknown> = {}) {
+    return {
+      startPlanId: plan.startPlanId,
+      commandId: "cccccccc-0001-4000-8000-000100000000",
+      descriptorFingerprint: plan.descriptorFingerprint,
+      configFingerprint: plan.configFingerprint,
+      inputFingerprint: plan.inputFingerprint,
+      now: NOW,
+      ...overrides,
+    };
+  }
+
+  it("consumes a matching plan exactly once and treats the same command as idempotent", () => {
+    const database = openDatabase();
+    const plan = storedPlan(database);
+    const first = database.authority.startPlans.consume(consumeRequest(plan));
+    assert.equal(first.state, "consumed");
+    const again = database.authority.startPlans.consume(consumeRequest(plan));
+    assert.equal(again.state, "already-consumed");
+    const other = database.authority.startPlans.consume(consumeRequest(plan, {
+      commandId: "cccccccc-0002-4000-8000-000200000000",
+    }));
+    assert.equal(other.state, "refused");
+    if (other.state !== "refused") throw new Error("a spent plan must refuse");
+    assert.equal(other.code, "spent");
+  });
+
+  it("refuses a plan whose descriptor, config, or input has since changed", () => {
+    const database = openDatabase();
+    const plan = storedPlan(database);
+    for (const field of ["descriptorFingerprint", "configFingerprint", "inputFingerprint"] as const) {
+      const outcome = database.authority.startPlans.consume(consumeRequest(plan, { [field]: HASH_B }));
+      assert.equal(outcome.state, "refused");
+      if (outcome.state !== "refused") throw new Error("a changed fingerprint must refuse");
+      assert.equal(outcome.code, "fingerprint-mismatch");
+    }
+  });
+
+  it("refuses an expired confirmation rather than starting it late", () => {
+    const database = openDatabase();
+    const plan = storedPlan(database);
+    const outcome = database.authority.startPlans.consume(consumeRequest(plan, {
+      now: new Date(Date.parse(NOW) + PLAN_TTL_MS + 1000).toISOString(),
+    }));
+    assert.equal(outcome.state, "refused");
+    if (outcome.state !== "refused") throw new Error("an expired plan must refuse");
+    assert.equal(outcome.code, "expired");
+  });
+
+  it("refuses to store a plan that claims it was already consumed", () => {
+    const database = openDatabase();
+    const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
+    assert.throws(
+      () => database.authority.startPlans.create({
+        ...plan,
+        consumedBy: { commandId: "cccccccc-0003-4000-8000-000300000000", consumedAt: NOW },
+      }),
+      /cannot be created already consumed/,
+    );
+  });
+});

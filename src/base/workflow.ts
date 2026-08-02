@@ -280,7 +280,38 @@ export interface WorkflowProjections {
   readonly contracts: readonly AnyTaskContract[];
 }
 
+/**
+ * The typed reads a planner needs, captured while the exact generic type is
+ * still in scope.
+ *
+ * `AnyWorkflowDescriptor` deliberately omits `identity` and `presentation`
+ * because `S` appears contravariantly in them, so a runtime consumer holding the
+ * broad view cannot call them without an assertion. Closing over the exact
+ * descriptor at definition time is the alternative to that assertion: each
+ * function below re-parses its argument through the descriptor's own canonical
+ * schema before handing it to the authored callback, so a wrong value fails
+ * loud here rather than reaching a bind.
+ */
+export interface WorkflowPlanning {
+  readonly parseInput: (raw: unknown) => unknown;
+  readonly parseCanonicalInput: (value: unknown) => unknown;
+  readonly matchKey: (parsed: unknown) => string;
+  readonly title: (parsed: unknown) => string;
+  readonly subtitle: (parsed: unknown) => string | undefined;
+  readonly inputSubject: (parsed: unknown) => InputSubject;
+}
+
 const PROJECTIONS = new WeakMap<object, WorkflowProjections>();
+const PLANNING = new WeakMap<object, WorkflowPlanning>();
+
+/** The planning view captured when the descriptor was built. Fails loud if it was not. */
+export function workflowPlanning(descriptor: object): WorkflowPlanning {
+  const planning = PLANNING.get(descriptor);
+  if (planning === undefined) {
+    throw new Error("workflow planning is only available for a descriptor built by defineWorkflowDescriptor");
+  }
+  return planning;
+}
 
 /** The projections derived when the descriptor was built. Fails loud if it was not. */
 export function workflowProjections(descriptor: object): WorkflowProjections {
@@ -595,6 +626,16 @@ export function defineWorkflowDescriptor<
     coveragePoints: deriveGraphCoveragePoints(nodes),
     scenarios,
     contracts: Object.freeze(contracts),
+  }));
+  PLANNING.set(descriptor, Object.freeze({
+    parseInput: (raw: unknown) => spec.flow.input.parse(raw),
+    parseCanonicalInput: (value: unknown) => spec.canonicalInput.parse(value),
+    matchKey: (parsed: unknown) => spec.identity.matchKey(spec.canonicalInput.parse(parsed)),
+    title: (parsed: unknown) => spec.presentation.title(spec.canonicalInput.parse(parsed)),
+    subtitle: (parsed: unknown) => spec.presentation.subtitle?.(spec.canonicalInput.parse(parsed)),
+    inputSubject: (parsed: unknown) => (typeof spec.inputSubject === "string"
+      ? spec.inputSubject
+      : spec.inputSubject(spec.canonicalInput.parse(parsed))),
   }));
   return descriptor;
 }

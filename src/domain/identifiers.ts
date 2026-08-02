@@ -7,9 +7,9 @@
  * `IdFactory`, so a test drives the exact ids that land in authority and a
  * fixture stays a fixture.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Clock } from "./clock.js";
-import { TraceIdSchema } from "./ids.js";
+import { ItemIdSchema, TraceIdSchema } from "./ids.js";
 import type { TraceId } from "./ids.js";
 
 export interface IdFactory {
@@ -29,4 +29,33 @@ export const systemIdFactory: IdFactory = Object.freeze({
  */
 export function deriveTraceId(code: string, runId: string, clock: Clock): TraceId {
   return TraceIdSchema.parse(`${code}-${clock.timeOfDayCode()}-${runId.slice(0, 4)}`);
+}
+
+/**
+ * The logical item id, DERIVED rather than minted (doc 02 §5.7).
+ *
+ * `(workflow, itemId)` is the key retries share and a rerun-with-different-input
+ * does not, so the id has to be a function of the identity the workflow itself
+ * declares — its `matchKey`. Minting a fresh UUID per submission would make
+ * every retry a new logical item and quietly orphan its checkpoints.
+ *
+ * The digest is folded into UUID shape so `ItemId` stays one id kind rather
+ * than growing a second spelling.
+ */
+export function deriveItemId(workflowId: string, matchKey: string): string {
+  const digest = createHash("sha256")
+    .update("hrauto:logical-item:v1\0")
+    .update(workflowId)
+    .update("\0")
+    .update(matchKey)
+    .digest("hex");
+  const version = "5";
+  const variant = "89ab"[Number.parseInt(digest[16], 16) % 4];
+  return ItemIdSchema.parse([
+    digest.slice(0, 8),
+    digest.slice(8, 12),
+    `${version}${digest.slice(13, 16)}`,
+    `${variant}${digest.slice(17, 20)}`,
+    digest.slice(20, 32),
+  ].join("-"));
 }

@@ -8,6 +8,26 @@
  */
 import { HASH_A, HASH_B, HASH_C, LATER, NOW, UUID_2, UUID_3, UUID_4, UUID_5 } from "./phase1c-contract-fixtures.js";
 
+/**
+ * A deterministic id source. Services take an `IdFactory` for exactly this
+ * reason: a durable record minted from `crypto.randomUUID()` cannot be asserted
+ * against byte for byte.
+ */
+export function sequentialIdFactory(prefix = "a"): { readonly uuid: () => string; readonly minted: () => readonly string[] } {
+  const minted: string[] = [];
+  let next = 0;
+  return {
+    uuid: () => {
+      next += 1;
+      const tail = String(next).padStart(4, "0");
+      const id = `${prefix.repeat(8)}-${tail}-4000-8000-${tail}${"0".repeat(8)}`;
+      minted.push(id);
+      return id;
+    },
+    minted: () => Object.freeze([...minted]),
+  };
+}
+
 export const RUN_ID = UUID_2;
 export const ITEM_ID = UUID_3;
 export const TRACE_ID = "pl-170000-2222";
