@@ -46,6 +46,7 @@ import {
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "../fixtures/phase1c-contract-fixtures.js";
+import { WORKER_START_REQUEST } from "../fixtures/phase1f-run-fixtures.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
@@ -55,7 +56,6 @@ const bootStores: AuthorityBootStore[] = [];
 const CLOCK = manualClock(new Date(NOW));
 const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
 const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
-const OPAQUE_RECORD = { recordId: UUID_8, payload: SCHEMA_BOUND_VALUE, createdAt: NOW };
 const ARTIFACT_OUTBOX = {
   outboxId: UUID_7,
   artifactId: UUID_8,
@@ -348,7 +348,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     database.authority.commands.insert(COMMAND_FIXTURES[0]);
     database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     database.commitWriteAttempt(ATOMIC_WRITE_COMMIT);
-    database.authority.opaque.leases.insert(OPAQUE_RECORD);
+    database.authority.workerLeases.start(WORKER_START_REQUEST);
     database.authority.artifactOutbox.insert(ARTIFACT_OUTBOX);
     await createBackup(database, directory);
     const generationBeforeDoctor = database.getMeta().authorityGeneration;
@@ -631,8 +631,16 @@ describe("offline exact-backup restore", () => {
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown> & { backupFileName: string };
     const backupPath = join(directory, manifest.backupFileName);
     const corruptBackup = new DatabaseSync(backupPath);
-    corruptBackup.prepare("INSERT INTO tasks (record_key, record_json, created_at) VALUES (?, ?, ?)")
-      .run(UUID_8, JSON.stringify({ recordId: UUID_8 }), NOW);
+    // Columns the v4 triggers demand are all present and plausible; only the
+    // record JSON is not a run. Corruption that satisfies the column contract
+    // is exactly what record-schema validation exists to catch — a shape check
+    // at the column level would wave this row through.
+    corruptBackup.prepare(`
+      INSERT INTO tasks (
+        record_key, workflow, item_id, state, priority, attempt,
+        claim_generation, version, record_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(UUID_8, "person-lookup", UUID_8, "queued", "bulk", 1, 0, 1, JSON.stringify({ recordId: UUID_8 }), NOW);
     corruptBackup.close();
     const bytes = readFileSync(backupPath);
     writeFileSync(manifestPath, JSON.stringify({

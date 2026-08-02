@@ -3,7 +3,26 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 3;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 4;
+
+/** The run lifecycle states in which exactly one worker owns the row (doc 02 §4). */
+const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
+const CLAIM_COLUMNS_PRESENT = "NEW.owner_worker_id IS NOT NULL AND NEW.heartbeat_at IS NOT NULL";
+const CLAIM_COLUMNS_ABSENT = "NEW.owner_worker_id IS NULL AND NEW.heartbeat_at IS NULL";
+const RUN_CLAIM_CONSISTENCY = `
+  (NEW.state IN ${CLAIMED_STATE_SQL_LIST} AND NOT (${CLAIM_COLUMNS_PRESENT}))
+  OR (NEW.state NOT IN ${CLAIMED_STATE_SQL_LIST} AND NOT (${CLAIM_COLUMNS_ABSENT}))
+  OR (NEW.state IN ${CLAIMED_STATE_SQL_LIST} AND NEW.claim_generation < 1)
+`;
+const RUN_REQUIRED_COLUMNS = `
+  NEW.workflow IS NULL OR NEW.item_id IS NULL OR NEW.state IS NULL
+  OR NEW.priority IS NULL OR NEW.attempt IS NULL OR NEW.version IS NULL
+  OR NEW.claim_generation IS NULL
+`;
+const WORKER_REQUIRED_COLUMNS = `
+  NEW.worker_id IS NULL OR NEW.workflow IS NULL OR NEW.lease_generation IS NULL
+  OR NEW.state IS NULL OR NEW.directive IS NULL OR NEW.version IS NULL
+`;
 
 const jsonRecordTable = (name: string): string => `
   CREATE TABLE ${name} (
@@ -188,6 +207,98 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     statements: [
       SQLITE_TABLE_DDL.run_checkpoints,
       "CREATE INDEX run_checkpoints_item_node_idx ON run_checkpoints(workflow, item_id, node_id, attempt DESC)",
+    ],
+  },
+  {
+    // Doc 03 §2.3's task/claim store, typed. `tasks` holds runs and `leases`
+    // holds worker leases; both were created as opaque JSON tables in v1 because
+    // nothing wrote them before the executor existed.
+    //
+    // There is deliberately NO unique index over (workflow, item_id): a logical
+    // item legitimately carries many runs — in-run attempts share a run id, and
+    // a cross-run retry is a new run against the same item. "At most one ACTIVE
+    // run per item" is descriptor policy (`enqueue`), and a workflow that
+    // declares `allow-parallel` would break a schema-level uniqueness rule.
+    version: 4,
+    statements: [
+      "ALTER TABLE tasks ADD COLUMN workflow TEXT",
+      "ALTER TABLE tasks ADD COLUMN item_id TEXT",
+      "ALTER TABLE tasks ADD COLUMN state TEXT",
+      "ALTER TABLE tasks ADD COLUMN priority TEXT",
+      "ALTER TABLE tasks ADD COLUMN attempt INTEGER",
+      "ALTER TABLE tasks ADD COLUMN not_before TEXT",
+      "ALTER TABLE tasks ADD COLUMN owner_worker_id TEXT",
+      "ALTER TABLE tasks ADD COLUMN claim_generation INTEGER",
+      "ALTER TABLE tasks ADD COLUMN heartbeat_at TEXT",
+      "ALTER TABLE tasks ADD COLUMN version INTEGER",
+      // The claim query: eligible rows for one workflow, priority then FIFO.
+      "CREATE INDEX tasks_claim_idx ON tasks(workflow, state, priority, not_before, created_at)",
+      // The dead-worker sweep: claimed rows whose heartbeat has gone stale.
+      "CREATE INDEX tasks_heartbeat_idx ON tasks(state, heartbeat_at)",
+      "CREATE INDEX tasks_item_idx ON tasks(workflow, item_id)",
+      "CREATE INDEX tasks_owner_idx ON tasks(owner_worker_id)",
+      `CREATE TRIGGER tasks_require_run_columns_insert
+        BEFORE INSERT ON tasks
+        WHEN ${RUN_REQUIRED_COLUMNS}
+        BEGIN
+          SELECT RAISE(ABORT, 'tasks requires workflow, item_id, state, priority, attempt, and version');
+        END`,
+      `CREATE TRIGGER tasks_require_run_columns_update
+        BEFORE UPDATE OF workflow, item_id, state, priority, attempt, version, claim_generation ON tasks
+        WHEN ${RUN_REQUIRED_COLUMNS}
+        BEGIN
+          SELECT RAISE(ABORT, 'tasks requires workflow, item_id, state, priority, attempt, and version');
+        END`,
+      // A claim exists exactly in the claimed states. This is the one-worker
+      // ownership invariant expressed where no code path can route around it.
+      `CREATE TRIGGER tasks_require_claim_consistency_insert
+        BEFORE INSERT ON tasks
+        WHEN ${RUN_CLAIM_CONSISTENCY}
+        BEGIN
+          SELECT RAISE(ABORT, 'tasks claim columns must be set exactly in claimed, validating, and running states');
+        END`,
+      `CREATE TRIGGER tasks_require_claim_consistency_update
+        BEFORE UPDATE OF state, owner_worker_id, claim_generation, heartbeat_at ON tasks
+        WHEN ${RUN_CLAIM_CONSISTENCY}
+        BEGIN
+          SELECT RAISE(ABORT, 'tasks claim columns must be set exactly in claimed, validating, and running states');
+        END`,
+      // Claim generation, attempt, and version only ever move forward. A fence
+      // that could be rewound is not a fence.
+      `CREATE TRIGGER tasks_monotonic_counters_update
+        BEFORE UPDATE OF claim_generation, attempt, version ON tasks
+        WHEN NEW.claim_generation < OLD.claim_generation
+          OR NEW.attempt < OLD.attempt
+          OR NEW.version <= OLD.version
+        BEGIN
+          SELECT RAISE(ABORT, 'tasks claim_generation, attempt, and version may only advance');
+        END`,
+      "ALTER TABLE leases ADD COLUMN worker_id TEXT",
+      "ALTER TABLE leases ADD COLUMN workflow TEXT",
+      "ALTER TABLE leases ADD COLUMN lease_generation INTEGER",
+      "ALTER TABLE leases ADD COLUMN state TEXT",
+      "ALTER TABLE leases ADD COLUMN directive TEXT",
+      "ALTER TABLE leases ADD COLUMN heartbeat_at TEXT",
+      "ALTER TABLE leases ADD COLUMN version INTEGER",
+      "CREATE INDEX leases_workflow_state_idx ON leases(workflow, state)",
+      `CREATE TRIGGER leases_require_worker_columns_insert
+        BEFORE INSERT ON leases
+        WHEN ${WORKER_REQUIRED_COLUMNS}
+        BEGIN
+          SELECT RAISE(ABORT, 'leases requires worker_id, workflow, lease_generation, state, directive, and version');
+        END`,
+      `CREATE TRIGGER leases_require_worker_columns_update
+        BEFORE UPDATE OF worker_id, workflow, lease_generation, state, directive, version ON leases
+        WHEN ${WORKER_REQUIRED_COLUMNS}
+        BEGIN
+          SELECT RAISE(ABORT, 'leases requires worker_id, workflow, lease_generation, state, directive, and version');
+        END`,
+      `CREATE TRIGGER leases_monotonic_counters_update
+        BEFORE UPDATE OF lease_generation, version ON leases
+        WHEN NEW.lease_generation < OLD.lease_generation OR NEW.version <= OLD.version
+        BEGIN
+          SELECT RAISE(ABORT, 'leases lease_generation and version may only advance');
+        END`,
     ],
   },
 ] as const);

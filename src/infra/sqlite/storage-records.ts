@@ -14,6 +14,8 @@ import {
 } from "../../domain/ids.js";
 import { NotificationRecordSchema } from "../../domain/notifications.js";
 import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
+import { RunRecordSchema } from "../../domain/run/record.js";
+import { WorkerLeaseRecordSchema } from "../../domain/run/worker.js";
 import { SchemaBoundCanonicalValueSchema } from "../../domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../domain/workflow/checkpoint.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../domain/write-safety.js";
@@ -54,8 +56,12 @@ export const ProjectionStorageRecordSchema = z.strictObject({
 type AuthorityRecordTableName = Exclude<AuthorityTableName, "authority_meta">;
 
 export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
-  tasks: OpaqueAuthorityRecordSchema,
-  leases: OpaqueAuthorityRecordSchema,
+  // Doc 03 §2.3 names `tasks` and `leases` the task/claim store. Schema v4 gave
+  // both their typed columns, so neither is an opaque payload any more: a row
+  // that predates the typing fails validation at boot rather than being
+  // reinterpreted as a run or a worker it was never written as.
+  tasks: RunRecordSchema,
+  leases: WorkerLeaseRecordSchema,
   dependencies: DependencyRecordSchema,
   delegation_manifests: DelegationManifestSchema,
   commands: CommandRequestSchema,

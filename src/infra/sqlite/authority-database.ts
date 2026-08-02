@@ -18,7 +18,45 @@ import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/com
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
-import { BrowserSystemIdSchema } from "../../domain/ids.js";
+import { BrowserSystemIdSchema, WorkerIdSchema, WorkflowIdSchema } from "../../domain/ids.js";
+import { nextAttemptEnvelope } from "../../domain/run/envelope.js";
+import {
+  RunRecordSchema,
+  runClaim,
+  runTransitionViolation,
+  type RunRecord,
+} from "../../domain/run/record.js";
+import {
+  LIVE_WORKER_STATES,
+  WorkerLeaseRecordSchema,
+  isLiveWorker,
+  type WorkerLeaseRecord,
+} from "../../domain/run/worker.js";
+import {
+  RunClaimOutcomeSchema,
+  RunClaimRequestSchema,
+  RunClaimSweepRequestSchema,
+  RunClaimTokenSchema,
+  RunHeartbeatOutcomeSchema,
+  RunHeartbeatRequestSchema,
+  RunItemQuerySchema,
+  RunPresentationRequestSchema,
+  RunRequeueRequestSchema,
+  RunResumeRequestSchema,
+  RunTransitionRequestSchema,
+  RunUpdateOutcomeSchema,
+  WorkerControlRequestSchema,
+  WorkerLifecycleRequestSchema,
+  WorkerStartOutcomeSchema,
+  WorkerStartRequestSchema,
+  WorkerSweepRequestSchema,
+  WorkerUpdateOutcomeSchema,
+  type RunClaimOutcome,
+  type RunHeartbeatOutcome,
+  type RunUpdateOutcome,
+  type WorkerStartOutcome,
+  type WorkerUpdateOutcome,
+} from "./run-store-contracts.js";
 import {
   RunCheckpointRecordSchema,
   checkpointLookupKey,
@@ -138,9 +176,36 @@ type RunCheckpointRepository = Readonly<{
   latest(workflowId: string, itemId: string, nodeId: string): RunCheckpointRecord | undefined;
 }>;
 
+/**
+ * Doc 05 §3's claim authority. `claimNext` and `renewClaim` are the only ways a
+ * worker gains or keeps a row, and both are CAS: the row moves out of `queued`
+ * in the same transaction that reads it, and a heartbeat that no longer matches
+ * `(workerId, claimGeneration)` reports `lost` instead of quietly succeeding.
+ */
+type RunRepository = Readonly<{
+  enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
+  get(runId: string): RunRecord | undefined;
+  listByItem(input: unknown): readonly RunRecord[];
+  listByWorker(workerId: string): readonly RunRecord[];
+  claimNext(input: unknown): RunClaimOutcome;
+  renewClaim(input: unknown): RunHeartbeatOutcome;
+  transition(input: unknown): RunUpdateOutcome;
+  requeue(input: unknown): RunUpdateOutcome;
+  resume(input: unknown): RunUpdateOutcome;
+  updatePresentation(input: unknown): RunUpdateOutcome;
+  sweepExpiredClaims(input: unknown): readonly RunRecord[];
+}>;
+
+type WorkerLeaseRepository = Readonly<{
+  start(input: unknown): WorkerStartOutcome;
+  get(workerId: string): WorkerLeaseRecord | undefined;
+  listLive(workflow?: string): readonly WorkerLeaseRecord[];
+  reportLifecycle(input: unknown): WorkerUpdateOutcome;
+  control(input: unknown): WorkerUpdateOutcome;
+  sweepExpired(input: unknown): readonly WorkerLeaseRecord[];
+}>;
+
 type OpaqueAuthorityRepositories = Readonly<{
-  tasks: ImmutableRepository<OpaqueAuthorityRecord>;
-  leases: ImmutableRepository<OpaqueAuthorityRecord>;
   ocrApprovals: ImmutableRepository<OpaqueAuthorityRecord>;
   captureSessions: ImmutableRepository<OpaqueAuthorityRecord>;
   capturePhotoOrder: ImmutableRepository<OpaqueAuthorityRecord>;
@@ -149,6 +214,8 @@ type OpaqueAuthorityRepositories = Readonly<{
 }>;
 
 export type AuthorityRepositories = Readonly<{
+  runs: RunRepository;
+  workerLeases: WorkerLeaseRepository;
   commands: CommandRepository;
   commandAudits: ImmutableRepository<z.infer<typeof CommandAuditRecordSchema>>;
   dependencies: ImmutableRepository<z.infer<typeof DependencyRecordSchema>>;
@@ -179,8 +246,6 @@ export type ProjectionRepositories = Readonly<{
 }>;
 
 const OpaqueAuthorityTableSchema = z.enum([
-  "tasks",
-  "leases",
   "ocr_approvals",
   "capture_sessions",
   "capture_photo_order",
@@ -189,6 +254,8 @@ const OpaqueAuthorityTableSchema = z.enum([
 ]);
 
 const JsonRowSchema = z.strictObject({ record_json: z.string() });
+const NextEligibleRowSchema = z.strictObject({ next_eligible_at: z.string().nullable() });
+const HeldRunRowSchema = z.strictObject({ run_id: z.string().nullable() });
 const IntPragmaRowSchema = z.record(z.string(), z.number().int());
 const TextPragmaRowSchema = z.record(z.string(), z.string());
 const MetaRowSchema = z.strictObject({
@@ -261,6 +328,31 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
 }
 
 const INVARIANT_QUERIES = Object.freeze([
+  {
+    name: "run-columns-match-record",
+    sql: "SELECT count(*) AS count FROM tasks WHERE workflow <> json_extract(record_json, '$.envelope.workflow') OR item_id <> json_extract(record_json, '$.envelope.itemId') OR state <> json_extract(record_json, '$.lifecycle.state') OR priority <> json_extract(record_json, '$.envelope.priority') OR attempt <> json_extract(record_json, '$.envelope.attempt') OR version <> json_extract(record_json, '$.version') OR claim_generation <> json_extract(record_json, '$.claimGeneration')",
+  },
+  {
+    name: "run-claim-owner-matches-record",
+    sql: "SELECT count(*) AS count FROM tasks WHERE state IN ('claimed','validating','running') AND (owner_worker_id <> json_extract(record_json, '$.lifecycle.workerId') OR heartbeat_at <> json_extract(record_json, '$.lifecycle.heartbeatAt'))",
+  },
+  {
+    name: "worker-lease-columns-match-record",
+    sql: "SELECT count(*) AS count FROM leases WHERE worker_id <> record_key OR worker_id <> json_extract(record_json, '$.workerId') OR workflow <> json_extract(record_json, '$.workflow') OR lease_generation <> json_extract(record_json, '$.leaseGeneration') OR state <> json_extract(record_json, '$.lifecycle.state') OR directive <> json_extract(record_json, '$.control.directive') OR version <> json_extract(record_json, '$.version')",
+  },
+  {
+    // One worker owns at most one active run (doc 05 §0.3). This is the
+    // invariant the whole claim protocol exists to hold, so it is checked in
+    // the database rather than trusted from the loop that maintains it.
+    name: "worker-owns-at-most-one-active-run",
+    sql: `
+      SELECT count(*) AS count FROM (
+        SELECT owner_worker_id FROM tasks
+        WHERE state IN ('claimed','validating','running')
+        GROUP BY owner_worker_id HAVING count(*) > 1
+      )
+    `,
+  },
   {
     name: "commands-family-column-matches-record",
     sql: "SELECT count(*) AS count FROM commands WHERE family <> json_extract(record_json, '$.family')",
@@ -817,6 +909,8 @@ export class AuthorityDatabase implements Disposable {
     };
 
     return Object.freeze({
+      runs: this.#buildRunRepository(),
+      workerLeases: this.#buildWorkerLeaseRepository(),
       commands: Object.freeze({
         insert: (input: unknown) => {
           const record = CommandRequestSchema.parse(input);
@@ -992,14 +1086,465 @@ export class AuthorityDatabase implements Disposable {
         get: (outboxId: string) => this.#readRecord("artifact_outbox", outboxId, ArtifactOutboxStorageRecordSchema),
       }),
       opaque: Object.freeze({
-        tasks: opaque("tasks"),
-        leases: opaque("leases"),
         ocrApprovals: opaque("ocr_approvals"),
         captureSessions: opaque("capture_sessions"),
         capturePhotoOrder: opaque("capture_photo_order"),
         captureFinalizationOutboxes: opaque("capture_finalization_outboxes"),
         artifactSinkHeads: opaque("artifact_sink_heads"),
       }),
+    });
+  }
+
+  #readRunRow(runId: string): RunRecord | undefined {
+    return this.#readRecord("tasks", runId, RunRecordSchema);
+  }
+
+  #writeRunRow(record: RunRecord, mode: "insert" | "update"): void {
+    const claim = runClaim(record);
+    const json = canonicalJsonStringify(record);
+    const notBefore = record.lifecycle.state === "queued" ? record.lifecycle.notBefore ?? null : null;
+    this.#authorityWrite("tasks", () => {
+      const statement = mode === "insert"
+        ? this.#database.prepare(`
+          INSERT INTO tasks (
+            record_key, workflow, item_id, state, priority, attempt, not_before,
+            owner_worker_id, claim_generation, heartbeat_at, version, record_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        : this.#database.prepare(`
+          UPDATE tasks SET
+            workflow = ?, item_id = ?, state = ?, priority = ?, attempt = ?, not_before = ?,
+            owner_worker_id = ?, claim_generation = ?, heartbeat_at = ?, version = ?, record_json = ?
+          WHERE record_key = ? AND version = ?
+        `);
+      const shared = [
+        record.envelope.workflow,
+        record.envelope.itemId,
+        record.lifecycle.state,
+        record.envelope.priority,
+        record.envelope.attempt,
+        notBefore,
+        claim?.workerId ?? null,
+        record.claimGeneration,
+        claim?.heartbeatAt ?? null,
+        record.version,
+      ] as const;
+      const result = mode === "insert"
+        ? statement.run(record.envelope.runId, ...shared, json, record.createdAt)
+        : statement.run(...shared, json, record.envelope.runId, record.version - 1);
+      const changes = sqliteChanges(result.changes);
+      if (changes !== 1) {
+        throw new Error(`run ${record.envelope.runId} ${mode} affected ${String(changes)} rows`);
+      }
+      return { result: undefined, changes };
+    });
+  }
+
+  /**
+   * One compare-and-swap over a run row. Every mutation funnels through here so
+   * the version check, the claim check, and the legality check cannot be
+   * bypassed by a caller that "knows" its update is safe.
+   */
+  #mutateRun(
+    runId: string,
+    expectedVersion: number,
+    now: string,
+    claim: z.infer<typeof RunClaimTokenSchema> | undefined,
+    next: (current: RunRecord) => RunRecord,
+  ): RunUpdateOutcome {
+    return this.withAuthorityTransaction(() => {
+      const current = this.#readRunRow(runId);
+      if (current === undefined) throw new Error(`run ${runId} does not exist`);
+      if (current.version !== expectedVersion) {
+        return RunUpdateOutcomeSchema.parse({
+          state: "conflict",
+          currentVersion: current.version,
+          currentState: current.lifecycle.state,
+          message: `run ${runId} is at version ${String(current.version)}, not ${String(expectedVersion)}`,
+        });
+      }
+      if (claim !== undefined) {
+        const held = runClaim(current);
+        if (held === undefined
+          || held.workerId !== claim.workerId
+          || held.claimGeneration !== claim.claimGeneration) {
+          return RunUpdateOutcomeSchema.parse({
+            state: "conflict",
+            currentVersion: current.version,
+            currentState: current.lifecycle.state,
+            message: `run ${runId} is no longer claimed by ${claim.workerId} at generation ${String(claim.claimGeneration)}`,
+          });
+        }
+      }
+      const candidate = next(current);
+      const violation = runTransitionViolation(current.lifecycle, candidate.lifecycle);
+      if (violation !== undefined) throw new Error(`run ${runId}: ${violation}`);
+      const updated = RunRecordSchema.parse({ ...candidate, version: current.version + 1, updatedAt: now });
+      this.#writeRunRow(updated, "update");
+      return RunUpdateOutcomeSchema.parse({ state: "applied", run: updated });
+    });
+  }
+
+  #buildRunRepository(): RunRepository {
+    return Object.freeze({
+      enqueue: (input: unknown) => {
+        const record = RunRecordSchema.parse(input);
+        if (record.lifecycle.state !== "queued") {
+          throw new Error(`run ${record.envelope.runId} must be enqueued in the queued state, not ${record.lifecycle.state}`);
+        }
+        const json = canonicalJsonStringify(record);
+        return this.withAuthorityTransaction(() => {
+          const existing = this.#readRunRow(record.envelope.runId);
+          if (existing !== undefined) {
+            if (canonicalJsonStringify(existing) !== json) {
+              throw new Error(`run id ${record.envelope.runId} already exists with different content`);
+            }
+            return Object.freeze({ state: "existing" as const, record: existing });
+          }
+          this.#writeRunRow(record, "insert");
+          return Object.freeze({ state: "inserted" as const, record });
+        });
+      },
+      get: (runId: string) => this.#readRunRow(runId),
+      listByItem: (input: unknown) => {
+        const query = RunItemQuerySchema.parse(input);
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM tasks WHERE workflow = ? AND item_id = ? ORDER BY created_at, record_key
+        `).all(query.workflow, query.itemId);
+        return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
+      },
+      listByWorker: (workerId: string) => {
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM tasks WHERE owner_worker_id = ? ORDER BY created_at, record_key
+        `).all(WorkerIdSchema.parse(workerId));
+        return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
+      },
+      claimNext: (input: unknown) => {
+        const request = RunClaimRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          // One worker, one active item (doc 05 §0.3). A worker asking for a
+          // second row is a bug in the loop, not a state to serve — and serving
+          // it would put two runs and two browser-session sets under one owner.
+          const held = HeldRunRowSchema.parse(this.#database.prepare(`
+            SELECT record_key AS run_id FROM tasks
+            WHERE owner_worker_id = ? AND state IN ('claimed', 'validating', 'running')
+            LIMIT 1
+          `).get(request.workerId) ?? { run_id: null });
+          if (held.run_id !== null) {
+            throw new Error(`worker ${request.workerId} already holds active run ${held.run_id}`);
+          }
+          const row = this.#database.prepare(`
+            SELECT record_json FROM tasks
+            WHERE workflow = ? AND state = 'queued'
+              AND (not_before IS NULL OR not_before <= ?)
+            ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END, created_at, record_key
+            LIMIT 1
+          `).get(request.workflow, request.now);
+          if (row === undefined) {
+            const deferred = NextEligibleRowSchema.parse(this.#database.prepare(`
+              SELECT min(not_before) AS next_eligible_at FROM tasks
+              WHERE workflow = ? AND state = 'queued' AND not_before > ?
+            `).get(request.workflow, request.now));
+            if (deferred.next_eligible_at === null) return RunClaimOutcomeSchema.parse({ state: "idle" });
+            return RunClaimOutcomeSchema.parse({ state: "deferred", nextEligibleAt: deferred.next_eligible_at });
+          }
+          const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+          const claimed = RunRecordSchema.parse({
+            ...current,
+            lifecycle: {
+              state: "claimed",
+              workerId: request.workerId,
+              claimedAt: request.now,
+              heartbeatAt: request.now,
+            },
+            claimGeneration: current.claimGeneration + 1,
+            version: current.version + 1,
+            updatedAt: request.now,
+          });
+          this.#writeRunRow(claimed, "update");
+          return RunClaimOutcomeSchema.parse({ state: "claimed", run: claimed });
+        });
+      },
+      renewClaim: (input: unknown) => {
+        const request = RunHeartbeatRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const current = this.#readRunRow(request.runId);
+          if (current === undefined) throw new Error(`run ${request.runId} does not exist`);
+          const held = runClaim(current);
+          if (held === undefined
+            || held.workerId !== request.claim.workerId
+            || held.claimGeneration !== request.claim.claimGeneration) {
+            return RunHeartbeatOutcomeSchema.parse({
+              state: "lost",
+              message: `run ${request.runId} is ${current.lifecycle.state} at claim generation `
+                + `${String(current.claimGeneration)}; ${request.claim.workerId} held generation `
+                + `${String(request.claim.claimGeneration)}`,
+            });
+          }
+          const renewed = RunRecordSchema.parse({
+            ...current,
+            lifecycle: { ...current.lifecycle, heartbeatAt: request.now },
+            version: current.version + 1,
+            updatedAt: request.now,
+          });
+          this.#writeRunRow(renewed, "update");
+          return RunHeartbeatOutcomeSchema.parse({ state: "renewed", run: renewed });
+        });
+      },
+      transition: (input: unknown) => {
+        const request = RunTransitionRequestSchema.parse(input);
+        return this.#mutateRun(
+          request.runId,
+          request.expectedVersion,
+          request.now,
+          request.claim,
+          (current) => RunRecordSchema.parse({ ...current, lifecycle: request.lifecycle }),
+        );
+      },
+      requeue: (input: unknown) => {
+        const request = RunRequeueRequestSchema.parse(input);
+        return this.#mutateRun(
+          request.runId,
+          request.expectedVersion,
+          request.now,
+          request.claim,
+          (current) => RunRecordSchema.parse({
+            ...current,
+            // A new attempt drops every single-resume affordance: a freshness
+            // override authorized ONE attempt (doc 02 §5.5), and injected
+            // patches have already been persisted as checkpoints by the
+            // executor that applied them.
+            envelope: nextAttemptEnvelope(current.envelope),
+            lifecycle: {
+              state: "queued",
+              requeuedFrom: request.cause,
+              ...(request.notBefore === undefined ? {} : { notBefore: request.notBefore }),
+            },
+          }),
+        );
+      },
+      resume: (input: unknown) => {
+        const request = RunResumeRequestSchema.parse(input);
+        return this.#mutateRun(
+          request.runId,
+          request.expectedVersion,
+          request.now,
+          undefined,
+          (current) => {
+            if (current.lifecycle.state !== "parked-gate" && current.lifecycle.state !== "parked-write") {
+              throw new Error(`run ${request.runId} is ${current.lifecycle.state}; only a parked run resumes`);
+            }
+            return RunRecordSchema.parse({
+              ...current,
+              envelope: { ...current.envelope, startAt: request.startAt },
+              lifecycle: { state: "queued" },
+            });
+          },
+        );
+      },
+      updatePresentation: (input: unknown) => {
+        const request = RunPresentationRequestSchema.parse(input);
+        return this.#mutateRun(
+          request.runId,
+          request.expectedVersion,
+          request.now,
+          undefined,
+          (current) => RunRecordSchema.parse({
+            ...current,
+            ...(request.displayName === undefined ? {} : { displayName: request.displayName }),
+            ...(request.hidden === undefined ? {} : { hidden: request.hidden }),
+          }),
+        );
+      },
+      sweepExpiredClaims: (input: unknown) => {
+        const request = RunClaimSweepRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const rows = request.workflow === undefined
+            ? this.#database.prepare(`
+              SELECT record_json FROM tasks
+              WHERE state IN ('claimed', 'validating', 'running') AND heartbeat_at < ?
+              ORDER BY heartbeat_at, record_key
+            `).all(request.staleBefore)
+            : this.#database.prepare(`
+              SELECT record_json FROM tasks
+              WHERE state IN ('claimed', 'validating', 'running') AND heartbeat_at < ? AND workflow = ?
+              ORDER BY heartbeat_at, record_key
+            `).all(request.staleBefore, request.workflow);
+          const recovered: RunRecord[] = [];
+          for (const row of rows) {
+            const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+            const requeued = RunRecordSchema.parse({
+              ...current,
+              envelope: nextAttemptEnvelope(current.envelope),
+              lifecycle: { state: "queued", requeuedFrom: "recovery" },
+              version: current.version + 1,
+              updatedAt: request.now,
+            });
+            this.#writeRunRow(requeued, "update");
+            recovered.push(requeued);
+          }
+          return Object.freeze(recovered);
+        });
+      },
+    });
+  }
+
+  #readWorkerLease(workerId: string): WorkerLeaseRecord | undefined {
+    return this.#readRecord("leases", workerId, WorkerLeaseRecordSchema);
+  }
+
+  #writeWorkerLease(record: WorkerLeaseRecord, mode: "insert" | "update"): void {
+    const json = canonicalJsonStringify(record);
+    const heartbeatAt = "heartbeatAt" in record.lifecycle ? record.lifecycle.heartbeatAt : null;
+    this.#authorityWrite("leases", () => {
+      const result = mode === "insert"
+        ? this.#database.prepare(`
+          INSERT INTO leases (
+            record_key, worker_id, workflow, lease_generation, state, directive,
+            heartbeat_at, version, record_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          record.workerId, record.workerId, record.workflow, record.leaseGeneration,
+          record.lifecycle.state, record.control.directive, heartbeatAt, record.version,
+          json, record.createdAt,
+        )
+        : this.#database.prepare(`
+          UPDATE leases SET
+            workflow = ?, lease_generation = ?, state = ?, directive = ?,
+            heartbeat_at = ?, version = ?, record_json = ?
+          WHERE record_key = ? AND version = ?
+        `).run(
+          record.workflow, record.leaseGeneration, record.lifecycle.state,
+          record.control.directive, heartbeatAt, record.version, json,
+          record.workerId, record.version - 1,
+        );
+      const changes = sqliteChanges(result.changes);
+      if (changes !== 1) throw new Error(`worker lease ${record.workerId} ${mode} affected ${String(changes)} rows`);
+      return { result: undefined, changes };
+    });
+  }
+
+  #buildWorkerLeaseRepository(): WorkerLeaseRepository {
+    return Object.freeze({
+      start: (input: unknown) => {
+        const request = WorkerStartRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const existing = this.#readWorkerLease(request.workerId);
+          if (existing !== undefined && isLiveWorker(existing)) {
+            return WorkerStartOutcomeSchema.parse({
+              state: "conflict",
+              lease: existing,
+              message: `worker ${request.workerId} already holds a live lease in state ${existing.lifecycle.state}`,
+            });
+          }
+          const lease = WorkerLeaseRecordSchema.parse({
+            workerId: request.workerId,
+            workflow: request.workflow,
+            processId: request.processId,
+            leaseGeneration: (existing?.leaseGeneration ?? 0) + 1,
+            lifecycle: { state: "starting", startedAt: request.now },
+            control: { directive: "run", requestedAt: request.now, requestedBy: request.requestedBy },
+            version: (existing?.version ?? 0) + 1,
+            createdAt: existing?.createdAt ?? request.now,
+            updatedAt: request.now,
+          });
+          this.#writeWorkerLease(lease, existing === undefined ? "insert" : "update");
+          return WorkerStartOutcomeSchema.parse({ state: "started", lease });
+        });
+      },
+      get: (workerId: string) => this.#readWorkerLease(workerId),
+      listLive: (workflow?: string) => {
+        const states = LIVE_WORKER_STATES.map(() => "?").join(", ");
+        const rows = workflow === undefined
+          ? this.#database.prepare(`
+            SELECT record_json FROM leases WHERE state IN (${states}) ORDER BY record_key
+          `).all(...LIVE_WORKER_STATES)
+          : this.#database.prepare(`
+            SELECT record_json FROM leases WHERE state IN (${states}) AND workflow = ? ORDER BY record_key
+          `).all(...LIVE_WORKER_STATES, WorkflowIdSchema.parse(workflow));
+        return Object.freeze(rows.map((row) => parseJsonRecord(WorkerLeaseRecordSchema, JsonRowSchema.parse(row).record_json)));
+      },
+      reportLifecycle: (input: unknown) => {
+        const request = WorkerLifecycleRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const current = this.#readWorkerLease(request.workerId);
+          if (current === undefined) throw new Error(`worker lease ${request.workerId} does not exist`);
+          if (current.leaseGeneration !== request.leaseGeneration) {
+            return WorkerUpdateOutcomeSchema.parse({
+              state: "conflict",
+              currentVersion: current.version,
+              message: `worker ${request.workerId} lease generation is ${String(current.leaseGeneration)}, `
+                + `not ${String(request.leaseGeneration)}`,
+            });
+          }
+          const updated = WorkerLeaseRecordSchema.parse({
+            ...current,
+            lifecycle: request.lifecycle,
+            // A worker reporting that it has stopped also settles the directive:
+            // a stopped lease carrying "run" would read as a worker that should
+            // be running and is not.
+            control: request.lifecycle.state === "stopped" && current.control.directive === "run"
+              ? { ...current.control, directive: "stop", requestedAt: request.now }
+              : current.control,
+            version: current.version + 1,
+            updatedAt: request.now,
+          });
+          this.#writeWorkerLease(updated, "update");
+          return WorkerUpdateOutcomeSchema.parse({ state: "applied", lease: updated });
+        });
+      },
+      control: (input: unknown) => {
+        const request = WorkerControlRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const current = this.#readWorkerLease(request.workerId);
+          if (current === undefined) throw new Error(`worker lease ${request.workerId} does not exist`);
+          if (current.version !== request.expectedVersion) {
+            return WorkerUpdateOutcomeSchema.parse({
+              state: "conflict",
+              currentVersion: current.version,
+              message: `worker ${request.workerId} is at version ${String(current.version)}, not ${String(request.expectedVersion)}`,
+            });
+          }
+          const updated = WorkerLeaseRecordSchema.parse({
+            ...current,
+            control: request.control,
+            version: current.version + 1,
+            updatedAt: request.now,
+          });
+          this.#writeWorkerLease(updated, "update");
+          return WorkerUpdateOutcomeSchema.parse({ state: "applied", lease: updated });
+        });
+      },
+      sweepExpired: (input: unknown) => {
+        const request = WorkerSweepRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const states = LIVE_WORKER_STATES.map(() => "?").join(", ");
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM leases
+            WHERE state IN (${states}) AND heartbeat_at IS NOT NULL AND heartbeat_at < ?
+            ORDER BY record_key
+          `).all(...LIVE_WORKER_STATES, request.staleBefore);
+          const expired: WorkerLeaseRecord[] = [];
+          for (const row of rows) {
+            const current = parseJsonRecord(WorkerLeaseRecordSchema, JsonRowSchema.parse(row).record_json);
+            const stopped = WorkerLeaseRecordSchema.parse({
+              ...current,
+              lifecycle: {
+                state: "stopped",
+                startedAt: current.lifecycle.startedAt,
+                stoppedAt: request.now,
+                reason: "lease-expired",
+              },
+              control: { ...current.control, directive: "stop", requestedAt: request.now },
+              version: current.version + 1,
+              updatedAt: request.now,
+            });
+            this.#writeWorkerLease(stopped, "update");
+            expired.push(stopped);
+          }
+          return Object.freeze(expired);
+        });
+      },
     });
   }
 

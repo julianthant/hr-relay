@@ -1,0 +1,193 @@
+/**
+ * The run/claim store's request and outcome shapes (doc 05 §3, doc 02 §4).
+ *
+ * Every outcome is a discriminated union rather than a nullable record. A
+ * worker that asked for work and got `undefined` would be one `??` away from
+ * treating "someone else owns this run" as "no work to do"; here it must branch
+ * on `claimed | idle | deferred`, and a lost claim says so by name.
+ */
+import { z } from "zod";
+import {
+  ActorIdSchema,
+  IsoInstantSchema,
+  ItemIdSchema,
+  NodeIdSchema,
+  PositiveIntSchema,
+  RunIdSchema,
+  WorkerIdSchema,
+  WorkflowIdSchema,
+} from "../../domain/ids.js";
+import {
+  WorkerControlSchema,
+  WorkerLeaseRecordSchema,
+  WorkerLifecycleSchema,
+} from "../../domain/run/worker.js";
+import { RunDisplayNameSchema } from "../../domain/commands.js";
+import {
+  RequeueCauseSchema,
+  RunLifecycleSchema,
+  RunRecordSchema,
+  RunStateSchema,
+} from "../../domain/run/record.js";
+
+/** Proof that the caller still owns the row it is about to change. */
+export const RunClaimTokenSchema = z.strictObject({
+  workerId: WorkerIdSchema,
+  claimGeneration: PositiveIntSchema,
+});
+export type RunClaimToken = z.infer<typeof RunClaimTokenSchema>;
+
+export const RunClaimRequestSchema = z.strictObject({
+  workflow: WorkflowIdSchema,
+  workerId: WorkerIdSchema,
+  now: IsoInstantSchema,
+});
+
+export const RunClaimOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("claimed"), run: RunRecordSchema }),
+  z.strictObject({ state: z.literal("idle") }),
+  /**
+   * Eligible rows exist but every one is held back by `not_before`. The worker
+   * sleeps exactly this long instead of busy-polling a queue it cannot serve.
+   */
+  z.strictObject({ state: z.literal("deferred"), nextEligibleAt: IsoInstantSchema }),
+]);
+export type RunClaimOutcome = z.infer<typeof RunClaimOutcomeSchema>;
+
+export const RunHeartbeatRequestSchema = z.strictObject({
+  runId: RunIdSchema,
+  claim: RunClaimTokenSchema,
+  now: IsoInstantSchema,
+});
+
+export const RunHeartbeatOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("renewed"), run: RunRecordSchema }),
+  /** The claim is gone — recovered, reassigned, or terminalized by someone else. */
+  z.strictObject({ state: z.literal("lost"), message: z.string().min(1) }),
+]);
+export type RunHeartbeatOutcome = z.infer<typeof RunHeartbeatOutcomeSchema>;
+
+export const RunTransitionRequestSchema = z.strictObject({
+  runId: RunIdSchema,
+  expectedVersion: PositiveIntSchema,
+  /** Required for any transition a claim-holding worker drives. */
+  claim: RunClaimTokenSchema.optional(),
+  lifecycle: RunLifecycleSchema,
+  now: IsoInstantSchema,
+});
+
+export const RunRequeueRequestSchema = z.strictObject({
+  runId: RunIdSchema,
+  expectedVersion: PositiveIntSchema,
+  claim: RunClaimTokenSchema.optional(),
+  cause: RequeueCauseSchema,
+  /** Retry backoff; the row stays unclaimable until this instant. */
+  notBefore: IsoInstantSchema.optional(),
+  now: IsoInstantSchema,
+});
+
+/**
+ * A gate or write resolution putting a parked row back in the queue. `startAt`
+ * is mandatory: a resume that did not say where to resume would silently
+ * re-enter the graph at the top and re-run work the run already completed.
+ */
+export const RunResumeRequestSchema = z.strictObject({
+  runId: RunIdSchema,
+  expectedVersion: PositiveIntSchema,
+  startAt: NodeIdSchema,
+  now: IsoInstantSchema,
+});
+
+export const RunPresentationRequestSchema = z.strictObject({
+  runId: RunIdSchema,
+  expectedVersion: PositiveIntSchema,
+  displayName: RunDisplayNameSchema.optional(),
+  hidden: z.boolean().optional(),
+  now: IsoInstantSchema,
+}).superRefine((request, context) => {
+  if (request.displayName === undefined && request.hidden === undefined) {
+    context.addIssue({ code: "custom", message: "a presentation update must change the display name or the hidden flag" });
+  }
+});
+
+export const RunUpdateOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("applied"), run: RunRecordSchema }),
+  z.strictObject({
+    state: z.literal("conflict"),
+    currentVersion: PositiveIntSchema,
+    currentState: RunStateSchema,
+    message: z.string().min(1),
+  }),
+]);
+export type RunUpdateOutcome = z.infer<typeof RunUpdateOutcomeSchema>;
+
+export const RunClaimSweepRequestSchema = z.strictObject({
+  /** All workflows when absent — recovery is not workflow-scoped by nature. */
+  workflow: WorkflowIdSchema.optional(),
+  /** A claim whose heartbeat predates this instant is treated as dead. */
+  staleBefore: IsoInstantSchema,
+  now: IsoInstantSchema,
+});
+
+export const RunItemQuerySchema = z.strictObject({
+  workflow: WorkflowIdSchema,
+  itemId: ItemIdSchema,
+});
+
+/* ── worker leases (doc 05 §3) ───────────────────────────────────────────── */
+
+export const WorkerStartRequestSchema = z.strictObject({
+  workerId: WorkerIdSchema,
+  workflow: WorkflowIdSchema,
+  processId: PositiveIntSchema,
+  requestedBy: ActorIdSchema,
+  now: IsoInstantSchema,
+});
+
+export const WorkerStartOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("started"), lease: WorkerLeaseRecordSchema }),
+  /**
+   * A live lease already holds this id. Two processes answering to one worker id
+   * would both claim rows and both renew the same heartbeat, so the second one
+   * is refused rather than allowed to shadow the first.
+   */
+  z.strictObject({ state: z.literal("conflict"), lease: WorkerLeaseRecordSchema, message: z.string().min(1) }),
+]);
+export type WorkerStartOutcome = z.infer<typeof WorkerStartOutcomeSchema>;
+
+export const WorkerLifecycleRequestSchema = z.strictObject({
+  workerId: WorkerIdSchema,
+  leaseGeneration: PositiveIntSchema,
+  lifecycle: WorkerLifecycleSchema,
+  now: IsoInstantSchema,
+});
+
+export const WorkerControlRequestSchema = z.strictObject({
+  workerId: WorkerIdSchema,
+  expectedVersion: PositiveIntSchema,
+  control: WorkerControlSchema,
+  now: IsoInstantSchema,
+});
+
+export const WorkerUpdateOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("applied"), lease: WorkerLeaseRecordSchema }),
+  z.strictObject({
+    state: z.literal("conflict"),
+    currentVersion: PositiveIntSchema,
+    message: z.string().min(1),
+  }),
+]);
+export type WorkerUpdateOutcome = z.infer<typeof WorkerUpdateOutcomeSchema>;
+
+export const WorkerSweepRequestSchema = z.strictObject({
+  staleBefore: IsoInstantSchema,
+  now: IsoInstantSchema,
+});
+
+export type RunClaimRequest = z.infer<typeof RunClaimRequestSchema>;
+export type RunHeartbeatRequest = z.infer<typeof RunHeartbeatRequestSchema>;
+export type RunTransitionRequest = z.infer<typeof RunTransitionRequestSchema>;
+export type RunRequeueRequest = z.infer<typeof RunRequeueRequestSchema>;
+export type RunResumeRequest = z.infer<typeof RunResumeRequestSchema>;
+export type RunPresentationRequest = z.infer<typeof RunPresentationRequestSchema>;
+export type RunClaimSweepRequest = z.infer<typeof RunClaimSweepRequestSchema>;

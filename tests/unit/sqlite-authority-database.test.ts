@@ -31,6 +31,7 @@ import {
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "./fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN, WORKER_START_REQUEST } from "./fixtures/phase1f-run-fixtures.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -263,8 +264,8 @@ describe("authority generation accounting", () => {
   }>;
 
   const cases: readonly MutationCase[] = [
-    { table: "tasks", mutate: (db) => { db.authority.opaque.tasks.insert(OPAQUE_RECORD); } },
-    { table: "leases", mutate: (db) => { db.authority.opaque.leases.insert(OPAQUE_RECORD); } },
+    { table: "tasks", mutate: (db) => { db.authority.runs.enqueue(QUEUED_RUN); } },
+    { table: "leases", mutate: (db) => { db.authority.workerLeases.start(WORKER_START_REQUEST); } },
     { table: "delegation_manifests", mutate: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); } },
     { table: "dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
