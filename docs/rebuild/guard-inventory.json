@@ -151,7 +151,7 @@
       "file": "tests/unit/architecture/artifact-effect-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/01-task-contract.md; docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "Artifact references expose stable UUID identity plus immutable digest/size/media type and no root or path; the real writer accepts only a non-symlinked rebuild-isolated artifact root, writes one metadata+payload object via temp→file-fsync→atomic-rename→directory-fsync, recovers cleanly across injected boundaries, returns the same ref for byte-identical content, and keeps task/workflow implementations away from direct mutable filesystem primitives.",
+      "invariant": "Artifact references expose stable UUID identity plus immutable digest/size/media type and no root or path; the real writer accepts only a non-symlinked rebuild-isolated artifact root, writes one metadata+payload object via temp\u2192file-fsync\u2192atomic-rename\u2192directory-fsync, recovers cleanly across injected boundaries, returns the same ref for byte-identical content, and keeps task/workflow implementations away from direct mutable filesystem primitives.",
       "replacementRequired": true
     },
     {
@@ -228,7 +228,7 @@
       "file": "tests/unit/architecture/descriptor-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/02-workflow-model.md",
-      "invariant": "Doc 02 §1.4: one table-driven sweep over DESCRIPTORS — unique ids/codes/icons, the module tuple agreeing with every derived registry in both directions, contract placement and examples, the derived browser-system union, concretely typed child-run targets, the bundle-safe value-import closure of every descriptor module, a current build manifest, and descriptor-to-impl pairing tracked explicitly rather than implicitly.",
+      "invariant": "Doc 02 \u00a71.4: one table-driven sweep over DESCRIPTORS \u2014 unique ids/codes/icons, the module tuple agreeing with every derived registry in both directions, contract placement and examples, the derived browser-system union, concretely typed child-run targets, the bundle-safe value-import closure of every descriptor module, a current build manifest, and descriptor-to-impl pairing tracked explicitly rather than implicitly.",
       "replacementRequired": true
     },
     {
@@ -325,9 +325,9 @@
     {
       "name": "no-positional-identity",
       "file": "tests/unit/architecture/no-positional-identity.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: no-positional-identity.",
+      "status": "active",
+      "owner": "docs/rebuild/03-tracker-dashboard.md",
+      "invariant": "No durable identity is positional or borrowed: every run, worker, workflow, node, gate, actor, delegation-edge, and extracted-record id rejects an index, an ordinal, and a stringified number, and a UUID cannot be spelled as any slug-shaped id, so a run id can never stand in as a worker id.",
       "replacementRequired": true,
       "activationMilestone": "phase-1-or-later"
     },
@@ -408,7 +408,7 @@
       "retiredBy": "D93",
       "replacedBy": "operational-isolation",
       "owner": "docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "D93: two repositories share no module graph, so the cross-tree bridge scan proves an impossibility. The configuration half — distinct commands, state/artifact roots, ports, process locks, and browser profiles on one machine — survives in operational-isolation.",
+      "invariant": "D93: two repositories share no module graph, so the cross-tree bridge scan proves an impossibility. The configuration half \u2014 distinct commands, state/artifact roots, ports, process locks, and browser profiles on one machine \u2014 survives in operational-isolation.",
       "replacementRequired": true
     },
     {
@@ -416,7 +416,7 @@
       "file": "tests/unit/architecture/scenario-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/02-workflow-model.md",
-      "invariant": "Every branch arm, gate open/resolve, delegation size/replay/policy, and transaction outcome derived from the node tuple is claimed by a registered scenario, and every claim resolves to a path that still exists — so a renamed arm cannot keep a deleted path looking covered.",
+      "invariant": "Every branch arm, gate open/resolve, delegation size/replay/policy, and transaction outcome derived from the node tuple is claimed by a registered scenario, and every claim resolves to a path that still exists \u2014 so a renamed arm cannot keep a deleted path looking covered.",
       "replacementRequired": true
     },
     {
