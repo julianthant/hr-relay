@@ -48,8 +48,20 @@ export type SurfaceShape = z.infer<typeof SurfaceShapeSchema>;
  * person-lookup's `notFound` becomes plain data over `span.ended.verdict`, and
  * `SpanEnded` may emit only this descriptor-derived union (doc 03 §3.2).
  */
+/**
+ * Deliberately unbranded: a verdict key is authored as a literal in the
+ * descriptor and validated there, and there is no other id kind a bare verdict
+ * key could be confused with. Branding would only add a `parse` call to every
+ * authoring site without closing a hole.
+ */
+export const VerdictKeySchema = z.string().regex(
+  /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+  "verdict key must be kebab-case",
+);
+export type VerdictKey = z.infer<typeof VerdictKeySchema>;
+
 export const VerdictDefinitionSchema = z.strictObject({
-  key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "verdict key must be kebab-case"),
+  key: VerdictKeySchema,
   label: z.string().min(1),
   tone: z.enum(["success", "warning", "danger", "neutral"]),
   /** Renders as an inline tag beside the status rather than replacing it. */

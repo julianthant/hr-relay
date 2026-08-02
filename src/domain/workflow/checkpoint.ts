@@ -19,6 +19,7 @@
  *    and the path between them.
  */
 import { z } from "zod";
+import { JsonValueSchema } from "../canonical-json.js";
 import { ContractFieldPathSchema } from "../contracts/base.js";
 import type { FreshnessPolicy } from "../contracts/base.js";
 import {
@@ -239,6 +240,23 @@ export function loadCheckpoint<OutputSchema extends z.ZodType>(
 }
 
 /* ── the freshness walk (D8) ─────────────────────────────────────────────── */
+
+/**
+ * One operator correction to a replayed upstream checkpoint (doc 02 §5.6 #3).
+ *
+ * `value` is deliberately raw JSON: the patch is not authority until the WHOLE
+ * post-patch output re-parses through the producing contract's output schema,
+ * and a shape that looked schema-bound before that parse would be claiming a
+ * validation that has not happened. The applier lives with the executor.
+ */
+export const CheckpointPatchSchema = z.strictObject({
+  nodeId: NodeIdSchema,
+  fieldPath: ContractFieldPathSchema,
+  value: JsonValueSchema,
+  correctedAt: IsoInstantSchema,
+  reason: z.string().min(1),
+});
+export type CheckpointPatch = z.infer<typeof CheckpointPatchSchema>;
 
 /**
  * A single-resume, field-scoped operator confirmation. It rides the

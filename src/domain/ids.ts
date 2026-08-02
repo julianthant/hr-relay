@@ -7,6 +7,26 @@ function brandedText<Name extends string>(pattern: RegExp, description: string) 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/**
+ * A named slug id, with two impersonations refused.
+ *
+ * A lowercase UUID satisfies `SLUG_PATTERN` character for character, so without
+ * the first refusal a run id could be spelled as a worker id, an actor, or a
+ * node — exactly the substitution doc 03 §1.1 rules out when it says workers
+ * "never receive a synthetic run id".
+ *
+ * An all-digit slug likewise parses, and an id that is only digits is a
+ * position wearing a name: `nodeId: "3"` says where a node sat, not which node
+ * it is. `step-3` and `i9` stay legal; only the bare ordinal is refused.
+ */
+function slugText<Name extends string>(description: string) {
+  return z.string()
+    .regex(SLUG_PATTERN, description)
+    .refine((value) => !UUID_PATTERN.test(value), `${description} and must not be a UUID`)
+    .refine((value) => !/^\d+$/.test(value), `${description} and must not be a bare ordinal`)
+    .brand<Name>();
+}
+
 export const RunIdSchema = brandedText<"RunId">(UUID_PATTERN, "run id must be a UUID");
 export const ItemIdSchema = brandedText<"ItemId">(UUID_PATTERN, "item id must be a UUID");
 export const CommandIdSchema = brandedText<"CommandId">(UUID_PATTERN, "command id must be a UUID");
@@ -68,24 +88,21 @@ export const StableRecordIdSchema = brandedText<"StableRecordId">(
   /^[0-9a-f]{64}#[a-z0-9]+(?:-[a-z0-9]+)*#[1-9]\d*$/,
   "stable record id must be <source-sha256>#<form-slug>#<page>",
 );
-export const PredicateIdSchema = brandedText<"PredicateId">(SLUG_PATTERN, "predicate id must be kebab-case");
+export const PredicateIdSchema = slugText<"PredicateId">("predicate id must be kebab-case");
 
-export const WorkflowIdSchema = brandedText<"WorkflowId">(SLUG_PATTERN, "workflow id must be kebab-case");
-export const ActorIdSchema = brandedText<"ActorId">(SLUG_PATTERN, "actor id must be kebab-case");
+export const WorkflowIdSchema = slugText<"WorkflowId">("workflow id must be kebab-case");
+export const ActorIdSchema = slugText<"ActorId">("actor id must be kebab-case");
 export const LOCAL_OPERATOR_ACTOR_ID = ActorIdSchema.parse("local-operator");
 export const LocalOperatorActorSchema = z.strictObject({
   id: z.literal(LOCAL_OPERATOR_ACTOR_ID),
   label: z.string().min(1),
 });
-export const NodeIdSchema = brandedText<"NodeId">(SLUG_PATTERN, "node id must be kebab-case");
-export const ScenarioAssertionIdSchema = brandedText<"ScenarioAssertionId">(SLUG_PATTERN, "assertion id must be kebab-case");
-export const SourceSurfaceIdSchema = brandedText<"SourceSurfaceId">(SLUG_PATTERN, "source surface id must be kebab-case");
-export const WorkerIdSchema = brandedText<"WorkerId">(SLUG_PATTERN, "worker id must be kebab-case");
-export const GateIdSchema = brandedText<"GateId">(SLUG_PATTERN, "gate id must be kebab-case");
-export const DelegationEdgeIdSchema = brandedText<"DelegationEdgeId">(
-  SLUG_PATTERN,
-  "delegation edge id must be kebab-case",
-);
+export const NodeIdSchema = slugText<"NodeId">("node id must be kebab-case");
+export const ScenarioAssertionIdSchema = slugText<"ScenarioAssertionId">("assertion id must be kebab-case");
+export const SourceSurfaceIdSchema = slugText<"SourceSurfaceId">("source surface id must be kebab-case");
+export const WorkerIdSchema = slugText<"WorkerId">("worker id must be kebab-case");
+export const GateIdSchema = slugText<"GateId">("gate id must be kebab-case");
+export const DelegationEdgeIdSchema = slugText<"DelegationEdgeId">("delegation edge id must be kebab-case");
 
 export const TraceIdSchema = brandedText<"TraceId">(
   /^[a-z0-9]{2}-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/,
