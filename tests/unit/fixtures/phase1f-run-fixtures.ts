@@ -6,7 +6,7 @@
  * terminal row derives it by driving the real repository, so no test can assert
  * against a state the production transitions cannot actually produce.
  */
-import { HASH_A, HASH_B, HASH_C, NOW, UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
+import { HASH_A, HASH_B, HASH_C, LATER, NOW, UUID_2, UUID_3, UUID_4, UUID_5 } from "./phase1c-contract-fixtures.js";
 
 export const RUN_ID = UUID_2;
 export const ITEM_ID = UUID_3;
@@ -46,6 +46,35 @@ export const QUEUED_RUN = {
   lifecycle: { state: "queued" },
   claimGeneration: 0,
   hidden: false,
+  version: 1,
+  createdAt: NOW,
+  updatedAt: NOW,
+};
+
+export const START_PLAN = {
+  startPlanId: UUID_5,
+  workflowId: WORKFLOW_ID,
+  descriptorVersion: 1,
+  descriptorFingerprint: HASH_A,
+  configFingerprint: HASH_B,
+  configSnapshotId: UUID_4,
+  inputFingerprint: HASH_C,
+  resolvedInstance: { ucpath: "prod", crm: "prod" },
+  shape: "single",
+  priority: "bulk",
+  dryRun: false,
+  planned: [{
+    runId: RUN_ID,
+    itemId: ITEM_ID,
+    traceId: TRACE_ID,
+    title: "EID 10873698",
+    input: RUN_INPUT.parsed,
+    matchKey: "eid:10873698",
+  }],
+  refused: [],
+  plannedBy: "local-operator",
+  plannedAt: NOW,
+  expiresAt: LATER,
   version: 1,
   createdAt: NOW,
   updatedAt: NOW,

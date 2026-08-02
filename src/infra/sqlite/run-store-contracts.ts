@@ -9,14 +9,18 @@
 import { z } from "zod";
 import {
   ActorIdSchema,
+  CommandIdSchema,
+  FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
   NodeIdSchema,
   PositiveIntSchema,
   RunIdSchema,
+  StartPlanIdSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
 } from "../../domain/ids.js";
+import { StartPlanRecordSchema } from "../../domain/run/start-plan.js";
 import {
   WorkerControlSchema,
   WorkerLeaseRecordSchema,
@@ -133,6 +137,30 @@ export const RunItemQuerySchema = z.strictObject({
   workflow: WorkflowIdSchema,
   itemId: ItemIdSchema,
 });
+
+/* ── start plans (doc 13 §5.1) ───────────────────────────────────────────── */
+
+export const StartPlanConsumeRequestSchema = z.strictObject({
+  startPlanId: StartPlanIdSchema,
+  commandId: CommandIdSchema,
+  /** Re-checked against the stored plan; a changed descriptor/config/input refuses. */
+  descriptorFingerprint: FingerprintSchema,
+  configFingerprint: FingerprintSchema,
+  inputFingerprint: FingerprintSchema,
+  now: IsoInstantSchema,
+});
+
+export const StartPlanConsumeOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("consumed"), plan: StartPlanRecordSchema }),
+  /** The same command consuming the same plan again — idempotent, not a second start. */
+  z.strictObject({ state: z.literal("already-consumed"), plan: StartPlanRecordSchema }),
+  z.strictObject({
+    state: z.literal("refused"),
+    code: z.enum(["expired", "fingerprint-mismatch", "spent"]),
+    message: z.string().min(1),
+  }),
+]);
+export type StartPlanConsumeOutcome = z.infer<typeof StartPlanConsumeOutcomeSchema>;
 
 /* ── worker leases (doc 05 §3) ───────────────────────────────────────────── */
 

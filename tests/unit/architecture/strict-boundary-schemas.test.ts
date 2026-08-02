@@ -1049,6 +1049,9 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/canonical-json.ts:JsonObject",
   "src/domain/clock.ts:Clock",
   "src/domain/clock.ts:TestClock",
+  // The id source is injected exactly like the clock, and for the same reason:
+  // a value the caller cannot pin makes a durable record unassertable.
+  "src/domain/identifiers.ts:IdFactory",
   "src/domain/preflight.ts:BuildPreflightReportInput",
   "src/domain/preflight.ts:PreflightRunner",
   "src/domain/preflight.ts:PreflightRunnerContext",

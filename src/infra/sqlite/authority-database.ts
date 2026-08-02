@@ -18,7 +18,7 @@ import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/com
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
-import { BrowserSystemIdSchema, WorkerIdSchema, WorkflowIdSchema } from "../../domain/ids.js";
+import { BrowserSystemIdSchema, RunIdSchema, WorkerIdSchema, WorkflowIdSchema } from "../../domain/ids.js";
 import { nextAttemptEnvelope } from "../../domain/run/envelope.js";
 import {
   RunRecordSchema,
@@ -26,6 +26,11 @@ import {
   runTransitionViolation,
   type RunRecord,
 } from "../../domain/run/record.js";
+import {
+  StartPlanRecordSchema,
+  isStartPlanExpired,
+  type StartPlanRecord,
+} from "../../domain/run/start-plan.js";
 import {
   LIVE_WORKER_STATES,
   WorkerLeaseRecordSchema,
@@ -45,6 +50,8 @@ import {
   RunResumeRequestSchema,
   RunTransitionRequestSchema,
   RunUpdateOutcomeSchema,
+  StartPlanConsumeOutcomeSchema,
+  StartPlanConsumeRequestSchema,
   WorkerControlRequestSchema,
   WorkerLifecycleRequestSchema,
   WorkerStartOutcomeSchema,
@@ -54,6 +61,7 @@ import {
   type RunClaimOutcome,
   type RunHeartbeatOutcome,
   type RunUpdateOutcome,
+  type StartPlanConsumeOutcome,
   type WorkerStartOutcome,
   type WorkerUpdateOutcome,
 } from "./run-store-contracts.js";
@@ -187,6 +195,7 @@ type RunRepository = Readonly<{
   get(runId: string): RunRecord | undefined;
   listByItem(input: unknown): readonly RunRecord[];
   listByWorker(workerId: string): readonly RunRecord[];
+  listChildren(parentRunId: string): readonly RunRecord[];
   claimNext(input: unknown): RunClaimOutcome;
   renewClaim(input: unknown): RunHeartbeatOutcome;
   transition(input: unknown): RunUpdateOutcome;
@@ -194,6 +203,12 @@ type RunRepository = Readonly<{
   resume(input: unknown): RunUpdateOutcome;
   updatePresentation(input: unknown): RunUpdateOutcome;
   sweepExpiredClaims(input: unknown): readonly RunRecord[];
+}>;
+
+type StartPlanRepository = Readonly<{
+  create(input: unknown): ImmutableInsertResult<StartPlanRecord>;
+  get(startPlanId: string): StartPlanRecord | undefined;
+  consume(input: unknown): StartPlanConsumeOutcome;
 }>;
 
 type WorkerLeaseRepository = Readonly<{
@@ -215,6 +230,7 @@ type OpaqueAuthorityRepositories = Readonly<{
 
 export type AuthorityRepositories = Readonly<{
   runs: RunRepository;
+  startPlans: StartPlanRepository;
   workerLeases: WorkerLeaseRepository;
   commands: CommandRepository;
   commandAudits: ImmutableRepository<z.infer<typeof CommandAuditRecordSchema>>;
@@ -910,6 +926,7 @@ export class AuthorityDatabase implements Disposable {
 
     return Object.freeze({
       runs: this.#buildRunRepository(),
+      startPlans: this.#buildStartPlanRepository(),
       workerLeases: this.#buildWorkerLeaseRepository(),
       commands: Object.freeze({
         insert: (input: unknown) => {
@@ -1108,13 +1125,15 @@ export class AuthorityDatabase implements Disposable {
         ? this.#database.prepare(`
           INSERT INTO tasks (
             record_key, workflow, item_id, state, priority, attempt, not_before,
-            owner_worker_id, claim_generation, heartbeat_at, version, record_json, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            owner_worker_id, claim_generation, heartbeat_at, parent_run_id, version,
+            record_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         : this.#database.prepare(`
           UPDATE tasks SET
             workflow = ?, item_id = ?, state = ?, priority = ?, attempt = ?, not_before = ?,
-            owner_worker_id = ?, claim_generation = ?, heartbeat_at = ?, version = ?, record_json = ?
+            owner_worker_id = ?, claim_generation = ?, heartbeat_at = ?, parent_run_id = ?,
+            version = ?, record_json = ?
           WHERE record_key = ? AND version = ?
         `);
       const shared = [
@@ -1127,6 +1146,7 @@ export class AuthorityDatabase implements Disposable {
         claim?.workerId ?? null,
         record.claimGeneration,
         claim?.heartbeatAt ?? null,
+        record.envelope.parent?.runId ?? null,
         record.version,
       ] as const;
       const result = mode === "insert"
@@ -1217,6 +1237,12 @@ export class AuthorityDatabase implements Disposable {
         const rows = this.#database.prepare(`
           SELECT record_json FROM tasks WHERE owner_worker_id = ? ORDER BY created_at, record_key
         `).all(WorkerIdSchema.parse(workerId));
+        return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
+      },
+      listChildren: (parentRunId: string) => {
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM tasks WHERE parent_run_id = ? ORDER BY created_at, record_key
+        `).all(RunIdSchema.parse(parentRunId));
         return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
       },
       claimNext: (input: unknown) => {
@@ -1384,6 +1410,100 @@ export class AuthorityDatabase implements Disposable {
             recovered.push(requeued);
           }
           return Object.freeze(recovered);
+        });
+      },
+    });
+  }
+
+  #writeStartPlan(record: StartPlanRecord, mode: "insert" | "update"): void {
+    const json = canonicalJsonStringify(record);
+    this.#authorityWrite("start_plans", () => {
+      const result = mode === "insert"
+        ? this.#database.prepare(`
+          INSERT INTO start_plans (
+            record_key, workflow, consumed_by, expires_at, version, record_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          record.startPlanId, record.workflowId, record.consumedBy?.commandId ?? null,
+          record.expiresAt, record.version, json, record.createdAt,
+        )
+        : this.#database.prepare(`
+          UPDATE start_plans SET consumed_by = ?, expires_at = ?, version = ?, record_json = ?
+          WHERE record_key = ? AND version = ?
+        `).run(
+          record.consumedBy?.commandId ?? null, record.expiresAt, record.version, json,
+          record.startPlanId, record.version - 1,
+        );
+      const changes = sqliteChanges(result.changes);
+      if (changes !== 1) throw new Error(`start plan ${record.startPlanId} ${mode} affected ${String(changes)} rows`);
+      return { result: undefined, changes };
+    });
+  }
+
+  #buildStartPlanRepository(): StartPlanRepository {
+    return Object.freeze({
+      create: (input: unknown) => {
+        const record = StartPlanRecordSchema.parse(input);
+        if (record.consumedBy !== undefined) {
+          throw new Error(`start plan ${record.startPlanId} cannot be created already consumed`);
+        }
+        const json = canonicalJsonStringify(record);
+        return this.withAuthorityTransaction(() => {
+          const existing = this.#readRecord("start_plans", record.startPlanId, StartPlanRecordSchema);
+          if (existing !== undefined) {
+            if (canonicalJsonStringify(existing) !== json) {
+              throw new Error(`start plan id ${record.startPlanId} already exists with different content`);
+            }
+            return Object.freeze({ state: "existing" as const, record: existing });
+          }
+          this.#writeStartPlan(record, "insert");
+          return Object.freeze({ state: "inserted" as const, record });
+        });
+      },
+      get: (startPlanId: string) => this.#readRecord("start_plans", startPlanId, StartPlanRecordSchema),
+      consume: (input: unknown) => {
+        const request = StartPlanConsumeRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const plan = this.#readRecord("start_plans", request.startPlanId, StartPlanRecordSchema);
+          if (plan === undefined) throw new Error(`start plan ${request.startPlanId} does not exist`);
+          if (plan.consumedBy !== undefined) {
+            // The same command retrying is idempotent; a different one is a
+            // second start wearing the first confirmation's clothes.
+            return StartPlanConsumeOutcomeSchema.parse(plan.consumedBy.commandId === request.commandId
+              ? { state: "already-consumed", plan }
+              : {
+                state: "refused",
+                code: "spent",
+                message: `start plan ${request.startPlanId} was already consumed by command ${plan.consumedBy.commandId}`,
+              });
+          }
+          if (isStartPlanExpired(plan, Date.parse(request.now))) {
+            return StartPlanConsumeOutcomeSchema.parse({
+              state: "refused",
+              code: "expired",
+              message: `start plan ${request.startPlanId} expired at ${plan.expiresAt}`,
+            });
+          }
+          const mismatched = [
+            ["descriptor", plan.descriptorFingerprint, request.descriptorFingerprint],
+            ["config", plan.configFingerprint, request.configFingerprint],
+            ["input", plan.inputFingerprint, request.inputFingerprint],
+          ].find(([, planned, presented]) => planned !== presented);
+          if (mismatched !== undefined) {
+            return StartPlanConsumeOutcomeSchema.parse({
+              state: "refused",
+              code: "fingerprint-mismatch",
+              message: `start plan ${request.startPlanId} was planned against a different ${String(mismatched[0])}; re-plan before starting`,
+            });
+          }
+          const consumed = StartPlanRecordSchema.parse({
+            ...plan,
+            consumedBy: { commandId: request.commandId, consumedAt: request.now },
+            version: plan.version + 1,
+            updatedAt: request.now,
+          });
+          this.#writeStartPlan(consumed, "update");
+          return StartPlanConsumeOutcomeSchema.parse({ state: "consumed", plan: consumed });
         });
       },
     });

@@ -31,7 +31,7 @@ import {
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "./fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, WORKER_START_REQUEST } from "./fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, START_PLAN, WORKER_START_REQUEST } from "./fixtures/phase1f-run-fixtures.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -275,6 +275,7 @@ describe("authority generation accounting", () => {
     { table: "version_plans", mutate: (db) => { db.authority.versionPlans.insert(VERSION_PLAN); } },
     { table: "checkpoint_payloads", mutate: (db) => { db.authority.gateResults.insert(GATE_RESULT); } },
     { table: "run_checkpoints", mutate: (db) => { db.authority.runCheckpoints.insert(RUN_CHECKPOINT); } },
+    { table: "start_plans", mutate: (db) => { db.authority.startPlans.create(START_PLAN); } },
     { table: "ocr_approvals", mutate: (db) => { db.authority.opaque.ocrApprovals.insert(OPAQUE_RECORD); } },
     { table: "capture_sessions", mutate: (db) => { db.authority.opaque.captureSessions.insert(OPAQUE_RECORD); } },
     { table: "capture_photo_order", mutate: (db) => { db.authority.opaque.capturePhotoOrder.insert(OPAQUE_RECORD); } },

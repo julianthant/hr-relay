@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 4;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 5;
 
 /** The run lifecycle states in which exactly one worker owns the row (doc 02 §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -93,6 +93,20 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       UNIQUE (workflow, item_id, node_id, attempt)
     ) STRICT
   `,
+  // Doc 13 §5.1. A plan is proposed, shown, and then consumed exactly once; the
+  // consuming command carries only its id and fingerprints, so the plan itself
+  // has to be durable or the confirmation would be trusting the client's copy.
+  start_plans: `
+    CREATE TABLE start_plans (
+      record_key TEXT PRIMARY KEY,
+      workflow TEXT NOT NULL,
+      consumed_by TEXT,
+      expires_at TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
   ocr_approvals: jsonRecordTable("ocr_approvals"),
   capture_sessions: jsonRecordTable("capture_sessions"),
   capture_photo_order: jsonRecordTable("capture_photo_order"),
@@ -163,7 +177,7 @@ const V1_TABLE_ORDER = [
 ] as const satisfies readonly TableName[];
 
 /** Tables created after v1, in the migration that created them. */
-const POST_V1_TABLE_ORDER = ["run_checkpoints"] as const satisfies readonly TableName[];
+const POST_V1_TABLE_ORDER = ["run_checkpoints", "start_plans"] as const satisfies readonly TableName[];
 
 const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
 
@@ -298,6 +312,32 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         WHEN NEW.lease_generation < OLD.lease_generation OR NEW.version <= OLD.version
         BEGIN
           SELECT RAISE(ABORT, 'leases lease_generation and version may only advance');
+        END`,
+    ],
+  },
+  {
+    // Start plans (doc 13 §5.1), plus the delegation edge every projection and
+    // the tree-scoped cancel need. `parent_run_id` is a column rather than a
+    // JSON extract because cancelling a group walks it.
+    version: 5,
+    statements: [
+      SQLITE_TABLE_DDL.start_plans,
+      "CREATE INDEX start_plans_workflow_idx ON start_plans(workflow, expires_at)",
+      "ALTER TABLE tasks ADD COLUMN parent_run_id TEXT",
+      "CREATE INDEX tasks_parent_idx ON tasks(parent_run_id)",
+      `CREATE TRIGGER start_plans_monotonic_version_update
+        BEFORE UPDATE OF version ON start_plans
+        WHEN NEW.version <= OLD.version
+        BEGIN
+          SELECT RAISE(ABORT, 'start_plans version may only advance');
+        END`,
+      // A consumed plan is spent. Re-pointing it at a second command would let
+      // one confirmation start two sets of runs.
+      `CREATE TRIGGER start_plans_consume_once_update
+        BEFORE UPDATE OF consumed_by ON start_plans
+        WHEN OLD.consumed_by IS NOT NULL AND NEW.consumed_by IS NOT OLD.consumed_by
+        BEGIN
+          SELECT RAISE(ABORT, 'a start plan is consumed exactly once');
         END`,
     ],
   },

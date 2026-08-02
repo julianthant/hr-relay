@@ -15,6 +15,7 @@ import {
 import { NotificationRecordSchema } from "../../domain/notifications.js";
 import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
 import { RunRecordSchema } from "../../domain/run/record.js";
+import { StartPlanRecordSchema } from "../../domain/run/start-plan.js";
 import { WorkerLeaseRecordSchema } from "../../domain/run/worker.js";
 import { SchemaBoundCanonicalValueSchema } from "../../domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../domain/workflow/checkpoint.js";
@@ -71,6 +72,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   version_plans: VersionPlanStorageRecordSchema,
   checkpoint_payloads: GateResultRecordSchema,
   run_checkpoints: RunCheckpointRecordSchema,
+  start_plans: StartPlanRecordSchema,
   ocr_approvals: OpaqueAuthorityRecordSchema,
   capture_sessions: OpaqueAuthorityRecordSchema,
   capture_photo_order: OpaqueAuthorityRecordSchema,
