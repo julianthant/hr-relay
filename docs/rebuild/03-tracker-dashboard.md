@@ -187,11 +187,15 @@ open:
   and terminal state/outcome/failure identity match the authorization arm. Terminal state cannot
   make a stale claim look valid. Released migration v7 remains byte-for-byte the failure/result/
   outbox migration; immutable v8 adds the authorization table. An architecture guard pins the
-  version and ordered statement bytes of every released v1–v8 migration by literal digest; the next
-  schema change appends v9 and its reviewed digest without editing history. Schema-v8 recovery
+  version and ordered statement bytes of every released v1–v9 migration by literal digest; the next
+  schema change appends v10 and its reviewed digest without editing history. Schema-v8 recovery
   treats any authorization/failure/result/outbox/terminal-transition subset, authority column/JSON
   mismatch, or cross-binding mismatch as corruption, including JSON `NULL` outcomes that ordinary
   SQL inequality would otherwise miss.
+- Immutable schema v9 adds D112's `provider_budget_counters` and `provider_admissions` authority.
+  Backup fingerprinting, strict record validation, read-only doctor counts, and recovery invariants
+  include active reservations, counter/record column bindings, and exact active-reservation totals;
+  a corrupt or partial provider settlement degrades boot rather than resetting a budget.
 - Beat ⑦ is one outer authority transaction over the current claim generation and intent
   generation: mark intent/attempt committed, persist the schema-valid transaction-output
   checkpoint, insert ledger and same-trace terminal-span/generic-outcome outboxes, attach any real

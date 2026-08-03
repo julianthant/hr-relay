@@ -17,6 +17,7 @@ export const AuthorityPendingCountsSchema = z.strictObject({
   leases: NonNegativeIntSchema,
   durableOutbox: NonNegativeIntSchema,
   runTerminalOutbox: NonNegativeIntSchema,
+  providerReservations: NonNegativeIntSchema,
   artifactOutbox: NonNegativeIntSchema,
   captureFinalizationOutboxes: NonNegativeIntSchema,
 });

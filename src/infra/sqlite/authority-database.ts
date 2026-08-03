@@ -8,6 +8,7 @@ import {
   descriptorRuntimeNodes,
   type AnyWorkflowDescriptor,
 } from "../../base/workflow.js";
+import type { ProviderAdmissionRepository } from "../../base/providers.js";
 import {
   AUTHORITY_TABLE_REGISTRY,
   AuthorityTableNameSchema,
@@ -20,10 +21,18 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/commands.js";
-import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
+import { providerBudget, type ProviderBudget } from "../../domain/config/schema.js";
+import { ConfigSnapshotRecordSchema, type ConfigSnapshotRecord } from "../../domain/config/snapshot.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
-import { BrowserSystemIdSchema, RunIdSchema, WorkerIdSchema, WorkflowIdSchema } from "../../domain/ids.js";
+import {
+  BrowserSystemIdSchema,
+  ProviderAdmissionIdSchema,
+  ProviderCapabilityIdSchema,
+  RunIdSchema,
+  WorkerIdSchema,
+  WorkflowIdSchema,
+} from "../../domain/ids.js";
 import { nextAttemptEnvelope } from "../../domain/run/envelope.js";
 import {
   RunRecordSchema,
@@ -103,6 +112,24 @@ import {
 } from "../../domain/workflow/checkpoint.js";
 import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
 import { NotificationRecordSchema } from "../../domain/notifications.js";
+import {
+  ProviderAdmissionDenyRequestSchema,
+  ProviderAdmissionInterruptRequestSchema,
+  ProviderAdmissionMutationOutcomeSchema,
+  ProviderAdmissionRecordSchema,
+  ProviderAdmissionReserveOutcomeSchema,
+  ProviderAdmissionReserveRequestSchema,
+  ProviderAdmissionSettleRequestSchema,
+  ProviderAdmissionSweepOutcomeSchema,
+  ProviderAdmissionSweepRequestSchema,
+  ProviderBudgetCounterSchema,
+  ProviderUnavailableReasonSchema,
+  type ProviderAdmissionMutationOutcome,
+  type ProviderAdmissionRecord,
+  type ProviderAdmissionReserveOutcome,
+  type ProviderAdmissionSweepOutcome,
+  type ProviderBudgetCounter,
+} from "../../domain/provider-admission.js";
 import {
   IdempotencyKeySchema,
   WriteAttemptRecordSchema,
@@ -287,6 +314,7 @@ export type AuthorityRepositories = Readonly<{
   failures: FailureRepository;
   runResults: RunResultRepository;
   runTerminalOutbox: RunTerminalOutboxRepository;
+  providerAdmissions: ProviderAdmissionRepository;
   startPlans: StartPlanRepository;
   workerLeases: WorkerLeaseRepository;
   commands: CommandRepository;
@@ -363,6 +391,20 @@ function sqliteChanges(value: number | bigint): number {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function fixedUtcMinuteStart(instant: string): string {
+  const milliseconds = Date.parse(instant);
+  return new Date(Math.floor(milliseconds / 60_000) * 60_000).toISOString();
+}
+
+function fixedUtcDayStart(instant: string): string {
+  const at = new Date(Date.parse(instant));
+  return new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate())).toISOString();
+}
+
+function nextFixedWindow(start: string, milliseconds: number): string {
+  return new Date(Date.parse(start) + milliseconds).toISOString();
 }
 
 function readIntPragma(
@@ -606,6 +648,18 @@ const INVARIANT_QUERIES = Object.freeze([
     `,
   },
   {
+    name: "provider-counter-columns-match-record",
+    sql: "SELECT count(*) AS count FROM provider_budget_counters WHERE record_key IS NOT capability OR capability IS NOT json_extract(record_json, '$.capability') OR minute_window_started_at IS NOT json_extract(record_json, '$.minuteWindowStartedAt') OR minute_requests IS NOT json_extract(record_json, '$.minuteRequests') OR day_window_started_at IS NOT json_extract(record_json, '$.dayWindowStartedAt') OR day_requests IS NOT json_extract(record_json, '$.dayRequests') OR day_reserved_cost_usd_micros IS NOT json_extract(record_json, '$.dayReservedCostUsdMicros') OR active_reservations IS NOT json_extract(record_json, '$.activeReservations') OR blocked_by_admission_id IS NOT json_extract(record_json, '$.blockedByAdmissionId') OR version IS NOT json_extract(record_json, '$.version')",
+  },
+  {
+    name: "provider-admission-columns-match-record",
+    sql: "SELECT count(*) AS count FROM provider_admissions WHERE record_key IS NOT json_extract(record_json, '$.admissionId') OR run_id IS NOT json_extract(record_json, '$.execution.runId') OR capability IS NOT json_extract(record_json, '$.capability') OR config_snapshot_id IS NOT json_extract(record_json, '$.configSnapshotId') OR config_fingerprint IS NOT json_extract(record_json, '$.configFingerprint') OR request_fingerprint IS NOT json_extract(record_json, '$.requestFingerprint') OR state IS NOT json_extract(record_json, '$.lifecycle.state') OR reserved_cost_usd_micros IS NOT json_extract(record_json, '$.reservation.maximumCostUsdMicros') OR actual_cost_usd_micros IS NOT json_extract(record_json, '$.lifecycle.actualUsage.costUsdMicros') OR lease_expires_at IS NOT json_extract(record_json, '$.lifecycle.leaseExpiresAt') OR deadline_at IS NOT json_extract(record_json, '$.lifecycle.deadlineAt') OR version IS NOT json_extract(record_json, '$.version')",
+  },
+  {
+    name: "provider-active-reservations-match",
+    sql: "SELECT count(*) AS count FROM provider_budget_counters AS counter WHERE counter.active_reservations <> (SELECT count(*) FROM provider_admissions AS admission WHERE admission.capability = counter.capability AND admission.state = 'reserved')",
+  },
+  {
     name: "worker-lease-columns-match-record",
     sql: "SELECT count(*) AS count FROM leases WHERE worker_id <> record_key OR worker_id <> json_extract(record_json, '$.workerId') OR workflow <> json_extract(record_json, '$.workflow') OR lease_generation <> json_extract(record_json, '$.leaseGeneration') OR state <> json_extract(record_json, '$.lifecycle.state') OR directive <> json_extract(record_json, '$.control.directive') OR version <> json_extract(record_json, '$.version')",
   },
@@ -714,6 +768,7 @@ function pendingCounts(database: DatabaseSync) {
     leases: count("SELECT count(*) AS count FROM leases"),
     durableOutbox: count("SELECT count(*) AS count FROM durable_outbox WHERE json_extract(record_json, '$.projection.state') = 'pending'"),
     runTerminalOutbox: count("SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'"),
+    providerReservations: count("SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
     artifactOutbox: count("SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
     captureFinalizationOutboxes: count("SELECT count(*) AS count FROM capture_finalization_outboxes"),
   };
@@ -1632,6 +1687,7 @@ export class AuthorityDatabase implements Disposable {
         ),
         findByRun: (runId: string) => this.#findRunTerminalOutboxByRun(runId),
       }),
+      providerAdmissions: this.#buildProviderAdmissionRepository(),
       startPlans: this.#buildStartPlanRepository(),
       workerLeases: this.#buildWorkerLeaseRepository(),
       commands: Object.freeze({
@@ -2124,6 +2180,501 @@ export class AuthorityDatabase implements Disposable {
           return Object.freeze(recovered);
         });
       },
+    });
+  }
+
+  #readProviderCounter(capability: string): ProviderBudgetCounter | undefined {
+    return this.#readRecord(
+      "provider_budget_counters",
+      ProviderCapabilityIdSchema.parse(capability),
+      ProviderBudgetCounterSchema,
+    );
+  }
+
+  #writeProviderCounter(record: ProviderBudgetCounter, mode: "insert" | "update"): void {
+    const json = canonicalJsonStringify(record);
+    this.#authorityWrite("provider_budget_counters", () => {
+      const result = mode === "insert"
+        ? this.#database.prepare(`
+          INSERT INTO provider_budget_counters (
+            record_key, capability, minute_window_started_at, minute_requests,
+            day_window_started_at, day_requests, day_reserved_cost_usd_micros,
+            active_reservations, blocked_by_admission_id, version, record_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          record.capability, record.capability, record.minuteWindowStartedAt,
+          record.minuteRequests, record.dayWindowStartedAt, record.dayRequests,
+          record.dayReservedCostUsdMicros, record.activeReservations,
+          record.blockedByAdmissionId ?? null, record.version, json, record.createdAt,
+        )
+        : this.#database.prepare(`
+          UPDATE provider_budget_counters SET
+            minute_window_started_at = ?, minute_requests = ?,
+            day_window_started_at = ?, day_requests = ?,
+            day_reserved_cost_usd_micros = ?, active_reservations = ?,
+            blocked_by_admission_id = ?, version = ?, record_json = ?
+          WHERE record_key = ? AND version = ?
+        `).run(
+          record.minuteWindowStartedAt, record.minuteRequests,
+          record.dayWindowStartedAt, record.dayRequests,
+          record.dayReservedCostUsdMicros, record.activeReservations,
+          record.blockedByAdmissionId ?? null, record.version, json,
+          record.capability, record.version - 1,
+        );
+      const changes = sqliteChanges(result.changes);
+      if (changes !== 1) {
+        throw new Error(`provider counter ${record.capability} ${mode} affected ${String(changes)} rows`);
+      }
+      return { result: undefined, changes };
+    });
+  }
+
+  #writeProviderAdmission(record: ProviderAdmissionRecord, mode: "insert" | "update"): void {
+    const json = canonicalJsonStringify(record);
+    const lifecycle = record.lifecycle;
+    const actualCost = lifecycle.state === "settled" ? lifecycle.actualUsage.costUsdMicros : null;
+    const leaseExpiresAt = lifecycle.state === "reserved" ? lifecycle.leaseExpiresAt : null;
+    const deadlineAt = lifecycle.state === "reserved" ? lifecycle.deadlineAt : null;
+    this.#authorityWrite("provider_admissions", () => {
+      const result = mode === "insert"
+        ? this.#database.prepare(`
+          INSERT INTO provider_admissions (
+            record_key, run_id, capability, config_snapshot_id, config_fingerprint,
+            request_fingerprint, state, reserved_cost_usd_micros,
+            actual_cost_usd_micros, lease_expires_at, deadline_at, version,
+            record_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          record.admissionId, record.execution.runId, record.capability,
+          record.configSnapshotId, record.configFingerprint, record.requestFingerprint,
+          lifecycle.state, record.reservation.maximumCostUsdMicros, actualCost,
+          leaseExpiresAt, deadlineAt, record.version, json, record.createdAt,
+        )
+        : this.#database.prepare(`
+          UPDATE provider_admissions SET
+            state = ?, actual_cost_usd_micros = ?, lease_expires_at = ?,
+            deadline_at = ?, version = ?, record_json = ?
+          WHERE record_key = ? AND version = ?
+        `).run(
+          lifecycle.state, actualCost, leaseExpiresAt, deadlineAt,
+          record.version, json, record.admissionId, record.version - 1,
+        );
+      const changes = sqliteChanges(result.changes);
+      if (changes !== 1) {
+        throw new Error(`provider admission ${record.admissionId} ${mode} affected ${String(changes)} rows`);
+      }
+      return { result: undefined, changes };
+    });
+  }
+
+  #providerAdmissionContext(request: z.infer<typeof ProviderAdmissionReserveRequestSchema>
+    | z.infer<typeof ProviderAdmissionDenyRequestSchema>): ConfigSnapshotRecord {
+    const run = this.#readRunRow(request.execution.runId);
+    if (run === undefined) throw new Error(`provider admission run ${request.execution.runId} does not exist`);
+    if (run.envelope.attempt !== request.execution.attempt
+      || run.envelope.configSnapshotId !== request.configSnapshotId
+      || run.envelope.configFingerprint !== request.configFingerprint) {
+      throw new Error(`provider admission ${request.admissionId} does not match run ${request.execution.runId} execution/config identity`);
+    }
+    if (run.lifecycle.state !== "running" || run.lifecycle.currentNodeId !== request.execution.nodeId) {
+      throw new Error(`provider admission ${request.admissionId} run ${request.execution.runId} is not executing node ${request.execution.nodeId}`);
+    }
+    const snapshot = this.#readRecord(
+      "config_snapshots",
+      request.configSnapshotId,
+      ConfigSnapshotRecordSchema,
+    );
+    if (snapshot === undefined) throw new Error(`provider config snapshot ${request.configSnapshotId} does not exist`);
+    if (snapshot.fingerprint !== request.configFingerprint) {
+      throw new Error(`provider config snapshot ${request.configSnapshotId} fingerprint mismatch`);
+    }
+    return snapshot;
+  }
+
+  #assertProviderAdmissionRequestMatches(
+    existing: ProviderAdmissionRecord,
+    request: z.infer<typeof ProviderAdmissionReserveRequestSchema>
+      | z.infer<typeof ProviderAdmissionDenyRequestSchema>,
+  ): void {
+    const expected = {
+      admissionId: request.admissionId,
+      execution: request.execution,
+      capability: request.capability,
+      configSnapshotId: request.configSnapshotId,
+      configFingerprint: request.configFingerprint,
+      requestFingerprint: request.requestFingerprint,
+      estimate: request.estimate,
+    };
+    const actual = {
+      admissionId: existing.admissionId,
+      execution: existing.execution,
+      capability: existing.capability,
+      configSnapshotId: existing.configSnapshotId,
+      configFingerprint: existing.configFingerprint,
+      requestFingerprint: existing.requestFingerprint,
+      estimate: existing.estimate,
+    };
+    if (canonicalJsonStringify(actual) !== canonicalJsonStringify(expected)) {
+      throw new Error(`provider admission id ${request.admissionId} was reused with different content`);
+    }
+  }
+
+  #createProviderCounter(capability: z.infer<typeof ProviderCapabilityIdSchema>, now: string): ProviderBudgetCounter {
+    const record = ProviderBudgetCounterSchema.parse({
+      capability,
+      minuteWindowStartedAt: fixedUtcMinuteStart(now),
+      minuteRequests: 0,
+      dayWindowStartedAt: fixedUtcDayStart(now),
+      dayRequests: 0,
+      dayReservedCostUsdMicros: 0,
+      activeReservations: 0,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    this.#writeProviderCounter(record, "insert");
+    return record;
+  }
+
+  #rollProviderCounter(counter: ProviderBudgetCounter, now: string): ProviderBudgetCounter {
+    const minuteWindowStartedAt = fixedUtcMinuteStart(now);
+    const dayWindowStartedAt = fixedUtcDayStart(now);
+    const minuteRolled = minuteWindowStartedAt !== counter.minuteWindowStartedAt;
+    const dayRolled = dayWindowStartedAt !== counter.dayWindowStartedAt;
+    if (!minuteRolled && !dayRolled) return counter;
+    const rolled = ProviderBudgetCounterSchema.parse({
+      ...counter,
+      minuteWindowStartedAt,
+      minuteRequests: minuteRolled ? 0 : counter.minuteRequests,
+      dayWindowStartedAt,
+      dayRequests: dayRolled ? 0 : counter.dayRequests,
+      dayReservedCostUsdMicros: dayRolled ? 0 : counter.dayReservedCostUsdMicros,
+      ...(dayRolled ? { blockedByAdmissionId: undefined } : {}),
+      version: counter.version + 1,
+      updatedAt: now,
+    });
+    this.#writeProviderCounter(rolled, "update");
+    return rolled;
+  }
+
+  #expireProviderLeases(counter: ProviderBudgetCounter, now: string): {
+    readonly counter: ProviderBudgetCounter;
+    readonly expired: readonly ProviderAdmissionRecord[];
+  } {
+    const rows = this.#database.prepare(`
+      SELECT record_json FROM provider_admissions
+      WHERE capability = ? AND state = 'reserved' AND lease_expires_at <= ?
+      ORDER BY lease_expires_at, record_key
+    `).all(counter.capability, now);
+    if (rows.length === 0) return { counter, expired: Object.freeze([]) };
+    const expired: ProviderAdmissionRecord[] = [];
+    for (const row of rows) {
+      const current = parseJsonRecord(
+        ProviderAdmissionRecordSchema,
+        JsonRowSchema.parse(row).record_json,
+      );
+      const record = ProviderAdmissionRecordSchema.parse({
+        ...current,
+        lifecycle: {
+          state: "lease-expired",
+          expiredAt: now,
+          accounting: "full-reservation-retained",
+        },
+        version: current.version + 1,
+        updatedAt: now,
+      });
+      this.#writeProviderAdmission(record, "update");
+      expired.push(record);
+    }
+    if (counter.activeReservations < expired.length) {
+      throw new Error(`provider counter ${counter.capability} cannot release ${String(expired.length)} expired leases from ${String(counter.activeReservations)} active reservations`);
+    }
+    const updated = ProviderBudgetCounterSchema.parse({
+      ...counter,
+      activeReservations: counter.activeReservations - expired.length,
+      version: counter.version + 1,
+      updatedAt: now,
+    });
+    this.#writeProviderCounter(updated, "update");
+    return { counter: updated, expired: Object.freeze(expired) };
+  }
+
+  #prepareProviderCounter(capability: z.infer<typeof ProviderCapabilityIdSchema>, now: string): ProviderBudgetCounter {
+    const initial = this.#readProviderCounter(capability) ?? this.#createProviderCounter(capability, now);
+    const expired = this.#expireProviderLeases(initial, now).counter;
+    return this.#rollProviderCounter(expired, now);
+  }
+
+  #providerBudgetDenial(
+    counter: ProviderBudgetCounter,
+    budget: ProviderBudget,
+    estimate: number,
+  ): z.infer<typeof ProviderUnavailableReasonSchema> | undefined {
+    if (counter.activeReservations >= budget.concurrency) {
+      const row = this.#database.prepare(`
+        SELECT MIN(lease_expires_at) AS next_eligible_at FROM provider_admissions
+        WHERE capability = ? AND state = 'reserved'
+      `).get(counter.capability);
+      const retryAt = NextEligibleRowSchema.parse(row).next_eligible_at;
+      if (retryAt === null) throw new Error(`provider counter ${counter.capability} reports exhausted concurrency without an active lease`);
+      return ProviderUnavailableReasonSchema.parse({
+        code: "concurrency-exhausted",
+        message: `${counter.capability} concurrency is exhausted`,
+        retryAt,
+      });
+    }
+    if (counter.minuteRequests >= budget.requestsPerMinute) {
+      return ProviderUnavailableReasonSchema.parse({
+        code: "rate-exhausted",
+        message: `${counter.capability} fixed UTC-minute request budget is exhausted`,
+        retryAt: nextFixedWindow(counter.minuteWindowStartedAt, 60_000),
+      });
+    }
+    if (counter.dayRequests >= budget.dailyRequestLimit) {
+      return ProviderUnavailableReasonSchema.parse({
+        code: "daily-request-exhausted",
+        message: `${counter.capability} fixed UTC-day request budget is exhausted`,
+        retryAt: nextFixedWindow(counter.dayWindowStartedAt, 86_400_000),
+      });
+    }
+    if (counter.blockedByAdmissionId !== undefined
+      || counter.dayReservedCostUsdMicros + estimate > budget.costLimitUsdMicros) {
+      return ProviderUnavailableReasonSchema.parse({
+        code: "daily-cost-exhausted",
+        message: counter.blockedByAdmissionId === undefined
+          ? `${counter.capability} fixed UTC-day cost budget is exhausted`
+          : `${counter.capability} admission ${counter.blockedByAdmissionId} breached its maximum cost estimate`,
+        retryAt: nextFixedWindow(counter.dayWindowStartedAt, 86_400_000),
+      });
+    }
+    return undefined;
+  }
+
+  #newProviderAdmission(
+    request: z.infer<typeof ProviderAdmissionReserveRequestSchema>
+      | z.infer<typeof ProviderAdmissionDenyRequestSchema>,
+    snapshot: ConfigSnapshotRecord,
+    lifecycle: ProviderAdmissionRecord["lifecycle"],
+  ): ProviderAdmissionRecord {
+    const budget = providerBudget(snapshot.config, request.capability);
+    return ProviderAdmissionRecordSchema.parse({
+      admissionId: request.admissionId,
+      execution: request.execution,
+      capability: request.capability,
+      configSnapshotId: request.configSnapshotId,
+      configFingerprint: request.configFingerprint,
+      requestFingerprint: request.requestFingerprint,
+      budget,
+      estimate: request.estimate,
+      reservation: { requestCount: 1, maximumCostUsdMicros: request.estimate.maximumCostUsdMicros },
+      lifecycle,
+      version: 1,
+      createdAt: request.now,
+      updatedAt: request.now,
+    });
+  }
+
+  #buildProviderAdmissionRepository(): ProviderAdmissionRepository {
+    return Object.freeze({
+      reserve: (input: unknown) => {
+        const request = ProviderAdmissionReserveRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const existing = this.#readRecord(
+            "provider_admissions",
+            request.admissionId,
+            ProviderAdmissionRecordSchema,
+          );
+          if (existing !== undefined) {
+            this.#assertProviderAdmissionRequestMatches(existing, request);
+            return ProviderAdmissionReserveOutcomeSchema.parse({ state: "existing", admission: existing });
+          }
+          const snapshot = this.#providerAdmissionContext(request);
+          let counter = this.#prepareProviderCounter(request.capability, request.now);
+          const budget = providerBudget(snapshot.config, request.capability);
+          const denial = this.#providerBudgetDenial(
+            counter,
+            budget,
+            request.estimate.maximumCostUsdMicros,
+          );
+          if (denial !== undefined) {
+            const admission = this.#newProviderAdmission(request, snapshot, {
+              state: "denied", deniedAt: request.now, reason: denial,
+            });
+            this.#writeProviderAdmission(admission, "insert");
+            return ProviderAdmissionReserveOutcomeSchema.parse({ state: "denied", admission, counter });
+          }
+          counter = ProviderBudgetCounterSchema.parse({
+            ...counter,
+            minuteRequests: counter.minuteRequests + 1,
+            dayRequests: counter.dayRequests + 1,
+            dayReservedCostUsdMicros:
+              counter.dayReservedCostUsdMicros + request.estimate.maximumCostUsdMicros,
+            activeReservations: counter.activeReservations + 1,
+            version: counter.version + 1,
+            updatedAt: request.now,
+          });
+          this.#writeProviderCounter(counter, "update");
+          const admission = this.#newProviderAdmission(request, snapshot, {
+            state: "reserved",
+            reservedAt: request.now,
+            leaseExpiresAt: request.leaseExpiresAt,
+            deadlineAt: request.deadlineAt,
+          });
+          this.#writeProviderAdmission(admission, "insert");
+          return ProviderAdmissionReserveOutcomeSchema.parse({ state: "reserved", admission, counter });
+        });
+      },
+      deny: (input: unknown) => {
+        const request = ProviderAdmissionDenyRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const existing = this.#readRecord(
+            "provider_admissions",
+            request.admissionId,
+            ProviderAdmissionRecordSchema,
+          );
+          if (existing !== undefined) {
+            this.#assertProviderAdmissionRequestMatches(existing, request);
+            if (existing.lifecycle.state !== "denied"
+              || canonicalJsonStringify(existing.lifecycle.reason) !== canonicalJsonStringify(request.reason)) {
+              throw new Error(`provider admission id ${request.admissionId} was reused with a different denial`);
+            }
+            return ProviderAdmissionReserveOutcomeSchema.parse({ state: "existing", admission: existing });
+          }
+          const snapshot = this.#providerAdmissionContext(request);
+          const counter = this.#prepareProviderCounter(request.capability, request.now);
+          const admission = this.#newProviderAdmission(request, snapshot, {
+            state: "denied", deniedAt: request.now, reason: request.reason,
+          });
+          this.#writeProviderAdmission(admission, "insert");
+          return ProviderAdmissionReserveOutcomeSchema.parse({ state: "denied", admission, counter });
+        });
+      },
+      settle: (input: unknown) => {
+        const request = ProviderAdmissionSettleRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const current = this.#readRecord(
+            "provider_admissions", request.admissionId, ProviderAdmissionRecordSchema,
+          );
+          if (current === undefined) throw new Error(`provider admission ${request.admissionId} does not exist`);
+          let counter = this.#prepareProviderCounter(current.capability, request.now);
+          if (current.lifecycle.state === "settled") {
+            const exact = current.version === request.expectedVersion + 1
+              && current.lifecycle.adapterDisposition === request.adapterDisposition
+              && canonicalJsonStringify(current.lifecycle.actualUsage) === canonicalJsonStringify(request.actualUsage)
+              && canonicalJsonStringify(current.lifecycle.evidence) === canonicalJsonStringify(request.evidence)
+              && current.lifecycle.settledAt === request.now;
+            if (!exact) throw new Error(`provider admission ${request.admissionId} settlement replay differs from durable content`);
+            return ProviderAdmissionMutationOutcomeSchema.parse({ admission: current, counter });
+          }
+          if (current.lifecycle.state !== "reserved" || current.version !== request.expectedVersion) {
+            throw new Error(`provider admission ${request.admissionId} is ${current.lifecycle.state} at version ${String(current.version)}`);
+          }
+          if (request.actualUsage.costUsdMicros > current.estimate.maximumCostUsdMicros) {
+            throw new Error(`provider admission ${request.admissionId} actual cost exceeds its conservative maximum estimate`);
+          }
+          const sameDay = fixedUtcDayStart(current.lifecycle.reservedAt) === counter.dayWindowStartedAt;
+          if (counter.activeReservations < 1) throw new Error(`provider counter ${current.capability} has no active reservation to settle`);
+          counter = ProviderBudgetCounterSchema.parse({
+            ...counter,
+            activeReservations: counter.activeReservations - 1,
+            dayReservedCostUsdMicros: sameDay
+              ? counter.dayReservedCostUsdMicros
+                - (current.estimate.maximumCostUsdMicros - request.actualUsage.costUsdMicros)
+              : counter.dayReservedCostUsdMicros,
+            version: counter.version + 1,
+            updatedAt: request.now,
+          });
+          this.#writeProviderCounter(counter, "update");
+          const admission = ProviderAdmissionRecordSchema.parse({
+            ...current,
+            lifecycle: {
+              state: "settled",
+              settledAt: request.now,
+              adapterDisposition: request.adapterDisposition,
+              actualUsage: request.actualUsage,
+              evidence: request.evidence,
+            },
+            version: current.version + 1,
+            updatedAt: request.now,
+          });
+          this.#writeProviderAdmission(admission, "update");
+          return ProviderAdmissionMutationOutcomeSchema.parse({ admission, counter });
+        });
+      },
+      interrupt: (input: unknown) => {
+        const request = ProviderAdmissionInterruptRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const current = this.#readRecord(
+            "provider_admissions", request.admissionId, ProviderAdmissionRecordSchema,
+          );
+          if (current === undefined) throw new Error(`provider admission ${request.admissionId} does not exist`);
+          let counter = this.#prepareProviderCounter(current.capability, request.now);
+          if (current.lifecycle.state === "interrupted") {
+            const exact = current.version === request.expectedVersion + 1
+              && current.lifecycle.code === request.code
+              && current.lifecycle.message === request.message
+              && canonicalJsonStringify(current.lifecycle.evidence) === canonicalJsonStringify(request.evidence)
+              && current.lifecycle.interruptedAt === request.now;
+            if (!exact) throw new Error(`provider admission ${request.admissionId} interruption replay differs from durable content`);
+            return ProviderAdmissionMutationOutcomeSchema.parse({ admission: current, counter });
+          }
+          if (current.lifecycle.state !== "reserved" || current.version !== request.expectedVersion) {
+            throw new Error(`provider admission ${request.admissionId} is ${current.lifecycle.state} at version ${String(current.version)}`);
+          }
+          if (counter.activeReservations < 1) throw new Error(`provider counter ${current.capability} has no active reservation to interrupt`);
+          counter = ProviderBudgetCounterSchema.parse({
+            ...counter,
+            activeReservations: counter.activeReservations - 1,
+            ...(request.code === "cost-estimate-breach"
+              ? { blockedByAdmissionId: current.admissionId }
+              : {}),
+            version: counter.version + 1,
+            updatedAt: request.now,
+          });
+          this.#writeProviderCounter(counter, "update");
+          const admission = ProviderAdmissionRecordSchema.parse({
+            ...current,
+            lifecycle: {
+              state: "interrupted",
+              interruptedAt: request.now,
+              code: request.code,
+              message: request.message,
+              accounting: "full-reservation-retained",
+              ...(request.evidence === undefined ? {} : { evidence: request.evidence }),
+            },
+            version: current.version + 1,
+            updatedAt: request.now,
+          });
+          this.#writeProviderAdmission(admission, "update");
+          return ProviderAdmissionMutationOutcomeSchema.parse({ admission, counter });
+        });
+      },
+      sweepExpired: (input: unknown) => {
+        const request = ProviderAdmissionSweepRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM provider_budget_counters ORDER BY capability
+          `).all();
+          const expired: ProviderAdmissionRecord[] = [];
+          const counters: ProviderBudgetCounter[] = [];
+          for (const row of rows) {
+            const initial = parseJsonRecord(
+              ProviderBudgetCounterSchema,
+              JsonRowSchema.parse(row).record_json,
+            );
+            const swept = this.#expireProviderLeases(initial, request.now);
+            expired.push(...swept.expired);
+            counters.push(this.#rollProviderCounter(swept.counter, request.now));
+          }
+          return ProviderAdmissionSweepOutcomeSchema.parse({ expired, counters });
+        });
+      },
+      get: (admissionId: string) => this.#readRecord(
+        "provider_admissions",
+        ProviderAdmissionIdSchema.parse(admissionId),
+        ProviderAdmissionRecordSchema,
+      ),
+      getCounter: (capability: string) => this.#readProviderCounter(capability),
     });
   }
 

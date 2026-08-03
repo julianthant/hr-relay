@@ -8,6 +8,8 @@ export const AuthorityTableNameSchema = z.enum([
   "failures",
   "run_results",
   "run_terminal_outbox",
+  "provider_budget_counters",
+  "provider_admissions",
   "leases",
   "dependencies",
   "delegation_manifests",

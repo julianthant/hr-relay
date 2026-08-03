@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 8;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 9;
 
 /** The run lifecycle states in which exactly one worker owns the row (doc 02 §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -81,6 +81,42 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       state TEXT NOT NULL CHECK (state IN ('pending', 'projected')),
       record_json TEXT NOT NULL CHECK (json_valid(record_json)),
       created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  provider_budget_counters: `
+    CREATE TABLE provider_budget_counters (
+      record_key TEXT PRIMARY KEY,
+      capability TEXT NOT NULL UNIQUE,
+      minute_window_started_at TEXT NOT NULL,
+      minute_requests INTEGER NOT NULL CHECK (minute_requests >= 0),
+      day_window_started_at TEXT NOT NULL,
+      day_requests INTEGER NOT NULL CHECK (day_requests >= 0),
+      day_reserved_cost_usd_micros INTEGER NOT NULL CHECK (day_reserved_cost_usd_micros >= 0),
+      active_reservations INTEGER NOT NULL CHECK (active_reservations >= 0),
+      blocked_by_admission_id TEXT,
+      version INTEGER NOT NULL CHECK (version >= 1),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  provider_admissions: `
+    CREATE TABLE provider_admissions (
+      record_key TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES tasks(record_key) ON DELETE RESTRICT,
+      capability TEXT NOT NULL,
+      config_snapshot_id TEXT NOT NULL REFERENCES config_snapshots(record_key) ON DELETE RESTRICT,
+      config_fingerprint TEXT NOT NULL,
+      request_fingerprint TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('reserved','denied','settled','interrupted','lease-expired')),
+      reserved_cost_usd_micros INTEGER NOT NULL CHECK (reserved_cost_usd_micros >= 0),
+      actual_cost_usd_micros INTEGER CHECK (actual_cost_usd_micros >= 0),
+      lease_expires_at TEXT,
+      deadline_at TEXT,
+      version INTEGER NOT NULL CHECK (version >= 1),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      CHECK ((state = 'reserved') = (lease_expires_at IS NOT NULL AND deadline_at IS NOT NULL)),
+      CHECK ((state = 'settled') = (actual_cost_usd_micros IS NOT NULL))
     ) STRICT
   `,
   leases: jsonRecordTable("leases"),
@@ -222,6 +258,8 @@ const POST_V1_TABLE_ORDER = [
   "run_results",
   "run_terminal_outbox",
   "run_terminal_authorizations",
+  "provider_budget_counters",
+  "provider_admissions",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -420,6 +458,44 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     statements: [
       SQLITE_TABLE_DDL.run_terminal_authorizations,
       "CREATE INDEX run_terminal_authorizations_kind_idx ON run_terminal_authorizations(kind)",
+    ],
+  },
+  {
+    // D112 generic durable provider admission. Production adapters and
+    // consumers remain Phase 2h; these tables are capability-global authority.
+    version: 9,
+    statements: [
+      SQLITE_TABLE_DDL.provider_budget_counters,
+      SQLITE_TABLE_DDL.provider_admissions,
+      "CREATE INDEX provider_admissions_capability_state_lease_idx ON provider_admissions(capability, state, lease_expires_at)",
+      "CREATE INDEX provider_admissions_run_idx ON provider_admissions(run_id, capability, created_at)",
+      `CREATE TRIGGER provider_budget_counters_monotonic_version_update
+        BEFORE UPDATE OF version ON provider_budget_counters
+        WHEN NEW.version <> OLD.version + 1
+        BEGIN
+          SELECT RAISE(ABORT, 'provider budget counter version must advance exactly once');
+        END`,
+      `CREATE TRIGGER provider_admissions_immutable_identity_update
+        BEFORE UPDATE ON provider_admissions
+        WHEN NEW.record_key IS NOT OLD.record_key
+          OR NEW.run_id IS NOT OLD.run_id
+          OR NEW.capability IS NOT OLD.capability
+          OR NEW.config_snapshot_id IS NOT OLD.config_snapshot_id
+          OR NEW.config_fingerprint IS NOT OLD.config_fingerprint
+          OR NEW.request_fingerprint IS NOT OLD.request_fingerprint
+          OR NEW.reserved_cost_usd_micros IS NOT OLD.reserved_cost_usd_micros
+          OR NEW.created_at IS NOT OLD.created_at
+        BEGIN
+          SELECT RAISE(ABORT, 'provider admission immutable identity cannot change');
+        END`,
+      `CREATE TRIGGER provider_admissions_lifecycle_update
+        BEFORE UPDATE OF state, version ON provider_admissions
+        WHEN OLD.state <> 'reserved'
+          OR NEW.state NOT IN ('settled','interrupted','lease-expired')
+          OR NEW.version <> OLD.version + 1
+        BEGIN
+          SELECT RAISE(ABORT, 'provider admission may transition once from reserved to a terminal lifecycle');
+        END`,
     ],
   },
 ] as const);

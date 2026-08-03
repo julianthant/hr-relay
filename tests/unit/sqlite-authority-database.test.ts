@@ -30,6 +30,7 @@ import {
   UUID_1,
   UUID_2,
   UUID_3,
+  UUID_4,
   UUID_5,
   UUID_6,
   UUID_7,
@@ -196,6 +197,38 @@ function prepareRunning(database: AuthorityDatabase) {
   });
   if (running.state !== "applied") throw new Error("generation fixture did not run");
   return running.run;
+}
+
+function prepareProviderRunning(database: AuthorityDatabase) {
+  database.authority.configSnapshots.insert({
+    ...CONFIG_SNAPSHOT,
+    configSnapshotId: UUID_4,
+    fingerprint: HASH_B,
+  });
+  const run = prepareRunning(database);
+  const updated = database.authority.runs.transition({
+    runId: RUN_ID,
+    expectedVersion: run.version,
+    claim: { workerId: WORKER_ID, claimGeneration: 1 },
+    lifecycle: { ...run.lifecycle, currentNodeId: "searching" },
+    now: NOW,
+  });
+  if (updated.state !== "applied") throw new Error("provider generation fixture did not select a node");
+}
+
+function reserveProvider(database: AuthorityDatabase) {
+  database.authority.providerAdmissions.reserve({
+    admissionId: UUID_8,
+    execution: { runId: RUN_ID, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" },
+    capability: "ocr.extract",
+    configSnapshotId: UUID_4,
+    configFingerprint: HASH_B,
+    requestFingerprint: HASH_A,
+    estimate: { maximumCostUsdMicros: 0 },
+    deadlineAt: LATER,
+    leaseExpiresAt: LATER,
+    now: NOW,
+  });
 }
 
 function terminalFailureRequest(run: ReturnType<typeof prepareRunning>) {
@@ -454,7 +487,7 @@ describe("native SQLite authority schema", () => {
     assert.equal(upgraded.authority.terminalAuthorizations.get(RUN_ID), undefined);
   });
 
-  it("upgrades the exact released v7 shape to v8, reopens, and validates read-only", () => {
+  it("upgrades the exact released v7 shape through v8 and v9, reopens, and validates read-only", () => {
     const path = databasePath("d110-d114-v7.sqlite");
     const releasedV7 = SQLITE_MIGRATIONS.find(({ version }) => version === 7);
     assert.notEqual(releasedV7, undefined);
@@ -490,9 +523,10 @@ describe("native SQLite authority schema", () => {
     legacy.close();
 
     const upgraded = openDatabase(path);
-    assert.equal(upgraded.inspectSchema().schemaVersion, 8);
+    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(upgraded.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
     assert.equal(upgraded.authority.terminalAuthorizations.get(RUN_ID), undefined);
+    assert.equal(upgraded.authority.providerAdmissions.get(UUID_8), undefined);
     upgraded.close();
 
     const migrated = new DatabaseSync(path, { readOnly: true });
@@ -502,6 +536,13 @@ describe("native SQLite authority schema", () => {
         WHERE type = 'index' AND name = 'run_terminal_authorizations_kind_idx'
       `).get()?.count,
       1,
+    );
+    assert.equal(
+      migrated.prepare(`
+        SELECT count(*) AS count FROM sqlite_master
+        WHERE type = 'table' AND name IN ('provider_budget_counters', 'provider_admissions')
+      `).get()?.count,
+      2,
     );
     migrated.close();
     const reopened = openDatabase(path);
@@ -637,6 +678,8 @@ describe("authority generation accounting", () => {
         db.terminalizeSuccess(terminal.request, terminal.factoryAuthorization);
       },
     },
+    { table: "provider_budget_counters", prepare: prepareProviderRunning, mutate: reserveProvider },
+    { table: "provider_admissions", prepare: prepareProviderRunning, mutate: reserveProvider },
     { table: "leases", mutate: (db) => { db.authority.workerLeases.start(WORKER_START_REQUEST); } },
     { table: "delegation_manifests", mutate: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); } },
     { table: "dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },

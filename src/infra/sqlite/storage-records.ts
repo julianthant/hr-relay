@@ -13,6 +13,10 @@ import {
   VersionPlanIdSchema,
 } from "../../domain/ids.js";
 import { NotificationRecordSchema } from "../../domain/notifications.js";
+import {
+  ProviderAdmissionRecordSchema,
+  ProviderBudgetCounterSchema,
+} from "../../domain/provider-admission.js";
 import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
 import { RunRecordSchema } from "../../domain/run/record.js";
 import { RunResultRecordSchema } from "../../domain/run/result.js";
@@ -70,6 +74,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   failures: FailureRecordSchema,
   run_results: RunResultRecordSchema,
   run_terminal_outbox: RunTerminalOutboxRecordSchema,
+  provider_budget_counters: ProviderBudgetCounterSchema,
+  provider_admissions: ProviderAdmissionRecordSchema,
   leases: WorkerLeaseRecordSchema,
   dependencies: DependencyRecordSchema,
   delegation_manifests: DelegationManifestSchema,

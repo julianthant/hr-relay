@@ -1005,6 +1005,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       leases: 1,
       durableOutbox: 2,
       runTerminalOutbox: 0,
+      providerReservations: 0,
       artifactOutbox: 1,
       captureFinalizationOutboxes: 0,
     });

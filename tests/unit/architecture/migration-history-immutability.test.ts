@@ -25,6 +25,7 @@ const RELEASED_MIGRATION_DIGESTS = Object.freeze([
   { version: 6, sha256: "cfad2a293f36ec666ce652a4fb424f92a30a3d678725955e0717bc62291f4006" },
   { version: 7, sha256: "80a877874f1a5ac939fed0ed3c4939b9d6fe53e889529f215e8baf4ffb4e141a" },
   { version: 8, sha256: "a07ef35f3c970822104220a1d7e8c4053f0e4ef7379a2be4976606fc3370b63d" },
+  { version: 9, sha256: "92e27b25c7de354f12d0a381653d4d3b6ccf8fb707e084eb0c94730c977374f6" },
 ] as const);
 
 /** Version, count, statement position, byte length, and bytes are all framed. */
