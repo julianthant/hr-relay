@@ -1,0 +1,364 @@
+/**
+ * The Phase-1 worker run loop (doc 05 §3): one workflow-scoped worker, one
+ * active item, claim → execute → terminal/park, then the next eligible row.
+ *
+ * The loop owns exactly the concerns the interpreter cannot: claiming (the
+ * store enforces the one-active-item invariant), heartbeat renewal during long
+ * operations (a lost heartbeat aborts the run's signal instead of letting a
+ * zombie keep driving a browser), the worker-lifetime browser-session set
+ * (warm reuse across sequential items — doc 05 §5 — with `worker-stop` close
+ * proof at the end), and worker/browser span emission over the injected
+ * `SpanEmitter`.
+ *
+ * Idle behavior is doc 05 §3's bounded re-poll: `deferred` sleeps exactly
+ * until the earliest `not_before`, capped by `idleRepollMs`; a worker never
+ * sleeps while owning a run.
+ */
+import { z } from "zod";
+import type { TaskLogger } from "../base/task.js";
+import type { TaskStoreRegistry } from "../base/store.js";
+import type { AnyWorkflowDescriptor } from "../base/workflow.js";
+import type { Clock } from "../domain/clock.js";
+import type { IdFactory } from "../domain/identifiers.js";
+import { WorkerIdSchema, WorkflowIdSchema } from "../domain/ids.js";
+import type { WorkerId, WorkflowId } from "../domain/ids.js";
+import type {
+  CanonicalInputSnapshotMigration,
+  CheckpointMigration,
+} from "../domain/workflow/checkpoint.js";
+import type {
+  WorkerPlanAcknowledgementSchema,
+  WorkerRuntimeAcknowledgementSchema,
+  WorkerRuntimeContext,
+  WorkerRuntimeExecutor,
+} from "./command-kernel.js";
+import type { MonotonicDeadlineScheduler } from "./provider-admission.js";
+import {
+  executeClaimedRun,
+  RunExecutionOutcomeSchema,
+  type ChildRunExecutor,
+  type RunExecutionAuthority,
+  type RunExecutionOutcome,
+  type WriteSequencer,
+} from "./run-executor.js";
+import {
+  browserSessionSpanPath,
+  ExecutorSpanEventSchema,
+  runSpanPath,
+  workerSpanPath,
+  type SpanEmitter,
+} from "./span-emitter.js";
+import {
+  WorkerSessionManager,
+  type WorkerBrowserSessionFactory,
+  type WorkerSessionEvent,
+} from "./worker-sessions.js";
+
+export interface WorkerLoopDependencies {
+  readonly workflowId: WorkflowId;
+  readonly workerId: WorkerId;
+  readonly descriptor: AnyWorkflowDescriptor;
+  readonly stores: TaskStoreRegistry;
+  readonly authority: RunExecutionAuthority;
+  readonly sessionFactory: WorkerBrowserSessionFactory;
+  readonly emitter: SpanEmitter;
+  readonly clock: Clock;
+  readonly ids: IdFactory;
+  readonly scheduler: MonotonicDeadlineScheduler;
+  readonly taskDeadlineMs: number;
+  readonly heartbeatIntervalMs: number;
+  readonly idleRepollMs: number;
+  readonly log: TaskLogger;
+  /** Stop claiming and shut the worker down; the active run finishes first. */
+  readonly stopSignal: AbortSignal;
+  /**
+   * `true` drains the queue once and returns at the first idle poll — the
+   * Phase-1 harness/CLI mode. `false` keeps re-polling until `stopSignal`.
+   */
+  readonly exitWhenIdle: boolean;
+  readonly checkpointMigrations?: readonly CheckpointMigration[];
+  readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
+  readonly writeSequencer?: WriteSequencer;
+  readonly childRuns?: ChildRunExecutor;
+}
+
+export const WorkerLoopReportSchema = z.strictObject({
+  workerId: z.string().min(1),
+  workflowId: z.string().min(1),
+  outcomes: z.array(RunExecutionOutcomeSchema),
+  stopped: z.enum(["idle", "stop-signal"]),
+});
+export type WorkerLoopReport = z.infer<typeof WorkerLoopReportSchema>;
+
+/** Renew exactly one claim on a fixed cadence; a lost claim aborts the run. */
+function startHeartbeat(input: Readonly<{
+  authority: RunExecutionAuthority;
+  runId: string;
+  claim: Readonly<{ workerId: string; claimGeneration: number }>;
+  clock: Clock;
+  scheduler: MonotonicDeadlineScheduler;
+  intervalMs: number;
+  onLost: (message: string) => void;
+}>): Readonly<{ stop: () => void }> {
+  let stopped = false;
+  let handle = { cancel: (): void => undefined };
+  const tick = (): void => {
+    if (stopped) return;
+    const outcome = input.authority.authority.runs.renewClaim({
+      runId: input.runId,
+      claim: input.claim,
+      now: input.clock.now().toISOString(),
+    });
+    if (outcome.state === "lost") {
+      stopped = true;
+      input.onLost(outcome.message);
+      return;
+    }
+    handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
+  };
+  handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
+  return Object.freeze({
+    stop: (): void => {
+      stopped = true;
+      handle.cancel();
+    },
+  });
+}
+
+async function boundedWait(
+  scheduler: MonotonicDeadlineScheduler,
+  clock: Clock,
+  ms: number,
+  signal: AbortSignal,
+): Promise<void> {
+  if (ms <= 0 || signal.aborted) return;
+  await new Promise<void>((resolve) => {
+    const handle = scheduler.schedule(clock.monotonicMs() + ms, () => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    });
+    const onAbort = (): void => {
+      handle.cancel();
+      resolve();
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<WorkerLoopReport> {
+  const workflowId = WorkflowIdSchema.parse(deps.workflowId);
+  const workerId = WorkerIdSchema.parse(deps.workerId);
+  const { emitter, clock } = deps;
+  const workerPath = workerSpanPath(workflowId, workerId);
+  const instant = (): string => clock.now().toISOString();
+  const emit = (event: Readonly<Record<string, unknown>>): void => {
+    emitter.emit(ExecutorSpanEventSchema.parse({ ts: instant(), workflow: workflowId, ...event }));
+  };
+
+  const sessions = new WorkerSessionManager({
+    workerId,
+    workflowId,
+    stores: deps.stores,
+    factory: deps.sessionFactory,
+    clock,
+    onEvent: (event: WorkerSessionEvent): void => {
+      const spanPath = browserSessionSpanPath(workflowId, workerId, event.system, event.sessionId);
+      if (event.type === "browser-session:start") {
+        emit({
+          t: "span.started", kind: "browser", workerId, spanPath, parentSpanPath: workerPath,
+          name: `browser-session:${event.system}`, system: event.system,
+        });
+        return;
+      }
+      if (event.type === "browser-session:close") {
+        const clean = event.reason === "fresh-boundary"
+          || event.reason === "parked"
+          || event.reason === "worker-stop";
+        emit({
+          t: "span.ended", kind: "browser", workerId, spanPath, parentSpanPath: workerPath,
+          outcome: clean ? "done" : "failed",
+          ...(clean ? {} : { errorSummary: `browser session closed as ${event.reason}` }),
+        });
+      }
+      // resets are lease hygiene, not span boundaries.
+    },
+  });
+
+  emit({ t: "span.started", kind: "worker", workerId, spanPath: workerPath, name: workflowId });
+
+  const outcomes: RunExecutionOutcome[] = [];
+  let stopped: "idle" | "stop-signal" = "stop-signal";
+  try {
+    while (!deps.stopSignal.aborted) {
+      const claimed = deps.authority.authority.runs.claimNext({
+        workflow: workflowId,
+        workerId,
+        now: instant(),
+      });
+      if (claimed.state === "idle") {
+        if (deps.exitWhenIdle) {
+          stopped = "idle";
+          break;
+        }
+        await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
+        continue;
+      }
+      if (claimed.state === "deferred") {
+        if (deps.exitWhenIdle) {
+          stopped = "idle";
+          break;
+        }
+        const untilMs = Math.max(0, Date.parse(claimed.nextEligibleAt) - clock.nowMs());
+        await boundedWait(deps.scheduler, clock, Math.min(untilMs, deps.idleRepollMs), deps.stopSignal);
+        continue;
+      }
+
+      const run = claimed.run;
+      const claim = {
+        workerId,
+        claimGeneration: run.claimGeneration,
+      };
+      emit({
+        t: "run.claimed",
+        runId: run.envelope.runId,
+        attempt: run.envelope.attempt,
+        traceId: run.envelope.traceId,
+        spanPath: runSpanPath(run.envelope.traceId),
+        workerId,
+      });
+
+      const runController = new AbortController();
+      const onStop = (): void => {
+        runController.abort(new Error(`worker ${workerId} received its stop signal mid-run`));
+      };
+      deps.stopSignal.addEventListener("abort", onStop, { once: true });
+      const heartbeat = startHeartbeat({
+        authority: deps.authority,
+        runId: run.envelope.runId,
+        claim,
+        clock,
+        scheduler: deps.scheduler,
+        intervalMs: deps.heartbeatIntervalMs,
+        onLost: (message: string): void => {
+          runController.abort(new Error(`claim lost during heartbeat renewal: ${message}`));
+        },
+      });
+      try {
+        const outcome = await executeClaimedRun({
+          descriptor: deps.descriptor,
+          stores: deps.stores,
+          authority: deps.authority,
+          sessions,
+          emitter,
+          clock,
+          ids: deps.ids,
+          scheduler: deps.scheduler,
+          taskDeadlineMs: deps.taskDeadlineMs,
+          log: deps.log,
+          ...(deps.checkpointMigrations === undefined ? {} : { checkpointMigrations: deps.checkpointMigrations }),
+          ...(deps.canonicalInputMigrations === undefined
+            ? {}
+            : { canonicalInputMigrations: deps.canonicalInputMigrations }),
+          ...(deps.writeSequencer === undefined ? {} : { writeSequencer: deps.writeSequencer }),
+          ...(deps.childRuns === undefined ? {} : { childRuns: deps.childRuns }),
+        }, { run, claim, signal: runController.signal });
+        outcomes.push(outcome);
+      } finally {
+        heartbeat.stop();
+        deps.stopSignal.removeEventListener("abort", onStop);
+      }
+    }
+  } finally {
+    await sessions.closeAll("worker-stop");
+    emit({ t: "span.ended", kind: "worker", workerId, spanPath: workerPath, outcome: "done" });
+  }
+  return WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes, stopped });
+}
+
+/* ── the kernel's WorkerRuntimeExecutor seam, Phase-1 shape (doc 05 §0) ──── */
+
+/**
+ * Process effects behind the kernel's worker/browser arms. Phase 1 runs ONE
+ * worker per workflow with one active item; the supervisor that spawns real
+ * processes is composition-owned and injected here.
+ */
+export interface WorkerProcessSupervisor {
+  /** Start (or verify) the single Phase-1 worker process for a workflow. */
+  spawnWorker(input: Readonly<{ workflowId: WorkflowId; workerId: WorkerId }>): void;
+  refreshBrowser?(input: Readonly<{ workerId: WorkerId; browserSessionId: string }>): void;
+  reopenBrowser?(input: Readonly<{ workerId: WorkerId; browserSessionId: string }>): void;
+}
+
+export function phase1WorkerId(workflowId: WorkflowId): WorkerId {
+  return WorkerIdSchema.parse(`${workflowId}-worker-1`);
+}
+
+/**
+ * The Phase-1 `WorkerRuntimeExecutor`: exactly one worker per workflow (doc 05
+ * §0.3 scoped to this phase's single-operator runtime). A plan asking for more
+ * throws — the command unwinds rather than acknowledging capacity that does
+ * not exist — and the browser arms fail loud until the 1g supervisor can
+ * actually reach a live worker's session set.
+ */
+export function createPhase1WorkerRuntimeExecutor(
+  supervisor: WorkerProcessSupervisor,
+): WorkerRuntimeExecutor {
+  return Object.freeze({
+    planWorkerCount(context: WorkerRuntimeContext): z.input<typeof WorkerPlanAcknowledgementSchema> {
+      const { command } = context;
+      if (command.type !== "plan-worker-count") {
+        throw new Error(`planWorkerCount received a ${command.type} command`);
+      }
+      if (command.payload.desiredWorkers !== 1) {
+        throw new Error(
+          `Phase 1 runs exactly one worker per workflow; a plan for `
+          + `${String(command.payload.desiredWorkers)} workers is not reconcilable yet`,
+        );
+      }
+      return { state: "accepted", workerIds: [phase1WorkerId(command.target.workflowId)] };
+    },
+    spawnWorker(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+      const { command } = context;
+      if (command.type !== "spawn-worker") {
+        throw new Error(`spawnWorker received a ${command.type} command`);
+      }
+      supervisor.spawnWorker({
+        workflowId: command.target.workflowId,
+        workerId: command.payload.workerId,
+      });
+      return { state: "accepted" };
+    },
+    refreshBrowser(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+      const { command } = context;
+      if (command.type !== "refresh-browser") {
+        throw new Error(`refreshBrowser received a ${command.type} command`);
+      }
+      if (supervisor.refreshBrowser === undefined) {
+        throw new Error(
+          "refresh-browser requires the 1g browser supervisor; refusing to acknowledge an effect that did not happen",
+        );
+      }
+      supervisor.refreshBrowser({
+        workerId: command.target.workerId,
+        browserSessionId: command.target.browserSessionId,
+      });
+      return { state: "accepted" };
+    },
+    reopenBrowser(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+      const { command } = context;
+      if (command.type !== "reopen-browser") {
+        throw new Error(`reopenBrowser received a ${command.type} command`);
+      }
+      if (supervisor.reopenBrowser === undefined) {
+        throw new Error(
+          "reopen-browser requires the 1g browser supervisor; refusing to acknowledge an effect that did not happen",
+        );
+      }
+      supervisor.reopenBrowser({
+        workerId: command.target.workerId,
+        browserSessionId: command.target.browserSessionId,
+      });
+      return { state: "accepted" };
+    },
+  });
+}
