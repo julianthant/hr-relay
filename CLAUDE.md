@@ -7,7 +7,9 @@ stays the sole production authority until a single all-at-once cutover (D89/D93)
 Seeded 2026-07-31 from `hr-automation@5879004` (branch `feature/rebuild-phase1b`, which stays in the
 legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01. Phase 1f is in progress;
 its registry/task-binding corrections, worker-owned browser-session lifecycle, and mandatory task
-provenance collection landed 2026-08-02.
+provenance collection landed 2026-08-02. D109's start-plan ingress authority now retains exact raw
+JSON beside canonical snapshots, binds both schema hashes and canonical digests, and exposes those
+hashes to the later command-service consume step.
 
 ## Before you start
 
@@ -237,6 +239,11 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   and park/stop waits behind in-flight callbacks. Task, cancellation, reset, login-cleanup, or close-
   proof uncertainty must poison-close the resource. If closure cannot be proved, retain the resource
   as poisoned and refuse reuse; never erase it from ownership or infer that cleanup succeeded.
+- **2026-08-02: Start plans bind raw ingress separately from canonical input.** Accepted entries
+  retain strict JSON `rawInput`, the schema-bound canonical snapshot, and its digest. The plan binds
+  ingress/canonical schema hashes and derives its confirmation fingerprint from every ordered raw +
+  canonical identity, so defaults/transforms never erase what an operator submitted before D113
+  consumes the plan inside its outer authority transaction.
 
 ## After changes
 

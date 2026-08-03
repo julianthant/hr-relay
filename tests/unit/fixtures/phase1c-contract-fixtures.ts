@@ -34,7 +34,7 @@ const WORKER_TARGET = { workerId: "worker-1", expectedVersion: 1 };
 const CAPTURE_TARGET = { captureSessionId: UUID_4, expectedVersion: 1 };
 
 export const COMMAND_FIXTURES: readonly unknown[] = [
-  { ...BASE_COMMAND, family: "start", type: "start-run", target: { workflowId: "onboarding", startPlanId: UUID_3 }, payload: { descriptorFingerprint: HASH_A, configFingerprint: HASH_B, inputFingerprint: HASH_C } },
+  { ...BASE_COMMAND, family: "start", type: "start-run", target: { workflowId: "onboarding", startPlanId: UUID_3 }, payload: { descriptorFingerprint: HASH_A, configFingerprint: HASH_B, ingressSchemaHash: HASH_C, canonicalInputSchemaHash: HASH_A, inputFingerprint: HASH_C } },
   { ...BASE_COMMAND, family: "intake", type: "inspect-intake", target: INTAKE_TARGET, payload: { artifactId: UUID_4 } },
   { ...BASE_COMMAND, family: "intake", type: "confirm-intake-mapping", target: INTAKE_TARGET, payload: { mappingFingerprint: HASH_A } },
   { ...BASE_COMMAND, family: "intake", type: "correct-intake-row", target: INTAKE_TARGET, payload: { rowId: UUID_5, correctionArtifactId: UUID_6, correctionFingerprint: HASH_B } },

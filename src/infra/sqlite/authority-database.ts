@@ -1487,6 +1487,8 @@ export class AuthorityDatabase implements Disposable {
           const mismatched = [
             ["descriptor", plan.descriptorFingerprint, request.descriptorFingerprint],
             ["config", plan.configFingerprint, request.configFingerprint],
+            ["ingress schema", plan.ingressSchemaHash, request.ingressSchemaHash],
+            ["canonical-input schema", plan.canonicalInputSchemaHash, request.canonicalInputSchemaHash],
             ["input", plan.inputFingerprint, request.inputFingerprint],
           ].find(([, planned, presented]) => planned !== presented);
           if (mismatched !== undefined) {

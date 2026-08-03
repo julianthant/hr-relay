@@ -13,7 +13,9 @@
  * and not turned into a run that fails later — it is a named `refused` entry the
  * surface renders beside the ones that will go.
  */
+import { createHash } from "node:crypto";
 import { z } from "zod";
+import { canonicalJsonStringify, JsonValueSchema } from "../canonical-json.js";
 import {
   ActorIdSchema,
   ConfigSnapshotIdSchema,
@@ -46,8 +48,15 @@ export const PlannedRunSchema = z.strictObject({
   /** The exact title/subtitle the confirmation surface showed. */
   title: z.string().min(1),
   subtitle: z.string().min(1).optional(),
+  /**
+   * The exact strict-JSON ingress the operator submitted, before defaults or
+   * transforms. It is retained beside — never replaced with — canonical input.
+   */
+  rawInput: JsonValueSchema,
   /** Parsed through the workflow's canonical-input schema, bound to its hash. */
   input: SchemaBoundCanonicalValueSchema,
+  /** SHA-256 identity of this exact schema-parsed canonical JSON value. */
+  canonicalInputDigest: FingerprintSchema,
   matchKey: z.string().min(1),
 });
 export type PlannedRun = z.infer<typeof PlannedRunSchema>;
@@ -67,7 +76,11 @@ export const StartPlanRecordSchema = z.strictObject({
   descriptorFingerprint: FingerprintSchema,
   configFingerprint: FingerprintSchema,
   configSnapshotId: ConfigSnapshotIdSchema,
-  /** Over the planned runs' canonical inputs, in order — the confirmation's identity. */
+  /** Derived from the descriptor's exact ingress schema; never caller supplied. */
+  ingressSchemaHash: FingerprintSchema,
+  /** Derived from the descriptor's exact canonical-input schema; never caller supplied. */
+  canonicalInputSchemaHash: FingerprintSchema,
+  /** Over ordered raw + canonical + schema/digest run identities — the confirmation's identity. */
   inputFingerprint: FingerprintSchema,
   requestedInstance: InstanceSelectionSchema.optional(),
   resolvedInstance: InstanceSelectionSchema,
@@ -103,8 +116,71 @@ export const StartPlanRecordSchema = z.strictObject({
   if (new Set(entries).size !== entries.length) {
     context.addIssue({ code: "custom", path: ["refused"], message: "a start plan cannot refuse one entry twice" });
   }
+  for (const [index, planned] of plan.planned.entries()) {
+    if (planned.input.schemaHash !== plan.canonicalInputSchemaHash) {
+      context.addIssue({
+        code: "custom",
+        path: ["planned", index, "input", "schemaHash"],
+        message: "a planned canonical input must use the start plan canonical-input schema hash",
+      });
+    }
+    if (planned.canonicalInputDigest !== deriveCanonicalInputDigest(planned.input.value)) {
+      context.addIssue({
+        code: "custom",
+        path: ["planned", index, "canonicalInputDigest"],
+        message: "a planned canonical-input digest must match its canonical JSON value",
+      });
+    }
+  }
+  if (plan.inputFingerprint !== derivePlannedInputFingerprint(
+    plan.planned,
+    plan.ingressSchemaHash,
+    plan.canonicalInputSchemaHash,
+  )) {
+    context.addIssue({
+      code: "custom",
+      path: ["inputFingerprint"],
+      message: "a start plan confirmation fingerprint must match its ordered accepted ingress identities",
+    });
+  }
 });
 export type StartPlanRecord = z.infer<typeof StartPlanRecordSchema>;
+
+/** The digest of one schema-validated canonical snapshot, never of raw ingress. */
+export function deriveCanonicalInputDigest(value: unknown): string {
+  return FingerprintSchema.parse(createHash("sha256")
+    .update("hrauto:start-plan-canonical-input:v1\0")
+    .update(canonicalJsonStringify(value))
+    .digest("hex"));
+}
+
+/**
+ * The one confirmation token over the ordered accepted submissions. Raw ingress
+ * stays part of the identity so a default/transform cannot erase an operator
+ * change that happened to produce the same canonical value.
+ */
+export function derivePlannedInputFingerprint(
+  planned: readonly PlannedRun[],
+  ingressSchemaHash: string,
+  canonicalInputSchemaHash: string,
+): string {
+  return FingerprintSchema.parse(createHash("sha256")
+    .update("hrauto:start-plan-input:v2\0")
+    .update(canonicalJsonStringify({
+      ingressSchemaHash,
+      canonicalInputSchemaHash,
+      accepted: planned.map((run) => ({
+        runId: run.runId,
+        itemId: run.itemId,
+        traceId: run.traceId,
+        matchKey: run.matchKey,
+        rawInput: run.rawInput,
+        canonicalInput: run.input,
+        canonicalInputDigest: run.canonicalInputDigest,
+      })),
+    }))
+    .digest("hex"));
+}
 
 export function isStartPlanExpired(plan: StartPlanRecord, nowMs: number): boolean {
   return Date.parse(plan.expiresAt) <= nowMs;

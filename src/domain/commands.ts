@@ -145,6 +145,8 @@ export const StartCommandRequestSchema = z.strictObject({
   payload: z.strictObject({
     descriptorFingerprint: FingerprintSchema,
     configFingerprint: FingerprintSchema,
+    ingressSchemaHash: FingerprintSchema,
+    canonicalInputSchemaHash: FingerprintSchema,
     inputFingerprint: FingerprintSchema,
   }),
 });

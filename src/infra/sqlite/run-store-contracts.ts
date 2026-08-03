@@ -146,6 +146,8 @@ export const StartPlanConsumeRequestSchema = z.strictObject({
   /** Re-checked against the stored plan; a changed descriptor/config/input refuses. */
   descriptorFingerprint: FingerprintSchema,
   configFingerprint: FingerprintSchema,
+  ingressSchemaHash: FingerprintSchema,
+  canonicalInputSchemaHash: FingerprintSchema,
   inputFingerprint: FingerprintSchema,
   now: IsoInstantSchema,
 });

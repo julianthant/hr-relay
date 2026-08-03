@@ -14,14 +14,14 @@ import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { deriveItemId, deriveTraceId } from "../../src/domain/identifiers.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import {
+  deriveCanonicalInputDigest,
+  derivePlannedInputFingerprint,
+  StartPlanRecordSchema,
+} from "../../src/domain/run/start-plan.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { buildQueuedRun } from "../../src/services/runs/enqueue.js";
-import {
-  derivePlannedInputFingerprint,
-  planStart,
-  resolveInstances,
-  supportsDryRun,
-} from "../../src/services/start/plan.js";
+import { planStart, resolveInstances, supportsDryRun } from "../../src/services/start/plan.js";
 import {
   PersonLookupCanonicalInput,
   PersonLookupInput,
@@ -117,7 +117,12 @@ describe("start planning", () => {
       keepNonHdh: false,
       includeCrmDates: false,
     });
+    assert.deepEqual(plan.planned[0].rawInput, { emplId: "10873698" });
+    assert.notDeepEqual(plan.planned[0].rawInput, plan.planned[0].input.value);
+    assert.equal(plan.ingressSchemaHash, deriveSchemaHash(PersonLookupInput, "input"));
+    assert.equal(plan.canonicalInputSchemaHash, deriveSchemaHash(PersonLookupCanonicalInput, "output"));
     assert.equal(plan.planned[0].input.schemaHash, deriveSchemaHash(PersonLookupCanonicalInput, "output"));
+    assert.equal(plan.planned[0].canonicalInputDigest, deriveCanonicalInputDigest(plan.planned[0].input.value));
   });
 
   it("refuses an unparseable submission by name instead of dropping it", () => {
@@ -130,6 +135,18 @@ describe("start planning", () => {
     assert.equal(plan.refused.length, 1);
     assert.equal(plan.refused[0].entry, 2);
     assert.equal(plan.refused[0].code, "input-invalid");
+  });
+
+  it("refuses non-JSON raw ingress instead of serializing or replacing it", () => {
+    const database = openDatabase();
+    const plan = planStart(plannerDeps(database), baseRequest([
+      { emplId: "10873698" },
+      undefined,
+    ]));
+    assert.equal(plan.planned.length, 1);
+    assert.deepEqual(plan.refused.map(({ entry, code }) => ({ entry, code })), [
+      { entry: 2, code: "input-invalid" },
+    ]);
   });
 
   it("refuses a repeat of a logical item already in the same plan", () => {
@@ -196,7 +213,38 @@ describe("start planning", () => {
       { emplId: "10001573" },
     ]));
     assert.notEqual(one.inputFingerprint, two.inputFingerprint);
-    assert.equal(one.inputFingerprint, derivePlannedInputFingerprint(one.planned));
+    assert.equal(one.inputFingerprint, derivePlannedInputFingerprint(
+      one.planned,
+      one.ingressSchemaHash,
+      one.canonicalInputSchemaHash,
+    ));
+  });
+
+  it("binds raw ingress even when defaults produce the same canonical snapshot", () => {
+    const database = openDatabase();
+    const omittedDefault = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
+    const explicitDefault = planStart(plannerDeps(database), baseRequest([{
+      emplId: "10873698",
+      keepNonHdh: false,
+      includeCrmDates: false,
+    }]));
+    assert.deepEqual(omittedDefault.planned[0].input, explicitDefault.planned[0].input);
+    assert.notDeepEqual(omittedDefault.planned[0].rawInput, explicitDefault.planned[0].rawInput);
+    assert.notEqual(omittedDefault.inputFingerprint, explicitDefault.inputFingerprint);
+  });
+
+  it("rejects schema, digest, and confirmation drift inside a stored plan", () => {
+    const database = openDatabase();
+    const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
+    assert.throws(() => StartPlanRecordSchema.parse({
+      ...plan,
+      planned: [{ ...plan.planned[0], input: { ...plan.planned[0].input, schemaHash: HASH_B } }],
+    }), /canonical-input schema hash/);
+    assert.throws(() => StartPlanRecordSchema.parse({
+      ...plan,
+      planned: [{ ...plan.planned[0], canonicalInputDigest: HASH_B }],
+    }), /canonical-input digest/);
+    assert.throws(() => StartPlanRecordSchema.parse({ ...plan, inputFingerprint: HASH_B }), /confirmation fingerprint/);
   });
 });
 
@@ -214,6 +262,8 @@ describe("start plan consumption", () => {
       commandId: "cccccccc-0001-4000-8000-000100000000",
       descriptorFingerprint: plan.descriptorFingerprint,
       configFingerprint: plan.configFingerprint,
+      ingressSchemaHash: plan.ingressSchemaHash,
+      canonicalInputSchemaHash: plan.canonicalInputSchemaHash,
       inputFingerprint: plan.inputFingerprint,
       now: NOW,
       ...overrides,
@@ -235,10 +285,22 @@ describe("start plan consumption", () => {
     assert.equal(other.code, "spent");
   });
 
-  it("refuses a plan whose descriptor, config, or input has since changed", () => {
+  it("round-trips the exact raw and canonical ingress authority through SQLite", () => {
     const database = openDatabase();
     const plan = storedPlan(database);
-    for (const field of ["descriptorFingerprint", "configFingerprint", "inputFingerprint"] as const) {
+    assert.deepEqual(database.authority.startPlans.get(plan.startPlanId), plan);
+  });
+
+  it("refuses a plan whose descriptor, config, schema, or confirmation has since changed", () => {
+    const database = openDatabase();
+    const plan = storedPlan(database);
+    for (const field of [
+      "descriptorFingerprint",
+      "configFingerprint",
+      "ingressSchemaHash",
+      "canonicalInputSchemaHash",
+      "inputFingerprint",
+    ] as const) {
       const outcome = database.authority.startPlans.consume(consumeRequest(plan, { [field]: HASH_B }));
       assert.equal(outcome.state, "refused");
       if (outcome.state !== "refused") throw new Error("a changed fingerprint must refuse");
@@ -267,5 +329,17 @@ describe("start plan consumption", () => {
       }),
       /cannot be created already consumed/,
     );
+  });
+
+  it("leaves a plan unspent when an outer authority transaction rolls back after consume", () => {
+    const database = openDatabase();
+    const plan = storedPlan(database);
+    assert.throws(() => database.withAuthorityTransaction(() => {
+      const consumed = database.authority.startPlans.consume(consumeRequest(plan));
+      assert.equal(consumed.state, "consumed");
+      throw new Error("inject later D113 enqueue failure");
+    }), /inject later D113 enqueue failure/);
+    const retry = database.authority.startPlans.consume(consumeRequest(plan));
+    assert.equal(retry.state, "consumed");
   });
 });

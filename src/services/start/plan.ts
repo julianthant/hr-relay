@@ -12,23 +12,27 @@
  * silently planning three. Dropping the fourth would be the same failure mode
  * as a fallback: the operator would act on a lie.
  */
-import { createHash } from "node:crypto";
 import { workflowPlanning, workflowProjections } from "../../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../base/workflow.js";
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { JsonValueSchema } from "../../domain/canonical-json.js";
+import type { JsonValue } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { deriveItemId, deriveTraceId } from "../../domain/identifiers.js";
 import type { IdFactory } from "../../domain/identifiers.js";
 import {
   BrowserSystemIdSchema,
-  FingerprintSchema,
   IsoInstantSchema,
   PositiveIntSchema,
 } from "../../domain/ids.js";
 import type { InstanceSelection, RunPriority, RunShape } from "../../domain/run/envelope.js";
 import { InstanceSelectionSchema } from "../../domain/run/envelope.js";
 import { isTerminalRunState } from "../../domain/run/record.js";
-import { PlannedRunSchema, StartPlanRecordSchema } from "../../domain/run/start-plan.js";
+import {
+  deriveCanonicalInputDigest,
+  derivePlannedInputFingerprint,
+  PlannedRunSchema,
+  StartPlanRecordSchema,
+} from "../../domain/run/start-plan.js";
 import type { PlannedRun, StartPlanRecord, StartRefusal } from "../../domain/run/start-plan.js";
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import type { AuthorityDatabase } from "../../infra/sqlite/authority-database.js";
@@ -92,6 +96,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
   const { descriptor } = request;
   const planning = workflowPlanning(descriptor);
   const now = IsoInstantSchema.parse(deps.clock.now().toISOString());
+  const ingressSchemaHash = deriveSchemaHash(descriptor.input, "input");
   const canonicalSchemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
   const resolvedInstance = resolveInstances(descriptor, request.requestedInstance);
 
@@ -110,9 +115,14 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       continue;
     }
 
+    let rawInput: JsonValue;
     let parsed: unknown;
+    let canonicalInput: unknown;
     try {
-      parsed = planning.parseInput(submission);
+      rawInput = JsonValueSchema.parse(submission);
+      // This is the one and only ingress parse for this raw submission.
+      parsed = planning.parseInput(rawInput);
+      canonicalInput = planning.parseCanonicalInput(parsed);
     } catch (error) {
       refuse("input-invalid", errorText(error));
       continue;
@@ -144,7 +154,9 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       traceId: deriveTraceId(descriptor.code, runId, deps.clock),
       title: planning.title(parsed),
       ...(subtitle === undefined ? {} : { subtitle }),
-      input: { schemaHash: canonicalSchemaHash, value: planning.parseCanonicalInput(parsed) },
+      rawInput,
+      input: { schemaHash: canonicalSchemaHash, value: canonicalInput },
+      canonicalInputDigest: deriveCanonicalInputDigest(canonicalInput),
       matchKey,
     }));
   }
@@ -156,7 +168,9 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     descriptorFingerprint: descriptor.contractFingerprint,
     configFingerprint: request.configFingerprint,
     configSnapshotId: request.configSnapshotId,
-    inputFingerprint: derivePlannedInputFingerprint(planned),
+    ingressSchemaHash,
+    canonicalInputSchemaHash: canonicalSchemaHash,
+    inputFingerprint: derivePlannedInputFingerprint(planned, ingressSchemaHash, canonicalSchemaHash),
     ...(request.requestedInstance === undefined ? {} : { requestedInstance: request.requestedInstance }),
     resolvedInstance,
     shape: request.shape,
@@ -171,18 +185,6 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     createdAt: now,
     updatedAt: now,
   });
-}
-
-/**
- * The fingerprint the consuming command must present. It covers the planned
- * inputs in order, so re-planning after an edit produces a different value and
- * a stale confirmation cannot start the earlier set.
- */
-export function derivePlannedInputFingerprint(planned: readonly PlannedRun[]): string {
-  return FingerprintSchema.parse(createHash("sha256")
-    .update("hrauto:start-plan-input:v1\0")
-    .update(canonicalJsonStringify(planned.map(({ itemId, input }) => ({ itemId, input }))))
-    .digest("hex"));
 }
 
 /** The browser systems a planned run will touch, for preflight and session accounting. */

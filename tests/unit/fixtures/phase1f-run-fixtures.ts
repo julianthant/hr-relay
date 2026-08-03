@@ -7,6 +7,11 @@
  * against a state the production transitions cannot actually produce.
  */
 import { HASH_A, HASH_B, HASH_C, LATER, NOW, UUID_2, UUID_3, UUID_4, UUID_5 } from "./phase1c-contract-fixtures.js";
+import {
+  deriveCanonicalInputDigest,
+  derivePlannedInputFingerprint,
+  PlannedRunSchema,
+} from "../../../src/domain/run/start-plan.js";
 
 /**
  * A deterministic id source. Services take an `IdFactory` for exactly this
@@ -71,6 +76,19 @@ export const QUEUED_RUN = {
   updatedAt: NOW,
 };
 
+const START_PLAN_INGRESS_SCHEMA_HASH = HASH_A;
+const START_PLAN_CANONICAL_INPUT_SCHEMA_HASH = HASH_C;
+const START_PLAN_PLANNED = PlannedRunSchema.array().parse([{
+  runId: RUN_ID,
+  itemId: ITEM_ID,
+  traceId: TRACE_ID,
+  title: "EID 10873698",
+  rawInput: RUN_INPUT.raw,
+  input: RUN_INPUT.parsed,
+  canonicalInputDigest: deriveCanonicalInputDigest(RUN_INPUT.parsed.value),
+  matchKey: "eid:10873698",
+}]);
+
 export const START_PLAN = {
   startPlanId: UUID_5,
   workflowId: WORKFLOW_ID,
@@ -78,19 +96,18 @@ export const START_PLAN = {
   descriptorFingerprint: HASH_A,
   configFingerprint: HASH_B,
   configSnapshotId: UUID_4,
-  inputFingerprint: HASH_C,
+  ingressSchemaHash: START_PLAN_INGRESS_SCHEMA_HASH,
+  canonicalInputSchemaHash: START_PLAN_CANONICAL_INPUT_SCHEMA_HASH,
+  inputFingerprint: derivePlannedInputFingerprint(
+    START_PLAN_PLANNED,
+    START_PLAN_INGRESS_SCHEMA_HASH,
+    START_PLAN_CANONICAL_INPUT_SCHEMA_HASH,
+  ),
   resolvedInstance: { ucpath: "prod", crm: "prod" },
   shape: "single",
   priority: "bulk",
   dryRun: false,
-  planned: [{
-    runId: RUN_ID,
-    itemId: ITEM_ID,
-    traceId: TRACE_ID,
-    title: "EID 10873698",
-    input: RUN_INPUT.parsed,
-    matchKey: "eid:10873698",
-  }],
+  planned: START_PLAN_PLANNED,
   refused: [],
   plannedBy: "local-operator",
   plannedAt: NOW,
