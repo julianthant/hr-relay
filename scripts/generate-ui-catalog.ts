@@ -19,5 +19,10 @@ await writeFile(
   renderSystemUiCatalogMarkdown(catalog, "ucpath"),
   "utf8",
 );
+await writeFile(
+  resolve(repoRoot, "src/stores/crm/UI-CATALOG.md"),
+  renderSystemUiCatalogMarkdown(catalog, "crm"),
+  "utf8",
+);
 
 process.stdout.write(`Generated ${String(catalog.entries.length)} semantic UI catalog entries.\n`);

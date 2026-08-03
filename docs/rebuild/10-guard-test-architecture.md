@@ -176,8 +176,11 @@ row carries non-empty search intent, source line, and the same exact blob proven
 path-derived `candidateId` is explicitly an **unclassified, non-authoritative proposal**, never an
 `ElementId`. The strict union permits only `candidate|ported|driver-internal|not-porting`;
 `ported` alone carries a classified canonical id and requires D98's dual evidence. Stage B later
-classified only the reviewed Person Org seed: 403 candidates remain, two rows are ported, and the
-PeopleSoft content frame is driver-internal.
+classified the reviewed Person Org operation plus the Phase-1f CRM Person Lookup rows: **387**
+candidates remain, **18** rows are ported, and the PeopleSoft content frame is driver-internal.
+The legacy generic `personOrgSummary.viewAllLink()` row is the sole contextual one-to-many port:
+its closed, evidence-bound contexts map to the exact search-results and Employment Instances
+toggles, while flattened canonical ids and contexts remain globally unique.
 
 The active `legacy-selector-port-provenance` guard regenerates the safe inventory from the pinned
 commit in the architecture lane, compares it byte-for-structure, and rejects omissions, duplicates,
@@ -186,22 +189,30 @@ capture fields. Its violating canaries prove those arms fail. Runtime code never
 repository boundary and the snapshot contains no locator strings, captured values, screenshots,
 secrets, or fallback recipes.
 
+The Phase-1f CRM expansion promotes exactly five additional rows: search result rows/cells/name
+link, the verified Visualforce `th` label-following-value recipe, and onboarding-history rows. Each
+is bound to sanitized deterministic and fresh read-only live evidence dated 2026-08-02. The
+broader record fallbacks, nth-row convenience selector, section navigation, and history button
+remain candidates because the Person Lookup path neither needs nor has fresh proof for them.
+
 ### Phase 1d Stage B as-built — semantic registry + typed driver seed (2026-08-01)
 
-The first server-only registry is `src/stores/ucpath/driver/ui-registry.ts`. It classifies the UCPath
-Person Organizational Summary EID input and displayed-EID element under stable semantic ids, plus
-two screens, two positive page states, and one authoritative observation. The legacy content-frame
-recipe remains private driver-root infrastructure. The driver interpreter is the sole Playwright
-owner; its public `UcpathPersonOrgDriver` exposes typed screen/state/field/observation ids and a
-`commit` signature that cannot be called without the opaque `MutationCapability`. This read-only
-seed wires no task, browser session, navigation route, or external commit.
+The server-only registries are `src/stores/ucpath/driver/ui-registry.ts` and
+`src/stores/crm/driver/ui-registry.ts`. UCPath publishes two screens, fourteen elements, four page
+states, and two observations; CRM publishes three screens, five elements, four page states, and one
+observation. Raw selector recipes remain private to the driver roots. Task and workflow import
+graphs reach only schema-first driver declarations and session-provider leaves, while the raw
+Playwright interpreters own the selector-backed Person Lookup operations. No commit method or
+external-write capability exists on either read-only driver; the concrete worker browser/session
+factory remains a later Phase-1f integration step.
 
-`npm run ui:catalog` generates a seven-entry `generated/ui-catalog.json` and per-system
-`src/stores/ucpath/UI-CATALOG.md`; `npm run selector:search -- "<intent>"` searches only that safe
-projection. Both outputs omit locator/state/read recipes and captured values. The checked-in
-deterministic fixture manifest and the sanitized live/read-only manifest record exactly-one EID
-input and displayed-EID equality assertions with `externalWriteAttempted:false`; the live proof was
-run headless through the legacy repo's Duo Autopilot path without changing legacy files.
+`npm run ui:catalog` generates a **35-entry** `generated/ui-catalog.json` plus per-system UCPath and
+CRM `UI-CATALOG.md` files; `npm run selector:search -- "<intent>"` searches only that safe
+projection. The outputs omit locator/state/read recipes and captured values. Checked-in fixture and
+sanitized live/read-only manifests bind every published fact to exact port rows, record
+`externalWriteAttempted:false`, and retain no captured HR values. UCPath additionally records the
+two zero-match legacy accessible-name recipes and the fail-loud View All pagination proofs; CRM
+records exact search/empty, displayed-EID, and history-transition evidence.
 
 The active `semantic-ui-registry` and `task-driver-boundary` guards have violating canaries. They
 enforce registry uniqueness, same-system dependency resolution, collision-free search terms,

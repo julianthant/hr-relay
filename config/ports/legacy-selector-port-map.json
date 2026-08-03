@@ -92,9 +92,14 @@
       "sourceBlob": "e63530d375478dd330d07460c740f2027dbd7bdd",
       "catalogPath": "src/systems/crm/SELECTORS.md",
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:crm/search.result-rows"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "crm.onboarding.search-result-rows",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json"
+      }
     },
     {
       "system": "crm",
@@ -132,9 +137,14 @@
       "sourceBlob": "e63530d375478dd330d07460c740f2027dbd7bdd",
       "catalogPath": "src/systems/crm/SELECTORS.md",
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:crm/search.result-row-cells"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "crm.onboarding.search-result-row-cells",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json"
+      }
     },
     {
       "system": "crm",
@@ -152,9 +162,14 @@
       "sourceBlob": "e63530d375478dd330d07460c740f2027dbd7bdd",
       "catalogPath": "src/systems/crm/SELECTORS.md",
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:crm/search.result-row-name-link"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "crm.onboarding.search-result-name-link",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json"
+      }
     },
     {
       "system": "crm",
@@ -173,9 +188,14 @@
       "sourceBlob": "e63530d375478dd330d07460c740f2027dbd7bdd",
       "catalogPath": "src/systems/crm/SELECTORS.md",
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:crm/record.th-label-following-td"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "crm.onboarding.record-field-value",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json"
+      }
     },
     {
       "system": "crm",
@@ -323,9 +343,14 @@
       "sourceBlob": "e63530d375478dd330d07460c740f2027dbd7bdd",
       "catalogPath": "src/systems/crm/SELECTORS.md",
       "catalogBlob": "5b928a9bd686727fb10700a61ac116138df7eb44",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:crm/onboarding-history.history-rows"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "crm.onboarding.history-rows",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json"
+      }
     },
     {
       "system": "i9",

@@ -135,6 +135,12 @@ import {
   UiVerificationScenarioSchema,
 } from "../../../src/domain/ui/contracts.js";
 import {
+  CRM_ONBOARDING_DISPLAYED_EID,
+  CrmOnboardingDatesReadSchema,
+  CrmOnboardingRecordReadSchema,
+  CrmSubjectBindingSchema,
+} from "../../../src/domain/ui/crm-onboarding.js";
+import {
   SECRET_FAMILY_SPECS,
   SECRET_FILE_SPECS,
   SECRET_SPECS,
@@ -215,6 +221,7 @@ import {
 } from "../../../src/infra/sqlite/index.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
 import { buildSafeUiCatalog } from "../../../src/stores/ucpath/driver/catalog.js";
+import { CRM_UI_REGISTRY } from "../../../src/stores/crm/driver/ui-registry.js";
 import { UCPATH_UI_REGISTRY } from "../../../src/stores/ucpath/driver/ui-registry.js";
 import {
   ABSENCE_1,
@@ -623,6 +630,33 @@ const STORAGE_DOCTOR_REPORT = {
   backup: { state: "current", latest: RESTORE_CANDIDATE },
   restoreCandidates: [RESTORE_CANDIDATE],
 };
+const CRM_SUBJECT_BINDING = CrmSubjectBindingSchema.parse({
+  state: "displayed-record",
+  observationId: CRM_ONBOARDING_DISPLAYED_EID,
+  expectedEid: "10873698",
+  observedEid: "10873698",
+});
+const CRM_RECORD_READ = CrmOnboardingRecordReadSchema.parse({
+  binding: CRM_SUBJECT_BINDING,
+  output: {
+    state: "found",
+    record: {
+      recordId: "ONB-40213",
+      emplId: "10873698",
+      fullName: "Fixture, Person",
+      rawStage: "Completed",
+    },
+  },
+});
+const CRM_DATES_READ = CrmOnboardingDatesReadSchema.parse({
+  binding: CRM_SUBJECT_BINDING,
+  output: {
+    emplId: "10873698",
+    invitedOn: { state: "present", value: "2026-06-01" },
+    startsOn: { state: "present", value: "2026-07-15" },
+    completedOn: { state: "absent", reason: "history has no Completed transition" },
+  },
+});
 
 interface BoundaryCatalogEntry {
   readonly name: string;
@@ -956,7 +990,10 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   ] },
   { name: "UiCatalog", schema: UiCatalogSchema, fixtures: [buildSafeUiCatalog()] },
   { name: "UiVerificationEvidenceManifest", schema: UiVerificationEvidenceManifestSchema, fixtures: [UI_EVIDENCE] },
-  { name: "UiVerificationScenario", schema: UiVerificationScenarioSchema, fixtures: UCPATH_UI_REGISTRY.scenarios },
+  { name: "UiVerificationScenario", schema: UiVerificationScenarioSchema, fixtures: [...UCPATH_UI_REGISTRY.scenarios, ...CRM_UI_REGISTRY.scenarios] },
+  { name: "CrmSubjectBinding", schema: CrmSubjectBindingSchema, fixtures: [CRM_SUBJECT_BINDING] },
+  { name: "CrmOnboardingRecordRead", schema: CrmOnboardingRecordReadSchema, fixtures: [CRM_RECORD_READ] },
+  { name: "CrmOnboardingDatesRead", schema: CrmOnboardingDatesReadSchema, fixtures: [CRM_DATES_READ] },
   { name: "SecretSpec", schema: SecretSpecSchema, fixtures: [SECRET_SPECS[0]] },
   { name: "SecretFamilySpec", schema: SecretFamilySpecSchema, fixtures: [SECRET_FAMILY_SPECS[0]] },
   { name: "SecretFileSpec", schema: SecretFileSpecSchema, fixtures: [SECRET_FILE_SPECS[0]] },

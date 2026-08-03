@@ -127,7 +127,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "115464442c8b8307afbe3d591d9b93f08c3dd23ed85382ba8e5586b4d38cacbb",
+      "fingerprint": "87ba941d1915fd6ffe63564c1f430747c24cabf7348212ff449361bdde6da084",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -202,8 +202,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
         },
         {
+          "path": "src/domain/trust/preflight-scenarios.ts",
+          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
+        },
+        {
+          "path": "src/domain/trust/scenario.ts",
+          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
+        },
+        {
+          "path": "src/domain/ui/contracts.ts",
+          "sha256": "d48be467dfa66a7725a7706c00bed7a1df224f9642feffc11184bfc9248b9fba"
+        },
+        {
           "path": "src/domain/ui/crm-onboarding.ts",
-          "sha256": "cf3b0ed74e89a86891554afabeb3584ebdde3e87a95915c975d9c836e1688160"
+          "sha256": "5b5c06d9d6fd7355d7137caac6ab664a79fdc56eea0eec891cacbcc6789a34cd"
         },
         {
           "path": "src/domain/ui/driver.ts",
@@ -218,16 +230,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "abc6dea2de0e5163130589baf6644d9048d50d01c91c1acbe2a5671fb78e3e95"
         },
         {
-          "path": "src/stores/crm/driver/declaration.ts",
-          "sha256": "b9978586152076e344cd01ec46657a55662dc0fc221a5e6ebdbb6c5416362fde"
+          "path": "src/stores/crm/declaration.ts",
+          "sha256": "f9475f41af20cfebe8753ed508d8701b2f27294e7ca4144870d88f4dc92a90cd"
         },
         {
           "path": "src/stores/crm/driver/interpreter.ts",
-          "sha256": "8f062eaae7303bb216d02f5e11308f8a7988df2034eb6b26f68e95e9d94d1068"
+          "sha256": "e576a48c645e143c56191aa721bb91c5da7cc7016be1883c0e342b2ae71e91de"
+        },
+        {
+          "path": "src/stores/crm/driver/ui-registry.ts",
+          "sha256": "33a2df58090f62e32a593f1ad97fe9e6dbf34e1aa8c813405b0280f88650d8f5"
         },
         {
           "path": "src/stores/crm/tasks/read-onboarding-dates.ts",
-          "sha256": "72f3c81bc4b974dfb6dc47b8695dc7ee23ec51bfb6cb09e38f132e00369e00b0"
+          "sha256": "6bdf536bb1d995151a797a1c25b9913ec664a387f736cbfc6b5f42ec8ee6749d"
         },
         {
           "path": "src/validation/contract-boundary.ts",
@@ -237,7 +253,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "fab77ea4b243778c1cab32e0cdd37ca593997dc2d63a6de75ee539727cd1bf76",
+      "fingerprint": "a1edd039a04d9cc0af556aa25a790101d8365bf5edafa077a52c56d70a3b02fc",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -312,8 +328,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
         },
         {
+          "path": "src/domain/trust/preflight-scenarios.ts",
+          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
+        },
+        {
+          "path": "src/domain/trust/scenario.ts",
+          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
+        },
+        {
+          "path": "src/domain/ui/contracts.ts",
+          "sha256": "d48be467dfa66a7725a7706c00bed7a1df224f9642feffc11184bfc9248b9fba"
+        },
+        {
           "path": "src/domain/ui/crm-onboarding.ts",
-          "sha256": "cf3b0ed74e89a86891554afabeb3584ebdde3e87a95915c975d9c836e1688160"
+          "sha256": "5b5c06d9d6fd7355d7137caac6ab664a79fdc56eea0eec891cacbcc6789a34cd"
         },
         {
           "path": "src/domain/ui/driver.ts",
@@ -328,16 +356,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "abc6dea2de0e5163130589baf6644d9048d50d01c91c1acbe2a5671fb78e3e95"
         },
         {
-          "path": "src/stores/crm/driver/declaration.ts",
-          "sha256": "b9978586152076e344cd01ec46657a55662dc0fc221a5e6ebdbb6c5416362fde"
+          "path": "src/stores/crm/declaration.ts",
+          "sha256": "f9475f41af20cfebe8753ed508d8701b2f27294e7ca4144870d88f4dc92a90cd"
         },
         {
           "path": "src/stores/crm/driver/interpreter.ts",
-          "sha256": "8f062eaae7303bb216d02f5e11308f8a7988df2034eb6b26f68e95e9d94d1068"
+          "sha256": "e576a48c645e143c56191aa721bb91c5da7cc7016be1883c0e342b2ae71e91de"
+        },
+        {
+          "path": "src/stores/crm/driver/ui-registry.ts",
+          "sha256": "33a2df58090f62e32a593f1ad97fe9e6dbf34e1aa8c813405b0280f88650d8f5"
         },
         {
           "path": "src/stores/crm/tasks/read-onboarding-record.ts",
-          "sha256": "e5e436dcf62284cd71479fdef529b926a619c0b3ce17e17d334923fc1c174dd9"
+          "sha256": "510a15336c3ca0672363ec8f70e6eebd69409b8044fa39593cbe98ad3d1c8e59"
         },
         {
           "path": "src/validation/contract-boundary.ts",

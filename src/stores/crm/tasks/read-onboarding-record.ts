@@ -6,7 +6,7 @@ import {
 import {
   CrmSubjectBindingSchema,
 } from "../../../domain/ui/crm-onboarding.js";
-import { crmDriver } from "../driver/declaration.js";
+import { crmDriver } from "../declaration.js";
 
 /** Ported semantic operation: legacy 793abe1, src/systems/crm/onboarding-records.ts. */
 export const readOnboardingRecordTask = defineTask(crmDriver, CrmReadOnboardingRecord, {

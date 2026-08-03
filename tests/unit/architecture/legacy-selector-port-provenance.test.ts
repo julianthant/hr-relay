@@ -31,8 +31,8 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     ]);
     assert.equal(portMap.entries.length, 406);
     assert.deepEqual(auditLegacySelectorPortMap(portMap, LEGACY_ROOT), []);
-    assert.equal(portMap.entries.filter((entry) => entry.disposition === "candidate").length, 392);
-    assert.equal(portMap.entries.filter((entry) => entry.disposition === "ported").length, 13);
+    assert.equal(portMap.entries.filter((entry) => entry.disposition === "candidate").length, 387);
+    assert.equal(portMap.entries.filter((entry) => entry.disposition === "ported").length, 18);
     assert.equal(portMap.entries.filter((entry) => entry.disposition === "driver-internal").length, 1);
   });
 
@@ -90,13 +90,17 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     const valid = LegacySelectorPortMapSchema.parse(readPortMap());
     const malformedPorted = structuredClone(valid) as Record<string, unknown>;
     const entries = malformedPorted.entries as Record<string, unknown>[];
-    entries[0] = {
-      ...entries[0],
+    const candidateIndex = entries.findIndex((entry) => entry.disposition === "candidate");
+    assert.notEqual(candidateIndex, -1);
+    const candidate = entries[candidateIndex];
+    assert.ok(candidate);
+    entries[candidateIndex] = {
+      ...candidate,
       disposition: "ported",
       semanticKind: "element",
       canonicalId: "crm.search.result-rows",
     };
-    delete entries[0]?.candidateId;
+    delete entries[candidateIndex]?.candidateId;
     assert.notEqual(auditLegacySelectorPortMap(malformedPorted, LEGACY_ROOT).length, 0);
   });
 
