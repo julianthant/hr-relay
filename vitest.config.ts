@@ -8,9 +8,22 @@ export const REBUILD_COVERAGE_EXCLUSIONS = [
     activation: { ownerRoot: "src/generated", status: "planned" },
     reason: "Generated projections are verified by determinism guards.",
   },
+  // The 1g transport client made src/dashboard exist as pure .ts; the .tsx
+  // presentation subtrees (doc 13 §2) stay planned per-directory and flip
+  // as the 1i shell lands each one. Extracted .ts logic remains measured.
   {
-    pattern: "src/dashboard/**/*.tsx",
-    activation: { ownerRoot: "src/dashboard", status: "planned" },
+    pattern: "src/dashboard/app/**/*.tsx",
+    activation: { ownerRoot: "src/dashboard/app", status: "planned" },
+    reason: "Presentation components use the headless Playwright lane; extracted .ts logic remains measured.",
+  },
+  {
+    pattern: "src/dashboard/surfaces/**/*.tsx",
+    activation: { ownerRoot: "src/dashboard/surfaces", status: "planned" },
+    reason: "Presentation components use the headless Playwright lane; extracted .ts logic remains measured.",
+  },
+  {
+    pattern: "src/dashboard/ds/**/*.tsx",
+    activation: { ownerRoot: "src/dashboard/ds", status: "planned" },
     reason: "Presentation components use the headless Playwright lane; extracted .ts logic remains measured.",
   },
 ] as const;

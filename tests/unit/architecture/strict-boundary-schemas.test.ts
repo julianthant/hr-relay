@@ -1361,6 +1361,9 @@ function pathText(path: readonly Segment[]): string {
 
 const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/core/runtime-composition.ts:RebuildRuntimeStart",
+  // The dashboard composition seam handed to the CLI (1g): a process-lifetime
+  // handle (port + stop), operational like RebuildRuntimeStart, not wire data.
+  "src/core/runtime-composition.ts:RunningDashboard",
   "src/domain/canonical-json.ts:JsonObject",
   "src/domain/clock.ts:Clock",
   "src/domain/clock.ts:TestClock",

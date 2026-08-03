@@ -4,7 +4,7 @@
   "architectureRoot": "tests/unit/architecture",
   "testScript": "test:architecture",
   "coveragePolicy": {
-    "exclusionListSha256": "c544e7531b6c74f208db2df2d2db315ff08079252a7386fad7948246a39f264b",
+    "exclusionListSha256": "421c37ddfdb84b4b16c0678ef06c77199f7bb69650daccd90bf638d40a9b38bd",
     "minimumFloors": {
       "global": 60,
       "safetyCritical": 80
@@ -348,11 +348,10 @@
     {
       "name": "one-projection-counts",
       "file": "tests/unit/architecture/one-projection-counts.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: one-projection-counts.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/03-tracker-dashboard.md",
+      "invariant": "D81 (doc 03 \u00a710.1): there is exactly ONE server-side run/queue projection and every dashboard count descends from its payload. Structurally, the count fields (monthCounts/workflowCounts/statusCounts) are constructed in exactly one production module \u2014 src/server/dashboard/projectors/run-queue-projection.ts \u2014 and nowhere else in src/, so a second aggregate endpoint or a client-side re-derivation fails by file name. A seeded world with hidden, delegated (operation+member), rejected/failed, gated, and terminal rows proves Workflow Panel total == Status Bar sum == rendered Queue Panel row count by construction, with containment and hiding applied once inside the projection. Archived rows join the fixture when the D80 archive service lands (2i).",
+      "replacementRequired": true
     },
     {
       "name": "one-time-import-offline",
