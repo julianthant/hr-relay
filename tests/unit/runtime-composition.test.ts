@@ -34,12 +34,36 @@ describe("isolated rebuild runtime composition after Phase 1c", () => {
     assert.match(output[1] ?? "", /Commands/);
     assert.throws(
       () => startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["dashboard"], write: () => undefined }),
-      /unavailable until.*1g-spine/,
+      /needs its composition seam/,
     );
     assert.throws(
       () => startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["unknown"], write: () => undefined }),
       /unknown rebuild command/,
     );
+  });
+
+  it("starts the dashboard through the injected 1g-spine composition seam", async () => {
+    const output: string[] = [];
+    const seen: number[] = [];
+    let resolveStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      resolveStarted = resolve;
+    });
+    startRebuildRuntime({
+      isolation: rebuildRuntimeIsolation,
+      args: ["dashboard"],
+      write: (value) => {
+        output.push(value);
+        resolveStarted();
+      },
+      dashboard: (isolation) => {
+        seen.push(isolation.backendPort);
+        return Promise.resolve({ port: isolation.backendPort, stop: () => Promise.resolve() });
+      },
+    });
+    await started;
+    assert.deepEqual(seen, [3938]);
+    assert.match(output[0] ?? "", /127\.0\.0\.1:3938/);
   });
 
   it("falls back to the real process argv and stdout writer the entrypoint relies on", () => {

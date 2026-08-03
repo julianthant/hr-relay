@@ -1,18 +1,54 @@
+/**
+ * The rebuild CLI's command surface. The `dashboard` command is real as of
+ * 1g-spine: it starts the in-process typed BFF (projection + SSE + command
+ * route) through the injected `dashboard` seam.
+ *
+ * The seam exists because of the layer matrix, not taste: the composition
+ * that imports workflow modules and the server tree sits ABOVE `core`
+ * (`src/server/dashboard/compose.ts`, the same move `workflow-registry.ts`
+ * documents), so `src/cli.ts` — outside the layer map — hands it in. A
+ * `dashboard` invocation without the seam fails loud; it never pretends a
+ * server started.
+ */
 import type { RuntimeIsolation } from "../config/define-runtime-isolation.js";
+
+export interface RunningDashboard {
+  readonly port: number;
+  stop(): Promise<void>;
+}
 
 export interface RebuildRuntimeStart {
   readonly isolation: RuntimeIsolation;
   readonly args?: readonly string[];
   readonly write?: (message: string) => void;
+  /** Explicit seam override for tests; production registers via `registerDashboardComposer`. */
+  readonly dashboard?: DashboardComposer;
+}
+
+type DashboardComposer = (isolation: RuntimeIsolation) => Promise<RunningDashboard>;
+
+/**
+ * The production injection door. The operational-isolation audit pins
+ * `src/cli.ts` to ONE exact `startRebuildRuntime({ isolation:
+ * rebuildRuntimeIsolation })` call, so the dashboard composition registers
+ * itself in a separate statement instead of riding that call.
+ */
+let registeredDashboardComposer: DashboardComposer | undefined;
+
+export function registerDashboardComposer(composer: DashboardComposer): void {
+  if (registeredDashboardComposer !== undefined) {
+    throw new Error("a dashboard composer is already registered; two compositions cannot own one runtime");
+  }
+  registeredDashboardComposer = composer;
 }
 
 export function runtimeHelp(isolation: RuntimeIsolation): string {
   return [
     "HR Automation rebuild foundation (completed through 1e; active 1f)",
     "Commands:",
-    "  help     show this contract surface",
-    "  phase    print the active isolated runtime resources",
-    `Dashboard/server execution is deferred to its owning 1g-spine slice (reserved port ${String(isolation.backendPort)}).`,
+    "  help       show this contract surface",
+    "  phase      print the active isolated runtime resources",
+    `  dashboard  start the in-process typed dashboard BFF (1g-spine, port ${String(isolation.backendPort)})`,
   ].join("\n");
 }
 
@@ -39,7 +75,22 @@ export function startRebuildRuntime(input: RebuildRuntimeStart): void {
     return;
   }
   if (command === "dashboard") {
-    throw new Error("rebuild dashboard execution is unavailable until the owning 1g-spine BFF slice lands");
+    const compose = input.dashboard ?? registeredDashboardComposer;
+    if (compose === undefined) {
+      throw new Error(
+        "the dashboard command needs its composition seam; start it through src/cli.ts, which registers composeDashboardRuntime",
+      );
+    }
+    compose(input.isolation)
+      .then((running) => {
+        write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}`);
+      })
+      .catch((error: unknown) => {
+        // Re-throwing out of the promise chain crashes the process loudly —
+        // a dashboard that failed to bind must never look started.
+        throw error instanceof Error ? error : new Error(String(error));
+      });
+    return;
   }
   throw new Error(`unknown rebuild command: ${command}`);
 }

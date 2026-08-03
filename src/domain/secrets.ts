@@ -240,6 +240,18 @@ export function optionalSecret(
   return resolveSecretValue(name, env, access);
 }
 
+/**
+ * The ONE sanctioned production source of the environment object that
+ * `resolveConfig`/`resolveConfigWithProvenance` take as a parameter (doc 11).
+ * The resolver itself never touches `process.env` — it reads only its
+ * statically-declared `CONFIG_ENV_BINDINGS` keys off the value it is handed —
+ * and no module outside this file may reach the environment, so composition
+ * roots obtain it here rather than growing their own read.
+ */
+export function configResolutionEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return env;
+}
+
 export function requireSecret(
   name: SecretName,
   env: NodeJS.ProcessEnv = process.env,

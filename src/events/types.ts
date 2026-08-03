@@ -1,0 +1,272 @@
+/**
+ * The span/notes wire and at-rest contract (doc 03 §1.1) — a leaf module.
+ *
+ * This file imports NOTHING but zod on purpose (the same import budget a
+ * bundle-safe descriptor gets): every JSONL line, projector ingest, and SSE
+ * payload that carries a span or note parses through these schemas, so the
+ * contract must not drag the server module graph — or the descriptor closure —
+ * behind it. The id patterns are therefore restated locally; the
+ * `tests/unit/events/span-events.test.ts` parity cases pin them byte-for-byte
+ * against `src/domain/ids.ts` so a drift fails the suite instead of silently
+ * forking the vocabulary.
+ *
+ * Identity (doc 03 §1.1): run/task spans are `(runId, attempt, spanPath)`;
+ * worker/browser spans are `(workerId, spanPath)`. Identity attributes are
+ * written exactly once, by `run.queued` — `span.patched` can never carry one
+ * (schema-refused here; the writer additionally refuses undeclared detail
+ * keys against the descriptor's `details` list).
+ *
+ * Deliberately absent from this 1g slice (each is a later owning slice, not a
+ * forgotten arm): `subject.observed` (emitted by the write-sequencer /
+ * driver lane), note `action` attribution and screenshot/data-point
+ * attachments (driver instrumentation), and `resultRef` on `gate.resolved`
+ * (gate results are keyed by `(runId, gateId)` in authority; a separate ref id
+ * would duplicate that identity today).
+ */
+import { z } from "zod";
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const HEX64_PATTERN = /^[0-9a-f]{64}$/;
+const TRACE_PATTERN = /^[a-z0-9]{2}-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/;
+
+const UuidSchema = z.string().regex(UUID_PATTERN, "must be a UUID");
+const SlugSchema = z.string().regex(SLUG_PATTERN, "must be kebab-case");
+const Hex64Schema = z.string().regex(HEX64_PATTERN, "must be SHA-256 hex");
+const IsoInstantSchema = z.iso.datetime({ offset: true });
+const PositiveIntSchema = z.number().int().positive();
+const SpanPathSchema = z.string().min(1);
+
+type JsonValue = string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue };
+const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(JsonValueSchema), z.record(z.string(), JsonValueSchema)]));
+
+/** The closed browser-system vocabulary; pinned against `src/domain/ids.ts`. */
+export const SpanBrowserSystemSchema = z.enum([
+  "ucpath", "crm", "onbase", "kuali", "servicenow", "i9", "new-kronos", "old-kronos", "sharepoint",
+]);
+export const SpanSystemInstanceSchema = z.enum(["prod", "test"]);
+
+/** Doc 03 §1.1's outcome union; `skipped` is a task-span outcome. */
+export const SpanOutcomeWireSchema = z.enum([
+  "done", "failed", "cancelled", "discarded", "skipped", "interrupted", "superseded",
+]);
+export type SpanOutcomeWire = z.infer<typeof SpanOutcomeWireSchema>;
+
+/** Why a queued row re-queued; pinned against `RequeueCauseSchema`. */
+export const SpanRequeueCauseSchema = z.enum(["reassign", "bump", "recovery", "provider-capacity"]);
+
+const BaseFields = {
+  ts: IsoInstantSchema,
+  workflow: SlugSchema,
+  pid: PositiveIntSchema,
+} as const;
+
+/** Run/task span identity — `(runId, attempt, spanPath)`. */
+const RunSpanIdentityFields = {
+  runId: UuidSchema,
+  attempt: PositiveIntSchema,
+  traceId: z.string().regex(TRACE_PATTERN, "trace id must be <code>-<HHMMSS>-<runId4>"),
+  spanPath: SpanPathSchema,
+  parentSpanPath: SpanPathSchema.optional(),
+} as const;
+
+/** Worker/browser span identity — `(workerId, spanPath)`; never a run id. */
+const WorkerSpanIdentityFields = {
+  workerId: SlugSchema,
+  spanPath: SpanPathSchema,
+  parentSpanPath: SpanPathSchema.optional(),
+} as const;
+
+/**
+ * Every attribute `run.queued` stamps, plus the span identity fields. These
+ * are write-once: a `span.patched` update naming one of them throws at emit —
+ * the whole re-stamp bug class (doc 03 §1.3) is unrepresentable.
+ */
+export const SPAN_IDENTITY_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
+  "runId", "attempt", "traceId", "spanPath", "parentSpanPath", "workflow", "pid", "ts", "t", "kind",
+  "itemId", "parentRunId", "shape", "priority", "dryRun", "retryOf", "actorId", "title", "subtitle",
+  "descriptorVersion", "contractFingerprint", "resolvedInstance", "configFingerprint", "configSnapshotId",
+]);
+
+const DetailKeySchema = z.string().regex(/^[a-z][A-Za-z0-9-]*$/, "detail key must be kebab- or lowerCamel-case")
+  .refine((key) => !SPAN_IDENTITY_ATTRIBUTE_KEYS.has(key), "identity attributes are write-once and can never ride a patch");
+
+export const DetailUpdateWireSchema = z.strictObject({
+  key: DetailKeySchema,
+  value: JsonValueSchema,
+});
+
+/**
+ * Run is born at ENQUEUE (doc 03 §1.1). Carries the queue row's immutable
+ * identity attributes — stamped once, never re-derived by a projector.
+ */
+const RunQueuedSchema = z.strictObject({
+  t: z.literal("run.queued"),
+  kind: z.literal("run"),
+  ...BaseFields,
+  ...RunSpanIdentityFields,
+  itemId: UuidSchema,
+  /** SCOPE axis — delegated iff present. */
+  parentRunId: UuidSchema.optional(),
+  /** SHAPE axis, stamped ONCE. */
+  shape: z.enum(["single", "preview", "operation", "operation-member"]),
+  priority: z.enum(["interactive", "bulk"]),
+  dryRun: z.boolean(),
+  retryOf: UuidSchema.optional(),
+  actorId: SlugSchema,
+  /** The exact title/subtitle the confirmation surface showed (start-plan D109). */
+  title: z.string().min(1),
+  subtitle: z.string().min(1).optional(),
+  descriptorVersion: PositiveIntSchema,
+  contractFingerprint: Hex64Schema,
+  resolvedInstance: z.partialRecord(SpanBrowserSystemSchema, SpanSystemInstanceSchema),
+  configFingerprint: Hex64Schema,
+  configSnapshotId: UuidSchema,
+});
+
+const RunClaimedSchema = z.strictObject({
+  t: z.literal("run.claimed"),
+  ...BaseFields,
+  ...RunSpanIdentityFields,
+  workerId: SlugSchema,
+});
+
+const RunRequeuedSchema = z.strictObject({
+  t: z.literal("run.requeued"),
+  ...BaseFields,
+  ...RunSpanIdentityFields,
+  cause: SpanRequeueCauseSchema,
+  nextAttempt: PositiveIntSchema,
+});
+
+const TaskSpanStartedSchema = z.strictObject({
+  t: z.literal("span.started"),
+  kind: z.literal("task"),
+  ...BaseFields,
+  ...RunSpanIdentityFields,
+  name: z.string().min(1),
+  system: SpanBrowserSystemSchema.optional(),
+});
+
+const WorkerSpanStartedSchema = z.strictObject({
+  t: z.literal("span.started"),
+  kind: z.enum(["worker", "browser"]),
+  ...BaseFields,
+  ...WorkerSpanIdentityFields,
+  name: z.string().min(1),
+  system: SpanBrowserSystemSchema.optional(),
+});
+
+/**
+ * Durable KV updates on the owning RUN. Patch keys MUST be declared in the
+ * descriptor's `details` list — the writer throws on an undeclared key, and
+ * the schema itself refuses identity keys.
+ */
+const SpanPatchedSchema = z.strictObject({
+  t: z.literal("span.patched"),
+  ...BaseFields,
+  ...RunSpanIdentityFields,
+  updates: z.array(DetailUpdateWireSchema).min(1),
+});
+
+const GateOpenedSchema = z.strictObject({
+  t: z.literal("gate.opened"),
+  ...BaseFields,
+  ...RunSpanIdentityFields,
+  gate: SlugSchema,
+});
+
+const GateResolvedSchema = z.strictObject({
+  t: z.literal("gate.resolved"),
+  ...BaseFields,
+  ...RunSpanIdentityFields,
+  gate: SlugSchema,
+  /** Descriptor-validated display/audit key, never the gate's decision payload. */
+  resolutionKey: SlugSchema,
+  /** The schema-parsed result lives in authority (D67); this is its digest. */
+  resultHash: Hex64Schema,
+});
+
+const TaskSpanEndedSchema = z.strictObject({
+  t: z.literal("span.ended"),
+  kind: z.literal("task"),
+  ...BaseFields,
+  ...RunSpanIdentityFields,
+  outcome: SpanOutcomeWireSchema,
+  failureId: UuidSchema.optional(),
+  /** Display-safe summary; never the only failure evidence. */
+  errorSummary: z.string().min(1).optional(),
+});
+
+const RunSpanEndedSchema = z.strictObject({
+  t: z.literal("span.ended"),
+  kind: z.literal("run"),
+  ...BaseFields,
+  ...RunSpanIdentityFields,
+  outcome: SpanOutcomeWireSchema,
+  failureId: UuidSchema.optional(),
+});
+
+const WorkerSpanEndedSchema = z.strictObject({
+  t: z.literal("span.ended"),
+  kind: z.enum(["worker", "browser"]),
+  ...BaseFields,
+  ...WorkerSpanIdentityFields,
+  outcome: SpanOutcomeWireSchema,
+  errorSummary: z.string().min(1).optional(),
+});
+
+/**
+ * A plain union on purpose: `span.started`/`span.ended` legitimately appear
+ * for task, run, worker, and browser identities, so `t` alone cannot be a
+ * unique discriminator. Every arm stays a strict object.
+ */
+export const SpanEventWireSchema = z.union([
+  RunQueuedSchema,
+  RunClaimedSchema,
+  RunRequeuedSchema,
+  TaskSpanStartedSchema,
+  WorkerSpanStartedSchema,
+  SpanPatchedSchema,
+  GateOpenedSchema,
+  GateResolvedSchema,
+  TaskSpanEndedSchema,
+  RunSpanEndedSchema,
+  WorkerSpanEndedSchema,
+]);
+export type SpanEventWire = z.infer<typeof SpanEventWireSchema>;
+export type RunQueuedWire = z.infer<typeof RunQueuedSchema>;
+
+/* ── the notes stream (D10) ──────────────────────────────────────────────── */
+
+export const NoteLevelSchema = z.enum(["step", "success", "error", "waiting", "warn", "debug"]);
+
+/**
+ * A closed key/value union — never a decision-bearing open map. The kinds
+ * mirror the redaction transforms (doc 11): a value that reached this wire
+ * either passed `allow` as text, or was transformed. Dropped fields do not
+ * appear at all.
+ */
+export const NoteFieldWireSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ key: z.string().min(1), kind: z.literal("text"), value: z.string() }),
+  z.strictObject({ key: z.string().min(1), kind: z.literal("count"), value: z.number().int().nonnegative() }),
+  z.strictObject({ key: z.string().min(1), kind: z.literal("digest"), value: Hex64Schema }),
+  z.strictObject({ key: z.string().min(1), kind: z.literal("last4"), value: z.string().max(4) }),
+  z.strictObject({ key: z.string().min(1), kind: z.literal("basename"), value: z.string() }),
+]);
+export type NoteFieldWire = z.infer<typeof NoteFieldWireSchema>;
+
+const NoteBodyFields = {
+  ...BaseFields,
+  level: NoteLevelSchema,
+  message: z.string().min(1),
+  fields: z.array(NoteFieldWireSchema).optional(),
+} as const;
+
+/** Same `SpanRef` addressing as spans — a note attributes to its exact task attempt or worker lifetime. */
+export const NoteWireSchema = z.union([
+  z.strictObject({ ...NoteBodyFields, ...RunSpanIdentityFields }),
+  z.strictObject({ ...NoteBodyFields, ...WorkerSpanIdentityFields }),
+]);
+export type NoteWire = z.infer<typeof NoteWireSchema>;

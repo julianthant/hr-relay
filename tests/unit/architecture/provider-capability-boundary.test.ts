@@ -18,7 +18,14 @@ function moduleText(node: ts.Expression | undefined): string | undefined {
 }
 
 function isNetworkOwner(path: string): boolean {
-  return path.startsWith("src/infra/providers/");
+  if (path.startsWith("src/infra/providers/")) return true;
+  // Doc 13 §2: `src/dashboard/client/**` is the ONE fetch/EventSource owner —
+  // the same single-owner principle this guard enforces for providers, applied
+  // to the frontend transport. No other dashboard module may touch fetch.
+  if (path.startsWith("src/dashboard/client/")) return true;
+  // Doc 13 §0: the in-process BFF binds loopback node:http; exactly one host
+  // module owns that listener.
+  return path === "src/server/dashboard/http-server.ts";
 }
 
 function isProviderConsumer(path: string): boolean {
