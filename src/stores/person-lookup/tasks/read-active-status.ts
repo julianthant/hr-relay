@@ -7,9 +7,20 @@ import {
 export const readActiveStatusTask = defineTask(ReadActiveStatus, {
   sessions: [],
   async run({ input, ctx }) {
+    const finish = (candidate: unknown) => {
+      const output = ActiveStatusOutcomeSchema.parse(candidate);
+      ctx.recordData([
+        { direction: "read", field: "state", value: output.state },
+        { direction: "read", field: "reason", value: output.reason },
+        ...("hdh" in output
+          ? [{ direction: "read" as const, field: "hdh" as const, value: output.hdh }]
+          : []),
+      ]);
+      return output;
+    };
     const selected = input.person.selection.selected;
     if (selected === null) {
-      return ActiveStatusOutcomeSchema.parse({
+      return finish({
         state: "undetermined",
         reason: `UCPath person selection is ${input.person.selection.status}`,
       });
@@ -23,19 +34,19 @@ export const readActiveStatusTask = defineTask(ReadActiveStatus, {
       );
     }
     if (!selected.hdh && !input.keepNonHdh) {
-      return ActiveStatusOutcomeSchema.parse({
+      return finish({
         state: "undetermined",
         reason: "the resolved appointment is outside HDH and the run did not retain non-HDH appointments",
       });
     }
     if (selected.employeeStatus !== "active") {
-      return ActiveStatusOutcomeSchema.parse({
+      return finish({
         state: "inactive",
         reason: `UCPath reports employee status ${selected.employeeStatus}`,
         hdh: selected.hdh,
       });
     }
-    return ActiveStatusOutcomeSchema.parse({
+    return finish({
       state: "active",
       reason: input.crm.state === "found"
         ? `UCPath reports active and CRM record ${input.crm.record.recordId} matches the selected EID`

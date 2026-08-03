@@ -3,6 +3,8 @@ import { describe, it } from "vitest";
 import { ReadOnboardingDatesOutputSchema } from "../../src/domain/contracts/crm/read-onboarding-dates.js";
 import { ReadOnboardingRecordOutputSchema } from "../../src/domain/contracts/crm/read-onboarding-record.js";
 import { EidSchema } from "../../src/domain/ids.js";
+import { DataPointSchema } from "../../src/domain/task-provenance.js";
+import type { DataPoint } from "../../src/domain/task-provenance.js";
 import { createDeterministicCrmOnboardingDriver } from "../../src/stores/crm/driver/fake.js";
 import { chooseExactCrmRecord } from "../../src/stores/crm/driver/interpreter.js";
 import { readOnboardingDatesTask } from "../../src/stores/crm/tasks/read-onboarding-dates.js";
@@ -24,6 +26,12 @@ const log = Object.freeze({
 });
 const fail = (_code: string, message: string): never => {
   throw new Error(message);
+};
+const dataPoints: DataPoint[] = [];
+const recordData = (input: DataPoint | readonly DataPoint[]): void => {
+  for (const point of Array.isArray(input) ? input : [input]) {
+    dataPoints.push(DataPointSchema.parse(point));
+  }
 };
 const EID = EidSchema.parse("10873698");
 const record = ReadOnboardingRecordOutputSchema.parse({
@@ -53,14 +61,14 @@ describe("person-lookup runtime scenarios", () => {
     await assert.rejects(
       readOnboardingRecordTask.impl.run({
         input: { eid: EID, name: "Battistessa, Johnnie" },
-        ctx: { signal, log, driver, fail },
+        ctx: { signal, log, driver, fail, recordData },
       }),
       /expected EID 10873698 but bound 10001573/,
     );
     await assert.rejects(
       readOnboardingDatesTask.impl.run({
         input: { eid: EID },
-        ctx: { signal, log, driver, fail },
+        ctx: { signal, log, driver, fail, recordData },
       }),
       /expected EID 10873698 but bound 10001573/,
     );

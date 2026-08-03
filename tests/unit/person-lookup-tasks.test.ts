@@ -7,6 +7,8 @@ import {
   UcpathCandidateSchema,
 } from "../../src/domain/contracts/ucpath/search-person-org.js";
 import { EidSchema } from "../../src/domain/ids.js";
+import { DataPointSchema } from "../../src/domain/task-provenance.js";
+import type { DataPoint } from "../../src/domain/task-provenance.js";
 import { readOnboardingDatesTask } from "../../src/stores/crm/tasks/read-onboarding-dates.js";
 import { readOnboardingRecordTask } from "../../src/stores/crm/tasks/read-onboarding-record.js";
 import { readActiveStatusTask } from "../../src/stores/person-lookup/tasks/read-active-status.js";
@@ -24,6 +26,13 @@ const log = Object.freeze({
 const fail = (_code: string, message: string): never => {
   throw new Error(message);
 };
+const recordedDataPoints: DataPoint[] = [];
+const recordData = (input: DataPoint | readonly DataPoint[]): void => {
+  for (const point of Array.isArray(input) ? input : [input]) {
+    recordedDataPoints.push(DataPointSchema.parse(point));
+  }
+};
+const commonCtx = { signal, log, fail, recordData };
 
 const candidate = UcpathCandidateSchema.parse({
   emplId: "10873698",
@@ -70,23 +79,28 @@ describe("Phase 1f Person Lookup task implementations", () => {
   });
 
   it("executes UCPath and CRM reads only through their typed semantic drivers", async () => {
+    const firstPoint = recordedDataPoints.length;
     const ucpath = createDeterministicUcpathPersonOrgDriver(person);
     const crm = createDeterministicCrmOnboardingDriver({ record: crmRecord, dates: crmDates });
     const searched = await searchPersonOrgTask.impl.run({
       input: { kind: "by-eid", emplId: candidate.emplId },
-      ctx: { signal, log, driver: ucpath, fail },
+      ctx: { ...commonCtx, driver: ucpath },
     });
     assert.deepEqual(searched, person);
     const record = await readOnboardingRecordTask.impl.run({
       input: { eid: candidate.emplId, name: candidate.name },
-      ctx: { signal, log, driver: crm, fail },
+      ctx: { ...commonCtx, driver: crm },
     });
     assert.deepEqual(record, crmRecord);
     const dates = await readOnboardingDatesTask.impl.run({
       input: { eid: candidate.emplId },
-      ctx: { signal, log, driver: crm, fail },
+      ctx: { ...commonCtx, driver: crm },
     });
     assert.deepEqual(dates, crmDates);
+    assert.deepEqual(
+      recordedDataPoints.slice(firstPoint).map(({ field }) => field),
+      ["results", "selection", "state", "record", "emplId", "invitedOn", "startsOn", "completedOn"],
+    );
   });
 
   it("fails CRM reads when the displayed subject or extracted output EID differs", async () => {
@@ -99,14 +113,14 @@ describe("Phase 1f Person Lookup task implementations", () => {
     await assert.rejects(
       readOnboardingRecordTask.impl.run({
         input: { eid: candidate.emplId, name: candidate.name },
-        ctx: { signal, log, driver: observedWrong, fail },
+        ctx: { ...commonCtx, driver: observedWrong },
       }),
       /expected EID 10873698 but bound 10001573/,
     );
     await assert.rejects(
       readOnboardingDatesTask.impl.run({
         input: { eid: candidate.emplId },
-        ctx: { signal, log, driver: observedWrong, fail },
+        ctx: { ...commonCtx, driver: observedWrong },
       }),
       /expected EID 10873698 but bound 10001573/,
     );
@@ -122,25 +136,30 @@ describe("Phase 1f Person Lookup task implementations", () => {
     await assert.rejects(
       readOnboardingRecordTask.impl.run({
         input: { eid: candidate.emplId, name: candidate.name },
-        ctx: { signal, log, driver: mismatchedOutputs, fail },
+        ctx: { ...commonCtx, driver: mismatchedOutputs },
       }),
       /returned output for 10001573/,
     );
     await assert.rejects(
       readOnboardingDatesTask.impl.run({
         input: { eid: candidate.emplId },
-        ctx: { signal, log, driver: mismatchedOutputs, fail },
+        ctx: { ...commonCtx, driver: mismatchedOutputs },
       }),
       /returned output for 10001573/,
     );
   });
 
   it("derives active status and fails loud when UCPath and CRM identities disagree", async () => {
+    const firstPoint = recordedDataPoints.length;
     const active = await readActiveStatusTask.impl.run({
       input: { person, crm: crmRecord, keepNonHdh: false },
-      ctx: { signal, log, fail },
+      ctx: commonCtx,
     });
     assert.equal(active.state, "active");
+    assert.deepEqual(
+      recordedDataPoints.slice(firstPoint).map(({ field }) => field),
+      ["state", "reason", "hdh"],
+    );
     await assert.rejects(
       readActiveStatusTask.impl.run({
         input: {
@@ -151,7 +170,7 @@ describe("Phase 1f Person Lookup task implementations", () => {
           },
           keepNonHdh: false,
         },
-        ctx: { signal, log, fail },
+        ctx: commonCtx,
       }),
       /UCPath EID 10873698 but CRM EID 10001573/,
     );
@@ -172,7 +191,7 @@ describe("Phase 1f Person Lookup task implementations", () => {
         crm: { state: "absent", queriedEid: candidate.emplId, reason: "no matching record" },
         keepNonHdh: false,
       },
-      ctx: { signal, log, fail },
+      ctx: commonCtx,
     });
     assert.equal(unresolved.state, "undetermined");
 
@@ -190,7 +209,7 @@ describe("Phase 1f Person Lookup task implementations", () => {
         crm: crmRecord,
         keepNonHdh: false,
       },
-      ctx: { signal, log, fail },
+      ctx: commonCtx,
     });
     assert.equal(inactive.state, "inactive");
   });
@@ -215,7 +234,7 @@ describe("Phase 1f Person Lookup task implementations", () => {
           },
           keepNonHdh: false,
         },
-        ctx: { signal, log, fail },
+        ctx: commonCtx,
       }),
       /UCPath EID 10873698 but CRM EID 10001573/,
     );

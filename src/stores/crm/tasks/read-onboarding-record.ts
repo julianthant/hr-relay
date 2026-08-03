@@ -42,6 +42,16 @@ export const readOnboardingRecordTask = defineTask(crmDriver, CrmReadOnboardingR
         { subject: input.eid },
       );
     }
+    ctx.recordData(output.state === "found"
+      ? [
+          { direction: "read", field: "state", value: output.state },
+          { direction: "read", field: "record", value: output.record },
+        ]
+      : [
+          { direction: "read", field: "state", value: output.state },
+          { direction: "read", field: "queriedEid", value: output.queriedEid },
+          { direction: "read", field: "reason", value: output.reason },
+        ]);
     return output;
   },
 });

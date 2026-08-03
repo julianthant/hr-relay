@@ -48,6 +48,12 @@ export const readOnboardingDatesTask = defineTask(crmDriver, CrmReadOnboardingDa
         { subject: input.eid },
       );
     }
+    ctx.recordData([
+      { direction: "read", field: "emplId", value: output.emplId },
+      { direction: "read", field: "invitedOn", value: output.invitedOn },
+      { direction: "read", field: "startsOn", value: output.startsOn },
+      { direction: "read", field: "completedOn", value: output.completedOn },
+    ]);
     return output;
   },
 });

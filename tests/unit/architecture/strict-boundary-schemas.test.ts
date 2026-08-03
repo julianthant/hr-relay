@@ -60,6 +60,12 @@ import { RUNTIME_DEPENDENCY_REGISTRY, RuntimeDependencyRegistrySchema } from "..
 import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema } from "../../../src/domain/runtime-environment.js";
 import { SchemaBoundCanonicalValueSchema } from "../../../src/domain/schema-bound-value.js";
 import {
+  DataPointSchema,
+  RecordedDataPointSchema,
+  TaskExecutionIdentitySchema,
+  TaskProvenanceResultSchema,
+} from "../../../src/domain/task-provenance.js";
+import {
   GraphCoveragePointSchema,
   ScenarioCoverageClaimSchema,
 } from "../../../src/domain/workflow/scenario-coverage.js";
@@ -983,6 +989,10 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "TaskEffect", schema: TaskEffectSchema, fixtures: ["read", "prepare", "commit"] },
   { name: "FreshnessPolicy", schema: FreshnessPolicySchema, fixtures: [{ defaultMaxAgeMs: 0, byField: [{ path: "eid", maxAgeMs: 0 }] }] },
   { name: "ProvenancePolicy", schema: ProvenancePolicySchema, fixtures: [{ default: "live", byField: [{ path: "eid", source: "live" }] }] },
+  { name: "DataPoint", schema: DataPointSchema, fixtures: [{ direction: "read", field: "record", value: { eid: "10873698" } }], openFixturePaths: ["value"] },
+  { name: "TaskExecutionIdentity", schema: TaskExecutionIdentitySchema, fixtures: [{ runId: UUID_1, traceId: "pl-120000-aaaa", attempt: 1, workflowId: "person-lookup", nodeId: "searching", taskId: "ucpath/search-person-org" }] },
+  { name: "RecordedDataPoint", schema: RecordedDataPointSchema, fixtures: [{ direction: "read", field: "record", value: { eid: "10873698" }, execution: { runId: UUID_1, traceId: "pl-120000-aaaa", attempt: 1, workflowId: "person-lookup", nodeId: "searching", taskId: "ucpath/search-person-org" }, recordedAt: NOW }], openFixturePaths: ["value"] },
+  { name: "TaskProvenanceResult", schema: TaskProvenanceResultSchema, fixtures: [{ points: [{ direction: "read", field: "record", value: { eid: "10873698" }, execution: { runId: UUID_1, traceId: "pl-120000-aaaa", attempt: 1, workflowId: "person-lookup", nodeId: "searching", taskId: "ucpath/search-person-org" }, recordedAt: NOW }], provenance: [{ path: "record.eid", source: "live", observedAt: NOW, originalObservedAt: NOW }] }], openFixturePaths: ["points.0.value"] },
   { name: "SubjectBindingSpec", schema: SubjectBindingSpecSchema, fixtures: [
     { kind: "none", reason: "global read" },
     { kind: "person", expected: { fromInput: "eid", identity: "eid" }, observe: "ucpath.person-org.displayed-eid", match: "normalized-exact-eid", requiredAt: "before-subject-read" },

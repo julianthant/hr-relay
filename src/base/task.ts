@@ -18,6 +18,7 @@ import type {
 import { RetryPolicySchema, SessionNeedSchema } from "../domain/session.js";
 import type { RetryPolicy, SessionNeed } from "../domain/session.js";
 import type { MutationCapability } from "../domain/ui/driver.js";
+import type { DataPoint } from "../domain/task-provenance.js";
 import { TaskError } from "./errors.js";
 
 export interface BrowserDriver {
@@ -100,6 +101,8 @@ export interface TaskCtxCommon<Codes extends readonly string[]> {
     message: string,
     options?: Readonly<{ subject?: string; transient?: boolean; cause?: unknown }>,
   ) => never;
+  /** Executor-owned, strict task-output provenance collection (D115). */
+  readonly recordData: (point: DataPoint | readonly DataPoint[]) => void;
 }
 
 export type PureTaskCtx<Codes extends readonly string[]> = TaskCtxCommon<Codes>;
