@@ -235,6 +235,20 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-03: The interpreter re-reads authority before every CAS, and replay policy is
+  structural.** The worker executor (`src/core/run-executor.ts` + `worker-loop.ts`) never tracks a
+  run version locally: heartbeat renewal bumps the version concurrently with node transitions, so
+  each transition re-reads the current row and CASes with the constant claim token — a conflict then
+  only ever means real ownership loss (abandon, never terminalize over it). Entry validation runs in
+  `validating` before any browser and aggregates every §5.4 problem into ONE no-node FailureRecord
+  (the atomic failure composite requires `running.currentNodeId` to match any node-bearing failure).
+  `always-rerun` nodes structurally never reach `loadCheckpoint`; replayed nodes emit no spans; a
+  replayed checkpoint's exact stored record is what terminal evidence reuses. Every task invocation
+  races a mandatory injected monotonic deadline so a signal-ignoring driver cannot hold the worker,
+  and D118 makes the claim sweeper check `attempting` write intents before any requeue — a running
+  row parks as `parked-write`/`unknown`, everything else stays unclaimable until doc-09 recovery.
+  The transaction and child-run arms are typed seams that fail loud (`capability-unavailable`) when
+  unwired; the SpanEmitter port is required with no no-op default — the JSONL writer is 1g-spine's.
 - **2026-08-03: Provider admission is durable authority, and timeout must race the invocation.**
   Capability counters are global even though every decision uses and retains the run's immutable
   budget snapshot. Reserve request count and maximum cost before I/O; reconcile cost only after a
