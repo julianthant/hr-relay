@@ -35,6 +35,7 @@ import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import { configResolutionEnvironment } from "../../domain/secrets.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
+import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
@@ -122,6 +123,12 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     onEvent: (event) => projection.apply(event),
   });
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock });
+
+  // D86: spans/notes prune at 30 days, applied at boot before the fold so the
+  // projection never serves a day the retention policy already retired. The
+  // ledger is exempt by construction — the prune can only see the two event
+  // streams.
+  pruneEventStreams({ stateRoot, clock });
 
   // Fold whatever span history already exists before serving a single count.
   projection.rebuildFromJsonl();
