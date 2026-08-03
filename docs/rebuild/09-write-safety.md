@@ -564,6 +564,16 @@ The same scan is mandatory on the expired-claim sweeper path. Claim expiry alone
 with an unfinished intent to the ordinary queue; recovery owns it first, and an authority-read
 failure keeps it unclaimable.
 
+**Recovery lease identity (D116, as-built 2026-08-03).** The recovery probe's driver lease runs
+outside any worker loop's claimed-run binding, so the recovery service binds the TARGET run's
+retained immutable `configFingerprint` (doc 11 §4) around the lease itself — sourced from the
+authority run row the intent names, never recomputed from current config — and releases it after
+the probe. The park/refusal split is deliberate: only a genuine probe failure (throw, `unknown`,
+`ambiguous`, malformed evidence) may park as a probe verdict; a *precondition* failure — no
+retained fingerprint, or a session host already bound to another run — throws out of recovery
+loudly and never converts into a park that reads as a probe verdict. The §4.1 typed operator
+resolutions are pure authority work and lease no driver, so no binding applies there.
+
 ### 4.1 Parked-write resolution is typed and intent-scoped
 
 A parked write does not inherit the queue's ordinary Done/Retry actions. The kernel exposes exactly

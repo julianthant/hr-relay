@@ -406,6 +406,12 @@ the session manager before any task executes and releases it when the run finish
 without a bound fingerprint fails loud rather than defaulting to "whatever session exists". The
 concrete factory carries the fingerprint into the on-disk profile path too (doc 05, Phase-1f
 concrete session factory), so a config change cannot be silently inherited through a warm profile.
+The bind/execute/release window is one shared discipline (`withBoundRunConfigFingerprint`,
+`src/core/worker-sessions.ts`) so no caller re-derives it. Driver leases taken OUTSIDE a claimed
+run's worker-loop window — today only doc 09 §4 recovery's idempotency probe — bind the TARGET
+run's retained `configFingerprint` themselves, read from that run's authority row, never recomputed
+from current config and never taken from caller claims; a missing/foreign binding there is a loud
+precondition refusal, not a silent skip (doc 09 §4 records the park/refusal split).
 
 Three config leaves landed with it: `browser.headless` (the runtime default is headless — Duo
 Autopilot answers the WebAuthn ceremony in-page, so there is no OS dialog to watch),

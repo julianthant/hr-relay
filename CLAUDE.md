@@ -235,6 +235,16 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-03: D116 binding belongs to whoever owns the run context, and a precondition failure
+  never parks.** The sequencer never binds/releases the run config fingerprint itself: during a
+  claimed run its leases run under the worker loop's `withBoundRunConfigFingerprint` window (the one
+  shared discipline helper in `src/core/worker-sessions.ts`). Doc-09 §4 recovery leases outside any
+  loop, so `recover` binds the TARGET run's retained `configFingerprint` from the authority run row
+  — never recomputed from current config, never caller-claimed — around its probe lease, with the
+  bind OUTSIDE the probe's catch: an unbound/foreign-bound host throws out of `recover` loudly
+  instead of collapsing into a park that reads as a probe verdict, while a genuine probe throw still
+  parks `unknown`. The §4.1 operator resolutions lease no driver, so no binding applies. Tests bind
+  through the same production API, and each surface pins the D116 refusal arm as a negative test.
 - **2026-08-03: The write sequencer is the sole MutationCapability mint, and beat ⑦ wraps the
   narrow primitive.** `src/core/write-sequencer.ts` owns doc 09's beats ①–⑦ behind the
   interpreter's `WriteSequencer` seam; `src/core/write-recovery.ts` owns §4 recovery and the
