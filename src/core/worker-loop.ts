@@ -32,7 +32,7 @@ import type {
   WorkerRuntimeContext,
   WorkerRuntimeExecutor,
 } from "./command-kernel.js";
-import type { MonotonicDeadlineScheduler } from "./provider-admission.js";
+import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import {
   executeClaimedRun,
   RunExecutionOutcomeSchema,

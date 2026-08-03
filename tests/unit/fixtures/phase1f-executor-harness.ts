@@ -24,7 +24,7 @@ import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import type {
   MonotonicDeadlineHandle,
   MonotonicDeadlineScheduler,
-} from "../../../src/core/provider-admission.js";
+} from "../../../src/core/deadline-scheduler.js";
 import type {
   ExecutorSpanEvent,
   SpanEmitter,

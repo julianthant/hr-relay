@@ -48,8 +48,12 @@ export function deriveFailureFingerprint(input: Readonly<{
   taskId?: string;
   code: string;
 }>): string {
+  // Absence is encoded EXPLICITLY: a run-level failure (no node) must never
+  // fingerprint-collide with a node whose id happened to be empty.
+  const nodePart = input.nodeId === undefined ? "absent-node" : input.nodeId;
+  const taskPart = input.taskId === undefined ? "absent-task" : input.taskId;
   return FailureFingerprintSchema.parse(sha256Hex(
-    `hrauto:failure-class:v1\0${input.workflowId}\0${input.nodeId ?? ""}\0${input.taskId ?? ""}\0${input.code}`,
+    `hrauto:failure-class:v1\0${input.workflowId}\0${nodePart}\0${taskPart}\0${input.code}`,
   ));
 }
 

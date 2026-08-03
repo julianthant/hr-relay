@@ -83,7 +83,7 @@ import type {
   FailureTerminalizationReport,
   SuccessTerminalizationReport,
 } from "../infra/sqlite/run-terminal-contracts.js";
-import type { MonotonicDeadlineScheduler } from "./provider-admission.js";
+import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import {
   buildEntryValidationFailureRecord,
   buildNodeFailureRecord,
@@ -197,6 +197,10 @@ function labelOf(node: TaskRuntimeNode): string {
   return node.label ?? node.uses.title;
 }
 
+function observeRaceLoser(error: unknown): void {
+  void error;
+}
+
 /**
  * Race a promise against an abort signal so a non-cooperative implementation
  * cannot occupy the worker; the settled loser is observed, never unhandled.
@@ -206,7 +210,11 @@ async function raceAbortable<Result>(
   signal: AbortSignal,
   label: string,
 ): Promise<Result> {
-  operation.catch(() => undefined);
+  // Observe the race loser so an operation that settles AFTER the abort won
+  // can never become an unhandled rejection. This is not a swallow: when the
+  // operation wins, its own settlement — success or failure — is exactly what
+  // the race delivers to the caller.
+  operation.catch(observeRaceLoser);
   if (signal.aborted) {
     throw signal.reason instanceof Error ? signal.reason : new Error(`${label} was aborted before it started`);
   }
