@@ -182,8 +182,12 @@ open:
   rereads of the stored checkpoints. Both failed and successful composites first persist one strict
   `run_terminal_authorizations` row keyed by `runId`, binding the original expected version, worker/
   claim generation, descriptor identity, timestamp, and exact failure or result/outbox identity.
-  Replay must reproduce that row exactly; terminal state cannot make a stale claim look valid.
-  Schema-v7 recovery treats any authorization/failure/result/outbox/terminal-transition subset as
+  Replay must reproduce that row exactly and prove the terminal row is its exact consequence:
+  `run.version = expectedVersion + 1`, claim generation and authorization timestamp are retained,
+  and terminal state/outcome/failure identity match the authorization arm. Terminal state cannot
+  make a stale claim look valid. Released migration v7 remains byte-for-byte the failure/result/
+  outbox migration; immutable v8 adds the authorization table. Schema-v8 recovery treats any
+  authorization/failure/result/outbox/terminal-transition subset or cross-binding mismatch as
   corruption, including JSON `NULL` outcomes that ordinary SQL inequality would otherwise miss.
 - Beat ⑦ is one outer authority transaction over the current claim generation and intent
   generation: mark intent/attempt committed, persist the schema-valid transaction-output

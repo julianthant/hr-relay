@@ -13,8 +13,9 @@ canonical digests, invalidates pre-D109 short-lived plan rows rather than fabric
 and exposes the confirmation revision and hashes to the later command-service consume step. D110/
 D114 terminal authority now factory-derives successful results from exact stored dependencies,
 requires an unforgeable in-process seal for initial success, and stores a strict pre-terminal
-authorization with exact structured failures or schema-bound results/outbox in schema v7,
-atomically with the matching failed/done run transition; generic run transitions cannot bypass it.
+authorization with exact structured failures or schema-bound results/outbox through immutable
+schema v8, atomically with the matching failed/done run transition; generic run transitions cannot
+bypass it.
 
 ## Before you start
 
@@ -231,6 +232,13 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-03: Released migrations are immutable, and authorization must bind its consequence.**
+  Never add a table to a released migration without advancing the schema version: an already-v7
+  database will skip the changed body. The exact released v7 creates terminal failure/result/outbox
+  facts; v8 alone adds `run_terminal_authorizations`. Recovery and replay require the terminal row
+  to be the authorization's exact consequence: version is `expectedVersion + 1`, claim generation
+  is retained, state/outcome and failure id match the arm, and both `lifecycle.endedAt` and
+  `updatedAt` equal `authorizedAt`.
 - **2026-08-02: Task provenance is an executor-owned data channel, never inferred from logs.** Every
   task context carries a real `recordData` collector. Read completion validates that strict,
   execution-attributed points cover every canonical output leaf and agree with the parsed value;
@@ -263,7 +271,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   initial success path also carries the descriptor factory's unforgeable seal over the exact parsed
   current run and factory-derived result; a schema-valid caller-built result is not authority. A
   strict `run_terminal_authorizations` row retains the original expected version and claim for exact
-  replay, and NULL-safe recovery invariants reject every partial terminal settlement.
+  replay, and NULL-safe recovery invariants reject every partial or cross-bound terminal settlement.
 
 ## After changes
 

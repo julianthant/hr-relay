@@ -678,6 +678,12 @@ records them and the same commit folds each into its owner. **One line each — 
 | **D117** | **A STANDALONE READ OWNS NAVIGATION FROM VERIFIED NEUTRAL STATE; ONLY EXPLICIT `session:"fresh"` REQUIRES A NEW CONTEXT.** | doc 02 §3.1 (primary); doc 05 §4 |
 | **D118** | **AN EXPIRED CLAIM WITH AN UNFINISHED WRITE INTENT ENTERS RECOVERY BEFORE ANY ORDINARY REQUEUE.** | doc 05 §3 (primary); doc 09 §4 |
 
+**2026-08-03 implementation-review correction (no new D-series decision):** D110/D114's durable
+authorization table is added by immutable migration v8, never by amending released v7. The
+authorization is cross-bound to the exact terminal version, retained claim generation, lifecycle
+arm/identity, and authorization-derived timestamps in replay and recovery. Owners: docs 02
+§Phase-1f ingress/§5.7 and 03 §Phase-1f authority.
+
 **Two separate D-series exist — do not confuse them.** This memo's `D1–D118` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
 types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the

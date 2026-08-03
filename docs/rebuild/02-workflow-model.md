@@ -218,7 +218,10 @@ all fail.
   initial authority write rejects a structurally valid hand-built record without that seal and
   independently rereads every named checkpoint; a not-run dependency is rejected when the same
   terminal attempt has a stored checkpoint. The immutable `RunResultRecord`, durable pre-terminal
-  authorization, successful run transition, and terminal outbox commit atomically. The record binds run/attempt,
+  authorization, successful run transition, and terminal outbox commit atomically. The terminal
+  row is the authorization's exact consequence: its version is the authorized expected version plus
+  one, it retains the authorized claim generation, its outcome matches the authorization arm, and
+  its end/update timestamps equal the authorization timestamp. The result record binds run/attempt,
   workflow/descriptor version, result-schema hash, contract/config fingerprints, canonical result
   JSON, and the exact dependency/checkpoint identities used to derive it. An awaited child reads
   and reparses this record through the target workflow result schema; spans, tracker prose, a task
@@ -1301,7 +1304,9 @@ Successful terminal results are separate system-of-record records, not a special
 `RunResultRecord` is written only by the executor's terminal-result path, in the same authority
 transaction as the durable terminalization authorization, `done`, and the terminal outbox. The
 authorization stores the original pre-terminal expected version and claim generation; replay is
-idempotent by `runId` only when that authorization, result, outbox, and transition are byte-exact.
+idempotent by `runId` only when that authorization, result, outbox, and transition are byte-exact,
+including the terminal row's `expectedVersion + 1`, retained claim generation, outcome, and
+authorization-derived end/update timestamps.
 A retry presenting an arbitrary or stale authorization is a conflict even after the terminal run
 has dropped its live claim fields. A different result for an existing run is corruption.
 Parent/delegation joins load this record by child `runId`, validate all recorded
