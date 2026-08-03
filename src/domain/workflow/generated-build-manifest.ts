@@ -15,7 +15,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "b19c97f5e05ae4afa6911be49cae61f431b09d4beb32e9bd47ca5792e390dde5",
+      "fingerprint": "9701397c53b1f5c3475478f84615b4ca0aca69025157be2c129b1c489c51fa82",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -23,7 +23,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/workflow.ts",
-          "sha256": "c9e748549a0a3ade7261ac0a9700b42af5e26cd930ce9776ab4a32415a9278d5"
+          "sha256": "3f53539d6ed6f6f00789056c5db3e4d73e5dda79f5ba5a8580dcc5e04bd94431"
         },
         {
           "path": "src/domain/canonical-json.ts",
@@ -127,7 +127,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "738fb6f568dfad6c2bdfc6ebd58d36d052622bce03a7de8514795912ef597e3b",
+      "fingerprint": "7dbf8ce44816aa9867ca7be0d4e4a520f5547e55f4b3678f25fc7faa11ec5f6f",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -203,7 +203,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/task-provenance.ts",
-          "sha256": "880238749cfe595a54dca4f47f1ced6f0a4651df8a2f40e174f039f99d27e149"
+          "sha256": "e95aeda36f832e03d0f6be57011e4c66eb2c82ed75ce0790c8bcb35405256de4"
         },
         {
           "path": "src/domain/trust/preflight-scenarios.ts",
@@ -269,7 +269,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "1fa1aac3d6935a1c80269ca88ee5b634735c4633c3383dc9882960bd8d06da40",
+      "fingerprint": "d6b2cb9000af31da6c82f71454d6dbfbb4c9b35dbfdecbc15e4face60336645a",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -345,7 +345,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/task-provenance.ts",
-          "sha256": "880238749cfe595a54dca4f47f1ced6f0a4651df8a2f40e174f039f99d27e149"
+          "sha256": "e95aeda36f832e03d0f6be57011e4c66eb2c82ed75ce0790c8bcb35405256de4"
         },
         {
           "path": "src/domain/trust/preflight-scenarios.ts",
@@ -411,7 +411,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "45d3a8d95ef8e459a33a8b448595f5797f7e265e01130115e4a4ba908bf4e50d",
+      "fingerprint": "c05519672868ac7773932d5593cafbb25e3a188e038d5dbe74a9202232439067",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -483,7 +483,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/task-provenance.ts",
-          "sha256": "880238749cfe595a54dca4f47f1ced6f0a4651df8a2f40e174f039f99d27e149"
+          "sha256": "e95aeda36f832e03d0f6be57011e4c66eb2c82ed75ce0790c8bcb35405256de4"
         },
         {
           "path": "src/domain/trust/preflight-scenarios.ts",
@@ -557,7 +557,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "f56c502e212e43ef0104db05ae0874afe5cbf4bd006445b87aef966049ebef77",
+      "fingerprint": "2ef3b7296917c1b503e1bd6a86ce83ebe84b25ae63db6e23d32427d625d0ebb6",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -629,7 +629,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/task-provenance.ts",
-          "sha256": "880238749cfe595a54dca4f47f1ced6f0a4651df8a2f40e174f039f99d27e149"
+          "sha256": "e95aeda36f832e03d0f6be57011e4c66eb2c82ed75ce0790c8bcb35405256de4"
         },
         {
           "path": "src/domain/ui/driver.ts",

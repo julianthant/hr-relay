@@ -4,7 +4,6 @@ import { z } from "zod";
 import { createTaskProvenanceCollector } from "../../src/core/task-provenance.js";
 import { JsonValueSchema } from "../../src/domain/canonical-json.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { ProvenancePolicySchema } from "../../src/domain/contracts/base.js";
 import {
   CrmReadOnboardingDates,
   ReadOnboardingDatesOutputSchema,
@@ -32,6 +31,7 @@ import { searchPersonOrgTask } from "../../src/stores/ucpath/tasks/search-person
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import { createDeterministicCrmOnboardingDriver } from "../../src/stores/crm/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
+import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
 
 const signal = new AbortController().signal;
 const NOW = "2026-08-02T18:00:00.000Z";
@@ -56,11 +56,10 @@ const commonCtx = { signal, log, fail, recordData };
 function collectorFor(
   taskId: string,
   nodeId: string,
-  outputSchema: z.ZodType,
-  policy: z.input<typeof ProvenancePolicySchema>,
   checkpoints: readonly RunCheckpointRecord[],
 ) {
   return createTaskProvenanceCollector({
+    descriptor: personLookupDescriptor,
     execution: {
       runId: "aaaaaaaa-0001-4000-8000-000100000000",
       traceId: "pl-180000-aaaa",
@@ -69,10 +68,7 @@ function collectorFor(
       nodeId,
       taskId,
     },
-    policy,
-    outputSchema,
-    upstream: {
-      declaredDependencyNodeIds: checkpoints.map(({ nodeId: dependencyNodeId }) => dependencyNodeId),
+    upstreamEvidence: {
       checkpoints: [...checkpoints],
     },
     clock: manualClock(new Date(NOW)),
@@ -153,8 +149,6 @@ describe("Phase 1f Person Lookup task implementations", () => {
     const searchCollector = collectorFor(
       SearchPersonOrg.id,
       "searching",
-      SearchPersonOrg.output,
-      SearchPersonOrg.provenance,
       [],
     );
     const searched = await searchPersonOrgTask.impl.run({
@@ -182,8 +176,6 @@ describe("Phase 1f Person Lookup task implementations", () => {
     const recordCollector = collectorFor(
       CrmReadOnboardingRecord.id,
       "cross-verify",
-      CrmReadOnboardingRecord.output,
-      CrmReadOnboardingRecord.provenance,
       [searchCheckpoint],
     );
     const record = await readOnboardingRecordTask.impl.run({
@@ -203,8 +195,6 @@ describe("Phase 1f Person Lookup task implementations", () => {
     const datesCollector = collectorFor(
       CrmReadOnboardingDates.id,
       "crm-dates",
-      CrmReadOnboardingDates.output,
-      CrmReadOnboardingDates.provenance,
       [searchCheckpoint],
     );
     const dates = await readOnboardingDatesTask.impl.run({
@@ -274,8 +264,6 @@ describe("Phase 1f Person Lookup task implementations", () => {
     const searchCollector = collectorFor(
       SearchPersonOrg.id,
       "searching",
-      SearchPersonOrg.output,
-      SearchPersonOrg.provenance,
       [],
     );
     searchCollector.recordData([
@@ -292,8 +280,6 @@ describe("Phase 1f Person Lookup task implementations", () => {
     const recordCollector = collectorFor(
       CrmReadOnboardingRecord.id,
       "cross-verify",
-      CrmReadOnboardingRecord.output,
-      CrmReadOnboardingRecord.provenance,
       [searchCheckpoint],
     );
     recordCollector.recordData([
@@ -310,8 +296,6 @@ describe("Phase 1f Person Lookup task implementations", () => {
     const activeCollector = collectorFor(
       ReadActiveStatus.id,
       "active-status",
-      ReadActiveStatus.output,
-      ReadActiveStatus.provenance,
       [searchCheckpoint, recordCheckpoint],
     );
     const active = await readActiveStatusTask.impl.run({

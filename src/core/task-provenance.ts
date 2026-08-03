@@ -1,10 +1,11 @@
 import { z } from "zod";
+import { descriptorRuntimeNodes } from "../base/workflow.js";
+import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../domain/canonical-json.js";
 import type { JsonValue } from "../domain/canonical-json.js";
 import type { Clock } from "../domain/clock.js";
 import {
   ContractFieldPathSchema,
-  ProvenancePolicySchema,
 } from "../domain/contracts/base.js";
 import type { ProvenancePolicy } from "../domain/contracts/base.js";
 import { IsoInstantSchema } from "../domain/ids.js";
@@ -13,7 +14,7 @@ import {
   RecordedDataPointSchema,
   TaskExecutionIdentitySchema,
   TaskProvenanceResultSchema,
-  TaskUpstreamCheckpointSetSchema,
+  TaskUpstreamCheckpointEvidenceSchema,
 } from "../domain/task-provenance.js";
 import type {
   DataPoint,
@@ -31,10 +32,9 @@ export type TaskProvenanceCollector = Readonly<{
 }>;
 
 export type TaskProvenanceCollectorInput = Readonly<{
+  readonly descriptor: AnyWorkflowDescriptor;
   readonly execution: z.input<typeof TaskExecutionIdentitySchema>;
-  readonly policy: z.input<typeof ProvenancePolicySchema>;
-  readonly outputSchema: z.ZodType;
-  readonly upstream: z.input<typeof TaskUpstreamCheckpointSetSchema>;
+  readonly upstreamEvidence: z.input<typeof TaskUpstreamCheckpointEvidenceSchema>;
   readonly clock: Clock;
 }>;
 
@@ -92,7 +92,7 @@ function oldestOriginalObservation(provenance: readonly FactProvenance[]): strin
 
 function validateCheckpointFacts(
   workflowId: string,
-  checkpoint: z.output<typeof TaskUpstreamCheckpointSetSchema>["checkpoints"][number],
+  checkpoint: z.output<typeof TaskUpstreamCheckpointEvidenceSchema>["checkpoints"][number],
 ): readonly FactProvenance[] {
   if (checkpoint.workflowId !== workflowId) {
     throw new Error(
@@ -120,11 +120,51 @@ function validateCheckpointFacts(
   return Object.freeze([...facts.values()]);
 }
 
+function validateCheckpointSet(
+  taskId: string,
+  expectedDependencies: readonly string[],
+  evidence: z.output<typeof TaskUpstreamCheckpointEvidenceSchema>,
+): void {
+  const expected = new Set(expectedDependencies);
+  const actual = new Set<string>(evidence.checkpoints.map(({ nodeId }) => nodeId));
+  for (const checkpoint of evidence.checkpoints) {
+    if (!expected.has(checkpoint.nodeId)) {
+      throw new Error(`task ${taskId} received undeclared upstream checkpoint ${checkpoint.nodeId}`);
+    }
+  }
+  for (const nodeId of expectedDependencies) {
+    if (!actual.has(nodeId)) {
+      throw new Error(`task ${taskId} declared dependency ${nodeId} has no checkpoint provenance`);
+    }
+  }
+}
+
 export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInput): TaskProvenanceCollector {
   const execution = TaskExecutionIdentitySchema.parse(input.execution);
-  const policy = ProvenancePolicySchema.parse(input.policy);
-  const upstreamSet = TaskUpstreamCheckpointSetSchema.parse(input.upstream);
-  const upstream = Object.freeze(upstreamSet.checkpoints.flatMap((checkpoint) =>
+  const nodes = descriptorRuntimeNodes(input.descriptor);
+  if (input.descriptor.id !== execution.workflowId) {
+    throw new Error(
+      `task ${execution.taskId} execution workflow ${execution.workflowId} does not match descriptor ${input.descriptor.id}`,
+    );
+  }
+  const node = nodes.find(({ id }) => id === execution.nodeId);
+  if (node === undefined) {
+    throw new Error(`workflow ${execution.workflowId} has no execution node ${execution.nodeId}`);
+  }
+  if (node.kind !== "task") {
+    const detail = node.kind === "transaction"
+      ? "transaction prepare/commit roles require a role-specific non-read collector"
+      : `node kind ${node.kind} does not execute a task`;
+    throw new Error(`workflow ${execution.workflowId} node ${execution.nodeId} cannot use read provenance: ${detail}`);
+  }
+  if (node.uses.id !== execution.taskId) {
+    throw new Error(
+      `workflow ${execution.workflowId} node ${execution.nodeId} uses task ${node.uses.id}, not ${execution.taskId}`,
+    );
+  }
+  const evidence = TaskUpstreamCheckpointEvidenceSchema.parse(input.upstreamEvidence);
+  validateCheckpointSet(execution.taskId, node.dependsOn, evidence);
+  const upstream = Object.freeze(evidence.checkpoints.flatMap((checkpoint) =>
     validateCheckpointFacts(execution.workflowId, checkpoint)));
   const points = new Map<string, RecordedDataPoint>();
   let finalized = false;
@@ -158,7 +198,7 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
   const finalizeRead = (outputInput: unknown): TaskProvenanceResult => {
     if (finalized) throw new Error(`task ${execution.taskId} provenance was already finalized`);
     finalized = true;
-    const output = JsonValueSchema.parse(input.outputSchema.parse(outputInput));
+    const output = JsonValueSchema.parse(node.uses.output.parse(outputInput));
     const leaves = jsonLeafPaths(output).map((path) => ContractFieldPathSchema.parse(path));
     const recorded = Object.freeze([...points.values()]);
     if (recorded.length === 0) throw new Error(`task ${execution.taskId} recorded no provenance points`);
@@ -184,8 +224,8 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
       if (canonicalJsonStringify(outputValue) !== canonicalJsonStringify(recordedValue)) {
         throw new Error(`task ${execution.taskId} recorded value for ${path} contradicts its parsed output`);
       }
-      const source = sourceFor(path, policy);
-      if (source === "derived" && upstreamSet.declaredDependencyNodeIds.length === 0) {
+      const source = sourceFor(path, node.uses.provenance);
+      if (source === "derived" && node.dependsOn.length === 0) {
         throw new Error(`task ${execution.taskId} derived output field ${path} has no declared upstream dependencies`);
       }
       return FactProvenanceSchema.parse({

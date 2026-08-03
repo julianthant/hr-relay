@@ -2,10 +2,20 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { createTaskProvenanceCollector } from "../../src/core/task-provenance.js";
-import { manualClock } from "../../src/domain/clock.js";
-import { ContractFieldPathSchema } from "../../src/domain/contracts/base.js";
 import { JsonValueSchema } from "../../src/domain/canonical-json.js";
-import type { JsonValue } from "../../src/domain/canonical-json.js";
+import { manualClock } from "../../src/domain/clock.js";
+import { ContractFieldPathSchema, ProvenancePolicySchema } from "../../src/domain/contracts/base.js";
+import {
+  CrmReadOnboardingRecord,
+  ReadOnboardingRecordOutputSchema,
+} from "../../src/domain/contracts/crm/read-onboarding-record.js";
+import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
+import {
+  SearchPersonOrg,
+  SearchPersonOrgOutputSchema,
+  UcpathCandidateSchema,
+} from "../../src/domain/contracts/ucpath/search-person-org.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import {
   FactProvenanceSchema,
   RunCheckpointRecordSchema,
@@ -14,298 +24,293 @@ import type {
   FactProvenance,
   RunCheckpointRecord,
 } from "../../src/domain/workflow/checkpoint.js";
+import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
+import {
+  FixtureStage,
+  fixtureDescriptor,
+} from "./architecture/helpers/descriptor-fixtures.js";
 
 const NOW = "2026-08-02T18:00:00.000Z";
 const EARLIER = "2026-08-02T16:00:00.000Z";
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
-const EMPTY_UPSTREAM = Object.freeze({ declaredDependencyNodeIds: [], checkpoints: [] });
-const execution = {
-  runId: "aaaaaaaa-0001-4000-8000-000100000000",
-  traceId: "pl-180000-aaaa",
-  attempt: 1,
-  workflowId: "person-lookup",
-  nodeId: "searching",
-  taskId: "ucpath/search-person-org",
-};
-const OutputSchema = z.strictObject({
-  person: z.strictObject({ eid: z.string(), name: z.string() }),
-  state: z.enum(["found", "absent"]),
-});
+const RUN_ID = "aaaaaaaa-0001-4000-8000-000100000000";
+const ITEM_ID = "33333333-3333-4333-8333-333333333333";
 
-function fact(path: string, observedAt: string): FactProvenance {
-  return FactProvenanceSchema.parse({
-    path: ContractFieldPathSchema.parse(path),
-    source: "live",
-    observedAt,
-    originalObservedAt: observedAt,
+const candidate = UcpathCandidateSchema.parse({
+  emplId: "10873698",
+  name: "Battistessa, Johnnie",
+  department: "Housing Dining Hospitality",
+  jobTitle: "Dining Assistant",
+  employeeStatus: "active",
+  hdh: true,
+});
+const person = SearchPersonOrgOutputSchema.parse({
+  results: [candidate],
+  selection: { status: "resolved", selected: candidate, candidateEids: [candidate.emplId] },
+});
+const crmRecord = ReadOnboardingRecordOutputSchema.parse({
+  state: "found",
+  record: {
+    recordId: "ONB-40213",
+    emplId: candidate.emplId,
+    fullName: candidate.name,
+    rawStage: "Completed",
+  },
+});
+if (crmRecord.state !== "found") throw new Error("CRM provenance fixture did not parse as found");
+const crmFoundRecord = crmRecord.record;
+
+function execution(nodeId: string, taskId: string) {
+  return {
+    runId: RUN_ID,
+    traceId: "pl-180000-aaaa",
+    attempt: 1,
+    workflowId: "person-lookup",
+    nodeId,
+    taskId,
+  };
+}
+
+function collector(
+  nodeId: string,
+  taskId: string,
+  checkpoints: readonly RunCheckpointRecord[],
+  now = NOW,
+) {
+  return createTaskProvenanceCollector({
+    descriptor: personLookupDescriptor,
+    execution: execution(nodeId, taskId),
+    upstreamEvidence: { checkpoints: [...checkpoints] },
+    clock: manualClock(new Date(now)),
   });
 }
 
-function checkpoint(
+function checkpointFrom(
   nodeId: string,
-  value: JsonValue,
+  outputSchema: z.ZodType,
+  output: unknown,
   provenance: readonly FactProvenance[],
+  writtenAt = NOW,
 ): RunCheckpointRecord {
   return RunCheckpointRecordSchema.parse({
-    workflowId: execution.workflowId,
-    itemId: "33333333-3333-4333-8333-333333333333",
+    workflowId: "person-lookup",
+    itemId: ITEM_ID,
     nodeId,
     attempt: 1,
-    runId: execution.runId,
-    output: { schemaHash: HASH_A, value: JsonValueSchema.parse(value) },
+    runId: RUN_ID,
+    output: {
+      schemaHash: deriveSchemaHash(outputSchema, "output"),
+      value: JsonValueSchema.parse(outputSchema.parse(output)),
+    },
     descriptorVersion: 1,
     contractFingerprint: HASH_A,
     implFingerprint: HASH_B,
     provenance,
-    writtenAt: NOW,
+    writtenAt,
   });
 }
 
+function dependencyCheckpoints(): Readonly<{
+  search: RunCheckpointRecord;
+  crm: RunCheckpointRecord;
+}> {
+  const searchCollector = collector("searching", SearchPersonOrg.id, []);
+  searchCollector.recordData([
+    { direction: "read", field: "results", value: person.results },
+    { direction: "read", field: "selection", value: person.selection },
+  ]);
+  const searchEvidence = searchCollector.finalizeRead(person);
+  const search = checkpointFrom("searching", SearchPersonOrg.output, person, searchEvidence.provenance);
+
+  const crmCollector = collector("cross-verify", CrmReadOnboardingRecord.id, [search], EARLIER);
+  crmCollector.recordData([
+    { direction: "read", field: "state", value: crmRecord.state },
+    { direction: "read", field: "record", value: crmFoundRecord },
+  ]);
+  const crmEvidence = crmCollector.finalizeRead(crmRecord);
+  const crm = checkpointFrom(
+    "cross-verify",
+    CrmReadOnboardingRecord.output,
+    crmRecord,
+    crmEvidence.provenance,
+    EARLIER,
+  );
+  return Object.freeze({ search, crm });
+}
+
 describe("task provenance collector", () => {
-  it("attributes strict points to one execution and covers nested live output fields", () => {
-    const collector = createTaskProvenanceCollector({
-      execution,
-      policy: { default: "live" },
-      outputSchema: OutputSchema,
-      upstream: EMPTY_UPSTREAM,
-      clock: manualClock(new Date(NOW)),
-    });
-    collector.recordData([
-      { direction: "read", field: "person", value: { eid: "10873698", name: "Fixture, Person" } },
-      { direction: "read", field: "state", value: "found" },
+  it("authenticates the descriptor node and covers nested/array live output", () => {
+    const provenance = collector("searching", SearchPersonOrg.id, []);
+    provenance.recordData([
+      { direction: "read", field: "results", value: person.results },
+      { direction: "read", field: "selection", value: person.selection },
     ]);
-    const result = collector.finalizeRead({
-      person: { eid: "10873698", name: "Fixture, Person" },
-      state: "found",
-    });
-    assert.deepEqual(result.provenance.map(({ path }) => path), ["person.eid", "person.name", "state"]);
+    const result = provenance.finalizeRead(person);
+    assert.equal(result.provenance.some(({ path }) => path === "results"), true);
+    assert.equal(result.provenance.some(({ path }) => path === "selection.selected.emplId"), true);
+    assert.equal(result.provenance.some(({ path }) => path === "selection.candidateEids"), true);
     assert.equal(result.provenance.every(({ source }) => source === "live"), true);
     assert.equal(result.provenance.every(({ originalObservedAt }) => originalObservedAt === NOW), true);
-    assert.deepEqual(result.points[0]?.execution, execution);
+    assert.deepEqual(result.points[0]?.execution, execution("searching", SearchPersonOrg.id));
   });
 
-  it("refuses missing, duplicate, write-direction, and contradictory points", () => {
-    const collector = createTaskProvenanceCollector({
-      execution,
-      policy: { default: "live" },
-      outputSchema: OutputSchema,
-      upstream: EMPTY_UPSTREAM,
-      clock: manualClock(new Date(NOW)),
-    });
-    collector.recordData({ direction: "read", field: "person", value: { eid: "10873698", name: "Wrong" } });
+  it("refuses missing, duplicate, wrong-direction, contradictory, and extra points", () => {
+    const contradictory = collector("searching", SearchPersonOrg.id, []);
+    contradictory.recordData({ direction: "read", field: "results", value: [] });
     assert.throws(
-      () => collector.recordData({ direction: "read", field: "person", value: { eid: "10873698", name: "Wrong" } }),
-      /recorded field person twice/,
+      () => contradictory.recordData({ direction: "read", field: "results", value: [] }),
+      /recorded field results twice/,
     );
-    assert.throws(
-      () => collector.finalizeRead({ person: { eid: "10873698", name: "Fixture" }, state: "found" }),
-      /contradicts its parsed output/,
-    );
+    assert.throws(() => contradictory.finalizeRead(person), /contradicts its parsed output/);
 
-    const missing = createTaskProvenanceCollector({
-      execution,
-      policy: { default: "live" },
-      outputSchema: OutputSchema,
-      upstream: EMPTY_UPSTREAM,
-      clock: manualClock(new Date(NOW)),
-    });
-    missing.recordData({ direction: "read", field: "person", value: { eid: "10873698", name: "Fixture" } });
-    assert.throws(
-      () => missing.finalizeRead({ person: { eid: "10873698", name: "Fixture" }, state: "found" }),
-      /no recorded provenance for output field state/,
-    );
+    const missing = collector("searching", SearchPersonOrg.id, []);
+    missing.recordData({ direction: "read", field: "results", value: person.results });
+    assert.throws(() => missing.finalizeRead(person), /no recorded provenance for output field selection\.status/);
 
-    const undeclared = createTaskProvenanceCollector({
-      execution,
-      policy: { default: "live" },
-      outputSchema: OutputSchema,
-      upstream: EMPTY_UPSTREAM,
-      clock: manualClock(new Date(NOW)),
-    });
-    undeclared.recordData([
-      { direction: "read", field: "person", value: { eid: "10873698", name: "Fixture" } },
-      { direction: "read", field: "state", value: "found" },
+    const extra = collector("searching", SearchPersonOrg.id, []);
+    extra.recordData([
+      { direction: "read", field: "results", value: person.results },
+      { direction: "read", field: "selection", value: person.selection },
       { direction: "read", field: "secret", value: "must-not-be-retained" },
     ]);
-    assert.throws(
-      () => undeclared.finalizeRead({ person: { eid: "10873698", name: "Fixture" }, state: "found" }),
-      /provenance path secret does not exist in the output/,
-    );
+    assert.throws(() => extra.finalizeRead(person), /provenance path secret does not exist in the output/);
 
-    const wrongDirection = createTaskProvenanceCollector({
-      execution,
-      policy: { default: "live" },
-      outputSchema: z.strictObject({ state: z.string() }),
-      upstream: EMPTY_UPSTREAM,
-      clock: manualClock(new Date(NOW)),
-    });
-    wrongDirection.recordData({ direction: "write", field: "state", value: "found" });
-    assert.throws(() => wrongDirection.finalizeRead({ state: "found" }), /covered by a write point/);
+    const wrongDirection = collector("searching", SearchPersonOrg.id, []);
+    wrongDirection.recordData([
+      { direction: "write", field: "results", value: person.results },
+      { direction: "read", field: "selection", value: person.selection },
+    ]);
+    assert.throws(() => wrongDirection.finalizeRead(person), /covered by a write point/);
   });
 
-  it("retains the oldest complete upstream observation for derived fields", () => {
-    const ucpath = checkpoint("searching", { person: "fresh" }, [fact("person", NOW)]);
-    const crm = checkpoint("cross-verify", { crm: "older" }, [fact("crm", EARLIER)]);
-    const collector = createTaskProvenanceCollector({
-      execution: { ...execution, nodeId: "active-status", taskId: "workflow:person-lookup/read-active-status" },
-      policy: { default: "derived" },
-      outputSchema: z.strictObject({ state: z.string(), reason: z.string() }),
-      upstream: {
-        declaredDependencyNodeIds: ["searching", "cross-verify"],
-        checkpoints: [ucpath, crm],
-      },
-      clock: manualClock(new Date(NOW)),
-    });
-    collector.recordData([
-      { direction: "read", field: "state", value: "active" },
-      { direction: "read", field: "reason", value: "matched" },
+  it("derives dependency authority from active-status and retains the oldest complete union", () => {
+    const dependencies = dependencyCheckpoints();
+    const provenance = collector(
+      "active-status",
+      ReadActiveStatus.id,
+      [dependencies.search, dependencies.crm],
+    );
+    const output = { state: "active", reason: "matched both dependencies", hdh: true };
+    provenance.recordData([
+      { direction: "read", field: "state", value: output.state },
+      { direction: "read", field: "reason", value: output.reason },
+      { direction: "read", field: "hdh", value: output.hdh },
     ]);
-    const result = collector.finalizeRead({ state: "active", reason: "matched" });
+    const result = provenance.finalizeRead(output);
     assert.equal(result.provenance.every(({ source }) => source === "derived"), true);
     assert.equal(result.provenance.every(({ originalObservedAt }) => originalObservedAt === EARLIER), true);
 
-    const absentUpstream = createTaskProvenanceCollector({
-      execution,
-      policy: { default: "derived" },
-      outputSchema: z.strictObject({ state: z.string() }),
-      upstream: EMPTY_UPSTREAM,
-      clock: manualClock(new Date(NOW)),
-    });
-    absentUpstream.recordData({ direction: "read", field: "state", value: "active" });
-    assert.throws(() => absentUpstream.finalizeRead({ state: "active" }), /has no declared upstream dependencies/);
+    assert.throws(() => collector(
+      "active-status",
+      ReadActiveStatus.id,
+      [dependencies.search],
+    ), /declared dependency cross-verify has no checkpoint provenance/);
 
-    assert.throws(() => createTaskProvenanceCollector({
-      execution,
-      policy: { default: "derived" },
-      outputSchema: z.strictObject({ state: z.string() }),
-      upstream: {
-        declaredDependencyNodeIds: ["searching", "cross-verify"],
-        checkpoints: [ucpath],
-      },
-      clock: manualClock(new Date(NOW)),
-    }), /declared dependency cross-verify has no checkpoint provenance/);
-
-    assert.throws(() => createTaskProvenanceCollector({
-      execution,
-      policy: { default: "derived" },
-      outputSchema: z.strictObject({ state: z.string() }),
-      upstream: {
-        declaredDependencyNodeIds: ["searching"],
-        checkpoints: [ucpath, crm],
-      },
-      clock: manualClock(new Date(NOW)),
-    }), /undeclared upstream checkpoint cross-verify/);
+    assert.throws(() => collector(
+      "searching",
+      SearchPersonOrg.id,
+      [dependencies.crm],
+    ), /received undeclared upstream checkpoint cross-verify/);
   });
 
-  it("resolves field-specific live and derived policies independently", () => {
-    const upstream = checkpoint("searching", { person: "fixture" }, [fact("person", EARLIER)]);
-    const collector = createTaskProvenanceCollector({
-      execution,
-      policy: {
-        default: "derived",
-        byField: [{ path: "state", source: "live" }],
-      },
-      outputSchema: z.strictObject({ state: z.string(), reason: z.string() }),
-      upstream: { declaredDependencyNodeIds: ["searching"], checkpoints: [upstream] },
+  it("rejects forged descriptors, workflow ids, task identities, and non-task roles", () => {
+    const copiedDescriptor = { ...personLookupDescriptor };
+    assert.throws(() => createTaskProvenanceCollector({
+      descriptor: copiedDescriptor,
+      execution: execution("searching", SearchPersonOrg.id),
+      upstreamEvidence: { checkpoints: [] },
       clock: manualClock(new Date(NOW)),
-    });
-    collector.recordData([
-      { direction: "read", field: "state", value: "active" },
-      { direction: "read", field: "reason", value: "matched upstream facts" },
-    ]);
-    const result = collector.finalizeRead({ state: "active", reason: "matched upstream facts" });
-    assert.deepEqual(
-      result.provenance.map(({ path, source, originalObservedAt }) => ({ path, source, originalObservedAt })),
-      [
-        { path: "state", source: "live", originalObservedAt: NOW },
-        { path: "reason", source: "derived", originalObservedAt: EARLIER },
-      ],
-    );
+    }), /exact object returned by defineWorkflowDescriptor/);
+
+    assert.throws(() => createTaskProvenanceCollector({
+      descriptor: personLookupDescriptor,
+      execution: { ...execution("searching", SearchPersonOrg.id), workflowId: "fixture-graph" },
+      upstreamEvidence: { checkpoints: [] },
+      clock: manualClock(new Date(NOW)),
+    }), /execution workflow fixture-graph does not match descriptor person-lookup/);
+
+    assert.throws(() => createTaskProvenanceCollector({
+      descriptor: personLookupDescriptor,
+      execution: execution("searching", CrmReadOnboardingRecord.id),
+      upstreamEvidence: { checkpoints: [] },
+      clock: manualClock(new Date(NOW)),
+    }), /node searching uses task ucpath\/search-person-org, not crm\/read-onboarding-record/);
+
+    assert.throws(() => createTaskProvenanceCollector({
+      descriptor: personLookupDescriptor,
+      execution: execution("missing-node", SearchPersonOrg.id),
+      upstreamEvidence: { checkpoints: [] },
+      clock: manualClock(new Date(NOW)),
+    }), /has no execution node missing-node/);
+
+    assert.throws(() => createTaskProvenanceCollector({
+      descriptor: fixtureDescriptor,
+      execution: {
+        runId: RUN_ID,
+        traceId: "fx-180000-aaaa",
+        attempt: 1,
+        workflowId: "fixture-graph",
+        nodeId: "submit",
+        taskId: FixtureStage.id,
+      },
+      upstreamEvidence: { checkpoints: [] },
+      clock: manualClock(new Date(NOW)),
+    }), /transaction prepare\/commit roles require a role-specific non-read collector/);
   });
 
   it("rejects duplicate policies, overlapping points, and pre-finalization point exposure", () => {
-    assert.throws(() => createTaskProvenanceCollector({
-      execution,
-      policy: {
-        default: "live",
-        byField: [{ path: "state", source: "live" }, { path: "state", source: "live" }],
-      },
-      outputSchema: OutputSchema,
-      upstream: EMPTY_UPSTREAM,
-      clock: manualClock(new Date(NOW)),
+    assert.throws(() => ProvenancePolicySchema.parse({
+      default: "live",
+      byField: [{ path: "state", source: "live" }, { path: "state", source: "live" }],
     }), /duplicate provenance rule for state/);
-    assert.throws(() => createTaskProvenanceCollector({
-      execution,
-      policy: {
-        default: "live",
-        byField: [{ path: "state", source: "live" }, { path: "state", source: "derived" }],
-      },
-      outputSchema: OutputSchema,
-      upstream: EMPTY_UPSTREAM,
-      clock: manualClock(new Date(NOW)),
+    assert.throws(() => ProvenancePolicySchema.parse({
+      default: "live",
+      byField: [{ path: "state", source: "live" }, { path: "state", source: "derived" }],
     }), /conflicting provenance rules for state/);
 
-    const ancestorFirst = createTaskProvenanceCollector({
-      execution,
-      policy: { default: "live" },
-      outputSchema: OutputSchema,
-      upstream: EMPTY_UPSTREAM,
-      clock: manualClock(new Date(NOW)),
-    });
+    const ancestorFirst = collector("searching", SearchPersonOrg.id, []);
     assert.equal(Object.hasOwn(ancestorFirst, "recordedPoints"), false);
-    ancestorFirst.recordData({
-      direction: "read",
-      field: "person",
-      value: { eid: "10873698", name: "Fixture" },
-    });
+    ancestorFirst.recordData({ direction: "read", field: "selection", value: person.selection });
     assert.throws(
-      () => ancestorFirst.recordData({ direction: "read", field: "person.eid", value: "10873698" }),
-      /recorded overlapping fields person and person\.eid/,
+      () => ancestorFirst.recordData({ direction: "read", field: "selection.status", value: "resolved" }),
+      /recorded overlapping fields selection and selection\.status/,
     );
 
-    const descendantFirst = createTaskProvenanceCollector({
-      execution,
-      policy: { default: "live" },
-      outputSchema: OutputSchema,
-      upstream: EMPTY_UPSTREAM,
-      clock: manualClock(new Date(NOW)),
-    });
-    descendantFirst.recordData({ direction: "read", field: "person.eid", value: "10873698" });
+    const descendantFirst = collector("searching", SearchPersonOrg.id, []);
+    descendantFirst.recordData({ direction: "read", field: "selection.status", value: "resolved" });
     assert.throws(
-      () => descendantFirst.recordData({
-        direction: "read",
-        field: "person",
-        value: { eid: "10873698", name: "Fixture" },
-      }),
-      /recorded overlapping fields person\.eid and person/,
+      () => descendantFirst.recordData({ direction: "read", field: "selection", value: person.selection }),
+      /recorded overlapping fields selection\.status and selection/,
     );
   });
 
-  it("rejects incomplete or malformed upstream checkpoint fact sets", () => {
-    const missingFact = checkpoint(
-      "searching",
-      { person: { eid: "10873698", name: "Fixture" } },
-      [fact("person.eid", NOW)],
-    );
-    assert.throws(() => createTaskProvenanceCollector({
-      execution,
-      policy: { default: "derived" },
-      outputSchema: z.strictObject({ state: z.string() }),
-      upstream: { declaredDependencyNodeIds: ["searching"], checkpoints: [missingFact] },
-      clock: manualClock(new Date(NOW)),
-    }), /upstream checkpoint searching has no provenance for output field person\.name/);
+  it("rejects incomplete or malformed authority checkpoint fact sets", () => {
+    const dependencies = dependencyCheckpoints();
+    const incompleteSearch = RunCheckpointRecordSchema.parse({
+      ...dependencies.search,
+      provenance: dependencies.search.provenance.slice(0, -1),
+    });
+    assert.throws(() => collector(
+      "active-status",
+      ReadActiveStatus.id,
+      [incompleteSearch, dependencies.crm],
+    ), /upstream checkpoint searching has no provenance for output field/);
 
-    const extraFact = checkpoint("searching", { person: "Fixture" }, [
-      fact("person", NOW),
-      fact("unrelated", NOW),
-    ]);
-    assert.throws(() => createTaskProvenanceCollector({
-      execution,
-      policy: { default: "derived" },
-      outputSchema: z.strictObject({ state: z.string() }),
-      upstream: { declaredDependencyNodeIds: ["searching"], checkpoints: [extraFact] },
-      clock: manualClock(new Date(NOW)),
-    }), /upstream checkpoint searching has provenance for undeclared output field unrelated/);
+    const extraFact = FactProvenanceSchema.parse({
+      path: ContractFieldPathSchema.parse("unrelated"),
+      source: "live",
+      observedAt: NOW,
+      originalObservedAt: NOW,
+    });
+    const extraSearch = RunCheckpointRecordSchema.parse({
+      ...dependencies.search,
+      provenance: [...dependencies.search.provenance, extraFact],
+    });
+    assert.throws(() => collector(
+      "active-status",
+      ReadActiveStatus.id,
+      [extraSearch, dependencies.crm],
+    ), /upstream checkpoint searching has provenance for undeclared output field unrelated/);
   });
 });

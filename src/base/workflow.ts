@@ -303,6 +303,7 @@ export interface WorkflowPlanning {
 
 const PROJECTIONS = new WeakMap<object, WorkflowProjections>();
 const PLANNING = new WeakMap<object, WorkflowPlanning>();
+const RUNTIME_NODES = new WeakMap<object, readonly RuntimeFlowNode[]>();
 
 /** The planning view captured when the descriptor was built. Fails loud if it was not. */
 export function workflowPlanning(descriptor: object): WorkflowPlanning {
@@ -637,12 +638,17 @@ export function defineWorkflowDescriptor<
       ? spec.inputSubject
       : spec.inputSubject(spec.canonicalInput.parse(parsed))),
   }));
+  RUNTIME_NODES.set(descriptor, nodes);
   return descriptor;
 }
 
 /** The runtime node view for the executor and every guard, derived once per descriptor. */
 export function descriptorRuntimeNodes(descriptor: AnyWorkflowDescriptor): readonly RuntimeFlowNode[] {
-  return runtimeNodes(descriptor.nodes);
+  const nodes = RUNTIME_NODES.get(descriptor);
+  if (nodes === undefined) {
+    throw new Error("workflow runtime nodes require the exact object returned by defineWorkflowDescriptor");
+  }
+  return nodes;
 }
 
 export type { AnyCommitTaskContract, AnyPrepareTaskContract, AnyReadTaskContract };

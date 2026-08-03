@@ -55,29 +55,16 @@ export const TaskProvenanceResultSchema = z.strictObject({
 export type TaskProvenanceResult = z.infer<typeof TaskProvenanceResultSchema>;
 
 /**
- * Exact graph-declaration/checkpoint pairing supplied by the later executor.
- * `declaredDependencyNodeIds` comes directly from `RuntimeFlowNode.dependsOn`;
- * each id must have exactly one whole authority checkpoint and no other
- * checkpoint may enter the provenance union.
+ * Whole authority checkpoints supplied as evidence by the later executor.
+ * The expected dependency ids deliberately do not live in this caller-owned
+ * boundary: the collector resolves them from factory-authenticated descriptor
+ * metadata and checks this evidence against that authoritative set.
  */
-export const TaskUpstreamCheckpointSetSchema = z.strictObject({
-  declaredDependencyNodeIds: z.array(NodeIdSchema),
+export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
   checkpoints: z.array(RunCheckpointRecordSchema),
-}).superRefine((upstream, context) => {
-  const declared = new Set<string>();
-  for (const [index, nodeId] of upstream.declaredDependencyNodeIds.entries()) {
-    if (declared.has(nodeId)) {
-      context.addIssue({
-        code: "custom",
-        path: ["declaredDependencyNodeIds", index],
-        message: `duplicate declared dependency ${nodeId}`,
-      });
-    }
-    declared.add(nodeId);
-  }
-
+}).superRefine((evidence, context) => {
   const checkpointNodes = new Set<string>();
-  for (const [index, checkpoint] of upstream.checkpoints.entries()) {
+  for (const [index, checkpoint] of evidence.checkpoints.entries()) {
     if (checkpointNodes.has(checkpoint.nodeId)) {
       context.addIssue({
         code: "custom",
@@ -86,23 +73,6 @@ export const TaskUpstreamCheckpointSetSchema = z.strictObject({
       });
     }
     checkpointNodes.add(checkpoint.nodeId);
-    if (!declared.has(checkpoint.nodeId)) {
-      context.addIssue({
-        code: "custom",
-        path: ["checkpoints", index, "nodeId"],
-        message: `undeclared upstream checkpoint ${checkpoint.nodeId}`,
-      });
-    }
-  }
-
-  for (const [index, nodeId] of upstream.declaredDependencyNodeIds.entries()) {
-    if (!checkpointNodes.has(nodeId)) {
-      context.addIssue({
-        code: "custom",
-        path: ["declaredDependencyNodeIds", index],
-        message: `declared dependency ${nodeId} has no checkpoint provenance`,
-      });
-    }
   }
 });
-export type TaskUpstreamCheckpointSet = z.infer<typeof TaskUpstreamCheckpointSetSchema>;
+export type TaskUpstreamCheckpointEvidence = z.infer<typeof TaskUpstreamCheckpointEvidenceSchema>;
