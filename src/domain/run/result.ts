@@ -17,6 +17,7 @@ import {
 import type { Fingerprint } from "../ids.js";
 import { SchemaBoundCanonicalValueSchema } from "../schema-bound-value.js";
 import { sha256Hex } from "../sha256.js";
+import { RunCheckpointRecordSchema } from "../workflow/checkpoint.js";
 
 export const TerminalNotRunReasonSchema = z.enum([
   "condition-false",
@@ -49,6 +50,20 @@ export const NotRunTerminalDependencySchema = z.strictObject({
 export const TerminalDependencyRecordSchema = z.discriminatedUnion("state", [
   ResolvedTerminalDependencySchema,
   NotRunTerminalDependencySchema,
+]);
+
+/** Exact executor evidence consumed by the factory-owned terminal derive. */
+export const TerminalDependencyEvidenceSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("resolved"),
+    nodeId: NodeIdSchema,
+    checkpoint: RunCheckpointRecordSchema,
+  }),
+  z.strictObject({
+    state: z.literal("not-run"),
+    nodeId: NodeIdSchema,
+    reason: TerminalNotRunReasonSchema,
+  }),
 ]);
 
 export function deriveRunResultDigest(result: unknown): Fingerprint {
@@ -149,4 +164,5 @@ export const RunResultRecordSchema = z.strictObject({
 
 export type TerminalNotRunReason = z.infer<typeof TerminalNotRunReasonSchema>;
 export type TerminalDependencyRecord = z.infer<typeof TerminalDependencyRecordSchema>;
+export type TerminalDependencyEvidence = z.infer<typeof TerminalDependencyEvidenceSchema>;
 export type RunResultRecord = z.infer<typeof RunResultRecordSchema>;

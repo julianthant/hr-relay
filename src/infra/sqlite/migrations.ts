@@ -45,6 +45,17 @@ export const SQLITE_TABLE_DDL = deepFreeze({
     ) STRICT
   `,
   tasks: jsonRecordTable("tasks"),
+  run_terminal_authorizations: `
+    CREATE TABLE run_terminal_authorizations (
+      record_key TEXT PRIMARY KEY REFERENCES tasks(record_key) ON DELETE RESTRICT,
+      kind TEXT NOT NULL CHECK (kind IN ('failed', 'done')),
+      expected_version INTEGER NOT NULL CHECK (expected_version >= 1),
+      worker_id TEXT NOT NULL,
+      claim_generation INTEGER NOT NULL CHECK (claim_generation >= 1),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
   failures: `
     CREATE TABLE failures (
       record_key TEXT PRIMARY KEY,
@@ -207,6 +218,7 @@ const V1_TABLE_ORDER = [
 const POST_V1_TABLE_ORDER = [
   "run_checkpoints",
   "start_plans",
+  "run_terminal_authorizations",
   "failures",
   "run_results",
   "run_terminal_outbox",
@@ -389,10 +401,12 @@ export const SQLITE_MIGRATIONS = deepFreeze([
   },
   {
     // D110/D114 terminal authority. Failed and successful settlements are
-    // immutable facts; the composite repository writes one of these rows and
-    // the matching terminal run transition in one outer transaction.
+    // immutable facts; the composite repository retains the exact pre-terminal
+    // CAS/claim authorization, writes its failure or result/outbox rows, and
+    // applies the matching terminal run transition in one outer transaction.
     version: 7,
     statements: [
+      SQLITE_TABLE_DDL.run_terminal_authorizations,
       SQLITE_TABLE_DDL.failures,
       SQLITE_TABLE_DDL.run_results,
       SQLITE_TABLE_DDL.run_terminal_outbox,

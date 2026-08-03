@@ -71,6 +71,12 @@ import {
   deriveRunResultDigest,
   deriveTerminalDependencyDigest,
 } from "../../../src/domain/run/result.js";
+import {
+  FailureTerminalAuthorizationRecordSchema,
+  SuccessTerminalAuthorizationRecordSchema,
+  TerminalAuthorizationRecordSchema,
+  TerminalizationClaimSchema,
+} from "../../../src/domain/run/terminal-authorization.js";
 import { RunTerminalOutboxRecordSchema } from "../../../src/domain/run/terminal-outbox.js";
 import {
   DataPointSchema,
@@ -238,7 +244,6 @@ import {
   StorageHealthCauseSchema,
   VersionPlanStorageRecordSchema,
   WriteFenceInputSchema,
-  FailureExecutionIdentitySchema,
   FailureTerminalizationReportSchema,
   FailureTerminalizationRequestSchema,
   FailureTerminalizationStorageStepSchema,
@@ -406,6 +411,31 @@ const DONE_RUN = {
   lifecycle: { state: "terminal", outcome: "done", endedAt: NOW },
   claimGeneration: 1,
   version: 2,
+};
+const FAILURE_TERMINAL_AUTHORIZATION = {
+  kind: "failed",
+  runId: FAILURE.runId,
+  workflowId: FAILURE.workflowId,
+  attempt: FAILURE.attempt,
+  descriptorVersion: 1,
+  contractFingerprint: HASH_A,
+  expectedVersion: 1,
+  claim: { workerId: "worker-1", claimGeneration: 1 },
+  authorizedAt: NOW,
+  failureId: FAILURE.failureId,
+};
+const SUCCESS_TERMINAL_AUTHORIZATION = {
+  kind: "done",
+  runId: RUN_RESULT.runId,
+  workflowId: RUN_RESULT.workflowId,
+  attempt: RUN_RESULT.attempt,
+  descriptorVersion: RUN_RESULT.descriptorVersion,
+  contractFingerprint: RUN_RESULT.contractFingerprint,
+  expectedVersion: 1,
+  claim: { workerId: "worker-1", claimGeneration: 1 },
+  authorizedAt: NOW,
+  resultDigest: RUN_RESULT.resultDigest,
+  outboxId: RUN_TERMINAL_OUTBOX.outboxId,
 };
 
 const RECEIPT = {
@@ -1078,32 +1108,27 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     ledgerOutbox: LEDGER_OUTBOX_RECORD,
     terminalSpanOutbox: SPAN_OUTBOX_RECORD,
   }], openFixturePaths: ["terminalSpanOutbox.payload.outcome.output.value"] },
-  { name: "FailureExecutionIdentity", schema: FailureExecutionIdentitySchema, fixtures: [
-    { kind: "run" },
-    { kind: "node", nodeId: FAILURE.nodeId, taskId: FAILURE.taskId },
-  ] },
+  { name: "TerminalizationClaim", schema: TerminalizationClaimSchema, fixtures: [FAILURE_TERMINAL_AUTHORIZATION.claim] },
+  { name: "FailureTerminalAuthorizationRecord", schema: FailureTerminalAuthorizationRecordSchema, fixtures: [FAILURE_TERMINAL_AUTHORIZATION] },
+  { name: "SuccessTerminalAuthorizationRecord", schema: SuccessTerminalAuthorizationRecordSchema, fixtures: [SUCCESS_TERMINAL_AUTHORIZATION] },
+  { name: "TerminalAuthorizationRecord", schema: TerminalAuthorizationRecordSchema, fixtures: [FAILURE_TERMINAL_AUTHORIZATION, SUCCESS_TERMINAL_AUTHORIZATION] },
   { name: "FailureTerminalizationRequest", schema: FailureTerminalizationRequestSchema, fixtures: [{
     failure: FAILURE,
-    execution: { kind: "node", nodeId: FAILURE.nodeId, taskId: FAILURE.taskId },
-    expectedVersion: 1,
-    claim: { workerId: "worker-1", claimGeneration: 1 },
-    now: NOW,
+    authorization: FAILURE_TERMINAL_AUTHORIZATION,
   }] },
   { name: "FailureTerminalizationReport", schema: FailureTerminalizationReportSchema, fixtures: [
-    { state: "applied", failure: FAILURE, run: FAILED_RUN },
-    { state: "replayed", failure: FAILURE, run: FAILED_RUN },
+    { state: "applied", authorization: FAILURE_TERMINAL_AUTHORIZATION, failure: FAILURE, run: FAILED_RUN },
+    { state: "replayed", authorization: FAILURE_TERMINAL_AUTHORIZATION, failure: FAILURE, run: FAILED_RUN },
   ], openFixturePaths: ["run.input.raw", "run.input.parsed.value"] },
   { name: "FailureTerminalizationStorageStep", schema: FailureTerminalizationStorageStepSchema, fixtures: FailureTerminalizationStorageStepSchema.options },
   { name: "SuccessTerminalizationRequest", schema: SuccessTerminalizationRequestSchema, fixtures: [{
     result: RUN_RESULT,
     outbox: RUN_TERMINAL_OUTBOX,
-    expectedVersion: 1,
-    claim: { workerId: "worker-1", claimGeneration: 1 },
-    now: NOW,
+    authorization: SUCCESS_TERMINAL_AUTHORIZATION,
   }], openFixturePaths: ["result.result.value"] },
   { name: "SuccessTerminalizationReport", schema: SuccessTerminalizationReportSchema, fixtures: [
-    { state: "applied", result: RUN_RESULT, outbox: RUN_TERMINAL_OUTBOX, run: DONE_RUN },
-    { state: "replayed", result: RUN_RESULT, outbox: RUN_TERMINAL_OUTBOX, run: DONE_RUN },
+    { state: "applied", authorization: SUCCESS_TERMINAL_AUTHORIZATION, result: RUN_RESULT, outbox: RUN_TERMINAL_OUTBOX, run: DONE_RUN },
+    { state: "replayed", authorization: SUCCESS_TERMINAL_AUTHORIZATION, result: RUN_RESULT, outbox: RUN_TERMINAL_OUTBOX, run: DONE_RUN },
   ], openFixturePaths: ["result.result.value", "run.input.raw", "run.input.parsed.value"] },
   { name: "SuccessTerminalizationStorageStep", schema: SuccessTerminalizationStorageStepSchema, fixtures: SuccessTerminalizationStorageStepSchema.options },
   { name: "BoundaryFailure", schema: BoundaryFailureSchema, fixtures: [{ kind: "boundary-failure", source: "config", summary: "invalid config", issues: [{ path: ["urls"], code: "invalid", message: "invalid URL" }] }] },

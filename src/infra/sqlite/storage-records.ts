@@ -16,6 +16,7 @@ import { NotificationRecordSchema } from "../../domain/notifications.js";
 import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
 import { RunRecordSchema } from "../../domain/run/record.js";
 import { RunResultRecordSchema } from "../../domain/run/result.js";
+import { TerminalAuthorizationRecordSchema } from "../../domain/run/terminal-authorization.js";
 import { StartPlanRecordSchema } from "../../domain/run/start-plan.js";
 import { RunTerminalOutboxRecordSchema } from "../../domain/run/terminal-outbox.js";
 import { WorkerLeaseRecordSchema } from "../../domain/run/worker.js";
@@ -65,6 +66,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   // that predates the typing fails validation at boot rather than being
   // reinterpreted as a run or a worker it was never written as.
   tasks: RunRecordSchema,
+  run_terminal_authorizations: TerminalAuthorizationRecordSchema,
   failures: FailureRecordSchema,
   run_results: RunResultRecordSchema,
   run_terminal_outbox: RunTerminalOutboxRecordSchema,

@@ -87,7 +87,6 @@ export {
   type WriteFenceInput,
 } from "./write-commit-contracts.js";
 export {
-  FailureExecutionIdentitySchema,
   FailureTerminalizationReportSchema,
   FailureTerminalizationRequestSchema,
   FailureTerminalizationStorageStepSchema,

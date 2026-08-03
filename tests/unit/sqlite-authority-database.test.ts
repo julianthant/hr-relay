@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { AUTHORITY_TABLE_REGISTRY, type AuthorityTableName } from "../../src/domain/authority.js";
+import { buildRunResult } from "../../src/core/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
-import {
-  deriveRunResultDigest,
-  deriveTerminalDependencyDigest,
-} from "../../src/domain/run/result.js";
+import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
@@ -30,7 +30,6 @@ import {
   UUID_1,
   UUID_2,
   UUID_3,
-  UUID_4,
   UUID_5,
   UUID_6,
   UUID_7,
@@ -46,6 +45,10 @@ import {
   WORKER_START_REQUEST,
   WORKFLOW_ID,
 } from "./fixtures/phase1f-run-fixtures.js";
+import {
+  PersonLookupCanonicalInput,
+  personLookupDescriptor,
+} from "../../src/workflows/person-lookup/descriptor.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -70,33 +73,10 @@ const ARTIFACT_OUTBOX = {
   createdAt: NOW,
 };
 const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
-const TERMINAL_RESULT_VALUE = { schemaHash: HASH_A, value: { complete: true } };
-const TERMINAL_RESULT = {
-  runId: RUN_ID,
-  attempt: 1,
-  workflowId: WORKFLOW_ID,
-  descriptorVersion: 1,
-  contractFingerprint: HASH_A,
-  configFingerprint: HASH_B,
-  configSnapshotId: UUID_4,
-  resultSchemaHash: HASH_A,
-  result: TERMINAL_RESULT_VALUE,
-  resultDigest: deriveRunResultDigest(TERMINAL_RESULT_VALUE),
-  dependencies: [],
-  dependencyDigest: deriveTerminalDependencyDigest([]),
-  createdAt: LATER,
-};
-const RUN_TERMINAL_OUTBOX = {
-  outboxId: UUID_7,
-  payload: {
-    kind: "run-terminal-result",
-    runId: RUN_ID,
-    workflowId: WORKFLOW_ID,
-    attempt: 1,
-    resultDigest: TERMINAL_RESULT.resultDigest,
-  },
-  projection: { state: "pending" },
-  createdAt: LATER,
+const ACTIVE_STATUS = {
+  state: "active" as const,
+  reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
+  hdh: true,
 };
 const FAILURE_RECORD = {
   failureId: UUID_6,
@@ -183,7 +163,20 @@ function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityData
 }
 
 function prepareRunning(database: AuthorityDatabase) {
-  database.authority.runs.enqueue(QUEUED_RUN);
+  database.authority.runs.enqueue({
+    ...QUEUED_RUN,
+    envelope: {
+      ...QUEUED_RUN.envelope,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+    },
+    input: {
+      ...QUEUED_RUN.input,
+      parsed: {
+        schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
+        value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
+      },
+    },
+  });
   const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW });
   if (claimed.state !== "claimed") throw new Error("generation fixture did not claim a run");
   const validating = database.authority.runs.transition({
@@ -203,6 +196,87 @@ function prepareRunning(database: AuthorityDatabase) {
   });
   if (running.state !== "applied") throw new Error("generation fixture did not run");
   return running.run;
+}
+
+function terminalFailureRequest(run: ReturnType<typeof prepareRunning>) {
+  return {
+    failure: FAILURE_RECORD,
+    authorization: {
+      kind: "failed" as const,
+      runId: run.envelope.runId,
+      workflowId: run.envelope.workflow,
+      attempt: run.envelope.attempt,
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+      expectedVersion: run.version,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      authorizedAt: LATER,
+      failureId: FAILURE_RECORD.failureId,
+    },
+  };
+}
+
+function terminalSuccessRequest(database: AuthorityDatabase, run: ReturnType<typeof prepareRunning>) {
+  const checkpoint = RunCheckpointRecordSchema.parse({
+    workflowId: run.envelope.workflow,
+    itemId: run.envelope.itemId,
+    nodeId: "active-status",
+    attempt: run.envelope.attempt,
+    runId: run.envelope.runId,
+    output: {
+      schemaHash: deriveSchemaHash(ReadActiveStatus.output, "output"),
+      value: ACTIVE_STATUS,
+    },
+    descriptorVersion: run.envelope.descriptorVersion,
+    contractFingerprint: run.envelope.contractFingerprint,
+    implFingerprint: HASH_B,
+    provenance: [{ path: "state", source: "derived", observedAt: NOW, originalObservedAt: NOW }],
+    writtenAt: NOW,
+  });
+  if (database.authority.runCheckpoints.get(
+    checkpoint.workflowId,
+    checkpoint.itemId,
+    checkpoint.nodeId,
+    checkpoint.attempt,
+  ) === undefined) {
+    database.authority.runCheckpoints.insert(checkpoint);
+  }
+  const built = buildRunResult(personLookupDescriptor, run, [
+    { state: "resolved", nodeId: "active-status", checkpoint },
+    { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
+  ], CLOCK);
+  const outbox = {
+    outboxId: UUID_7,
+    payload: {
+      kind: "run-terminal-result" as const,
+      runId: built.record.runId,
+      workflowId: built.record.workflowId,
+      attempt: built.record.attempt,
+      resultDigest: built.record.resultDigest,
+    },
+    projection: { state: "pending" as const },
+    createdAt: LATER,
+  };
+  return {
+    request: {
+      result: built.record,
+      outbox,
+      authorization: {
+        kind: "done" as const,
+        runId: built.record.runId,
+        workflowId: built.record.workflowId,
+        attempt: built.record.attempt,
+        descriptorVersion: built.record.descriptorVersion,
+        contractFingerprint: built.record.contractFingerprint,
+        expectedVersion: run.version,
+        claim: { workerId: WORKER_ID, claimGeneration: 1 },
+        authorizedAt: LATER,
+        resultDigest: built.record.resultDigest,
+        outboxId: UUID_7,
+      },
+    },
+    factoryAuthorization: built.authorization,
+  };
 }
 
 afterEach(() => {
@@ -465,43 +539,42 @@ describe("authority generation accounting", () => {
       mutate: (db) => {
         const run = db.authority.runs.get(RUN_ID);
         if (run === undefined) throw new Error("failure generation fixture lost its run");
-        db.terminalizeFailure({
-          failure: FAILURE_RECORD,
-          execution: { kind: "run" },
-          expectedVersion: run.version,
-          claim: { workerId: WORKER_ID, claimGeneration: 1 },
-          now: LATER,
-        });
+        db.terminalizeFailure(personLookupDescriptor, terminalFailureRequest(run));
+      },
+    },
+    {
+      table: "run_terminal_authorizations",
+      prepare: (db) => { prepareRunning(db); },
+      mutate: (db) => {
+        const run = db.authority.runs.get(RUN_ID);
+        if (run === undefined) throw new Error("authorization generation fixture lost its run");
+        db.terminalizeFailure(personLookupDescriptor, terminalFailureRequest(run));
       },
     },
     {
       table: "run_results",
-      prepare: (db) => { prepareRunning(db); },
+      prepare: (db) => {
+        const run = prepareRunning(db);
+        terminalSuccessRequest(db, run);
+      },
       mutate: (db) => {
         const run = db.authority.runs.get(RUN_ID);
         if (run === undefined) throw new Error("result generation fixture lost its run");
-        db.terminalizeSuccess({
-          result: TERMINAL_RESULT,
-          outbox: RUN_TERMINAL_OUTBOX,
-          expectedVersion: run.version,
-          claim: { workerId: WORKER_ID, claimGeneration: 1 },
-          now: LATER,
-        });
+        const terminal = terminalSuccessRequest(db, run);
+        db.terminalizeSuccess(terminal.request, terminal.factoryAuthorization);
       },
     },
     {
       table: "run_terminal_outbox",
-      prepare: (db) => { prepareRunning(db); },
+      prepare: (db) => {
+        const run = prepareRunning(db);
+        terminalSuccessRequest(db, run);
+      },
       mutate: (db) => {
         const run = db.authority.runs.get(RUN_ID);
         if (run === undefined) throw new Error("outbox generation fixture lost its run");
-        db.terminalizeSuccess({
-          result: TERMINAL_RESULT,
-          outbox: RUN_TERMINAL_OUTBOX,
-          expectedVersion: run.version,
-          claim: { workerId: WORKER_ID, claimGeneration: 1 },
-          now: LATER,
-        });
+        const terminal = terminalSuccessRequest(db, run);
+        db.terminalizeSuccess(terminal.request, terminal.factoryAuthorization);
       },
     },
     { table: "leases", mutate: (db) => { db.authority.workerLeases.start(WORKER_START_REQUEST); } },

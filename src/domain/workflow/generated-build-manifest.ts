@@ -15,7 +15,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "80703b274e3936eefe411fdfb1fd11614493e901be391f5d2f87fb00e392ea4d",
+      "fingerprint": "dad3aaa62fe037b504e29fe25215785eadb86e9c26eec070c305632e1be31e7c",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -23,7 +23,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/workflow.ts",
-          "sha256": "fe928d7befa34043994daef9e8785682ecdc1a2401d7a91aee5e2814fc46cca8"
+          "sha256": "12ba9f0c7b7bb62951f5a72ad98e9ce43b1554c4f5f138c0ba43e8045d149dab"
         },
         {
           "path": "src/domain/canonical-json.ts",
@@ -62,6 +62,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
         },
         {
+          "path": "src/domain/run/result.ts",
+          "sha256": "4c45e0fa2df7723ae0a4d2fa9e31201c3f7467d7f133bcf631a575a9f9a70f00"
+        },
+        {
           "path": "src/domain/schema-bound-value.ts",
           "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
         },
@@ -88,6 +92,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/workflow/canonical-input.ts",
           "sha256": "e3ee87bdec7d447005c59b230b8b09f6cee22efcb547071165e75b90ea7a1891"
+        },
+        {
+          "path": "src/domain/workflow/checkpoint.ts",
+          "sha256": "5aeac2c74fcdb130fbfd33fcb663056ee5bebda9b953bea9dc99f67654b085f6"
         },
         {
           "path": "src/domain/workflow/completion.ts",

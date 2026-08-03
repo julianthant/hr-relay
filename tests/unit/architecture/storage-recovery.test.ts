@@ -18,8 +18,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
+import { buildRunResult } from "../../../src/core/run-result.js";
 import { manualClock } from "../../../src/domain/clock.js";
+import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
 import { executePreflightRunner } from "../../../src/domain/preflight.js";
+import {
+  deriveRunResultDigest,
+  deriveTerminalDependencyDigest,
+} from "../../../src/domain/run/result.js";
+import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
+import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import {
   AuthorityBackupService,
   AuthorityBootStore,
@@ -46,8 +54,15 @@ import {
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "../fixtures/phase1c-contract-fixtures.js";
-import { WORKER_START_REQUEST } from "../fixtures/phase1f-run-fixtures.js";
+import {
+  QUEUED_RUN,
+  WORKER_START_REQUEST,
+} from "../fixtures/phase1f-run-fixtures.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
+import {
+  PersonLookupCanonicalInput,
+  personLookupDescriptor,
+} from "../../../src/workflows/person-lookup/descriptor.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
 const roots: string[] = [];
@@ -65,6 +80,180 @@ const ARTIFACT_OUTBOX = {
   payload: SCHEMA_BOUND_VALUE,
   createdAt: NOW,
 };
+const ACTIVE_STATUS = {
+  state: "active" as const,
+  reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
+  hdh: true,
+};
+
+function runningTerminalFixture(
+  database: AuthorityDatabase,
+  runId: string,
+  itemId: string,
+  traceId: string,
+  nodeId: "active-status" | "crm-dates",
+) {
+  const workerId = `worker-${runId.slice(0, 4)}`;
+  database.authority.runs.enqueue({
+    ...QUEUED_RUN,
+    envelope: {
+      ...QUEUED_RUN.envelope,
+      runId,
+      itemId,
+      traceId,
+      workflow: personLookupDescriptor.id,
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+    },
+    input: {
+      ...QUEUED_RUN.input,
+      parsed: {
+        schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
+        value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
+      },
+    },
+  });
+  const claimed = database.authority.runs.claimNext({
+    workflow: personLookupDescriptor.id,
+    workerId,
+    now: NOW,
+  });
+  if (claimed.state !== "claimed" || claimed.run.envelope.runId !== runId) {
+    throw new Error(`terminal recovery fixture did not claim ${runId}`);
+  }
+  const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
+  const validating = database.authority.runs.transition({
+    runId,
+    expectedVersion: claimed.run.version,
+    claim,
+    lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW },
+    now: NOW,
+  });
+  if (validating.state !== "applied") throw new Error(`terminal recovery fixture did not validate ${runId}`);
+  const running = database.authority.runs.transition({
+    runId,
+    expectedVersion: validating.run.version,
+    claim,
+    lifecycle: {
+      state: "running",
+      workerId,
+      claimedAt: NOW,
+      heartbeatAt: NOW,
+      currentNodeId: nodeId,
+    },
+    now: NOW,
+  });
+  if (running.state !== "applied") throw new Error(`terminal recovery fixture did not run ${runId}`);
+  return { run: running.run, claim };
+}
+
+function seedTerminalAuthority(database: AuthorityDatabase) {
+  const failed = runningTerminalFixture(
+    database,
+    UUID_1,
+    UUID_3,
+    "pl-170000-aaaa",
+    "crm-dates",
+  );
+  const failure = {
+    failureId: UUID_8,
+    fingerprint: HASH_B,
+    runId: failed.run.envelope.runId,
+    traceId: failed.run.envelope.traceId,
+    attempt: failed.run.envelope.attempt,
+    workflowId: failed.run.envelope.workflow,
+    nodeId: "crm-dates",
+    taskId: "crm/read-onboarding-dates",
+    code: "CRM_UNAVAILABLE",
+    summary: "CRM onboarding dates were unavailable",
+    transient: true,
+    writeState: "not-attempted",
+    causeChain: [{
+      code: "CRM_UNAVAILABLE",
+      summary: "CRM returned an unavailable response",
+      role: "primary",
+      transient: true,
+    }],
+    remediation: [{ kind: "retry-when-served", message: "Retry after CRM is available" }],
+    occurredAt: NOW,
+  } as const;
+  const failureAuthorization = {
+    kind: "failed" as const,
+    runId: failed.run.envelope.runId,
+    workflowId: failed.run.envelope.workflow,
+    attempt: failed.run.envelope.attempt,
+    descriptorVersion: failed.run.envelope.descriptorVersion,
+    contractFingerprint: failed.run.envelope.contractFingerprint,
+    expectedVersion: failed.run.version,
+    claim: failed.claim,
+    authorizedAt: NOW,
+    failureId: failure.failureId,
+  };
+  database.terminalizeFailure(personLookupDescriptor, {
+    failure,
+    authorization: failureAuthorization,
+  });
+
+  const done = runningTerminalFixture(
+    database,
+    UUID_2,
+    UUID_7,
+    "pl-170001-bbbb",
+    "active-status",
+  );
+  const checkpoint = RunCheckpointRecordSchema.parse({
+    workflowId: done.run.envelope.workflow,
+    itemId: done.run.envelope.itemId,
+    nodeId: "active-status",
+    attempt: done.run.envelope.attempt,
+    runId: done.run.envelope.runId,
+    output: {
+      schemaHash: deriveSchemaHash(ReadActiveStatus.output, "output"),
+      value: ACTIVE_STATUS,
+    },
+    descriptorVersion: done.run.envelope.descriptorVersion,
+    contractFingerprint: done.run.envelope.contractFingerprint,
+    implFingerprint: HASH_A,
+    provenance: [{ path: "state", source: "derived", observedAt: NOW, originalObservedAt: NOW }],
+    writtenAt: NOW,
+  });
+  database.authority.runCheckpoints.insert(checkpoint);
+  const built = buildRunResult(personLookupDescriptor, done.run, [
+    { state: "resolved", nodeId: "active-status", checkpoint },
+    { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
+  ], CLOCK);
+  const outbox = {
+    outboxId: UUID_7,
+    payload: {
+      kind: "run-terminal-result" as const,
+      runId: built.record.runId,
+      workflowId: built.record.workflowId,
+      attempt: built.record.attempt,
+      resultDigest: built.record.resultDigest,
+    },
+    projection: { state: "pending" as const },
+    createdAt: NOW,
+  };
+  const successAuthorization = {
+    kind: "done" as const,
+    runId: built.record.runId,
+    workflowId: built.record.workflowId,
+    attempt: built.record.attempt,
+    descriptorVersion: built.record.descriptorVersion,
+    contractFingerprint: built.record.contractFingerprint,
+    expectedVersion: done.run.version,
+    claim: done.claim,
+    authorizedAt: NOW,
+    resultDigest: built.record.resultDigest,
+    outboxId: outbox.outboxId,
+  };
+  database.terminalizeSuccess({
+    result: built.record,
+    outbox,
+    authorization: successAuthorization,
+  }, built.authorization);
+  return { failure, failureAuthorization, result: built.record, outbox, successAuthorization };
+}
 
 function testRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "hrauto-storage-recovery-"));
@@ -263,6 +452,156 @@ describe("verified native online backups", () => {
 });
 
 describe("fail-closed degraded boot and read-only doctor", () => {
+  it("rejects NULL/nonterminal partial authorization, failure, result, and outbox settlements read-only", () => {
+    const terminalValue = { schemaHash: HASH_A, value: { complete: true } };
+    const partialResult = {
+      runId: QUEUED_RUN.envelope.runId,
+      attempt: QUEUED_RUN.envelope.attempt,
+      workflowId: QUEUED_RUN.envelope.workflow,
+      descriptorVersion: QUEUED_RUN.envelope.descriptorVersion,
+      contractFingerprint: QUEUED_RUN.envelope.contractFingerprint,
+      configFingerprint: QUEUED_RUN.envelope.configFingerprint,
+      configSnapshotId: QUEUED_RUN.envelope.configSnapshotId,
+      resultSchemaHash: HASH_A,
+      result: terminalValue,
+      resultDigest: deriveRunResultDigest(terminalValue),
+      dependencies: [],
+      dependencyDigest: deriveTerminalDependencyDigest([]),
+      createdAt: NOW,
+    };
+    const partialOutbox = {
+      outboxId: UUID_7,
+      payload: {
+        kind: "run-terminal-result",
+        runId: partialResult.runId,
+        workflowId: partialResult.workflowId,
+        attempt: partialResult.attempt,
+        resultDigest: partialResult.resultDigest,
+      },
+      projection: { state: "pending" },
+      createdAt: NOW,
+    };
+    const partialFailure = {
+      failureId: UUID_8,
+      fingerprint: HASH_B,
+      runId: QUEUED_RUN.envelope.runId,
+      traceId: QUEUED_RUN.envelope.traceId,
+      attempt: QUEUED_RUN.envelope.attempt,
+      workflowId: QUEUED_RUN.envelope.workflow,
+      code: "UNEXPECTED_PAGE_STATE",
+      summary: "The terminal failure transition is missing",
+      transient: false,
+      writeState: "not-attempted",
+      causeChain: [{
+        code: "UNEXPECTED_PAGE_STATE",
+        summary: "The terminal failure transition is missing",
+        role: "primary",
+        transient: false,
+      }],
+      remediation: [{ kind: "code-change", message: "Repair the partial settlement" }],
+      occurredAt: NOW,
+    };
+    const partialAuthorization = {
+      kind: "failed",
+      runId: QUEUED_RUN.envelope.runId,
+      workflowId: QUEUED_RUN.envelope.workflow,
+      attempt: QUEUED_RUN.envelope.attempt,
+      descriptorVersion: QUEUED_RUN.envelope.descriptorVersion,
+      contractFingerprint: QUEUED_RUN.envelope.contractFingerprint,
+      expectedVersion: QUEUED_RUN.version,
+      claim: { workerId: "worker-1", claimGeneration: 1 },
+      authorizedAt: NOW,
+      failureId: partialFailure.failureId,
+    };
+    const cases = [
+      {
+        name: "authorization",
+        insert: (raw: DatabaseSync) => raw.prepare(`
+          INSERT INTO run_terminal_authorizations
+            (record_key, kind, expected_version, worker_id, claim_generation, record_json, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          partialAuthorization.runId,
+          partialAuthorization.kind,
+          partialAuthorization.expectedVersion,
+          partialAuthorization.claim.workerId,
+          partialAuthorization.claim.claimGeneration,
+          JSON.stringify(partialAuthorization),
+          NOW,
+        ),
+        violation: /terminal-authorization-binds-exact-terminal-authority/,
+      },
+      {
+        name: "failure",
+        insert: (raw: DatabaseSync) => raw.prepare(`
+          INSERT INTO failures (record_key, run_id, record_json, created_at)
+          VALUES (?, ?, ?, ?)
+        `).run(partialFailure.failureId, partialFailure.runId, JSON.stringify(partialFailure), NOW),
+        violation: /failures-bind-failed-run/,
+      },
+      {
+        name: "result",
+        insert: (raw: DatabaseSync) => raw.prepare(`
+          INSERT INTO run_results
+            (record_key, workflow, attempt, result_digest, record_json, created_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          partialResult.runId,
+          partialResult.workflowId,
+          partialResult.attempt,
+          partialResult.resultDigest,
+          JSON.stringify(partialResult),
+          NOW,
+        ),
+        violation: /results-bind-done-run/,
+      },
+      {
+        name: "outbox",
+        insert: (raw: DatabaseSync) => {
+          raw.prepare(`
+            INSERT INTO run_results
+              (record_key, workflow, attempt, result_digest, record_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).run(
+            partialResult.runId,
+            partialResult.workflowId,
+            partialResult.attempt,
+            partialResult.resultDigest,
+            JSON.stringify(partialResult),
+            NOW,
+          );
+          return raw.prepare(`
+            INSERT INTO run_terminal_outbox
+              (record_key, run_id, state, record_json, created_at)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(
+            partialOutbox.outboxId,
+            partialOutbox.payload.runId,
+            partialOutbox.projection.state,
+            JSON.stringify(partialOutbox),
+            NOW,
+          );
+        },
+        violation: /results-bind-done-run/,
+      },
+    ] as const;
+
+    for (const fixture of cases) {
+      const path = join(testRoot(), `${fixture.name}.sqlite`);
+      const database = openDatabase(path);
+      database.authority.runs.enqueue(QUEUED_RUN);
+      database.close();
+      const raw = new DatabaseSync(path);
+      fixture.insert(raw);
+      raw.close();
+      assert.throws(
+        () => AuthorityDatabase.inspectExistingReadOnly(path),
+        fixture.violation,
+        fixture.name,
+      );
+    }
+  });
+
   it("opens corrupt, truncated, newer, foreign-key-invalid, invariant-invalid, and record-invalid files degraded", async () => {
     const root = testRoot();
     const paths: Array<readonly [string, string]> = [];
@@ -411,6 +750,43 @@ describe("fail-closed degraded boot and read-only doctor", () => {
 });
 
 describe("offline exact-backup restore", () => {
+  it("preserves nonempty failure, result, terminal-outbox, and authorization authority", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "terminal-state.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    const seeded = seedTerminalAuthority(database);
+    const generation = database.getMeta().authorityGeneration;
+    const { manifestPath } = await createBackup(database, directory);
+    database.close();
+
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath),
+      async () => undefined,
+      CLOCK,
+    );
+    const report = await restore.restore({
+      manifestPath,
+      stoppedSystemProof: stoppedProof(root, authorityPath),
+    });
+    assert.equal(report.authorityGeneration, generation);
+    const restored = openDatabase(authorityPath);
+    assert.deepEqual(restored.authority.failures.get(seeded.failure.failureId), seeded.failure);
+    assert.deepEqual(restored.authority.runResults.get(seeded.result.runId), seeded.result);
+    assert.deepEqual(
+      restored.authority.runTerminalOutbox.get(seeded.outbox.outboxId),
+      seeded.outbox,
+    );
+    assert.deepEqual(
+      restored.authority.terminalAuthorizations.get(seeded.failure.runId),
+      seeded.failureAuthorization,
+    );
+    assert.deepEqual(
+      restored.authority.terminalAuthorizations.get(seeded.result.runId),
+      seeded.successAuthorization,
+    );
+  });
+
   it("preserves the suspect DB, rebuilds projections only, and atomically restores authority", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");

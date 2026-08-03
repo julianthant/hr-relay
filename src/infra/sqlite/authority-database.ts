@@ -4,6 +4,11 @@ import { resolve } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import {
+  assertWorkflowRunResultAuthorization,
+  descriptorRuntimeNodes,
+  type AnyWorkflowDescriptor,
+} from "../../base/workflow.js";
+import {
   AUTHORITY_TABLE_REGISTRY,
   AuthorityTableNameSchema,
   ProjectionTableNameSchema,
@@ -26,7 +31,16 @@ import {
   runTransitionViolation,
   type RunRecord,
 } from "../../domain/run/record.js";
-import { RunResultRecordSchema, type RunResultRecord } from "../../domain/run/result.js";
+import {
+  RunResultRecordSchema,
+  deriveCheckpointOutputDigest,
+  deriveCheckpointProvenanceDigest,
+  type RunResultRecord,
+} from "../../domain/run/result.js";
+import {
+  TerminalAuthorizationRecordSchema,
+  type TerminalAuthorizationRecord,
+} from "../../domain/run/terminal-authorization.js";
 import {
   StartPlanRecordSchema,
   isStartPlanExpired,
@@ -240,6 +254,10 @@ type RunTerminalOutboxRepository = Readonly<{
   findByRun(runId: string): RunTerminalOutboxRecord | undefined;
 }>;
 
+type TerminalAuthorizationRepository = Readonly<{
+  get(runId: string): TerminalAuthorizationRecord | undefined;
+}>;
+
 type StartPlanRepository = Readonly<{
   create(input: unknown): ImmutableInsertResult<StartPlanRecord>;
   get(startPlanId: string): StartPlanRecord | undefined;
@@ -265,6 +283,7 @@ type OpaqueAuthorityRepositories = Readonly<{
 
 export type AuthorityRepositories = Readonly<{
   runs: RunRepository;
+  terminalAuthorizations: TerminalAuthorizationRepository;
   failures: FailureRepository;
   runResults: RunResultRepository;
   runTerminalOutbox: RunTerminalOutboxRepository;
@@ -395,6 +414,10 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: "SELECT count(*) AS count FROM failures WHERE run_id <> json_extract(record_json, '$.runId')",
   },
   {
+    name: "terminal-authorization-columns-match-record",
+    sql: "SELECT count(*) AS count FROM run_terminal_authorizations WHERE record_key IS NOT json_extract(record_json, '$.runId') OR kind IS NOT json_extract(record_json, '$.kind') OR expected_version IS NOT json_extract(record_json, '$.expectedVersion') OR worker_id IS NOT json_extract(record_json, '$.claim.workerId') OR claim_generation IS NOT json_extract(record_json, '$.claim.claimGeneration')",
+  },
+  {
     name: "failed-runs-bind-failure",
     sql: `
       SELECT count(*) AS count FROM tasks AS run
@@ -411,8 +434,8 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: `
       SELECT count(*) AS count FROM failures AS failure
       JOIN tasks AS run ON run.record_key = failure.run_id
-      WHERE json_extract(run.record_json, '$.lifecycle.outcome') <> 'failed'
-        OR json_extract(run.record_json, '$.lifecycle.failureId') <> failure.record_key
+      WHERE json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'failed'
+        OR json_extract(run.record_json, '$.lifecycle.failureId') IS NOT failure.record_key
     `,
   },
   {
@@ -423,6 +446,31 @@ const INVARIANT_QUERIES = Object.freeze([
       WHERE json_extract(failure.record_json, '$.workflowId') <> json_extract(run.record_json, '$.envelope.workflow')
         OR json_extract(failure.record_json, '$.traceId') <> json_extract(run.record_json, '$.envelope.traceId')
         OR json_extract(failure.record_json, '$.attempt') <> json_extract(run.record_json, '$.envelope.attempt')
+    `,
+  },
+  {
+    name: "failed-runs-bind-terminal-authorization",
+    sql: `
+      SELECT count(*) AS count FROM tasks AS run
+      WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'failed'
+        AND NOT EXISTS (
+          SELECT 1 FROM run_terminal_authorizations AS authorization
+          WHERE authorization.record_key = run.record_key
+            AND authorization.kind = 'failed'
+            AND json_extract(authorization.record_json, '$.failureId')
+              = json_extract(run.record_json, '$.lifecycle.failureId')
+        )
+    `,
+  },
+  {
+    name: "failures-bind-terminal-authorization",
+    sql: `
+      SELECT count(*) AS count FROM failures AS failure
+      LEFT JOIN run_terminal_authorizations AS authorization
+        ON authorization.record_key = failure.run_id
+      WHERE authorization.record_key IS NULL
+        OR authorization.kind IS NOT 'failed'
+        OR json_extract(authorization.record_json, '$.failureId') IS NOT failure.record_key
     `,
   },
   {
@@ -450,10 +498,11 @@ const INVARIANT_QUERIES = Object.freeze([
     name: "run-terminal-outbox-binds-result",
     sql: `
       SELECT count(*) AS count FROM run_terminal_outbox AS outbox
-      JOIN run_results AS result ON result.record_key = outbox.run_id
-      WHERE json_extract(outbox.record_json, '$.payload.workflowId') <> json_extract(result.record_json, '$.workflowId')
-        OR json_extract(outbox.record_json, '$.payload.attempt') <> json_extract(result.record_json, '$.attempt')
-        OR json_extract(outbox.record_json, '$.payload.resultDigest') <> result.result_digest
+      LEFT JOIN run_results AS result ON result.record_key = outbox.run_id
+      WHERE result.record_key IS NULL
+        OR json_extract(outbox.record_json, '$.payload.workflowId') IS NOT json_extract(result.record_json, '$.workflowId')
+        OR json_extract(outbox.record_json, '$.payload.attempt') IS NOT json_extract(result.record_json, '$.attempt')
+        OR json_extract(outbox.record_json, '$.payload.resultDigest') IS NOT result.result_digest
     `,
   },
   {
@@ -474,7 +523,74 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: `
       SELECT count(*) AS count FROM run_results AS result
       JOIN tasks AS run ON run.record_key = result.record_key
-      WHERE json_extract(run.record_json, '$.lifecycle.outcome') <> 'done'
+      WHERE json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'done'
+    `,
+  },
+  {
+    name: "done-runs-bind-terminal-authorization",
+    sql: `
+      SELECT count(*) AS count FROM tasks AS run
+      WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'done'
+        AND NOT EXISTS (
+          SELECT 1 FROM run_terminal_authorizations AS authorization
+          WHERE authorization.record_key = run.record_key
+            AND authorization.kind = 'done'
+        )
+    `,
+  },
+  {
+    name: "results-bind-terminal-authorization",
+    sql: `
+      SELECT count(*) AS count FROM run_results AS result
+      LEFT JOIN run_terminal_authorizations AS authorization
+        ON authorization.record_key = result.record_key
+      WHERE authorization.record_key IS NULL
+        OR authorization.kind IS NOT 'done'
+        OR json_extract(authorization.record_json, '$.resultDigest') IS NOT result.result_digest
+    `,
+  },
+  {
+    name: "terminal-outbox-binds-terminal-authorization",
+    sql: `
+      SELECT count(*) AS count FROM run_terminal_outbox AS outbox
+      LEFT JOIN run_terminal_authorizations AS authorization
+        ON authorization.record_key = outbox.run_id
+      WHERE authorization.record_key IS NULL
+        OR authorization.kind IS NOT 'done'
+        OR json_extract(authorization.record_json, '$.outboxId') IS NOT outbox.record_key
+    `,
+  },
+  {
+    name: "terminal-authorization-binds-exact-terminal-authority",
+    sql: `
+      SELECT count(*) AS count FROM run_terminal_authorizations AS authorization
+      LEFT JOIN tasks AS run ON run.record_key = authorization.record_key
+      LEFT JOIN failures AS failure
+        ON failure.run_id = authorization.record_key
+          AND failure.record_key = json_extract(authorization.record_json, '$.failureId')
+      LEFT JOIN run_results AS result ON result.record_key = authorization.record_key
+      LEFT JOIN run_terminal_outbox AS outbox
+        ON outbox.run_id = authorization.record_key
+          AND outbox.record_key = json_extract(authorization.record_json, '$.outboxId')
+      WHERE run.record_key IS NULL
+        OR json_extract(authorization.record_json, '$.workflowId')
+          IS NOT json_extract(run.record_json, '$.envelope.workflow')
+        OR json_extract(authorization.record_json, '$.attempt')
+          IS NOT json_extract(run.record_json, '$.envelope.attempt')
+        OR json_extract(authorization.record_json, '$.descriptorVersion')
+          IS NOT json_extract(run.record_json, '$.envelope.descriptorVersion')
+        OR json_extract(authorization.record_json, '$.contractFingerprint')
+          IS NOT json_extract(run.record_json, '$.envelope.contractFingerprint')
+        OR (authorization.kind = 'failed' AND (
+          json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'failed'
+          OR failure.record_key IS NULL
+        ))
+        OR (authorization.kind = 'done' AND (
+          json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'done'
+          OR result.record_key IS NULL
+          OR json_extract(authorization.record_json, '$.resultDigest') IS NOT result.result_digest
+          OR outbox.record_key IS NULL
+        ))
     `,
   },
   {
@@ -799,14 +915,30 @@ export class AuthorityDatabase implements Disposable {
     return this.#withTransaction("projection", () => work(this.projections));
   }
 
-  terminalizeFailure(input: unknown): FailureTerminalizationReport {
+  terminalizeFailure(descriptor: AnyWorkflowDescriptor, input: unknown): FailureTerminalizationReport {
     const request = FailureTerminalizationRequestSchema.parse(input);
+    descriptorRuntimeNodes(descriptor);
     return this.withAuthorityTransaction(() => {
       const current = this.#readRunRow(request.failure.runId);
       if (current === undefined) throw new Error(`run ${request.failure.runId} does not exist`);
-      this.#assertFailureMatchesRun(request.failure, current);
+      this.#assertFailureMatchesRun(request.failure, current, descriptor);
+      this.#assertTerminalAuthorizationMatchesRun(request.authorization, current);
+      const existingAuthorization = this.#readRecord(
+        "run_terminal_authorizations",
+        request.failure.runId,
+        TerminalAuthorizationRecordSchema,
+      );
       const existing = this.#readRecord("failures", request.failure.failureId, FailureRecordSchema);
-      if (existing !== undefined) {
+      if (existingAuthorization !== undefined || existing !== undefined) {
+        if (existingAuthorization === undefined || existing === undefined) {
+          throw new Error(`run ${request.failure.runId} has a partial failure terminal settlement`);
+        }
+        if (canonicalJsonStringify(existingAuthorization)
+          !== canonicalJsonStringify(request.authorization)) {
+          throw new Error(
+            `run ${request.failure.runId} terminal authorization does not match the original pre-terminal claim`,
+          );
+        }
         if (canonicalJsonStringify(existing) !== canonicalJsonStringify(request.failure)) {
           throw new Error(`failure ${request.failure.failureId} already exists with different content`);
         }
@@ -816,59 +948,75 @@ export class AuthorityDatabase implements Disposable {
           || current.lifecycle.errorSummary !== request.failure.summary) {
           throw new Error(`failure ${request.failure.failureId} exists without its exact terminal run transition`);
         }
-        return FailureTerminalizationReportSchema.parse({ state: "replayed", failure: existing, run: current });
+        return FailureTerminalizationReportSchema.parse({
+          state: "replayed",
+          authorization: existingAuthorization,
+          failure: existing,
+          run: current,
+        });
       }
       if (current.lifecycle.state === "terminal") {
         throw new Error(`run ${request.failure.runId} is already terminal without failure ${request.failure.failureId}`);
       }
-      if (request.execution.kind === "node") {
-        if (current.lifecycle.state !== "running"
-          || current.lifecycle.currentNodeId !== request.execution.nodeId) {
-          throw new Error(
-            `failure ${request.failure.failureId} names node ${request.execution.nodeId}, `
-            + `but run ${request.failure.runId} is not executing that node`,
-          );
-        }
-      }
-      this.#assertTerminalClaim(current, request.expectedVersion, request.claim);
+      this.#assertFailureWasCurrentExecution(request.failure, current);
+      this.#assertTerminalClaim(
+        current,
+        request.authorization.expectedVersion,
+        request.authorization.claim,
+      );
 
       const terminal = RunRecordSchema.parse({
         ...current,
         lifecycle: {
           state: "terminal",
           outcome: "failed",
-          endedAt: request.now,
+          endedAt: request.authorization.authorizedAt,
           failureId: request.failure.failureId,
           errorSummary: request.failure.summary,
         },
         version: current.version + 1,
-        updatedAt: request.now,
+        updatedAt: request.authorization.authorizedAt,
       });
       const violation = runTransitionViolation(current.lifecycle, terminal.lifecycle);
       if (violation !== undefined) throw new Error(`run ${request.failure.runId}: ${violation}`);
+      this.#insertTerminalAuthorization(request.authorization);
+      this.#terminalizationHooks?.afterFailureStorageStep?.("authorization");
       this.#insertFailure(request.failure);
       this.#terminalizationHooks?.afterFailureStorageStep?.("failure");
       this.#writeRunRow(terminal, "update");
       this.#terminalizationHooks?.afterFailureStorageStep?.("run");
       return FailureTerminalizationReportSchema.parse({
         state: "applied",
+        authorization: request.authorization,
         failure: request.failure,
         run: terminal,
       });
     });
   }
 
-  terminalizeSuccess(input: unknown): SuccessTerminalizationReport {
+  terminalizeSuccess(input: unknown, factoryAuthorization?: object): SuccessTerminalizationReport {
     const request = SuccessTerminalizationRequestSchema.parse(input);
     return this.withAuthorityTransaction(() => {
       const current = this.#readRunRow(request.result.runId);
       if (current === undefined) throw new Error(`run ${request.result.runId} does not exist`);
       this.#assertResultMatchesRun(request.result, request.outbox, current);
+      this.#assertTerminalAuthorizationMatchesRun(request.authorization, current);
+      const existingAuthorization = this.#readRecord(
+        "run_terminal_authorizations",
+        request.result.runId,
+        TerminalAuthorizationRecordSchema,
+      );
       const existingResult = this.#readRecord("run_results", request.result.runId, RunResultRecordSchema);
       const existingOutbox = this.#findRunTerminalOutboxByRun(request.result.runId);
-      if (existingResult !== undefined || existingOutbox !== undefined) {
-        if (existingResult === undefined || existingOutbox === undefined) {
-          throw new Error(`run ${request.result.runId} has a partial terminal result/outbox settlement`);
+      if (existingAuthorization !== undefined || existingResult !== undefined || existingOutbox !== undefined) {
+        if (existingAuthorization === undefined || existingResult === undefined || existingOutbox === undefined) {
+          throw new Error(`run ${request.result.runId} has a partial terminal authorization/result/outbox settlement`);
+        }
+        if (canonicalJsonStringify(existingAuthorization)
+          !== canonicalJsonStringify(request.authorization)) {
+          throw new Error(
+            `run ${request.result.runId} terminal authorization does not match the original pre-terminal claim`,
+          );
         }
         if (canonicalJsonStringify(existingResult) !== canonicalJsonStringify(request.result)) {
           throw new Error(`run result ${request.result.runId} already exists with different content`);
@@ -881,6 +1029,7 @@ export class AuthorityDatabase implements Disposable {
         }
         return SuccessTerminalizationReportSchema.parse({
           state: "replayed",
+          authorization: existingAuthorization,
           result: existingResult,
           outbox: existingOutbox,
           run: current,
@@ -892,16 +1041,28 @@ export class AuthorityDatabase implements Disposable {
       if (current.lifecycle.state !== "running") {
         throw new Error(`run ${request.result.runId} is ${current.lifecycle.state}; only running may finish done`);
       }
-      this.#assertTerminalClaim(current, request.expectedVersion, request.claim);
+      assertWorkflowRunResultAuthorization(factoryAuthorization, request.result, current);
+      this.#assertStoredTerminalDependencies(request.result, current);
+      this.#assertTerminalClaim(
+        current,
+        request.authorization.expectedVersion,
+        request.authorization.claim,
+      );
       const terminal = RunRecordSchema.parse({
         ...current,
-        lifecycle: { state: "terminal", outcome: "done", endedAt: request.now },
+        lifecycle: {
+          state: "terminal",
+          outcome: "done",
+          endedAt: request.authorization.authorizedAt,
+        },
         version: current.version + 1,
-        updatedAt: request.now,
+        updatedAt: request.authorization.authorizedAt,
       });
       const violation = runTransitionViolation(current.lifecycle, terminal.lifecycle);
       if (violation !== undefined) throw new Error(`run ${request.result.runId}: ${violation}`);
 
+      this.#insertTerminalAuthorization(request.authorization);
+      this.#terminalizationHooks?.afterSuccessStorageStep?.("authorization");
       this.#insertRunResult(request.result);
       this.#terminalizationHooks?.afterSuccessStorageStep?.("result");
       this.#insertRunTerminalOutbox(request.outbox);
@@ -910,6 +1071,7 @@ export class AuthorityDatabase implements Disposable {
       this.#terminalizationHooks?.afterSuccessStorageStep?.("run");
       return SuccessTerminalizationReportSchema.parse({
         state: "applied",
+        authorization: request.authorization,
         result: request.result,
         outbox: request.outbox,
         run: terminal,
@@ -994,13 +1156,72 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
-  #assertFailureMatchesRun(failure: FailureRecord, current: RunRecord): void {
+  #assertFailureMatchesRun(
+    failure: FailureRecord,
+    current: RunRecord,
+    descriptor: AnyWorkflowDescriptor,
+  ): void {
     const envelope = current.envelope;
     if (failure.runId !== envelope.runId
       || failure.traceId !== envelope.traceId
       || failure.attempt !== envelope.attempt
       || failure.workflowId !== envelope.workflow) {
       throw new Error(`failure ${failure.failureId} identity does not match current run ${envelope.runId}`);
+    }
+    if (descriptor.id !== envelope.workflow
+      || descriptor.version !== envelope.descriptorVersion
+      || descriptor.contractFingerprint !== envelope.contractFingerprint) {
+      throw new Error(`failure ${failure.failureId} descriptor does not match current run ${envelope.runId}`);
+    }
+    if (failure.nodeId === undefined) {
+      if (failure.taskId !== undefined) {
+        throw new Error(`failure ${failure.failureId} carries task ${failure.taskId} without a node`);
+      }
+      return;
+    }
+    const node = descriptorRuntimeNodes(descriptor).find(({ id }) => id === failure.nodeId);
+    if (node === undefined) {
+      throw new Error(`failure ${failure.failureId} names node ${failure.nodeId} absent from descriptor`);
+    }
+    const allowedTaskIds = node.kind === "task"
+      ? [node.uses.id]
+      : node.kind === "transaction" ? [node.prepare.uses.id, node.commit.uses.id] : [];
+    if (allowedTaskIds.length === 0 && failure.taskId !== undefined) {
+      throw new Error(`failure ${failure.failureId} node ${failure.nodeId} owns no task ${failure.taskId}`);
+    }
+    if (allowedTaskIds.length > 0
+      && (failure.taskId === undefined || !allowedTaskIds.includes(failure.taskId))) {
+      throw new Error(
+        `failure ${failure.failureId} task ${failure.taskId ?? "absent"} does not match `
+        + `descriptor node ${failure.nodeId} (${allowedTaskIds.join(" or ")})`,
+      );
+    }
+  }
+
+  #assertFailureWasCurrentExecution(failure: FailureRecord, current: RunRecord): void {
+    if (failure.nodeId === undefined) return;
+    if (current.lifecycle.state !== "running"
+      || current.lifecycle.currentNodeId !== failure.nodeId) {
+      throw new Error(
+        `failure ${failure.failureId} names node ${failure.nodeId}, `
+        + `but run ${failure.runId} is not executing that node`,
+      );
+    }
+  }
+
+  #assertTerminalAuthorizationMatchesRun(
+    authorization: TerminalAuthorizationRecord,
+    current: RunRecord,
+  ): void {
+    const envelope = current.envelope;
+    if (authorization.runId !== envelope.runId
+      || authorization.workflowId !== envelope.workflow
+      || authorization.attempt !== envelope.attempt
+      || authorization.descriptorVersion !== envelope.descriptorVersion
+      || authorization.contractFingerprint !== envelope.contractFingerprint) {
+      throw new Error(
+        `terminal authorization for ${authorization.runId} does not match current run ${envelope.runId}`,
+      );
     }
   }
 
@@ -1026,6 +1247,72 @@ export class AuthorityDatabase implements Disposable {
       || outbox.projection.state !== "pending") {
       throw new Error(`run terminal outbox ${outbox.outboxId} does not bind the exact result for ${result.runId}`);
     }
+  }
+
+  #assertStoredTerminalDependencies(result: RunResultRecord, current: RunRecord): void {
+    for (const dependency of result.dependencies) {
+      if (dependency.state === "not-run") {
+        const currentAttemptCheckpoint = this.#readRecord(
+          "run_checkpoints",
+          checkpointLookupKey(
+            result.workflowId,
+            current.envelope.itemId,
+            dependency.nodeId,
+            result.attempt,
+          ),
+          RunCheckpointRecordSchema,
+        );
+        if (currentAttemptCheckpoint !== undefined) {
+          throw new Error(
+            `terminal dependency ${dependency.nodeId} is marked ${dependency.reason} `
+            + "but has a stored checkpoint for the terminal attempt",
+          );
+        }
+        continue;
+      }
+      const stored = this.#readRecord(
+        "run_checkpoints",
+        checkpointLookupKey(
+          dependency.checkpoint.workflowId,
+          dependency.checkpoint.itemId,
+          dependency.nodeId,
+          dependency.checkpoint.attempt,
+        ),
+        RunCheckpointRecordSchema,
+      );
+      if (stored === undefined) {
+        throw new Error(`terminal dependency ${dependency.nodeId} has no exact stored checkpoint`);
+      }
+      if (stored.runId !== dependency.checkpoint.runId
+        || stored.output.schemaHash !== dependency.outputSchemaHash
+        || stored.descriptorVersion !== dependency.descriptorVersion
+        || stored.contractFingerprint !== dependency.contractFingerprint
+        || stored.implFingerprint !== dependency.implFingerprint
+        || deriveCheckpointOutputDigest(stored.output) !== dependency.outputDigest
+        || deriveCheckpointProvenanceDigest(stored.provenance) !== dependency.provenanceDigest) {
+        throw new Error(`terminal dependency ${dependency.nodeId} does not match its exact stored checkpoint`);
+      }
+    }
+  }
+
+  #insertTerminalAuthorization(record: TerminalAuthorizationRecord): void {
+    const json = canonicalJsonStringify(record);
+    this.#authorityWrite("run_terminal_authorizations", () => {
+      const result = this.#database.prepare(`
+        INSERT INTO run_terminal_authorizations
+          (record_key, kind, expected_version, worker_id, claim_generation, record_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        record.runId,
+        record.kind,
+        record.expectedVersion,
+        record.claim.workerId,
+        record.claim.claimGeneration,
+        json,
+        record.authorizedAt,
+      );
+      return { result: undefined, changes: sqliteChanges(result.changes) };
+    });
   }
 
   #insertFailure(record: FailureRecord): void {
@@ -1279,6 +1566,13 @@ export class AuthorityDatabase implements Disposable {
 
     return Object.freeze({
       runs: this.#buildRunRepository(),
+      terminalAuthorizations: Object.freeze({
+        get: (runId: string) => this.#readRecord(
+          "run_terminal_authorizations",
+          RunIdSchema.parse(runId),
+          TerminalAuthorizationRecordSchema,
+        ),
+      }),
       failures: Object.freeze({
         get: (failureId: string) => this.#readRecord("failures", failureId, FailureRecordSchema),
         listByRun: (runId: string) => {

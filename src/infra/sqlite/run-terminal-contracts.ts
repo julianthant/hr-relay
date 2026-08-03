@@ -1,40 +1,26 @@
 /** Strict inputs and reports for D110/D114's composite terminal mutations. */
 import { z } from "zod";
-import { IsoInstantSchema, NodeIdSchema, PositiveIntSchema, TaskIdSchema } from "../../domain/ids.js";
 import { RunRecordSchema } from "../../domain/run/record.js";
 import { RunResultRecordSchema } from "../../domain/run/result.js";
+import {
+  FailureTerminalAuthorizationRecordSchema,
+  SuccessTerminalAuthorizationRecordSchema,
+} from "../../domain/run/terminal-authorization.js";
 import { RunTerminalOutboxRecordSchema } from "../../domain/run/terminal-outbox.js";
 import { FailureRecordSchema } from "../../domain/trust/failure.js";
-import { RunClaimTokenSchema } from "./run-store-contracts.js";
-
-export const FailureExecutionIdentitySchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("run") }),
-  z.strictObject({
-    kind: z.literal("node"),
-    nodeId: NodeIdSchema,
-    taskId: TaskIdSchema.optional(),
-  }),
-]);
 
 export const FailureTerminalizationRequestSchema = z.strictObject({
   failure: FailureRecordSchema,
-  execution: FailureExecutionIdentitySchema,
-  expectedVersion: PositiveIntSchema,
-  claim: RunClaimTokenSchema,
-  now: IsoInstantSchema,
+  authorization: FailureTerminalAuthorizationRecordSchema,
 }).superRefine((request, context) => {
-  const { failure, execution } = request;
-  if (execution.kind === "run") {
-    if (failure.nodeId !== undefined || failure.taskId !== undefined) {
-      context.addIssue({ code: "custom", path: ["execution"], message: "run-level failure cannot carry node or task identity" });
-    }
-    return;
-  }
-  if (failure.nodeId !== execution.nodeId || failure.taskId !== execution.taskId) {
+  if (request.failure.runId !== request.authorization.runId
+    || request.failure.workflowId !== request.authorization.workflowId
+    || request.failure.attempt !== request.authorization.attempt
+    || request.failure.failureId !== request.authorization.failureId) {
     context.addIssue({
       code: "custom",
-      path: ["execution"],
-      message: "failure node/task identity must equal the current execution identity",
+      path: ["authorization"],
+      message: "failure authorization must bind the exact failure/run identity",
     });
   }
 });
@@ -42,9 +28,7 @@ export const FailureTerminalizationRequestSchema = z.strictObject({
 export const SuccessTerminalizationRequestSchema = z.strictObject({
   result: RunResultRecordSchema,
   outbox: RunTerminalOutboxRecordSchema,
-  expectedVersion: PositiveIntSchema,
-  claim: RunClaimTokenSchema,
-  now: IsoInstantSchema,
+  authorization: SuccessTerminalAuthorizationRecordSchema,
 }).superRefine((request, context) => {
   if (request.outbox.projection.state !== "pending") {
     context.addIssue({
@@ -53,23 +37,38 @@ export const SuccessTerminalizationRequestSchema = z.strictObject({
       message: "a successful terminalization must create its outbox pending",
     });
   }
+  if (request.result.runId !== request.authorization.runId
+    || request.result.workflowId !== request.authorization.workflowId
+    || request.result.attempt !== request.authorization.attempt
+    || request.result.descriptorVersion !== request.authorization.descriptorVersion
+    || request.result.contractFingerprint !== request.authorization.contractFingerprint
+    || request.result.resultDigest !== request.authorization.resultDigest
+    || request.outbox.outboxId !== request.authorization.outboxId) {
+    context.addIssue({
+      code: "custom",
+      path: ["authorization"],
+      message: "success authorization must bind the exact result and outbox identity",
+    });
+  }
 });
 
 export const FailureTerminalizationReportSchema = z.strictObject({
   state: z.enum(["applied", "replayed"]),
+  authorization: FailureTerminalAuthorizationRecordSchema,
   failure: FailureRecordSchema,
   run: RunRecordSchema,
 });
 
 export const SuccessTerminalizationReportSchema = z.strictObject({
   state: z.enum(["applied", "replayed"]),
+  authorization: SuccessTerminalAuthorizationRecordSchema,
   result: RunResultRecordSchema,
   outbox: RunTerminalOutboxRecordSchema,
   run: RunRecordSchema,
 });
 
-export const FailureTerminalizationStorageStepSchema = z.enum(["failure", "run"]);
-export const SuccessTerminalizationStorageStepSchema = z.enum(["result", "outbox", "run"]);
+export const FailureTerminalizationStorageStepSchema = z.enum(["authorization", "failure", "run"]);
+export const SuccessTerminalizationStorageStepSchema = z.enum(["authorization", "result", "outbox", "run"]);
 
 export type FailureTerminalizationReport = z.infer<typeof FailureTerminalizationReportSchema>;
 export type SuccessTerminalizationReport = z.infer<typeof SuccessTerminalizationReportSchema>;
