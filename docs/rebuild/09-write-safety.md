@@ -5,7 +5,8 @@ whole-plan/legacy-code review; amended 2026-07-26
 (Round 8), 2026-07-31 (Round 10 — ordered actor-attributed ledger now; hash/tail tamper evidence
 deferred by D79), and 2026-07-31 (Round 11 — standalone rebuild repo, D93: every path below is
 inside the rebuild repo, so rebuild code sits at plain `src/` and the fence/authority database is
-the rebuild repo's own `state.db`).** Round-8 amendments: **§13 OQ1 is RESOLVED** — the 2026-07-23 live probe proved Kuali
+the rebuild repo's own `state.db`), and 2026-08-02 (Round 18 — the complete Phase-1f beat-⑦
+transaction and recovery-before-requeue ordering are ratified).** Round-8 amendments: **§13 OQ1 is RESOLVED** — the 2026-07-23 live probe proved Kuali
 `save-verify` is buildable and produced four binding constraints on it — **OQ2 (OnBase) is restated
 as blocked on a real upload target**, and **§14 designs the identity-approval gate** (D77
 ALWAYS-GATE), the control that guards the wrong-**person** class this doc's fence explicitly cannot.
@@ -106,6 +107,26 @@ capability, browser click, live probe, positive-recovery service, parked-intent 
 sequencer/projector, route, UI, or external HR transaction exists yet. The complete kernel write
 sequence remains item 1f; ordered ledger/span projection remains 1g-spine; controlled external-write
 proof remains Phase 2. Phase 1d is next, and Phase 1 is not complete.
+
+## Phase 1f write-sequencer ratification (2026-08-02)
+
+Phase 1f may reuse Phase 1c's narrow `commitWriteAttempt` storage primitive, but that four-row
+primitive is not itself the kernel's beat ⑦. The write sequencer enters one outer authority
+transaction, revalidates the current run claim generation and intent/attempt generation, invokes
+the primitive, writes the schema-valid `TransactionOutcome` checkpoint, inserts every required
+ledger and same-trace terminal-span/generic-outcome outbox, attaches a real evidence-receipt ref
+when the 2g receipt service is active, and transitions the run. The transaction commits once or
+not at all. A missing pre-2g receipt ref is represented as absent and never fabricated; after 2g
+activates its terminal-receipt invariant, a terminal transition requiring that receipt cannot
+commit without it. Crash injection after every substep must leave either the entire accepted
+bundle or the prior `attempting` state with no checkpoint/run/outbox advance.
+
+Recovery has scheduling priority over claim expiry. A dead/expired worker claim whose run owns an
+unfinished `attempting` intent is routed to the probe/settlement state machine below before any
+generic interrupted→queued transition. Until recovery produces validated present proof, validated
+safe-to-retry/confirmed-absent authority, or a parked operator state, ordinary workers cannot claim
+that run. Failure to read or reconcile intent authority is a loud park/refusal, never evidence that
+no write is unfinished.
 
 ---
 
@@ -429,7 +450,7 @@ flowchart TD
 | **④ Fence** | Check `probeToFenceMaxMs` **and** that `WriteBindingProof` was created after prepare for this run/attempt/lease. INSERT the unseen key or CAS its `retryable` row to `attempting`, incrementing generation. Store the parsed binding proof and enqueue `write.attempting` in the same SQLite transaction. The permanent primary key is the same-key mutex. | durable intent + binding proof + span outbox | elapsed proof or binding mismatch ⇒ no click; CAS conflict ⇒ discard staged page/no click; no generic retry after a won fence |
 | **⑤ External commit** | The external-write helper requires the unforgeable `MutationCapability` bound to the open intent generation **and binding-proof digest**. | live HR side effect | missing/mismatched fence capability or binding digest ⇒ throw before click |
 | **⑥ Capture / verify** | Extract `proofFromOutput` or run the verify read on the retained transaction page; every completion kind parses through its `proofSchema`. | proof remains in memory | absent/ambiguous/unknown/throw/schema failure parks; no arm can return unvalidated proof |
-| **⑦ Atomic durable commit** | ONE SQLite transaction marks the intent committed and writes the schema-valid `TransactionOutcome` checkpoint, immutable ledger outbox row (including binding-proof digest and the exact fenced subject/explicit absence), same-trace terminal-span outbox row, evidence receipt ref, and run state. JSONL ledger/span projectors run afterward. | all authorities/outboxes durable together | transaction failure leaves intent attempting and enters recovery; trace/subject mismatch fails before mutation; projector lag is repairable and never changes write outcome |
+| **⑦ Atomic durable commit** | ONE SQLite transaction validates the current claim+intent generations, marks the intent/attempt committed, writes the schema-valid `TransactionOutcome` checkpoint, immutable ledger outbox row (including binding-proof digest and the exact fenced subject/explicit absence), same-trace terminal-span/generic-outcome outbox row, any real evidence-receipt ref required by the active trust service, and the run transition. JSONL ledger/span projectors run afterward. | all authorities/outboxes durable together | transaction failure leaves intent attempting and enters recovery; trace/subject/claim mismatch fails before mutation; projector lag is repairable and never changes write outcome |
 
 **Ordering invariant:** stable commit input and live probe exist before page preparation; a fresh
 binding proof follows successful preparation on the same lease; the fence transaction in ④
@@ -538,6 +559,10 @@ scans `write_intents` for the resuming `(workflow,item_id,step_id)`. If it finds
 normal resume proceed. A read node with no fence auto-resumes as today (worst case: a repeated
 read). This reads durable state from SQLite (system-of-record), never post-crash JSONL, mirroring
 oath-upload's SQLite-fast-path recovery (`handler.ts:427-429`).
+
+The same scan is mandatory on the expired-claim sweeper path. Claim expiry alone cannot move a run
+with an unfinished intent to the ordinary queue; recovery owns it first, and an authority-read
+failure keeps it unclaimable.
 
 ### 4.1 Parked-write resolution is typed and intent-scoped
 

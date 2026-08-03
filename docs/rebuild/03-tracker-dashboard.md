@@ -18,6 +18,9 @@ cutover contract (D88/D89), superseding D73 and the historical live-lift/scoped-
 config at `config/`, these plan docs still at `docs/rebuild/`. §5 therefore owns a **cross-repo
 runtime boundary**: isolation is physical, so the D88 guard machinery is retired and only
 operational separation stays gated.
+**Amended 2026-08-02 (Round 18):** Phase 1f ratifies planned-start consumption, the minimal
+failure/result authorities, the executable command-family boundary, and the complete atomic
+write-commit bundle; rich trust projections remain Phase 2g.
 
 ## Ownership (D1)
 
@@ -143,6 +146,47 @@ ledger/span projectors, HTTP routes, dashboard, and live-system wiring remain ow
 or Phase 2. In particular, Stage D does not implement 1f's probe→prepare→bind→click sequence or
 1g's outbox sequencing/projection; it makes the authority operations those later consumers must use
 atomic and fail-closed. Phase 1d is next.
+
+## Phase 1f authority and command ratification (2026-08-02)
+
+Phase 1f completes the authority semantics that the Phase-1c storage shell intentionally left
+open:
+
+- `start_plans` retains the exact raw submission/artifact refs, the once-parsed canonical input,
+  separate ingress and canonical schema hashes, canonical-input digest, descriptor/version/
+  contract/config fingerprints, config snapshot, resolved instances, match key/item id, proposed
+  run set, expiry, revision, and consumption state. `start-run` reads and revalidates this row, then
+  in **one authority transaction** records the command outcome, applies the descriptor's active-run
+  policy, marks the plan consumed, and creates every accepted run with its immutable envelope/input
+  snapshot. Any drift, expiry, spent-plan conflict, target lookup failure, or run insert failure
+  rolls back plan consumption, command application, supersession, and every proposed run. Replay of
+  the same `commandId` returns the recorded result; another command cannot consume a spent plan.
+- `failures` is a non-rebuildable authority family in 1f. Every failed task/run writes doc 12's
+  strict `FailureRecord` and stores its `failureId` with the failure transition; a display-safe span
+  summary is not a substitute. This is the minimum durable record/lookup path. Automatic diagnostic
+  bundles, receipts, search/explain, and rich dashboard projections remain 2g and do not get
+  fabricated placeholder refs in 1f.
+- `run_results` is a non-rebuildable authority family. One successful run writes the doc 02
+  `RunResultRecord` keyed by `runId`; the record's schema/result/dependency digests and the terminal
+  run transition/outbox commit together. A second identical write is idempotent; a different result
+  for the same run is corruption. Child joins read this authority rather than reconstructing output
+  from spans or checkpoints.
+- Beat ⑦ is one outer authority transaction over the current claim generation and intent
+  generation: mark intent/attempt committed, persist the schema-valid transaction-output
+  checkpoint, insert ledger and same-trace terminal-span/generic-outcome outboxes, attach any real
+  evidence-receipt ref already produced, and transition the run. Failure after any storage step
+  rolls back all of them and leaves the intent `attempting`; the Phase-1c four-row helper is a
+  storage primitive inside this complete bundle, not a separately committable terminal path.
+
+The runtime command kernel is exhaustive over D95's family/action union. Phase 1f activates
+`start-run`; worker/browser plan, spawn, stop, pause/resume, refresh, and reopen; run retry, cancel,
+priority bump, rename, hide/unhide, and typed write resolution; and gate resolution. `run`'s
+`edit-checkpoint` arm plus the `intake`, `settings`, `version-archive`, `notification`, and `capture`
+families remain schema-recognized but return
+`rejected{code:"capability-unavailable",message}` with zero authority side effects until their
+owning later milestone activates them. There is one exhaustive dispatcher and one durable command
+journal—no route may omit a union arm, throw an untyped “not implemented”, or install a second
+handler later.
 
 ---
 
@@ -589,14 +633,15 @@ owning merge/dedup heuristics (`mergeDisplayItems` collapse survives as a server
 
 - **System-of-record (NOT rebuildable and never deleted by projection/runtime row maintenance):**
   the task/claim store (tasks, leases,
-  dependencies, delegation manifests, commands, notifications, capture sessions/photo order/
-  finalization outboxes — doc 02 §5.7's checkpoint payloads,
+  dependencies, delegation manifests, commands, start plans, terminal run results, failures,
+  notifications, capture sessions/photo order/finalization outboxes — doc 02 §5.7's checkpoint payloads,
   §4.4's `ocr_approvals` manifests, and
   doc 09's permanent-key `write_intents`, `write_attempts`, and durable outbox, plus
   stable-keyed local `artifact_outbox`/sink-head rows). The system-of-record set is
-  "claims + checkpoint payloads + write authority/outboxes + local artifact projection
-  authority + in-progress capture/handoff authority."
-  Losing any of these loses claims, checkpoints, in-flight write fences, or accepted capture work — they have no JSONL
+  "planned/accepted run authority + claims + checkpoint/result/failure payloads + write
+  authority/outboxes + local artifact projection authority + in-progress capture/handoff
+  authority." Losing any of these loses accepted input, claims, resumable/terminal results,
+  structured failure truth, in-flight write fences, or accepted capture work — they have no JSONL
   double.
 - **Projection tables (rebuildable):** span-shaped read models (`spans`, `gates`, `notes`,
   `runs_view`) fed by one projector consuming only native rebuild spans.
@@ -749,6 +794,12 @@ none. `best-effort` writes a child command/result per requested target and retur
 applied/conflict/rejected vector; the UI may never collapse a partial result into “Done.” Bulk cancel
 defaults to `all-or-none`; bulk hide defaults to `best-effort`. There is no client loop whose last
 response overwrites earlier errors.
+
+For descriptor-driven starts, the Enqueue row above is reached only by consuming the server-issued
+`start_plan` described in the Phase-1f ratification. The command payload carries the plan id/version,
+not mutable input. The handler compares every bound fingerprint/hash and consumes the plan in the
+same transaction as active-run resolution and run creation; “plan consumed but no run” and “run
+created from an unconsumed/stale plan” are both invalid states.
 
 **D95 — command-family closure and the two meanings formerly called bump (2026-07-31).** Every
 command arm carries exactly one closed target family; an id valid for one family cannot be erased

@@ -18,6 +18,8 @@ the explorer is Phase-2-only and graph DSL/codegen remains cut.
 `hr-automation-rebuild` repo (rebuild code at plain `src/`), so copy-with-provenance records the
 legacy-repo commit hash alongside the source path/key and "no rebuilt module imports legacy code"
 is structural rather than guarded.
+**Amended 2026-08-02 (Round 18):** Phase 1f owns the minimal durable `FailureRecord` authority;
+Phase 2g still owns automatic bundles, receipts, explain/search, and rich operator projections.
 
 ## Ownership (D1)
 
@@ -322,6 +324,13 @@ export interface FailureRecord {
 The event stream carries `{ failureId, code, summary, transient }`; the full record lives in
 SQLite/diagnostic storage and is fetched on demand. Failure fingerprints power “same failure seen
 before” links without treating message text as identity.
+
+**Delivery boundary.** Phase 1f persists this exact strict record in non-rebuildable authority for
+every failed task/run and atomically associates its `failureId` with the failure transition. The
+minimum service can insert/read by id and detect conflicting replay; it does not synthesize a
+`diagnosticBundleId`. Phase 2g adds automatic bundle capture, evidence receipts, fingerprint search,
+`explain run`/`explain failure`, retention/pinning, and the rich dashboard projections over that
+same authority. There is no smaller Phase-1 failure schema and no Phase-2 replacement record.
 
 ### 2.2 Automatic diagnostic bundle
 

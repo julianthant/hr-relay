@@ -196,6 +196,26 @@ has exactly one implementation fingerprint, including a workflow mini-store unde
 closure. Missing, extra, stale-pending, or merely globally-bound-but-module-absent implementations
 all fail.
 
+### Phase 1f ingress and terminal-result ratification (2026-08-02)
+
+- A start plan is an immutable proposal over **both** representations of ingress: the exact raw
+  operator submission/artifact refs and the once-parsed canonical input snapshot. It binds the
+  ingress-schema hash, canonical-input-schema hash, canonical input digest, descriptor version and
+  contract fingerprint, config snapshot/fingerprint, resolved instances, derived match key/item id,
+  and proposed run set. Confirmation never reparses a client-resubmitted approximation. Doc 03's
+  start command consumes that exact plan and creates every accepted run in one authority
+  transaction; expiry, schema/config/descriptor drift, a spent token, or any enqueue-policy failure
+  rolls back consumption and all runs.
+- A successful workflow has one durable terminal result. The executor evaluates `result.derive`
+  only after every declared terminal dependency is durably resolved, parses the value through the
+  descriptor's exact result schema, and writes one immutable `RunResultRecord` atomically with the
+  successful terminal run transition and its terminal outbox. The record binds run/attempt,
+  workflow/descriptor version, result-schema hash, contract/config fingerprints, canonical result
+  JSON, and the exact dependency/checkpoint identities used to derive it. An awaited child reads
+  and reparses this record through the target workflow result schema; spans, tracker prose, a task
+  example, or an in-memory return value are never result authority. A failed/cancelled/partial run
+  has a typed terminal outcome but no fabricated successful result record.
+
 ---
 
 ## 0. Grounding — what exists today, why it hurts
@@ -920,8 +940,12 @@ executor; the broad runtime switch union is never fed back into descriptor/bind 
 
 ### 3.1 Task-authoring rule — navigation ownership (review 02 #9)
 
-**Every standalone read task owns its navigation and must run from a fresh system page.** A
-page-state-coupled write is represented differently:
+**Every standalone read task owns navigation from the worker session's verified neutral state.**
+It may reuse a healthy worker-owned context only after the prior callback completed its bounded
+neutral reset; it may never inherit another task's subject page or treat current page state as an
+input. Only an authored `SessionNeed.session:"fresh"` requires close-and-recreate before the node.
+Thus “owns navigation” means deterministic navigation from verified neutral state, not an implicit
+fresh browser for every read. A page-state-coupled write is represented differently:
 
 - A `transaction` node owns navigation and a single uninterrupted page/context lease.
 - Its prepare contract fills the form; its commit contract performs only the external write and
@@ -1263,6 +1287,13 @@ CREATE TABLE run_checkpoints (
 - The loader returns a discriminated `{ found: true, output, provenance } | { found: false,
   reason }` — no default parameter, no `?? {}` possible; the engine must branch.
 - Span events carry checkpoint summaries (node, fingerprints, byte size, provenance digest), never payloads.
+
+Successful terminal results are separate system-of-record records, not a special checkpoint. A
+`RunResultRecord` is written only by the executor's terminal-result path, in the same authority
+transaction as `done` and the terminal outbox; replay of that transaction is idempotent by `runId`
+and must reproduce the identical result digest. A different result for an existing run is
+corruption. Parent/delegation joins load this record by child `runId`, validate all recorded
+fingerprints and the child's exact result schema, and only then expose the typed child output.
 
 **Resume scope — explicit (D9).** The checkpoint/resume model covers **rows with a real daemon
 task only**: `single` rows and real `operation-member` rows. Explicitly excluded:

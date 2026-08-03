@@ -47,10 +47,13 @@ absent until 1f.
 
 ## Phase 1f worker-session runtime (2026-08-02)
 
-`WorkerSessionManager` now owns the callback-scoped driver lease for each `(worker, system)` pair.
+`WorkerSessionManager` now owns the callback-scoped driver lease for each
+`(worker, system, resolvedInstance, configFingerprint)` identity.
 The manager serializes use within that pair, performs a single authenticated start, and reuses the
-resource only when its instance, download, and exclusivity launch properties match the authored
-need. A clean callback must reset before release. A task failure, cancellation, or failed reset
+resource only when that complete identity plus its download and exclusivity launch properties
+match the authored need. A changed config fingerprint or resolved instance closes the old resource
+and creates a new one; it can never reuse a context authenticated/configured under another run
+snapshot. A clean callback must reset before release. A task failure, cancellation, or failed reset
 poison-closes the resource; a `fresh` need proves the old page/context (and OnBase identity lease)
 closed before the replacement emits `browser-session:start`.
 
@@ -158,6 +161,13 @@ export async function runWorker(config: WorkerConfig): Promise<void> {
   retry time.
 - `+ Add workers` chooses a workflow and a count. Starting 5 creates 5 independently owned workers
   and browser-session sets.
+- An expired claim is not ordinary requeue authority. Before the claim sweeper can transition an
+  interrupted run back to `queued`, it checks the authoritative write-intent set for the run's
+  workflow/item/node. Any unfinished `attempting` intent routes to doc 09 recovery first and keeps
+  the run unclaimable for normal execution. Only a schema-valid positive recovery completion or a
+  schema-valid safe-to-retry/confirmed-absent resolution may release it to the corresponding
+  terminal/new-generation path. An unavailable or inconsistent intent lookup parks/refuses; it
+  never means “no unfinished write.”
 
 ### 3.1 Dispatch and fairness
 
@@ -166,12 +176,21 @@ ahead of bulk members, but there is no reserved interactive lane. Across workflo
 chooses worker counts per workflow, and each worker claims only its workflow's rows. A large fan-out
 cannot consume another workflow's workers.
 
+Provider capacity is a separate admission domain, not a browser lane. Before a service task calls
+a remote provider, Phase 1f's generic capability admission service reserves the applicable
+concurrency/rate/daily-use/cost budget from the run's immutable config snapshot. If admission is not
+available, the kernel records the typed wait/unavailable reason and releases or reschedules with
+`not_before`; it does not keep a worker asleep and cannot fall through to the adapter. Phase 2h
+adds production pools and consumers over this core, not a second scheduler.
+
 ---
 
 ## 4. Browser-session behavior
 
 - Driver use is exclusive while held.
-- `release("clean")` navigates to the system's verified neutral reset state before reuse.
+- `release("clean")` navigates to the system's verified neutral reset state before reuse. The next
+  read owns navigation from that neutral state; neutral reuse is not reuse of the prior subject
+  page, and it is not a fresh context unless the authored need says `session:"fresh"`.
 - A failed reset, aborted Playwright call, subject mismatch, or `release("poisoned")` closes the page
   and session; the next need creates a fresh one.
 - A `session:"fresh"` boundary uses the same close proof before replacing the session.
@@ -241,6 +260,9 @@ authenticated context.
 | Parallelism silently serializes | spawn test starts N workers and proves N distinct worker ids/browser owners |
 | Fresh-session request is ignored | descriptor scenario asserts close proof precedes new-session start and node execution |
 | Session boundary is inferred | descriptor projection test proves only authored `session:"fresh"` produces a boundary |
+| Config/instance drift crosses runs | session-manager test proves reuse requires exact `(worker,system,resolvedInstance,configFingerprint)` identity and closes before replacement |
+| Expired claim bypasses unfinished write recovery | claim-sweep crash fixture proves an `attempting` intent reaches recovery before any queued/claimable transition |
+| Provider exhaustion bypasses admission | deterministic budget fixtures prove zero adapter calls and no sleeping worker when capability admission is unavailable |
 | Dirty page crosses people | alternating-subject scenario proves reset-or-close + subject observation before write fence |
 | Raw page APIs bypass ownership | imports/newPage are restricted to driver/session internals |
 | Fixed sleeps return | wait-for-timeout ratchet + span sleep budget |
