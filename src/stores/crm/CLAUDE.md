@@ -1,0 +1,35 @@
+# CRM store
+
+ACT CRM onboarding reads for Person Lookup. Raw Playwright access and locator recipes stay under
+`driver/`; tasks import only the task-safe declaration at `../declaration.ts` and the schema-first
+domain driver contract.
+
+## Person Lookup invariants
+
+- `ONB_SearchOnboardings?q=` is fuzzy. A search row is never identity proof.
+- Both reads use the same resolver: search by EID, open every plausible record, and accept only an
+  exact displayed `UCPath Employee ID`. The optional name fallback keeps the same exact-EID gate.
+- Zero exact displayed-EID records is a genuine absence; more than one is ambiguous and throws.
+- Search data rows have exactly five direct `td` cells. The one live-verified two-cell auxiliary row
+  is non-data; any other shape, missing record link, wrong host/path, or missing field selector
+  throws.
+- `invitedOn` is the `ProcessStageText → Offer Letter Sent` history transition; `startsOn` is the
+  record's `First Day of Service (Effective Date)`; `completedOn` is the
+  `ProcessStageText → Completed` transition. `Date Signed` is not completion.
+- Blank dates become absence only after the record's displayed EID and the exact page state have
+  been verified. Missing selectors and malformed nonblank dates throw.
+
+## Provenance
+
+Ported from legacy commit `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc`:
+
+- `src/systems/crm/onboarding-records.ts` — blob `71e0195f358f7e27afbb5cb43f8e6e390c8918e8`
+- `src/workflows/person-lookup/crm-search.ts` — blob `2ef1508b05c77a56ebd0b134e9fbcb6204ca3265`
+- `src/systems/crm/extract.ts` — blob `46028e7ad1c40adc6d3d367c2fd727bc30a8f872`
+- `src/systems/crm/history.ts` — blob `20b97bdfe25f01fc2569afdf4e9d2ecb33057ba7`
+- `src/systems/crm/selectors.ts` — blob `e63530d375478dd330d07460c740f2027dbd7bdd`
+- `src/infra/auth/login.ts` — blob `c8e6656de394b52aebd174e2a243c9464a1678e6`
+
+## Lessons learned
+
+- **2026-08-02: CRM fuzzy search must terminate in displayed-EID proof, and history owns invitation/completion.** Fresh read-only Playwright verification showed the broad result-row recipe includes one two-cell auxiliary row around exact five-cell data rows. The record page's verified Visualforce `th → following td` recipe resolved first name, last name, UCPath EID, and First Day exactly once. The history page contained one five-`th` header and five-`td` transition rows; only the New Value column of `ProcessStageText` is authoritative. Do not reintroduce the unverified broader field fallbacks, treat `Date Signed` as completion, or turn malformed selector/date states into blanks.

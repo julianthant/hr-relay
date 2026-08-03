@@ -10,6 +10,11 @@ import {
   renderSystemUiCatalogMarkdown,
 } from "../../../src/stores/ucpath/driver/catalog.js";
 import {
+  CRM_UI_REGISTRY,
+  auditCrmUiEvidenceBindings,
+  auditCrmUiRegistry,
+} from "../../../src/stores/crm/driver/ui-registry.js";
+import {
   UCPATH_UI_REGISTRY,
   auditUcpathUiEvidenceBindings,
   auditUcpathUiRegistry,
@@ -57,13 +62,49 @@ function evidenceBindingInput(): unknown {
   };
 }
 
+function crmEvidenceBindingInput(): unknown {
+  const portMap = LegacySelectorPortMapSchema.parse(readJson("config/ports/legacy-selector-port-map.json"));
+  return {
+    evidenceByRef: {
+      "evidence/ui/crm/onboarding.fixture.json": readJson("evidence/ui/crm/onboarding.fixture.json"),
+      "evidence/ui/crm/onboarding.live.json": readJson("evidence/ui/crm/onboarding.live.json"),
+    },
+    portBindings: portMap.entries.flatMap((entry) =>
+      entry.system === "crm" && entry.disposition === "ported"
+        ? [{
+            system: entry.system,
+            legacyKey: entry.legacyKey,
+            disposition: entry.disposition,
+            semanticKind: entry.semanticKind,
+            canonicalId: entry.canonicalId,
+            evidence: entry.evidence,
+          }]
+        : []),
+  };
+}
+
 describe("semantic UI registry architecture", () => {
   it("keeps the registry closed, dependency-complete, collision-free, and scenario-backed", () => {
     assert.deepEqual(auditUcpathUiRegistry(), []);
+    assert.deepEqual(auditCrmUiRegistry(), []);
     assert.equal(UCPATH_UI_REGISTRY.screens.length > 0, true);
     assert.equal(UCPATH_UI_REGISTRY.elements.length > 0, true);
     assert.equal(UCPATH_UI_REGISTRY.states.length > 0, true);
     assert.equal(UCPATH_UI_REGISTRY.observations.length > 0, true);
+    assert.equal(CRM_UI_REGISTRY.elements.length, 5);
+    assert.equal(CRM_UI_REGISTRY.states.length, 4);
+    assert.equal(CRM_UI_REGISTRY.observations.length, 1);
+    const ids = [
+      ...UCPATH_UI_REGISTRY.screens,
+      ...UCPATH_UI_REGISTRY.elements,
+      ...UCPATH_UI_REGISTRY.states,
+      ...UCPATH_UI_REGISTRY.observations,
+      ...CRM_UI_REGISTRY.screens,
+      ...CRM_UI_REGISTRY.elements,
+      ...CRM_UI_REGISTRY.states,
+      ...CRM_UI_REGISTRY.observations,
+    ].map(({ id }) => id);
+    assert.equal(new Set(ids).size, ids.length);
   });
 
   it("keeps generated safe catalogs byte-fresh", () => {
@@ -72,6 +113,10 @@ describe("semantic UI registry architecture", () => {
     assert.equal(
       readFileSync(resolve(REPO_ROOT, "src/stores/ucpath/UI-CATALOG.md"), "utf8"),
       renderSystemUiCatalogMarkdown(catalog, "ucpath"),
+    );
+    assert.equal(
+      readFileSync(resolve(REPO_ROOT, "src/stores/crm/UI-CATALOG.md"), "utf8"),
+      renderSystemUiCatalogMarkdown(catalog, "crm"),
     );
   });
 
@@ -97,6 +142,7 @@ describe("semantic UI registry architecture", () => {
 
   it("binds every published fact to exact evidence and exact port-map provenance", () => {
     assert.deepEqual(auditUcpathUiEvidenceBindings(evidenceBindingInput()), []);
+    assert.deepEqual(auditCrmUiEvidenceBindings(crmEvidenceBindingInput()), []);
 
     const wrongScreen = structuredClone(evidenceBindingInput()) as {
       evidenceByRef: Record<string, { assertions: { screen: string }[] }>;
@@ -121,6 +167,17 @@ describe("semantic UI registry architecture", () => {
     if (!portAssertion) throw new Error("fixture evidence assertion missing");
     portAssertion.portMapRows = [{ system: "ucpath", legacyKey: "personOrgSummary.personIdValue()" }];
     assert.match(auditUcpathUiEvidenceBindings(wrongPortRow).join("\n"), /assertion port-map rows drifted/);
+  });
+
+  it("rejects CRM evidence whose displayed-EID fact is rebound to a search-row port", () => {
+    const wrongPortRow = structuredClone(crmEvidenceBindingInput()) as {
+      evidenceByRef: Record<string, { assertions: { semanticId: string; portMapRows: { system: string; legacyKey: string }[] }[] }>;
+    };
+    const assertion = wrongPortRow.evidenceByRef["evidence/ui/crm/onboarding.fixture.json"]
+      ?.assertions.find(({ semanticId }) => semanticId === "crm.onboarding.displayed-eid");
+    if (assertion === undefined) throw new Error("CRM displayed-EID fixture assertion missing");
+    assertion.portMapRows = [{ system: "crm", legacyKey: "search.resultRows()" }];
+    assert.match(auditCrmUiEvidenceBindings(wrongPortRow).join("\n"), /assertion port-map rows drifted/);
   });
 
   it("catches duplicate ids, search collisions, unresolved dependencies, and cross-system entries", () => {

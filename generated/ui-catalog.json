@@ -154,6 +154,327 @@
         "subject",
         "page-state"
       ]
+    },
+    {
+      "system": "crm",
+      "label": "CRM onboarding search results",
+      "searchTerms": [
+        "crm onboarding search screen"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json",
+        "scenarios": [
+          "ui/crm-onboarding-search-results"
+        ]
+      },
+      "taskUses": [
+        "crm/read-onboarding-record",
+        "crm/read-onboarding-dates"
+      ],
+      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "kind": "screen",
+      "id": "crm.onboarding.search"
+    },
+    {
+      "system": "crm",
+      "label": "CRM onboarding record",
+      "searchTerms": [
+        "crm onboarding record screen"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json",
+        "scenarios": [
+          "ui/crm-onboarding-record-identity"
+        ]
+      },
+      "taskUses": [
+        "crm/read-onboarding-record",
+        "crm/read-onboarding-dates"
+      ],
+      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "kind": "screen",
+      "id": "crm.onboarding.record"
+    },
+    {
+      "system": "crm",
+      "label": "CRM onboarding history",
+      "searchTerms": [
+        "crm onboarding history screen"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json",
+        "scenarios": [
+          "ui/crm-onboarding-history-transitions"
+        ]
+      },
+      "taskUses": [
+        "crm/read-onboarding-record",
+        "crm/read-onboarding-dates"
+      ],
+      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "kind": "screen",
+      "id": "crm.onboarding.history"
+    },
+    {
+      "system": "crm",
+      "label": "Onboarding search result rows",
+      "searchTerms": [
+        "crm onboarding result rows"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json",
+        "scenarios": [
+          "ui/crm-onboarding-search-results"
+        ]
+      },
+      "taskUses": [
+        "crm/read-onboarding-record",
+        "crm/read-onboarding-dates"
+      ],
+      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "kind": "element",
+      "id": "crm.onboarding.search-result-rows",
+      "screen": "crm.onboarding.search",
+      "role": "grid",
+      "effect": "observe"
+    },
+    {
+      "system": "crm",
+      "label": "Onboarding search result row cells",
+      "searchTerms": [
+        "crm onboarding result row cells"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json",
+        "scenarios": [
+          "ui/crm-onboarding-search-results"
+        ]
+      },
+      "taskUses": [
+        "crm/read-onboarding-record",
+        "crm/read-onboarding-dates"
+      ],
+      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "kind": "element",
+      "id": "crm.onboarding.search-result-row-cells",
+      "screen": "crm.onboarding.search",
+      "role": "row",
+      "effect": "observe"
+    },
+    {
+      "system": "crm",
+      "label": "Onboarding search result name link",
+      "searchTerms": [
+        "crm onboarding result name link"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json",
+        "scenarios": [
+          "ui/crm-onboarding-search-results"
+        ]
+      },
+      "taskUses": [
+        "crm/read-onboarding-record",
+        "crm/read-onboarding-dates"
+      ],
+      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "kind": "element",
+      "id": "crm.onboarding.search-result-name-link",
+      "screen": "crm.onboarding.search",
+      "role": "link",
+      "effect": "navigate"
+    },
+    {
+      "system": "crm",
+      "label": "Onboarding record labeled field value",
+      "searchTerms": [
+        "crm onboarding labeled record field"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json",
+        "scenarios": [
+          "ui/crm-onboarding-record-identity"
+        ]
+      },
+      "taskUses": [
+        "crm/read-onboarding-record",
+        "crm/read-onboarding-dates"
+      ],
+      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "kind": "element",
+      "id": "crm.onboarding.record-field-value",
+      "screen": "crm.onboarding.record",
+      "role": "display",
+      "effect": "observe"
+    },
+    {
+      "system": "crm",
+      "label": "Onboarding history rows",
+      "searchTerms": [
+        "crm onboarding history rows"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json",
+        "scenarios": [
+          "ui/crm-onboarding-history-transitions"
+        ]
+      },
+      "taskUses": [
+        "crm/read-onboarding-dates"
+      ],
+      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "kind": "element",
+      "id": "crm.onboarding.history-rows",
+      "screen": "crm.onboarding.history",
+      "role": "grid",
+      "effect": "observe"
+    },
+    {
+      "system": "crm",
+      "label": "CRM onboarding search results ready",
+      "searchTerms": [
+        "crm onboarding search ready state"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json",
+        "scenarios": [
+          "ui/crm-onboarding-search-results"
+        ]
+      },
+      "taskUses": [
+        "crm/read-onboarding-record",
+        "crm/read-onboarding-dates"
+      ],
+      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "crm.onboarding.search-ready",
+      "screen": "crm.onboarding.search"
+    },
+    {
+      "system": "crm",
+      "label": "CRM onboarding search has no results",
+      "searchTerms": [
+        "crm onboarding no search results state"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json",
+        "scenarios": [
+          "ui/crm-onboarding-search-results"
+        ]
+      },
+      "taskUses": [
+        "crm/read-onboarding-record",
+        "crm/read-onboarding-dates"
+      ],
+      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "crm.onboarding.search-empty",
+      "screen": "crm.onboarding.search"
+    },
+    {
+      "system": "crm",
+      "label": "CRM onboarding record identity ready",
+      "searchTerms": [
+        "crm onboarding record identity ready state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json",
+        "scenarios": [
+          "ui/crm-onboarding-record-identity"
+        ]
+      },
+      "taskUses": [
+        "crm/read-onboarding-record",
+        "crm/read-onboarding-dates"
+      ],
+      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "crm.onboarding.record-ready",
+      "screen": "crm.onboarding.record"
+    },
+    {
+      "system": "crm",
+      "label": "CRM onboarding history ready",
+      "searchTerms": [
+        "crm onboarding history ready state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json",
+        "scenarios": [
+          "ui/crm-onboarding-history-transitions"
+        ]
+      },
+      "taskUses": [
+        "crm/read-onboarding-dates"
+      ],
+      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "crm.onboarding.history-ready",
+      "screen": "crm.onboarding.history"
+    },
+    {
+      "system": "crm",
+      "label": "Displayed CRM onboarding EID",
+      "searchTerms": [
+        "authoritative crm onboarding displayed eid"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/crm/onboarding.live.json",
+        "scenarios": [
+          "ui/crm-onboarding-record-identity"
+        ]
+      },
+      "taskUses": [
+        "crm/read-onboarding-record",
+        "crm/read-onboarding-dates"
+      ],
+      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "kind": "observation",
+      "id": "crm.onboarding.displayed-eid",
+      "screen": "crm.onboarding.record",
+      "authoritativeFor": [
+        "subject",
+        "page-state"
+      ]
     }
   ]
 }

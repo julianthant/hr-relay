@@ -4,6 +4,7 @@ import { ReadOnboardingDatesOutputSchema } from "../../src/domain/contracts/crm/
 import { ReadOnboardingRecordOutputSchema } from "../../src/domain/contracts/crm/read-onboarding-record.js";
 import { EidSchema } from "../../src/domain/ids.js";
 import { createDeterministicCrmOnboardingDriver } from "../../src/stores/crm/driver/fake.js";
+import { chooseExactCrmRecord } from "../../src/stores/crm/driver/interpreter.js";
 import { readOnboardingDatesTask } from "../../src/stores/crm/tasks/read-onboarding-dates.js";
 import { readOnboardingRecordTask } from "../../src/stores/crm/tasks/read-onboarding-record.js";
 
@@ -54,6 +55,21 @@ describe("person-lookup runtime scenarios", () => {
         ctx: { signal, log, driver, fail },
       }),
       /expected EID 10873698 but bound 10001573/,
+    );
+
+    const exact = {
+      fullName: "Fixture, Person",
+      rawStage: "Completed",
+      recordId: "ONB-40213",
+      recordUrl: "https://act-crm.my.site.com/hr/ONB_ViewOnboarding?id=ONB-40213",
+      observedEid: EID,
+      firstName: "Person",
+      lastName: "Fixture",
+      firstDayOfService: "7/15/2026",
+    };
+    assert.throws(
+      () => chooseExactCrmRecord([exact, { ...exact, recordId: "ONB-40214" }], EID),
+      /resolved 2 exact displayed-EID records/,
     );
   });
 });

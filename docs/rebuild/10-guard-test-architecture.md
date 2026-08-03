@@ -176,8 +176,8 @@ row carries non-empty search intent, source line, and the same exact blob proven
 path-derived `candidateId` is explicitly an **unclassified, non-authoritative proposal**, never an
 `ElementId`. The strict union permits only `candidate|ported|driver-internal|not-porting`;
 `ported` alone carries a classified canonical id and requires D98's dual evidence. Stage B later
-classified only the reviewed Person Org seed: 403 candidates remain, two rows are ported, and the
-PeopleSoft content frame is driver-internal.
+classified the reviewed Person Org seed plus the Phase-1f CRM Person Lookup rows: 398 candidates
+remain, seven rows are ported, and the PeopleSoft content frame is driver-internal.
 
 The active `legacy-selector-port-provenance` guard regenerates the safe inventory from the pinned
 commit in the architecture lane, compares it byte-for-structure, and rejects omissions, duplicates,
@@ -185,6 +185,12 @@ stale blobs, invented keys, canonical-id collisions, evidence-free port claims, 
 capture fields. Its violating canaries prove those arms fail. Runtime code never reads across the
 repository boundary and the snapshot contains no locator strings, captured values, screenshots,
 secrets, or fallback recipes.
+
+The Phase-1f CRM expansion promotes exactly five additional rows: search result rows/cells/name
+link, the verified Visualforce `th` label-following-value recipe, and onboarding-history rows. Each
+is bound to sanitized deterministic and fresh read-only live evidence dated 2026-08-02. The
+broader record fallbacks, nth-row convenience selector, section navigation, and history button
+remain candidates because the Person Lookup path neither needs nor has fresh proof for them.
 
 ### Phase 1d Stage B as-built — semantic registry + typed driver seed (2026-08-01)
 
