@@ -117,7 +117,7 @@ function personSubject(requiredAt: "before-subject-read" | "after-prepare-before
   };
 }
 
-export function absentProbeEvidence(observedAt: string) {
+export function absentProbeEvidence(observedAt: string, evidenceRef = `observation:${UUID_4}`) {
   return {
     state: "absent" as const,
     evidence: {
@@ -126,7 +126,7 @@ export function absentProbeEvidence(observedAt: string) {
       sourceState: WRITE_FIXTURE_STAGED_STATE,
       observedAt,
       queryDigest: HASH_C,
-      evidenceRef: `observation:${UUID_4}`,
+      evidenceRef,
     },
   };
 }

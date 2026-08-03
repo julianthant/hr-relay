@@ -280,7 +280,8 @@ export const SequencedWriteCommitInputSchema = z.strictObject({
   run: z.strictObject({
     runId: RunIdSchema,
     expectedVersion: PositiveIntSchema,
-    claim: RunClaimTokenSchema,
+    /** Present for the claim-holding executor arm; absent for the parked-write resume arms. */
+    claim: RunClaimTokenSchema.optional(),
   }),
   checkpoint: RunCheckpointRecordSchema,
   commit: AtomicWriteCommitInputSchema,

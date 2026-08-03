@@ -573,6 +573,11 @@ export function executeSequencedWriteCommit(
       );
     }
     if (transition.kind === "advance-running") {
+      if (parsed.run.claim !== undefined
+        && (parsed.run.claim.workerId !== transition.claim.workerId
+          || parsed.run.claim.claimGeneration !== transition.claim.claimGeneration)) {
+        throw new Error(`run ${parsed.run.runId} beat-⑦ bundle claim disagrees with the transition claim`);
+      }
       const held = runClaim(current);
       if (held === undefined
         || held.workerId !== transition.claim.workerId
