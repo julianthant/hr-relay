@@ -148,6 +148,23 @@ describe("start planning", () => {
     assert.deepEqual(ids.minted(), [], "no proposal ids were minted");
   });
 
+  it("rejects a sparse submissions array before minting any proposal ids", () => {
+    const database = openDatabase();
+    const ids = sequentialIdFactory();
+    const submissions = new Array<unknown>(3);
+    submissions[0] = { emplId: "10873698" };
+    submissions[2] = { emplId: "10001573" };
+    const authorityGeneration = database.getMeta().authorityGeneration;
+
+    assert.equal(Object.hasOwn(submissions, 1), false, "the fixture must contain a real middle hole");
+    assert.throws(
+      () => planStart(plannerDeps(database, ids), baseRequest(submissions)),
+      /entry 2 is missing; submissions must be a dense array/,
+    );
+    assert.deepEqual(ids.minted(), [], "no proposal ids were minted before dense validation completed");
+    assert.equal(database.getMeta().authorityGeneration, authorityGeneration, "planning failure must not mutate authority");
+  });
+
   it("refuses a repeat of a logical item already in the same plan", () => {
     const database = openDatabase();
     const plan = planStart(plannerDeps(database), baseRequest([

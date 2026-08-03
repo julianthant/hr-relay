@@ -15,6 +15,7 @@
 import { workflowPlanning, workflowProjections } from "../../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../base/workflow.js";
 import { JsonValueSchema } from "../../domain/canonical-json.js";
+import type { JsonValue } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { deriveItemId, deriveTraceId } from "../../domain/identifiers.js";
 import type { IdFactory } from "../../domain/identifiers.js";
@@ -98,16 +99,23 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
    * the whole planning request before minting any proposal rather than turning
    * it into a plausible refusal with fabricated or dropped ingress.
    */
-  const rawSubmissions = request.submissions.map((submission, index) => {
+  const rawSubmissions: JsonValue[] = [];
+  for (let index = 0; index < request.submissions.length; index += 1) {
+    if (!Object.hasOwn(request.submissions, index)) {
+      throw new Error(
+        `start plan ${descriptor.id} entry ${String(index + 1)} is missing; submissions must be a dense array`,
+      );
+    }
+    const submission = request.submissions[index];
     try {
-      return JsonValueSchema.parse(submission);
+      rawSubmissions.push(JsonValueSchema.parse(submission));
     } catch (error) {
       throw new Error(
         `start plan ${descriptor.id} entry ${String(index + 1)} is not strict JSON and cannot be retained: ${errorText(error)}`,
         { cause: error },
       );
     }
-  });
+  }
   const planning = workflowPlanning(descriptor);
   const now = IsoInstantSchema.parse(deps.clock.now().toISOString());
   const ingressSchemaHash = deriveSchemaHash(descriptor.input, "input");
