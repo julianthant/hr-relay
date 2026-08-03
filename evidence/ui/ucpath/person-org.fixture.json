@@ -88,6 +88,15 @@
       "capturedValue": false
     },
     {
+      "semanticId": "ucpath.person-org.results-view-toggle",
+      "screen": "ucpath.person-org.search",
+      "scenarioId": "ui/ucpath-person-org-results-grid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.viewAllLink()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
       "semanticId": "ucpath.person-org.result-drill-in",
       "screen": "ucpath.person-org.search",
       "scenarioId": "ui/ucpath-person-org-results-grid",
@@ -119,6 +128,15 @@
       "screen": "ucpath.person-org.detail",
       "scenarioId": "ui/ucpath-person-org-displayed-eid",
       "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.body()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.employment-view-toggle",
+      "screen": "ucpath.person-org.detail",
+      "scenarioId": "ui/ucpath-person-org-displayed-eid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.viewAllLink()" }],
       "assertion": "recipe-resolves",
       "matchedCount": 1,
       "capturedValue": false

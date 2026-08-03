@@ -6,6 +6,7 @@ import {
   buildLastFirstSearchNames,
   buildPersonOrgNameSearchAttempts,
   deriveAssignmentDetailsFromCells,
+  ensurePersonOrgViewAllExpanded,
   parsePersonOrgGridRows,
   searchPersonOrgWithPagePort,
   selectPreferredAssignmentDetails,
@@ -15,6 +16,7 @@ import type {
   PersonOrgDetail,
   PersonOrgPagePort,
   PersonOrgSearchPageOutcome,
+  PersonOrgViewTogglePort,
 } from "../../src/stores/ucpath/driver/person-org-operation.js";
 
 const EID_A = EidSchema.parse("10873698");
@@ -79,7 +81,162 @@ function pageHarness(input: Readonly<{
   };
 }
 
+function viewToggleHarness(input: Readonly<{
+  count?: number;
+  text: string;
+  href: string | null;
+  afterText?: string;
+  clickError?: Error;
+  waitError?: Error;
+}>): Readonly<{ port: PersonOrgViewTogglePort; clicks: readonly string[] }> {
+  let text = input.text;
+  const clicks: string[] = [];
+  return {
+    clicks,
+    port: {
+      count: async () => input.count ?? 1,
+      readText: async () => text,
+      readHref: async () => input.href,
+      async click() {
+        clicks.push("click");
+        if (input.clickError !== undefined) throw input.clickError;
+        if (input.afterText !== undefined) text = input.afterText;
+      },
+      async waitForExpanded() {
+        if (input.waitError !== undefined) throw input.waitError;
+      },
+    },
+  };
+}
+
 describe("strict UCPath Person Org operation", () => {
+  it("expands enabled View All and accepts only verified complete toggle states", async () => {
+    const enabled = viewToggleHarness({
+      text: "View All",
+      href: "javascript:submitAction_win0(document.win0,'grid');",
+      afterText: "View 100",
+    });
+    await ensurePersonOrgViewAllExpanded(enabled.port, "results");
+    assert.deepEqual(enabled.clicks, ["click"]);
+
+    const disabledComplete = viewToggleHarness({ text: "View All", href: null });
+    await ensurePersonOrgViewAllExpanded(disabledComplete.port, "results");
+    assert.deepEqual(disabledComplete.clicks, []);
+
+    const toggledComplete = viewToggleHarness({
+      text: "View 10",
+      href: "javascript:submitAction_win0(document.win0,'grid');",
+    });
+    await ensurePersonOrgViewAllExpanded(toggledComplete.port, "employment");
+    assert.deepEqual(toggledComplete.clicks, []);
+  });
+
+  it("fails loud when pagination is absent, ambiguous, stuck, malformed, or unclickable", async () => {
+    await assert.rejects(
+      ensurePersonOrgViewAllExpanded(
+        viewToggleHarness({ count: 0, text: "View All", href: null }).port,
+        "results",
+      ),
+      /exactly one View All state control; found 0/,
+    );
+    await assert.rejects(
+      ensurePersonOrgViewAllExpanded(
+        viewToggleHarness({ count: 2, text: "View All", href: null }).port,
+        "results",
+      ),
+      /found 2/,
+    );
+    await assert.rejects(
+      ensurePersonOrgViewAllExpanded(
+        viewToggleHarness({ text: "Unknown", href: null }).port,
+        "results",
+      ),
+      /unknown View All state/,
+    );
+    await assert.rejects(
+      ensurePersonOrgViewAllExpanded(
+        viewToggleHarness({ text: "View All", href: "https://example.invalid/not-peoplesoft" }).port,
+        "results",
+      ),
+      /unexpected href/,
+    );
+    await assert.rejects(
+      ensurePersonOrgViewAllExpanded(
+        viewToggleHarness({ text: "View 100", href: null }).port,
+        "results",
+      ),
+      /unexpected href/,
+    );
+    await assert.rejects(
+      ensurePersonOrgViewAllExpanded(viewToggleHarness({
+        text: "View All",
+        href: "javascript:submitAction_win0(document.win0,'grid');",
+      }).port, "results"),
+      /did not transition/,
+    );
+    await assert.rejects(
+      ensurePersonOrgViewAllExpanded(viewToggleHarness({
+        text: "View All",
+        href: "javascript:submitAction_win0(document.win0,'grid');",
+        clickError: new Error("expansion failed"),
+      }).port, "results"),
+      /expansion failed/,
+    );
+  });
+
+  it("cannot choose a visible assignment until hidden Employment Instances are expanded", async () => {
+    let assignments = [assignment({ emplRecord: "0", department: "CHEMISTRY" })];
+    const toggle = viewToggleHarness({
+      text: "View All",
+      href: "javascript:submitAction_win0(document.win0,'employment');",
+      afterText: "View 1",
+    });
+    const port: PersonOrgViewTogglePort = {
+      ...toggle.port,
+      async click() {
+        await toggle.port.click();
+        assignments = [...assignments, assignment({ emplRecord: "9" })];
+      },
+    };
+    await ensurePersonOrgViewAllExpanded(port, "employment");
+    assert.equal(selectPreferredAssignmentDetails(assignments).emplRecord, "9");
+  });
+
+  it("cannot falsely resolve a visible result while View All hides another candidate", async () => {
+    let rows = parsePersonOrgGridRows([
+      [EID_A, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "John Smith"],
+    ]);
+    const toggle = viewToggleHarness({
+      text: "View All",
+      href: "javascript:submitAction_win0(document.win0,'results');",
+      afterText: "View 100",
+    });
+    const port: PersonOrgViewTogglePort = {
+      ...toggle.port,
+      async click() {
+        await toggle.port.click();
+        rows = parsePersonOrgGridRows([
+          [EID_A, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "John Smith"],
+          [EID_B, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "Jane Smith"],
+        ]);
+      },
+    };
+    await ensurePersonOrgViewAllExpanded(port, "results");
+    const harness = pageHarness({
+      outcomes: [{ kind: "grid", rows }],
+      details: {
+        0: detail(EID_A, "John Smith"),
+        1: detail(EID_B, "Jane Smith"),
+      },
+    });
+    const output = await searchPersonOrgWithPagePort(harness.port, {
+      kind: "by-name",
+      name: "Smith, John",
+      keepNonHdh: true,
+    });
+    assert.equal(output.selection.status, "ambiguous");
+  });
+
   it("ports the legacy outer normalization and inner name-attempt ordering", () => {
     assert.deepEqual(buildLastFirstSearchNames("John M Smith"), [
       "Smith, John M",

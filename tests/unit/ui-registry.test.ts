@@ -66,7 +66,7 @@ describe("semantic UI registry", () => {
   it("resolves every Person Org semantic dependency without collisions", () => {
     assert.deepEqual(auditUcpathUiRegistry(), []);
     assert.equal(UCPATH_UI_REGISTRY.system, "ucpath");
-    assert.equal(UCPATH_UI_REGISTRY.elements.length, 12);
+    assert.equal(UCPATH_UI_REGISTRY.elements.length, 14);
     assert.equal(UCPATH_UI_REGISTRY.scenarios.length, 3);
   });
 
@@ -97,7 +97,7 @@ describe("semantic UI registry", () => {
   it("publishes a schema-valid catalog with no private recipe or captured value", () => {
     const catalog = UiCatalogSchema.parse(buildSafeUiCatalog());
     const serialized = JSON.stringify(catalog);
-    assert.equal(catalog.entries.length, 20);
+    assert.equal(catalog.entries.length, 22);
     assert.doesNotMatch(
       serialized,
       /#main_target_win0|PERSON_NPC_VW_EMPLID|Empl ID|legacyKey|locator|selector|capturedValue|valueType|timeoutMs/,
@@ -117,7 +117,7 @@ describe("semantic UI registry", () => {
     assert.equal(await driver.read(UCPATH_PERSON_ORG_DISPLAYED_EID), "10800000");
     assert.deepEqual(events.filter((event) => event.startsWith("locate:")), [
       "locate:#PERSON_NPC_VW_EMPLID",
-      "locate:table[id=\"tdgbrPER_ASGN_EMP_VW$0\"]",
+      "locate:table[id^=\"tdgbrPER_ASGN_EMP_VW$\"]",
       "locate:#PERSON_NPC_VW_EMPLID",
     ]);
     assert.equal(events.findIndex((event) => event.startsWith("wait:"))
@@ -152,6 +152,35 @@ describe("semantic UI registry", () => {
         })), [
           { legacyKey: "personOrgSummary.emplIdInput()", matchedCount: 0 },
           { legacyKey: "personOrgSummary.nameInput()", matchedCount: 0 },
+        ]);
+        assert.deepEqual(manifest.paginationProofs?.map((proof) => ({
+          context: proof.context,
+          initialState: proof.initialState,
+          finalState: proof.finalState,
+          renderedBefore: proof.renderedBefore,
+          renderedAfter: proof.renderedAfter,
+        })), [
+          {
+            context: "search-results",
+            initialState: "enabled-view-all",
+            finalState: "view-n",
+            renderedBefore: 100,
+            renderedAfter: 300,
+          },
+          {
+            context: "search-results",
+            initialState: "disabled-view-all",
+            finalState: "disabled-view-all",
+            renderedBefore: 27,
+            renderedAfter: 27,
+          },
+          {
+            context: "employment-instances",
+            initialState: "enabled-view-all",
+            finalState: "view-n",
+            renderedBefore: 1,
+            renderedAfter: 10,
+          },
         ]);
       }
     }

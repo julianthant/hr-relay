@@ -205,6 +205,29 @@
     },
     {
       "system": "ucpath",
+      "label": "Person Org results View All toggle",
+      "searchTerms": [
+        "ucpath person org results view all toggle"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json",
+        "scenarios": [
+          "ui/ucpath-person-org-results-grid"
+        ]
+      },
+      "taskUses": [],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.person-org.results-view-toggle",
+      "screen": "ucpath.person-org.search",
+      "role": "link",
+      "effect": "navigate"
+    },
+    {
+      "system": "ucpath",
       "label": "Person Org result drill-in control",
       "searchTerms": [
         "ucpath person org result row drill in"
@@ -294,6 +317,29 @@
       "screen": "ucpath.person-org.detail",
       "role": "grid",
       "effect": "observe"
+    },
+    {
+      "system": "ucpath",
+      "label": "Person Org Employment Instances View All toggle",
+      "searchTerms": [
+        "ucpath person org employment instances view all toggle"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json",
+        "scenarios": [
+          "ui/ucpath-person-org-displayed-eid"
+        ]
+      },
+      "taskUses": [],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.person-org.employment-view-toggle",
+      "screen": "ucpath.person-org.detail",
+      "role": "link",
+      "effect": "navigate"
     },
     {
       "system": "ucpath",

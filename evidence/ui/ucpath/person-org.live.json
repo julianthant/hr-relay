@@ -88,6 +88,15 @@
       "capturedValue": false
     },
     {
+      "semanticId": "ucpath.person-org.results-view-toggle",
+      "screen": "ucpath.person-org.search",
+      "scenarioId": "ui/ucpath-person-org-results-grid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.viewAllLink()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
       "semanticId": "ucpath.person-org.result-drill-in",
       "screen": "ucpath.person-org.search",
       "scenarioId": "ui/ucpath-person-org-results-grid",
@@ -120,6 +129,15 @@
       "scenarioId": "ui/ucpath-person-org-displayed-eid",
       "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.body()" }],
       "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.employment-view-toggle",
+      "screen": "ucpath.person-org.detail",
+      "scenarioId": "ui/ucpath-person-org-displayed-eid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.viewAllLink()" }],
+      "assertion": "recipe-resolves",
       "matchedCount": 1,
       "capturedValue": false
     },
@@ -201,6 +219,38 @@
       "reason": "zero-live-matches",
       "matchedCount": 0,
       "replacementSemanticId": "ucpath.person-org.given-name-input"
+    }
+  ],
+  "paginationProofs": [
+    {
+      "context": "search-results",
+      "initialState": "enabled-view-all",
+      "finalState": "view-n",
+      "counterBefore": "1-100 of 300",
+      "counterAfter": "1-300 of 300",
+      "renderedUnit": "rows",
+      "renderedBefore": 100,
+      "renderedAfter": 300
+    },
+    {
+      "context": "search-results",
+      "initialState": "disabled-view-all",
+      "finalState": "disabled-view-all",
+      "counterBefore": "1-27 of 27",
+      "counterAfter": "1-27 of 27",
+      "renderedUnit": "rows",
+      "renderedBefore": 27,
+      "renderedAfter": 27
+    },
+    {
+      "context": "employment-instances",
+      "initialState": "enabled-view-all",
+      "finalState": "view-n",
+      "counterBefore": "1 of 10",
+      "counterAfter": "1-10 of 10",
+      "renderedUnit": "assignment-grids",
+      "renderedBefore": 1,
+      "renderedAfter": 10
     }
   ],
   "externalWriteAttempted": false,

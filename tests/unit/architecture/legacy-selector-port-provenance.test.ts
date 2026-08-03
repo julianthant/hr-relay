@@ -31,8 +31,8 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     ]);
     assert.equal(portMap.entries.length, 406);
     assert.deepEqual(auditLegacySelectorPortMap(portMap, LEGACY_ROOT), []);
-    assert.equal(portMap.entries.filter((entry) => entry.disposition === "candidate").length, 393);
-    assert.equal(portMap.entries.filter((entry) => entry.disposition === "ported").length, 12);
+    assert.equal(portMap.entries.filter((entry) => entry.disposition === "candidate").length, 392);
+    assert.equal(portMap.entries.filter((entry) => entry.disposition === "ported").length, 13);
     assert.equal(portMap.entries.filter((entry) => entry.disposition === "driver-internal").length, 1);
   });
 
@@ -98,6 +98,40 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     };
     delete entries[0]?.candidateId;
     assert.notEqual(auditLegacySelectorPortMap(malformedPorted, LEGACY_ROOT).length, 0);
+  });
+
+  it("keeps one-to-many legacy recipes closed by unique context and canonical id", () => {
+    const valid = LegacySelectorPortMapSchema.parse(readPortMap());
+    const contextual = valid.entries.find((entry) =>
+      entry.disposition === "ported" && "canonicalBindings" in entry
+    );
+    assert.ok(contextual && "canonicalBindings" in contextual);
+
+    const duplicateContext = structuredClone(valid) as Record<string, unknown>;
+    const contextEntries = duplicateContext.entries as Record<string, unknown>[];
+    const contextIndex = contextEntries.findIndex((entry) => "canonicalBindings" in entry);
+    const contextEntry = contextEntries[contextIndex];
+    if (contextEntry === undefined) throw new Error("contextual port fixture missing");
+    const contextBindings = contextEntry.canonicalBindings as Record<string, unknown>[];
+    contextBindings[1] = { ...contextBindings[1], context: contextBindings[0]?.context };
+    assert.match(
+      LegacySelectorPortMapSchema.safeParse(duplicateContext).error?.message ?? "",
+      /contexts must be unique/,
+    );
+
+    const duplicateCanonical = structuredClone(valid) as Record<string, unknown>;
+    const canonicalEntries = duplicateCanonical.entries as Record<string, unknown>[];
+    const canonicalEntry = canonicalEntries[contextIndex];
+    if (canonicalEntry === undefined) throw new Error("contextual canonical fixture missing");
+    const canonicalBindings = canonicalEntry.canonicalBindings as Record<string, unknown>[];
+    canonicalBindings[1] = {
+      ...canonicalBindings[1],
+      canonicalId: canonicalBindings[0]?.canonicalId,
+    };
+    assert.match(
+      auditLegacySelectorPortMap(duplicateCanonical, LEGACY_ROOT).join("\n"),
+      /ported semantic ids must be globally unique/,
+    );
   });
 
   it("does not treat candidate proposals as classified semantic ids", () => {

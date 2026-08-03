@@ -6220,9 +6220,23 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/person-org-summary.view-all-link"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalBindings": [
+        {
+          "context": "search-results-view-toggle",
+          "canonicalId": "ucpath.person-org.results-view-toggle"
+        },
+        {
+          "context": "employment-instances-view-toggle",
+          "canonicalId": "ucpath.person-org.employment-view-toggle"
+        }
+      ],
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json"
+      }
     },
     {
       "system": "ucpath",

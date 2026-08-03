@@ -347,7 +347,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "7a72412db6ca0fd0d7994ec963fcf2aa3331743cd0c92e4a76bb88c0a591866c",
+      "fingerprint": "2e828f582c38c3197bb0c5991544e4232f98b81504cff9bbb4491e1eaa4e3a44",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -427,7 +427,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/contracts.ts",
-          "sha256": "433922e57e6694fc1296be0be042e1aef6bf4e6523e2f1eb941f6485e8f39054"
+          "sha256": "d48be467dfa66a7725a7706c00bed7a1df224f9642feffc11184bfc9248b9fba"
         },
         {
           "path": "src/domain/ui/driver.ts",
@@ -435,7 +435,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-person-org.ts",
-          "sha256": "64144cff8193a41d823a2c07a8b8062ab131ccd7f4729d603f65c0482339ce01"
+          "sha256": "5f13be6afe95ef90a99b815adb92d8ac5a55b798d8fa4f46d5aeed031bff643b"
         },
         {
           "path": "src/domain/unscoped-commit.ts",
@@ -455,15 +455,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "4180c678918678c00b9cc18e47dc18ae12a8635c8cd70bc1e9cd69e6d10dbe12"
+          "sha256": "c56a7c4fa6353cc29feb58d42d71c2dd87325e8a4d576e5ae46a43d01bc5f92b"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
-          "sha256": "2cae951a5ffa32bb4c7cdb8a9b9b897b399c1e923157162fe2698b82acb1609f"
+          "sha256": "c51900533e6813be278ee03bc31ddb4ab1c36905e19bc083843595980eb05da3"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
-          "sha256": "87d1283999dfc6240f81dff59479d8cf2faf394ba18124a59ea748e1baafc9c6"
+          "sha256": "2660f2f4b90c045ee669edc4e10bc33f5fbd963f0f22c4dd5a58c9b5065aca5c"
         },
         {
           "path": "src/stores/ucpath/tasks/search-person-org.ts",

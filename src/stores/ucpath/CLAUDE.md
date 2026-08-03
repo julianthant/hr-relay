@@ -14,3 +14,11 @@ evidence before runtime use.
   EID, turn extraction errors or missing grids into not-found, swallow field-clear failures, or turn
   drill failures into null. Current live PeopleSoft labels append “begins with,” so the old exact
   accessible-name recipes match zero; use the dual-evidenced stable IDs in the semantic registry.
+- **2026-08-02: Person Org completeness is a View All state transition, not the currently rendered
+  row count.** Before reading search results or Employment Instances, require exactly one
+  context-scoped control. An enabled `View All` must be clicked and transition to `View N`; a
+  disabled `View All` is the verified already-complete state. Missing, ambiguous, or unknown states
+  fail loud. The generic legacy `viewAllLink()` row is split by two closed context bindings with
+  unique canonical ids; sanitized counters remain evidence, not falsely attributed selector
+  provenance. Returning from detail re-runs the result expansion because PeopleSoft may paginate it
+  again, and assignment extraction spans every expanded `tdgbrPER_ASGN_EMP_VW$*` grid.

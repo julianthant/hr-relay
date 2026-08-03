@@ -28,6 +28,7 @@ import {
   UCPATH_PERSON_ORG_DISPLAYED_NAME,
   UCPATH_PERSON_ORG_EID_DISPLAY,
   UCPATH_PERSON_ORG_EID_INPUT,
+  UCPATH_PERSON_ORG_EMPLOYMENT_VIEW_TOGGLE,
   UCPATH_PERSON_ORG_GIVEN_NAME_INPUT,
   UCPATH_PERSON_ORG_LAST_NAME_INPUT,
   UCPATH_PERSON_ORG_NAME_DISPLAY,
@@ -36,6 +37,7 @@ import {
   UCPATH_PERSON_ORG_NO_RESULTS_STATUS,
   UCPATH_PERSON_ORG_RESULTS_GRID,
   UCPATH_PERSON_ORG_RESULTS_READY,
+  UCPATH_PERSON_ORG_RESULTS_VIEW_TOGGLE,
   UCPATH_PERSON_ORG_RESULT_DRILL_IN,
   UCPATH_PERSON_ORG_RETURN_TO_SEARCH,
   UCPATH_PERSON_ORG_SEARCH_BUTTON,
@@ -58,6 +60,7 @@ const GIVEN_NAME_PORT_KEY = "personOrgSummary.nameInput()";
 const SEARCH_BUTTON_PORT_KEY = "personOrgSummary.searchButton()";
 const NO_RESULTS_PORT_KEY = "personOrgSummary.noMatchingValuesText()";
 const RESULTS_GRID_PORT_KEY = "personOrgSummary.resultsTable()";
+const VIEW_ALL_PORT_KEY = "personOrgSummary.viewAllLink()";
 const DRILL_IN_PORT_KEY = "personOrgSummary.drillInButton()";
 const DISPLAY_PORT_KEY = "personOrgSummary.personIdValue()";
 const NAME_DISPLAY_PORT_KEY = "personOrgSummary.personNameValue()";
@@ -72,6 +75,10 @@ const LegacySelectorProvenanceSchema = z.strictObject({
   sourceLine: z.number().int().positive(),
   blob: GitBlobSchema,
 });
+const UiPortContextSchema = z.enum([
+  "search-results-view-toggle",
+  "employment-instances-view-toggle",
+]);
 
 export const LocatorRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -81,6 +88,10 @@ export const LocatorRecipeSchema = z.discriminatedUnion("kind", [
     exact: z.boolean(),
   }),
   z.strictObject({ kind: z.literal("css"), selector: z.string().min(1) }),
+  z.strictObject({
+    kind: z.literal("view-toggle"),
+    headerSelector: z.string().min(1),
+  }),
   z.strictObject({
     kind: z.literal("indexed-css"),
     selectorPrefix: z.string().min(1),
@@ -127,6 +138,7 @@ const ElementDefinitionSchema = z.strictObject({
   requiredStates: z.array(PageStateIdSchema),
   verification: UiVerificationSchema,
   provenance: LegacySelectorProvenanceSchema,
+  portContext: UiPortContextSchema.optional(),
   supersedes: z.array(ElementIdSchema),
 });
 
@@ -179,6 +191,21 @@ export const UiRegistryPortBindingSchema = z.union([
     disposition: z.literal("ported"),
     semanticKind: z.literal("element"),
     canonicalId: ElementIdSchema,
+    evidence: z.strictObject({
+      verifiedAt: DateOnlySchema,
+      fixtureEvidenceRef: UiEvidenceReferenceSchema,
+      liveReadOnlyEvidenceRef: UiEvidenceReferenceSchema,
+    }),
+  }),
+  z.strictObject({
+    system: BrowserSystemIdSchema,
+    legacyKey: z.string().min(1),
+    disposition: z.literal("ported"),
+    semanticKind: z.literal("element"),
+    canonicalBindings: z.array(z.strictObject({
+      context: UiPortContextSchema,
+      canonicalId: ElementIdSchema,
+    })).min(2),
     evidence: z.strictObject({
       verifiedAt: DateOnlySchema,
       fixtureEvidenceRef: UiEvidenceReferenceSchema,
@@ -374,6 +401,27 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       supersedes: [],
     },
     {
+      id: UCPATH_PERSON_ORG_RESULTS_VIEW_TOGGLE,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
+      label: "Person Org results View All toggle",
+      searchTerms: ["ucpath person org results view all toggle"],
+      role: "link",
+      effect: "navigate",
+      sensitivity: "hr",
+      valueType: "text",
+      scope: "content-frame",
+      locator: {
+        kind: "view-toggle",
+        headerSelector: "[id=\"win0divPTS_CFG_CL_STD_RSLGP$0\"]",
+      },
+      requiredStates: [UCPATH_PERSON_ORG_RESULTS_READY],
+      verification: verification(RESULTS_SCENARIO, VIEW_ALL_PORT_KEY),
+      provenance: selectorProvenance(VIEW_ALL_PORT_KEY, 1035),
+      portContext: "search-results-view-toggle",
+      supersedes: [],
+    },
+    {
       id: UCPATH_PERSON_ORG_RESULT_DRILL_IN,
       system: "ucpath",
       screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
@@ -443,10 +491,31 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       scope: "content-frame",
       // Legacy scanned every table under body(); the rebuild narrows that proven operation to
       // the exact live assignment-grid id so extraction failure cannot look like an empty result.
-      locator: { kind: "css", selector: "table[id=\"tdgbrPER_ASGN_EMP_VW$0\"]" },
+      locator: { kind: "css", selector: "table[id^=\"tdgbrPER_ASGN_EMP_VW$\"]" },
       requiredStates: [UCPATH_PERSON_ORG_DETAIL_READY],
       verification: verification(DISPLAY_SCENARIO, ASSIGNMENTS_GRID_PORT_KEY),
       provenance: selectorProvenance(ASSIGNMENTS_GRID_PORT_KEY, 989),
+      supersedes: [],
+    },
+    {
+      id: UCPATH_PERSON_ORG_EMPLOYMENT_VIEW_TOGGLE,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_DETAIL_SCREEN,
+      label: "Person Org Employment Instances View All toggle",
+      searchTerms: ["ucpath person org employment instances view all toggle"],
+      role: "link",
+      effect: "navigate",
+      sensitivity: "hr",
+      valueType: "text",
+      scope: "content-frame",
+      locator: {
+        kind: "view-toggle",
+        headerSelector: "[id=\"win0div$ICField94GP$0\"]",
+      },
+      requiredStates: [UCPATH_PERSON_ORG_DETAIL_READY],
+      verification: verification(DISPLAY_SCENARIO, VIEW_ALL_PORT_KEY),
+      provenance: selectorProvenance(VIEW_ALL_PORT_KEY, 1035),
+      portContext: "employment-instances-view-toggle",
       supersedes: [],
     },
     {
@@ -567,6 +636,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       system: "ucpath",
       semanticIds: [
         UCPATH_PERSON_ORG_RESULTS_GRID,
+        UCPATH_PERSON_ORG_RESULTS_VIEW_TOGGLE,
         UCPATH_PERSON_ORG_RESULT_DRILL_IN,
         UCPATH_PERSON_ORG_NO_RESULTS_STATUS,
         UCPATH_PERSON_ORG_RESULTS_READY,
@@ -585,6 +655,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
         UCPATH_PERSON_ORG_EID_DISPLAY,
         UCPATH_PERSON_ORG_NAME_DISPLAY,
         UCPATH_PERSON_ORG_ASSIGNMENTS_GRID,
+        UCPATH_PERSON_ORG_EMPLOYMENT_VIEW_TOGGLE,
         UCPATH_PERSON_ORG_RETURN_TO_SEARCH,
         UCPATH_PERSON_ORG_DISPLAYED_EID,
         UCPATH_PERSON_ORG_DISPLAYED_NAME,
@@ -760,9 +831,22 @@ export function auditUcpathUiEvidenceBindings(input: unknown): readonly string[]
   }
   for (const element of UCPATH_UI_REGISTRY.elements) {
     const binding = bindingsByRow.get(portRowKey({ system: element.system, legacyKey: element.provenance.key }));
-    if (!binding || binding.disposition !== "ported" || binding.canonicalId !== element.id) {
+    const canonicalIds = binding?.disposition === "ported"
+      ? "canonicalBindings" in binding
+        ? binding.canonicalBindings.map(({ canonicalId }) => canonicalId)
+        : [binding.canonicalId]
+      : [];
+    if (!binding || binding.disposition !== "ported" || !canonicalIds.includes(element.id)) {
       issues.push(`${element.id} does not resolve to its exact ported row`);
       continue;
+    }
+    if ("canonicalBindings" in binding) {
+      const contextualBinding = binding.canonicalBindings.find(({ canonicalId }) => canonicalId === element.id);
+      if (contextualBinding?.context !== element.portContext) {
+        issues.push(`${element.id} contextual port binding drifted`);
+      }
+    } else if (element.portContext !== undefined) {
+      issues.push(`${element.id} declares a context on a non-contextual port row`);
     }
     if (binding.evidence.verifiedAt !== element.verification.verifiedAt
       || binding.evidence.fixtureEvidenceRef !== element.verification.fixtureEvidenceRef

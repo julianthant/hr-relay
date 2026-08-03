@@ -36,6 +36,10 @@ export function resolveUcpathElement(page: Page, id: ElementId): Locator {
   const recipe = element.locator;
   if (recipe.kind === "role") return roleLocator(page, element, recipe);
   if (recipe.kind === "css") return cssLocator(page, element, recipe.selector);
+  if (recipe.kind === "view-toggle") {
+    return cssLocator(page, element, recipe.headerSelector)
+      .getByText(/^View (?:All|\d+)$/u, { exact: true });
+  }
   if (recipe.kind === "css-fallback") {
     const [first, ...rest] = recipe.selectors;
     if (first === undefined) throw new Error(`${element.id} has an empty CSS fallback recipe`);

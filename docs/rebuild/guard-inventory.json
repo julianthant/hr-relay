@@ -371,7 +371,7 @@
       "file": "tests/unit/architecture/ucpath-person-org-strict.test.ts",
       "status": "active",
       "owner": "docs/rebuild/01-task-contract.md; docs/rebuild/10-guard-test-architecture.md; docs/rebuild/12-operator-trust-and-authoring.md",
-      "invariant": "The UCPath Person Organizational Summary runtime pins exact legacy provenance while rejecting body-name scans, observed-EID overwrite, extraction-error empty defaults, missing-grid not-found inference, swallowed clears, and drill-null fallbacks; every operation locator resolves through the dual-evidenced semantic registry, current-live zero-match legacy recipes remain recorded as rejected, and row-to-detail plus query-to-observation subject proofs fail loud.",
+      "invariant": "The UCPath Person Organizational Summary runtime pins exact legacy provenance while rejecting body-name scans, observed-EID overwrite, extraction-error empty defaults, missing-grid not-found inference, swallowed clears, and drill-null fallbacks; search results expand before extraction and again after Return to Search, Employment Instances expand before assignment selection, enabled View All must transition to View N while disabled View All alone proves already-complete, contextual one-to-many selector ports remain closed and unique, every operation locator resolves through dual evidence, and both subject proofs fail loud.",
       "replacementRequired": true
     },
     {

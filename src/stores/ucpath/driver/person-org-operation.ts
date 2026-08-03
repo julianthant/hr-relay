@@ -28,12 +28,14 @@ import {
   UCPATH_PERSON_ORG_ASSIGNMENTS_GRID,
   UCPATH_PERSON_ORG_EID_DISPLAY,
   UCPATH_PERSON_ORG_EID_INPUT,
+  UCPATH_PERSON_ORG_EMPLOYMENT_VIEW_TOGGLE,
   UCPATH_PERSON_ORG_GIVEN_NAME_INPUT,
   UCPATH_PERSON_ORG_LAST_NAME_INPUT,
   UCPATH_PERSON_ORG_NAME_DISPLAY,
   UCPATH_PERSON_ORG_NAVIGATION_LINK,
   UCPATH_PERSON_ORG_NO_RESULTS_STATUS,
   UCPATH_PERSON_ORG_RESULTS_GRID,
+  UCPATH_PERSON_ORG_RESULTS_VIEW_TOGGLE,
   UCPATH_PERSON_ORG_RESULT_DRILL_IN,
   UCPATH_PERSON_ORG_RETURN_TO_SEARCH,
   UCPATH_PERSON_ORG_SEARCH_BUTTON,
@@ -97,6 +99,53 @@ export interface PersonOrgPagePort {
     | Readonly<{ kind: "by-name"; lastName: string; givenName: string }>) => Promise<PersonOrgSearchPageOutcome>;
   readonly drill: (rowIndex: number) => Promise<PersonOrgDetail>;
   readonly returnToResults: () => Promise<void>;
+}
+
+export interface PersonOrgViewTogglePort {
+  readonly count: () => Promise<number>;
+  readonly readText: () => Promise<string>;
+  readonly readHref: () => Promise<string | null>;
+  readonly click: () => Promise<void>;
+  readonly waitForExpanded: () => Promise<void>;
+}
+
+function assertEnabledViewToggleHref(href: string | null, label: string): void {
+  if (href === null || !href.startsWith("javascript:submitAction_win0(")) {
+    throw new Error(`${label} enabled View All control has an unexpected href`);
+  }
+}
+
+/**
+ * PeopleSoft's verified completeness contract is stateful: an enabled `View All` anchor must be
+ * clicked and become `View N`; an already-complete grid exposes disabled `View All` text without
+ * an href. Absence or any third state is unknown and therefore fails loud.
+ */
+export async function ensurePersonOrgViewAllExpanded(
+  port: PersonOrgViewTogglePort,
+  label: string,
+): Promise<void> {
+  const count = await port.count();
+  if (count !== 1) throw new Error(`${label} requires exactly one View All state control; found ${String(count)}`);
+  const text = (await port.readText()).trim();
+  const href = await port.readHref();
+  if (/^View [1-9]\d*$/u.test(text)) {
+    assertEnabledViewToggleHref(href, label);
+    return;
+  }
+  if (text !== "View All") throw new Error(`${label} has unknown View All state ${JSON.stringify(text)}`);
+  if (href === null) return;
+  assertEnabledViewToggleHref(href, label);
+  await port.click();
+  await port.waitForExpanded();
+  const afterCount = await port.count();
+  if (afterCount !== 1) {
+    throw new Error(`${label} View All transition produced ${String(afterCount)} state controls`);
+  }
+  const afterText = (await port.readText()).trim();
+  if (!/^View [1-9]\d*$/u.test(afterText)) {
+    throw new Error(`${label} View All did not transition to a complete View N state`);
+  }
+  assertEnabledViewToggleHref(await port.readHref(), label);
 }
 
 export interface PersonOrgNameSearchAttempt {
@@ -469,6 +518,38 @@ async function readRequiredText(locator: Locator, label: string): Promise<string
   return text.trim();
 }
 
+function playwrightViewTogglePort(page: Page, id: ElementId, label: string): PersonOrgViewTogglePort {
+  const toggle = (): Locator => resolveUcpathElement(page, id);
+  return {
+    count: () => toggle().count(),
+    readText: () => readRequiredText(toggle(), `${label} View All state`),
+    readHref: () => toggle().getAttribute("href"),
+    click: () => toggle().click(),
+    waitForExpanded: () => toggle().filter({ hasText: /^View [1-9]\d*$/u }).waitFor({
+      state: "visible",
+      timeout: OUTCOME_TIMEOUT_MS,
+    }),
+  };
+}
+
+async function ensureResultsExpanded(page: Page): Promise<void> {
+  await ensurePersonOrgViewAllExpanded(
+    playwrightViewTogglePort(page, UCPATH_PERSON_ORG_RESULTS_VIEW_TOGGLE, "Person Org search results"),
+    "Person Org search results",
+  );
+}
+
+async function ensureEmploymentInstancesExpanded(page: Page): Promise<void> {
+  await ensurePersonOrgViewAllExpanded(
+    playwrightViewTogglePort(
+      page,
+      UCPATH_PERSON_ORG_EMPLOYMENT_VIEW_TOGGLE,
+      "Person Org Employment Instances",
+    ),
+    "Person Org Employment Instances",
+  );
+}
+
 async function extractDetail(page: Page): Promise<PersonOrgDetail> {
   const eid = EidSchema.parse(await readRequiredText(
     resolveUcpathElement(page, UCPATH_PERSON_ORG_EID_DISPLAY),
@@ -478,6 +559,7 @@ async function extractDetail(page: Page): Promise<PersonOrgDetail> {
     resolveUcpathElement(page, UCPATH_PERSON_ORG_NAME_DISPLAY),
     `displayed name for EID ${eid}`,
   );
+  await ensureEmploymentInstancesExpanded(page);
   const rows = await resolveUcpathElement(page, UCPATH_PERSON_ORG_ASSIGNMENTS_GRID)
     .locator("tr")
     .evaluateAll((elements) => elements.map((row) =>
@@ -542,6 +624,7 @@ function createPlaywrightPersonOrgPage(page: Page): PersonOrgPagePort {
         return { kind: "not-found" };
       }
       if (states[1] === true) return { kind: "detail", detail: await extractDetail(page) };
+      await ensureResultsExpanded(page);
       const cellsByRow = await resultsGrid.locator("tr").evaluateAll((elements) => elements.map((row) =>
         Array.from((row as HTMLTableRowElement).cells).map((cell) => cell.textContent?.trim() ?? "")
       ));
@@ -557,6 +640,7 @@ function createPlaywrightPersonOrgPage(page: Page): PersonOrgPagePort {
         state: "visible",
         timeout: OUTCOME_TIMEOUT_MS,
       });
+      await ensureResultsExpanded(page);
     },
   };
 }
@@ -576,9 +660,11 @@ export const UCPATH_PERSON_ORG_OPERATION_ELEMENTS: readonly ElementId[] = Object
   UCPATH_PERSON_ORG_SEARCH_BUTTON,
   UCPATH_PERSON_ORG_NO_RESULTS_STATUS,
   UCPATH_PERSON_ORG_RESULTS_GRID,
+  UCPATH_PERSON_ORG_RESULTS_VIEW_TOGGLE,
   UCPATH_PERSON_ORG_RESULT_DRILL_IN,
   UCPATH_PERSON_ORG_EID_DISPLAY,
   UCPATH_PERSON_ORG_NAME_DISPLAY,
+  UCPATH_PERSON_ORG_EMPLOYMENT_VIEW_TOGGLE,
   UCPATH_PERSON_ORG_ASSIGNMENTS_GRID,
   UCPATH_PERSON_ORG_RETURN_TO_SEARCH,
 ]);
