@@ -132,7 +132,7 @@ export const SystemRuntimeSpecSchema = z.strictObject({
 });
 
 export const SYSTEM_RUNTIME_SPECS = deepFreeze(SystemRuntimeSpecSchema.array().parse([
-  { system: "ucpath", configKey: "ucpath", routes: ["smartHr", "jobSummary", "personalData", "personProfile"], credential: "ucpath-sso", consumer: "system-driver" },
+  { system: "ucpath", configKey: "ucpath", routes: ["login", "smartHr", "jobSummary", "personalData", "personProfile"], credential: "ucpath-sso", consumer: "system-driver" },
   { system: "crm", configKey: "crm", routes: ["entry", "onboardingSearch", "ucPathEntrySheet", "onboardingHistory", "idocsViewer"], credential: "ucpath-sso", consumer: "system-driver" },
   { system: "onbase", configKey: "onbase", routes: ["entry"], credential: "ucpath-sso", consumer: "system-driver" },
   { system: "kuali", configKey: "kuali", routes: ["entry"], credential: "ucpath-sso", consumer: "system-driver" },

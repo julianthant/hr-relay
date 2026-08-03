@@ -25,6 +25,14 @@ export const CrmRoutesSchema = z.strictObject({
 });
 export const OnBaseRoutesSchema = z.strictObject({ entry: UrlSchema });
 export const UcpathRoutesSchema = z.strictObject({
+  /**
+   * The UCPath SSO entry portal ("Log in to UCPath" → campus discovery →
+   * Shibboleth). Deep PeopleSoft routes are NOT reachable unauthenticated, so
+   * login starts here. Ported from legacy
+   * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+   * src/infra/auth/login.ts (ucpathNavigateAndFill).
+   */
+  login: UrlSchema,
   smartHr: UrlSchema,
   jobSummary: UrlSchema,
   personalData: UrlSchema,
@@ -131,6 +139,7 @@ export const ConfigSchema = z.strictObject({
     } },
     onbase: { prod: { entry: "https://ucsd.hylandcloud.com/251ids/NavPanel.aspx" } },
     ucpath: { prod: {
+      login: "https://ucpath.ucsd.edu",
       smartHr: "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y",
       jobSummary: "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).WF_JOB_SUMMARY.GBL",
       personalData: "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1",
