@@ -281,6 +281,12 @@ export const CommandRejectionCodeSchema = z.enum([
   "policy-refused",
   "schema-mismatch",
   "active-version-blockers",
+  /**
+   * D113: the arm is schema-recognized but its owning later milestone has not
+   * activated it. This result is computed with ZERO authority side effects —
+   * no journal row, no audit row, no generation advance.
+   */
+  "capability-unavailable",
 ]);
 
 export const CommandResultSchema = z.discriminatedUnion("state", [
