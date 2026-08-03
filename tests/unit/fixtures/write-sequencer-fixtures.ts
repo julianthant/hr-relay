@@ -260,6 +260,10 @@ export interface WriteFixtureWorld {
   commitThrows?: Error;
   /** Called between the fence and the click (the fence-before-click witness). */
   onCommitClick?: () => void;
+  /** Called when the staged page's subject observation is read (beat ③). */
+  onSubjectRead?: () => void;
+  /** The exact capability the last commit click received (beat ⑤ witness). */
+  lastCapability?: unknown;
   /** Called during prepare, before it returns (budget-expiry injection). */
   onPrepare?: () => void;
   /** When true the served driver has NO read() method. */
@@ -285,11 +289,13 @@ const writeFixtureSession = defineWorkerSessionProvider("ucpath");
 function createFixtureDriver(world: WriteFixtureWorld): WriteFixtureDriver {
   const read = async (id: string): Promise<string> => {
     world.events.push(`subject-read:${id}`);
+    world.onSubjectRead?.();
     if (world.subjectReadThrows !== undefined) throw world.subjectReadThrows;
     return world.subjectEid;
   };
   const commit = async (id: string, capability: MutationCapability): Promise<{ clicked: true }> => {
     assertSequencerMintedMutationCapability(capability);
+    world.lastCapability = capability;
     world.onCommitClick?.();
     world.events.push(`commit-click:${id}`);
     return { clicked: true };

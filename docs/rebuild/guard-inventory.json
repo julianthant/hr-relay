@@ -284,11 +284,10 @@
     {
       "name": "identity-gate-before-commit",
       "file": "tests/unit/architecture/identity-gate-before-commit.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: identity-gate-before-commit.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/09-write-safety.md",
+      "invariant": "A separation-class commit is graph-reachable only through an operator gate node: every dependsOn ancestry path from the transaction node crosses an operator gate before a root, checked over all registered separation-class descriptors and executed both ways against gated and ungated fixtures. The typed IdentityApprovalResult payload lands with the first gated separation workflow; until then the graph-structural property is what is truthfully enforceable.",
+      "replacementRequired": true
     },
     {
       "name": "knowledge-fix-integrity",
@@ -468,11 +467,10 @@
     {
       "name": "subject-before-fence",
       "file": "tests/unit/architecture/subject-before-fence.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: subject-before-fence.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/09-write-safety.md",
+      "invariant": "Every transaction pairs compatible prepare/commit subject declarations observed after prepare in one system; the live sequencer orders prepare-end < fresh subject observation < fence-commit < mutation-call on one lease; mismatch/unknown/missing observation produces zero fence and zero click with a poisoned page; alternating EIDs through one pooled page bind distinct digests; every minted MutationCapability is bound to the exact fenced WriteBindingProof digest; unscoped commits require a reviewed allowlisted reason, fail-both-ways.",
+      "replacementRequired": true
     },
     {
       "name": "task-contract-sealing",
@@ -527,11 +525,10 @@
     {
       "name": "write-safety-contract",
       "file": "tests/unit/architecture/write-safety-contract.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: write-safety-contract.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/09-write-safety.md",
+      "invariant": "Every effect:commit contract declares complete write safety with no escape hatch: nontrivial proofSchema, normal-output/present-probe extractors, outputFromProof reconstruction, and a same-store read probe; the completion union admits receipt AND save-verify/upload-verify without a confirmation number; and doc 09 SS4 recovery routes probe-first with present proof schema-validated before backfill, single early absence yielding zero retry authority, only D64/D69 stabilized evidence settling retryable, indeterminate arms parking, and the permanent key blocking every second fence.",
+      "replacementRequired": true
     }
   ],
   "rebuildRatchetActivation": {
