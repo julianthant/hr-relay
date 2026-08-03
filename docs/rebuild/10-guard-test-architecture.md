@@ -19,6 +19,9 @@ Continuous lift/scoped-flip guard families remain rejected; an optional versione
 has its own offline fixture. **Amended 2026-07-30 (Round 9):** executor-lane overlap/capacity guards
 are replaced by the one-active-item-per-worker, N-worker overlap, and authored
 fresh-session-boundary guards (D87).
+**Amended 2026-08-02 (Round 18):** the Phase-1f guard-activation boundary now covers atomic planned
+start, minimal failure/result authority, provenance collection, exact config-keyed session reuse,
+recovery-before-requeue, full beat ⑦, exhaustive command dispatch, and generic provider admission.
 
 Owns gap-audit (`08`) BLOCKER #2: ratchet port map, safety guards, descriptor projection coverage,
 guard inventory, TDD topology, and stub/live lanes.
@@ -250,6 +253,37 @@ canary. The recursive strict-boundary catalog now includes session, retry, artif
 artifact-root schemas. These active guards cover only the real 1d interfaces/declarations,
 artifact writer, and provider deterministic fakes: 1f admission/budget/worker/session-runtime
 guards and 2h production provider-pool/consumer guards remain planned.
+
+---
+
+## Phase 1f guard-activation boundary (ratified 2026-08-02)
+
+Phase 1f must activate guards against the real executor/command/session/provider targets in the
+same commits as those targets. The acceptance set is non-vacuous and fail-both-ways:
+
+- start planning preserves exact raw and canonical representations plus both schema hashes, and
+  crash/conflict injection proves plan consumption + active-run policy + every run insert are one
+  transaction;
+- every failed task/run resolves a persisted doc-12 `FailureRecord`, every successful run resolves
+  exactly one schema-bound terminal result, and neither can be reconstructed from display events;
+- the executor supplies a real `recordData` collector and rejects missing/contradictory `live`
+  provenance before checkpoint/result persistence while derived fields retain the oldest complete
+  upstream provenance;
+- worker-session reuse requires exact worker/system/resolved-instance/config-fingerprint identity,
+  verified-neutral reset is distinct from explicit `session:"fresh"`, and config/fresh-boundary
+  fixtures prove close-before-replace;
+- expired-claim fixtures containing an `attempting` write intent enter recovery before any ordinary
+  requeue/claim, including an authority-unavailable refusal case;
+- beat ⑦ crash injection spans intent+attempt, transaction checkpoint, ledger and terminal outboxes,
+  any required receipt ref, and run transition in one outer authority transaction;
+- one exhaustive dispatcher handles every command union arm: Phase-1 arms execute through their
+  authority service, while later arms return typed `capability-unavailable` with zero mutation;
+- generic provider admission enforces the immutable snapshot's abort/timeout/concurrency/rate/
+  daily-use/cost limits before every adapter call; exhaustion performs zero remote calls and holds
+  no sleeping worker. Production pool/consumer coverage remains 2h.
+
+No existing Phase-1c four-row atomic-outbox test may stand in for the full beat-⑦ fixture, and no
+schema-only command-family test may stand in for exhaustive runtime dispatch.
 
 ---
 
@@ -517,6 +551,10 @@ read while still permitting replay-safe browser downloads.
   must create zero new runs. Coverage is bidirectional over every mutating route/action; typed gate
   results parse the descriptor result schema and store a checkpoint/ref, notification commands are
   limited to read/unread/snooze, and capture mutation cannot target a run id.
+  The runtime dispatcher is exhaustive across family **and action**. In Phase 1f the active
+  start/worker-browser/run/gate/write-resolution actions execute, `run/edit-checkpoint` and every
+  later family/action return `rejected:capability-unavailable` with zero authority-generation
+  advance, and an unhandled/throwing “not implemented” arm fails the guard.
 - **`authority-target-no-fallback.test.ts`.** Cancel/cascade/retry/bump resolve exact targets and
   dependency trees from SQLite. Fixtures make the DB unavailable/inconsistent and pass tempting
   caller-visible roots; the expected result is zero transitions + typed error, never a fallback.
@@ -602,6 +640,10 @@ read while still permitting replay-safe browser downloads.
   concurrency/rate admission, config/secret preflight, redaction, evidence, and unavailable/invalid
   scenarios; every adapter has a consuming contract. Scheduler fixtures prove an exhausted provider
   cannot bypass its provider budget or occupy a worker indefinitely.
+  The generic admission service and those budget/exhaustion fixtures activate in 1f against
+  deterministic adapters. Requiring a production key pool or OCR/geocoding/AI consumer before 2h
+  would overclaim the later milestone; 2h extends this same guard rather than adding a second
+  admission path.
 - **`runtime-dependency-coverage.test.ts`.** D68 compares the closed BrowserSystemId/provider sets,
   endpoint route schemas, secret/config registries, preflight checks, and legacy env/capability
   inventory in both directions. A missing ServiceNow/SharePoint/Old-Kronos endpoint or provider key,

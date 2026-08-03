@@ -1,6 +1,6 @@
-# Reconciliation memo — binding cross-doc decisions (2026-07-17 through 2026-07-31)
+# Reconciliation memo — binding cross-doc decisions (2026-07-17 through 2026-08-02)
 
-Status: **binding revision 2026-07-31 (Round 12).** Earlier rounds remain as decision history;
+Status: **binding revision 2026-08-02 (Round 18).** Earlier rounds remain as decision history;
 Round 7 supersedes incompatible typing, UI-access, control, delegation, recovery, trust,
 knowledge, and workflow-editor claims; Round 9 supersedes the proposed executor-lane/session-pool
 capacity model; Round 10 supersedes D73 and ratifies isolated coexistence, one all-at-once cutover,
@@ -8,13 +8,14 @@ legacy preservation/change accounting, coverage floors, and deferred probe miles
 moves the rebuild out of `temp_src/` into its own repository, superseding the in-tree half of D88
 and amending the mechanics of D89/D90; Round 12 ratifies D94's fail-closed cross-repo accounting
 mechanics.
+Round 18 ratifies the remaining Phase-1f runtime/authority seams as D109–D118.
 
 > **What this doc is, as of Round 10: a decision CHANGELOG, not a specification.** Its job is to
 > record *what was decided, when, and which doc owns it* — so a reader can reconstruct why a
 > contract has its current shape. It is **not** where you read the current contract. The owning
 > doc (D1 matrix below) is the only readable current truth, and every ratified decision must be
 > folded into that doc **in the same commit that records it** (charter standing rule, added
-> 2026-07-26). Round 8–12 entries are therefore deliberately one-liners with a pointer: the normative
+> 2026-07-26). Round 8–18 entries are therefore deliberately one-liners with a pointer: the normative
 > text lives in the owner. Rounds 1–7 predate that rule and still carry normative prose; treat
 > the owning doc as authoritative wherever they differ.
 
@@ -25,7 +26,7 @@ Amendment agents rewrite each doc to comply; a doc may reference another doc's o
 must never redefine it.
 
 > **Implementation rule:** don't implement from this file. D1–D25 are historical rationale, not
-> copyable current API/DDL; D26–D72 amend each other in round order (later wins); D73–D94 are
+> copyable current API/DDL; D26–D72 amend each other in round order (later wins); D73–D118 are
 > pointers only. **Read the owning doc.** If an owning doc contradicts a decision here, the doc is
 > either correct (it was folded) or stale (it wasn't) — check the doc's amendment date against the
 > round date and fix the doc, never work from this memo. Current contract shapes live in owning
@@ -662,7 +663,22 @@ records them and the same commit folds each into its owner. **One line each — 
 |---|---|---|
 | **D108** | **CRM PERSON LOOKUP READS STAY SOURCE-SEMANTIC AND EID-BOUND.** The record retains raw Process Stage and does not invent `updatedAt` or an unverified normalization; invitation/completion dates come from exact Onboarding History transitions, First Day of Service owns the start date, and Date Signed is not completion. Found and absent reads carry typed bindings, and requested/bound/output EIDs must agree through declared `subject-mismatch` failures. | doc 01 §9.1.1 (primary); doc 02 §8 |
 
-**Two separate D-series exist — do not confuse them.** This memo's `D1–D108` are cross-doc
+## Reconciliation round 18 (2026-08-02) — Phase 1f runtime/authority closure, folded
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D109** | **START PLANS BIND EXACT RAW + CANONICAL INGRESS AND ARE CONSUMED ATOMICALLY WITH ENQUEUE.** | docs 02 §Phase-1f ingress; 03 §Phase-1f authority/§2.4 |
+| **D110** | **PHASE 1F PERSISTS THE MINIMAL STRICT `FailureRecord`; PHASE 2G ADDS RICH BUNDLES, RECEIPTS, EXPLAIN/SEARCH, AND PROJECTIONS OVER IT.** | docs 12 §2.1 (primary); 03 §Phase-1f authority; 07 items 1f/2g |
+| **D111** | **BEAT ⑦ IS ONE CLAIM/INTENT-VALIDATED TRANSACTION INCLUDING INTENT+ATTEMPT, TRANSACTION CHECKPOINT, OUTBOXES, AND RUN TRANSITION.** | doc 09 §Phase-1f ratification/§3 (primary); doc 03 §Phase-1f authority |
+| **D112** | **PHASE 1F OWNS THE GENERIC PROVIDER-ADMISSION/BUDGET CORE; PHASE 2H OWNS PRODUCTION POOLS, ADAPTERS, AND CONSUMERS.** | docs 01 §Phase-1f executor; 05 §3.1; 10 §Phase-1f guards; 07 items 1f/2h |
+| **D113** | **ONE EXHAUSTIVE COMMAND KERNEL EXECUTES PHASE-1 ARMS; LATER ARMS REMAIN SCHEMA-RECOGNIZED AND RETURN TYPED `capability-unavailable` WITH ZERO SIDE EFFECTS.** | doc 03 §Phase-1f authority/§2.4 (primary); doc 10 §3.9; doc 07 item 1f |
+| **D114** | **A SUCCESSFUL WORKFLOW PERSISTS ONE SCHEMA-BOUND TERMINAL RESULT ATOMICALLY WITH ITS TERMINAL TRANSITION; CHILDREN READ THAT AUTHORITY.** | doc 02 §Phase-1f ingress/§5.7 (primary); doc 03 §Phase-1f authority |
+| **D115** | **THE EXECUTOR SUPPLIES A REQUIRED, NON-NO-OP TASK PROVENANCE COLLECTOR AND REFUSES DURABLE OUTPUT WHEN DECLARED PROVENANCE IS INCOMPLETE.** | doc 01 §Phase-1f executor (primary); doc 10 §Phase-1f guards |
+| **D116** | **WORKER-SESSION REUSE IDENTITY INCLUDES `configFingerprint` WITH WORKER, SYSTEM, AND RESOLVED INSTANCE.** | doc 11 §4 (primary); doc 05 §Phase-1f runtime |
+| **D117** | **A STANDALONE READ OWNS NAVIGATION FROM VERIFIED NEUTRAL STATE; ONLY EXPLICIT `session:"fresh"` REQUIRES A NEW CONTEXT.** | doc 02 §3.1 (primary); doc 05 §4 |
+| **D118** | **AN EXPIRED CLAIM WITH AN UNFINISHED WRITE INTENT ENTERS RECOVERY BEFORE ANY ORDINARY REQUEUE.** | doc 05 §3 (primary); doc 09 §4 |
+
+**Two separate D-series exist — do not confuse them.** This memo's `D1–D118` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
 types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the
 distinction at its §9 header; always cite the row-model series with the `row-model` prefix.

@@ -213,6 +213,32 @@ capability at migration order 2 and New Kronos at order 8; this helper is the se
 
 ---
 
+## Phase 1f executor ratification (2026-08-02)
+
+Phase 1f turns two Phase-1d seams into mandatory runtime behavior:
+
+- **Task provenance is collected, never inferred after the fact.** The executor constructs one
+  real collector for every `TaskCtxCommon`; production `recordData` cannot be omitted, replaced by
+  a no-op, or reconstructed from log prose. Each point is parsed through the strict `DataPoint`
+  boundary and attached to the current run/attempt/node/task span. Before a read output may become
+  a checkpoint or terminal-result dependency, the kernel checks the contract's resolved
+  `provenance` policy: every `live` output field has a point recorded during that execution, while
+  every `derived` field receives the complete declared upstream provenance with the oldest
+  contributing `observedAt`. Missing or contradictory provenance fails the task before durable
+  output. `fakeCtx` must supply an explicit recording fake so a unit test cannot accidentally prove
+  a production no-op.
+- **Provider admission is one generic kernel service.** Every `ctx.providers` call enters the same
+  capability-indexed admission path before an adapter can perform remote I/O. It applies the
+  immutable run config snapshot's timeout/abort, concurrency, rate, daily-usage, and cost limits;
+  records reservations/outcomes with the provider evidence; and returns a typed unavailable result
+  when admission cannot be granted. Counters and leases whose reset would change an admission
+  decision survive worker restart in authority storage. Tasks cannot hold a worker while sleeping
+  for provider capacity or bypass admission through an SDK/raw-network import. Phase 1f supplies
+  this capability-neutral core and deterministic adapters only; production provider pools and
+  OCR/geocoding/AI consumers remain Phase 2h.
+
+---
+
 ## 2. The Task contract
 
 ### 2.1 Core types

@@ -383,6 +383,15 @@ interface RunEnvelope {
   `(system,resolvedInstance,configFingerprint)`. Prod/test runs never share a context. A config
   change creates new worker-owned contexts; existing runs finish against their stamped snapshot.
 
+**Phase 1f reuse identity (D116, ratified 2026-08-02).** The tuple above is the runtime session
+manager's actual lookup identity, not evidence metadata added after acquisition. `reuse-worker`
+may return an existing context only when worker, system, resolved instance, and
+`configFingerprint` all match the requesting run; download/exclusivity launch requirements must
+also remain compatible. A mismatch closes the old context with proof and authenticates a new one.
+Neither equal URLs nor the same credential set permits reuse across a different fingerprint,
+because timeouts, feature flags, provider/browser policy, or another non-secret resolved leaf may
+have changed even when the route did not.
+
 ---
 
 ## 5. Fiscal-year dates — fail-loud, not silently stale
