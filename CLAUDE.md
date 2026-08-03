@@ -11,9 +11,10 @@ provenance collection landed 2026-08-02. D109's start-plan ingress authority now
 JSON beside canonical snapshots for accepted and refused entries, binds both schema hashes and
 canonical digests, invalidates pre-D109 short-lived plan rows rather than fabricating raw values,
 and exposes the confirmation revision and hashes to the later command-service consume step. D110/
-D114 terminal authority now stores exact structured failures or schema-bound workflow results and
-their pending terminal outbox in schema v7, atomically with the matching failed/done run transition;
-generic run transitions cannot bypass either record.
+D114 terminal authority now factory-derives successful results from exact stored dependencies,
+requires an unforgeable in-process seal for initial success, and stores a strict pre-terminal
+authorization with exact structured failures or schema-bound results/outbox in schema v7,
+atomically with the matching failed/done run transition; generic run transitions cannot bypass it.
 
 ## Before you start
 
@@ -258,7 +259,11 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   authority transaction, and accept only byte-exact replay. Result dependencies come from a
   factory-authenticated terminal view and explicitly retain either the exact checkpoint identity,
   output/provenance digests and fingerprints or a closed `not-run` reason for a conditional node.
-  Schema hashing stays browser-safe because descriptor closures cannot import Node built-ins.
+  Schema hashing stays browser-safe because descriptor closures cannot import Node built-ins. The
+  initial success path also carries the descriptor factory's unforgeable seal over the exact parsed
+  current run and factory-derived result; a schema-valid caller-built result is not authority. A
+  strict `run_terminal_authorizations` row retains the original expected version and claim for exact
+  replay, and NULL-safe recovery invariants reject every partial terminal settlement.
 
 ## After changes
 

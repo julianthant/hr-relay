@@ -265,7 +265,12 @@ same commits as those targets. The acceptance set is non-vacuous and fail-both-w
   crash/conflict injection proves plan consumption + active-run policy + every run insert are one
   transaction;
 - every failed task/run resolves a persisted doc-12 `FailureRecord`, every successful run resolves
-  exactly one schema-bound terminal result, and neither can be reconstructed from display events;
+  exactly one schema-bound terminal result, and neither can be reconstructed from display events.
+  Crash injection covers authorization plus failure/result/outbox/run writes; recovery uses
+  NULL-safe bidirectional invariants and direct partial-settlement fixtures. Initial success rejects
+  hand-built schema-valid records without the descriptor-factory seal, rereads exact checkpoint
+  rows, and pins each conditional not-run dependency to its authored reason. Exact replay proves the
+  original expected version and claim from durable authorization rather than trusting terminal state;
 - the executor supplies a real `recordData` collector and rejects missing/contradictory `live`
   provenance before checkpoint/result persistence while derived fields retain the oldest complete
   upstream provenance;

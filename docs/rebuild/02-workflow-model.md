@@ -210,9 +210,15 @@ all fail.
   cannot be represented as strict JSON fails the whole planning request before any proposal exists;
   it is never serialized, dropped, or substituted into a plausible refusal.
 - A successful workflow has one durable terminal result. The executor evaluates `result.derive`
-  only after every declared terminal dependency is durably resolved, parses the value through the
-  descriptor's exact result schema, and writes one immutable `RunResultRecord` atomically with the
-  successful terminal run transition and its terminal outbox. The record binds run/attempt,
+  itself from the run's stored canonical input and the exact schema-validated checkpoint outputs;
+  no caller supplies a candidate result. The descriptor factory fixes dependency order and maps
+  each conditional dependency to its one legal absence reason (`condition-false` or
+  `branch-not-selected`). It parses the derived value through the descriptor's exact result schema
+  and issues an in-process authorization seal bound to both the parsed current run and result. An
+  initial authority write rejects a structurally valid hand-built record without that seal and
+  independently rereads every named checkpoint; a not-run dependency is rejected when the same
+  terminal attempt has a stored checkpoint. The immutable `RunResultRecord`, durable pre-terminal
+  authorization, successful run transition, and terminal outbox commit atomically. The record binds run/attempt,
   workflow/descriptor version, result-schema hash, contract/config fingerprints, canonical result
   JSON, and the exact dependency/checkpoint identities used to derive it. An awaited child reads
   and reparses this record through the target workflow result schema; spans, tracker prose, a task
@@ -1293,9 +1299,12 @@ CREATE TABLE run_checkpoints (
 
 Successful terminal results are separate system-of-record records, not a special checkpoint. A
 `RunResultRecord` is written only by the executor's terminal-result path, in the same authority
-transaction as `done` and the terminal outbox; replay of that transaction is idempotent by `runId`
-and must reproduce the identical result digest. A different result for an existing run is
-corruption. Parent/delegation joins load this record by child `runId`, validate all recorded
+transaction as the durable terminalization authorization, `done`, and the terminal outbox. The
+authorization stores the original pre-terminal expected version and claim generation; replay is
+idempotent by `runId` only when that authorization, result, outbox, and transition are byte-exact.
+A retry presenting an arbitrary or stale authorization is a conflict even after the terminal run
+has dropped its live claim fields. A different result for an existing run is corruption.
+Parent/delegation joins load this record by child `runId`, validate all recorded
 fingerprints and the child's exact result schema, and only then expose the typed child output.
 
 **Resume scope — explicit (D9).** The checkpoint/resume model covers **rows with a real daemon

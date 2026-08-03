@@ -171,12 +171,20 @@ open:
   strict `FailureRecord` and stores its `failureId` with the failure transition; a display-safe span
   summary is not a substitute. This is the minimum durable record/lookup path. Automatic diagnostic
   bundles, receipts, search/explain, and rich dashboard projections remain 2g and do not get
-  fabricated placeholder refs in 1f.
+  fabricated placeholder refs in 1f. The composite mutation receives the exact factory-built
+  workflow descriptor separately from the strict request, resolves a node's allowed task ids from
+  that authenticated runtime node, and rejects caller-invented node/task pairings.
 - `run_results` is a non-rebuildable authority family. One successful run writes the doc 02
   `RunResultRecord` keyed by `runId`; the record's schema/result/dependency digests and the terminal
   run transition/outbox commit together. A second identical write is idempotent; a different result
   for the same run is corruption. Child joins read this authority rather than reconstructing output
-  from spans or checkpoints.
+  from spans or checkpoints. Initial success additionally requires doc 02's factory seal and exact
+  rereads of the stored checkpoints. Both failed and successful composites first persist one strict
+  `run_terminal_authorizations` row keyed by `runId`, binding the original expected version, worker/
+  claim generation, descriptor identity, timestamp, and exact failure or result/outbox identity.
+  Replay must reproduce that row exactly; terminal state cannot make a stale claim look valid.
+  Schema-v7 recovery treats any authorization/failure/result/outbox/terminal-transition subset as
+  corruption, including JSON `NULL` outcomes that ordinary SQL inequality would otherwise miss.
 - Beat ⑦ is one outer authority transaction over the current claim generation and intent
   generation: mark intent/attempt committed, persist the schema-valid transaction-output
   checkpoint, insert ledger and same-trace terminal-span/generic-outcome outboxes, attach any real
@@ -639,7 +647,7 @@ owning merge/dedup heuristics (`mergeDisplayItems` collapse survives as a server
 
 - **System-of-record (NOT rebuildable and never deleted by projection/runtime row maintenance):**
   the task/claim store (tasks, leases,
-  dependencies, delegation manifests, commands, start plans, terminal run results, failures,
+  dependencies, delegation manifests, commands, start plans, terminal authorizations/results, failures,
   notifications, capture sessions/photo order/finalization outboxes — doc 02 §5.7's checkpoint payloads,
   §4.4's `ocr_approvals` manifests, and
   doc 09's permanent-key `write_intents`, `write_attempts`, and durable outbox, plus
