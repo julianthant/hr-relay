@@ -1,3 +1,3 @@
-import { defineUnwiredSessionProvider } from "../../base/session.js";
+import { defineWorkerSessionProvider } from "../../base/session.js";
 
-export const sharepointSession = defineUnwiredSessionProvider("sharepoint");
+export const sharepointSession = defineWorkerSessionProvider("sharepoint");

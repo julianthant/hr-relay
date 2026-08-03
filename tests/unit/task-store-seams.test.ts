@@ -68,7 +68,7 @@ async function readStream(stream: Readable): Promise<Uint8Array> {
 }
 
 describe("task, store, session, provider, and artifact seams", () => {
-  it("declares all nine browser stores with OnBase-only exclusivity and fail-loud unwired login", async () => {
+  it("declares all nine browser stores with wired worker authentication and OnBase-only exclusivity", async () => {
     const expected = [
       "crm",
       "i9",
@@ -81,13 +81,21 @@ describe("task, store, session, provider, and artifact seams", () => {
       "ucpath",
     ];
     assert.deepEqual(browserStoreRegistry.stores.map(({ namespace }) => namespace).sort(), expected);
+    const authenticated: string[] = [];
+    const handle = {
+      authenticate(system: string) {
+        authenticated.push(system);
+        return Promise.resolve("logged-in" as const);
+      },
+    };
     for (const store of browserStoreRegistry.stores) {
       assert.equal(store.kind, "browser");
       assert.equal(store.driver.system, store.namespace);
       assert.equal(store.session.system, store.namespace);
       assert.equal(store.session.exclusive === true, store.namespace === "onbase");
-      await assert.rejects(store.session.login(undefined, {}), new RegExp(`${store.namespace}.*unwired`));
+      assert.equal(await store.session.login(handle, {}), "logged-in");
     }
+    assert.deepEqual(authenticated.sort(), expected);
     assert.throws(() => defineUnwiredSessionProvider("onbase"), /must declare exclusive:true/);
     assert.throws(
       () => defineUnwiredSessionProvider("ucpath", { exclusive: true }),

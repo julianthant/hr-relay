@@ -1,3 +1,3 @@
-import { defineUnwiredSessionProvider } from "../../base/session.js";
+import { defineWorkerSessionProvider } from "../../base/session.js";
 
-export const i9Session = defineUnwiredSessionProvider("i9");
+export const i9Session = defineWorkerSessionProvider("i9");

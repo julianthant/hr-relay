@@ -1,3 +1,3 @@
-import { defineUnwiredSessionProvider } from "../../base/session.js";
+import { defineWorkerSessionProvider } from "../../base/session.js";
 
-export const oldKronosSession = defineUnwiredSessionProvider("old-kronos");
+export const oldKronosSession = defineWorkerSessionProvider("old-kronos");

@@ -12,6 +12,18 @@ export interface SessionLoginOptions {
   readonly signal?: AbortSignal;
 }
 
+/**
+ * Authentication belongs to the worker-owned browser resource, not to a task.
+ * A concrete browser factory supplies this handle after opening its isolated
+ * context; each system provider owns the corresponding login recipe.
+ */
+export interface BrowserAuthenticationHandle {
+  readonly authenticate: (
+    system: BrowserSystemId,
+    options: SessionLoginOptions,
+  ) => Promise<LoginResult>;
+}
+
 export interface SessionProvider<S extends BrowserSystemId, Handle = unknown> {
   readonly system: S;
   readonly login: (handle: Handle, options: SessionLoginOptions) => Promise<LoginResult>;
@@ -54,6 +66,31 @@ export function defineUnwiredSessionProvider<S extends BrowserSystemId>(
     ...options,
     async login() {
       throw new Error(`${system} session login is declared but unwired in Phase 1d`);
+    },
+  });
+}
+
+/**
+ * The Phase-1f runtime provider. It is intentionally small: browser/context
+ * creation stays with the worker session factory, while the provider performs
+ * exactly one bounded authentication against that owned handle.
+ */
+export function defineWorkerSessionProvider<S extends BrowserSystemId>(
+  system: S,
+  options: Readonly<{
+    exclusive?: true;
+    resetUrl?: string;
+    idleRefresh?: IdleRefreshCadence;
+  }> = {},
+): SessionProvider<S, BrowserAuthenticationHandle> {
+  return defineSessionProvider({
+    system,
+    ...options,
+    async login(handle, loginOptions) {
+      if (loginOptions.signal?.aborted === true) {
+        throw new Error(`${system} session login was aborted before authentication`);
+      }
+      return LoginResultSchema.parse(await handle.authenticate(system, loginOptions));
     },
   });
 }

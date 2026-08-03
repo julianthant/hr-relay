@@ -1,8 +1,9 @@
 # 05 — Execution Kernel: Workers & Browser Sessions
 
-Status: **revised 2026-07-30 after operator review.** The executor-lane and static per-system
-capacity design is retired. One worker handles one item at a time; parallelism comes from starting
-more workers; workflows explicitly declare steps that require a fresh browser session.
+Status: **revised 2026-08-02 through the Phase 1f worker-session runtime.** The executor-lane and
+static per-system capacity design is retired. One worker handles one item at a time; parallelism
+comes from starting more workers; workflows explicitly declare steps that require a fresh browser
+session.
 
 ## Ownership (D1)
 
@@ -43,6 +44,22 @@ As built on 2026-08-01, each of the nine browser stores declares exactly one mat
 `exclusive:true`. The store/task boundary validates the full `SessionNeed` shape and effect/access
 agreement now, while worker-owned acquisition, reuse, close/reset, and cross-process leases remain
 absent until 1f.
+
+## Phase 1f worker-session runtime (2026-08-02)
+
+`WorkerSessionManager` now owns the callback-scoped driver lease for each `(worker, system)` pair.
+The manager serializes use within that pair, performs a single authenticated start, and reuses the
+resource only when its instance, download, and exclusivity launch properties match the authored
+need. A clean callback must reset before release. A task failure, cancellation, or failed reset
+poison-closes the resource; a `fresh` need proves the old page/context (and OnBase identity lease)
+closed before the replacement emits `browser-session:start`.
+
+Parking and worker stop first reject new leases, wait behind every in-flight callback, then close
+all owned resources. A missing or failed close proof leaves the resource registered and poisoned:
+the manager refuses reuse instead of treating an uncertain close as success. The same rule covers
+failed-login cleanup, so a resource whose cleanup could not be proved cannot disappear from worker
+ownership. The nine store providers now accept the worker resource's bounded authentication handle;
+concrete browser creation remains a factory injected at the runtime composition boundary.
 
 ---
 

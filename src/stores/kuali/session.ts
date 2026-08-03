@@ -1,3 +1,3 @@
-import { defineUnwiredSessionProvider } from "../../base/session.js";
+import { defineWorkerSessionProvider } from "../../base/session.js";
 
-export const kualiSession = defineUnwiredSessionProvider("kuali");
+export const kualiSession = defineWorkerSessionProvider("kuali");

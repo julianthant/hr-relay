@@ -1,4 +1,4 @@
-import type { SessionProvider } from "./session.js";
+import type { BrowserAuthenticationHandle, SessionProvider } from "./session.js";
 import {
   assertFactoryDeclaredDriver,
   assertFactoryDefinedTask,
@@ -40,7 +40,7 @@ export interface BrowserTaskStore<
   readonly kind: "browser";
   readonly namespace: S;
   readonly driver: DriverDeclaration<Driver>;
-  readonly session: SessionProvider<S>;
+  readonly session: SessionProvider<S, BrowserAuthenticationHandle>;
   readonly tasks: T;
 }
 
@@ -57,7 +57,7 @@ interface RegisteredBrowserTaskStore {
   readonly kind: "browser";
   readonly namespace: BrowserSystemId;
   readonly driver: RuntimeDriverDeclaration;
-  readonly session: SessionProvider<BrowserSystemId>;
+  readonly session: SessionProvider<BrowserSystemId, BrowserAuthenticationHandle>;
   readonly tasks: Readonly<Record<string, AnyTask>>;
 }
 
@@ -101,7 +101,7 @@ export function defineBrowserStore<
 >(
   namespace: S,
   driver: DriverDeclaration<Driver>,
-  session: SessionProvider<S>,
+  session: SessionProvider<S, BrowserAuthenticationHandle>,
   tasks: T,
 ): BrowserTaskStore<S, Driver, T> {
   BrowserSystemIdSchema.parse(namespace);

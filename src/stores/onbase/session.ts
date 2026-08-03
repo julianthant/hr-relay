@@ -1,3 +1,3 @@
-import { defineUnwiredSessionProvider } from "../../base/session.js";
+import { defineWorkerSessionProvider } from "../../base/session.js";
 
-export const onbaseSession = defineUnwiredSessionProvider("onbase", { exclusive: true });
+export const onbaseSession = defineWorkerSessionProvider("onbase", { exclusive: true });

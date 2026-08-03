@@ -201,6 +201,7 @@ export type WriteAttemptId = z.infer<typeof WriteAttemptIdSchema>;
 export type StableRecordId = z.infer<typeof StableRecordIdSchema>;
 export type PredicateId = z.infer<typeof PredicateIdSchema>;
 export type WorkflowId = z.infer<typeof WorkflowIdSchema>;
+export type WorkerId = z.infer<typeof WorkerIdSchema>;
 export type NodeId = z.infer<typeof NodeIdSchema>;
 export type GateId = z.infer<typeof GateIdSchema>;
 export type DelegationEdgeId = z.infer<typeof DelegationEdgeIdSchema>;

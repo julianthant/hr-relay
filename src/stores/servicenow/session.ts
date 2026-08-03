@@ -1,3 +1,3 @@
-import { defineUnwiredSessionProvider } from "../../base/session.js";
+import { defineWorkerSessionProvider } from "../../base/session.js";
 
-export const servicenowSession = defineUnwiredSessionProvider("servicenow");
+export const servicenowSession = defineWorkerSessionProvider("servicenow");

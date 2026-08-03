@@ -5,7 +5,8 @@ legacy repository at `/Users/julianhein/Projects/hr-automation` runs every real 
 stays the sole production authority until a single all-at-once cutover (D89/D93).
 
 Seeded 2026-07-31 from `hr-automation@5879004` (branch `feature/rebuild-phase1b`, which stays in the
-legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01; Phase 1f is next.
+legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01. Phase 1f is in progress;
+its registry/task-binding corrections and worker-owned browser-session lifecycle landed 2026-08-02.
 
 ## Before you start
 
@@ -219,6 +220,14 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   (D104).
 - A contract a descriptor uses but no store implements yet must be listed in
   `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
+
+## Lessons learned
+
+- **2026-08-02: Worker browser resources are callback-leased and uncertain closure stays visible.**
+  Serialize driver use by `(worker, system)`; an authored fresh boundary closes before replacement,
+  and park/stop waits behind in-flight callbacks. Task, cancellation, reset, login-cleanup, or close-
+  proof uncertainty must poison-close the resource. If closure cannot be proved, retain the resource
+  as poisoned and refuse reuse; never erase it from ownership or infer that cleanup succeeded.
 
 ## After changes
 
