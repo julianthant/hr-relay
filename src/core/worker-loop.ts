@@ -49,6 +49,7 @@ import {
   type SpanEmitter,
 } from "./span-emitter.js";
 import {
+  withBoundRunConfigFingerprint,
   WorkerSessionManager,
   type WorkerBrowserSessionFactory,
   type WorkerSessionEvent,
@@ -243,31 +244,34 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           runController.abort(new Error(`claim lost during heartbeat renewal: ${message}`));
         },
       });
-      // D116: the claimed run's immutable config fingerprint becomes part of
-      // the session reuse identity for every driver lease this run takes.
-      sessions.bindRunConfigFingerprint(run.envelope.configFingerprint);
       try {
-        const outcome = await executeClaimedRun({
-          descriptor: deps.descriptor,
-          stores: deps.stores,
-          authority: deps.authority,
+        // D116: the claimed run's immutable config fingerprint becomes part of
+        // the session reuse identity for every driver lease this run takes —
+        // bound for exactly the execution window, released on every exit.
+        const outcome = await withBoundRunConfigFingerprint(
           sessions,
-          emitter,
-          clock,
-          ids: deps.ids,
-          scheduler: deps.scheduler,
-          taskDeadlineMs: deps.taskDeadlineMs,
-          log: deps.log,
-          ...(deps.checkpointMigrations === undefined ? {} : { checkpointMigrations: deps.checkpointMigrations }),
-          ...(deps.canonicalInputMigrations === undefined
-            ? {}
-            : { canonicalInputMigrations: deps.canonicalInputMigrations }),
-          ...(deps.writeSequencer === undefined ? {} : { writeSequencer: deps.writeSequencer }),
-          ...(deps.childRuns === undefined ? {} : { childRuns: deps.childRuns }),
-        }, { run, claim, signal: runController.signal });
+          run.envelope.configFingerprint,
+          () => executeClaimedRun({
+            descriptor: deps.descriptor,
+            stores: deps.stores,
+            authority: deps.authority,
+            sessions,
+            emitter,
+            clock,
+            ids: deps.ids,
+            scheduler: deps.scheduler,
+            taskDeadlineMs: deps.taskDeadlineMs,
+            log: deps.log,
+            ...(deps.checkpointMigrations === undefined ? {} : { checkpointMigrations: deps.checkpointMigrations }),
+            ...(deps.canonicalInputMigrations === undefined
+              ? {}
+              : { canonicalInputMigrations: deps.canonicalInputMigrations }),
+            ...(deps.writeSequencer === undefined ? {} : { writeSequencer: deps.writeSequencer }),
+            ...(deps.childRuns === undefined ? {} : { childRuns: deps.childRuns }),
+          }, { run, claim, signal: runController.signal }),
+        );
         outcomes.push(outcome);
       } finally {
-        sessions.releaseRunConfigFingerprint();
         heartbeat.stop();
         deps.stopSignal.removeEventListener("abort", onStop);
       }

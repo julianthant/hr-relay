@@ -229,7 +229,19 @@ export interface WriteSequencerAuthority {
   commitWriteAttempt(input: unknown): AtomicWriteCommitReport;
 }
 
-/** The session surface the sequencer needs; `WorkerSessionManager` satisfies it. */
+/**
+ * The session surface the sequencer needs; `WorkerSessionManager` satisfies it.
+ *
+ * D116 (doc 11 §4): every `withDriver` lease requires the claimed run's
+ * immutable `configFingerprint` to ALREADY be bound on this host — the host
+ * refuses loudly otherwise. The sequencer itself never binds or releases:
+ * `executeTransaction`/`executeDryRun` run inside the interpreter for a
+ * claimed run, under the worker loop's `withBoundRunConfigFingerprint` window,
+ * so this host must be the SAME `WorkerSessionManager` that loop binds.
+ * Probe leases taken OUTSIDE a claimed run's worker-loop context (doc 09 §4
+ * recovery) bind the target run's retained fingerprint themselves — see
+ * `createWriteRecoveryService`.
+ */
 export interface TransactionSessionHost {
   withDriver<Result>(
     need: SessionNeed,

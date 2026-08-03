@@ -19,6 +19,12 @@
  * confirmed-present re-runs the same atomic beat ⑦ under the same proof
  * parsers; confirmed-absent records the typed evidence note and marks the same
  * permanent intent `retryable`. There is no generic Done/Retry.
+ *
+ * D116: the recovery probe's driver lease runs outside any worker loop, so
+ * `recover` itself binds the target run's retained `configFingerprint` around
+ * the lease (see `WriteRecoveryDependencies.sessions`). The typed operator
+ * resolutions are pure authority work and lease no driver, so no binding
+ * applies there.
  */
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../base/workflow.js";
@@ -29,6 +35,7 @@ import type { AnyCommitTaskContract } from "../domain/contracts/base.js";
 import type { IdFactory } from "../domain/identifiers.js";
 import {
   ActorIdSchema,
+  FingerprintSchema,
   IsoInstantSchema,
   WriteIntentIdSchema,
 } from "../domain/ids.js";
@@ -64,6 +71,7 @@ import {
   type WriteSequencerAuthority,
   type WriteSequencerHooks,
 } from "./write-sequencer.js";
+import type { RunConfigFingerprintBinding } from "./worker-sessions.js";
 import type { WriteIntentParkCode } from "../infra/sqlite/write-commit-contracts.js";
 import type { TaskStoreRegistry } from "../base/store.js";
 import type { TaskLogger } from "../base/task.js";
@@ -102,7 +110,14 @@ export type WriteRecoveryDecision = z.infer<typeof WriteRecoveryDecisionSchema>;
 export interface WriteRecoveryDependencies {
   readonly stores: TaskStoreRegistry;
   readonly authority: WriteSequencerAuthority;
-  readonly sessions: Pick<TransactionSessionHost, "withDriver">;
+  /**
+   * D116 (doc 11 §4): the recovery probe leases a driver OUTSIDE any worker
+   * loop's claimed-run binding window, so the host must also expose the
+   * bind/release surface — `recover` binds the TARGET run's retained immutable
+   * `configFingerprint` around its probe lease and releases it afterwards.
+   * `WorkerSessionManager` satisfies this.
+   */
+  readonly sessions: Pick<TransactionSessionHost, "withDriver"> & RunConfigFingerprintBinding;
   readonly clock: Clock;
   readonly ids: IdFactory;
   readonly scheduler: MonotonicDeadlineScheduler;
@@ -295,6 +310,19 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
       throw new Error(`run ${intent.runId} resolved no ${intent.system} instance; recovery cannot probe`);
     }
 
+    /*
+     * D116 (doc 11 §4): the probe lease runs OUTSIDE any worker loop, so
+     * recovery binds the TARGET run's retained immutable `configFingerprint`
+     * itself — read from the authority run row the intent names, never
+     * recomputed from current config and never taken from caller claims. The
+     * bind sits OUTSIDE the probe's catch on purpose: a missing/malformed
+     * fingerprint on the run row, or a host already bound to another run, is a
+     * PRECONDITION failure that throws out of `recover` loudly — it must never
+     * collapse into a park that reads as a probe verdict (doc 09 §4).
+     */
+    const runConfigFingerprint = FingerprintSchema.parse(run.envelope.configFingerprint);
+    deps.sessions.bindRunConfigFingerprint(runConfigFingerprint);
+
     /* the probe runs FIRST — before any startAt/resume logic (doc 09 §4) */
     let verdict: RuntimeProbeVerdict;
     try {
@@ -308,6 +336,8 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
       // A throwing probe is `unknown`, never `absent` (charter catch-swallow ban).
       return park(intent, "unknown", `recovery probe threw for key ${intent.idempotencyKey}: `
         + `${error instanceof Error ? error.message : "non-Error thrown"}`);
+    } finally {
+      deps.sessions.releaseRunConfigFingerprint();
     }
 
     if (verdict.state === "present") {

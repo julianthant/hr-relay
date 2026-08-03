@@ -138,6 +138,37 @@ async function waitForOperation<Result>(
   }
 }
 
+/**
+ * The bind/release half of D116 (doc 11 §4) as a first-class surface: the
+ * caller that OWNS a run context — the worker loop for its claimed run, doc 09
+ * §4 recovery for a target run's out-of-loop probe lease — binds that run's
+ * retained immutable `configFingerprint` for exactly the duration of the
+ * operation and releases it afterwards, success or failure.
+ */
+export interface RunConfigFingerprintBinding {
+  bindRunConfigFingerprint(fingerprint: Fingerprint): void;
+  releaseRunConfigFingerprint(): void;
+}
+
+/**
+ * The ONE bind/execute/release discipline every run-scoped driver-lease window
+ * uses (worker loop and tests alike). A bind failure throws BEFORE `operation`
+ * runs — a second concurrent run binding, or a malformed fingerprint, is a
+ * loud precondition refusal, never a silently unbound lease.
+ */
+export async function withBoundRunConfigFingerprint<Result>(
+  sessions: RunConfigFingerprintBinding,
+  fingerprint: Fingerprint,
+  operation: () => Promise<Result>,
+): Promise<Result> {
+  sessions.bindRunConfigFingerprint(fingerprint);
+  try {
+    return await operation();
+  } finally {
+    sessions.releaseRunConfigFingerprint();
+  }
+}
+
 export class WorkerSessionManager {
   readonly #workerId: WorkerId;
   readonly #workflowId: WorkflowId;
