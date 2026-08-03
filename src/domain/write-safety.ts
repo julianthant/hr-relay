@@ -3,6 +3,7 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Clock } from "./clock.js";
 import {
+  ActorIdSchema,
   ArtifactIdSchema,
   BrowserSystemIdSchema,
   EvidenceRefSchema,
@@ -163,6 +164,30 @@ const SafeToRetrySettlementSchema = z.strictObject({
   evidence: z.array(AbsentEvidenceSchema).min(2).max(3),
 });
 
+/**
+ * Doc 09 §4.1.2 — the operator's typed confirmed-absent resolution. It is the
+ * ONLY non-evidence path from `attempting`/`parked` to `retryable`: it records
+ * who confirmed absence in the target system, when, and the non-empty evidence
+ * note, scoped to the exact intent generation it resolves. It never deletes or
+ * reopens committed history and it does not itself click — only the next fence
+ * may create a new generation.
+ */
+export const OperatorAbsenceResolutionSchema = z.strictObject({
+  state: z.literal("operator-confirmed-absent"),
+  writeIntentId: WriteIntentIdSchema,
+  /** The prior generation this resolution settles — never a future one. */
+  generation: PositiveIntSchema,
+  operator: ActorIdSchema,
+  confirmedAt: IsoInstantSchema,
+  evidenceNote: z.string().min(1),
+});
+
+/** Either D64/D69 stabilized negative evidence or a typed operator resolution. */
+export const WriteRetrySettlementSchema = z.discriminatedUnion("state", [
+  SafeToRetrySettlementSchema,
+  OperatorAbsenceResolutionSchema,
+]);
+
 export const NegativeSettlementDecisionSchema = z.discriminatedUnion("state", [
   SafeToRetrySettlementSchema,
   z.strictObject({
@@ -322,7 +347,7 @@ const CommittedWriteIntentRecordSchema = z.strictObject({
 const RetryableWriteIntentRecordSchema = z.strictObject({
   ...WriteIntentAttemptFields,
   status: z.literal("retryable"),
-  settlement: SafeToRetrySettlementSchema,
+  settlement: WriteRetrySettlementSchema,
   resolvedAt: IsoInstantSchema,
 });
 const ParkedWriteIntentRecordSchema = z.strictObject({
@@ -366,7 +391,7 @@ export const WriteAttemptRecordSchema = z.strictObject({
   outcome: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("attempting") }),
     z.strictObject({ state: z.literal("committed"), completionProof: SchemaBoundCanonicalValueSchema, confirmedAt: IsoInstantSchema }),
-    z.strictObject({ state: z.literal("safe-to-retry"), settlement: SafeToRetrySettlementSchema }),
+    z.strictObject({ state: z.literal("safe-to-retry"), settlement: WriteRetrySettlementSchema }),
     z.strictObject({ state: z.literal("parked"), code: z.string().regex(/^[a-z]+(?:-[a-z]+)*$/), message: z.string().min(1) }),
   ]),
   recordedAt: IsoInstantSchema,
@@ -393,6 +418,8 @@ export const TransactionOutcomeSchema = z.discriminatedUnion("disposition", [
   }),
 ]);
 
+export type OperatorAbsenceResolution = z.infer<typeof OperatorAbsenceResolutionSchema>;
+export type WriteRetrySettlement = z.infer<typeof WriteRetrySettlementSchema>;
 export type SubjectProof = z.infer<typeof SubjectProofSchema>;
 export type UnscopedBindingProof = z.infer<typeof UnscopedBindingProofSchema>;
 export type WriteBindingProof = z.infer<typeof WriteBindingProofSchema>;
