@@ -1,0 +1,1025 @@
+/**
+ * D113 command-kernel semantics (doc 03 §Phase-1f authority, §2.4).
+ *
+ * The suite drives the REAL authority database through the kernel: the D109
+ * consume step commits plan consumption, active-run policy, run creation, and
+ * the command journal/audit in one transaction; a crash or refusal anywhere
+ * rolls back everything; replays are byte-exact; and every deferred arm is a
+ * pure typed rejection that provably changes no authority row.
+ */
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, it } from "vitest";
+import { z } from "zod";
+import { flow } from "../../src/base/flow.js";
+import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
+import {
+  createCommandKernel,
+  deriveGateResultCheckpointFingerprint,
+  PHASE1_ACTIVE_COMMAND_ARMS,
+  PHASE1_DEFERRED_COMMAND_ARMS,
+  type CommandKernel,
+  type WorkerRuntimeExecutor,
+  type WriteResolutionExecutor,
+} from "../../src/core/command-kernel.js";
+import { CommandRequestSchema, COMMAND_FAMILY_REGISTRY } from "../../src/domain/commands.js";
+import { manualClock } from "../../src/domain/clock.js";
+import { deriveItemId } from "../../src/domain/identifiers.js";
+import { EidSchema } from "../../src/domain/ids.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
+import { AuthorityDatabase, type AuthorityRepositories } from "../../src/infra/sqlite/index.js";
+import { planStart } from "../../src/services/start/plan.js";
+import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
+import {
+  COMMAND_FIXTURES,
+  HASH_A,
+  HASH_B,
+  NOW,
+  UUID_4,
+  UUID_7,
+  WRITE_ATTEMPT,
+  WRITE_INTENT_ATTEMPTING,
+} from "./fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN, RUN_ID, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { fixtureDescriptor } from "./architecture/helpers/descriptor-fixtures.js";
+import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
+
+const roots: string[] = [];
+const openDatabases: AuthorityDatabase[] = [];
+
+function databasePath(name: string): string {
+  const root = mkdtempSync(join(tmpdir(), "hrauto-command-kernel-"));
+  roots.push(root);
+  return join(root, name);
+}
+
+afterEach(() => {
+  for (const database of openDatabases.splice(0)) database.close();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+/* ── fixture descriptors: one per enqueue policy ─────────────────────────── */
+
+const KernelInput = z.strictObject({ eid: EidSchema });
+const KernelCanonicalInput = defineCanonicalInput(
+  KernelInput,
+  z.strictObject({ eid: EidSchema }),
+  [{ eid: "10800000" }, { eid: "10800001" }],
+);
+
+function kernelDescriptor(id: string, code: string, enqueue: "reject-active" | "supersede-active" | "allow-parallel") {
+  return defineWorkflowDescriptor({
+    id,
+    version: 1,
+    contractFingerprint: "e".repeat(64),
+    code,
+    label: `Kernel ${id}`,
+    icon: "ShieldCheck",
+    category: "operations",
+    canonicalInput: KernelCanonicalInput,
+    inputSubject: "eid",
+    surface: { shape: "single" },
+    enqueue,
+    actions: STANDARD_WORKFLOW_ACTIONS,
+    surfaces: {},
+    details: [],
+    identity: { matchKey: (input) => `eid:${input.eid}` },
+    presentation: { title: (input) => `Kernel ${input.eid}` },
+    scenarios: ["fixture-graph/happy"],
+    flow: flow(KernelInput)
+      .step("probe", FixtureReadReceipt, {
+        dependsOn: [],
+        replay: "checkpoint",
+        bind: ({ input }) => ({ eid: input.eid }),
+      })
+      .build({
+        schema: z.strictObject({ eid: EidSchema }),
+        dependsOn: ["probe"],
+        derive: ({ outputs }) => ({ eid: outputs.probe.eid }),
+      }),
+  });
+}
+
+const rejectActiveDescriptor = kernelDescriptor("kernel-reject", "kr", "reject-active");
+const supersedeDescriptor = kernelDescriptor("kernel-supersede", "ks", "supersede-active");
+const parallelDescriptor = kernelDescriptor("kernel-parallel", "kp", "allow-parallel");
+const DESCRIPTOR_SET: readonly AnyWorkflowDescriptor[] = [
+  rejectActiveDescriptor,
+  supersedeDescriptor,
+  parallelDescriptor,
+  fixtureDescriptor,
+];
+
+/* ── harness ─────────────────────────────────────────────────────────────── */
+
+type RepositoryWrap = (repositories: AuthorityRepositories) => AuthorityRepositories;
+
+interface Harness {
+  readonly database: AuthorityDatabase;
+  readonly kernel: CommandKernel;
+  readonly clock: ReturnType<typeof manualClock>;
+  readonly plannerIds: ReturnType<typeof sequentialIdFactory>;
+  readonly workerCalls: string[];
+  readonly writeCalls: string[];
+}
+
+function acceptingWorkerRuntime(calls: string[]): WorkerRuntimeExecutor {
+  return {
+    planWorkerCount: (context) => {
+      calls.push(`plan:${context.command.type}`);
+      return { state: "accepted", workerIds: ["worker-1", "worker-2"] };
+    },
+    spawnWorker: (context) => {
+      calls.push(`spawn:${context.command.type}`);
+      return { state: "accepted" };
+    },
+    refreshBrowser: (context) => {
+      calls.push(`refresh:${context.command.type}`);
+      return { state: "accepted" };
+    },
+    reopenBrowser: (context) => {
+      calls.push(`reopen:${context.command.type}`);
+      return { state: "accepted" };
+    },
+  };
+}
+
+/** Resolves the park by re-queueing the run — the durable half a real sequencer owns. */
+function requeueingWriteResolution(calls: string[]): WriteResolutionExecutor {
+  const resolve = (repositories: AuthorityRepositories, context: {
+    readonly command: { type: string };
+    readonly run: { envelope: { runId: string }; version: number };
+    readonly now: string;
+  }) => {
+    calls.push(`${context.command.type}:${context.run.envelope.runId}`);
+    const outcome = repositories.runs.transition({
+      runId: context.run.envelope.runId,
+      expectedVersion: context.run.version,
+      lifecycle: { state: "queued" },
+      now: context.now,
+    });
+    if (outcome.state !== "applied") throw new Error(`fake write resolution could not requeue: ${outcome.state}`);
+    return { run: outcome.run };
+  };
+  return { resolvePresent: resolve, resolveAbsent: resolve };
+}
+
+function createHarness(wrap?: RepositoryWrap): Harness {
+  const clock = manualClock(new Date(NOW));
+  const database = AuthorityDatabase.open(
+    { path: databasePath("kernel.sqlite"), busyTimeoutMs: 250, migrationOwner: "kernel-test" },
+    clock,
+  );
+  openDatabases.push(database);
+  const workerCalls: string[] = [];
+  const writeCalls: string[] = [];
+  const kernel = createCommandKernel({
+    authority: {
+      withAuthorityTransaction: (work) => database.withAuthorityTransaction(
+        (repositories) => work(wrap === undefined ? repositories : wrap(repositories)),
+      ),
+    },
+    clock,
+    ids: sequentialIdFactory("d"),
+    descriptors: {
+      resolve: (workflowId) => DESCRIPTOR_SET.find((descriptor) => String(descriptor.id) === workflowId),
+    },
+    writeResolution: requeueingWriteResolution(writeCalls),
+    workerRuntime: acceptingWorkerRuntime(workerCalls),
+  });
+  return { database, kernel, clock, plannerIds: sequentialIdFactory("f"), workerCalls, writeCalls };
+}
+
+let commandSequence = 0;
+
+function nextCommandId(): string {
+  commandSequence += 1;
+  const tail = String(commandSequence).padStart(4, "0");
+  return `cccccccc-${tail}-4000-8000-${tail}00000000`;
+}
+
+function createPlan(harness: Harness, descriptor: AnyWorkflowDescriptor, eids: readonly string[]) {
+  const plan = planStart(
+    { authority: harness.database, clock: harness.clock, ids: harness.plannerIds, planTtlMs: 600_000 },
+    {
+      descriptor,
+      submissions: eids.map((eid) => ({ eid })),
+      dryRun: false,
+      priority: "bulk",
+      shape: "single",
+      configFingerprint: HASH_B,
+      configSnapshotId: UUID_4,
+      plannedBy: "local-operator",
+    },
+  );
+  const created = harness.database.authority.startPlans.create(plan);
+  assert.equal(created.state, "inserted");
+  return plan;
+}
+
+function startCommand(plan: ReturnType<typeof createPlan>, commandId = nextCommandId()) {
+  return {
+    commandId,
+    requestedAt: NOW,
+    requestedBy: "local-operator",
+    source: "dashboard",
+    family: "start",
+    type: "start-run",
+    target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.version },
+    payload: {
+      descriptorFingerprint: plan.descriptorFingerprint,
+      configFingerprint: plan.configFingerprint,
+      ingressSchemaHash: plan.ingressSchemaHash,
+      canonicalInputSchemaHash: plan.canonicalInputSchemaHash,
+      inputFingerprint: plan.inputFingerprint,
+    },
+  };
+}
+
+function runCommand(type: string, runId: string, expectedVersion: number, extra?: Record<string, unknown>) {
+  return {
+    commandId: nextCommandId(),
+    requestedAt: NOW,
+    requestedBy: "local-operator",
+    source: "dashboard",
+    family: "run",
+    type,
+    target: { runId, expectedVersion },
+    ...(extra === undefined ? {} : extra),
+  };
+}
+
+describe("D113 start arm — atomic D109 plan consumption", () => {
+  it("consumes the plan and enqueues every accepted run in one applied command", () => {
+    const harness = createHarness();
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
+    assert.equal(plan.planned.length, 2);
+
+    const result = harness.kernel.execute(startCommand(plan));
+    assert.equal(result.state, "applied");
+    if (result.state !== "applied") return;
+    assert.equal(result.affectedTargets.length, 3);
+
+    const consumed = harness.database.authority.startPlans.get(plan.startPlanId);
+    assert.ok(consumed?.consumedBy !== undefined);
+    assert.equal(consumed.version, plan.version + 1);
+    for (const planned of plan.planned) {
+      const run = harness.database.authority.runs.get(planned.runId);
+      assert.ok(run !== undefined, planned.runId);
+      assert.equal(run.lifecycle.state, "queued");
+      assert.deepEqual(run.input.raw, planned.rawInput);
+      assert.deepEqual(run.input.parsed, planned.input);
+      assert.equal(run.input.ingressSchemaHash, plan.ingressSchemaHash);
+      assert.equal(run.envelope.contractFingerprint, plan.descriptorFingerprint);
+    }
+    const audit = harness.database.authority.commandAudits.findByCommand(result.commandId);
+    assert.ok(audit !== undefined);
+    assert.equal(audit.result.state, "applied");
+    assert.equal(audit.versionChanges[0].before, plan.version);
+    assert.equal(audit.versionChanges[0].after, plan.version + 1);
+  });
+
+  it("rolls back consumption and the journal when a run insert crashes", () => {
+    let shouldFail = false;
+    const harness = createHarness((repositories) => ({
+      ...repositories,
+      runs: {
+        ...repositories.runs,
+        enqueue: (input: unknown) => {
+          if (shouldFail) throw new Error("injected run-insert crash");
+          return repositories.runs.enqueue(input);
+        },
+      },
+    }));
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+    const command = startCommand(plan);
+    const generationBefore = harness.database.getMeta().authorityGeneration;
+    shouldFail = true;
+    assert.throws(() => harness.kernel.execute(command), /injected run-insert crash/);
+    shouldFail = false;
+
+    const stored = harness.database.authority.startPlans.get(plan.startPlanId);
+    assert.equal(stored?.consumedBy, undefined);
+    assert.equal(stored?.version, plan.version);
+    assert.equal(harness.database.authority.runs.get(plan.planned[0].runId), undefined);
+    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
+
+    // The same commandId may retry after the crash — nothing was burned.
+    const retried = harness.kernel.execute(command);
+    assert.equal(retried.state, "applied");
+  });
+
+  it("creates zero runs when the active-run authority lookup fails", () => {
+    let shouldFail = false;
+    const harness = createHarness((repositories) => ({
+      ...repositories,
+      runs: {
+        ...repositories.runs,
+        listByItem: (input: unknown) => {
+          if (shouldFail) throw new Error("injected active-run lookup failure");
+          return repositories.runs.listByItem(input);
+        },
+      },
+    }));
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+    shouldFail = true;
+    const generationBefore = harness.database.getMeta().authorityGeneration;
+    assert.throws(() => harness.kernel.execute(startCommand(plan)), /injected active-run lookup failure/);
+    assert.equal(harness.database.authority.runs.get(plan.planned[0].runId), undefined);
+    assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
+  });
+
+  it("conflicts on a stale confirmation revision without consuming the plan", () => {
+    const harness = createHarness();
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+    const command = { ...startCommand(plan), target: { ...startCommand(plan).target, expectedVersion: plan.version + 5 } };
+    const result = harness.kernel.execute(command);
+    assert.equal(result.state, "conflict");
+    if (result.state !== "conflict") return;
+    assert.equal(result.currentVersion, plan.version);
+    assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+  });
+
+  it("rejects binding drift as schema-mismatch and an expired plan as invalid-state", () => {
+    const harness = createHarness();
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+    const base = startCommand(plan);
+    const drifted = { ...base, payload: { ...base.payload, inputFingerprint: HASH_A } };
+    const driftResult = harness.kernel.execute(drifted);
+    assert.equal(driftResult.state, "rejected");
+    if (driftResult.state === "rejected") assert.equal(driftResult.code, "schema-mismatch");
+    assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+
+    harness.clock.advanceWall(3_600_000);
+    const expired = harness.kernel.execute(startCommand(plan));
+    assert.equal(expired.state, "rejected");
+    if (expired.state === "rejected") {
+      assert.equal(expired.code, "invalid-state");
+      assert.match(expired.message, /expired/);
+    }
+  });
+
+  it("refuses the whole command under reject-active when an active run appeared after planning", () => {
+    const harness = createHarness();
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
+    const itemId = deriveItemId("kernel-reject", "eid:10800001");
+    const conflicting = {
+      envelope: {
+        runId: UUID_7,
+        workflow: "kernel-reject",
+        itemId,
+        traceId: "kr-170000-7777",
+        descriptorVersion: 1,
+        contractFingerprint: plan.descriptorFingerprint,
+        resolvedInstance: { ucpath: "prod" },
+        configFingerprint: plan.configFingerprint,
+        configSnapshotId: UUID_4,
+        shape: "single",
+        priority: "bulk",
+        dryRun: false,
+        attempt: 1,
+        enqueuedAt: NOW,
+      },
+      input: {
+        raw: plan.planned[1].rawInput,
+        parsed: plan.planned[1].input,
+        ingressSchemaHash: plan.ingressSchemaHash,
+      },
+      lifecycle: { state: "queued" },
+      claimGeneration: 0,
+      hidden: false,
+      version: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    assert.equal(harness.database.authority.runs.enqueue(conflicting).state, "inserted");
+
+    const command = startCommand(plan);
+    const result = harness.kernel.execute(command);
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") {
+      assert.equal(result.code, "policy-refused");
+      assert.match(result.message, /already has an active run/);
+    }
+    // The FIRST planned run was enqueued before the second refused — all of it
+    // must have rolled back with the consumption.
+    assert.equal(harness.database.authority.runs.get(plan.planned[0].runId), undefined);
+    assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+  });
+
+  it("supersede-active terminalizes the exact active run and creates the replacement atomically", () => {
+    const harness = createHarness();
+    const first = createPlan(harness, supersedeDescriptor, ["10800000"]);
+    const firstResult = harness.kernel.execute(startCommand(first));
+    assert.equal(firstResult.state, "applied");
+    const activeRunId = first.planned[0].runId;
+
+    const second = createPlan(harness, supersedeDescriptor, ["10800000"]);
+    const result = harness.kernel.execute(startCommand(second));
+    assert.equal(result.state, "applied");
+
+    const superseded = harness.database.authority.runs.get(activeRunId);
+    assert.equal(superseded?.lifecycle.state, "terminal");
+    if (superseded?.lifecycle.state === "terminal") {
+      assert.equal(superseded.lifecycle.outcome, "superseded");
+    }
+    const replacement = harness.database.authority.runs.get(second.planned[0].runId);
+    assert.equal(replacement?.lifecycle.state, "queued");
+  });
+
+  it("allow-parallel enqueues beside an active run for the same item", () => {
+    const harness = createHarness();
+    const first = createPlan(harness, parallelDescriptor, ["10800000"]);
+    assert.equal(harness.kernel.execute(startCommand(first)).state, "applied");
+    const second = createPlan(harness, parallelDescriptor, ["10800000"]);
+    assert.equal(harness.kernel.execute(startCommand(second)).state, "applied");
+    const firstRun = harness.database.authority.runs.get(first.planned[0].runId);
+    const secondRun = harness.database.authority.runs.get(second.planned[0].runId);
+    assert.equal(firstRun?.lifecycle.state, "queued");
+    assert.equal(secondRun?.lifecycle.state, "queued");
+  });
+});
+
+describe("D113 command idempotency", () => {
+  it("returns already-applied for a byte-exact replay after revalidating the plan bindings", () => {
+    const harness = createHarness();
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+    const command = startCommand(plan);
+    const first = harness.kernel.execute(command);
+    assert.equal(first.state, "applied");
+    if (first.state !== "applied") return;
+
+    const generationBefore = harness.database.getMeta().authorityGeneration;
+    const replayed = harness.kernel.execute(structuredClone(command));
+    assert.equal(replayed.state, "already-applied");
+    if (replayed.state !== "already-applied") return;
+    assert.deepEqual(replayed.affectedTargets, first.affectedTargets);
+    // Replay reads; it never re-executes.
+    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
+    const runs = harness.database.authority.runs.listByItem({
+      workflow: plan.workflowId,
+      itemId: plan.planned[0].itemId,
+    });
+    assert.equal(runs.length, 1);
+  });
+
+  it("rejects a same-id different-content replay loudly", () => {
+    const harness = createHarness();
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+    const command = startCommand(plan);
+    assert.equal(harness.kernel.execute(command).state, "applied");
+    const conflicting = { ...command, reason: "a different body wearing the same id" };
+    assert.throws(() => harness.kernel.execute(conflicting), /reused with different content/);
+  });
+
+  it("refuses a spent plan presented by a different command", () => {
+    const harness = createHarness();
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+    assert.equal(harness.kernel.execute(startCommand(plan)).state, "applied");
+    const second = harness.kernel.execute(startCommand(plan, nextCommandId()));
+    assert.equal(second.state, "rejected");
+    if (second.state === "rejected") {
+      assert.equal(second.code, "invalid-state");
+      assert.match(second.message, /already consumed/);
+    }
+  });
+});
+
+describe("D113 run arms", () => {
+  function startOne(harness: Harness, descriptor: AnyWorkflowDescriptor, eid: string): string {
+    const plan = createPlan(harness, descriptor, [eid]);
+    const result = harness.kernel.execute(startCommand(plan));
+    assert.equal(result.state, "applied");
+    return plan.planned[0].runId;
+  }
+
+  it("retries a terminal run into a fresh linked run and refuses an active item", () => {
+    const harness = createHarness();
+    const runId = startOne(harness, rejectActiveDescriptor, "10800000");
+
+    const active = harness.kernel.execute(runCommand("retry", runId, 1));
+    assert.equal(active.state, "rejected");
+    if (active.state === "rejected") assert.equal(active.code, "invalid-state");
+
+    const run = harness.database.authority.runs.get(runId);
+    assert.ok(run !== undefined);
+    const cancelResult = harness.kernel.execute(runCommand("cancel", runId, run.version));
+    assert.equal(cancelResult.state, "applied");
+
+    const retry = harness.kernel.execute(runCommand("retry", runId, 2));
+    assert.equal(retry.state, "applied");
+    if (retry.state !== "applied") return;
+    const newTarget = retry.affectedTargets[0];
+    assert.equal(newTarget.family, "run");
+    if (newTarget.family !== "run") return;
+    const retried = harness.database.authority.runs.get(newTarget.runId);
+    assert.ok(retried !== undefined);
+    assert.equal(retried.envelope.retryOf, runId);
+    assert.equal(retried.envelope.attempt, 1);
+    assert.equal(retried.lifecycle.state, "queued");
+    assert.deepEqual(retried.input, harness.database.authority.runs.get(runId)?.input);
+  });
+
+  it("cancel is CAS-scoped and cascades through authority dependency edges only", () => {
+    const harness = createHarness();
+    const parentId = startOne(harness, rejectActiveDescriptor, "10800000");
+    const parent = harness.database.authority.runs.get(parentId);
+    assert.ok(parent !== undefined);
+
+    const cascadeChildId = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+    const independentChildId = "aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa";
+    const childRecord = (childRunId: string, edgeId: string, suffix: string) => ({
+      envelope: {
+        runId: childRunId,
+        workflow: "kernel-reject",
+        itemId: deriveItemId("kernel-reject", `child:${suffix}`),
+        traceId: `kr-170000-${suffix}`,
+        descriptorVersion: 1,
+        contractFingerprint: parent.envelope.contractFingerprint,
+        resolvedInstance: { ucpath: "prod" },
+        configFingerprint: parent.envelope.configFingerprint,
+        configSnapshotId: parent.envelope.configSnapshotId,
+        parent: { runId: parentId, tracePrefix: parent.envelope.traceId, edgeId },
+        shape: "operation-member",
+        priority: "bulk",
+        dryRun: false,
+        attempt: 1,
+        enqueuedAt: NOW,
+      },
+      input: parent.input,
+      lifecycle: { state: "queued" },
+      claimGeneration: 0,
+      hidden: false,
+      version: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    assert.equal(harness.database.authority.runs.enqueue(childRecord(cascadeChildId, "cascade-edge", "aaaa")).state, "inserted");
+    assert.equal(harness.database.authority.runs.enqueue(childRecord(independentChildId, "independent-edge", "bbbb")).state, "inserted");
+
+    const manifest = (manifestId: string, edgeId: string, childRunId: string, childItemId: string, cascadeCancel: string) => ({
+      manifestId,
+      parentRunId: parentId,
+      edgeId,
+      inputSchemaHash: HASH_A,
+      resultSchemaHash: HASH_B,
+      cardinality: "one",
+      join: "one",
+      policy: { onChildFailed: "fail-parent", cascadeCancel, afterChildRetry: "resume-parent", visibility: "inline" },
+      children: [{ dependencyId: `${manifestId.slice(0, 8)}-3333-4333-8333-333333333333`, childRunId, childItemId, canonicalInputFingerprint: HASH_A }],
+      createdAt: NOW,
+      manifestFingerprint: HASH_A,
+    });
+    const dependency = (dependencyId: string, manifestId: string, edgeId: string, childRunId: string, childItemId: string, cascadeCancel: string) => ({
+      dependencyId,
+      manifestId,
+      edgeId,
+      parentRunId: parentId,
+      childRunId,
+      childItemId,
+      policy: { onChildFailed: "fail-parent", cascadeCancel, afterChildRetry: "resume-parent", visibility: "inline" },
+      state: "active",
+      version: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const cascadeItem = deriveItemId("kernel-reject", "child:aaaa");
+    const independentItem = deriveItemId("kernel-reject", "child:bbbb");
+    harness.database.authority.delegationManifests.insert(manifest("dddddddd-1111-4111-8111-dddddddddddd", "cascade-edge", cascadeChildId, cascadeItem, "cascade"));
+    harness.database.authority.delegationManifests.insert(manifest("dddddddd-2222-4222-8222-dddddddddddd", "independent-edge", independentChildId, independentItem, "independent"));
+    harness.database.authority.dependencies.insert(dependency("dddddddd-3333-4333-8333-dddddddddddd", "dddddddd-1111-4111-8111-dddddddddddd", "cascade-edge", cascadeChildId, cascadeItem, "cascade"));
+    harness.database.authority.dependencies.insert(dependency("dddddddd-4444-4444-8444-dddddddddddd", "dddddddd-2222-4222-8222-dddddddddddd", "independent-edge", independentChildId, independentItem, "independent"));
+
+    const stale = harness.kernel.execute(runCommand("cancel", parentId, parent.version + 7));
+    assert.equal(stale.state, "conflict");
+
+    const result = harness.kernel.execute(runCommand("cancel", parentId, parent.version));
+    assert.equal(result.state, "applied");
+    const cancelledParent = harness.database.authority.runs.get(parentId);
+    assert.equal(cancelledParent?.lifecycle.state, "terminal");
+    const cascaded = harness.database.authority.runs.get(cascadeChildId);
+    assert.equal(cascaded?.lifecycle.state, "terminal");
+    if (cascaded?.lifecycle.state === "terminal") assert.equal(cascaded.lifecycle.outcome, "cancelled");
+    const independent = harness.database.authority.runs.get(independentChildId);
+    assert.equal(independent?.lifecycle.state, "queued");
+  });
+
+  it("cancels nothing when a child has no dependency edge in authority", () => {
+    const harness = createHarness();
+    const parentId = startOne(harness, rejectActiveDescriptor, "10800000");
+    const parent = harness.database.authority.runs.get(parentId);
+    assert.ok(parent !== undefined);
+    const orphanId = "aaaaaaaa-9999-4999-8999-aaaaaaaaaaaa";
+    assert.equal(harness.database.authority.runs.enqueue({
+      envelope: {
+        runId: orphanId,
+        workflow: "kernel-reject",
+        itemId: deriveItemId("kernel-reject", "child:orphan"),
+        traceId: "kr-170000-9999",
+        descriptorVersion: 1,
+        contractFingerprint: parent.envelope.contractFingerprint,
+        resolvedInstance: { ucpath: "prod" },
+        configFingerprint: parent.envelope.configFingerprint,
+        configSnapshotId: parent.envelope.configSnapshotId,
+        parent: { runId: parentId, tracePrefix: parent.envelope.traceId, edgeId: "orphan-edge" },
+        shape: "operation-member",
+        priority: "bulk",
+        dryRun: false,
+        attempt: 1,
+        enqueuedAt: NOW,
+      },
+      input: parent.input,
+      lifecycle: { state: "queued" },
+      claimGeneration: 0,
+      hidden: false,
+      version: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+    }).state, "inserted");
+
+    assert.throws(
+      () => harness.kernel.execute(runCommand("cancel", parentId, parent.version)),
+      /no dependency edge in authority/,
+    );
+    assert.equal(harness.database.authority.runs.get(parentId)?.lifecycle.state, "queued");
+    assert.equal(harness.database.authority.runs.get(orphanId)?.lifecycle.state, "queued");
+  });
+
+  it("bump elevates a queued run to interactive and refuses running work; drift alone never conflicts", () => {
+    const harness = createHarness();
+    const runId = startOne(harness, rejectActiveDescriptor, "10800000");
+    // Deliberately stale observed version: bump is NOT a CAS arm.
+    const bumped = harness.kernel.execute(runCommand("bump", runId, 999));
+    assert.equal(bumped.state, "applied");
+    const run = harness.database.authority.runs.get(runId);
+    assert.equal(run?.envelope.priority, "interactive");
+
+    const again = harness.kernel.execute(runCommand("bump", runId, 999));
+    assert.equal(again.state, "applied");
+
+    const claimed = harness.database.authority.runs.claimNext({ workflow: "kernel-reject", workerId: "worker-1", now: NOW });
+    assert.equal(claimed.state, "claimed");
+    const busy = harness.kernel.execute(runCommand("bump", runId, 999));
+    assert.equal(busy.state, "rejected");
+    if (busy.state === "rejected") assert.equal(busy.code, "invalid-state");
+  });
+
+  it("rename, hide, and unhide are presentation-only and never CAS-reject", () => {
+    const harness = createHarness();
+    const runId = startOne(harness, rejectActiveDescriptor, "10800000");
+    const renamed = harness.kernel.execute(runCommand("rename", runId, 999, { payload: { displayName: "Kernel case" } }));
+    assert.equal(renamed.state, "applied");
+    const hidden = harness.kernel.execute(runCommand("hide", runId, 999));
+    assert.equal(hidden.state, "applied");
+    let run = harness.database.authority.runs.get(runId);
+    assert.equal(run?.displayName, "Kernel case");
+    assert.equal(run?.hidden, true);
+    assert.equal(run?.lifecycle.state, "queued");
+    const unhidden = harness.kernel.execute(runCommand("unhide", runId, 999));
+    assert.equal(unhidden.state, "applied");
+    run = harness.database.authority.runs.get(runId);
+    assert.equal(run?.hidden, false);
+  });
+});
+
+describe("D113 write resolution", () => {
+  function parkOnWrite(harness: Harness): { runId: string; version: number } {
+    assert.equal(harness.database.authority.runs.enqueue(QUEUED_RUN).state, "inserted");
+    const claimed = harness.database.authority.runs.claimNext({ workflow: "person-lookup", workerId: "worker-1", now: NOW });
+    assert.equal(claimed.state, "claimed");
+    if (claimed.state !== "claimed") throw new Error("unreachable");
+    const claim = { workerId: "worker-1", claimGeneration: claimed.run.claimGeneration };
+    const lifecycleBase = { workerId: "worker-1", claimedAt: NOW, heartbeatAt: NOW };
+    const validating = harness.database.authority.runs.transition({
+      runId: RUN_ID, expectedVersion: claimed.run.version, claim,
+      lifecycle: { state: "validating", ...lifecycleBase }, now: NOW,
+    });
+    assert.equal(validating.state, "applied");
+    const running = harness.database.authority.runs.transition({
+      runId: RUN_ID, expectedVersion: claimed.run.version + 1, claim,
+      lifecycle: { state: "running", ...lifecycleBase }, now: NOW,
+    });
+    assert.equal(running.state, "applied");
+    const parked = harness.database.authority.runs.transition({
+      runId: RUN_ID, expectedVersion: claimed.run.version + 2, claim,
+      lifecycle: {
+        state: "parked-write",
+        writeIntentId: WRITE_INTENT_ATTEMPTING.writeIntentId,
+        intentGeneration: 1,
+        parkedAt: NOW,
+        code: "unknown",
+        message: "probe returned unknown",
+      },
+      now: NOW,
+    });
+    assert.equal(parked.state, "applied");
+    if (parked.state !== "applied") throw new Error("unreachable");
+    const fenced = harness.database.authority.writeIntents.fenceAttempt({
+      intent: WRITE_INTENT_ATTEMPTING,
+      attempt: WRITE_ATTEMPT,
+    });
+    assert.equal(fenced.state, "fenced");
+    return { runId: RUN_ID, version: parked.run.version };
+  }
+
+  it("resolves a parked write through the typed executor seam inside the command transaction", () => {
+    const harness = createHarness();
+    const parked = parkOnWrite(harness);
+    const result = harness.kernel.execute(runCommand("resolve-write-absent", parked.runId, parked.version, {
+      target: {
+        runId: parked.runId,
+        expectedVersion: parked.version,
+        writeIntentId: WRITE_INTENT_ATTEMPTING.writeIntentId,
+        intentGeneration: 1,
+      },
+      payload: { evidenceNote: "Checked UCPath directly; the transaction is absent" },
+    }));
+    assert.equal(result.state, "applied");
+    assert.deepEqual(harness.writeCalls, [`resolve-write-absent:${parked.runId}`]);
+    assert.equal(harness.database.authority.runs.get(parked.runId)?.lifecycle.state, "queued");
+  });
+
+  it("CAS-conflicts on a stale version and rejects a stale intent generation", () => {
+    const harness = createHarness();
+    const parked = parkOnWrite(harness);
+    const stale = harness.kernel.execute(runCommand("resolve-write-absent", parked.runId, parked.version + 3, {
+      target: {
+        runId: parked.runId,
+        expectedVersion: parked.version + 3,
+        writeIntentId: WRITE_INTENT_ATTEMPTING.writeIntentId,
+        intentGeneration: 1,
+      },
+      payload: { evidenceNote: "stale browser action" },
+    }));
+    assert.equal(stale.state, "conflict");
+
+    const staleGeneration = harness.kernel.execute(runCommand("resolve-write-absent", parked.runId, parked.version, {
+      target: {
+        runId: parked.runId,
+        expectedVersion: parked.version,
+        writeIntentId: WRITE_INTENT_ATTEMPTING.writeIntentId,
+        intentGeneration: 4,
+      },
+      payload: { evidenceNote: "stale generation" },
+    }));
+    assert.equal(staleGeneration.state, "rejected");
+    if (staleGeneration.state === "rejected") assert.equal(staleGeneration.code, "invalid-state");
+    assert.deepEqual(harness.writeCalls, []);
+    assert.equal(harness.database.authority.runs.get(parked.runId)?.lifecycle.state, "parked-write");
+  });
+});
+
+describe("D113 gate resolution", () => {
+  function stageGateRun(harness: Harness): { runId: string; version: number } {
+    const plan = planStart(
+      { authority: harness.database, clock: harness.clock, ids: harness.plannerIds, planTtlMs: 600_000 },
+      {
+        descriptor: fixtureDescriptor,
+        submissions: [{ eid: "10800000", mode: "write" }],
+        dryRun: false,
+        priority: "bulk",
+        shape: "single",
+        configFingerprint: HASH_B,
+        configSnapshotId: UUID_4,
+        plannedBy: "local-operator",
+      },
+    );
+    assert.equal(harness.database.authority.startPlans.create(plan).state, "inserted");
+    const started = harness.kernel.execute(startCommand(plan));
+    assert.equal(started.state, "applied");
+    const runId = plan.planned[0].runId;
+    const claimed = harness.database.authority.runs.claimNext({ workflow: "fixture-graph", workerId: "worker-1", now: NOW });
+    assert.equal(claimed.state, "claimed");
+    if (claimed.state !== "claimed") throw new Error("unreachable");
+    const claim = { workerId: "worker-1", claimGeneration: claimed.run.claimGeneration };
+    const lifecycleBase = { workerId: "worker-1", claimedAt: NOW, heartbeatAt: NOW };
+    let version: number = claimed.run.version;
+    for (const state of ["validating", "running"] as const) {
+      const outcome = harness.database.authority.runs.transition({
+        runId, expectedVersion: version, claim, lifecycle: { state, ...lifecycleBase }, now: NOW,
+      });
+      assert.equal(outcome.state, "applied");
+      version += 1;
+    }
+    const parked = harness.database.authority.runs.transition({
+      runId, expectedVersion: version, claim,
+      lifecycle: { state: "parked-gate", gateId: "approval", parkedAt: NOW, resumeAt: "fan" },
+      now: NOW,
+    });
+    assert.equal(parked.state, "applied");
+    if (parked.state !== "applied") throw new Error("unreachable");
+    return { runId, version: parked.run.version };
+  }
+
+  function gateCommand(runId: string, expectedVersion: number, result: unknown) {
+    return {
+      commandId: nextCommandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "gate",
+      type: "resolve-gate",
+      target: { runId, gateId: "approval", expectedVersion },
+      payload: { result },
+    };
+  }
+
+  it("parses the descriptor's exact gate schema, stores the result, and resumes at the parked node", () => {
+    const harness = createHarness();
+    const staged = stageGateRun(harness);
+    const gateNode = descriptorRuntimeNodes(fixtureDescriptor)
+      .find((node) => node.kind === "gate" && String(node.id) === "approval");
+    assert.ok(gateNode !== undefined && gateNode.kind === "gate");
+    const schemaHash = deriveSchemaHash(gateNode.result, "output");
+
+    const wrongSchema = harness.kernel.execute(gateCommand(staged.runId, staged.version, {
+      schemaHash: HASH_A,
+      value: { approved: true },
+    }));
+    assert.equal(wrongSchema.state, "rejected");
+    if (wrongSchema.state === "rejected") assert.equal(wrongSchema.code, "schema-mismatch");
+
+    const wrongValue = harness.kernel.execute(gateCommand(staged.runId, staged.version, {
+      schemaHash,
+      value: { approved: "yes" },
+    }));
+    assert.equal(wrongValue.state, "rejected");
+    if (wrongValue.state === "rejected") assert.equal(wrongValue.code, "schema-mismatch");
+    assert.equal(harness.database.authority.gateResults.get(`${staged.runId}:approval`), undefined);
+    assert.equal(harness.database.authority.runs.get(staged.runId)?.lifecycle.state, "parked-gate");
+
+    const stale = harness.kernel.execute(gateCommand(staged.runId, staged.version + 2, {
+      schemaHash,
+      value: { approved: true },
+    }));
+    assert.equal(stale.state, "conflict");
+
+    const resolved = harness.kernel.execute(gateCommand(staged.runId, staged.version, {
+      schemaHash,
+      value: { approved: true },
+    }));
+    assert.equal(resolved.state, "applied");
+    const stored = harness.database.authority.gateResults.get(`${staged.runId}:approval`);
+    assert.ok(stored !== undefined);
+    assert.deepEqual(stored.result, { schemaHash, value: { approved: true } });
+    assert.equal(stored.checkpointFingerprint, deriveGateResultCheckpointFingerprint(stored.result));
+    const resumed = harness.database.authority.runs.get(staged.runId);
+    assert.equal(resumed?.lifecycle.state, "queued");
+    assert.equal(resumed?.envelope.startAt, "fan");
+  });
+});
+
+describe("D113 worker-browser arms", () => {
+  const WORKER_START = {
+    workerId: "worker-1",
+    workflow: "kernel-reject",
+    processId: 4242,
+    requestedBy: "local-operator",
+    now: NOW,
+  };
+
+  function workerCommand(type: string, target: Record<string, unknown>, payload?: Record<string, unknown>) {
+    return {
+      commandId: nextCommandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "worker-browser",
+      type,
+      target,
+      ...(payload === undefined ? {} : { payload }),
+    };
+  }
+
+  it("writes durable lease directives for stop/pause/resume against current authority", () => {
+    const harness = createHarness();
+    const started = harness.database.authority.workerLeases.start(WORKER_START);
+    assert.equal(started.state, "started");
+
+    const paused = harness.kernel.execute(workerCommand("pause-worker", { workerId: "worker-1", expectedVersion: 999 }));
+    assert.equal(paused.state, "applied");
+    assert.equal(harness.database.authority.workerLeases.get("worker-1")?.control.directive, "pause");
+
+    const resumed = harness.kernel.execute(workerCommand("resume-worker", { workerId: "worker-1", expectedVersion: 999 }));
+    assert.equal(resumed.state, "applied");
+    assert.equal(harness.database.authority.workerLeases.get("worker-1")?.control.directive, "run");
+
+    const stopped = harness.kernel.execute(workerCommand("stop-worker", { workerId: "worker-1", expectedVersion: 999 }));
+    assert.equal(stopped.state, "applied");
+    assert.equal(harness.database.authority.workerLeases.get("worker-1")?.control.directive, "stop");
+
+    const missing = harness.kernel.execute(workerCommand("stop-worker", { workerId: "worker-9", expectedVersion: 1 }));
+    assert.equal(missing.state, "rejected");
+    if (missing.state === "rejected") assert.equal(missing.code, "target-not-found");
+  });
+
+  it("delegates plan/spawn/refresh/reopen to the typed runtime seam after authority validation", () => {
+    const harness = createHarness();
+    const planned = harness.kernel.execute(workerCommand(
+      "plan-worker-count",
+      { workflowId: "kernel-reject", expectedVersion: 1 },
+      { desiredWorkers: 2 },
+    ));
+    assert.equal(planned.state, "applied");
+
+    const spawned = harness.kernel.execute(workerCommand(
+      "spawn-worker",
+      { workflowId: "kernel-reject", expectedVersion: 1 },
+      { workerId: "worker-1" },
+    ));
+    assert.equal(spawned.state, "applied");
+
+    assert.equal(harness.database.authority.workerLeases.start(WORKER_START).state, "started");
+    const spawnLive = harness.kernel.execute(workerCommand(
+      "spawn-worker",
+      { workflowId: "kernel-reject", expectedVersion: 1 },
+      { workerId: "worker-1" },
+    ));
+    assert.equal(spawnLive.state, "rejected");
+    if (spawnLive.state === "rejected") assert.equal(spawnLive.code, "invalid-state");
+
+    const lease = harness.database.authority.workerLeases.get("worker-1");
+    assert.ok(lease !== undefined);
+    const refreshed = harness.kernel.execute(workerCommand(
+      "refresh-browser",
+      { workerId: "worker-1", browserSessionId: UUID_4, expectedVersion: lease.version },
+    ));
+    assert.equal(refreshed.state, "applied");
+    const unknownWorkflow = harness.kernel.execute(workerCommand(
+      "plan-worker-count",
+      { workflowId: "kernel-unknown", expectedVersion: 1 },
+      { desiredWorkers: 1 },
+    ));
+    assert.equal(unknownWorkflow.state, "rejected");
+    if (unknownWorkflow.state === "rejected") assert.equal(unknownWorkflow.code, "target-not-found");
+
+    assert.deepEqual(harness.workerCalls, [
+      "plan:plan-worker-count",
+      "spawn:spawn-worker",
+      "refresh:refresh-browser",
+    ]);
+  });
+});
+
+describe("D113 deferred arms", () => {
+  const deferredKeys = new Set(
+    Object.entries(PHASE1_DEFERRED_COMMAND_ARMS).flatMap(([family, actions]) =>
+      actions.map((action) => `${family}/${action}`)),
+  );
+
+  it("partitions every D95 family/action exactly once between active and deferred", () => {
+    const partitioned = new Map<string, number>();
+    for (const partition of [PHASE1_ACTIVE_COMMAND_ARMS, PHASE1_DEFERRED_COMMAND_ARMS]) {
+      for (const [family, actions] of Object.entries(partition)) {
+        for (const action of actions) {
+          const key = `${family}/${action}`;
+          partitioned.set(key, (partitioned.get(key) ?? 0) + 1);
+        }
+      }
+    }
+    const registry = COMMAND_FAMILY_REGISTRY.flatMap(({ family, actions }) =>
+      actions.map((action) => `${family}/${action}`));
+    assert.deepEqual([...partitioned.keys()].sort(), [...registry].sort());
+    for (const [key, count] of partitioned) assert.equal(count, 1, key);
+  });
+
+  it("returns typed capability-unavailable for EVERY deferred arm with zero authority side effects", () => {
+    const harness = createHarness();
+    const deferredFixtures = COMMAND_FIXTURES
+      .map((fixture) => CommandRequestSchema.parse(fixture))
+      .filter((request) => deferredKeys.has(`${request.family}/${request.type}`));
+    assert.equal(deferredFixtures.length, deferredKeys.size);
+
+    for (const request of deferredFixtures) {
+      const generationBefore = harness.database.getMeta().authorityGeneration;
+      const result = harness.kernel.execute(request);
+      assert.equal(result.state, "rejected", `${request.family}/${request.type}`);
+      if (result.state !== "rejected") continue;
+      assert.equal(result.code, "capability-unavailable", `${request.family}/${request.type}`);
+      assert.match(result.message, /no authority state was changed/);
+      assert.equal(
+        harness.database.getMeta().authorityGeneration,
+        generationBefore,
+        `${request.family}/${request.type} advanced the authority generation`,
+      );
+      assert.equal(
+        harness.database.authority.commands.get(request.commandId),
+        undefined,
+        `${request.family}/${request.type} was journaled`,
+      );
+      assert.equal(
+        harness.database.authority.commandAudits.findByCommand(request.commandId),
+        undefined,
+        `${request.family}/${request.type} was audited`,
+      );
+    }
+  });
+});
