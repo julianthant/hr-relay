@@ -186,9 +186,12 @@ open:
   `run.version = expectedVersion + 1`, claim generation and authorization timestamp are retained,
   and terminal state/outcome/failure identity match the authorization arm. Terminal state cannot
   make a stale claim look valid. Released migration v7 remains byte-for-byte the failure/result/
-  outbox migration; immutable v8 adds the authorization table. Schema-v8 recovery treats any
-  authorization/failure/result/outbox/terminal-transition subset or cross-binding mismatch as
-  corruption, including JSON `NULL` outcomes that ordinary SQL inequality would otherwise miss.
+  outbox migration; immutable v8 adds the authorization table. An architecture guard pins the
+  version and ordered statement bytes of every released v1–v8 migration by literal digest; the next
+  schema change appends v9 and its reviewed digest without editing history. Schema-v8 recovery
+  treats any authorization/failure/result/outbox/terminal-transition subset, authority column/JSON
+  mismatch, or cross-binding mismatch as corruption, including JSON `NULL` outcomes that ordinary
+  SQL inequality would otherwise miss.
 - Beat ⑦ is one outer authority transaction over the current claim generation and intent
   generation: mark intent/attempt committed, persist the schema-valid transaction-output
   checkpoint, insert ledger and same-trace terminal-span/generic-outcome outboxes, attach any real

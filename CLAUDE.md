@@ -235,10 +235,11 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 - **2026-08-03: Released migrations are immutable, and authorization must bind its consequence.**
   Never add a table to a released migration without advancing the schema version: an already-v7
   database will skip the changed body. The exact released v7 creates terminal failure/result/outbox
-  facts; v8 alone adds `run_terminal_authorizations`. Recovery and replay require the terminal row
-  to be the authorization's exact consequence: version is `expectedVersion + 1`, claim generation
-  is retained, state/outcome and failure id match the arm, and both `lifecycle.endedAt` and
-  `updatedAt` equal `authorizedAt`.
+  facts; v8 alone adds `run_terminal_authorizations`. A literal SHA-256 table pins every version and
+  ordered statement byte in released v1–v8; future schema work starts at v9 and extends that table.
+  Recovery and replay require the terminal row to be the authorization's exact consequence: version
+  is `expectedVersion + 1`, claim generation is retained, state/outcome and failure id match the
+  arm, and both `lifecycle.endedAt` and `updatedAt` equal `authorizedAt`.
 - **2026-08-02: Task provenance is an executor-owned data channel, never inferred from logs.** Every
   task context carries a real `recordData` collector. Read completion validates that strict,
   execution-attributed points cover every canonical output leaf and agree with the parsed value;

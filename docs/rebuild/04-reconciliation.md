@@ -682,7 +682,8 @@ records them and the same commit folds each into its owner. **One line each — 
 authorization table is added by immutable migration v8, never by amending released v7. The
 authorization is cross-bound to the exact terminal version, retained claim generation, lifecycle
 arm/identity, and authorization-derived timestamps in replay and recovery. Owners: docs 02
-§Phase-1f ingress/§5.7 and 03 §Phase-1f authority.
+§Phase-1f ingress/§5.7 and 03 §Phase-1f authority. The follow-up guard pins the complete released
+v1–v8 migration history by literal per-version digests; later schema work must append v9.
 
 **Two separate D-series exist — do not confuse them.** This memo's `D1–D118` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row

@@ -570,6 +570,11 @@ read while still permitting replay-safe browser downloads.
 
 ### 3.10 Trust surfaces: storage recovery, scenarios, evidence, and notifications
 
+- **`migration-history-immutability.test.ts`.** Every released authority migration is pinned by a
+  literal SHA-256 over its version and length-framed ordered statement bytes. The pinned version
+  list also fixes migration count and order. A schema change appends a new version and reviewed
+  digest; it never edits or reorders history. Canary fixtures prove that metadata changes,
+  statement edits, insertion, deletion, and reordering all change the digest.
 - **`storage-recovery.test.ts`.** Boot quick-check/invariants fail closed into read-only degraded
   mode. The infra-owned authority adapter retains `DatabaseSync` privately and proves
   `node:sqlite.backup` works without exposing the handle to repositories. Online backups are
