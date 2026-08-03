@@ -75,6 +75,23 @@ export const UiVerificationEvidenceManifestSchema = z.strictObject({
     matchedCount: z.literal(1),
     capturedValue: z.literal(false),
   })).min(1),
+  rejectedCandidates: z.array(z.strictObject({
+    legacyKey: z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/),
+    candidateDescription: z.string().min(1),
+    reason: z.literal("zero-live-matches"),
+    matchedCount: z.literal(0),
+    replacementSemanticId: ElementIdSchema,
+  })).optional(),
+  paginationProofs: z.array(z.strictObject({
+    context: z.enum(["search-results", "employment-instances"]),
+    initialState: z.enum(["enabled-view-all", "disabled-view-all"]),
+    finalState: z.enum(["view-n", "disabled-view-all"]),
+    counterBefore: z.string().regex(/^\d+(?:-\d+)? of \d+$/),
+    counterAfter: z.string().regex(/^\d+(?:-\d+)? of \d+$/),
+    renderedUnit: z.enum(["rows", "assignment-grids"]),
+    renderedBefore: z.number().int().positive(),
+    renderedAfter: z.number().int().positive(),
+  })).optional(),
   externalWriteAttempted: z.literal(false),
   sanitized: z.literal(true),
 });

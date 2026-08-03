@@ -57,6 +57,19 @@ const VerificationEvidenceSchema = z.strictObject({
   liveReadOnlyEvidenceRef: EvidenceReferenceSchema,
 });
 
+export const ContextualElementPortBindingSchema = z.array(z.strictObject({
+  context: z.enum([
+    "search-results-view-toggle",
+    "employment-instances-view-toggle",
+  ]),
+  canonicalId: ElementIdSchema,
+})).min(2).superRefine((bindings, context) => {
+  const contexts = bindings.map((binding) => binding.context);
+  if (new Set(contexts).size !== contexts.length) {
+    context.addIssue({ code: "custom", message: "contextual element port contexts must be unique" });
+  }
+});
+
 export const CandidateProposalIdSchema = z.string().regex(
   /^candidate:(?:ucpath|crm|onbase|kuali|servicenow|i9|new-kronos|old-kronos|sharepoint)\/[a-z0-9]+(?:[.-][a-z0-9]+)*$/,
   "candidate proposal id must use the candidate:<system>/<proposal> namespace",
@@ -78,6 +91,12 @@ export const LegacySelectorPortEntrySchema = z.union([
     disposition: z.literal("ported"),
     semanticKind: z.literal("element"),
     canonicalId: ElementIdSchema,
+    evidence: VerificationEvidenceSchema,
+  }),
+  EntryProvenanceSchema.extend({
+    disposition: z.literal("ported"),
+    semanticKind: z.literal("element"),
+    canonicalBindings: ContextualElementPortBindingSchema,
     evidence: VerificationEvidenceSchema,
   }),
   EntryProvenanceSchema.extend({
@@ -249,7 +268,12 @@ export function auditLegacySelectorPortMap(input: unknown, legacyRoot: string): 
   if (new Set(candidateIds).size !== candidateIds.length) {
     issues.push("non-authoritative candidate proposal ids must be globally unique");
   }
-  const canonicalIds = actual.entries.flatMap((entry) => entry.disposition === "ported" ? [entry.canonicalId] : []);
+  const canonicalIds = actual.entries.flatMap((entry) => {
+    if (entry.disposition !== "ported") return [];
+    return "canonicalBindings" in entry
+      ? entry.canonicalBindings.map(({ canonicalId }) => canonicalId)
+      : [entry.canonicalId];
+  });
   if (new Set(canonicalIds).size !== canonicalIds.length) {
     issues.push("ported semantic ids must be globally unique");
   }

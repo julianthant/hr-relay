@@ -35,7 +35,9 @@ function evidenceBindingInput(): unknown {
         legacyKey: entry.legacyKey,
         disposition: entry.disposition,
         semanticKind: entry.semanticKind,
-        canonicalId: entry.canonicalId,
+        ...("canonicalBindings" in entry
+          ? { canonicalBindings: entry.canonicalBindings }
+          : { canonicalId: entry.canonicalId }),
         evidence: entry.evidence,
       });
     }
@@ -79,9 +81,12 @@ describe("semantic UI registry architecture", () => {
     const catalog = UiCatalogSchema.parse(readJson("generated/ui-catalog.json"));
     const portMap = LegacySelectorPortMapSchema.parse(readJson("config/ports/legacy-selector-port-map.json"));
     const catalogElementIds = catalog.entries.flatMap((entry) => entry.kind === "element" ? [entry.id] : []);
-    const portedElementIds = portMap.entries.flatMap((entry) =>
-      entry.disposition === "ported" && entry.semanticKind === "element" ? [entry.canonicalId] : []
-    );
+    const portedElementIds = portMap.entries.flatMap((entry) => {
+      if (entry.disposition !== "ported" || entry.semanticKind !== "element") return [];
+      return "canonicalBindings" in entry
+        ? entry.canonicalBindings.map(({ canonicalId }) => canonicalId)
+        : [entry.canonicalId];
+    });
     const candidateProposalIds = new Set(portMap.entries.flatMap((entry) =>
       entry.disposition === "candidate" ? [entry.candidateId] : []
     ));
@@ -121,6 +126,29 @@ describe("semantic UI registry architecture", () => {
     if (!portAssertion) throw new Error("fixture evidence assertion missing");
     portAssertion.portMapRows = [{ system: "ucpath", legacyKey: "personOrgSummary.personIdValue()" }];
     assert.match(auditUcpathUiEvidenceBindings(wrongPortRow).join("\n"), /assertion port-map rows drifted/);
+
+    const wrongContext = structuredClone(evidenceBindingInput()) as {
+      portBindings: {
+        legacyKey: string;
+        canonicalBindings?: { context: string; canonicalId: string }[];
+      }[];
+    };
+    const viewAllBinding = wrongContext.portBindings.find(({ legacyKey }) =>
+      legacyKey === "personOrgSummary.viewAllLink()"
+    );
+    if (viewAllBinding?.canonicalBindings === undefined) throw new Error("View All context binding missing");
+    const firstBinding = viewAllBinding.canonicalBindings[0];
+    const secondBinding = viewAllBinding.canonicalBindings[1];
+    if (firstBinding === undefined || secondBinding === undefined) throw new Error("View All contexts missing");
+    viewAllBinding.canonicalBindings[0] = {
+      ...firstBinding,
+      context: secondBinding.context,
+    };
+    viewAllBinding.canonicalBindings[1] = {
+      ...secondBinding,
+      context: firstBinding.context,
+    };
+    assert.match(auditUcpathUiEvidenceBindings(wrongContext).join("\n"), /contextual port binding drifted/);
   });
 
   it("catches duplicate ids, search collisions, unresolved dependencies, and cross-system entries", () => {
@@ -149,7 +177,7 @@ describe("semantic UI registry architecture", () => {
     const crossScreenState = structuredClone(UCPATH_UI_REGISTRY);
     crossScreenState.elements[0] = {
       ...crossScreenState.elements[0],
-      requiredStates: [crossScreenState.states[1].id],
+      requiredStates: [crossScreenState.states[3].id],
     };
     assert.match(auditUcpathUiRegistry(crossScreenState).join("\n"), /required state crosses screens/);
 

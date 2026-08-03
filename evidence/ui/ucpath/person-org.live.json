@@ -2,23 +2,15 @@
   "schemaVersion": 1,
   "evidenceKind": "live-read-only",
   "system": "ucpath",
-  "screens": [
-    "ucpath.person-org.search",
-    "ucpath.person-org.detail"
-  ],
-  "verifiedAt": "2026-08-01",
+  "screens": ["ucpath.person-org.search", "ucpath.person-org.detail"],
+  "verifiedAt": "2026-08-02",
   "method": "playwright-cli-duo-autopilot",
   "assertions": [
     {
       "semanticId": "ucpath.person-org.search",
       "screen": "ucpath.person-org.search",
       "scenarioId": "ui/ucpath-person-org-search-eid-input",
-      "portMapRows": [
-        {
-          "system": "ucpath",
-          "legacyKey": "personOrgSummary.emplIdInput()"
-        }
-      ],
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.emplIdInput()" }],
       "assertion": "recipe-resolves",
       "matchedCount": 1,
       "capturedValue": false
@@ -27,13 +19,17 @@
       "semanticId": "ucpath.person-org.detail",
       "screen": "ucpath.person-org.detail",
       "scenarioId": "ui/ucpath-person-org-displayed-eid",
-      "portMapRows": [
-        {
-          "system": "ucpath",
-          "legacyKey": "personOrgSummary.personIdValue()"
-        }
-      ],
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.personIdValue()" }],
       "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.navigation-link",
+      "screen": "ucpath.person-org.search",
+      "scenarioId": "ui/ucpath-person-org-search-eid-input",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "hrTasks.personOrgSummaryLink()" }],
+      "assertion": "exactly-one-visible",
       "matchedCount": 1,
       "capturedValue": false
     },
@@ -41,13 +37,71 @@
       "semanticId": "ucpath.person-org.eid-input",
       "screen": "ucpath.person-org.search",
       "scenarioId": "ui/ucpath-person-org-search-eid-input",
-      "portMapRows": [
-        {
-          "system": "ucpath",
-          "legacyKey": "personOrgSummary.emplIdInput()"
-        }
-      ],
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.emplIdInput()" }],
       "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.last-name-input",
+      "screen": "ucpath.person-org.search",
+      "scenarioId": "ui/ucpath-person-org-search-eid-input",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.lastNameInput()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.given-name-input",
+      "screen": "ucpath.person-org.search",
+      "scenarioId": "ui/ucpath-person-org-search-eid-input",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.nameInput()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.search-button",
+      "screen": "ucpath.person-org.search",
+      "scenarioId": "ui/ucpath-person-org-search-eid-input",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.searchButton()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.no-results-status",
+      "screen": "ucpath.person-org.search",
+      "scenarioId": "ui/ucpath-person-org-results-grid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.noMatchingValuesText()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.results-grid",
+      "screen": "ucpath.person-org.search",
+      "scenarioId": "ui/ucpath-person-org-results-grid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.resultsTable()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.results-view-toggle",
+      "screen": "ucpath.person-org.search",
+      "scenarioId": "ui/ucpath-person-org-results-grid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.viewAllLink()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.result-drill-in",
+      "screen": "ucpath.person-org.search",
+      "scenarioId": "ui/ucpath-person-org-results-grid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.drillInButton()" }],
+      "assertion": "recipe-resolves",
       "matchedCount": 1,
       "capturedValue": false
     },
@@ -55,12 +109,43 @@
       "semanticId": "ucpath.person-org.eid-display",
       "screen": "ucpath.person-org.detail",
       "scenarioId": "ui/ucpath-person-org-displayed-eid",
-      "portMapRows": [
-        {
-          "system": "ucpath",
-          "legacyKey": "personOrgSummary.personIdValue()"
-        }
-      ],
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.personIdValue()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.name-display",
+      "screen": "ucpath.person-org.detail",
+      "scenarioId": "ui/ucpath-person-org-displayed-eid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.personNameValue()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.assignments-grid",
+      "screen": "ucpath.person-org.detail",
+      "scenarioId": "ui/ucpath-person-org-displayed-eid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.body()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.employment-view-toggle",
+      "screen": "ucpath.person-org.detail",
+      "scenarioId": "ui/ucpath-person-org-displayed-eid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.viewAllLink()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.return-to-search",
+      "screen": "ucpath.person-org.detail",
+      "scenarioId": "ui/ucpath-person-org-displayed-eid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.returnToSearchButton()" }],
       "assertion": "exactly-one-visible",
       "matchedCount": 1,
       "capturedValue": false
@@ -69,12 +154,25 @@
       "semanticId": "ucpath.person-org.search-ready",
       "screen": "ucpath.person-org.search",
       "scenarioId": "ui/ucpath-person-org-search-eid-input",
-      "portMapRows": [
-        {
-          "system": "ucpath",
-          "legacyKey": "personOrgSummary.emplIdInput()"
-        }
-      ],
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.emplIdInput()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.results-ready",
+      "screen": "ucpath.person-org.search",
+      "scenarioId": "ui/ucpath-person-org-results-grid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.resultsTable()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.no-results",
+      "screen": "ucpath.person-org.search",
+      "scenarioId": "ui/ucpath-person-org-results-grid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.noMatchingValuesText()" }],
       "assertion": "exactly-one-visible",
       "matchedCount": 1,
       "capturedValue": false
@@ -83,12 +181,7 @@
       "semanticId": "ucpath.person-org.detail-ready",
       "screen": "ucpath.person-org.detail",
       "scenarioId": "ui/ucpath-person-org-displayed-eid",
-      "portMapRows": [
-        {
-          "system": "ucpath",
-          "legacyKey": "personOrgSummary.personIdValue()"
-        }
-      ],
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.personIdValue()" }],
       "assertion": "exactly-one-visible",
       "matchedCount": 1,
       "capturedValue": false
@@ -97,15 +190,67 @@
       "semanticId": "ucpath.person-org.displayed-eid",
       "screen": "ucpath.person-org.detail",
       "scenarioId": "ui/ucpath-person-org-displayed-eid",
-      "portMapRows": [
-        {
-          "system": "ucpath",
-          "legacyKey": "personOrgSummary.personIdValue()"
-        }
-      ],
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.personIdValue()" }],
       "assertion": "displayed-eid-equals-query",
       "matchedCount": 1,
       "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.person-org.displayed-name",
+      "screen": "ucpath.person-org.detail",
+      "scenarioId": "ui/ucpath-person-org-displayed-eid",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "personOrgSummary.personNameValue()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    }
+  ],
+  "rejectedCandidates": [
+    {
+      "legacyKey": "personOrgSummary.emplIdInput()",
+      "candidateDescription": "exact textbox accessible name Empl ID",
+      "reason": "zero-live-matches",
+      "matchedCount": 0,
+      "replacementSemanticId": "ucpath.person-org.eid-input"
+    },
+    {
+      "legacyKey": "personOrgSummary.nameInput()",
+      "candidateDescription": "exact textbox accessible name Name",
+      "reason": "zero-live-matches",
+      "matchedCount": 0,
+      "replacementSemanticId": "ucpath.person-org.given-name-input"
+    }
+  ],
+  "paginationProofs": [
+    {
+      "context": "search-results",
+      "initialState": "enabled-view-all",
+      "finalState": "view-n",
+      "counterBefore": "1-100 of 300",
+      "counterAfter": "1-300 of 300",
+      "renderedUnit": "rows",
+      "renderedBefore": 100,
+      "renderedAfter": 300
+    },
+    {
+      "context": "search-results",
+      "initialState": "disabled-view-all",
+      "finalState": "disabled-view-all",
+      "counterBefore": "1-27 of 27",
+      "counterAfter": "1-27 of 27",
+      "renderedUnit": "rows",
+      "renderedBefore": 27,
+      "renderedAfter": 27
+    },
+    {
+      "context": "employment-instances",
+      "initialState": "enabled-view-all",
+      "finalState": "view-n",
+      "counterBefore": "1 of 10",
+      "counterAfter": "1-10 of 10",
+      "renderedUnit": "assignment-grids",
+      "renderedBefore": 1,
+      "renderedAfter": 10
     }
   ],
   "externalWriteAttempted": false,

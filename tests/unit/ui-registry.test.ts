@@ -66,8 +66,8 @@ describe("semantic UI registry", () => {
   it("resolves every Person Org semantic dependency without collisions", () => {
     assert.deepEqual(auditUcpathUiRegistry(), []);
     assert.equal(UCPATH_UI_REGISTRY.system, "ucpath");
-    assert.equal(UCPATH_UI_REGISTRY.elements.length, 2);
-    assert.equal(UCPATH_UI_REGISTRY.scenarios.length, 2);
+    assert.equal(UCPATH_UI_REGISTRY.elements.length, 14);
+    assert.equal(UCPATH_UI_REGISTRY.scenarios.length, 3);
   });
 
   it("runs the deterministic read-only Person Org scenario through typed ids", async () => {
@@ -97,14 +97,14 @@ describe("semantic UI registry", () => {
   it("publishes a schema-valid catalog with no private recipe or captured value", () => {
     const catalog = UiCatalogSchema.parse(buildSafeUiCatalog());
     const serialized = JSON.stringify(catalog);
-    assert.equal(catalog.entries.length, 7);
+    assert.equal(catalog.entries.length, 22);
     assert.doesNotMatch(
       serialized,
       /#main_target_win0|PERSON_NPC_VW_EMPLID|Empl ID|legacyKey|locator|selector|capturedValue|valueType|timeoutMs/,
     );
   });
 
-  it("enforces element states immediately and preserves the legacy display fallback order", async () => {
+  it("enforces element states immediately and uses the one verified display locator", async () => {
     const events: string[] = [];
     const driver = createUcpathPersonOrgDriver(recordingPage(events), {
       searchPersonOrg: () => Promise.reject(new Error("semantic search is outside this primitive-driver test")),
@@ -115,13 +115,10 @@ describe("semantic UI registry", () => {
 
     events.length = 0;
     assert.equal(await driver.read(UCPATH_PERSON_ORG_DISPLAYED_EID), "10800000");
-    assert.deepEqual(events.filter((event) => event.startsWith("locate:#")), [
+    assert.deepEqual(events.filter((event) => event.startsWith("locate:")), [
       "locate:#PERSON_NPC_VW_EMPLID",
-      "locate:#PER_INST_EMP_VW_OPRID\\$0",
-      "locate:#PER_INST_EMP_VW_EMPLID\\$0",
+      "locate:table[id^=\"tdgbrPER_ASGN_EMP_VW$\"]",
       "locate:#PERSON_NPC_VW_EMPLID",
-      "locate:#PER_INST_EMP_VW_OPRID\\$0",
-      "locate:#PER_INST_EMP_VW_EMPLID\\$0",
     ]);
     assert.equal(events.findIndex((event) => event.startsWith("wait:"))
       < events.findIndex((event) => event.startsWith("read:")), true);
@@ -148,6 +145,44 @@ describe("semantic UI registry", () => {
       assert.equal(manifest.externalWriteAttempted, false);
       assert.equal(manifest.sanitized, true);
       assert.equal(manifest.assertions.every(({ capturedValue }) => capturedValue === false), true);
+      if (manifest.evidenceKind === "live-read-only") {
+        assert.deepEqual(manifest.rejectedCandidates?.map(({ legacyKey, matchedCount }) => ({
+          legacyKey,
+          matchedCount,
+        })), [
+          { legacyKey: "personOrgSummary.emplIdInput()", matchedCount: 0 },
+          { legacyKey: "personOrgSummary.nameInput()", matchedCount: 0 },
+        ]);
+        assert.deepEqual(manifest.paginationProofs?.map((proof) => ({
+          context: proof.context,
+          initialState: proof.initialState,
+          finalState: proof.finalState,
+          renderedBefore: proof.renderedBefore,
+          renderedAfter: proof.renderedAfter,
+        })), [
+          {
+            context: "search-results",
+            initialState: "enabled-view-all",
+            finalState: "view-n",
+            renderedBefore: 100,
+            renderedAfter: 300,
+          },
+          {
+            context: "search-results",
+            initialState: "disabled-view-all",
+            finalState: "disabled-view-all",
+            renderedBefore: 27,
+            renderedAfter: 27,
+          },
+          {
+            context: "employment-instances",
+            initialState: "enabled-view-all",
+            finalState: "view-n",
+            renderedBefore: 1,
+            renderedAfter: 10,
+          },
+        ]);
+      }
     }
   });
 });
