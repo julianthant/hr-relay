@@ -55,7 +55,7 @@ export const RunOutcomeSchema = z.enum([
 export type RunOutcome = z.infer<typeof RunOutcomeSchema>;
 
 /** Why a queued row is queued — a requeue is never indistinguishable from a first enqueue. */
-export const RequeueCauseSchema = z.enum(["reassign", "bump", "recovery"]);
+export const RequeueCauseSchema = z.enum(["reassign", "bump", "recovery", "provider-capacity"]);
 export type RequeueCause = z.infer<typeof RequeueCauseSchema>;
 
 /** The lifecycle discriminants, as a value — the `tasks.state` column's domain. */

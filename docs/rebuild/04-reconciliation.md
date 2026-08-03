@@ -683,7 +683,14 @@ authorization table is added by immutable migration v8, never by amending releas
 authorization is cross-bound to the exact terminal version, retained claim generation, lifecycle
 arm/identity, and authorization-derived timestamps in replay and recovery. Owners: docs 02
 §Phase-1f ingress/§5.7 and 03 §Phase-1f authority. The follow-up guard pins the complete released
-v1–v8 migration history by literal per-version digests; later schema work must append v9.
+v1–v8 migration history by literal per-version digests; D112 subsequently appends v9 without
+changing those bytes, and later schema work must append v10.
+
+## Reconciliation round 19 (2026-08-03) — D112 provider budget windows
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D119** | **PROVIDER RATE USES FIXED UTC-MINUTE WINDOWS; DAILY REQUEST AND COST CAPS USE FIXED UTC-DAY WINDOWS; A ZERO COST CAP ADMITS ONLY AN EXACT ZERO MAXIMUM ESTIMATE AND NEVER MEANS UNLIMITED.** | doc 11 §3 (primary); docs 01 §Phase-1f executor; 05 §3.1 |
 
 **Two separate D-series exist — do not confuse them.** This memo's `D1–D118` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row

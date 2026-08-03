@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import { ProviderCapabilityIdSchema } from "./ids.js";
+import {
+  ProviderMeasuredUsageSchema,
+  ProviderUnavailableReasonSchema,
+  RedactedProviderEvidenceSchema,
+} from "./provider-admission.js";
 
 export const ProviderRequestEnvelopeSchema = z.strictObject({
   capability: ProviderCapabilityIdSchema,
@@ -14,7 +19,7 @@ export const ProviderResponseEnvelopeSchema = z.discriminatedUnion("state", [
   }),
   z.strictObject({
     state: z.literal("unavailable"),
-    reason: z.string().min(1),
+    reason: ProviderUnavailableReasonSchema,
   }),
   z.strictObject({
     state: z.literal("invalid-response"),
@@ -22,5 +27,12 @@ export const ProviderResponseEnvelopeSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
+export const ProviderAdapterOutcomeSchema = z.strictObject({
+  response: ProviderResponseEnvelopeSchema,
+  usage: ProviderMeasuredUsageSchema,
+  evidence: RedactedProviderEvidenceSchema,
+});
+
 export type ProviderRequestEnvelope = z.infer<typeof ProviderRequestEnvelopeSchema>;
 export type ProviderResponseEnvelope = z.infer<typeof ProviderResponseEnvelopeSchema>;
+export type ProviderAdapterOutcome = z.infer<typeof ProviderAdapterOutcomeSchema>;

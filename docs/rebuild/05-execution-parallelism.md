@@ -183,6 +183,17 @@ available, the kernel records the typed wait/unavailable reason and releases or 
 `not_before`; it does not keep a worker asleep and cannot fall through to the adapter. Phase 2h
 adds production pools and consumers over this core, not a second scheduler.
 
+**D112 durable admission as built (2026-08-03).** Capability-global authority counters use fixed
+UTC-minute rate and fixed UTC-day request/cost windows, while each decision retains the requesting
+run's exact immutable config snapshot and fingerprint. Reservation atomically expires stale leases,
+rolls windows, reserves one request plus the adapter's conservative maximum cost, and either grants
+or records a typed denial before any remote call. Settlement releases concurrency and may reconcile
+cost down; invoke failure, timeout, crash/unknown, and lease expiry retain the full reservation.
+Actual cost above the estimate blocks that capability through the UTC day and fails loud. A
+retryable denial maps its exact `retryAt` to run `not_before` with cause `provider-capacity`; abort,
+timeout, and adapter-unavailable carry no retry instant. No admission path sleeps while holding a
+worker.
+
 ---
 
 ## 4. Browser-session behavior

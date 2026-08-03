@@ -237,6 +237,18 @@ Phase 1f turns two Phase-1d seams into mandatory runtime behavior:
   this capability-neutral core and deterministic adapters only; production provider pools and
   OCR/geocoding/AI consumers remain Phase 2h.
 
+**D112 as built (2026-08-03).** A task-visible admitted client accepts only the strict canonical
+payload; it has no caller-supplied signal, timeout, deadline, budget, adapter, or admission id. The
+adapter boundary separately exposes a local conservative maximum-cost `estimate` and one `invoke`
+that receives only the kernel-composed abort signal, monotonic deadline, and durable admission id.
+The adapter result is strict response + measured usage + already-redacted evidence. The kernel
+reserves first, invokes outside SQLite, and durably settles before returning produced data; failure
+to settle after remote I/O is an explicit uncertain outcome and never leaks the response. Abort and
+deadline race the invocation itself, so even an adapter that ignores its signal releases the worker
+turn while the durable reservation retains conservative accounting. The Phase-1f deterministic
+harness observes estimates/invocations and scripts zero/fixture cost, abort, throw, malformed, and
+unavailable cases; it is not a direct client bypass.
+
 ---
 
 ## 2. The Task contract

@@ -2,6 +2,8 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 import { LocalOperatorActorSchema, LOCAL_OPERATOR_ACTOR_ID } from "../ids.js";
+import type { ProviderCapabilityId } from "../ids.js";
+import { deepFreeze } from "../immutability.js";
 
 const UrlSchema = z.url();
 const HttpsUrlSchema = z.url().refine((value) => value.startsWith("https://"), "URL must use HTTPS");
@@ -67,13 +69,32 @@ export const AnnualDateEntrySchema = z.strictObject({
   kronosDefaultStartDate: UsDateSchema,
 });
 
-const ProviderBudgetSchema = z.strictObject({
+export const ProviderBudgetSchema = z.strictObject({
   timeoutMs: z.number().int().positive(),
   concurrency: z.number().int().positive(),
   requestsPerMinute: z.number().int().positive(),
   dailyRequestLimit: z.number().int().positive(),
   costLimitUsdMicros: z.number().int().nonnegative(),
 });
+
+export const ProviderBudgetConfigSchema = z.strictObject({
+  ocrExtract: ProviderBudgetSchema,
+  geocodeCensus: ProviderBudgetSchema,
+  geocodeNominatim: ProviderBudgetSchema,
+  aiAdvisory: ProviderBudgetSchema,
+}).default({
+  ocrExtract: { timeoutMs: 120_000, concurrency: 4, requestsPerMinute: 10, dailyRequestLimit: 250, costLimitUsdMicros: 0 },
+  geocodeCensus: { timeoutMs: 15_000, concurrency: 2, requestsPerMinute: 30, dailyRequestLimit: 5_000, costLimitUsdMicros: 0 },
+  geocodeNominatim: { timeoutMs: 15_000, concurrency: 1, requestsPerMinute: 1, dailyRequestLimit: 1_000, costLimitUsdMicros: 0 },
+  aiAdvisory: { timeoutMs: 90_000, concurrency: 2, requestsPerMinute: 10, dailyRequestLimit: 250, costLimitUsdMicros: 0 },
+});
+
+export const PROVIDER_CAPABILITY_CONFIG_KEYS = deepFreeze({
+  "ocr.extract": "ocrExtract",
+  "geocode.census": "geocodeCensus",
+  "geocode.nominatim": "geocodeNominatim",
+  "ai.advisory": "aiAdvisory",
+} as const satisfies Record<ProviderCapabilityId, keyof z.output<typeof ProviderBudgetConfigSchema>>);
 
 const DEFAULT_PATHS = {
   reportsDir: resolve("data/reports"),
@@ -218,18 +239,16 @@ export const ConfigSchema = z.strictObject({
     .default({ idleMs: 900_000, idleRepollMs: 30_000 }),
   features: z.strictObject({ debugScreenshots: z.boolean(), duoWebAuthn: z.boolean() })
     .default({ debugScreenshots: false, duoWebAuthn: true }),
-  providers: z.strictObject({
-    ocrExtract: ProviderBudgetSchema,
-    geocodeCensus: ProviderBudgetSchema,
-    geocodeNominatim: ProviderBudgetSchema,
-    aiAdvisory: ProviderBudgetSchema,
-  }).default({
-    ocrExtract: { timeoutMs: 120_000, concurrency: 4, requestsPerMinute: 10, dailyRequestLimit: 250, costLimitUsdMicros: 0 },
-    geocodeCensus: { timeoutMs: 15_000, concurrency: 2, requestsPerMinute: 30, dailyRequestLimit: 5_000, costLimitUsdMicros: 0 },
-    geocodeNominatim: { timeoutMs: 15_000, concurrency: 1, requestsPerMinute: 1, dailyRequestLimit: 1_000, costLimitUsdMicros: 0 },
-    aiAdvisory: { timeoutMs: 90_000, concurrency: 2, requestsPerMinute: 10, dailyRequestLimit: 250, costLimitUsdMicros: 0 },
-  }),
+  providers: ProviderBudgetConfigSchema,
 });
+
+export function providerBudget(
+  config: z.output<typeof ConfigSchema>,
+  capability: ProviderCapabilityId,
+): z.output<typeof ProviderBudgetSchema> {
+  const key = PROVIDER_CAPABILITY_CONFIG_KEYS[capability];
+  return ProviderBudgetSchema.parse(config.providers[key]);
+}
 
 function partialEndpoints<Shape extends z.ZodRawShape>(routes: z.ZodObject<Shape>) {
   return z.strictObject({ test: routes.partial().optional() });
@@ -280,3 +299,4 @@ export const SettingsOverrideInputSchema = SettingsOverrideSchema.optional().def
 export type Config = z.output<typeof ConfigSchema>;
 export type SettingsOverride = z.output<typeof SettingsOverrideSchema>;
 export type AnnualDateEntry = z.output<typeof AnnualDateEntrySchema>;
+export type ProviderBudget = z.output<typeof ProviderBudgetSchema>;

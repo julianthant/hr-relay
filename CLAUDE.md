@@ -15,7 +15,10 @@ D114 terminal authority now factory-derives successful results from exact stored
 requires an unforgeable in-process seal for initial success, and stores a strict pre-terminal
 authorization with exact structured failures or schema-bound results/outbox through immutable
 schema v8, atomically with the matching failed/done run transition; generic run transitions cannot
-bypass it.
+bypass it. D112's generic provider admission now reserves capability-global fixed-window budgets
+through immutable schema v9, binds every decision to exact run/config/request identity, races remote
+I/O against kernel-owned abort/deadline, settles before exposing data, and retains conservative cost
+on uncertain outcomes; production provider pools and consumers remain Phase 2h.
 
 ## Before you start
 
@@ -232,11 +235,20 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-03: Provider admission is durable authority, and timeout must race the invocation.**
+  Capability counters are global even though every decision uses and retains the run's immutable
+  budget snapshot. Reserve request count and maximum cost before I/O; reconcile cost only after a
+  strict measured result; retain the maximum on abort, timeout, crash, invalid outcome, or lease
+  expiry. A signal alone does not bound a non-cooperative adapter, so the kernel races invocation
+  against its injected monotonic deadline/cancellation channel, safely observes late rejection, and
+  durably releases concurrency before returning unavailable. Settlement failure after remote I/O is
+  uncertain and can never return produced data. Fixed UTC minute/day boundaries make `retryAt`
+  exact, and a zero cost limit is a hard zero-estimate cap, never unlimited.
 - **2026-08-03: Released migrations are immutable, and authorization must bind its consequence.**
   Never add a table to a released migration without advancing the schema version: an already-v7
   database will skip the changed body. The exact released v7 creates terminal failure/result/outbox
   facts; v8 alone adds `run_terminal_authorizations`. A literal SHA-256 table pins every version and
-  ordered statement byte in released v1–v8; future schema work starts at v9 and extends that table.
+  ordered statement byte in released v1–v9; future schema work starts at v10 and extends that table.
   Recovery and replay require the terminal row to be the authorization's exact consequence: version
   is `expectedVersion + 1`, claim generation is retained, state/outcome and failure id match the
   arm, and both `lifecycle.endedAt` and `updatedAt` equal `authorizedAt`.

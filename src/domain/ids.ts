@@ -77,6 +77,10 @@ export const CommandAuditIdSchema = brandedText<"CommandAuditId">(UUID_PATTERN, 
 export const OutboxIdSchema = brandedText<"OutboxId">(UUID_PATTERN, "outbox id must be a UUID");
 export const WriteIntentIdSchema = brandedText<"WriteIntentId">(UUID_PATTERN, "write intent id must be a UUID");
 export const WriteAttemptIdSchema = brandedText<"WriteAttemptId">(UUID_PATTERN, "write attempt id must be a UUID");
+export const ProviderAdmissionIdSchema = brandedText<"ProviderAdmissionId">(
+  UUID_PATTERN,
+  "provider admission id must be a UUID",
+);
 
 /**
  * A record's identity inside an extracted document — derived at admission from
@@ -198,6 +202,7 @@ export type CommandAuditId = z.infer<typeof CommandAuditIdSchema>;
 export type OutboxId = z.infer<typeof OutboxIdSchema>;
 export type WriteIntentId = z.infer<typeof WriteIntentIdSchema>;
 export type WriteAttemptId = z.infer<typeof WriteAttemptIdSchema>;
+export type ProviderAdmissionId = z.infer<typeof ProviderAdmissionIdSchema>;
 export type StableRecordId = z.infer<typeof StableRecordIdSchema>;
 export type PredicateId = z.infer<typeof PredicateIdSchema>;
 export type WorkflowId = z.infer<typeof WorkflowIdSchema>;

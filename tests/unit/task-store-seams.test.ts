@@ -20,7 +20,13 @@ import {
 } from "../../src/base/session.js";
 import { defineTask } from "../../src/base/task.js";
 import { defineTaskContract } from "../../src/domain/contracts/base.js";
-import { FingerprintSchema, ScenarioIdSchema, taskId } from "../../src/domain/ids.js";
+import {
+  FingerprintSchema,
+  IsoInstantSchema,
+  ProviderAdmissionIdSchema,
+  ScenarioIdSchema,
+  taskId,
+} from "../../src/domain/ids.js";
 import type { UcpathPersonOrgDriver } from "../../src/domain/ui/ucpath-person-org.js";
 import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import type { ArtifactWriteFaultStep } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
@@ -421,23 +427,38 @@ describe("task, store, session, provider, and artifact seams", () => {
       state: "produced" as const,
       value: { schemaHash: hash, value: { text: "recognized" } },
     };
-    const harness = createDeterministicProviderHarness("ocr.extract", [response]);
+    const harness = createDeterministicProviderHarness("ocr.extract", [{
+      kind: "return",
+      estimate: { maximumCostUsdMicros: 0 },
+      outcome: {
+        response,
+        usage: { requestCount: 1, costUsdMicros: 0 },
+        evidence: { summary: "deterministic fixture", capturedAt: IsoInstantSchema.parse("2026-08-03T12:00:00.000Z") },
+      },
+    }]);
     const signal = new AbortController().signal;
+    const request = { capability: "ocr.extract" as const, payload: { schemaHash: hash, value: { artifact: "fixture" } } };
+    assert.deepEqual(harness.adapter.estimate(request), { maximumCostUsdMicros: 0 });
     assert.deepEqual(
-      await harness.client.call({ schemaHash: hash, value: { artifact: "fixture" } }, { signal }),
-      response,
+      await harness.adapter.invoke(request, {
+        signal,
+        deadlineMonotonicMs: 100,
+        admissionId: ProviderAdmissionIdSchema.parse("00000000-0000-4000-8000-000000000021"),
+      }),
+      {
+        response,
+        usage: { requestCount: 1, costUsdMicros: 0 },
+        evidence: { summary: "deterministic fixture", capturedAt: IsoInstantSchema.parse("2026-08-03T12:00:00.000Z") },
+      },
     );
     assert.equal(harness.calls().length, 1);
-    await assert.rejects(
-      harness.client.call({ schemaHash: hash, value: { artifact: "fixture" } }, { signal }),
-      /no queued response/,
-    );
-    await assert.rejects(
-      harness.adapter.invoke({
+    assert.throws(() => harness.adapter.estimate(request), /no queued script/);
+    assert.throws(
+      () => harness.adapter.estimate({
         capability: "ai.advisory",
         payload: { schemaHash: hash, value: "fixture" },
-      }, { signal }),
-      /cannot invoke capability ai\.advisory/,
+      }),
+      /cannot estimate capability ai\.advisory/,
     );
   });
 

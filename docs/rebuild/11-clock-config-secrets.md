@@ -276,6 +276,15 @@ export const ConfigSchema = z.strictObject({
 export type Config = z.infer<typeof ConfigSchema>;
 ```
 
+**Provider budget windows (D119, ratified 2026-08-03).** Provider admission uses fixed UTC
+calendar windows, never a worker-relative rolling approximation: `requestsPerMinute` resets at the
+next UTC minute boundary; `dailyRequestLimit` and `costLimitUsdMicros` reset at the next UTC day
+boundary. `costLimitUsdMicros` is the capability's daily maximum cost in integer USD micros. A
+literal `0` is a hard zero-cost cap: only a request whose adapter supplies a conservative maximum
+estimate of exactly zero may be admitted. It never means unlimited. Counters are shared globally by
+capability across config fingerprints, while each admission decision retains and applies the exact
+immutable run snapshot's budget.
+
 The route entries above are deliberately exhaustive over doc 01's current `BrowserSystemId`, not a
 sample of the most common systems. D68 coverage fails if a browser system lacks its closed endpoint
 schema/defaults or if an endpoint schema has no driver consumer. Naming follows the domain ids:
