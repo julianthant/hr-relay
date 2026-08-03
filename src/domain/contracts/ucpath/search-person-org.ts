@@ -78,9 +78,9 @@ export const SearchPersonOrg = defineTaskContract({
   },
   provenance: { default: "live" },
   scenarios: [
-    "person-lookup/search-by-eid",
-    "person-lookup/search-ambiguous-name",
-    "person-lookup/search-not-found",
+    "person-lookup/happy-by-eid",
+    "person-lookup/ambiguous-name",
+    "person-lookup/not-found",
   ],
   example: {
     results: [{

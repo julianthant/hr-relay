@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { workflowProjections } from "../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
+import type { RegisteredTaskStore } from "../base/store.js";
 import { TaskIdSchema } from "../domain/ids.js";
 import { taskStoreRegistry } from "../stores/index.js";
 import { personLookupModule } from "../workflows/person-lookup/module.js";
@@ -67,13 +68,57 @@ export function boundTaskIds(): readonly string[] {
     Object.values(store.tasks).map((task) => task.contract.id)));
 }
 
+export interface WorkflowModuleBindingView {
+  readonly descriptor: AnyWorkflowDescriptor;
+  readonly stores: readonly RegisteredTaskStore[];
+}
+
+/**
+ * A globally bound task is not enough: the workflow module itself is the
+ * server composition boundary. Every contract must resolve through one of that
+ * module's own stores, and every listed store must serve at least one contract
+ * in that descriptor.
+ */
+export function auditWorkflowModuleBindings(
+  modules: readonly WorkflowModuleBindingView[],
+): readonly string[] {
+  const violations: string[] = [];
+  for (const module of modules) {
+    const contracts = workflowProjections(module.descriptor).contracts;
+    const expectedNamespaces = new Set(contracts.map((contract) =>
+      String(contract.id).slice(0, String(contract.id).lastIndexOf("/"))));
+    const moduleNamespaces = module.stores.map(({ namespace }) => String(namespace));
+    if (new Set(moduleNamespaces).size !== moduleNamespaces.length) {
+      violations.push(`${module.descriptor.id} module repeats a task store namespace`);
+    }
+    for (const namespace of moduleNamespaces) {
+      if (!expectedNamespaces.has(namespace)) {
+        violations.push(`${module.descriptor.id} module lists extra store ${namespace}`);
+      }
+    }
+    for (const namespace of expectedNamespaces) {
+      if (!moduleNamespaces.includes(namespace)) {
+        violations.push(`${module.descriptor.id} module is missing store ${namespace}`);
+      }
+    }
+    for (const contract of contracts) {
+      const owner = module.stores.find(({ namespace }) =>
+        String(contract.id).startsWith(`${String(namespace)}/`));
+      if (owner === undefined || !Object.values(owner.tasks).some((task) => task.contract === contract)) {
+        violations.push(`${module.descriptor.id} module cannot resolve its exact contract ${contract.id}`);
+      }
+    }
+  }
+  return violations;
+}
+
 /**
  * Audit descriptor↔impl pairing. Returns human-readable violations; an empty
  * array means every contract a descriptor names is either bound in a store or
  * explicitly tracked as pending.
  */
 export function auditImplBindings(bindings: PendingImplBindings): readonly string[] {
-  const violations: string[] = [];
+  const violations: string[] = [...auditWorkflowModuleBindings(WORKFLOW_MODULES)];
   const bound = new Set(boundTaskIds());
   const pending = new Map(bindings.tasks.map((entry) => [String(entry.taskId), entry]));
   const used = new Set<string>();

@@ -2,6 +2,7 @@ import {
   defineTaskStoreRegistry,
 } from "../base/store.js";
 import type { RegisteredTaskStore } from "../base/store.js";
+import { EXECUTABLE_SCENARIO_IDS } from "../domain/workflow/scenario-execution.js";
 import { crmStore } from "./crm/index.js";
 import { i9Store } from "./i9/index.js";
 import { kualiStore } from "./kuali/index.js";
@@ -33,7 +34,7 @@ export const TASK_STORES: readonly RegisteredTaskStore[] = Object.freeze([
 function corpusFor(stores: readonly RegisteredTaskStore[]) {
   const tasks = stores.flatMap((store) => Object.values(store.tasks));
   return {
-    scenarioIds: [...new Set(tasks.flatMap(({ contract }) => contract.scenarios))],
+    scenarioIds: EXECUTABLE_SCENARIO_IDS,
     tasks: tasks.map(({ contract }) => ({ id: contract.id, effect: contract.effect })),
   };
 }

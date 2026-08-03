@@ -528,7 +528,11 @@ read while still permitting replay-safe browser downloads.
   commands/dependencies/checkpoints/write-intents/outboxes survive. No code path creates a fresh
   empty authority DB over an invalid existing file.
 - **`scenario-coverage.test.ts`.** Descriptor/task/UI entries reference real, unique, strict
-  `ScenarioManifest`s. Every task has happy/empty or no-match/schema-failure/transient/permanent
+  `ScenarioManifest`s. The production execution manifest is independent of descriptor/contract
+  references, and the observed side is derived from the named executable test files rather than
+  either declaration list. Typo references, orphan rows, duplicate ids, and registered scenarios
+  with no executable declaration are proven failing fixtures. Every task has happy/empty or
+  no-match/schema-failure/transient/permanent
   coverage as applicable; every write has subject/proof/crash cases; every branch/delegation/gate
   arm is covered. A production bug fix cannot close without a regression scenario id in its
   `FixRecord`. Orphaned, stale-fingerprint, and never-executed scenarios fail.

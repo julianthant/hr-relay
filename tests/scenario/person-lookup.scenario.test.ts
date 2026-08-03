@@ -32,8 +32,7 @@ const CRM_FOUND = {
     recordId: "ONB-40213",
     emplId: "10873698",
     fullName: "Battistessa, Johnnie",
-    stage: "complete",
-    updatedAt: "2026-07-30T18:12:00.000Z",
+    rawStage: "Completed",
   },
 };
 
@@ -47,7 +46,7 @@ const CRM_DATES = {
   emplId: "10873698",
   invitedOn: { state: "present", value: "2026-06-01" },
   startsOn: { state: "present", value: "2026-07-15" },
-  completedOn: { state: "absent", reason: "onboarding is still in progress" },
+  completedOn: { state: "absent", reason: "CRM history has no Completed transition" },
 };
 
 describe("person-lookup scenarios", () => {

@@ -176,7 +176,11 @@ the attempt it was minted for. Snapshot migrations get the same treatment — a 
 bound to an older schema hash is transformed by a checked-in chain or refused loud, never re-derived
 from ingress. The doc's `step_id` column is `node_id`: §5.7 puts the resume grain at graph nodes.
 
-**Scenarios.** `tests/scenario/` walks each path through the descriptor's own pure functions —
+**Scenarios.** `src/domain/workflow/scenario-execution.ts` is the independent checked-in manifest
+of executable production scenario ids and their test files. Descriptors/contracts declare their
+requirements separately, and `scenario-coverage` derives observed executions from the named test
+declarations; it fails typo references, orphan manifest rows, and registered-but-unexecuted rows in
+both directions. `tests/scenario/` walks each path through the descriptor's own pure functions —
 `bind`, `when`, `choose`, gate `resolve`, delegation planning and joining, terminal `derive` —
 re-parsing every value through the schema that owns it, and REPORTS the coverage points it
 exercised. `scenario-coverage` audits that observed corpus against the derived points in both
@@ -184,11 +188,13 @@ directions. Two fixture points are honestly out of a pure walk's reach and say s
 `transaction:*/dry-run` and `transaction:*/subject-mismatch` are executor behaviours, pinned here as
 the obligation 1f must satisfy.
 
-**Impl binding.** Task implementations land with the workers in 1f. Until then every contract a
-registered descriptor uses is listed in `config/pending-impl-bindings.json` (D107), and
-`descriptor-coverage` checks it in BOTH directions — an unlisted unbound contract fails, and so does
-a listed contract a store has since bound. A missing impl is a legitimate mid-program state; a
-missing impl nobody is tracking is the drift a boot-time throw would only find in production.
+**Impl binding.** Phase 1f binds every Person Lookup contract through the workflow module's own
+exact stores; `config/pending-impl-bindings.json` is empty. `descriptor-coverage` checks module-local
+placement, the global store registry, and the build manifest in both directions. Every bound task
+has exactly one implementation fingerprint, including a workflow mini-store under its
+`workflow:<id>` namespace; browser-task fingerprints also include the concrete driver interpreter
+closure. Missing, extra, stale-pending, or merely globally-bound-but-module-absent implementations
+all fail.
 
 ---
 

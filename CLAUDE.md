@@ -12,7 +12,7 @@ legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01; Phase
 **`docs/rebuild/` is the plan SSOT — read it, do not re-derive it.**
 
 - `docs/rebuild/07-master-plan.md` — phases, work items, exit criteria. §4 owns the two-repo model.
-- `docs/rebuild/04-reconciliation.md` — the decision changelog (D1–D107). A **pointer index**, not a
+- `docs/rebuild/04-reconciliation.md` — the decision changelog (D1–D108). A **pointer index**, not a
   spec: it tells you which doc owns a contract. Never implement from it.
 - `00-charter` · `01-task-contract` · `02-workflow-model` · `03-tracker-dashboard` ·
   `05-execution-parallelism` · `06-data-intake` · `08-foundation-gap-audit` · `09-write-safety` ·

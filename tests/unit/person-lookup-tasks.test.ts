@@ -9,7 +9,7 @@ import {
 import { EidSchema } from "../../src/domain/ids.js";
 import { readOnboardingDatesTask } from "../../src/stores/crm/tasks/read-onboarding-dates.js";
 import { readOnboardingRecordTask } from "../../src/stores/crm/tasks/read-onboarding-record.js";
-import { readActiveStatusTask } from "../../src/stores/person-lookup/read-active-status.js";
+import { readActiveStatusTask } from "../../src/stores/person-lookup/tasks/read-active-status.js";
 import { searchPersonOrgTask } from "../../src/stores/ucpath/tasks/search-person-org.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import { createDeterministicCrmOnboardingDriver } from "../../src/stores/crm/driver/fake.js";
@@ -21,6 +21,9 @@ const log = Object.freeze({
   info: () => undefined,
   warn: () => undefined,
 });
+const fail = (_code: string, message: string): never => {
+  throw new Error(message);
+};
 
 const candidate = UcpathCandidateSchema.parse({
   emplId: "10873698",
@@ -40,8 +43,7 @@ const crmRecord = ReadOnboardingRecordOutputSchema.parse({
     recordId: "ONB-40213",
     emplId: candidate.emplId,
     fullName: candidate.name,
-    stage: "complete",
-    updatedAt: "2026-07-30T18:12:00.000Z",
+    rawStage: "Completed",
   },
 });
 if (crmRecord.state !== "found") throw new Error("CRM found-record fixture did not parse as found");
@@ -49,7 +51,7 @@ const crmDates = ReadOnboardingDatesOutputSchema.parse({
   emplId: candidate.emplId,
   invitedOn: { state: "present", value: "2026-06-01" },
   startsOn: { state: "present", value: "2026-07-15" },
-  completedOn: { state: "absent", reason: "not yet completed" },
+  completedOn: { state: "absent", reason: "CRM history has no Completed transition" },
 });
 
 describe("Phase 1f Person Lookup task implementations", () => {
@@ -72,25 +74,71 @@ describe("Phase 1f Person Lookup task implementations", () => {
     const crm = createDeterministicCrmOnboardingDriver({ record: crmRecord, dates: crmDates });
     const searched = await searchPersonOrgTask.impl.run({
       input: { kind: "by-eid", emplId: candidate.emplId },
-      ctx: { signal, log, driver: ucpath, fail: () => { throw new Error("unexpected fail"); } },
+      ctx: { signal, log, driver: ucpath, fail },
     });
     assert.deepEqual(searched, person);
     const record = await readOnboardingRecordTask.impl.run({
       input: { eid: candidate.emplId, name: candidate.name },
-      ctx: { signal, log, driver: crm, fail: () => { throw new Error("unexpected fail"); } },
+      ctx: { signal, log, driver: crm, fail },
     });
     assert.deepEqual(record, crmRecord);
     const dates = await readOnboardingDatesTask.impl.run({
       input: { eid: candidate.emplId },
-      ctx: { signal, log, driver: crm, fail: () => { throw new Error("unexpected fail"); } },
+      ctx: { signal, log, driver: crm, fail },
     });
     assert.deepEqual(dates, crmDates);
+  });
+
+  it("fails CRM reads when the displayed subject or extracted output EID differs", async () => {
+    const observedWrong = createDeterministicCrmOnboardingDriver({
+      record: crmRecord,
+      dates: crmDates,
+      recordObservedEid: "10001573",
+      datesObservedEid: "10001573",
+    });
+    await assert.rejects(
+      readOnboardingRecordTask.impl.run({
+        input: { eid: candidate.emplId, name: candidate.name },
+        ctx: { signal, log, driver: observedWrong, fail },
+      }),
+      /expected EID 10873698 but bound 10001573/,
+    );
+    await assert.rejects(
+      readOnboardingDatesTask.impl.run({
+        input: { eid: candidate.emplId },
+        ctx: { signal, log, driver: observedWrong, fail },
+      }),
+      /expected EID 10873698 but bound 10001573/,
+    );
+
+    const mismatchedOutputs = createDeterministicCrmOnboardingDriver({
+      record: {
+        state: "absent",
+        queriedEid: EidSchema.parse("10001573"),
+        reason: "no record for the wrong displayed person",
+      },
+      dates: { ...crmDates, emplId: EidSchema.parse("10001573") },
+    });
+    await assert.rejects(
+      readOnboardingRecordTask.impl.run({
+        input: { eid: candidate.emplId, name: candidate.name },
+        ctx: { signal, log, driver: mismatchedOutputs, fail },
+      }),
+      /returned output for 10001573/,
+    );
+    await assert.rejects(
+      readOnboardingDatesTask.impl.run({
+        input: { eid: candidate.emplId },
+        ctx: { signal, log, driver: mismatchedOutputs, fail },
+      }),
+      /returned output for 10001573/,
+    );
   });
 
   it("derives active status and fails loud when UCPath and CRM identities disagree", async () => {
     const active = await readActiveStatusTask.impl.run({
       input: { person, crm: crmRecord, keepNonHdh: false },
-      ctx: { signal, log, fail: () => { throw new Error("unexpected fail"); } },
+      ctx: { signal, log, fail },
     });
     assert.equal(active.state, "active");
     await assert.rejects(
@@ -103,7 +151,7 @@ describe("Phase 1f Person Lookup task implementations", () => {
           },
           keepNonHdh: false,
         },
-        ctx: { signal, log, fail: () => { throw new Error("unexpected fail"); } },
+        ctx: { signal, log, fail },
       }),
       /UCPath EID 10873698 but CRM EID 10001573/,
     );
@@ -124,7 +172,7 @@ describe("Phase 1f Person Lookup task implementations", () => {
         crm: { state: "absent", queriedEid: candidate.emplId, reason: "no matching record" },
         keepNonHdh: false,
       },
-      ctx: { signal, log, fail: () => { throw new Error("unexpected fail"); } },
+      ctx: { signal, log, fail },
     });
     assert.equal(unresolved.state, "undetermined");
 
@@ -142,8 +190,34 @@ describe("Phase 1f Person Lookup task implementations", () => {
         crm: crmRecord,
         keepNonHdh: false,
       },
-      ctx: { signal, log, fail: () => { throw new Error("unexpected fail"); } },
+      ctx: { signal, log, fail },
     });
     assert.equal(inactive.state, "inactive");
+  });
+
+  it("checks an absent CRM EID before returning the non-HDH outcome", async () => {
+    const nonHdh = UcpathCandidateSchema.parse({ ...candidate, hdh: false });
+    await assert.rejects(
+      readActiveStatusTask.impl.run({
+        input: {
+          person: {
+            results: [nonHdh],
+            selection: {
+              status: "resolved",
+              selected: nonHdh,
+              candidateEids: [nonHdh.emplId],
+            },
+          },
+          crm: {
+            state: "absent",
+            queriedEid: EidSchema.parse("10001573"),
+            reason: "no record for the wrong person",
+          },
+          keepNonHdh: false,
+        },
+        ctx: { signal, log, fail },
+      }),
+      /UCPath EID 10873698 but CRM EID 10001573/,
+    );
   });
 });

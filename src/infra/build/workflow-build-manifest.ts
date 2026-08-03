@@ -104,7 +104,20 @@ export function collectSourceClosure(repoRoot: string, entry: string): readonly 
   return sources.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
 }
 
-function fingerprintOf(
+/** Union of several server entry closures, still canonicalized by source path. */
+export function collectSourceClosures(
+  repoRoot: string,
+  entries: readonly string[],
+): readonly SourceHash[] {
+  const byPath = new Map<string, SourceHash>();
+  for (const entry of entries) {
+    for (const source of collectSourceClosure(repoRoot, entry)) byPath.set(source.path, source);
+  }
+  return [...byPath.values()].sort((left, right) =>
+    left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+}
+
+export function fingerprintSourceSet(
   toolchain: BuildManifest["toolchain"],
   id: string,
   sources: readonly SourceHash[],
@@ -133,16 +146,31 @@ function descriptorEntries(repoRoot: string): readonly { readonly id: string; re
  * Impl binding lands with the workers in 1f; until a store declares one the
  * list is legitimately empty rather than absent.
  */
-function taskEntries(repoRoot: string): readonly { readonly id: string; readonly entry: string }[] {
+function taskEntries(
+  repoRoot: string,
+): readonly { readonly id: string; readonly entries: readonly string[] }[] {
   const storesRoot = join(repoRoot, "src/stores");
   if (!existsSync(storesRoot)) return [];
-  const entries: { id: string; entry: string }[] = [];
-  for (const system of readdirSync(storesRoot)) {
-    const tasksRoot = join(storesRoot, system, "tasks");
+  const entries: { id: string; entries: readonly string[] }[] = [];
+  for (const storeDirectory of readdirSync(storesRoot)) {
+    const storeRoot = join(storesRoot, storeDirectory);
+    if (!statSync(storeRoot).isDirectory()) continue;
+    const tasksRoot = join(storeRoot, "tasks");
     if (!existsSync(tasksRoot)) continue;
+    const indexPath = join(storeRoot, "index.ts");
+    const indexSource = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : "";
+    const workflowMatch = /defineWorkflowStore\(\s*["']([a-z0-9]+(?:-[a-z0-9]+)*)["']/u.exec(indexSource);
+    const namespace = workflowMatch === null ? storeDirectory : `workflow:${workflowMatch[1]}`;
+    const driverEntry = join(storeRoot, "driver/interpreter.ts");
     for (const file of readdirSync(tasksRoot)) {
       if (!file.endsWith(".ts")) continue;
-      entries.push({ id: `${system}/${file.slice(0, -3)}`, entry: join(tasksRoot, file) });
+      entries.push({
+        id: `${namespace}/${file.slice(0, -3)}`,
+        entries: [
+          join(tasksRoot, file),
+          ...(workflowMatch === null && existsSync(driverEntry) ? [driverEntry] : []),
+        ],
+      });
     }
   }
   return entries.sort((left, right) => left.id < right.id ? -1 : 1);
@@ -157,15 +185,15 @@ export function computeBuildManifest(repoRoot: string): BuildManifest {
     const sources = collectSourceClosure(repoRoot, entry);
     return {
       id: WorkflowIdSchema.parse(id),
-      fingerprint: FingerprintSchema.parse(fingerprintOf(toolchain, id, sources)),
+      fingerprint: FingerprintSchema.parse(fingerprintSourceSet(toolchain, id, sources)),
       sources,
     };
   });
-  const tasks = taskEntries(repoRoot).map(({ id, entry }) => {
-    const sources = collectSourceClosure(repoRoot, entry);
+  const tasks = taskEntries(repoRoot).map(({ id, entries }) => {
+    const sources = collectSourceClosures(repoRoot, entries);
     return {
       id: TaskIdSchema.parse(id),
-      fingerprint: FingerprintSchema.parse(fingerprintOf(toolchain, id, sources)),
+      fingerprint: FingerprintSchema.parse(fingerprintSourceSet(toolchain, id, sources)),
       sources,
     };
   });

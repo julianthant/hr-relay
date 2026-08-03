@@ -24,6 +24,7 @@ import {
   SERVER_REGISTRY,
   WORKFLOW_MODULES,
   auditImplBindings,
+  auditWorkflowModuleBindings,
   readPendingImplBindings,
 } from "../../../src/control/workflow-registry.js";
 import { flow } from "../../../src/base/flow.js";
@@ -36,7 +37,9 @@ import { ICON_NAMES, STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workf
 import {
   collectSourceClosure,
   computeBuildManifest,
+  fingerprintSourceSet,
 } from "../../../src/infra/build/workflow-build-manifest.js";
+import { taskStoreRegistry } from "../../../src/stores/index.js";
 import { FixtureReadReceipt, fixtureDescriptor } from "./helpers/descriptor-fixtures.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 
@@ -178,6 +181,28 @@ describe("descriptor coverage", () => {
       assert.equal(entry.fingerprint, descriptor.contractFingerprint);
       assert.ok(entry.sources.length > 1, "a fingerprint over one file is not a closure");
     }
+    assert.deepEqual(
+      regenerated.tasks.map(({ id }) => String(id)).sort(),
+      taskStoreRegistry.stores
+        .flatMap((store) => Object.values(store.tasks).map((task) => String(task.contract.id)))
+        .sort(),
+      "every bound task must have exactly one implementation fingerprint",
+    );
+  });
+
+  it("changes a browser-task fingerprint when its driver interpreter closure changes", () => {
+    const regenerated = computeBuildManifest(REPO_ROOT);
+    const task = regenerated.tasks.find(({ id }) => id === "crm/read-onboarding-record");
+    assert.ok(task, "CRM onboarding task has no implementation fingerprint");
+    const driverPath = "src/stores/crm/driver/interpreter.ts";
+    assert.ok(task.sources.some(({ path }) => path === driverPath));
+    const mutatedSources = task.sources.map((source) => source.path === driverPath
+      ? { ...source, sha256: FingerprintSchema.parse("0".repeat(64)) }
+      : source);
+    assert.notEqual(
+      fingerprintSourceSet(regenerated.toolchain, task.id, mutatedSources),
+      task.fingerprint,
+    );
   });
 
   it("tracks every unbound contract explicitly, in both directions", () => {
@@ -194,6 +219,22 @@ describe("descriptor coverage", () => {
       }],
     });
     assert.match(stale.join("\n"), /no registered descriptor uses/);
+
+    const module = WORKFLOW_MODULES[0];
+    if (module === undefined) throw new Error("module fixture requires Person Lookup");
+    const missing = auditWorkflowModuleBindings([{
+      descriptor: module.descriptor,
+      stores: module.stores.filter(({ namespace }) => namespace !== "crm"),
+    }]);
+    assert.match(missing.join("\n"), /missing store crm/);
+    assert.match(missing.join("\n"), /cannot resolve its exact contract crm\/read-onboarding-record/);
+    const extraStore = taskStoreRegistry.stores.find(({ namespace }) => namespace === "onbase");
+    if (extraStore === undefined) throw new Error("module fixture requires OnBase store");
+    const extra = auditWorkflowModuleBindings([{
+      descriptor: module.descriptor,
+      stores: [...module.stores, extraStore],
+    }]);
+    assert.match(extra.join("\n"), /lists extra store onbase/);
   });
 
   it("rejects a descriptor whose detail path is not in the producing node's output", () => {

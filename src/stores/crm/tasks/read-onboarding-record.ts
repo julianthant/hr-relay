@@ -3,6 +3,9 @@ import {
   CrmReadOnboardingRecord,
   ReadOnboardingRecordOutputSchema,
 } from "../../../domain/contracts/crm/read-onboarding-record.js";
+import {
+  CrmSubjectBindingSchema,
+} from "../../../domain/ui/crm-onboarding.js";
 import { crmDriver } from "../driver/declaration.js";
 
 /** Ported semantic operation: legacy 793abe1, src/systems/crm/onboarding-records.ts. */
@@ -10,6 +13,35 @@ export const readOnboardingRecordTask = defineTask(crmDriver, CrmReadOnboardingR
   sessions: [{ system: "crm", access: "read", session: "reuse-worker" }],
   retry: { attempts: 2, backoffMs: 2_000, retryOn: "transient" },
   async run({ input, ctx }) {
-    return ReadOnboardingRecordOutputSchema.parse(await ctx.driver.readOnboardingRecord(input));
+    const read = await ctx.driver.readOnboardingRecord(input);
+    const parsedBinding = CrmSubjectBindingSchema.safeParse(read.binding);
+    if (!parsedBinding.success) {
+      return ctx.fail(
+        "subject-mismatch",
+        `CRM onboarding record returned an invalid subject binding for EID ${input.eid}`,
+        { subject: input.eid },
+      );
+    }
+    const binding = parsedBinding.data;
+    const output = ReadOnboardingRecordOutputSchema.parse(read.output);
+    const outputEid = output.state === "found" ? output.record.emplId : output.queriedEid;
+    const bindingEid = binding.state === "displayed-record" ? binding.observedEid : binding.queriedEid;
+    if (binding.expectedEid !== input.eid
+      || bindingEid !== input.eid
+      || (output.state === "found") !== (binding.state === "displayed-record")) {
+      return ctx.fail(
+        "subject-mismatch",
+        `CRM onboarding record expected EID ${input.eid} but bound ${bindingEid} as ${binding.state}`,
+        { subject: input.eid },
+      );
+    }
+    if (outputEid !== input.eid) {
+      return ctx.fail(
+        "subject-mismatch",
+        `CRM onboarding record for EID ${input.eid} returned output for ${outputEid}`,
+        { subject: input.eid },
+      );
+    }
+    return output;
   },
 });

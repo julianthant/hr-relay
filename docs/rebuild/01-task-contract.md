@@ -1353,6 +1353,24 @@ prose rules ("never stamp prose into emplId" is structurally dead — `emplId` i
 field). And note the `z.input`/`z.output` split working: a mapping may omit `keepNonHdh`
 (defaulted), while `run` receives it as a definite `boolean`.
 
+### 9.1.1 CRM Person Lookup reads — source semantics and subject binding (D108)
+
+`crm/read-onboarding-record` retains the source's exact non-empty Process Stage label as
+`rawStage`; it does **not** fabricate a normalized status or an `updatedAt` timestamp that the
+live record page does not prove. The record identity is the URL record id plus the displayed
+UCPath EID and full name. `crm/read-onboarding-dates` owns exactly three business dates:
+`invitedOn` is the Onboarding History transition whose New Value is `Offer Letter Sent`,
+`startsOn` is the record's First Day of Service, and `completedOn` is the history transition whose
+New Value is `Completed`. `Date Signed` is not a completion timestamp and may not substitute for
+one. A verified blank becomes that field's explicit `absent` arm; a missing selector, malformed
+history row, or indeterminate page state throws.
+
+Both tasks return a typed subject binding beside the extracted output. A found record proves the
+registered displayed-EID observation; a genuine zero-result search proves the exact EID query and
+may return only an absent result (or all-absent dates). The task compares the requested EID, binding
+EID, and every output EID before returning. Any mismatch uses the declared `subject-mismatch` error
+code; it never becomes an empty record, first result, or name-based guess.
+
 ### 9.2 OnBase import — separate prepare/commit contracts, one transaction lease
 
 ```ts

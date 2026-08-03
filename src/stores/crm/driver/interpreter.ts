@@ -4,17 +4,20 @@ import type { CrmReadOnboardingDates } from "../../../domain/contracts/crm/read-
 import type { ReadOnboardingDatesOutput } from "../../../domain/contracts/crm/read-onboarding-dates.js";
 import type { CrmReadOnboardingRecord } from "../../../domain/contracts/crm/read-onboarding-record.js";
 import type { ReadOnboardingRecordOutput } from "../../../domain/contracts/crm/read-onboarding-record.js";
-import type { CrmOnboardingDriver } from "../../../domain/ui/crm-onboarding.js";
+import type {
+  CrmOnboardingDriver,
+  CrmSubjectBoundRead,
+} from "../../../domain/ui/crm-onboarding.js";
 
 export interface CrmOnboardingOperations {
   readonly readOnboardingRecord: (
     page: Page,
     input: z.output<typeof CrmReadOnboardingRecord.input>,
-  ) => Promise<ReadOnboardingRecordOutput>;
+  ) => Promise<CrmSubjectBoundRead<ReadOnboardingRecordOutput>>;
   readonly readOnboardingDates: (
     page: Page,
     input: z.output<typeof CrmReadOnboardingDates.input>,
-  ) => Promise<ReadOnboardingDatesOutput>;
+  ) => Promise<CrmSubjectBoundRead<ReadOnboardingDatesOutput>>;
 }
 
 /**

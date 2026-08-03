@@ -15,6 +15,8 @@
  * kind.
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it } from "vitest";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
 import { workflowProjections } from "../../../src/base/workflow.js";
@@ -25,7 +27,12 @@ import {
 } from "../../../src/domain/workflow/scenario-coverage.js";
 import type { ScenarioCoverageClaim } from "../../../src/domain/workflow/scenario-coverage.js";
 import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
+import {
+  EXECUTABLE_SCENARIO_MANIFEST,
+  auditExecutableScenarioParity,
+} from "../../../src/domain/workflow/scenario-execution.js";
 import { fixtureDescriptor } from "./helpers/descriptor-fixtures.js";
+import { REPO_ROOT } from "./helpers/guard-files.js";
 import { SCENARIO_COVERAGE_CLAIMS } from "../../scenario/coverage-claims.js";
 
 /**
@@ -38,6 +45,31 @@ function fullClaims(pointIds: readonly string[]): readonly ScenarioCoverageClaim
     scenarioId: ScenarioIdSchema.parse(`fixture-graph/point-${String(index)}`),
     covers: [pointId],
   }));
+}
+
+function productionScenarioReferences(): readonly string[] {
+  return [...new Set(DESCRIPTORS.flatMap((descriptor) => [
+    ...descriptor.scenarios.map(String),
+    ...workflowProjections(descriptor).contracts.flatMap((contract) =>
+      contract.scenarios.map(String)),
+  ]))];
+}
+
+/**
+ * The observed side is intentionally derived from the executable test files,
+ * not from the manifest or contract arrays. A manifest row whose test was
+ * renamed or deleted therefore becomes an unexecuted scenario.
+ */
+function observedExecutableScenarios(): readonly string[] {
+  const observed: string[] = [];
+  for (const row of EXECUTABLE_SCENARIO_MANIFEST) {
+    const source = readFileSync(join(REPO_ROOT, row.file), "utf8");
+    const marker = `it("${row.scenarioId} —`;
+    const declarations = source.split(marker).length - 1;
+    assert.equal(declarations, 1, `${row.scenarioId} must have exactly one executable test in ${row.file}`);
+    observed.push(row.scenarioId);
+  }
+  return observed;
 }
 
 describe("scenario coverage", () => {
@@ -98,6 +130,44 @@ describe("scenario coverage", () => {
       assert.deepEqual(auditGraphScenarioCoverage(points, claims), [], id);
       assert.ok(descriptor.scenarios.length > 0, `${id} registers no scenario`);
     }
+  });
+
+  it("holds descriptor and task references to an independently observed executable manifest", () => {
+    assert.deepEqual(
+      auditExecutableScenarioParity(
+        productionScenarioReferences(),
+        observedExecutableScenarios(),
+      ),
+      [],
+    );
+  });
+
+  it("rejects typo references, orphan rows, and registered scenarios that did not execute", () => {
+    const referenced = productionScenarioReferences();
+    const observed = observedExecutableScenarios();
+
+    assert.match(
+      auditExecutableScenarioParity([...referenced, "person-lookup/typo-reference"], observed).join("\n"),
+      /referenced scenario person-lookup\/typo-reference is not registered as executable/,
+    );
+
+    const orphanedId = String(EXECUTABLE_SCENARIO_MANIFEST[0]?.scenarioId);
+    assert.match(
+      auditExecutableScenarioParity(
+        referenced.filter((scenarioId) => scenarioId !== orphanedId),
+        observed,
+      ).join("\n"),
+      new RegExp(`executable scenario ${orphanedId} is orphaned`),
+    );
+
+    const unexecutedId = String(EXECUTABLE_SCENARIO_MANIFEST.at(-1)?.scenarioId);
+    assert.match(
+      auditExecutableScenarioParity(
+        referenced,
+        observed.filter((scenarioId) => scenarioId !== unexecutedId),
+      ).join("\n"),
+      new RegExp(`registered scenario ${unexecutedId} was not executed`),
+    );
   });
 
   it("catches a claim corpus that drifted from the graph it covers", () => {

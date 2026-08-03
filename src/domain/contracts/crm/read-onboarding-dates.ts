@@ -18,8 +18,11 @@ const OptionalDateSchema = z.discriminatedUnion("state", [
 
 export const ReadOnboardingDatesOutputSchema = z.strictObject({
   emplId: EidSchema,
+  /** Onboarding History transition whose New Value is Offer Letter Sent. */
   invitedOn: OptionalDateSchema,
+  /** Onboarding record's First Day of Service. */
   startsOn: OptionalDateSchema,
+  /** Onboarding History transition whose New Value is Completed. Date Signed is not this field. */
   completedOn: OptionalDateSchema,
 });
 export type ReadOnboardingDatesOutput = z.infer<typeof ReadOnboardingDatesOutputSchema>;
@@ -30,7 +33,7 @@ export const CrmReadOnboardingDates = defineTaskContract({
   effect: "read",
   input: z.strictObject({ eid: EidSchema }),
   output: ReadOnboardingDatesOutputSchema,
-  errorCodes: ["crm-unavailable", "unexpected-page-state"],
+  errorCodes: ["crm-unavailable", "unexpected-page-state", "subject-mismatch"],
   subject: {
     kind: "person",
     expected: { fromInput: ContractFieldPathSchema.parse("eid"), identity: "eid" },
@@ -40,11 +43,14 @@ export const CrmReadOnboardingDates = defineTaskContract({
   },
   freshness: { defaultMaxAgeMs: 60 * 60 * 1000, defaultOverride: "audited" },
   provenance: { default: "live" },
-  scenarios: ["person-lookup/crm-dates-partial"],
+  scenarios: [
+    "person-lookup/happy-by-eid-with-dates",
+    "person-lookup/crm-subject-mismatch",
+  ],
   example: {
     emplId: "10873698",
     invitedOn: { state: "present", value: "2026-06-01" },
     startsOn: { state: "present", value: "2026-07-15" },
-    completedOn: { state: "absent", reason: "onboarding is still in progress" },
+    completedOn: { state: "absent", reason: "CRM history has no Completed transition" },
   },
 });

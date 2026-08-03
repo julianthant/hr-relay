@@ -209,9 +209,11 @@ export const personLookupDescriptor = defineWorkflowDescriptor({
   },
   scenarios: [
     "person-lookup/happy-by-eid",
+    "person-lookup/happy-by-eid-with-dates",
     "person-lookup/ambiguous-name",
     "person-lookup/not-found",
     "person-lookup/crm-failure-retry",
+    "person-lookup/crm-subject-mismatch",
   ],
   flow: personLookupFlow,
 });

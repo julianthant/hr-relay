@@ -656,7 +656,13 @@ records them and the same commit folds each into its owner. **One line each — 
 | **D106** | **THE BUNDLE-SAFE ROOT SET IS ZOD + `src/domain/**` + THE AUDITED `src/base/**`.** The builders a descriptor calls (`flow`, `defineWorkflowDescriptor`) live in `base`, which is itself proven to import only zod + `src/domain/**`; `descriptor-coverage` walks both halves of the closure. Descriptor meta rides the spec rather than a `.meta()` builder link, which would re-open the transform surface 1e's type proof pins. | doc 02 §§1.1/1.4 |
 | **D107** | **AN UNBOUND CONTRACT IS TRACKED, NEVER IMPLICIT.** Task impls bind with the workers in 1f; until then every contract a registered descriptor uses is listed in `config/pending-impl-bindings.json`, and `descriptor-coverage` fails in both directions — an unlisted unbound contract, and a listed contract a store has since bound. A missing impl is a legitimate mid-program state; an untracked one is the drift a boot-time throw would only find in production. | doc 02 §1.4 #3 (primary); doc 07 item 1f |
 
-**Two separate D-series exist — do not confuse them.** This memo's `D1–D101` are cross-doc
+## Reconciliation round 17 (2026-08-02) — Phase 1f Person Lookup read fidelity
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D108** | **CRM PERSON LOOKUP READS STAY SOURCE-SEMANTIC AND EID-BOUND.** The record retains raw Process Stage and does not invent `updatedAt` or an unverified normalization; invitation/completion dates come from exact Onboarding History transitions, First Day of Service owns the start date, and Date Signed is not completion. Found and absent reads carry typed bindings, and requested/bound/output EIDs must agree through declared `subject-mismatch` failures. | doc 01 §9.1.1 (primary); doc 02 §8 |
+
+**Two separate D-series exist — do not confuse them.** This memo's `D1–D108` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
 types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the
 distinction at its §9 header; always cite the row-model series with the `row-model` prefix.

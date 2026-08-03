@@ -13,15 +13,15 @@
  * queried EID, so an absence can never be confused with a lookup that never ran.
  */
 import { z } from "zod";
-import { EidSchema, IsoInstantSchema, ObservationIdSchema, taskId } from "../../ids.js";
+import { EidSchema, ObservationIdSchema, taskId } from "../../ids.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../base.js";
 
 export const CrmOnboardingRecordSchema = z.strictObject({
   recordId: z.string().min(1),
   emplId: EidSchema,
   fullName: z.string().min(1),
-  stage: z.enum(["invited", "in-progress", "complete", "withdrawn"]),
-  updatedAt: IsoInstantSchema,
+  /** CRM's exact Process Stage label, retained for source fidelity. */
+  rawStage: z.string().min(1),
 });
 export type CrmOnboardingRecord = z.infer<typeof CrmOnboardingRecordSchema>;
 
@@ -44,7 +44,7 @@ export const CrmReadOnboardingRecord = defineTaskContract({
     name: z.string().min(1),
   }),
   output: ReadOnboardingRecordOutputSchema,
-  errorCodes: ["crm-unavailable", "unexpected-page-state"],
+  errorCodes: ["crm-unavailable", "unexpected-page-state", "subject-mismatch"],
   subject: {
     kind: "person",
     expected: { fromInput: ContractFieldPathSchema.parse("eid"), identity: "eid" },
@@ -54,15 +54,18 @@ export const CrmReadOnboardingRecord = defineTaskContract({
   },
   freshness: { defaultMaxAgeMs: 60 * 60 * 1000, defaultOverride: "forbidden" },
   provenance: { default: "live" },
-  scenarios: ["person-lookup/crm-record-found", "person-lookup/crm-record-absent"],
+  scenarios: [
+    "person-lookup/happy-by-eid",
+    "person-lookup/crm-failure-retry",
+    "person-lookup/crm-subject-mismatch",
+  ],
   example: {
     state: "found",
     record: {
       recordId: "ONB-40213",
       emplId: "10873698",
       fullName: "Battistessa, Johnnie",
-      stage: "complete",
-      updatedAt: "2026-07-30T18:12:00.000Z",
+      rawStage: "Completed",
     },
   },
 });

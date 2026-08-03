@@ -1,18 +1,26 @@
-import { defineTask } from "../../base/task.js";
+import { defineTask } from "../../../base/task.js";
 import {
   ActiveStatusOutcomeSchema,
   ReadActiveStatus,
-} from "../../domain/contracts/person-lookup/read-active-status.js";
+} from "../../../domain/contracts/person-lookup/read-active-status.js";
 
 export const readActiveStatusTask = defineTask(ReadActiveStatus, {
   sessions: [],
-  async run({ input }) {
+  async run({ input, ctx }) {
     const selected = input.person.selection.selected;
     if (selected === null) {
       return ActiveStatusOutcomeSchema.parse({
         state: "undetermined",
         reason: `UCPath person selection is ${input.person.selection.status}`,
       });
+    }
+    const crmEid = input.crm.state === "found" ? input.crm.record.emplId : input.crm.queriedEid;
+    if (crmEid !== selected.emplId) {
+      return ctx.fail(
+        "inconsistent-inputs",
+        `person-lookup active-status received UCPath EID ${selected.emplId} but CRM EID ${crmEid}`,
+        { subject: selected.emplId },
+      );
     }
     if (!selected.hdh && !input.keepNonHdh) {
       return ActiveStatusOutcomeSchema.parse({
@@ -26,11 +34,6 @@ export const readActiveStatusTask = defineTask(ReadActiveStatus, {
         reason: `UCPath reports employee status ${selected.employeeStatus}`,
         hdh: selected.hdh,
       });
-    }
-    if (input.crm.state === "found" && input.crm.record.emplId !== selected.emplId) {
-      throw new Error(
-        `person-lookup active-status received UCPath EID ${selected.emplId} but CRM EID ${input.crm.record.emplId}`,
-      );
     }
     return ActiveStatusOutcomeSchema.parse({
       state: "active",
