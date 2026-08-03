@@ -235,6 +235,24 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-03: The write sequencer is the sole MutationCapability mint, and beat ⑦ wraps the
+  narrow primitive.** `src/core/write-sequencer.ts` owns doc 09's beats ①–⑦ behind the
+  interpreter's `WriteSequencer` seam; `src/core/write-recovery.ts` owns §4 recovery and the
+  kernel's `WriteResolutionExecutor`. The capability is runtime-unforgeable via a module-private
+  WeakSet (drivers verify with `assertSequencerMintedMutationCapability`), and the
+  `task-driver-boundary`/`driver-lease-boundary` ratchets allowlist exactly that file. Beat ⑦ is
+  `executeSequencedWriteCommit`: ONE outer authority transaction over run-claim revalidation, the
+  Phase-1c four-row primitive (nested savepoint), the `TransactionOutcome` checkpoint, and the run
+  transition — `SequencedWriteCommitInputSchema` binds the bundle without widening the primitive.
+  Post-fence uncertainty parks intent-first then run (`parked-write`) and raises `WriteParkedError`;
+  the Phase-1f interpreter has no parked-write outcome arm yet, so that error surfaces loudly
+  through `executeClaimedRun` (durable state is already correct) until the interpreter's owner
+  lands the typed arm. Pre-fence indeterminacy refuses with zero fence/zero click. A retryable key
+  re-fences generation+1 ONLY via `refenceRetryable` with a FRESH binding proof; operator
+  confirmed-absent is the new `operator-confirmed-absent` settlement arm. The staged page-state
+  identity comes from the prepare output's `stagedPageState` field, and beat ③ observes via the
+  driver's existing semantic `read(observationId)` — no new driver method. Dry-run is the separate
+  `executeDryRun` arm (zero intent/fence/commit); `executeTransaction` with dryRun refuses loudly.
 - **2026-08-03: The interpreter re-reads authority before every CAS, and replay policy is
   structural.** The worker executor (`src/core/run-executor.ts` + `worker-loop.ts`) never tracks a
   run version locally: heartbeat renewal bumps the version concurrently with node transitions, so
