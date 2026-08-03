@@ -10,7 +10,10 @@ its registry/task-binding corrections, worker-owned browser-session lifecycle, a
 provenance collection landed 2026-08-02. D109's start-plan ingress authority now retains exact raw
 JSON beside canonical snapshots for accepted and refused entries, binds both schema hashes and
 canonical digests, invalidates pre-D109 short-lived plan rows rather than fabricating raw values,
-and exposes the confirmation revision and hashes to the later command-service consume step.
+and exposes the confirmation revision and hashes to the later command-service consume step. D110/
+D114 terminal authority now stores exact structured failures or schema-bound workflow results and
+their pending terminal outbox in schema v7, atomically with the matching failed/done run transition;
+generic run transitions cannot bypass either record.
 
 ## Before you start
 
@@ -248,6 +251,14 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   an operator submitted. Schema v6 deletes incompatible, short-lived pre-D109 proposals rather than
   fabricating raw ingress, and an exact replay validates all bindings against its pre-consume
   revision before D113 consumes the plan inside its outer authority transaction.
+- **2026-08-02: A terminal lifecycle is the commit marker for terminal authority.** Failed runs are
+  settled only with the exact existing `FailureRecord`; done runs are settled only with a strict,
+  schema-bound `RunResultRecord` plus a pending `run_terminal_outbox` record. Both paths validate the
+  current run identity, version, and claim, write every durable row and the terminal CAS in one outer
+  authority transaction, and accept only byte-exact replay. Result dependencies come from a
+  factory-authenticated terminal view and explicitly retain either the exact checkpoint identity,
+  output/provenance digests and fingerprints or a closed `not-run` reason for a conditional node.
+  Schema hashing stays browser-safe because descriptor closures cannot import Node built-ins.
 
 ## After changes
 
