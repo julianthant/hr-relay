@@ -1,0 +1,199 @@
+/* Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+   src/dashboard/index.css — the subset the ported ds layer resolves against:
+   Tailwind v4 entry, the `dark` variant, the app-level semantic token pair
+   (`:root` light / `.dark`), the `@theme inline` utility mapping, and the base
+   layer (border/outline defaults, body colours, themed native scrollbars).
+
+   Dropped from the legacy file, verified unreferenced by `src/dashboard/ds/**`:
+   HeroUI/xyflow imports and their overrides, `--chart-*`, `--sidebar-*`, the
+   retired `--log-*` categorical accents, `@layer components` app rules
+   (search-results panel, `.form-input`), and the HeroUI calendar fixes.
+
+   The `--ds-*` layer itself lives in `ds/tokens.css`, loaded by
+   `ds/tokens.ts` / `ds/ui.tsx` exactly as the legacy demo loads it; its theme
+   blocks re-scope these semantic tokens under `data-demo-theme`, and its
+   `:root` fallback aliases the values below. */
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: hsl(30 28.5714% 97.2549%);
+  --foreground: hsl(12 21.7391% 9.0196%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(12 21.7391% 9.0196%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(12 21.7391% 9.0196%);
+  --primary: hsl(22.7273 82.5000% 31.3725%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(21.4286 77.7778% 96.4706%);
+  --secondary-foreground: hsl(21.3158 55.0725% 27.0588%);
+  --muted: hsl(33.3333 25.7143% 93.1373%);
+  --muted-foreground: hsl(22.5000 7.0175% 44.7059%);
+  --accent: hsl(26.6667 69.2308% 87.2549%);
+  --accent-foreground: hsl(21.3158 55.0725% 27.0588%);
+  --destructive: hsl(0 68.3761% 45.8824%);
+  --destructive-foreground: hsl(0 0% 100%);
+  /* Semantic state tokens (audit 2026-06-04) — light. danger == --destructive. */
+  --info: hsl(211 80% 43%);
+  --info-foreground: hsl(0 0% 100%);
+  --success: hsl(142 60% 33%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(38 92% 40%);
+  --warning-foreground: hsl(0 0% 100%);
+  --border: hsl(28.0000 21.1268% 86.0784%);
+  --input: hsl(28.0000 21.1268% 86.0784%);
+  --ring: hsl(22.7273 82.5000% 31.3725%);
+  --font-sans: "IBM Plex Sans", "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "IBM Plex Serif", "Georgia", ui-serif, serif;
+  --font-mono: "IBM Plex Mono", "Fira Code", ui-monospace, monospace;
+  --radius: 0.5rem;
+  --shadow-x: 0;
+  --shadow-y: 1px;
+  --shadow-blur: 3px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.06;
+  --shadow-color: #241005;
+  --shadow-2xs: 0 1px 3px 0px hsl(21.2903 75.6098% 8.0392% / 0.03);
+  --shadow-xs: 0 1px 3px 0px hsl(21.2903 75.6098% 8.0392% / 0.03);
+  --shadow-sm: 0 1px 3px 0px hsl(21.2903 75.6098% 8.0392% / 0.06), 0 1px 2px -1px hsl(21.2903 75.6098% 8.0392% / 0.06);
+  --shadow: 0 1px 3px 0px hsl(21.2903 75.6098% 8.0392% / 0.06), 0 1px 2px -1px hsl(21.2903 75.6098% 8.0392% / 0.06);
+  --shadow-md: 0 1px 3px 0px hsl(21.2903 75.6098% 8.0392% / 0.06), 0 2px 4px -1px hsl(21.2903 75.6098% 8.0392% / 0.06);
+  --shadow-lg: 0 1px 3px 0px hsl(21.2903 75.6098% 8.0392% / 0.06), 0 4px 6px -1px hsl(21.2903 75.6098% 8.0392% / 0.06);
+  --shadow-xl: 0 1px 3px 0px hsl(21.2903 75.6098% 8.0392% / 0.06), 0 8px 10px -1px hsl(21.2903 75.6098% 8.0392% / 0.06);
+  --shadow-2xl: 0 1px 3px 0px hsl(21.2903 75.6098% 8.0392% / 0.15);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}
+
+.dark {
+  /* Neutral near-black retheme (2026-06-04). Unified onto the --capture-*
+     "Editorial Calm" ladder: hue 240, ~4% sat, near-black surfaces, near-
+     white neutral primary, muted-but-legible status hues. */
+  --background: hsl(240 4% 4%);
+  --foreground: hsl(240 5% 96%);
+  --card: hsl(240 4% 7%);
+  --card-foreground: hsl(240 5% 96%);
+  --popover: hsl(240 4% 8%);
+  --popover-foreground: hsl(240 5% 96%);
+  --primary: hsl(240 5% 90%);
+  --primary-foreground: hsl(240 6% 10%);
+  --secondary: hsl(240 4% 10%);
+  --secondary-foreground: hsl(240 4% 80%);
+  --muted: hsl(240 4% 9%);
+  --muted-foreground: hsl(240 4% 56%);
+  --accent: hsl(240 4% 13%);
+  --accent-foreground: hsl(240 5% 92%);
+  --destructive: hsl(0 58% 62%);
+  --destructive-foreground: hsl(0 0% 98%);
+  --success: hsl(142 48% 55%);
+  --success-foreground: hsl(142 40% 8%);
+  --warning: hsl(38 55% 58%);
+  --warning-foreground: hsl(38 60% 8%);
+  --info: hsl(211 62% 64%);
+  --info-foreground: hsl(211 60% 10%);
+  --border: hsl(240 3% 14%);
+  --input: hsl(240 4% 16%);
+  --ring: hsl(240 4% 50%);
+  --font-sans: "IBM Plex Sans", "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "IBM Plex Serif", "Georgia", ui-serif, serif;
+  --font-mono: "IBM Plex Mono", "Fira Code", ui-monospace, monospace;
+  --radius: 0.5rem;
+  --shadow-x: 0;
+  --shadow-y: 1px;
+  --shadow-blur: 4px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.4;
+  --shadow-color: #000000;
+  --shadow-2xs: 0 1px 4px 0px hsl(0 100.0000% 0.1961% / 0.20);
+  --shadow-xs: 0 1px 4px 0px hsl(0 100.0000% 0.1961% / 0.20);
+  --shadow-sm: 0 1px 4px 0px hsl(0 100.0000% 0.1961% / 0.40), 0 1px 2px -1px hsl(0 100.0000% 0.1961% / 0.40);
+  --shadow: 0 1px 4px 0px hsl(0 100.0000% 0.1961% / 0.40), 0 1px 2px -1px hsl(0 100.0000% 0.1961% / 0.40);
+  --shadow-md: 0 1px 4px 0px hsl(0 100.0000% 0.1961% / 0.40), 0 2px 4px -1px hsl(0 100.0000% 0.1961% / 0.40);
+  --shadow-lg: 0 1px 4px 0px hsl(0 100.0000% 0.1961% / 0.40), 0 4px 6px -1px hsl(0 100.0000% 0.1961% / 0.40);
+  --shadow-xl: 0 1px 4px 0px hsl(0 100.0000% 0.1961% / 0.40), 0 8px 10px -1px hsl(0 100.0000% 0.1961% / 0.40);
+  --shadow-2xl: 0 1px 4px 0px hsl(0 100.0000% 0.1961% / 1.00);
+}
+
+/* Original dashboard @theme inline block (chart/sidebar/log entries dropped
+   with their tokens). */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Themed native scrollbars — the consistency net for scroll regions on
+     native overflow. Token-driven. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
