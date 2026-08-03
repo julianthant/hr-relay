@@ -143,7 +143,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "6fb1a46487c4a912658976da616975280a82cdc6c4d23aeb096bc6a397048737",
+      "fingerprint": "303bf9e304c2cb116317db87f8c3461399dbe51e4361fb1ec9369a058c46b2f9",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -187,7 +187,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "2fa3eded6b406af12b26add3631d0d9fca659c4a083fb973705102148d761857"
+          "sha256": "9d05a4a5ef9951fa0df5c185f369ba3227bdb72120a9f832b3ea81f0c951ff8a"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -305,7 +305,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "e9f47922963a1ebfb75fbf824ed5dd4ebf292be6238d1696584e7bf0baa4b4cc",
+      "fingerprint": "00a99a2ff75b289c23cbdc3a382d1b189c86612d0aa1244faeccfba4ba51e8a1",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -349,7 +349,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "2fa3eded6b406af12b26add3631d0d9fca659c4a083fb973705102148d761857"
+          "sha256": "9d05a4a5ef9951fa0df5c185f369ba3227bdb72120a9f832b3ea81f0c951ff8a"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -467,7 +467,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "6ac6fac6f7f979a341fe432369722e6e66b1cf73ead204adb0a96c98e2bf0638",
+      "fingerprint": "92b7e9405f139630fd60f0482bfb20b771ea061fd4143a23f274c3adea18575b",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -511,7 +511,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "2fa3eded6b406af12b26add3631d0d9fca659c4a083fb973705102148d761857"
+          "sha256": "9d05a4a5ef9951fa0df5c185f369ba3227bdb72120a9f832b3ea81f0c951ff8a"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -633,7 +633,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "89ae48ea60ff2b199978ebdfb5f397abb2e25b3ed04455ba052134ee97a678d3",
+      "fingerprint": "72a6118c647028dd6e718f912b5c83ac3d1c56027e54abc8fdb02dde99feae42",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -669,7 +669,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "2fa3eded6b406af12b26add3631d0d9fca659c4a083fb973705102148d761857"
+          "sha256": "9d05a4a5ef9951fa0df5c185f369ba3227bdb72120a9f832b3ea81f0c951ff8a"
         },
         {
           "path": "src/domain/contracts/base.ts",

@@ -112,6 +112,8 @@ const DEFAULT_PATHS = {
   stateRoot: resolve(".tracker-rebuild"),
   artifactRoot: resolve(".tracker-rebuild/artifacts"),
   duoCredential: `${rebuildRuntimeIsolation.browserProfileRoot}/duo-webauthn.json`,
+  /** The unpacked Duo Autopilot MV3 extension loaded into every browser session. */
+  duoExtensionDir: resolve("duo-autopilot"),
 } as const satisfies Record<string, string>;
 
 export const ConfigSchema = z.strictObject({
@@ -177,6 +179,7 @@ export const ConfigSchema = z.strictObject({
     stateRoot: AbsolutePathSchema,
     artifactRoot: AbsolutePathSchema,
     duoCredential: z.literal(`${rebuildRuntimeIsolation.browserProfileRoot}/duo-webauthn.json`),
+    duoExtensionDir: AbsolutePathSchema,
   }).default(DEFAULT_PATHS),
   annualDates: z.record(FiscalYearKeySchema, AnnualDateEntrySchema).default({}),
   operator: z.strictObject({ timekeeperName: z.string() }).default({ timekeeperName: "" }),
@@ -243,6 +246,16 @@ export const ConfigSchema = z.strictObject({
     maxAutoRefresh: z.number().int().nonnegative(),
     maxReopen: z.number().int().nonnegative(),
   }).default({ monitorTickMs: 30_000, maxAutoRefresh: 10, maxReopen: 3 }),
+  /**
+   * Worker browser-session launch policy. `headless` is the runtime default
+   * because Duo Autopilot answers the MFA ceremony in-page (no OS dialog);
+   * `closeProofMs` bounds the teardown that must PROVE page/context closure —
+   * an unprovable close poisons the resource rather than being assumed clean.
+   */
+  browser: z.strictObject({
+    headless: z.boolean(),
+    closeProofMs: z.number().int().positive(),
+  }).default({ headless: true, closeProofMs: 15_000 }),
   concurrency: z.strictObject({ defaultWorkers: z.number().int().positive() }).default({ defaultWorkers: 4 }),
   daemon: z.strictObject({ idleMs: z.number().int().positive(), idleRepollMs: z.number().int().positive() })
     .default({ idleMs: 900_000, idleRepollMs: 30_000 }),
@@ -297,6 +310,7 @@ export const SettingsOverrideSchema = z.strictObject({
     maxSlices: z.number().int().positive().optional(),
   }).optional(),
   browserHealth: ConfigSchema.shape.browserHealth.unwrap().partial().optional(),
+  browser: ConfigSchema.shape.browser.unwrap().partial().optional(),
   concurrency: ConfigSchema.shape.concurrency.unwrap().partial().optional(),
   daemon: ConfigSchema.shape.daemon.unwrap().partial().optional(),
   features: ConfigSchema.shape.features.unwrap().partial().optional(),
