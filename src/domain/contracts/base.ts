@@ -70,6 +70,22 @@ export const ProvenancePolicySchema = z.strictObject({
     path: ContractFieldPathSchema,
     source: z.enum(["live", "derived"]),
   })).optional(),
+}).superRefine((policy, context) => {
+  const seen = new Map<string, "live" | "derived">();
+  for (const [index, rule] of (policy.byField ?? []).entries()) {
+    const previous = seen.get(rule.path);
+    if (previous !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["byField", index, "path"],
+        message: previous === rule.source
+          ? `duplicate provenance rule for ${rule.path}`
+          : `conflicting provenance rules for ${rule.path}: ${previous} and ${rule.source}`,
+      });
+    } else {
+      seen.set(rule.path, rule.source);
+    }
+  }
 });
 export const SubjectBindingSpecSchema = z.discriminatedUnion("kind", [
   z.strictObject({

@@ -1,14 +1,30 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { ReadOnboardingDatesOutputSchema } from "../../src/domain/contracts/crm/read-onboarding-dates.js";
-import { ReadOnboardingRecordOutputSchema } from "../../src/domain/contracts/crm/read-onboarding-record.js";
+import { z } from "zod";
+import { createTaskProvenanceCollector } from "../../src/core/task-provenance.js";
+import { JsonValueSchema } from "../../src/domain/canonical-json.js";
+import { manualClock } from "../../src/domain/clock.js";
+import { ProvenancePolicySchema } from "../../src/domain/contracts/base.js";
 import {
+  CrmReadOnboardingDates,
+  ReadOnboardingDatesOutputSchema,
+} from "../../src/domain/contracts/crm/read-onboarding-dates.js";
+import {
+  CrmReadOnboardingRecord,
+  ReadOnboardingRecordOutputSchema,
+} from "../../src/domain/contracts/crm/read-onboarding-record.js";
+import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
+import {
+  SearchPersonOrg,
   SearchPersonOrgOutputSchema,
   UcpathCandidateSchema,
 } from "../../src/domain/contracts/ucpath/search-person-org.js";
 import { EidSchema } from "../../src/domain/ids.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { DataPointSchema } from "../../src/domain/task-provenance.js";
 import type { DataPoint } from "../../src/domain/task-provenance.js";
+import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
+import type { FactProvenance, RunCheckpointRecord } from "../../src/domain/workflow/checkpoint.js";
 import { readOnboardingDatesTask } from "../../src/stores/crm/tasks/read-onboarding-dates.js";
 import { readOnboardingRecordTask } from "../../src/stores/crm/tasks/read-onboarding-record.js";
 import { readActiveStatusTask } from "../../src/stores/person-lookup/tasks/read-active-status.js";
@@ -18,6 +34,9 @@ import { createDeterministicCrmOnboardingDriver } from "../../src/stores/crm/dri
 import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
 
 const signal = new AbortController().signal;
+const NOW = "2026-08-02T18:00:00.000Z";
+const HASH_A = "a".repeat(64);
+const HASH_B = "b".repeat(64);
 const log = Object.freeze({
   debug: () => undefined,
   info: () => undefined,
@@ -26,13 +45,63 @@ const log = Object.freeze({
 const fail = (_code: string, message: string): never => {
   throw new Error(message);
 };
-const recordedDataPoints: DataPoint[] = [];
+const failedTaskDataPoints: DataPoint[] = [];
 const recordData = (input: DataPoint | readonly DataPoint[]): void => {
   for (const point of Array.isArray(input) ? input : [input]) {
-    recordedDataPoints.push(DataPointSchema.parse(point));
+    failedTaskDataPoints.push(DataPointSchema.parse(point));
   }
 };
 const commonCtx = { signal, log, fail, recordData };
+
+function collectorFor(
+  taskId: string,
+  nodeId: string,
+  outputSchema: z.ZodType,
+  policy: z.input<typeof ProvenancePolicySchema>,
+  checkpoints: readonly RunCheckpointRecord[],
+) {
+  return createTaskProvenanceCollector({
+    execution: {
+      runId: "aaaaaaaa-0001-4000-8000-000100000000",
+      traceId: "pl-180000-aaaa",
+      attempt: 1,
+      workflowId: "person-lookup",
+      nodeId,
+      taskId,
+    },
+    policy,
+    outputSchema,
+    upstream: {
+      declaredDependencyNodeIds: checkpoints.map(({ nodeId: dependencyNodeId }) => dependencyNodeId),
+      checkpoints: [...checkpoints],
+    },
+    clock: manualClock(new Date(NOW)),
+  });
+}
+
+function checkpointFrom(
+  nodeId: string,
+  outputSchema: z.ZodType,
+  output: unknown,
+  provenance: readonly FactProvenance[],
+): RunCheckpointRecord {
+  return RunCheckpointRecordSchema.parse({
+    workflowId: "person-lookup",
+    itemId: "33333333-3333-4333-8333-333333333333",
+    nodeId,
+    attempt: 1,
+    runId: "aaaaaaaa-0001-4000-8000-000100000000",
+    output: {
+      schemaHash: deriveSchemaHash(outputSchema, "output"),
+      value: JsonValueSchema.parse(outputSchema.parse(output)),
+    },
+    descriptorVersion: 1,
+    contractFingerprint: HASH_A,
+    implFingerprint: HASH_B,
+    provenance,
+    writtenAt: NOW,
+  });
+}
 
 const candidate = UcpathCandidateSchema.parse({
   emplId: "10873698",
@@ -79,27 +148,79 @@ describe("Phase 1f Person Lookup task implementations", () => {
   });
 
   it("executes UCPath and CRM reads only through their typed semantic drivers", async () => {
-    const firstPoint = recordedDataPoints.length;
     const ucpath = createDeterministicUcpathPersonOrgDriver(person);
     const crm = createDeterministicCrmOnboardingDriver({ record: crmRecord, dates: crmDates });
+    const searchCollector = collectorFor(
+      SearchPersonOrg.id,
+      "searching",
+      SearchPersonOrg.output,
+      SearchPersonOrg.provenance,
+      [],
+    );
     const searched = await searchPersonOrgTask.impl.run({
       input: { kind: "by-eid", emplId: candidate.emplId },
-      ctx: { ...commonCtx, driver: ucpath },
+      ctx: { ...commonCtx, recordData: searchCollector.recordData, driver: ucpath },
     });
     assert.deepEqual(searched, person);
+    const searchEvidence = searchCollector.finalizeRead(searched);
+    assert.deepEqual(
+      searchEvidence.points.map(({ direction, field, value }) => ({ direction, field, value })),
+      [
+        { direction: "read", field: "results", value: person.results },
+        { direction: "read", field: "selection", value: person.selection },
+      ],
+    );
+    assert.equal(searchEvidence.provenance.some(({ path }) => path === "results"), true);
+    assert.equal(searchEvidence.provenance.some(({ path }) => path === "selection.candidateEids"), true);
+    const searchCheckpoint = checkpointFrom(
+      "searching",
+      SearchPersonOrg.output,
+      searched,
+      searchEvidence.provenance,
+    );
+
+    const recordCollector = collectorFor(
+      CrmReadOnboardingRecord.id,
+      "cross-verify",
+      CrmReadOnboardingRecord.output,
+      CrmReadOnboardingRecord.provenance,
+      [searchCheckpoint],
+    );
     const record = await readOnboardingRecordTask.impl.run({
       input: { eid: candidate.emplId, name: candidate.name },
-      ctx: { ...commonCtx, driver: crm },
+      ctx: { ...commonCtx, recordData: recordCollector.recordData, driver: crm },
     });
     assert.deepEqual(record, crmRecord);
+    const recordEvidence = recordCollector.finalizeRead(record);
+    assert.deepEqual(
+      recordEvidence.points.map(({ direction, field, value }) => ({ direction, field, value })),
+      [
+        { direction: "read", field: "state", value: crmRecord.state },
+        { direction: "read", field: "record", value: crmRecord.record },
+      ],
+    );
+
+    const datesCollector = collectorFor(
+      CrmReadOnboardingDates.id,
+      "crm-dates",
+      CrmReadOnboardingDates.output,
+      CrmReadOnboardingDates.provenance,
+      [searchCheckpoint],
+    );
     const dates = await readOnboardingDatesTask.impl.run({
       input: { eid: candidate.emplId },
-      ctx: { ...commonCtx, driver: crm },
+      ctx: { ...commonCtx, recordData: datesCollector.recordData, driver: crm },
     });
     assert.deepEqual(dates, crmDates);
+    const datesEvidence = datesCollector.finalizeRead(dates);
     assert.deepEqual(
-      recordedDataPoints.slice(firstPoint).map(({ field }) => field),
-      ["results", "selection", "state", "record", "emplId", "invitedOn", "startsOn", "completedOn"],
+      datesEvidence.points.map(({ direction, field, value }) => ({ direction, field, value })),
+      [
+        { direction: "read", field: "emplId", value: crmDates.emplId },
+        { direction: "read", field: "invitedOn", value: crmDates.invitedOn },
+        { direction: "read", field: "startsOn", value: crmDates.startsOn },
+        { direction: "read", field: "completedOn", value: crmDates.completedOn },
+      ],
     );
   });
 
@@ -150,16 +271,64 @@ describe("Phase 1f Person Lookup task implementations", () => {
   });
 
   it("derives active status and fails loud when UCPath and CRM identities disagree", async () => {
-    const firstPoint = recordedDataPoints.length;
+    const searchCollector = collectorFor(
+      SearchPersonOrg.id,
+      "searching",
+      SearchPersonOrg.output,
+      SearchPersonOrg.provenance,
+      [],
+    );
+    searchCollector.recordData([
+      { direction: "read", field: "results", value: person.results },
+      { direction: "read", field: "selection", value: person.selection },
+    ]);
+    const searchEvidence = searchCollector.finalizeRead(person);
+    const searchCheckpoint = checkpointFrom(
+      "searching",
+      SearchPersonOrg.output,
+      person,
+      searchEvidence.provenance,
+    );
+    const recordCollector = collectorFor(
+      CrmReadOnboardingRecord.id,
+      "cross-verify",
+      CrmReadOnboardingRecord.output,
+      CrmReadOnboardingRecord.provenance,
+      [searchCheckpoint],
+    );
+    recordCollector.recordData([
+      { direction: "read", field: "state", value: crmRecord.state },
+      { direction: "read", field: "record", value: crmRecord.record },
+    ]);
+    const recordEvidence = recordCollector.finalizeRead(crmRecord);
+    const recordCheckpoint = checkpointFrom(
+      "cross-verify",
+      CrmReadOnboardingRecord.output,
+      crmRecord,
+      recordEvidence.provenance,
+    );
+    const activeCollector = collectorFor(
+      ReadActiveStatus.id,
+      "active-status",
+      ReadActiveStatus.output,
+      ReadActiveStatus.provenance,
+      [searchCheckpoint, recordCheckpoint],
+    );
     const active = await readActiveStatusTask.impl.run({
       input: { person, crm: crmRecord, keepNonHdh: false },
-      ctx: commonCtx,
+      ctx: { ...commonCtx, recordData: activeCollector.recordData },
     });
     assert.equal(active.state, "active");
+    const activeEvidence = activeCollector.finalizeRead(active);
     assert.deepEqual(
-      recordedDataPoints.slice(firstPoint).map(({ field }) => field),
-      ["state", "reason", "hdh"],
+      activeEvidence.points.map(({ direction, field, value }) => ({ direction, field, value })),
+      [
+        { direction: "read", field: "state", value: active.state },
+        { direction: "read", field: "reason", value: active.reason },
+        { direction: "read", field: "hdh", value: active.hdh },
+      ],
     );
+    assert.equal(activeEvidence.provenance.every(({ source }) => source === "derived"), true);
     await assert.rejects(
       readActiveStatusTask.impl.run({
         input: {

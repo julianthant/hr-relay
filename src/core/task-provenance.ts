@@ -13,6 +13,7 @@ import {
   RecordedDataPointSchema,
   TaskExecutionIdentitySchema,
   TaskProvenanceResultSchema,
+  TaskUpstreamCheckpointSetSchema,
 } from "../domain/task-provenance.js";
 import type {
   DataPoint,
@@ -27,14 +28,13 @@ type ParsedDataPoint = z.output<typeof DataPointSchema>;
 export type TaskProvenanceCollector = Readonly<{
   readonly recordData: (point: DataPoint | readonly DataPoint[]) => void;
   readonly finalizeRead: (output: unknown) => TaskProvenanceResult;
-  readonly recordedPoints: () => readonly RecordedDataPoint[];
 }>;
 
 export type TaskProvenanceCollectorInput = Readonly<{
   readonly execution: z.input<typeof TaskExecutionIdentitySchema>;
   readonly policy: z.input<typeof ProvenancePolicySchema>;
   readonly outputSchema: z.ZodType;
-  readonly upstreamProvenance?: readonly FactProvenance[];
+  readonly upstream: z.input<typeof TaskUpstreamCheckpointSetSchema>;
   readonly clock: Clock;
 }>;
 
@@ -90,10 +90,42 @@ function oldestOriginalObservation(provenance: readonly FactProvenance[]): strin
   return oldest.originalObservedAt;
 }
 
+function validateCheckpointFacts(
+  workflowId: string,
+  checkpoint: z.output<typeof TaskUpstreamCheckpointSetSchema>["checkpoints"][number],
+): readonly FactProvenance[] {
+  if (checkpoint.workflowId !== workflowId) {
+    throw new Error(
+      `upstream checkpoint ${checkpoint.nodeId} belongs to workflow ${checkpoint.workflowId}, expected ${workflowId}`,
+    );
+  }
+  const leaves = jsonLeafPaths(checkpoint.output.value).map((path) => ContractFieldPathSchema.parse(path));
+  const facts = new Map<string, FactProvenance>();
+  for (const fact of checkpoint.provenance) {
+    if (facts.has(fact.path)) {
+      throw new Error(`upstream checkpoint ${checkpoint.nodeId} has duplicate provenance for ${fact.path}`);
+    }
+    facts.set(fact.path, fact);
+  }
+  for (const path of leaves) {
+    if (!facts.has(path)) {
+      throw new Error(`upstream checkpoint ${checkpoint.nodeId} has no provenance for output field ${path}`);
+    }
+  }
+  for (const path of facts.keys()) {
+    if (!leaves.includes(ContractFieldPathSchema.parse(path))) {
+      throw new Error(`upstream checkpoint ${checkpoint.nodeId} has provenance for undeclared output field ${path}`);
+    }
+  }
+  return Object.freeze([...facts.values()]);
+}
+
 export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInput): TaskProvenanceCollector {
   const execution = TaskExecutionIdentitySchema.parse(input.execution);
   const policy = ProvenancePolicySchema.parse(input.policy);
-  const upstream = Object.freeze((input.upstreamProvenance ?? []).map((fact) => FactProvenanceSchema.parse(fact)));
+  const upstreamSet = TaskUpstreamCheckpointSetSchema.parse(input.upstream);
+  const upstream = Object.freeze(upstreamSet.checkpoints.flatMap((checkpoint) =>
+    validateCheckpointFacts(execution.workflowId, checkpoint)));
   const points = new Map<string, RecordedDataPoint>();
   let finalized = false;
 
@@ -110,6 +142,11 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
         if (same) throw new Error(`task ${execution.taskId} recorded field ${point.field} twice`);
         throw new Error(`task ${execution.taskId} recorded contradictory values for field ${point.field}`);
       }
+      const overlapping = [...points.keys()].find((field) =>
+        field.startsWith(`${point.field}.`) || point.field.startsWith(`${field}.`));
+      if (overlapping !== undefined) {
+        throw new Error(`task ${execution.taskId} recorded overlapping fields ${overlapping} and ${point.field}`);
+      }
       points.set(point.field, RecordedDataPointSchema.parse({
         ...point,
         execution,
@@ -118,14 +155,12 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     }
   };
 
-  const recordedPoints = (): readonly RecordedDataPoint[] => Object.freeze([...points.values()]);
-
   const finalizeRead = (outputInput: unknown): TaskProvenanceResult => {
     if (finalized) throw new Error(`task ${execution.taskId} provenance was already finalized`);
     finalized = true;
     const output = JsonValueSchema.parse(input.outputSchema.parse(outputInput));
     const leaves = jsonLeafPaths(output).map((path) => ContractFieldPathSchema.parse(path));
-    const recorded = recordedPoints();
+    const recorded = Object.freeze([...points.values()]);
     if (recorded.length === 0) throw new Error(`task ${execution.taskId} recorded no provenance points`);
     for (const point of recorded) {
       const outputValue = readPath(output, point.field);
@@ -150,8 +185,8 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
         throw new Error(`task ${execution.taskId} recorded value for ${path} contradicts its parsed output`);
       }
       const source = sourceFor(path, policy);
-      if (source === "derived" && upstream.length === 0) {
-        throw new Error(`task ${execution.taskId} derived output field ${path} has no upstream provenance`);
+      if (source === "derived" && upstreamSet.declaredDependencyNodeIds.length === 0) {
+        throw new Error(`task ${execution.taskId} derived output field ${path} has no declared upstream dependencies`);
       }
       return FactProvenanceSchema.parse({
         path,
@@ -165,5 +200,5 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     return TaskProvenanceResultSchema.parse({ points: recorded, provenance });
   };
 
-  return Object.freeze({ recordData, finalizeRead, recordedPoints });
+  return Object.freeze({ recordData, finalizeRead });
 }

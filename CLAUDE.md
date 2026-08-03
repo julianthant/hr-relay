@@ -227,8 +227,10 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 - **2026-08-02: Task provenance is an executor-owned data channel, never inferred from logs.** Every
   task context carries a real `recordData` collector. Read completion validates that strict,
   execution-attributed points cover every canonical output leaf and agree with the parsed value;
-  derived outputs also require upstream provenance and retain its oldest original observation.
-  Tests use explicit recording fakes, so a missing runtime collector cannot hide behind a no-op.
+  derived outputs also require one whole, fact-complete authority checkpoint for every exact static
+  `dependsOn` node, reject undeclared checkpoints, and retain the validated union's oldest original
+  observation. Tests use explicit recording fakes, so a missing runtime collector cannot hide
+  behind a no-op.
 - **2026-08-02: Worker browser resources are callback-leased and uncertain closure stays visible.**
   Serialize driver use by `(worker, system)`; an authored fresh boundary closes before replacement,
   and park/stop waits behind in-flight callbacks. Task, cancellation, reset, login-cleanup, or close-

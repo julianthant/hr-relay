@@ -64,6 +64,7 @@ import {
   RecordedDataPointSchema,
   TaskExecutionIdentitySchema,
   TaskProvenanceResultSchema,
+  TaskUpstreamCheckpointSetSchema,
 } from "../../../src/domain/task-provenance.js";
 import {
   GraphCoveragePointSchema,
@@ -993,6 +994,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "TaskExecutionIdentity", schema: TaskExecutionIdentitySchema, fixtures: [{ runId: UUID_1, traceId: "pl-120000-aaaa", attempt: 1, workflowId: "person-lookup", nodeId: "searching", taskId: "ucpath/search-person-org" }] },
   { name: "RecordedDataPoint", schema: RecordedDataPointSchema, fixtures: [{ direction: "read", field: "record", value: { eid: "10873698" }, execution: { runId: UUID_1, traceId: "pl-120000-aaaa", attempt: 1, workflowId: "person-lookup", nodeId: "searching", taskId: "ucpath/search-person-org" }, recordedAt: NOW }], openFixturePaths: ["value"] },
   { name: "TaskProvenanceResult", schema: TaskProvenanceResultSchema, fixtures: [{ points: [{ direction: "read", field: "record", value: { eid: "10873698" }, execution: { runId: UUID_1, traceId: "pl-120000-aaaa", attempt: 1, workflowId: "person-lookup", nodeId: "searching", taskId: "ucpath/search-person-org" }, recordedAt: NOW }], provenance: [{ path: "record.eid", source: "live", observedAt: NOW, originalObservedAt: NOW }] }], openFixturePaths: ["points.0.value"] },
+  { name: "TaskUpstreamCheckpointSet", schema: TaskUpstreamCheckpointSetSchema, fixtures: [{ declaredDependencyNodeIds: ["searching"], checkpoints: [RUN_CHECKPOINT] }], openFixturePaths: ["checkpoints.0.output.value"] },
   { name: "SubjectBindingSpec", schema: SubjectBindingSpecSchema, fixtures: [
     { kind: "none", reason: "global read" },
     { kind: "person", expected: { fromInput: "eid", identity: "eid" }, observe: "ucpath.person-org.displayed-eid", match: "normalized-exact-eid", requiredAt: "before-subject-read" },
