@@ -182,11 +182,10 @@
     {
       "name": "bounded-task-deadline",
       "file": "tests/unit/architecture/bounded-task-deadline.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: bounded-task-deadline.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/05-execution-parallelism.md",
+      "invariant": "Every task invocation in the Phase-1 interpreter runs under a mandatory, immutable, scheduler-armed abortable deadline (doc 05 \u00a75.5): taskDeadlineMs is a required dependency with no default, both invocation arms race the deadline controller, and a task that ignores its signal still lands terminal failed with the wedged session poison-closed.",
+      "replacementRequired": true
     },
     {
       "name": "canonical-input-snapshot",
@@ -219,7 +218,7 @@
       "file": "tests/unit/architecture/control-command-single-path.test.ts",
       "status": "active",
       "owner": "docs/rebuild/03-tracker-dashboard.md; docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "D113: exactly one command kernel executes doc 03's D95 command protocol — the journal, audit, and start-plan consumption are statically confined to it; every family/action dispatches to a typed result with Phase-1f active arms executing and every later arm rejected capability-unavailable with zero authority-generation advance; command ids replay byte-exactly; CAS conflicts are scoped to the real race families; hide stays a reversible presentation tombstone; typed gate results parse the descriptor's exact schema before storage; notification stays read/unread/snooze; capture targets cannot spell a run id; and an injected active-run lookup failure enqueues zero runs.",
+      "invariant": "D113: exactly one command kernel executes doc 03's D95 command protocol \u2014 the journal, audit, and start-plan consumption are statically confined to it; every family/action dispatches to a typed result with Phase-1f active arms executing and every later arm rejected capability-unavailable with zero authority-generation advance; command ids replay byte-exactly; CAS conflicts are scoped to the real race families; hide stays a reversible presentation tombstone; typed gate results parse the descriptor's exact schema before storage; notification stays read/unread/snooze; capture targets cannot spell a run id; and an injected active-run lookup failure enqueues zero runs.",
       "replacementRequired": true
     },
     {
@@ -241,11 +240,10 @@
     {
       "name": "driver-lease-boundary",
       "file": "tests/unit/architecture/driver-lease-boundary.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: driver-lease-boundary.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/05-execution-parallelism.md",
+      "invariant": "Drivers exist only inside WorkerSessionManager.withDriver's callback lease: withDriver is consumed only by the graph interpreter, the browser-session factory's open() is invoked only inside worker-sessions, and only the worker loop constructs a WorkerSessionManager ownership scope.",
+      "replacementRequired": true
     },
     {
       "name": "dry-run-composition-submit-free",
@@ -445,11 +443,10 @@
     {
       "name": "single-flight-login",
       "file": "tests/unit/architecture/single-flight-login.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: single-flight-login.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/05-execution-parallelism.md",
+      "invariant": "Session login is single-flight within one worker/system session creation (doc 05 \u00a74): store.session.login is invoked only inside the worker session manager, and two concurrent leases for one system produce exactly one session open and one authentication.",
+      "replacementRequired": true
     },
     {
       "name": "sleep-budget",
