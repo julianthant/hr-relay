@@ -1,0 +1,271 @@
+/**
+ * Doc 05 §3 worker loop: claim → execute → next, one active item, heartbeat
+ * renewal during long operations, claim-loss abort, and worker-stop session
+ * closure — plus the Phase-1 `WorkerRuntimeExecutor` seam.
+ */
+import assert from "node:assert/strict";
+import { setImmediate } from "node:timers";
+import { afterEach, describe, it } from "vitest";
+import {
+  createPhase1WorkerRuntimeExecutor,
+  phase1WorkerId,
+  runWorkerLoop,
+  type WorkerLoopDependencies,
+} from "../../src/core/worker-loop.js";
+import { CommandRequestSchema } from "../../src/domain/commands.js";
+import { WorkflowIdSchema } from "../../src/domain/ids.js";
+import { taskStoreRegistry } from "../../src/stores/index.js";
+import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
+import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
+import { UUID_5, UUID_7, NOW } from "./fixtures/phase1c-contract-fixtures.js";
+import {
+  EXECUTOR_WORKER_ID,
+  happySessionHarness,
+  healthyCrmDriver,
+  healthyUcpathDriver,
+  ManualScheduler,
+  openAuthorityHarness,
+  personLookupQueuedRun,
+  recordingEmitter,
+  recordingLogger,
+  sessionFactoryHarness,
+  type SessionFactoryHarness,
+} from "./fixtures/phase1f-executor-harness.js";
+
+const disposers: (() => void)[] = [];
+afterEach(() => {
+  for (const dispose of disposers.splice(0)) dispose();
+});
+
+function loopHarness(options: Readonly<{
+  sessions?: SessionFactoryHarness;
+  heartbeatIntervalMs?: number;
+}> = {}) {
+  const authority = openAuthorityHarness();
+  disposers.push(authority.dispose);
+  const sessions = options.sessions ?? happySessionHarness();
+  const scheduler = new ManualScheduler(authority.clock, 0);
+  const emitter = recordingEmitter();
+  const stop = new AbortController();
+  const deps: WorkerLoopDependencies = {
+    workflowId: WorkflowIdSchema.parse(WORKFLOW_ID),
+    workerId: EXECUTOR_WORKER_ID,
+    descriptor: personLookupDescriptor,
+    stores: taskStoreRegistry,
+    authority: authority.database,
+    sessionFactory: sessions.factory,
+    emitter: emitter.emitter,
+    clock: authority.clock,
+    ids: sequentialIdFactory("c"),
+    scheduler,
+    taskDeadlineMs: 60_000,
+    heartbeatIntervalMs: options.heartbeatIntervalMs ?? 500,
+    idleRepollMs: 1_000,
+    log: recordingLogger().log,
+    stopSignal: stop.signal,
+    exitWhenIdle: true,
+  };
+  return { authority, sessions, scheduler, emitter, stop, deps };
+}
+
+describe("worker run loop", () => {
+  it("drains two queued items sequentially — one active item — and closes sessions at stop", async () => {
+    const harness = loopHarness();
+    const { database } = harness.authority;
+    database.authority.runs.enqueue(personLookupQueuedRun());
+    database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_5, itemId: UUID_7 }));
+
+    const report = await runWorkerLoop(harness.deps);
+    assert.equal(report.stopped, "idle");
+    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done", "done"]);
+
+    // Warm reuse across sequential items: one session per system for BOTH
+    // runs, closed only at worker stop (doc 05 §5).
+    assert.equal(harness.sessions.opens("ucpath"), 1);
+    assert.equal(harness.sessions.opens("crm"), 1);
+    assert.deepEqual(harness.sessions.closeReasons(), ["worker-stop", "worker-stop"]);
+
+    const events = harness.emitter.events();
+    const claims = events.filter((event) => event.t === "run.claimed");
+    assert.deepEqual(claims.map((event) => event.runId), [RUN_ID, UUID_5]);
+    const worker = events.filter((event) => "workerId" in event && event.workerId === EXECUTOR_WORKER_ID
+      && (event.t === "span.started" || event.t === "span.ended")
+      && "kind" in event && event.kind === "worker");
+    assert.equal(worker.length, 2);
+    assert.equal(worker[0]?.t, "span.started");
+    assert.equal(worker.at(-1)?.t, "span.ended");
+    const browserStarts = events.filter((event) => "kind" in event && event.kind === "browser"
+      && event.t === "span.started");
+    assert.equal(browserStarts.length, 2);
+  });
+
+  it("renews exactly its one active claim while a long task runs", async () => {
+    let releaseDriver: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseDriver = resolve;
+    });
+    let started: (() => void) | undefined;
+    const driverStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const sessions = sessionFactoryHarness({
+      ucpath: () => {
+        const driver = healthyUcpathDriver();
+        return {
+          ...driver,
+          searchPersonOrg: async (...args: Parameters<typeof driver.searchPersonOrg>) => {
+            started?.();
+            await gate;
+            return driver.searchPersonOrg(...args);
+          },
+        };
+      },
+      crm: () => healthyCrmDriver(),
+    });
+    const harness = loopHarness({ sessions, heartbeatIntervalMs: 500 });
+    const { database, clock } = harness.authority;
+    database.authority.runs.enqueue(personLookupQueuedRun());
+
+    const looping = runWorkerLoop(harness.deps);
+    await driverStarted;
+
+    const before = database.authority.runs.get(RUN_ID);
+    assert.ok(before && before.lifecycle.state === "running");
+    const heartbeatBefore = "heartbeatAt" in before.lifecycle ? before.lifecycle.heartbeatAt : undefined;
+    clock.advanceWall(5_000);
+    const heartbeat = harness.scheduler.pending()
+      .find((entry) => entry.deadlineMonotonicMs === clock.monotonicMs() + 500);
+    assert.ok(heartbeat, "the heartbeat tick must be scheduled while the run executes");
+    heartbeat.fire();
+    const after = database.authority.runs.get(RUN_ID);
+    assert.ok(after && "heartbeatAt" in after.lifecycle);
+    assert.notEqual(after.lifecycle.heartbeatAt, heartbeatBefore);
+    assert.equal(after.claimGeneration, 1);
+
+    releaseDriver?.();
+    const report = await looping;
+    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
+  });
+
+  it("aborts the run when the heartbeat reports a lost claim, without terminalizing over it", async () => {
+    let started: (() => void) | undefined;
+    const driverStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const sessions = sessionFactoryHarness({
+      ucpath: () => Object.freeze({
+        system: "ucpath" as const,
+        searchPersonOrg: (): Promise<never> => {
+          started?.();
+          return new Promise<never>(() => undefined);
+        },
+      }),
+      crm: () => healthyCrmDriver(),
+    });
+    const harness = loopHarness({ sessions });
+    const { database, clock } = harness.authority;
+    database.authority.runs.enqueue(personLookupQueuedRun());
+
+    const looping = runWorkerLoop(harness.deps);
+    await driverStarted;
+
+    // The operator cancels the running tree: the run goes terminal without
+    // the worker's claim (exactly what the kernel's cancel arm does).
+    const current = database.authority.runs.get(RUN_ID);
+    assert.ok(current);
+    const cancelled = database.authority.runs.transition({
+      runId: RUN_ID,
+      expectedVersion: current.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() },
+      now: clock.now().toISOString(),
+    });
+    assert.equal(cancelled.state, "applied");
+
+    const heartbeat = harness.scheduler.pending()
+      .find((entry) => entry.deadlineMonotonicMs === clock.monotonicMs() + 500);
+    assert.ok(heartbeat);
+    heartbeat.fire();
+
+    const report = await looping;
+    assert.equal(report.outcomes[0]?.state, "abandoned");
+    await new Promise((resolve) => setImmediate(resolve));
+    // The interrupted lease was poison-closed; the cancelled outcome stands.
+    assert.ok(harness.sessions.closeReasons().includes("poisoned"));
+    const run = database.authority.runs.get(RUN_ID);
+    assert.ok(run && run.lifecycle.state === "terminal");
+    assert.equal(run.lifecycle.outcome, "cancelled");
+  });
+});
+
+function workerBrowserCommand(request: unknown) {
+  const parsed = CommandRequestSchema.parse(request);
+  if (parsed.family !== "worker-browser") throw new Error("fixture must be a worker-browser command");
+  return parsed;
+}
+
+describe("phase-1 worker runtime executor seam", () => {
+  const requestedAt = NOW;
+  const envelope = {
+    commandId: UUID_7,
+    requestedBy: "local-operator",
+    requestedAt,
+    source: "dashboard",
+  };
+
+  it("acknowledges a single-worker plan and refuses any other count", () => {
+    const executor = createPhase1WorkerRuntimeExecutor({ spawnWorker: () => undefined });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+    const acknowledged = executor.planWorkerCount({ command: plan, now: requestedAt });
+    assert.deepEqual(acknowledged, {
+      state: "accepted",
+      workerIds: [phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID))],
+    });
+
+    const twoWorkers = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 2 },
+    });
+    assert.throws(
+      () => executor.planWorkerCount({ command: twoWorkers, now: requestedAt }),
+      /exactly one worker per workflow/,
+    );
+  });
+
+  it("spawns through the injected supervisor and fails loud on unwired browser arms", () => {
+    const spawned: string[] = [];
+    const executor = createPhase1WorkerRuntimeExecutor({
+      spawnWorker: (input) => {
+        spawned.push(`${input.workflowId}:${input.workerId}`);
+      },
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: EXECUTOR_WORKER_ID },
+    });
+    assert.deepEqual(executor.spawnWorker({ command: spawn, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(spawned, [`${WORKFLOW_ID}:${EXECUTOR_WORKER_ID}`]);
+
+    const refresh = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "refresh-browser",
+      target: { workerId: EXECUTOR_WORKER_ID, browserSessionId: ITEM_ID, expectedVersion: 1 },
+    });
+    assert.throws(
+      () => executor.refreshBrowser({ command: refresh, now: requestedAt }),
+      /refusing to acknowledge an effect that did not happen/,
+    );
+  });
+});

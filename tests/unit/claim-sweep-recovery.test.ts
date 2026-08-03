@@ -1,0 +1,214 @@
+/**
+ * D118 (doc 05 §3): an expired claim is not ordinary requeue authority. An
+ * unfinished `attempting` write intent on the run's logical item routes the
+ * sweep to a typed recovery-required outcome — parked loudly, never silently
+ * requeued — and only intent-free rows take the ordinary recovery requeue.
+ */
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, it } from "vitest";
+import { manualClock } from "../../src/domain/clock.js";
+import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
+import {
+  HASH_A,
+  LATER,
+  NOW,
+  UUID_7,
+  WRITE_ATTEMPT,
+  WRITE_INTENT_ATTEMPTING,
+} from "./fixtures/phase1c-contract-fixtures.js";
+
+const OBSERVED_PRESENT_WRITE_INTENT = {
+  writeIntentId: UUID_7,
+  workflowId: "separation",
+  itemId: UUID_7,
+  taskId: "ucpath/terminate-person",
+  system: "ucpath",
+  idempotencyKey: "10001573|termination|2026-08-02",
+  idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", "10001573|termination|2026-08-02"),
+  generation: 1,
+  status: "observed-present",
+  observedProof: { schemaHash: HASH_A, value: "receipt-seen-during-recovery" },
+  observedAt: NOW,
+  version: 1,
+  createdAt: NOW,
+  updatedAt: NOW,
+};
+
+const MUCH_LATER = "2026-07-31T18:00:00.000Z";
+import {
+  ITEM_ID,
+  QUEUED_RUN,
+  RUN_ID,
+  WORKER_ID,
+  WORKFLOW_ID,
+} from "./fixtures/phase1f-run-fixtures.js";
+
+const roots: string[] = [];
+const databases: AuthorityDatabase[] = [];
+afterEach(() => {
+  for (const database of databases.splice(0)) database.close();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+function openDatabase(): AuthorityDatabase {
+  const root = mkdtempSync(join(tmpdir(), "hrauto-claim-sweep-"));
+  roots.push(root);
+  const database = AuthorityDatabase.open(
+    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    manualClock(new Date(NOW)),
+  );
+  databases.push(database);
+  return database;
+}
+
+/** The attempting intent, rebound to the person-lookup run fixture's item. */
+const PERSON_LOOKUP_ATTEMPTING_INTENT = {
+  ...WRITE_INTENT_ATTEMPTING,
+  workflowId: WORKFLOW_ID,
+  itemId: ITEM_ID,
+};
+const PERSON_LOOKUP_WRITE_ATTEMPT = { ...WRITE_ATTEMPT };
+
+function claimAndRun(database: AuthorityDatabase, target: "claimed" | "running"): void {
+  database.authority.runs.enqueue(QUEUED_RUN);
+  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW });
+  assert.equal(claimed.state, "claimed");
+  if (claimed.state !== "claimed" || target === "claimed") return;
+  const validating = database.authority.runs.transition({
+    runId: RUN_ID,
+    expectedVersion: claimed.run.version,
+    claim: { workerId: WORKER_ID, claimGeneration: 1 },
+    lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
+    now: NOW,
+  });
+  assert.equal(validating.state, "applied");
+  if (validating.state !== "applied") return;
+  const running = database.authority.runs.transition({
+    runId: RUN_ID,
+    expectedVersion: validating.run.version,
+    claim: { workerId: WORKER_ID, claimGeneration: 1 },
+    lifecycle: {
+      state: "running",
+      workerId: WORKER_ID,
+      claimedAt: NOW,
+      heartbeatAt: NOW,
+      currentNodeId: "searching",
+    },
+    now: NOW,
+  });
+  assert.equal(running.state, "applied");
+}
+
+describe("expired-claim sweep write-intent gate (D118)", () => {
+  it("parks a running run with an attempting intent as parked-write instead of requeueing", () => {
+    const database = openDatabase();
+    claimAndRun(database, "running");
+    database.authority.writeIntents.fenceAttempt({
+      intent: PERSON_LOOKUP_ATTEMPTING_INTENT,
+      attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
+    });
+
+    const swept = database.authority.runs.sweepExpiredClaims({ staleBefore: MUCH_LATER, now: MUCH_LATER });
+    assert.equal(swept.length, 1);
+    const outcome = swept[0];
+    assert.ok(outcome);
+    assert.equal(outcome.state, "recovery-required");
+    if (outcome.state !== "recovery-required") return;
+    assert.equal(outcome.parked, true);
+    assert.equal(outcome.writeIntentId, PERSON_LOOKUP_ATTEMPTING_INTENT.writeIntentId);
+    assert.equal(outcome.intentGeneration, 1);
+    assert.match(outcome.message, /unfinished attempting write intent/);
+
+    const run = database.authority.runs.get(RUN_ID);
+    assert.ok(run);
+    assert.equal(run.lifecycle.state, "parked-write");
+    if (run.lifecycle.state === "parked-write") {
+      assert.equal(run.lifecycle.code, "unknown");
+      assert.equal(run.lifecycle.writeIntentId, PERSON_LOOKUP_ATTEMPTING_INTENT.writeIntentId);
+    }
+    // The attempt was NOT bumped and the row is NOT claimable.
+    assert.equal(run.envelope.attempt, 1);
+    const reclaim = database.authority.runs.claimNext({
+      workflow: WORKFLOW_ID,
+      workerId: "worker-2",
+      now: MUCH_LATER,
+    });
+    assert.equal(reclaim.state, "idle");
+  });
+
+  it("leaves a claimed run with an attempting intent unclaimable under its expired claim", () => {
+    const database = openDatabase();
+    claimAndRun(database, "claimed");
+    database.authority.writeIntents.fenceAttempt({
+      intent: PERSON_LOOKUP_ATTEMPTING_INTENT,
+      attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
+    });
+
+    const swept = database.authority.runs.sweepExpiredClaims({ staleBefore: MUCH_LATER, now: MUCH_LATER });
+    assert.equal(swept.length, 1);
+    const outcome = swept[0];
+    assert.ok(outcome && outcome.state === "recovery-required");
+    if (outcome.state !== "recovery-required") return;
+    assert.equal(outcome.parked, false);
+
+    const run = database.authority.runs.get(RUN_ID);
+    assert.ok(run);
+    assert.equal(run.lifecycle.state, "claimed");
+    const reclaim = database.authority.runs.claimNext({
+      workflow: WORKFLOW_ID,
+      workerId: "worker-2",
+      now: MUCH_LATER,
+    });
+    assert.equal(reclaim.state, "idle");
+  });
+
+  it("requeues ordinarily when the item has no unfinished attempting intent", () => {
+    const database = openDatabase();
+    claimAndRun(database, "running");
+    // A settled observed-present intent on the same item is NOT recovery work.
+    database.authority.writeIntents.recordObservedPresent({
+      ...OBSERVED_PRESENT_WRITE_INTENT,
+      workflowId: WORKFLOW_ID,
+      itemId: ITEM_ID,
+    });
+
+    const swept = database.authority.runs.sweepExpiredClaims({ staleBefore: MUCH_LATER, now: MUCH_LATER });
+    assert.equal(swept.length, 1);
+    const outcome = swept[0];
+    assert.ok(outcome && outcome.state === "requeued");
+    if (outcome.state !== "requeued") return;
+    assert.equal(outcome.run.lifecycle.state, "queued");
+    assert.equal(outcome.run.envelope.attempt, 2);
+    const requeuedFrom = outcome.run.lifecycle.state === "queued"
+      ? outcome.run.lifecycle.requeuedFrom
+      : undefined;
+    assert.equal(requeuedFrom, "recovery");
+    const reclaim = database.authority.runs.claimNext({
+      workflow: WORKFLOW_ID,
+      workerId: "worker-2",
+      now: LATER,
+    });
+    assert.equal(reclaim.state, "claimed");
+  });
+
+  it("does not gate a run in a DIFFERENT workflow/item on this item's intent", () => {
+    const database = openDatabase();
+    claimAndRun(database, "running");
+    database.authority.writeIntents.fenceAttempt({
+      intent: {
+        ...PERSON_LOOKUP_ATTEMPTING_INTENT,
+        // The intent belongs to ANOTHER logical item entirely.
+        itemId: "99999999-9999-4999-8999-999999999999",
+      },
+      attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
+    });
+
+    const swept = database.authority.runs.sweepExpiredClaims({ staleBefore: MUCH_LATER, now: MUCH_LATER });
+    assert.equal(swept.length, 1);
+    assert.equal(swept[0]?.state, "requeued");
+  });
+});
