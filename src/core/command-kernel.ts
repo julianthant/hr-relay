@@ -734,6 +734,12 @@ function executeWriteResolution(
       `write intent ${request.target.writeIntentId} is ${intent.status}; a ${intent.status} intent has no operator resolution`,
     );
   }
+  if (intent.runId !== request.target.runId) {
+    throw new Error(
+      `run ${request.target.runId} is parked on write intent ${request.target.writeIntentId}, `
+      + `but that intent belongs to run ${intent.runId}; refusing to resolve against an inconsistent store`,
+    );
+  }
   if (intent.generation !== request.target.intentGeneration) {
     reject(
       request,
