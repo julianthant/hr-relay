@@ -13,7 +13,7 @@
  * likewise an outcome, and one nothing downstream may auto-resolve.
  */
 import { z } from "zod";
-import { EidSchema, TaskIdSchema } from "../../ids.js";
+import { EidSchema, taskId } from "../../ids.js";
 import { defineTaskContract } from "../base.js";
 
 export const UcpathCandidateSchema = z.strictObject({
@@ -60,7 +60,7 @@ export const SearchPersonOrgOutputSchema = z.strictObject({
 export type SearchPersonOrgOutput = z.infer<typeof SearchPersonOrgOutputSchema>;
 
 export const SearchPersonOrg = defineTaskContract({
-  id: TaskIdSchema.parse("ucpath/search-person-org"),
+  id: taskId("ucpath/search-person-org"),
   title: "Searching",
   effect: "read",
   input: SearchPersonOrgInputSchema,

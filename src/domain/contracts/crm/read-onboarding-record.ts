@@ -13,7 +13,7 @@
  * queried EID, so an absence can never be confused with a lookup that never ran.
  */
 import { z } from "zod";
-import { EidSchema, IsoInstantSchema, ObservationIdSchema, TaskIdSchema } from "../../ids.js";
+import { EidSchema, IsoInstantSchema, ObservationIdSchema, taskId } from "../../ids.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../base.js";
 
 export const CrmOnboardingRecordSchema = z.strictObject({
@@ -36,7 +36,7 @@ export const ReadOnboardingRecordOutputSchema = z.discriminatedUnion("state", [
 export type ReadOnboardingRecordOutput = z.infer<typeof ReadOnboardingRecordOutputSchema>;
 
 export const CrmReadOnboardingRecord = defineTaskContract({
-  id: TaskIdSchema.parse("crm/read-onboarding-record"),
+  id: taskId("crm/read-onboarding-record"),
   title: "Cross Verification",
   effect: "read",
   input: z.strictObject({

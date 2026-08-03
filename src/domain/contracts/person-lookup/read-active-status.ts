@@ -18,7 +18,7 @@
  * them into the one that looks actionable.
  */
 import { z } from "zod";
-import { TaskIdSchema } from "../../ids.js";
+import { taskId } from "../../ids.js";
 import { defineTaskContract } from "../base.js";
 import { ReadOnboardingRecordOutputSchema } from "../crm/read-onboarding-record.js";
 import { SearchPersonOrgOutputSchema } from "../ucpath/search-person-org.js";
@@ -42,7 +42,7 @@ export const ActiveStatusOutcomeSchema = z.discriminatedUnion("state", [
 export type ActiveStatusOutcome = z.infer<typeof ActiveStatusOutcomeSchema>;
 
 export const ReadActiveStatus = defineTaskContract({
-  id: TaskIdSchema.parse("workflow:person-lookup/read-active-status"),
+  id: taskId("workflow:person-lookup/read-active-status"),
   title: "Active Status",
   effect: "read",
   input: z.strictObject({

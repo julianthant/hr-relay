@@ -1,4 +1,8 @@
 import { z } from "zod";
+import type {
+  SearchPersonOrgInputSchema,
+  SearchPersonOrgOutput,
+} from "../contracts/ucpath/search-person-org.js";
 import { EidSchema } from "../ids.js";
 import type { Eid } from "../ids.js";
 import type { SystemDriver } from "./driver.js";
@@ -33,7 +37,16 @@ export type UcpathPersonOrgDriver = SystemDriver<
   UcpathPersonOrgStates,
   UcpathPersonOrgFields,
   UcpathPersonOrgObservations
->;
+> & Readonly<{
+  /**
+   * The semantic Person Org operation used by the task store. Its implementation owns every
+   * navigation, result-grid, drill-in, and selection detail; tasks never receive a Page or a
+   * selector recipe (docs 01 §3 and 02 §3.1).
+   */
+  searchPersonOrg(
+    input: z.output<typeof SearchPersonOrgInputSchema>,
+  ): Promise<SearchPersonOrgOutput>;
+}>;
 
 export function parseUcpathPersonOrgEid(input: string): Eid {
   return EidSchema.parse(input);

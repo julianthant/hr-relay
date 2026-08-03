@@ -106,7 +106,9 @@ describe("semantic UI registry", () => {
 
   it("enforces element states immediately and preserves the legacy display fallback order", async () => {
     const events: string[] = [];
-    const driver = createUcpathPersonOrgDriver(recordingPage(events));
+    const driver = createUcpathPersonOrgDriver(recordingPage(events), {
+      searchPersonOrg: () => Promise.reject(new Error("semantic search is outside this primitive-driver test")),
+    });
     await driver.fill(UCPATH_PERSON_ORG_EID_INPUT, parseUcpathPersonOrgEid("10800000"));
     assert.equal(events.findIndex((event) => event.startsWith("wait:"))
       < events.findIndex((event) => event.startsWith("fill:")), true);

@@ -13,6 +13,11 @@ import {
   UCPATH_PERSON_ORG_SEARCH_SCREEN,
 } from "../../../domain/ui/ucpath-person-org.js";
 import type { UcpathPersonOrgDriver } from "../../../domain/ui/ucpath-person-org.js";
+import type {
+  SearchPersonOrgInputSchema,
+  SearchPersonOrgOutput,
+} from "../../../domain/contracts/ucpath/search-person-org.js";
+import type { z } from "zod";
 import { UCPATH_UI_REGISTRY } from "./ui-registry.js";
 
 type ElementDefinition = (typeof UCPATH_UI_REGISTRY.elements)[number];
@@ -67,9 +72,22 @@ async function waitForElementStates(page: Page, element: ElementDefinition): Pro
   for (const stateId of element.requiredStates) await waitForState(page, stateId);
 }
 
-export function createUcpathPersonOrgDriver(page: Page): UcpathPersonOrgDriver {
+export interface UcpathPersonOrgOperations {
+  readonly searchPersonOrg: (
+    page: Page,
+    input: z.output<typeof SearchPersonOrgInputSchema>,
+  ) => Promise<SearchPersonOrgOutput>;
+}
+
+export function createUcpathPersonOrgDriver(
+  page: Page,
+  operations: UcpathPersonOrgOperations,
+): UcpathPersonOrgDriver {
   return {
     system: "ucpath",
+    async searchPersonOrg(input) {
+      return operations.searchPersonOrg(page, input);
+    },
     async goto(screen) {
       if (screen !== UCPATH_PERSON_ORG_SEARCH_SCREEN && screen !== UCPATH_PERSON_ORG_DETAIL_SCREEN) {
         throw new Error(`UCPath Person Org navigation received an unknown screen ${screen}`);

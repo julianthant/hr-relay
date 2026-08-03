@@ -6,15 +6,15 @@
  * into stores; the descriptor may not, and the coverage guard walks its import
  * graph to prove it.
  *
- * `stores` is empty on purpose: task IMPLEMENTATIONS land with the workers in
- * 1f, and every contract this graph uses is accounted for in
- * `config/pending-impl-bindings.json` until then. An unlisted contract, or a
- * listed one that has since been bound, fails `descriptor-coverage` — so the
- * gap cannot go quiet.
+ * All three implementing stores land with 1f. The control registry verifies at boot that every
+ * descriptor contract resolves through one of these exact factory-defined stores.
  */
+import { crmStore } from "../../stores/crm/index.js";
+import { personLookupStore } from "../../stores/person-lookup/index.js";
+import { ucpathStore } from "../../stores/ucpath/index.js";
 import { personLookupDescriptor } from "./descriptor.js";
 
 export const personLookupModule = Object.freeze({
   descriptor: personLookupDescriptor,
-  stores: Object.freeze([]),
+  stores: Object.freeze([ucpathStore, crmStore, personLookupStore]),
 });

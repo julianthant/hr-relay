@@ -1,4 +1,12 @@
-import { declareDriver, defineBrowserStore } from "../../base/store.js";
+import { defineBrowserStore } from "../../base/store.js";
+import { crmDriver } from "./driver/declaration.js";
 import { crmSession } from "./session.js";
+import { readOnboardingDatesTask } from "./tasks/read-onboarding-dates.js";
+import { readOnboardingRecordTask } from "./tasks/read-onboarding-record.js";
 
-export const crmStore = defineBrowserStore("crm", declareDriver("crm", "unwired"), crmSession, {});
+export { crmDriver };
+
+export const crmStore = defineBrowserStore("crm", crmDriver, crmSession, {
+  readOnboardingRecord: readOnboardingRecordTask,
+  readOnboardingDates: readOnboardingDatesTask,
+});

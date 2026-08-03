@@ -1,12 +1,13 @@
-import { declareDriverFor, defineBrowserStore } from "../../base/store.js";
-import type { UcpathPersonOrgDriver } from "../../domain/ui/ucpath-person-org.js";
+import { defineBrowserStore } from "../../base/store.js";
+import { ucpathDriver } from "./driver/declaration.js";
 import { ucpathSession } from "./session.js";
+import { searchPersonOrgTask } from "./tasks/search-person-org.js";
 
-export const ucpathDriver = declareDriverFor<UcpathPersonOrgDriver>()("ucpath", "semantic-ready");
+export { ucpathDriver };
 
 export const ucpathStore = defineBrowserStore(
   "ucpath",
   ucpathDriver,
   ucpathSession,
-  {},
+  { searchPersonOrg: searchPersonOrgTask },
 );

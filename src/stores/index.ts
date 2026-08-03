@@ -1,18 +1,19 @@
 import {
-  EMPTY_TASK_CONTRACT_CORPUS,
   defineTaskStoreRegistry,
 } from "../base/store.js";
+import type { RegisteredTaskStore } from "../base/store.js";
 import { crmStore } from "./crm/index.js";
 import { i9Store } from "./i9/index.js";
 import { kualiStore } from "./kuali/index.js";
 import { newKronosStore } from "./new-kronos/index.js";
 import { oldKronosStore } from "./old-kronos/index.js";
 import { onbaseStore } from "./onbase/index.js";
+import { personLookupStore } from "./person-lookup/index.js";
 import { servicenowStore } from "./servicenow/index.js";
 import { sharepointStore } from "./sharepoint/index.js";
 import { ucpathStore } from "./ucpath/index.js";
 
-export const browserStoreRegistry = defineTaskStoreRegistry([
+export const BROWSER_STORES = Object.freeze([
   ucpathStore,
   crmStore,
   onbaseStore,
@@ -22,4 +23,23 @@ export const browserStoreRegistry = defineTaskStoreRegistry([
   newKronosStore,
   oldKronosStore,
   sharepointStore,
-], EMPTY_TASK_CONTRACT_CORPUS);
+]);
+
+export const TASK_STORES: readonly RegisteredTaskStore[] = Object.freeze([
+  ...BROWSER_STORES,
+  personLookupStore,
+]);
+
+function corpusFor(stores: readonly RegisteredTaskStore[]) {
+  const tasks = stores.flatMap((store) => Object.values(store.tasks));
+  return {
+    scenarioIds: [...new Set(tasks.flatMap(({ contract }) => contract.scenarios))],
+    tasks: tasks.map(({ contract }) => ({ id: contract.id, effect: contract.effect })),
+  };
+}
+
+/** Browser-only declaration view consumed by the doc-05 coverage guard. */
+export const browserStoreRegistry = defineTaskStoreRegistry(BROWSER_STORES, corpusFor(BROWSER_STORES));
+
+/** The executable task index: browser stores plus workflow/service mini-stores. */
+export const taskStoreRegistry = defineTaskStoreRegistry(TASK_STORES, corpusFor(TASK_STORES));

@@ -8,7 +8,7 @@
  * person.
  */
 import { z } from "zod";
-import { DateOnlySchema, EidSchema, ObservationIdSchema, TaskIdSchema } from "../../ids.js";
+import { DateOnlySchema, EidSchema, ObservationIdSchema, taskId } from "../../ids.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../base.js";
 
 const OptionalDateSchema = z.discriminatedUnion("state", [
@@ -25,7 +25,7 @@ export const ReadOnboardingDatesOutputSchema = z.strictObject({
 export type ReadOnboardingDatesOutput = z.infer<typeof ReadOnboardingDatesOutputSchema>;
 
 export const CrmReadOnboardingDates = defineTaskContract({
-  id: TaskIdSchema.parse("crm/read-onboarding-dates"),
+  id: taskId("crm/read-onboarding-dates"),
   title: "CRM Dates",
   effect: "read",
   input: z.strictObject({ eid: EidSchema }),

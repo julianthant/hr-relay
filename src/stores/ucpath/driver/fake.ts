@@ -1,4 +1,6 @@
 import { EidSchema } from "../../../domain/ids.js";
+import { SearchPersonOrgOutputSchema } from "../../../domain/contracts/ucpath/search-person-org.js";
+import type { SearchPersonOrgOutput } from "../../../domain/contracts/ucpath/search-person-org.js";
 import { PageStateProofSchema, UiActionProofSchema } from "../../../domain/ui/driver.js";
 import type { UiActionProof } from "../../../domain/ui/driver.js";
 import {
@@ -11,11 +13,31 @@ import {
 } from "../../../domain/ui/ucpath-person-org.js";
 import type { UcpathPersonOrgDriver, UcpathPersonOrgScreens } from "../../../domain/ui/ucpath-person-org.js";
 
-export function createDeterministicUcpathPersonOrgDriver(): UcpathPersonOrgDriver {
+export function createDeterministicUcpathPersonOrgDriver(
+  result?: SearchPersonOrgOutput,
+): UcpathPersonOrgDriver {
   let screen: UcpathPersonOrgScreens = UCPATH_PERSON_ORG_SEARCH_SCREEN;
   let eid: ReturnType<typeof EidSchema.parse> | undefined;
   return {
     system: "ucpath",
+    async searchPersonOrg(input) {
+      if (result !== undefined) return SearchPersonOrgOutputSchema.parse(result);
+      if (input.kind !== "by-eid") {
+        throw new Error("deterministic UCPath driver requires an explicit result for a by-name search");
+      }
+      const candidate = {
+        emplId: input.emplId,
+        name: "Deterministic, Person",
+        department: "Housing Dining Hospitality",
+        jobTitle: "Fixture employee",
+        employeeStatus: "active" as const,
+        hdh: true,
+      };
+      return SearchPersonOrgOutputSchema.parse({
+        results: [candidate],
+        selection: { status: "resolved", selected: candidate, candidateEids: [input.emplId] },
+      });
+    },
     async goto(nextScreen) {
       screen = nextScreen;
       const stateId = nextScreen === UCPATH_PERSON_ORG_SEARCH_SCREEN

@@ -21,6 +21,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import {
   DESCRIPTORS,
+  SERVER_REGISTRY,
   WORKFLOW_MODULES,
   auditImplBindings,
   readPendingImplBindings,
@@ -102,6 +103,7 @@ describe("descriptor coverage", () => {
     assert.deepEqual(moduleIds, descriptorIds);
     assert.equal(new Set(moduleIds).size, moduleIds.length);
     assert.equal(WORKFLOW_MODULES.length, DESCRIPTORS.length);
+    assert.deepEqual(Object.keys(SERVER_REGISTRY).sort(), descriptorIds);
   });
 
   it("resolves every contract's placement, example, freshness, and provenance", () => {
@@ -181,7 +183,7 @@ describe("descriptor coverage", () => {
   it("tracks every unbound contract explicitly, in both directions", () => {
     assert.deepEqual(auditImplBindings(readPendingImplBindings(REPO_ROOT)), []);
     const bindings = readPendingImplBindings(REPO_ROOT);
-    assert.ok(bindings.tasks.length > 0, "1e has no store impls yet, so the list cannot be empty");
+    assert.deepEqual(bindings.tasks, [], "1f binds every registered Phase-1 contract");
     // A pending entry no descriptor references is stale, and the audit says so.
     const stale = auditImplBindings({
       ...bindings,

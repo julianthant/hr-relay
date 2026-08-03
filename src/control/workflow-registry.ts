@@ -18,7 +18,7 @@ import { z } from "zod";
 import { workflowProjections } from "../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import { TaskIdSchema } from "../domain/ids.js";
-import { browserStoreRegistry } from "../stores/index.js";
+import { taskStoreRegistry } from "../stores/index.js";
 import { personLookupModule } from "../workflows/person-lookup/module.js";
 
 export const WORKFLOW_MODULES = Object.freeze([personLookupModule]);
@@ -26,6 +26,10 @@ export const WORKFLOW_MODULES = Object.freeze([personLookupModule]);
 export const DESCRIPTORS: readonly AnyWorkflowDescriptor[] = Object.freeze(
   WORKFLOW_MODULES.map((module) => module.descriptor),
 );
+
+export const SERVER_REGISTRY = Object.freeze(Object.fromEntries(
+  WORKFLOW_MODULES.map((module) => [module.descriptor.id, module]),
+));
 
 /**
  * Contracts a registered descriptor uses that no store implements YET.
@@ -45,7 +49,7 @@ export const PendingImplBindingsSchema = z.strictObject({
     taskId: TaskIdSchema,
     workflowId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
     note: z.string().min(1),
-  })).min(1),
+  })),
 });
 export type PendingImplBindings = z.infer<typeof PendingImplBindingsSchema>;
 
@@ -59,7 +63,7 @@ export function readPendingImplBindings(repoRoot: string): PendingImplBindings {
 
 /** Task ids every registered store actually implements today. */
 export function boundTaskIds(): readonly string[] {
-  return Object.freeze(browserStoreRegistry.stores.flatMap((store) =>
+  return Object.freeze(taskStoreRegistry.stores.flatMap((store) =>
     Object.values(store.tasks).map((task) => task.contract.id)));
 }
 
