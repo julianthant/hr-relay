@@ -75,6 +75,7 @@ import {
   RunHeartbeatRequestSchema,
   RunItemQuerySchema,
   RunPresentationRequestSchema,
+  RunPriorityBumpRequestSchema,
   RunRequeueRequestSchema,
   RunResumeRequestSchema,
   RunTransitionRequestSchema,
@@ -215,6 +216,28 @@ type CommandRepository = Readonly<{
   get(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
 }>;
 
+/**
+ * D113 replay reads the recorded outcome by COMMAND id: one journaled command
+ * has exactly one recorded audit, and re-delivery must return that exact
+ * result rather than re-executing. Two audits for one command is corruption.
+ */
+type CommandAuditRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandAuditRecordSchema>>;
+  get(auditId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
+  findByCommand(commandId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
+}>;
+
+/**
+ * Cancel-tree resolution (doc 03 §2.4) reads every delegation edge under a
+ * parent from authority. A child run whose edge row cannot be found makes the
+ * tree inconsistent, and an inconsistent tree cancels nothing.
+ */
+type DependencyRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<z.infer<typeof DependencyRecordSchema>>;
+  get(dependencyId: string): z.infer<typeof DependencyRecordSchema> | undefined;
+  listByParentRun(parentRunId: string): readonly z.infer<typeof DependencyRecordSchema>[];
+}>;
+
 type WriteIntentRepository = Readonly<{
   recordObservedPresent(input: unknown): PermanentWriteResolution;
   fenceAttempt(input: unknown): PermanentWriteResolution;
@@ -261,6 +284,8 @@ type RunRepository = Readonly<{
   requeue(input: unknown): RunUpdateOutcome;
   resume(input: unknown): RunUpdateOutcome;
   updatePresentation(input: unknown): RunUpdateOutcome;
+  /** D95 run-priority `bump`: elevate one QUEUED row's claim class; never a requeue. */
+  bumpPriority(input: unknown): RunUpdateOutcome;
   sweepExpiredClaims(input: unknown): readonly RunRecord[];
 }>;
 
@@ -315,8 +340,8 @@ export type AuthorityRepositories = Readonly<{
   startPlans: StartPlanRepository;
   workerLeases: WorkerLeaseRepository;
   commands: CommandRepository;
-  commandAudits: ImmutableRepository<z.infer<typeof CommandAuditRecordSchema>>;
-  dependencies: ImmutableRepository<z.infer<typeof DependencyRecordSchema>>;
+  commandAudits: CommandAuditRepository;
+  dependencies: DependencyRepository;
   delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
   gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>>;
   runCheckpoints: RunCheckpointRepository;
@@ -1722,6 +1747,17 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (auditId: string) => this.#readRecord("command_audits", auditId, CommandAuditRecordSchema),
+        findByCommand: (commandId: string) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM command_audits WHERE command_id = ? ORDER BY record_key
+          `).all(commandId);
+          if (rows.length > 1) {
+            throw new Error(`command ${commandId} has ${String(rows.length)} recorded audits; exactly one outcome may exist`);
+          }
+          const row = rows[0];
+          if (row === undefined) return undefined;
+          return parseJsonRecord(CommandAuditRecordSchema, JsonRowSchema.parse(row).record_json);
+        },
       }),
       dependencies: Object.freeze({
         insert: (input: unknown) => {
@@ -1740,6 +1776,17 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (dependencyId: string) => this.#readRecord("dependencies", dependencyId, DependencyRecordSchema),
+        listByParentRun: (parentRunId: string) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM dependencies
+            WHERE json_extract(record_json, '$.parentRunId') = ?
+            ORDER BY created_at, record_key
+          `).all(RunIdSchema.parse(parentRunId));
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            DependencyRecordSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
       }),
       delegationManifests: Object.freeze({
         insert: (input: unknown) => {
@@ -2145,6 +2192,26 @@ export class AuthorityDatabase implements Disposable {
             ...(request.displayName === undefined ? {} : { displayName: request.displayName }),
             ...(request.hidden === undefined ? {} : { hidden: request.hidden }),
           }),
+        );
+      },
+      bumpPriority: (input: unknown) => {
+        const request = RunPriorityBumpRequestSchema.parse(input);
+        return this.#mutateRun(
+          request.runId,
+          request.expectedVersion,
+          request.now,
+          undefined,
+          (current) => {
+            if (current.lifecycle.state !== "queued") {
+              throw new Error(
+                `run ${request.runId} is ${current.lifecycle.state}; only a queued run's claim order can be bumped`,
+              );
+            }
+            return RunRecordSchema.parse({
+              ...current,
+              envelope: { ...current.envelope, priority: "interactive" },
+            });
+          },
         );
       },
       sweepExpiredClaims: (input: unknown) => {

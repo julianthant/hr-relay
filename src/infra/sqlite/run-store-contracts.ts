@@ -102,6 +102,17 @@ export const RunResumeRequestSchema = z.strictObject({
   now: IsoInstantSchema,
 });
 
+/**
+ * D95: `bump` is permanently run priority/claim order. It elevates one queued
+ * row to the interactive claim class; it is not a requeue and it never touches
+ * business input, attempt, or descriptor identity.
+ */
+export const RunPriorityBumpRequestSchema = z.strictObject({
+  runId: RunIdSchema,
+  expectedVersion: PositiveIntSchema,
+  now: IsoInstantSchema,
+});
+
 export const RunPresentationRequestSchema = z.strictObject({
   runId: RunIdSchema,
   expectedVersion: PositiveIntSchema,
