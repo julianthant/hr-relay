@@ -143,7 +143,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "d15c74f21f0ceaf380e5cca61813267c7676c661868ad2103a2c36a60e8d269e",
+      "fingerprint": "8cf441023f233d819ded053df3a58356ad125fe995a4bd5f44253a82e5f926fb",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -159,7 +159,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "1ca368fbb93699753e53ef3b2c0db3d3da61e43fb9cf242234b9a3eabc5478d2"
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
         },
         {
           "path": "src/base/store.ts",
@@ -305,7 +305,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "49b86a9ee80f5c5edfdb011b05c7d1e5b216058f307312f5df93776fda014040",
+      "fingerprint": "e65b3dc5827338fe56feb6c0d0fa4feb53a23e5204912ab3fa329251ae83a3cb",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -321,7 +321,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "1ca368fbb93699753e53ef3b2c0db3d3da61e43fb9cf242234b9a3eabc5478d2"
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
         },
         {
           "path": "src/base/store.ts",
@@ -467,7 +467,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "290c82e2657248d1073e029fcd638c2b72eae7ea7479867c6bb6933da57ea638",
+      "fingerprint": "88231a4f0f5669aea90a03048b2c33871b2a94d067bd6884a7920bc22b2bebb7",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -483,7 +483,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "1ca368fbb93699753e53ef3b2c0db3d3da61e43fb9cf242234b9a3eabc5478d2"
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
         },
         {
           "path": "src/base/store.ts",

@@ -1,11 +1,77 @@
 import { z } from "zod";
 import { BrowserSystemIdSchema } from "../domain/ids.js";
-import type { BrowserSystemId } from "../domain/ids.js";
+import type {
+  BrowserSessionId,
+  BrowserSystemId,
+  Fingerprint,
+  WorkerId,
+  WorkflowId,
+} from "../domain/ids.js";
 import {
   IdleRefreshCadenceSchema,
   LoginResultSchema,
 } from "../domain/session.js";
 import type { IdleRefreshCadence, LoginResult } from "../domain/session.js";
+import type { BrowserDriver } from "./task.js";
+
+/**
+ * Proof that a worker browser resource is REALLY gone. Every field is a
+ * required literal on the success path: a close that cannot assert page and
+ * context closure must throw instead of returning a weaker proof, and the
+ * session manager then retains the resource as poisoned (doc 05 §4).
+ */
+export interface BrowserSessionCloseProof {
+  readonly sessionId: BrowserSessionId;
+  readonly system: BrowserSystemId;
+  readonly pagesClosed: true;
+  readonly contextClosed: true;
+  readonly exclusiveLeaseReleased?: true;
+}
+
+export type BrowserSessionCloseReason =
+  | "fresh-boundary"
+  | "poisoned"
+  | "parked"
+  | "worker-stop"
+  | "login-failed";
+
+/**
+ * One authenticated worker-owned browser session for one system (doc 05 §1).
+ * The D116 reuse identity is part of the resource itself: `instance` and
+ * `configFingerprint` record exactly which resolved instance and immutable
+ * run-config snapshot the session was authenticated under.
+ */
+export interface WorkerBrowserResource {
+  readonly sessionId: BrowserSessionId;
+  readonly system: BrowserSystemId;
+  readonly instance?: string;
+  readonly configFingerprint: Fingerprint;
+  readonly acceptDownloads: boolean;
+  readonly exclusive: boolean;
+  readonly authentication: BrowserAuthenticationHandle;
+  readonly driver: BrowserDriver;
+  readonly reset: (input: Readonly<{ signal: AbortSignal }>) => Promise<void>;
+  readonly close: (input: Readonly<{ reason: BrowserSessionCloseReason }>) =>
+    Promise<BrowserSessionCloseProof>;
+}
+
+/**
+ * The one concrete browser-creation port. The worker session manager is the
+ * only caller (driver-lease-boundary guard); implementations own launch,
+ * profile isolation, authentication dispatch, and provable teardown.
+ */
+export interface WorkerBrowserSessionFactory {
+  readonly open: (input: Readonly<{
+    workerId: WorkerId;
+    workflowId: WorkflowId;
+    system: BrowserSystemId;
+    instance?: string;
+    configFingerprint: Fingerprint;
+    acceptDownloads: boolean;
+    exclusive: boolean;
+    signal: AbortSignal;
+  }>) => Promise<WorkerBrowserResource>;
+}
 
 export interface SessionLoginOptions {
   readonly instance?: string;

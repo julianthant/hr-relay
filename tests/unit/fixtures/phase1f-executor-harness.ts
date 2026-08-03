@@ -17,6 +17,7 @@ import type { TestClock } from "../../../src/domain/clock.js";
 import {
   BrowserSessionIdSchema,
   EidSchema,
+  FingerprintSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
 } from "../../../src/domain/ids.js";
@@ -240,6 +241,7 @@ export function sessionFactoryHarness(
           sessionId,
           system: input.system,
           ...(input.instance === undefined ? {} : { instance: input.instance }),
+          configFingerprint: input.configFingerprint,
           acceptDownloads: input.acceptDownloads,
           exclusive: input.exclusive,
           driver,
@@ -301,11 +303,16 @@ export function sessionManagerFor(
   harness: SessionFactoryHarness,
   clock: TestClock,
 ): WorkerSessionManager {
-  return new WorkerSessionManager({
+  const manager = new WorkerSessionManager({
     workerId: EXECUTOR_WORKER_ID,
     workflowId: EXECUTOR_WORKFLOW_ID,
     stores: taskStoreRegistry,
     factory: harness.factory,
     clock,
   });
+  // D116: production binds the claimed run's fingerprint in the worker loop;
+  // this harness stands in for that loop, so it binds the fixture envelope's
+  // exact fingerprint (`QUEUED_RUN.envelope.configFingerprint`).
+  manager.bindRunConfigFingerprint(FingerprintSchema.parse(QUEUED_RUN.envelope.configFingerprint));
+  return manager;
 }
