@@ -15,9 +15,10 @@ import {
   StagedPageDiscardedError,
   WriteParkedError,
   type ProductionWriteSequencer,
+  type TransactionDryRunPreview,
   type WriteSequencerHooks,
 } from "../../src/core/write-sequencer.js";
-import type { WorkerSessionManager } from "../../src/core/worker-sessions.js";
+import { withBoundRunConfigFingerprint, type WorkerSessionManager } from "../../src/core/worker-sessions.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import type { AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
@@ -74,6 +75,13 @@ interface Harness {
   readonly emitter: ReturnType<typeof recordingEmitter>;
   readonly ids: ReturnType<typeof sequentialIdFactory>;
   readonly sequencer: ProductionWriteSequencer;
+  /**
+   * Execute under the worker loop's exact D116 discipline: bind the context
+   * run's immutable `configFingerprint` through the production API, execute,
+   * release — the same `withBoundRunConfigFingerprint` the loop itself uses.
+   */
+  readonly execute: (context: WriteSequencerContext) => Promise<unknown>;
+  readonly executeDryRun: (context: WriteSequencerContext) => Promise<TransactionDryRunPreview>;
 }
 
 function harness(options: Readonly<{
@@ -111,7 +119,19 @@ function harness(options: Readonly<{
     resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
     ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
   });
-  return { world, database, clock, manager, sessions, emitter, ids, sequencer };
+  const execute = (context: WriteSequencerContext): Promise<unknown> =>
+    withBoundRunConfigFingerprint(
+      manager,
+      context.run.envelope.configFingerprint,
+      () => sequencer.executeTransaction(context),
+    );
+  const executeDryRun = (context: WriteSequencerContext): Promise<TransactionDryRunPreview> =>
+    withBoundRunConfigFingerprint(
+      manager,
+      context.run.envelope.configFingerprint,
+      () => sequencer.executeDryRun(context),
+    );
+  return { world, database, clock, manager, sessions, emitter, ids, sequencer, execute, executeDryRun };
 }
 
 function claimRunning(
@@ -251,7 +271,7 @@ describe("the seven-beat happy path", () => {
       assert.equal(fenced.status, "attempting");
     };
 
-    const outcome = await h.sequencer.executeTransaction(contextFor(run, claim));
+    const outcome = await h.execute(contextFor(run, claim));
     assert.deepEqual(outcome, {
       disposition: "committed",
       proofSource: "normal-output",
@@ -315,10 +335,10 @@ describe("the seven-beat happy path", () => {
     const h = harness();
     const first = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-    await h.sequencer.executeTransaction(contextFor(first.run, first.claim));
+    await h.execute(contextFor(first.run, first.claim));
     h.world.events.length = 0;
 
-    const again = await h.sequencer.executeTransaction(contextFor(
+    const again = await h.execute(contextFor(
       h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID) ?? first.run,
       first.claim,
     ));
@@ -345,7 +365,7 @@ describe("beat ③ — zero fence and zero click on any binding failure", () => 
       const { run, claim } = claimRunning(h.database, h.clock);
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
       mutate(h.world);
-      await assert.rejects(h.sequencer.executeTransaction(contextFor(run, claim)), expected);
+      await assert.rejects(h.execute(contextFor(run, claim)), expected);
       assert.equal(intentByKey(h.database), undefined, "no fence");
       assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")), "no click");
       assert.deepEqual(h.sessions.closeReasons(), ["poisoned"], "the staged page was poison-closed");
@@ -362,7 +382,7 @@ describe("beat ④ — budget expiry and CAS races discard the staged page", () 
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.onPrepare = () => h.clock.advanceMonotonic(30_001);
     await assert.rejects(
-      h.sequencer.executeTransaction(contextFor(run, claim)),
+      h.execute(contextFor(run, claim)),
       (error: unknown) => error instanceof StagedPageDiscardedError && /probe-to-fence budget/.test(error.message),
     );
     assert.equal(intentByKey(h.database), undefined);
@@ -378,7 +398,7 @@ describe("beat ④ — budget expiry and CAS races discard the staged page", () 
     h.world.onPrepare = () => {
       assert.equal(h.database.authority.writeIntents.fenceAttempt(foreign).state, "fenced");
     };
-    await assert.rejects(h.sequencer.executeTransaction(contextFor(run, claim)), /lost the race .* nothing was clicked/s);
+    await assert.rejects(h.execute(contextFor(run, claim)), /lost the race .* nothing was clicked/s);
     assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")));
 
     // Observed-present winner: the same race resolves to already-present reuse.
@@ -407,7 +427,7 @@ describe("beat ④ — budget expiry and CAS races discard the staged page", () 
       });
       assert.equal(recorded.state, "recorded-observed-present");
     };
-    const outcome = await h2.sequencer.executeTransaction(contextFor(second.run, second.claim));
+    const outcome = await h2.execute(contextFor(second.run, second.claim));
     assert.deepEqual(outcome, {
       disposition: "already-present",
       proofSource: "durable-intent",
@@ -428,7 +448,7 @@ describe("beat ① — durable same-key dedupe (D18)", () => {
     const { run, claim } = claimRunning(h.database, h.clock);
     assert.equal(h.database.authority.writeIntents.fenceAttempt(attemptingIntentFixture(UUID_5)).state, "fenced");
     await assert.rejects(
-      h.sequencer.executeTransaction(contextFor(run, claim)),
+      h.execute(contextFor(run, claim)),
       /another run .* is mid-submit .* refusing to double-fence/s,
     );
     assert.deepEqual(h.world.events, [], "no probe, no prepare, no click");
@@ -438,7 +458,7 @@ describe("beat ① — durable same-key dedupe (D18)", () => {
     const h = harness();
     const first = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-    await h.sequencer.executeTransaction(contextFor(first.run, first.claim));
+    await h.execute(contextFor(first.run, first.claim));
     const mintedAfterCommit = h.ids.minted().length;
     h.world.events.length = 0;
 
@@ -447,7 +467,7 @@ describe("beat ① — durable same-key dedupe (D18)", () => {
       writeFixtureQueuedRun({ runId: UUID_5, itemId: UUID_6 }),
       "write-fixture-worker-2",
     );
-    const outcome = await h.sequencer.executeTransaction(contextFor(second.run, second.claim));
+    const outcome = await h.execute(contextFor(second.run, second.claim));
     assert.deepEqual(outcome, {
       disposition: "already-present",
       proofSource: "durable-intent",
@@ -472,7 +492,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.commitThrows = new Error("browser crashed mid-click");
     await assert.rejects(
-      h.sequencer.executeTransaction(contextFor(run, claim)),
+      h.execute(contextFor(run, claim)),
       (error: unknown) => error instanceof WriteParkedError && error.parkCode === "unknown",
     );
     const intent = intentByKey(h.database);
@@ -491,7 +511,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.commitOutput = { transactionId: "" };
     await assert.rejects(
-      h.sequencer.executeTransaction(contextFor(run, claim)),
+      h.execute(contextFor(run, claim)),
       (error: unknown) => error instanceof WriteParkedError && error.parkCode === "unknown",
     );
     const intent = intentByKey(h.database);
@@ -504,7 +524,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     const first = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.verifyResults.push({ state: "present", proof: { transactionId: "T222222" } });
-    const outcome = await h.sequencer.executeTransaction(
+    const outcome = await h.execute(
       contextFor(first.run, first.claim, writeFixtureSaveDescriptor),
     );
     assert.deepEqual(outcome, {
@@ -520,7 +540,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     h2.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h2.world.verifyResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     await assert.rejects(
-      h2.sequencer.executeTransaction(contextFor(second.run, second.claim, writeFixtureSaveDescriptor)),
+      h2.execute(contextFor(second.run, second.claim, writeFixtureSaveDescriptor)),
       (error: unknown) => error instanceof WriteParkedError && error.parkCode === "unknown",
     );
     assert.equal(intentByKey(h2.database)?.status, "parked");
@@ -536,7 +556,7 @@ describe("beat ① — pre-fence probe indeterminacy refuses loudly", () => {
       const h = harness();
       const { run, claim } = claimRunning(h.database, h.clock);
       h.world.probeResults.push(verdict);
-      await assert.rejects(h.sequencer.executeTransaction(contextFor(run, claim)), expected);
+      await assert.rejects(h.execute(contextFor(run, claim)), expected);
       assert.equal(intentByKey(h.database), undefined);
       assert.deepEqual(h.world.events, ["probe"]);
     });
@@ -557,7 +577,7 @@ describe("beat ⑦ — the whole bundle commits once or not at all", () => {
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
       const versionBefore = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.version;
       await assert.rejects(
-        h.sequencer.executeTransaction(contextFor(run, claim)),
+        h.execute(contextFor(run, claim)),
         new RegExp(`injected failure after ${step}`),
       );
       const intent = intentByKey(h.database);
@@ -586,7 +606,7 @@ describe("beat ⑦ — the whole bundle commits once or not at all", () => {
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
       const versionBefore = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.version;
       await assert.rejects(
-        h.sequencer.executeTransaction(contextFor(run, claim)),
+        h.execute(contextFor(run, claim)),
         new RegExp(`injected outer failure after ${step}`),
       );
       const intent = intentByKey(h.database);
@@ -608,7 +628,7 @@ describe("inline recovery of this run's own attempting intent", () => {
     assert.equal(h.database.authority.writeIntents.fenceAttempt(own).state, "fenced");
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
 
-    const outcome = await h.sequencer.executeTransaction(contextFor(run, claim));
+    const outcome = await h.execute(contextFor(run, claim));
     assert.deepEqual(outcome, {
       disposition: "committed",
       proofSource: "recovery-probe",
@@ -628,7 +648,7 @@ describe("inline recovery of this run's own attempting intent", () => {
     );
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     await assert.rejects(
-      h.sequencer.executeTransaction(contextFor(run, claim)),
+      h.execute(contextFor(run, claim)),
       (error: unknown) => error instanceof WriteParkedError && error.parkCode === "unknown",
     );
     assert.equal(intentByKey(h.database)?.status, "parked");
@@ -661,7 +681,7 @@ describe("retryable re-fence (only a settled retryable key mints a new generatio
 
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-    const outcome = await h.sequencer.executeTransaction(contextFor(run, claim));
+    const outcome = await h.execute(contextFor(run, claim));
     assert.equal((outcome as { disposition: string }).disposition, "committed");
     const intent = intentByKey(h.database);
     assert.ok(intent && intent.status === "committed");
@@ -675,7 +695,7 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
     await assert.rejects(
-      h.sequencer.executeTransaction(contextFor(run, claim, writeFixtureDescriptor, true)),
+      h.execute(contextFor(run, claim, writeFixtureDescriptor, true)),
       (error: unknown) => error instanceof TaskError && error.code === "capability-unavailable",
     );
     assert.deepEqual(h.world.events, []);
@@ -685,7 +705,7 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
   it("executeDryRun stages, observes the subject, and creates nothing durable", async () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
-    const preview = await h.sequencer.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true));
+    const preview = await h.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true));
     assert.equal(preview.kind, "transaction-dry-run-preview");
     assert.equal(preview.subject.state, "match");
     assert.deepEqual(h.world.events, ["prepare", `subject-read:${WRITE_FIXTURE_OBSERVATION}`]);
@@ -700,5 +720,34 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
       undefined,
       "zero checkpoints",
     );
+  });
+});
+
+describe("D116 — a driver lease without the claimed run's bound fingerprint refuses", () => {
+  it("refuses the probe lease loudly: no browser, no fence, no click, nothing settled", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    // Deliberately bypass the worker loop's binding window: the raw sequencer
+    // call has no bound run config fingerprint, and the session manager's own
+    // check — not a test fake — must refuse the very first lease.
+    await assert.rejects(
+      h.sequencer.executeTransaction(contextFor(run, claim)),
+      /driver lease requires the claimed run's bound config fingerprint \(D116\); none is bound/,
+    );
+    assert.deepEqual(h.world.events, [], "no probe, prepare, observation, or click ran");
+    assert.equal(intentByKey(h.database), undefined, "no fence");
+    const current = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.equal(current?.lifecycle.state, "running", "a pre-lease precondition refusal leaves settlement to the interpreter");
+  });
+
+  it("refuses executeDryRun's staging lease the same way — the preview arm is not an escape hatch", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
+    await assert.rejects(
+      h.sequencer.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true)),
+      /driver lease requires the claimed run's bound config fingerprint \(D116\); none is bound/,
+    );
+    assert.deepEqual(h.world.events, [], "no prepare or observation ran");
   });
 });

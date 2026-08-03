@@ -18,11 +18,16 @@ import type { WriteResolutionContext } from "../../src/core/command-kernel.js";
 import type { WorkerSessionManager } from "../../src/core/worker-sessions.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
+import { FingerprintSchema } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { deriveWriteBindingProofDigest } from "../../src/domain/write-safety.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { ManualScheduler, recordingLogger } from "./fixtures/phase1f-executor-harness.js";
+import {
+  ManualScheduler,
+  recordingLogger,
+  type SessionFactoryHarness,
+} from "./fixtures/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
 import { UUID_5, UUID_6, UUID_7, UUID_8 } from "./fixtures/phase1c-contract-fixtures.js";
 import {
@@ -65,6 +70,8 @@ interface Harness {
   readonly manager: WorkerSessionManager;
   readonly ids: ReturnType<typeof sequentialIdFactory>;
   readonly recovery: WriteRecoveryService;
+  /** Every config fingerprint a probe lease actually opened a session under (D116 witness). */
+  readonly openedFingerprints: () => readonly string[];
 }
 
 function harness(): Harness {
@@ -80,7 +87,21 @@ function harness(): Harness {
   });
   const world = createWriteFixtureWorld();
   const registry = buildWriteFixtureRegistry(world);
-  const manager = writeFixtureSessionManager(writeFixtureSessions(world), registry, clock);
+  const inner = writeFixtureSessions(world);
+  // D116 witness: record the exact config fingerprint every session open was
+  // requested under, so a test can pin that recovery leased under the TARGET
+  // run's retained fingerprint and not a recomputed or caller-claimed one.
+  const opened: string[] = [];
+  const spied: SessionFactoryHarness = {
+    ...inner,
+    factory: {
+      open: (input) => {
+        opened.push(String(input.configFingerprint));
+        return inner.factory.open(input);
+      },
+    },
+  };
+  const manager = writeFixtureSessionManager(spied, registry, clock);
   const ids = sequentialIdFactory("c");
   const recovery = createWriteRecoveryService({
     stores: registry,
@@ -94,7 +115,10 @@ function harness(): Harness {
     log: recordingLogger().log,
     resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
   });
-  return { world, database, clock, manager, ids, recovery };
+  return {
+    world, database, clock, manager, ids, recovery,
+    openedFingerprints: () => Object.freeze([...opened]),
+  };
 }
 
 function ownBindingProof() {
@@ -206,7 +230,7 @@ function intentByKey(database: AuthorityDatabase) {
 describe("doc 09 §4 recovery matrix", () => {
   it("re-probes FIRST and backfills a validated present proof through the atomic beat ⑦", async () => {
     const h = harness();
-    const { writeIntentId } = parkedAttemptingWrite(h);
+    const { run: parkedRun, writeIntentId } = parkedAttemptingWrite(h);
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
 
     const decision = await h.recovery.recover({
@@ -214,6 +238,16 @@ describe("doc 09 §4 recovery matrix", () => {
     });
     assert.deepEqual(decision, { state: "backfilled", writeIntentId, generation: 1 });
     assert.deepEqual(h.world.events, ["probe"], "recovery probed first and never prepared or clicked");
+    // D116: the probe lease opened under the TARGET run's retained immutable
+    // config fingerprint — the authority run row's value, nothing recomputed.
+    assert.deepEqual(
+      h.openedFingerprints(),
+      [String(parkedRun.envelope.configFingerprint)],
+      "the recovery probe leased under the target run's retained config fingerprint",
+    );
+    // …and recovery released its binding afterwards: a fresh bind succeeds.
+    h.manager.bindRunConfigFingerprint(FingerprintSchema.parse("f".repeat(64)));
+    h.manager.releaseRunConfigFingerprint();
 
     const intent = intentByKey(h.database);
     assert.ok(intent && intent.status === "committed");
@@ -381,6 +415,32 @@ describe("doc 09 §4 recovery matrix", () => {
       /typed operator resolutions/,
     );
     assert.deepEqual(h.world.events, [], "no probe ran against a non-attempting intent");
+  });
+
+  it("D116: a session host bound to another run refuses loudly — a precondition failure never parks", async () => {
+    const h = harness();
+    const { writeIntentId } = parkedAttemptingWrite(h);
+    h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
+    // A foreign claimed-run binding occupies the host (one worker, one active
+    // run). Recovery's own bind must throw OUT of recover() — the D116 refusal
+    // is a precondition failure, never converted into a park that reads as a
+    // probe verdict (doc 09 §4 fail-loud).
+    h.manager.bindRunConfigFingerprint(FingerprintSchema.parse("f".repeat(64)));
+    try {
+      await assert.rejects(
+        h.recovery.recover({ descriptor: writeFixtureDescriptor, writeIntentId, signal: SIGNAL }),
+        /already has a bound run config fingerprint/,
+      );
+    } finally {
+      h.manager.releaseRunConfigFingerprint();
+    }
+    assert.deepEqual(h.world.events, [], "no probe leased under a foreign run's binding");
+    assert.equal(
+      intentByKey(h.database)?.status,
+      "attempting",
+      "the intent is untouched — a precondition refusal is not a probe verdict and parks nothing",
+    );
+    assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
   });
 });
 

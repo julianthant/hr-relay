@@ -26,6 +26,7 @@ import {
   assertSequencerMintedMutationCapability,
   createWriteSequencer,
 } from "../../../src/core/write-sequencer.js";
+import { withBoundRunConfigFingerprint } from "../../../src/core/worker-sessions.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { defineTaskContract, ContractFieldPathSchema } from "../../../src/domain/contracts/base.js";
 import { EidSchema, taskId, TaskIdSchema } from "../../../src/domain/ids.js";
@@ -157,6 +158,12 @@ interface OrderingHarness {
   readonly clock: ReturnType<typeof manualClock>;
   readonly sessions: ReturnType<typeof writeFixtureSessions>;
   readonly sequencer: ReturnType<typeof createWriteSequencer>;
+  /**
+   * Execute under the worker loop's exact D116 discipline: bind the context
+   * run's immutable `configFingerprint` through the production
+   * `withBoundRunConfigFingerprint`, execute, release.
+   */
+  readonly execute: (context: WriteSequencerContext) => Promise<unknown>;
   readonly dispose: () => void;
 }
 
@@ -170,10 +177,11 @@ function orderingHarness(): OrderingHarness {
   const world = createWriteFixtureWorld();
   const registry = buildWriteFixtureRegistry(world);
   const sessions = writeFixtureSessions(world);
+  const manager = writeFixtureSessionManager(sessions, registry, clock);
   const sequencer = createWriteSequencer({
     stores: registry,
     authority: database,
-    sessions: writeFixtureSessionManager(sessions, registry, clock),
+    sessions: manager,
     emitter: recordingEmitter().emitter,
     clock,
     ids: sequentialIdFactory("c"),
@@ -183,8 +191,14 @@ function orderingHarness(): OrderingHarness {
     log: recordingLogger().log,
     resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
   });
+  const execute = (context: WriteSequencerContext): Promise<unknown> =>
+    withBoundRunConfigFingerprint(
+      manager,
+      context.run.envelope.configFingerprint,
+      () => sequencer.executeTransaction(context),
+    );
   return {
-    world, database, clock, sessions, sequencer,
+    world, database, clock, sessions, sequencer, execute,
     dispose: () => {
       database.close();
       rmSync(root, { recursive: true, force: true });
@@ -249,7 +263,7 @@ describe("prepare-end < subject-observed < fence-commit < mutation-call", () => 
           bindingDigest: fenced.bindingProofDigest,
         });
       };
-      await h.sequencer.executeTransaction(runningContext(h));
+      await h.execute(runningContext(h));
       assert.deepEqual(h.world.events, [
         "probe",
         "prepare",
@@ -271,7 +285,7 @@ describe("prepare-end < subject-observed < fence-commit < mutation-call", () => 
       try {
         h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
         mutate(h.world);
-        await assert.rejects(h.sequencer.executeTransaction(runningContext(h)));
+        await assert.rejects(h.execute(runningContext(h)));
         assert.equal(h.database.authority.writeIntents.findByPermanentKey("ucpath", WRITE_FIXTURE_KEY), undefined);
         assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")));
         assert.deepEqual(h.sessions.closeReasons(), ["poisoned"]);
@@ -286,7 +300,7 @@ describe("prepare-end < subject-observed < fence-commit < mutation-call", () => 
     try {
       const otherEid = "10867890";
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-      await h.sequencer.executeTransaction(runningContext(h));
+      await h.execute(runningContext(h));
       const first = h.database.authority.writeIntents.findByPermanentKey("ucpath", WRITE_FIXTURE_KEY);
       assert.ok(first && first.status === "committed");
 
@@ -297,7 +311,7 @@ describe("prepare-end < subject-observed < fence-commit < mutation-call", () => 
       otherEvidence.evidence.idempotencyKeyDigest = deriveIdempotencyKeyDigest(
         "ucpath", `${otherEid}|fixture-termination`);
       h.world.probeResults.push(otherEvidence);
-      const second = await h.sequencer.executeTransaction(runningContext(
+      const second = await h.execute(runningContext(
         h,
         writeFixtureQueuedRun({
           runId: "55555555-5555-4555-8555-555555555555",
