@@ -243,6 +243,9 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           runController.abort(new Error(`claim lost during heartbeat renewal: ${message}`));
         },
       });
+      // D116: the claimed run's immutable config fingerprint becomes part of
+      // the session reuse identity for every driver lease this run takes.
+      sessions.bindRunConfigFingerprint(run.envelope.configFingerprint);
       try {
         const outcome = await executeClaimedRun({
           descriptor: deps.descriptor,
@@ -264,6 +267,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         }, { run, claim, signal: runController.signal });
         outcomes.push(outcome);
       } finally {
+        sessions.releaseRunConfigFingerprint();
         heartbeat.stop();
         deps.stopSignal.removeEventListener("abort", onStop);
       }

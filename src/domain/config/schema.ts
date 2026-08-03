@@ -25,6 +25,14 @@ export const CrmRoutesSchema = z.strictObject({
 });
 export const OnBaseRoutesSchema = z.strictObject({ entry: UrlSchema });
 export const UcpathRoutesSchema = z.strictObject({
+  /**
+   * The UCPath SSO entry portal ("Log in to UCPath" → campus discovery →
+   * Shibboleth). Deep PeopleSoft routes are NOT reachable unauthenticated, so
+   * login starts here. Ported from legacy
+   * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+   * src/infra/auth/login.ts (ucpathNavigateAndFill).
+   */
+  login: UrlSchema,
   smartHr: UrlSchema,
   jobSummary: UrlSchema,
   personalData: UrlSchema,
@@ -104,6 +112,8 @@ const DEFAULT_PATHS = {
   stateRoot: resolve(".tracker-rebuild"),
   artifactRoot: resolve(".tracker-rebuild/artifacts"),
   duoCredential: `${rebuildRuntimeIsolation.browserProfileRoot}/duo-webauthn.json`,
+  /** The unpacked Duo Autopilot MV3 extension loaded into every browser session. */
+  duoExtensionDir: resolve("duo-autopilot"),
 } as const satisfies Record<string, string>;
 
 export const ConfigSchema = z.strictObject({
@@ -131,6 +141,7 @@ export const ConfigSchema = z.strictObject({
     } },
     onbase: { prod: { entry: "https://ucsd.hylandcloud.com/251ids/NavPanel.aspx" } },
     ucpath: { prod: {
+      login: "https://ucpath.ucsd.edu",
       smartHr: "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y",
       jobSummary: "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).WF_JOB_SUMMARY.GBL",
       personalData: "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1",
@@ -168,6 +179,7 @@ export const ConfigSchema = z.strictObject({
     stateRoot: AbsolutePathSchema,
     artifactRoot: AbsolutePathSchema,
     duoCredential: z.literal(`${rebuildRuntimeIsolation.browserProfileRoot}/duo-webauthn.json`),
+    duoExtensionDir: AbsolutePathSchema,
   }).default(DEFAULT_PATHS),
   annualDates: z.record(FiscalYearKeySchema, AnnualDateEntrySchema).default({}),
   operator: z.strictObject({ timekeeperName: z.string() }).default({ timekeeperName: "" }),
@@ -234,6 +246,16 @@ export const ConfigSchema = z.strictObject({
     maxAutoRefresh: z.number().int().nonnegative(),
     maxReopen: z.number().int().nonnegative(),
   }).default({ monitorTickMs: 30_000, maxAutoRefresh: 10, maxReopen: 3 }),
+  /**
+   * Worker browser-session launch policy. `headless` is the runtime default
+   * because Duo Autopilot answers the MFA ceremony in-page (no OS dialog);
+   * `closeProofMs` bounds the teardown that must PROVE page/context closure —
+   * an unprovable close poisons the resource rather than being assumed clean.
+   */
+  browser: z.strictObject({
+    headless: z.boolean(),
+    closeProofMs: z.number().int().positive(),
+  }).default({ headless: true, closeProofMs: 15_000 }),
   concurrency: z.strictObject({ defaultWorkers: z.number().int().positive() }).default({ defaultWorkers: 4 }),
   daemon: z.strictObject({ idleMs: z.number().int().positive(), idleRepollMs: z.number().int().positive() })
     .default({ idleMs: 900_000, idleRepollMs: 30_000 }),
@@ -288,6 +310,7 @@ export const SettingsOverrideSchema = z.strictObject({
     maxSlices: z.number().int().positive().optional(),
   }).optional(),
   browserHealth: ConfigSchema.shape.browserHealth.unwrap().partial().optional(),
+  browser: ConfigSchema.shape.browser.unwrap().partial().optional(),
   concurrency: ConfigSchema.shape.concurrency.unwrap().partial().optional(),
   daemon: ConfigSchema.shape.daemon.unwrap().partial().optional(),
   features: ConfigSchema.shape.features.unwrap().partial().optional(),

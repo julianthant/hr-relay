@@ -22,3 +22,14 @@ evidence before runtime use.
   unique canonical ids; sanitized counters remain evidence, not falsely attributed selector
   provenance. Returning from detail re-runs the result expansion because PeopleSoft may paginate it
   again, and assignment extraction spans every expanded `tdgbrPER_ASGN_EMP_VW$*` grid.
+- **2026-08-03: The login recipe lives in `session.ts` and verifies its landing twice.** `session.ts`
+  is a sanctioned raw-browser owner, so UCPath's flow (portal → "Log in to UCPath" → campus
+  discovery → Shibboleth) sits there rather than in the factory. Ported from legacy
+  `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc` `src/infra/auth/login.ts`
+  (blob `c8e6656de394b52aebd174e2a243c9464a1678e6`) and `src/infra/auth/sso-fields.ts`
+  (blob `e331e8a12523f3e824f89d7e151d02bbcdf54269`). `isAuthenticatedUcpathAppUrl` keeps every legacy
+  exclusion — the `ucpathdiscovery/disco` page, the SSO/Duo hosts, and PeopleSoft's classic-PIA
+  `?cmd=login` / `?cmd=expire` landings, which sit on the SAME host as a real page and would
+  otherwise read as success — and success additionally requires the SSO form to be gone. Legacy's
+  `waitForTimeout` settles and Duo poll loop did NOT come across: Duo Autopilot clears the ceremony,
+  so the honest wait is a bounded `waitForURL` that fails loud by step.

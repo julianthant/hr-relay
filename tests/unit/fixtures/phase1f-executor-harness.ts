@@ -17,6 +17,7 @@ import type { TestClock } from "../../../src/domain/clock.js";
 import {
   BrowserSessionIdSchema,
   EidSchema,
+  FingerprintSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
 } from "../../../src/domain/ids.js";
@@ -34,6 +35,7 @@ import {
   type BrowserSessionCloseProof,
   type BrowserSessionCloseReason,
   type WorkerBrowserSessionFactory,
+  type WorkerSessionEvent,
 } from "../../../src/core/worker-sessions.js";
 import { ReadOnboardingDatesOutputSchema } from "../../../src/domain/contracts/crm/read-onboarding-dates.js";
 import { ReadOnboardingRecordOutputSchema } from "../../../src/domain/contracts/crm/read-onboarding-record.js";
@@ -203,11 +205,17 @@ export class ManualScheduler implements MonotonicDeadlineScheduler {
 
 /* ── deterministic browser-session factory ───────────────────────────────── */
 
+/** One ordered factory event, so a test can prove close-before-open ordering. */
+export type SessionFactoryTraceEntry =
+  | Readonly<{ kind: "open"; system: string; sessionId: string }>
+  | Readonly<{ kind: "close"; system: string; sessionId: string; reason: BrowserSessionCloseReason }>;
+
 export interface SessionFactoryHarness {
   readonly factory: WorkerBrowserSessionFactory;
   readonly opens: (system?: string) => number;
   readonly logins: () => number;
   readonly closeReasons: () => readonly BrowserSessionCloseReason[];
+  readonly trace: () => readonly SessionFactoryTraceEntry[];
 }
 
 /**
@@ -222,6 +230,7 @@ export function sessionFactoryHarness(
   let logins = 0;
   const opensBySystem = new Map<string, number>();
   const closeReasons: BrowserSessionCloseReason[] = [];
+  const trace: SessionFactoryTraceEntry[] = [];
   return {
     factory: {
       async open(input) {
@@ -236,10 +245,12 @@ export function sessionFactoryHarness(
         const sessionId = BrowserSessionIdSchema.parse(
           `00000000-0000-4000-8000-${String(opens).padStart(12, "0")}`,
         );
+        trace.push({ kind: "open", system: input.system, sessionId });
         return {
           sessionId,
           system: input.system,
           ...(input.instance === undefined ? {} : { instance: input.instance }),
+          configFingerprint: input.configFingerprint,
           acceptDownloads: input.acceptDownloads,
           exclusive: input.exclusive,
           driver,
@@ -254,6 +265,7 @@ export function sessionFactoryHarness(
           },
           async close(closeInput: Readonly<{ reason: BrowserSessionCloseReason }>): Promise<BrowserSessionCloseProof> {
             closeReasons.push(closeInput.reason);
+            trace.push({ kind: "close", system: input.system, sessionId, reason: closeInput.reason });
             return { sessionId, system: input.system, pagesClosed: true, contextClosed: true };
           },
         };
@@ -262,6 +274,7 @@ export function sessionFactoryHarness(
     opens: (system?: string) => (system === undefined ? opens : opensBySystem.get(system) ?? 0),
     logins: () => logins,
     closeReasons: () => Object.freeze([...closeReasons]),
+    trace: () => Object.freeze([...trace]),
   };
 }
 
@@ -300,12 +313,19 @@ export function happySessionHarness(): SessionFactoryHarness {
 export function sessionManagerFor(
   harness: SessionFactoryHarness,
   clock: TestClock,
+  onEvent?: (event: WorkerSessionEvent) => void,
 ): WorkerSessionManager {
-  return new WorkerSessionManager({
+  const manager = new WorkerSessionManager({
     workerId: EXECUTOR_WORKER_ID,
     workflowId: EXECUTOR_WORKFLOW_ID,
     stores: taskStoreRegistry,
     factory: harness.factory,
     clock,
+    ...(onEvent === undefined ? {} : { onEvent }),
   });
+  // D116: production binds the claimed run's fingerprint in the worker loop;
+  // this harness stands in for that loop, so it binds the fixture envelope's
+  // exact fingerprint (`QUEUED_RUN.envelope.configFingerprint`).
+  manager.bindRunConfigFingerprint(FingerprintSchema.parse(QUEUED_RUN.envelope.configFingerprint));
+  return manager;
 }

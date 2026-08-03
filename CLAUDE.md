@@ -253,6 +253,19 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   identity comes from the prepare output's `stagedPageState` field, and beat ③ observes via the
   driver's existing semantic `read(observationId)` — no new driver method. Dry-run is the separate
   `executeDryRun` arm (zero intent/fence/commit); `executeTransaction` with dryRun refuses loudly.
+- **2026-08-03: A browser session is only "closed" when closure was OBSERVED, and only reusable
+  when its whole identity matches.** The real factory (`src/infra/browser/`) launches Playwright's
+  FULL bundled Chromium (`channel: "chromium"`, persistent context) with the Duo Autopilot extension
+  — the headless shell and Chrome stable both cannot load one. `close()` returns a proof only after
+  every page reports `isClosed()` AND the context emits its own `close` event within a bounded
+  deadline; `await context.close()` resolving proves nothing by itself. D116 makes
+  `configFingerprint` part of the reuse identity (bound per claimed run by the worker loop, absent =
+  fail loud), and the fingerprint is in the on-disk profile path too, so a config change cannot be
+  inherited through a warm profile. Login recipes stay in `stores/<system>/session.ts`; that file
+  and `src/infra/browser/**` are the only raw-browser owners, and tasks/workflows may reach neither.
+  Login verifies twice — the ported landing predicate AND the SSO form being gone — because UCPath's
+  `?cmd=login` expiry page sits on the same host as a real page, and CRM's login page sits on the
+  same host as its app.
 - **2026-08-03: The interpreter re-reads authority before every CAS, and replay policy is
   structural.** The worker executor (`src/core/run-executor.ts` + `worker-loop.ts`) never tracks a
   run version locally: heartbeat renewal bumps the version concurrently with node transitions, so

@@ -143,7 +143,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "d15c74f21f0ceaf380e5cca61813267c7676c661868ad2103a2c36a60e8d269e",
+      "fingerprint": "303bf9e304c2cb116317db87f8c3461399dbe51e4361fb1ec9369a058c46b2f9",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -159,7 +159,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "1ca368fbb93699753e53ef3b2c0db3d3da61e43fb9cf242234b9a3eabc5478d2"
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
         },
         {
           "path": "src/base/store.ts",
@@ -187,7 +187,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "b776b2aef33e79f97b1a3373088ab8c9e0d3ba53dab8de8a7031af734b5780a1"
+          "sha256": "9d05a4a5ef9951fa0df5c185f369ba3227bdb72120a9f832b3ea81f0c951ff8a"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -305,7 +305,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "49b86a9ee80f5c5edfdb011b05c7d1e5b216058f307312f5df93776fda014040",
+      "fingerprint": "00a99a2ff75b289c23cbdc3a382d1b189c86612d0aa1244faeccfba4ba51e8a1",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -321,7 +321,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "1ca368fbb93699753e53ef3b2c0db3d3da61e43fb9cf242234b9a3eabc5478d2"
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
         },
         {
           "path": "src/base/store.ts",
@@ -349,7 +349,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "b776b2aef33e79f97b1a3373088ab8c9e0d3ba53dab8de8a7031af734b5780a1"
+          "sha256": "9d05a4a5ef9951fa0df5c185f369ba3227bdb72120a9f832b3ea81f0c951ff8a"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -467,7 +467,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "290c82e2657248d1073e029fcd638c2b72eae7ea7479867c6bb6933da57ea638",
+      "fingerprint": "92b7e9405f139630fd60f0482bfb20b771ea061fd4143a23f274c3adea18575b",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -483,7 +483,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/session.ts",
-          "sha256": "1ca368fbb93699753e53ef3b2c0db3d3da61e43fb9cf242234b9a3eabc5478d2"
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
         },
         {
           "path": "src/base/store.ts",
@@ -511,7 +511,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "b776b2aef33e79f97b1a3373088ab8c9e0d3ba53dab8de8a7031af734b5780a1"
+          "sha256": "9d05a4a5ef9951fa0df5c185f369ba3227bdb72120a9f832b3ea81f0c951ff8a"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -633,7 +633,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "ca63495c9e80181dd32ab98bc8be0de2124b9ba96efc8b3268eede4aac879155",
+      "fingerprint": "72a6118c647028dd6e718f912b5c83ac3d1c56027e54abc8fdb02dde99feae42",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -669,7 +669,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "b776b2aef33e79f97b1a3373088ab8c9e0d3ba53dab8de8a7031af734b5780a1"
+          "sha256": "9d05a4a5ef9951fa0df5c185f369ba3227bdb72120a9f832b3ea81f0c951ff8a"
         },
         {
           "path": "src/domain/contracts/base.ts",

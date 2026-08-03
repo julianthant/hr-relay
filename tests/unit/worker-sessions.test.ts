@@ -3,6 +3,7 @@ import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import {
   BrowserSessionIdSchema,
+  FingerprintSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
 } from "../../src/domain/ids.js";
@@ -19,6 +20,8 @@ import { taskStoreRegistry } from "../../src/stores/index.js";
 const WORKER_ID = WorkerIdSchema.parse("worker-session-fixture");
 const WORKFLOW_ID = WorkflowIdSchema.parse("person-lookup");
 const SIGNAL = new AbortController().signal;
+const RUN_FINGERPRINT = FingerprintSchema.parse("1".repeat(64));
+const OTHER_FINGERPRINT = FingerprintSchema.parse("2".repeat(64));
 
 function sessionFactory(options: Readonly<{
   resetFailureAt?: number;
@@ -47,6 +50,7 @@ function sessionFactory(options: Readonly<{
           sessionId,
           system: input.system,
           ...(input.instance === undefined ? {} : { instance: input.instance }),
+          configFingerprint: input.configFingerprint,
           acceptDownloads: input.acceptDownloads,
           exclusive: input.exclusive,
           driver: { system: input.system },
@@ -93,7 +97,7 @@ function manager(
   harness: ReturnType<typeof sessionFactory>,
   events: WorkerSessionEvent[] = [],
 ): WorkerSessionManager {
-  return new WorkerSessionManager({
+  const sessions = new WorkerSessionManager({
     workerId: WORKER_ID,
     workflowId: WORKFLOW_ID,
     stores: taskStoreRegistry,
@@ -101,6 +105,9 @@ function manager(
     clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
     onEvent: (event) => events.push(event),
   });
+  // Stand-in for the worker loop's per-run D116 bind.
+  sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+  return sessions;
 }
 
 const UCPATH_REUSE = {
@@ -272,6 +279,95 @@ describe("worker browser sessions", () => {
     await sessions.closeAll("worker-stop");
     assert.deepEqual(sessions.activeSystems(), []);
     assert.equal(harness.closes(), 2);
+  });
+
+  it("requires a bound run config fingerprint before any driver lease (D116)", async () => {
+    const harness = sessionFactory();
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID,
+      workflowId: WORKFLOW_ID,
+      stores: taskStoreRegistry,
+      factory: harness.factory,
+      clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
+    });
+    await assert.rejects(
+      sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "must not run"),
+      /requires the claimed run's bound config fingerprint/,
+    );
+    assert.equal(harness.opens(), 0);
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    assert.throws(
+      () => sessions.bindRunConfigFingerprint(OTHER_FINGERPRINT),
+      /already has a bound run config fingerprint/,
+    );
+    sessions.releaseRunConfigFingerprint();
+    assert.throws(
+      () => sessions.releaseRunConfigFingerprint(),
+      /no bound run config fingerprint to release/,
+    );
+  });
+
+  it("reuses only on an exact fingerprint match and proves the boundary on drift (D116)", async () => {
+    const harness = sessionFactory();
+    const events: WorkerSessionEvent[] = [];
+    const sessions = manager(harness, events);
+    await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "first");
+    await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "same-run-reuse");
+    assert.equal(harness.opens(), 1);
+
+    // The next run resolves a DIFFERENT config fingerprint: the old context is
+    // closed with proof before a replacement authenticates — never reused.
+    sessions.releaseRunConfigFingerprint();
+    sessions.bindRunConfigFingerprint(OTHER_FINGERPRINT);
+    await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "next-run");
+    assert.equal(harness.opens(), 2);
+    assert.equal(harness.logins(), 2);
+    const relevant = events.filter(({ type }) => type !== "browser-session:reset");
+    assert.deepEqual(relevant.map(({ type }) => type), [
+      "browser-session:start",
+      "browser-session:close",
+      "browser-session:start",
+    ]);
+    assert.equal(
+      relevant[1]?.type === "browser-session:close" ? relevant[1].reason : undefined,
+      "fresh-boundary",
+    );
+    assert.notEqual(relevant[0]?.sessionId, relevant[2]?.sessionId);
+  });
+
+  it("treats a changed resolved instance as identity drift, not silent reuse (D116)", async () => {
+    const harness = sessionFactory();
+    const events: WorkerSessionEvent[] = [];
+    const sessions = manager(harness, events);
+    await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "prod-run");
+    sessions.releaseRunConfigFingerprint();
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    await sessions.withDriver(UCPATH_REUSE, "test", SIGNAL, async () => "test-run");
+    assert.equal(harness.opens(), 2);
+    const closes = events.filter((event) => event.type === "browser-session:close");
+    assert.deepEqual(closes.map((event) => event.reason), ["fresh-boundary"]);
+  });
+
+  it("refuses a factory resource that echoes a different fingerprint (D116)", async () => {
+    const harness = sessionFactory();
+    const forging: WorkerBrowserSessionFactory = {
+      async open(input) {
+        const resource = await harness.factory.open(input);
+        return { ...resource, configFingerprint: OTHER_FINGERPRINT };
+      },
+    };
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID,
+      workflowId: WORKFLOW_ID,
+      stores: taskStoreRegistry,
+      factory: forging,
+      clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    await assert.rejects(
+      sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "must not run"),
+      /mismatched launch options/,
+    );
   });
 
   it("refuses an OnBase close that cannot prove identity-lease release", async () => {

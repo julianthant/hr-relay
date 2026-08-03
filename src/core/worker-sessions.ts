@@ -6,12 +6,17 @@
  * uncertain release poison-closes the resource. An authored `fresh` need
  * closes the old resource before the replacement can emit `start`.
  */
-import type { BrowserAuthenticationHandle } from "../base/session.js";
+import type {
+  BrowserSessionCloseReason,
+  WorkerBrowserResource,
+  WorkerBrowserSessionFactory,
+} from "../base/session.js";
 import type { BrowserDriver } from "../base/task.js";
 import type { Clock } from "../domain/clock.js";
 import {
   BrowserSessionIdSchema,
   BrowserSystemIdSchema,
+  FingerprintSchema,
   IsoInstantSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
@@ -19,6 +24,7 @@ import {
 import type {
   BrowserSessionId,
   BrowserSystemId,
+  Fingerprint,
   WorkerId,
   WorkflowId,
 } from "../domain/ids.js";
@@ -26,45 +32,12 @@ import { SessionNeedSchema } from "../domain/session.js";
 import type { SessionNeed } from "../domain/session.js";
 import type { RegisteredTaskStore, TaskStoreRegistry } from "../base/store.js";
 
-export interface BrowserSessionCloseProof {
-  readonly sessionId: BrowserSessionId;
-  readonly system: BrowserSystemId;
-  readonly pagesClosed: true;
-  readonly contextClosed: true;
-  readonly exclusiveLeaseReleased?: true;
-}
-
-export interface WorkerBrowserResource {
-  readonly sessionId: BrowserSessionId;
-  readonly system: BrowserSystemId;
-  readonly instance?: string;
-  readonly acceptDownloads: boolean;
-  readonly exclusive: boolean;
-  readonly authentication: BrowserAuthenticationHandle;
-  readonly driver: BrowserDriver;
-  readonly reset: (input: Readonly<{ signal: AbortSignal }>) => Promise<void>;
-  readonly close: (input: Readonly<{ reason: BrowserSessionCloseReason }>) =>
-    Promise<BrowserSessionCloseProof>;
-}
-
-export interface WorkerBrowserSessionFactory {
-  readonly open: (input: Readonly<{
-    workerId: WorkerId;
-    workflowId: WorkflowId;
-    system: BrowserSystemId;
-    instance?: string;
-    acceptDownloads: boolean;
-    exclusive: boolean;
-    signal: AbortSignal;
-  }>) => Promise<WorkerBrowserResource>;
-}
-
-export type BrowserSessionCloseReason =
-  | "fresh-boundary"
-  | "poisoned"
-  | "parked"
-  | "worker-stop"
-  | "login-failed";
+export type {
+  BrowserSessionCloseProof,
+  BrowserSessionCloseReason,
+  WorkerBrowserResource,
+  WorkerBrowserSessionFactory,
+} from "../base/session.js";
 
 export type WorkerSessionEvent =
   | Readonly<{
@@ -177,6 +150,7 @@ export class WorkerSessionManager {
   readonly #starting = new Map<BrowserSystemId, Promise<WorkerBrowserResource>>();
   readonly #tails = new Map<BrowserSystemId, Promise<void>>();
   #closingReason: "parked" | "worker-stop" | undefined;
+  #runConfigFingerprint: Fingerprint | undefined;
 
   constructor(options: WorkerSessionManagerOptions) {
     this.#workerId = WorkerIdSchema.parse(options.workerId);
@@ -191,6 +165,30 @@ export class WorkerSessionManager {
     return Object.freeze([...this.#resources.keys()]);
   }
 
+  /**
+   * D116 (doc 11 §4): the worker loop binds the claimed run's immutable
+   * `configFingerprint` before any task executes, making the fingerprint part
+   * of the session lookup identity rather than evidence metadata. Exactly one
+   * run is bound at a time — a second bind without a release is a programming
+   * error and fails loud.
+   */
+  bindRunConfigFingerprint(fingerprint: Fingerprint): void {
+    const parsed = FingerprintSchema.parse(fingerprint);
+    if (this.#runConfigFingerprint !== undefined) {
+      throw new Error(
+        `worker ${this.#workerId} already has a bound run config fingerprint; one worker owns one active run`,
+      );
+    }
+    this.#runConfigFingerprint = parsed;
+  }
+
+  releaseRunConfigFingerprint(): void {
+    if (this.#runConfigFingerprint === undefined) {
+      throw new Error(`worker ${this.#workerId} has no bound run config fingerprint to release`);
+    }
+    this.#runConfigFingerprint = undefined;
+  }
+
   async withDriver<Result>(
     needInput: SessionNeed,
     instance: string | undefined,
@@ -203,11 +201,17 @@ export class WorkerSessionManager {
         `${need.system} driver lease cannot start while worker sessions are closing for ${this.#closingReason}`,
       );
     }
+    const configFingerprint = this.#runConfigFingerprint;
+    if (configFingerprint === undefined) {
+      throw new Error(
+        `${need.system} driver lease requires the claimed run's bound config fingerprint (D116); none is bound`,
+      );
+    }
     return this.#withSystemTurn(need.system, signal, async () => {
       if (need.session === "fresh") {
         await this.#closeSystem(need.system, "fresh-boundary");
       }
-      const resource = await this.#getOrStart(need, instance, signal);
+      const resource = await this.#getOrStart(need, instance, configFingerprint, signal);
       try {
         const result = await waitForOperation(
           Promise.resolve().then(() => operation(resource.driver)),
@@ -306,6 +310,7 @@ export class WorkerSessionManager {
   async #getOrStart(
     need: SessionNeed,
     instance: string | undefined,
+    configFingerprint: Fingerprint,
     signal: AbortSignal,
   ): Promise<WorkerBrowserResource> {
     if (this.#poisoned.has(need.system)) {
@@ -313,22 +318,26 @@ export class WorkerSessionManager {
     }
     const existing = this.#resources.get(need.system);
     if (existing !== undefined) {
-      if (existing.instance !== instance) {
-        throw new Error(
-          `${need.system} reuse requested instance ${String(instance)} but the worker session owns ${String(existing.instance)}`,
-        );
+      // D116 (doc 11 §4, doc 05 §7): reuse requires the COMPLETE identity —
+      // worker (this manager), system, resolved instance, AND the run's
+      // config fingerprint. Any drift proves the old context closed (a forced
+      // fresh boundary) before a replacement is authenticated; a context
+      // configured under another run snapshot is never reused.
+      if (existing.instance !== instance || existing.configFingerprint !== configFingerprint) {
+        await this.#closeSystem(need.system, "fresh-boundary");
+      } else {
+        if (need.acceptDownloads === true && !existing.acceptDownloads) {
+          throw new Error(`${need.system} reused session was not opened with download acceptance`);
+        }
+        if (existing.exclusive !== (need.exclusive === true)) {
+          throw new Error(`${need.system} reused session exclusivity disagrees with the task need`);
+        }
+        return existing;
       }
-      if (need.acceptDownloads === true && !existing.acceptDownloads) {
-        throw new Error(`${need.system} reused session was not opened with download acceptance`);
-      }
-      if (existing.exclusive !== (need.exclusive === true)) {
-        throw new Error(`${need.system} reused session exclusivity disagrees with the task need`);
-      }
-      return existing;
     }
     const pending = this.#starting.get(need.system);
     if (pending !== undefined) return pending;
-    const started = this.#openAndLogin(need, instance, signal);
+    const started = this.#openAndLogin(need, instance, configFingerprint, signal);
     this.#starting.set(need.system, started);
     try {
       return await started;
@@ -340,6 +349,7 @@ export class WorkerSessionManager {
   async #openAndLogin(
     need: SessionNeed,
     instance: string | undefined,
+    configFingerprint: Fingerprint,
     signal: AbortSignal,
   ): Promise<WorkerBrowserResource> {
     const store = browserStoreFor(this.#stores, need.system);
@@ -352,6 +362,7 @@ export class WorkerSessionManager {
       workflowId: this.#workflowId,
       system: need.system,
       ...(instance === undefined ? {} : { instance }),
+      configFingerprint,
       acceptDownloads: need.acceptDownloads === true,
       exclusive,
       signal,
@@ -365,6 +376,7 @@ export class WorkerSessionManager {
         );
       }
       if (resource.instance !== instance
+        || resource.configFingerprint !== configFingerprint
         || resource.acceptDownloads !== (need.acceptDownloads === true)
         || resource.exclusive !== exclusive) {
         throw new Error(`${need.system} session factory returned a resource with mismatched launch options`);

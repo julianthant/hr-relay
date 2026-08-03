@@ -34,20 +34,55 @@ function entryUrls(config: Config, system: BrowserSystemId): { readonly prod: st
   }
 }
 
+/** `context` names the requester (a run id, or a worker/system session label). */
 export function resolveSystemEntryUrl(
   config: Config,
   system: BrowserSystemId,
   instance: RuntimeInstance,
-  runId: string,
+  context: string,
 ): string {
   const urls = entryUrls(config, system);
   if (instance === "prod") return urls.prod;
   if (urls.test === undefined || urls.test === urls.prod) {
     throw new Error(
-      `run ${runId} requested TEST instance for ${system} but no distinct test URL is configured; refusing production fallback`,
+      `${context} requested TEST instance for ${system} but no distinct test URL is configured; refusing production fallback`,
     );
   }
   return urls.test;
+}
+
+/**
+ * The URL a LOGIN starts at, per system and resolved instance.
+ *
+ * For every system except UCPath the login entry is the same route a task
+ * navigates to. UCPath is different and this is live-verified legacy knowledge:
+ * the deep PeopleSoft `smartHr` route is not reachable unauthenticated, so the
+ * flow enters at the UCPath portal (`urls.ucpath.<instance>.login`) and rides
+ * the "Log in to UCPath" → campus-discovery → Shibboleth hop chain. Ported from
+ * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * `src/infra/auth/login.ts` (`ucpathNavigateAndFill`).
+ *
+ * The prod/test rule is §4's, unchanged: `prod` is always the production
+ * literal, and `test` throws unless a DISTINCT test URL is configured — a
+ * session that believes it is hitting a sandbox can never silently land on
+ * production.
+ */
+export function resolveSystemLoginUrl(
+  config: Config,
+  system: BrowserSystemId,
+  instance: RuntimeInstance,
+  context: string,
+): string {
+  if (system !== "ucpath") return resolveSystemEntryUrl(config, system, instance, context);
+  const prod = config.urls.ucpath.prod.login;
+  if (instance === "prod") return prod;
+  const test = config.urls.ucpath.test?.login;
+  if (test === undefined || test === prod) {
+    throw new Error(
+      `${context} requested TEST instance for ucpath but no distinct test login URL is configured; refusing production fallback`,
+    );
+  }
+  return test;
 }
 
 export function resolveInstances(

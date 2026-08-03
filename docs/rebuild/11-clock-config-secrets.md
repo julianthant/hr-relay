@@ -401,6 +401,19 @@ Neither equal URLs nor the same credential set permits reuse across a different 
 because timeouts, feature flags, provider/browser policy, or another non-secret resolved leaf may
 have changed even when the route did not.
 
+**Phase 1f as-built (2026-08-03).** The worker loop binds the claimed run's `configFingerprint` on
+the session manager before any task executes and releases it when the run finishes; a driver lease
+without a bound fingerprint fails loud rather than defaulting to "whatever session exists". The
+concrete factory carries the fingerprint into the on-disk profile path too (doc 05, Phase-1f
+concrete session factory), so a config change cannot be silently inherited through a warm profile.
+
+Three config leaves landed with it: `browser.headless` (the runtime default is headless — Duo
+Autopilot answers the WebAuthn ceremony in-page, so there is no OS dialog to watch),
+`browser.closeProofMs` (the bound on the teardown that must PROVE page/context closure), and
+`paths.duoExtensionDir` (the unpacked extension the session factory loads). `urls.ucpath.*.login`
+joins them: the deep PeopleSoft routes are not reachable unauthenticated, so UCPath's login entry is
+its own route under this section's unchanged prod/test rule.
+
 ---
 
 ## 5. Fiscal-year dates — fail-loud, not silently stale
