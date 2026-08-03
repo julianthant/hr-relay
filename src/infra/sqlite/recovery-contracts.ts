@@ -16,6 +16,7 @@ export const AuthorityPendingCountsSchema = z.strictObject({
   unresolvedWriteIntents: NonNegativeIntSchema,
   leases: NonNegativeIntSchema,
   durableOutbox: NonNegativeIntSchema,
+  runTerminalOutbox: NonNegativeIntSchema,
   artifactOutbox: NonNegativeIntSchema,
   captureFinalizationOutboxes: NonNegativeIntSchema,
 });

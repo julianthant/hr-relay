@@ -5,6 +5,7 @@ export {
   AuthoritySchemaInspectionSchema,
   ImmutableInsertDispositionSchema,
   type AuthorityRepositories,
+  type AuthorityTerminalizationHooks,
   type AuthorityWriteCommitHooks,
   type ProjectionRepositories,
 } from "./authority-database.js";
@@ -85,3 +86,16 @@ export {
   type PermanentWriteResolution,
   type WriteFenceInput,
 } from "./write-commit-contracts.js";
+export {
+  FailureExecutionIdentitySchema,
+  FailureTerminalizationReportSchema,
+  FailureTerminalizationRequestSchema,
+  FailureTerminalizationStorageStepSchema,
+  SuccessTerminalizationReportSchema,
+  SuccessTerminalizationRequestSchema,
+  SuccessTerminalizationStorageStepSchema,
+  type FailureTerminalizationReport,
+  type FailureTerminalizationStorageStep,
+  type SuccessTerminalizationReport,
+  type SuccessTerminalizationStorageStep,
+} from "./run-terminal-contracts.js";

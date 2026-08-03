@@ -368,6 +368,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       unresolvedWriteIntents: 0,
       leases: 1,
       durableOutbox: 2,
+      runTerminalOutbox: 0,
       artifactOutbox: 1,
       captureFinalizationOutboxes: 0,
     });

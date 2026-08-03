@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import { JsonValueSchema, canonicalJsonStringify } from "./canonical-json.js";
 import { FingerprintSchema, type Fingerprint } from "./ids.js";
+import { sha256Hex } from "./sha256.js";
 
 export const SchemaBoundCanonicalValueSchema = z.strictObject({
   schemaHash: FingerprintSchema,
@@ -31,12 +31,9 @@ export function schemaBoundValueSchema<ValueSchema extends z.ZodType>(
  */
 export function deriveSchemaHash(schema: z.ZodType, io: "input" | "output"): Fingerprint {
   const projection = z.toJSONSchema(schema, { io, unrepresentable: "any", cycles: "ref" });
-  return FingerprintSchema.parse(createHash("sha256")
-    .update("hrauto:schema-identity:v1\0")
-    .update(io)
-    .update("\0")
-    .update(canonicalJsonStringify(projection))
-    .digest("hex"));
+  return FingerprintSchema.parse(sha256Hex(
+    `hrauto:schema-identity:v1\0${io}\0${canonicalJsonStringify(projection)}`,
+  ));
 }
 
 export type SchemaBoundCanonicalValue = z.infer<typeof SchemaBoundCanonicalValueSchema>;

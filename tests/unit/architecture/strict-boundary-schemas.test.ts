@@ -8,6 +8,7 @@ import { AUTHORITY_TABLE_REGISTRY, AuthorityTableRegistrySchema, TableSpecSchema
 import { RebuildArtifactRootSchema } from "../../../src/config/define-runtime-isolation.js";
 import { ArtifactPutMetadataSchema, ArtifactRefSchema } from "../../../src/domain/artifacts.js";
 import { BoundaryFailureSchema } from "../../../src/domain/boundary-failure.js";
+import { TerminalDependencyEvidenceSchema } from "../../../src/core/run-result.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
   BulkRunCommandRequestSchema,
@@ -59,6 +60,18 @@ import { ClassifiedDiagnosticValueSchema, RedactionResultSchema } from "../../..
 import { RUNTIME_DEPENDENCY_REGISTRY, RuntimeDependencyRegistrySchema } from "../../../src/domain/runtime-dependencies.js";
 import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema } from "../../../src/domain/runtime-environment.js";
 import { SchemaBoundCanonicalValueSchema } from "../../../src/domain/schema-bound-value.js";
+import {
+  NotRunTerminalDependencySchema,
+  ResolvedTerminalDependencySchema,
+  RunResultRecordSchema,
+  TerminalDependencyRecordSchema,
+  TerminalNotRunReasonSchema,
+  deriveCheckpointOutputDigest,
+  deriveCheckpointProvenanceDigest,
+  deriveRunResultDigest,
+  deriveTerminalDependencyDigest,
+} from "../../../src/domain/run/result.js";
+import { RunTerminalOutboxRecordSchema } from "../../../src/domain/run/terminal-outbox.js";
 import {
   DataPointSchema,
   RecordedDataPointSchema,
@@ -225,6 +238,13 @@ import {
   StorageHealthCauseSchema,
   VersionPlanStorageRecordSchema,
   WriteFenceInputSchema,
+  FailureExecutionIdentitySchema,
+  FailureTerminalizationReportSchema,
+  FailureTerminalizationRequestSchema,
+  FailureTerminalizationStorageStepSchema,
+  SuccessTerminalizationReportSchema,
+  SuccessTerminalizationRequestSchema,
+  SuccessTerminalizationStorageStepSchema,
 } from "../../../src/infra/sqlite/index.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
 import { buildSafeUiCatalog } from "../../../src/stores/ucpath/driver/catalog.js";
@@ -254,6 +274,7 @@ import {
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
 const STABLE_RECORD_ID = `${"c".repeat(64)}#oath-signature#1`;
@@ -289,6 +310,56 @@ const RUN_CHECKPOINT = {
   }],
   writtenAt: "2026-07-31T17:00:00.000Z",
 };
+const RESOLVED_TERMINAL_DEPENDENCY = {
+  state: "resolved",
+  nodeId: RUN_CHECKPOINT.nodeId,
+  checkpoint: {
+    workflowId: RUN_CHECKPOINT.workflowId,
+    itemId: RUN_CHECKPOINT.itemId,
+    attempt: RUN_CHECKPOINT.attempt,
+    runId: RUN_CHECKPOINT.runId,
+  },
+  outputSchemaHash: RUN_CHECKPOINT.output.schemaHash,
+  descriptorVersion: RUN_CHECKPOINT.descriptorVersion,
+  contractFingerprint: RUN_CHECKPOINT.contractFingerprint,
+  implFingerprint: RUN_CHECKPOINT.implFingerprint,
+  outputDigest: deriveCheckpointOutputDigest(RUN_CHECKPOINT.output),
+  provenanceDigest: deriveCheckpointProvenanceDigest(RUN_CHECKPOINT.provenance),
+};
+const NOT_RUN_TERMINAL_DEPENDENCY = {
+  state: "not-run",
+  nodeId: "crm-dates",
+  reason: "condition-false",
+};
+const TERMINAL_RESULT_VALUE = { schemaHash: "a".repeat(64), value: { complete: true } };
+const TERMINAL_DEPENDENCIES = [RESOLVED_TERMINAL_DEPENDENCY, NOT_RUN_TERMINAL_DEPENDENCY];
+const RUN_RESULT = {
+  runId: "22222222-2222-4222-8222-222222222222",
+  attempt: 1,
+  workflowId: "person-lookup",
+  descriptorVersion: 1,
+  contractFingerprint: "a".repeat(64),
+  configFingerprint: "b".repeat(64),
+  configSnapshotId: "33333333-3333-4333-8333-333333333333",
+  resultSchemaHash: "a".repeat(64),
+  result: TERMINAL_RESULT_VALUE,
+  resultDigest: deriveRunResultDigest(TERMINAL_RESULT_VALUE),
+  dependencies: TERMINAL_DEPENDENCIES,
+  dependencyDigest: deriveTerminalDependencyDigest(TERMINAL_DEPENDENCIES),
+  createdAt: "2026-07-31T17:00:00.000Z",
+};
+const RUN_TERMINAL_OUTBOX = {
+  outboxId: "11111111-1111-4111-8111-111111111111",
+  payload: {
+    kind: "run-terminal-result",
+    runId: RUN_RESULT.runId,
+    workflowId: RUN_RESULT.workflowId,
+    attempt: RUN_RESULT.attempt,
+    resultDigest: RUN_RESULT.resultDigest,
+  },
+  projection: { state: "pending" },
+  createdAt: "2026-07-31T17:00:00.000Z",
+};
 const PERSON_LOOKUP_PARSER = {
   split: { kind: "delimited", delimiters: [";", "\n"] },
   rules: [
@@ -317,6 +388,24 @@ const FAILURE = {
   writeState: "not-attempted",
   causeChain: [{ code: "UNEXPECTED_PAGE_STATE", summary: "Page mismatch", role: "primary", transient: false }],
   remediation: [{ kind: "code-change", message: "Repair the state recipe" }], occurredAt: NOW,
+};
+const FAILED_RUN = {
+  ...QUEUED_RUN,
+  lifecycle: {
+    state: "terminal",
+    outcome: "failed",
+    endedAt: NOW,
+    failureId: FAILURE.failureId,
+    errorSummary: FAILURE.summary,
+  },
+  claimGeneration: 1,
+  version: 2,
+};
+const DONE_RUN = {
+  ...QUEUED_RUN,
+  lifecycle: { state: "terminal", outcome: "done", endedAt: NOW },
+  claimGeneration: 1,
+  version: 2,
 };
 
 const RECEIPT = {
@@ -551,6 +640,7 @@ const AUTHORITY_PENDING_COUNTS = {
   unresolvedWriteIntents: 1,
   leases: 1,
   durableOutbox: 1,
+  runTerminalOutbox: 1,
   artifactOutbox: 1,
   captureFinalizationOutboxes: 0,
 };
@@ -823,6 +913,19 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     { path: "selection.selected", source: "operator", observedAt: NOW, originalObservedAt: NOW, correctedAt: NOW, supersedes: NOW },
   ] },
   { name: "RunCheckpointRecord", schema: RunCheckpointRecordSchema, fixtures: [RUN_CHECKPOINT], openFixturePaths: ["output.value"] },
+  { name: "TerminalNotRunReason", schema: TerminalNotRunReasonSchema, fixtures: TerminalNotRunReasonSchema.options },
+  { name: "ResolvedTerminalDependency", schema: ResolvedTerminalDependencySchema, fixtures: [RESOLVED_TERMINAL_DEPENDENCY] },
+  { name: "NotRunTerminalDependency", schema: NotRunTerminalDependencySchema, fixtures: [NOT_RUN_TERMINAL_DEPENDENCY] },
+  { name: "TerminalDependencyRecord", schema: TerminalDependencyRecordSchema, fixtures: [RESOLVED_TERMINAL_DEPENDENCY, NOT_RUN_TERMINAL_DEPENDENCY] },
+  { name: "RunResultRecord", schema: RunResultRecordSchema, fixtures: [RUN_RESULT], openFixturePaths: ["result.value"] },
+  { name: "RunTerminalOutboxRecord", schema: RunTerminalOutboxRecordSchema, fixtures: [
+    RUN_TERMINAL_OUTBOX,
+    { ...RUN_TERMINAL_OUTBOX, projection: { state: "projected", projectedAt: NOW, projectionFingerprint: HASH_A } },
+  ] },
+  { name: "TerminalDependencyEvidence", schema: TerminalDependencyEvidenceSchema, fixtures: [
+    { state: "resolved", nodeId: RUN_CHECKPOINT.nodeId, checkpoint: RUN_CHECKPOINT },
+    NOT_RUN_TERMINAL_DEPENDENCY,
+  ], openFixturePaths: ["checkpoint.output.value"] },
   { name: "CheckpointExpectation", schema: CheckpointExpectationSchema, fixtures: [
     { descriptorVersion: 1, contractFingerprint: HASH_A, implFingerprint: HASH_B, outputSchemaHash: HASH_A },
   ] },
@@ -975,6 +1078,34 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     ledgerOutbox: LEDGER_OUTBOX_RECORD,
     terminalSpanOutbox: SPAN_OUTBOX_RECORD,
   }], openFixturePaths: ["terminalSpanOutbox.payload.outcome.output.value"] },
+  { name: "FailureExecutionIdentity", schema: FailureExecutionIdentitySchema, fixtures: [
+    { kind: "run" },
+    { kind: "node", nodeId: FAILURE.nodeId, taskId: FAILURE.taskId },
+  ] },
+  { name: "FailureTerminalizationRequest", schema: FailureTerminalizationRequestSchema, fixtures: [{
+    failure: FAILURE,
+    execution: { kind: "node", nodeId: FAILURE.nodeId, taskId: FAILURE.taskId },
+    expectedVersion: 1,
+    claim: { workerId: "worker-1", claimGeneration: 1 },
+    now: NOW,
+  }] },
+  { name: "FailureTerminalizationReport", schema: FailureTerminalizationReportSchema, fixtures: [
+    { state: "applied", failure: FAILURE, run: FAILED_RUN },
+    { state: "replayed", failure: FAILURE, run: FAILED_RUN },
+  ], openFixturePaths: ["run.input.raw", "run.input.parsed.value"] },
+  { name: "FailureTerminalizationStorageStep", schema: FailureTerminalizationStorageStepSchema, fixtures: FailureTerminalizationStorageStepSchema.options },
+  { name: "SuccessTerminalizationRequest", schema: SuccessTerminalizationRequestSchema, fixtures: [{
+    result: RUN_RESULT,
+    outbox: RUN_TERMINAL_OUTBOX,
+    expectedVersion: 1,
+    claim: { workerId: "worker-1", claimGeneration: 1 },
+    now: NOW,
+  }], openFixturePaths: ["result.result.value"] },
+  { name: "SuccessTerminalizationReport", schema: SuccessTerminalizationReportSchema, fixtures: [
+    { state: "applied", result: RUN_RESULT, outbox: RUN_TERMINAL_OUTBOX, run: DONE_RUN },
+    { state: "replayed", result: RUN_RESULT, outbox: RUN_TERMINAL_OUTBOX, run: DONE_RUN },
+  ], openFixturePaths: ["result.result.value", "run.input.raw", "run.input.parsed.value"] },
+  { name: "SuccessTerminalizationStorageStep", schema: SuccessTerminalizationStorageStepSchema, fixtures: SuccessTerminalizationStorageStepSchema.options },
   { name: "BoundaryFailure", schema: BoundaryFailureSchema, fixtures: [{ kind: "boundary-failure", source: "config", summary: "invalid config", issues: [{ path: ["urls"], code: "invalid", message: "invalid URL" }] }] },
   { name: "Config", schema: ConfigSchema, fixtures: [ConfigSchema.parse({})] },
   { name: "SettingsOverride", schema: SettingsOverrideSchema, fixtures: [{}] },

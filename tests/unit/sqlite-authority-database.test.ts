@@ -6,6 +6,10 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { AUTHORITY_TABLE_REGISTRY, type AuthorityTableName } from "../../src/domain/authority.js";
 import { manualClock } from "../../src/domain/clock.js";
+import {
+  deriveRunResultDigest,
+  deriveTerminalDependencyDigest,
+} from "../../src/domain/run/result.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
@@ -18,6 +22,7 @@ import {
   GATE_RESULT,
   HASH_A,
   HASH_B,
+  HASH_C,
   IDEMPOTENCY_KEY,
   LATER,
   NOTIFICATION,
@@ -25,6 +30,7 @@ import {
   UUID_1,
   UUID_2,
   UUID_3,
+  UUID_4,
   UUID_5,
   UUID_6,
   UUID_7,
@@ -32,7 +38,14 @@ import {
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "./fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, START_PLAN, WORKER_START_REQUEST } from "./fixtures/phase1f-run-fixtures.js";
+import {
+  QUEUED_RUN,
+  RUN_ID,
+  START_PLAN,
+  WORKER_ID,
+  WORKER_START_REQUEST,
+  WORKFLOW_ID,
+} from "./fixtures/phase1f-run-fixtures.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -57,6 +70,54 @@ const ARTIFACT_OUTBOX = {
   createdAt: NOW,
 };
 const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
+const TERMINAL_RESULT_VALUE = { schemaHash: HASH_A, value: { complete: true } };
+const TERMINAL_RESULT = {
+  runId: RUN_ID,
+  attempt: 1,
+  workflowId: WORKFLOW_ID,
+  descriptorVersion: 1,
+  contractFingerprint: HASH_A,
+  configFingerprint: HASH_B,
+  configSnapshotId: UUID_4,
+  resultSchemaHash: HASH_A,
+  result: TERMINAL_RESULT_VALUE,
+  resultDigest: deriveRunResultDigest(TERMINAL_RESULT_VALUE),
+  dependencies: [],
+  dependencyDigest: deriveTerminalDependencyDigest([]),
+  createdAt: LATER,
+};
+const RUN_TERMINAL_OUTBOX = {
+  outboxId: UUID_7,
+  payload: {
+    kind: "run-terminal-result",
+    runId: RUN_ID,
+    workflowId: WORKFLOW_ID,
+    attempt: 1,
+    resultDigest: TERMINAL_RESULT.resultDigest,
+  },
+  projection: { state: "pending" },
+  createdAt: LATER,
+};
+const FAILURE_RECORD = {
+  failureId: UUID_6,
+  fingerprint: HASH_C,
+  runId: RUN_ID,
+  traceId: QUEUED_RUN.envelope.traceId,
+  attempt: 1,
+  workflowId: WORKFLOW_ID,
+  code: "UNEXPECTED_PAGE_STATE",
+  summary: "The current page state was not recognized",
+  transient: false,
+  writeState: "not-attempted",
+  causeChain: [{
+    code: "UNEXPECTED_PAGE_STATE",
+    summary: "The current page state was not recognized",
+    role: "primary",
+    transient: false,
+  }],
+  remediation: [{ kind: "code-change", message: "Map the verified page state" }],
+  occurredAt: LATER,
+};
 const RUN_CHECKPOINT = {
   workflowId: "person-lookup",
   itemId: UUID_3,
@@ -119,6 +180,29 @@ function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityData
   const database = AuthorityDatabase.open({ path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
   openDatabases.push(database);
   return database;
+}
+
+function prepareRunning(database: AuthorityDatabase) {
+  database.authority.runs.enqueue(QUEUED_RUN);
+  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW });
+  if (claimed.state !== "claimed") throw new Error("generation fixture did not claim a run");
+  const validating = database.authority.runs.transition({
+    runId: RUN_ID,
+    expectedVersion: claimed.run.version,
+    claim: { workerId: WORKER_ID, claimGeneration: 1 },
+    lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
+    now: NOW,
+  });
+  if (validating.state !== "applied") throw new Error("generation fixture did not validate");
+  const running = database.authority.runs.transition({
+    runId: RUN_ID,
+    expectedVersion: validating.run.version,
+    claim: { workerId: WORKER_ID, claimGeneration: 1 },
+    lifecycle: { state: "running", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
+    now: NOW,
+  });
+  if (running.state !== "applied") throw new Error("generation fixture did not run");
+  return running.run;
 }
 
 afterEach(() => {
@@ -232,7 +316,7 @@ describe("native SQLite authority schema", () => {
     legacy.close();
 
     const upgraded = openDatabase(path);
-    assert.equal(upgraded.inspectSchema().schemaVersion, 6);
+    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(upgraded.authority.startPlans.get(LEGACY_V5_START_PLAN.startPlanId), undefined);
     assert.throws(
       () => upgraded.authority.startPlans.consume({
@@ -249,6 +333,50 @@ describe("native SQLite authority schema", () => {
       /does not exist/,
       "a v5 confirmation must re-plan; canonical input is never fabricated as raw ingress",
     );
+  });
+
+  it("upgrades the exact committed v6 shape to v7 without changing existing authority", () => {
+    const path = databasePath("d110-d114-v6.sqlite");
+    const legacy = new DatabaseSync(path);
+    legacy.exec("BEGIN EXCLUSIVE");
+    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 6)) {
+      for (const statement of migration.statements) legacy.exec(statement);
+    }
+    legacy.prepare(`
+      INSERT INTO authority_meta (
+        singleton_id, schema_version, authority_generation, updated_at,
+        migration_owner, migration_started_at
+      ) VALUES (1, 6, 0, ?, NULL, NULL)
+    `).run(NOW);
+    legacy.prepare(`
+      INSERT INTO start_plans (
+        record_key, workflow, consumed_by, expires_at, version, record_json, created_at
+      ) VALUES (?, ?, NULL, ?, ?, ?, ?)
+    `).run(
+      START_PLAN.startPlanId,
+      START_PLAN.workflowId,
+      START_PLAN.expiresAt,
+      START_PLAN.version,
+      JSON.stringify(START_PLAN),
+      START_PLAN.createdAt,
+    );
+    legacy.exec("PRAGMA application_id = 1217249861");
+    legacy.exec("PRAGMA user_version = 6");
+    legacy.exec("COMMIT");
+    const beforeTables = (legacy.prepare(`
+      SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name
+    `).all() as Array<{ name: string }>).map(({ name }) => name);
+    assert.equal(beforeTables.includes("failures"), false);
+    assert.equal(beforeTables.includes("run_results"), false);
+    assert.equal(beforeTables.includes("run_terminal_outbox"), false);
+    legacy.close();
+
+    const upgraded = openDatabase(path);
+    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.deepEqual(upgraded.authority.startPlans.get(START_PLAN.startPlanId), START_PLAN);
+    assert.equal(upgraded.authority.failures.listByRun(RUN_ID).length, 0);
+    assert.equal(upgraded.authority.runResults.get(RUN_ID), undefined);
+    assert.equal(upgraded.authority.runTerminalOutbox.findByRun(RUN_ID), undefined);
   });
 
   it("reopens an already-current database without rerunning the migration", () => {
@@ -331,6 +459,51 @@ describe("authority generation accounting", () => {
 
   const cases: readonly MutationCase[] = [
     { table: "tasks", mutate: (db) => { db.authority.runs.enqueue(QUEUED_RUN); } },
+    {
+      table: "failures",
+      prepare: (db) => { prepareRunning(db); },
+      mutate: (db) => {
+        const run = db.authority.runs.get(RUN_ID);
+        if (run === undefined) throw new Error("failure generation fixture lost its run");
+        db.terminalizeFailure({
+          failure: FAILURE_RECORD,
+          execution: { kind: "run" },
+          expectedVersion: run.version,
+          claim: { workerId: WORKER_ID, claimGeneration: 1 },
+          now: LATER,
+        });
+      },
+    },
+    {
+      table: "run_results",
+      prepare: (db) => { prepareRunning(db); },
+      mutate: (db) => {
+        const run = db.authority.runs.get(RUN_ID);
+        if (run === undefined) throw new Error("result generation fixture lost its run");
+        db.terminalizeSuccess({
+          result: TERMINAL_RESULT,
+          outbox: RUN_TERMINAL_OUTBOX,
+          expectedVersion: run.version,
+          claim: { workerId: WORKER_ID, claimGeneration: 1 },
+          now: LATER,
+        });
+      },
+    },
+    {
+      table: "run_terminal_outbox",
+      prepare: (db) => { prepareRunning(db); },
+      mutate: (db) => {
+        const run = db.authority.runs.get(RUN_ID);
+        if (run === undefined) throw new Error("outbox generation fixture lost its run");
+        db.terminalizeSuccess({
+          result: TERMINAL_RESULT,
+          outbox: RUN_TERMINAL_OUTBOX,
+          expectedVersion: run.version,
+          claim: { workerId: WORKER_ID, claimGeneration: 1 },
+          now: LATER,
+        });
+      },
+    },
     { table: "leases", mutate: (db) => { db.authority.workerLeases.start(WORKER_START_REQUEST); } },
     { table: "delegation_manifests", mutate: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); } },
     { table: "dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },

@@ -31,8 +31,9 @@ import {
   ScenarioIdSchema,
   WorkflowIdSchema,
 } from "../domain/ids.js";
-import type { Fingerprint, ScenarioId, WorkflowId } from "../domain/ids.js";
+import type { Fingerprint, NodeId, ScenarioId, WorkflowId } from "../domain/ids.js";
 import { SecretNameSchema } from "../domain/secret-names.js";
+import { deriveSchemaHash } from "../domain/schema-bound-value.js";
 import { assertAuditedCanonicalInput, canonicalInputSamples } from "../domain/workflow/canonical-input.js";
 import type { CanonicalInputSchema } from "../domain/workflow/canonical-input.js";
 import type {
@@ -84,7 +85,7 @@ import {
   assertSchemaOffersPath,
   assertSchemaOwnsPath,
 } from "../validation/contract-boundary.js";
-import type { AnyNodeEntry, BuiltFlow, WorkflowResultSpec } from "./flow.js";
+import type { AnyNodeEntry, BuiltFlow, OutputsOf, WorkflowResultSpec } from "./flow.js";
 
 /* ── the authored halves that stay typed over the graph ──────────────────── */
 
@@ -301,9 +302,24 @@ export interface WorkflowPlanning {
   readonly inputSubject: (parsed: unknown) => InputSubject;
 }
 
+/**
+ * Factory-authenticated terminal-result execution data. The broad executor
+ * reads dependencies and parses a candidate here; exact typed derivation stays
+ * in `deriveWorkflowTerminalResult`, which first authenticates the descriptor.
+ */
+export interface WorkflowTerminalResultExecution<Input = never, Outputs = never, Result = unknown> {
+  readonly schema: z.ZodType;
+  readonly schemaHash: Fingerprint;
+  readonly dependsOn: readonly NodeId[];
+  readonly dependencies: readonly Readonly<{ nodeId: NodeId; conditional: boolean }>[];
+  readonly parseResult: (candidate: unknown) => unknown;
+  readonly derive: (scope: Readonly<{ input: Input; outputs: Outputs }>) => Result;
+}
+
 const PROJECTIONS = new WeakMap<object, WorkflowProjections>();
 const PLANNING = new WeakMap<object, WorkflowPlanning>();
 const RUNTIME_NODES = new WeakMap<object, readonly RuntimeFlowNode[]>();
+const TERMINAL_RESULTS = new WeakMap<object, WorkflowTerminalResultExecution>();
 
 /** The planning view captured when the descriptor was built. Fails loud if it was not. */
 export function workflowPlanning(descriptor: object): WorkflowPlanning {
@@ -321,6 +337,40 @@ export function workflowProjections(descriptor: object): WorkflowProjections {
     throw new Error("workflow projections require the exact object returned by defineWorkflowDescriptor");
   }
   return projections;
+}
+
+/** The sealed terminal-result view; copied or hand-built descriptors fail loud. */
+export function workflowTerminalResultExecution<
+  InputSchema extends z.ZodType,
+  ResultSchema extends z.ZodType,
+  Nodes extends readonly GraphNodeBase[],
+  Completion extends CompletionProgram | undefined,
+  S extends Readonly<Record<string, AnyNodeEntry>>,
+  D extends readonly (keyof S & string)[],
+>(descriptor: WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D>):
+  WorkflowTerminalResultExecution<z.output<InputSchema>, OutputsOf<Pick<S, D[number]>>, z.input<ResultSchema>>;
+export function workflowTerminalResultExecution(descriptor: object): WorkflowTerminalResultExecution;
+export function workflowTerminalResultExecution(descriptor: object): unknown {
+  const execution = TERMINAL_RESULTS.get(descriptor);
+  if (execution === undefined) {
+    throw new Error("workflow terminal results require the exact object returned by defineWorkflowDescriptor");
+  }
+  return execution;
+}
+
+/** Invoke the exact authored derive only after the descriptor identity is authenticated. */
+export function deriveWorkflowTerminalResult<
+  InputSchema extends z.ZodType,
+  ResultSchema extends z.ZodType,
+  Nodes extends readonly GraphNodeBase[],
+  Completion extends CompletionProgram | undefined,
+  S extends Readonly<Record<string, AnyNodeEntry>>,
+  D extends readonly (keyof S & string)[],
+>(
+  descriptor: WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D>,
+  scope: Parameters<WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D>["result"]["derive"]>[0],
+): z.input<ResultSchema> {
+  return workflowTerminalResultExecution(descriptor).derive(scope);
 }
 
 /* ── runtime node view ───────────────────────────────────────────────────── */
@@ -639,6 +689,24 @@ export function defineWorkflowDescriptor<
       : spec.inputSubject(spec.canonicalInput.parse(parsed))),
   }));
   RUNTIME_NODES.set(descriptor, nodes);
+  const terminalDependsOn = spec.flow.result.dependsOn.map((nodeId) => NodeIdSchema.parse(nodeId));
+  const branchTargets = new Set(nodes.flatMap((node) => node.kind === "branch"
+    ? Object.values(node.cases).flat()
+    : []));
+  TERMINAL_RESULTS.set(descriptor, Object.freeze({
+    schema: spec.flow.result.schema,
+    schemaHash: deriveSchemaHash(spec.flow.result.schema, "output"),
+    dependsOn: Object.freeze(terminalDependsOn),
+    dependencies: Object.freeze(terminalDependsOn.map((nodeId) => {
+      const node = nodeByIdOrThrow(id, nodes, nodeId, "terminal result");
+      return Object.freeze({
+        nodeId,
+        conditional: (node.kind === "task" && node.when !== undefined) || branchTargets.has(nodeId),
+      });
+    })),
+    parseResult: (candidate: unknown) => spec.flow.result.schema.parse(candidate),
+    derive: spec.flow.result.derive,
+  }));
   return descriptor;
 }
 

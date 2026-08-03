@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 6;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 7;
 
 /** The run lifecycle states in which exactly one worker owns the row (doc 02 §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -45,6 +45,33 @@ export const SQLITE_TABLE_DDL = deepFreeze({
     ) STRICT
   `,
   tasks: jsonRecordTable("tasks"),
+  failures: `
+    CREATE TABLE failures (
+      record_key TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES tasks(record_key) ON DELETE RESTRICT,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  run_results: `
+    CREATE TABLE run_results (
+      record_key TEXT PRIMARY KEY REFERENCES tasks(record_key) ON DELETE RESTRICT,
+      workflow TEXT NOT NULL,
+      attempt INTEGER NOT NULL CHECK (attempt >= 1),
+      result_digest TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  run_terminal_outbox: `
+    CREATE TABLE run_terminal_outbox (
+      record_key TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL UNIQUE REFERENCES run_results(record_key) ON DELETE RESTRICT,
+      state TEXT NOT NULL CHECK (state IN ('pending', 'projected')),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
   leases: jsonRecordTable("leases"),
   dependencies: `
     CREATE TABLE dependencies (
@@ -177,7 +204,13 @@ const V1_TABLE_ORDER = [
 ] as const satisfies readonly TableName[];
 
 /** Tables created after v1, in the migration that created them. */
-const POST_V1_TABLE_ORDER = ["run_checkpoints", "start_plans"] as const satisfies readonly TableName[];
+const POST_V1_TABLE_ORDER = [
+  "run_checkpoints",
+  "start_plans",
+  "failures",
+  "run_results",
+  "run_terminal_outbox",
+] as const satisfies readonly TableName[];
 
 const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
 
@@ -352,6 +385,19 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     version: 6,
     statements: [
       "DELETE FROM start_plans",
+    ],
+  },
+  {
+    // D110/D114 terminal authority. Failed and successful settlements are
+    // immutable facts; the composite repository writes one of these rows and
+    // the matching terminal run transition in one outer transaction.
+    version: 7,
+    statements: [
+      SQLITE_TABLE_DDL.failures,
+      SQLITE_TABLE_DDL.run_results,
+      SQLITE_TABLE_DDL.run_terminal_outbox,
+      "CREATE INDEX failures_run_id_idx ON failures(run_id)",
+      "CREATE INDEX run_results_workflow_attempt_idx ON run_results(workflow, attempt)",
     ],
   },
 ] as const);

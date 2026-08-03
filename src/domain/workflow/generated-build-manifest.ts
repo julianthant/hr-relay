@@ -15,7 +15,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "9701397c53b1f5c3475478f84615b4ca0aca69025157be2c129b1c489c51fa82",
+      "fingerprint": "80703b274e3936eefe411fdfb1fd11614493e901be391f5d2f87fb00e392ea4d",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -23,7 +23,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/workflow.ts",
-          "sha256": "3f53539d6ed6f6f00789056c5db3e4d73e5dda79f5ba5a8580dcc5e04bd94431"
+          "sha256": "fe928d7befa34043994daef9e8785682ecdc1a2401d7a91aee5e2814fc46cca8"
         },
         {
           "path": "src/domain/canonical-json.ts",
@@ -62,12 +62,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
         },
         {
+          "path": "src/domain/schema-bound-value.ts",
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
+        },
+        {
           "path": "src/domain/secret-names.ts",
           "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
         },
         {
           "path": "src/domain/session.ts",
           "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
         },
         {
           "path": "src/domain/unscoped-commit.ts",
@@ -127,7 +135,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "7dbf8ce44816aa9867ca7be0d4e4a520f5547e55f4b3678f25fc7faa11ec5f6f",
+      "fingerprint": "d3abfa8cf6055f2cb029987cf4bf1da17497adde1d6fcc540641136548fba324",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -191,7 +199,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/schema-bound-value.ts",
-          "sha256": "b66b05e18424e3bd313e491c444591e9bc452433a00c2b49186a52b1bdbe69f2"
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
         },
         {
           "path": "src/domain/secret-names.ts",
@@ -200,6 +208,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/session.ts",
           "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
         },
         {
           "path": "src/domain/task-provenance.ts",
@@ -269,7 +281,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "d6b2cb9000af31da6c82f71454d6dbfbb4c9b35dbfdecbc15e4face60336645a",
+      "fingerprint": "0a07b79973a63dc0a47019de436b6a84489e878efb7975d9e6c2d97eef759d81",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -333,7 +345,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/schema-bound-value.ts",
-          "sha256": "b66b05e18424e3bd313e491c444591e9bc452433a00c2b49186a52b1bdbe69f2"
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
         },
         {
           "path": "src/domain/secret-names.ts",
@@ -342,6 +354,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/session.ts",
           "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
         },
         {
           "path": "src/domain/task-provenance.ts",
@@ -411,7 +427,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "c05519672868ac7773932d5593cafbb25e3a188e038d5dbe74a9202232439067",
+      "fingerprint": "f87f970d0947aee9bff04eaebb1d776053b650df83550ac56b3d654fc29c6a7f",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -471,7 +487,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/schema-bound-value.ts",
-          "sha256": "b66b05e18424e3bd313e491c444591e9bc452433a00c2b49186a52b1bdbe69f2"
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
         },
         {
           "path": "src/domain/secret-names.ts",
@@ -480,6 +496,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/session.ts",
           "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
         },
         {
           "path": "src/domain/task-provenance.ts",
@@ -557,7 +577,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "2ef3b7296917c1b503e1bd6a86ce83ebe84b25ae63db6e23d32427d625d0ebb6",
+      "fingerprint": "f12f972498ace09df6f5aa091fc031f83dd67b866e0d1f15a160996141f44cd3",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -617,7 +637,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/schema-bound-value.ts",
-          "sha256": "b66b05e18424e3bd313e491c444591e9bc452433a00c2b49186a52b1bdbe69f2"
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
         },
         {
           "path": "src/domain/secret-names.ts",
@@ -626,6 +646,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/session.ts",
           "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
         },
         {
           "path": "src/domain/task-provenance.ts",

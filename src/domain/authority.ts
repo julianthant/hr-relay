@@ -4,6 +4,9 @@ import { deepFreeze } from "./immutability.js";
 export const AuthorityTableNameSchema = z.enum([
   "authority_meta",
   "tasks",
+  "failures",
+  "run_results",
+  "run_terminal_outbox",
   "leases",
   "dependencies",
   "delegation_manifests",
