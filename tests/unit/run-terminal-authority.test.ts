@@ -8,6 +8,7 @@ import { buildRunResult } from "../../src/core/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
 import { ReadOnboardingDatesOutputSchema } from "../../src/domain/contracts/crm/read-onboarding-dates.js";
+import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import {
@@ -45,6 +46,7 @@ const CLOCK = manualClock(new Date(LATER));
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 const CLAIM = { workerId: WORKER_ID, claimGeneration: 1 };
+const AFTER_LATER = "2026-07-31T17:02:00.000Z";
 const ACTIVE = {
   state: "active" as const,
   reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
@@ -62,6 +64,42 @@ function openDatabase(hooks?: AuthorityTerminalizationHooks): AuthorityDatabase 
   );
   databases.push(database);
   return database;
+}
+
+function corruptRunConsequence(
+  mutate: (run: RunRecord) => unknown,
+): void {
+  const path = join(roots.at(-1) ?? "", "authority.sqlite");
+  const raw = new DatabaseSync(path);
+  try {
+    // These fixtures model offline corruption after write-time guards have run.
+    // Removing only the monotonic trigger lets each strict record mismatch stay
+    // independent instead of forcing an unrelated version increment.
+    raw.exec("DROP TRIGGER tasks_monotonic_counters_update");
+    const row = raw.prepare("SELECT record_json FROM tasks WHERE record_key = ?")
+      .get(RUN_ID) as { record_json: string } | undefined;
+    if (row === undefined) throw new Error(`run ${RUN_ID} is absent from corruption fixture`);
+    const current = RunRecordSchema.parse(JSON.parse(row.record_json));
+    const corrupted = RunRecordSchema.parse(mutate(current));
+    const ownerWorkerId = "workerId" in corrupted.lifecycle ? corrupted.lifecycle.workerId : null;
+    const heartbeatAt = "heartbeatAt" in corrupted.lifecycle ? corrupted.lifecycle.heartbeatAt : null;
+    raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+      .run(JSON.stringify(corrupted), RUN_ID);
+    if (corrupted.version !== current.version) {
+      raw.prepare("UPDATE tasks SET version = ? WHERE record_key = ?").run(corrupted.version, RUN_ID);
+    }
+    if (corrupted.claimGeneration !== current.claimGeneration) {
+      raw.prepare("UPDATE tasks SET claim_generation = ? WHERE record_key = ?")
+        .run(corrupted.claimGeneration, RUN_ID);
+    }
+    if (corrupted.lifecycle.state !== current.lifecycle.state) {
+      raw.prepare(`
+        UPDATE tasks SET state = ?, owner_worker_id = ?, heartbeat_at = ? WHERE record_key = ?
+      `).run(corrupted.lifecycle.state, ownerWorkerId, heartbeatAt, RUN_ID);
+    }
+  } finally {
+    raw.close();
+  }
 }
 
 function startRunning(database: AuthorityDatabase, nodeId = "crm-dates") {
@@ -287,6 +325,44 @@ describe("atomic failure terminal authority", () => {
       now: LATER,
     }), /requires atomic terminal authority/);
     assert.equal(database.authority.failures.get(UUID_6), undefined);
+  });
+
+  it("refuses replay for every schema-valid mismatch from failure authorization to consequence", () => {
+    const cases: ReadonlyArray<readonly [string, (run: RunRecord) => unknown]> = [
+      ["version", (run: RunRecord) => ({ ...run, version: run.version + 1 })],
+      ["claim generation", (run: RunRecord) => ({ ...run, claimGeneration: run.claimGeneration + 1 })],
+      ["lifecycle state", (run: RunRecord) => ({ ...run, lifecycle: { state: "queued" as const } })],
+      ["outcome", (run: RunRecord) => ({
+        ...run,
+        lifecycle: { state: "terminal" as const, outcome: "cancelled" as const, endedAt: LATER },
+      })],
+      ["failure id", (run: RunRecord) => ({
+        ...run,
+        lifecycle: run.lifecycle.state === "terminal"
+          ? { ...run.lifecycle, failureId: UUID_7 }
+          : run.lifecycle,
+      })],
+      ["endedAt", (run: RunRecord) => ({
+        ...run,
+        lifecycle: run.lifecycle.state === "terminal"
+          ? { ...run.lifecycle, endedAt: AFTER_LATER }
+          : run.lifecycle,
+      })],
+      ["updatedAt", (run: RunRecord) => ({ ...run, updatedAt: AFTER_LATER })],
+    ];
+    for (const [name, mutate] of cases) {
+      const database = openDatabase();
+      const running = startRunning(database);
+      const record = failure(running);
+      const request = { failure: record, authorization: failureAuthorization(running) } as const;
+      database.terminalizeFailure(personLookupDescriptor, request);
+      corruptRunConsequence(mutate);
+      assert.throws(
+        () => database.terminalizeFailure(personLookupDescriptor, request),
+        /does not match its exact failed terminal authorization consequence/,
+        name,
+      );
+    }
   });
 
   for (const injectedStep of ["authorization", "failure", "run"] as const) {
@@ -545,6 +621,42 @@ describe("atomic success terminal authority", () => {
     }), /already terminal without a result/);
     assert.equal(database.authority.runResults.get(RUN_ID), undefined);
     assert.equal(database.authority.runTerminalOutbox.findByRun(RUN_ID), undefined);
+  });
+
+  it("refuses replay for every schema-valid mismatch from success authorization to consequence", () => {
+    const cases: ReadonlyArray<readonly [string, (run: RunRecord) => unknown]> = [
+      ["version", (run: RunRecord) => ({ ...run, version: run.version + 1 })],
+      ["claim generation", (run: RunRecord) => ({ ...run, claimGeneration: run.claimGeneration + 1 })],
+      ["lifecycle state", (run: RunRecord) => ({ ...run, lifecycle: { state: "queued" as const } })],
+      ["outcome", (run: RunRecord) => ({
+        ...run,
+        lifecycle: { state: "terminal" as const, outcome: "cancelled" as const, endedAt: LATER },
+      })],
+      ["endedAt", (run: RunRecord) => ({
+        ...run,
+        lifecycle: run.lifecycle.state === "terminal"
+          ? { ...run.lifecycle, endedAt: AFTER_LATER }
+          : run.lifecycle,
+      })],
+      ["updatedAt", (run: RunRecord) => ({ ...run, updatedAt: AFTER_LATER })],
+    ];
+    for (const [name, mutate] of cases) {
+      const database = openDatabase();
+      const running = startRunning(database);
+      const terminal = resultAndOutbox(database, running);
+      const request = {
+        result: terminal.result,
+        outbox: terminal.outbox,
+        authorization: terminal.authorization,
+      };
+      database.terminalizeSuccess(request, terminal.factoryAuthorization);
+      corruptRunConsequence(mutate);
+      assert.throws(
+        () => database.terminalizeSuccess(request),
+        /does not match its exact done terminal authorization consequence/,
+        name,
+      );
+    }
   });
 
   for (const injectedStep of ["authorization", "result", "outbox", "run"] as const) {

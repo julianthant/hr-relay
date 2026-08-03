@@ -409,7 +409,7 @@ describe("native SQLite authority schema", () => {
     );
   });
 
-  it("upgrades the exact committed v6 shape to v7 without changing existing authority", () => {
+  it("upgrades the exact committed v6 shape through v7 and v8 without changing existing authority", () => {
     const path = databasePath("d110-d114-v6.sqlite");
     const legacy = new DatabaseSync(path);
     legacy.exec("BEGIN EXCLUSIVE");
@@ -451,6 +451,66 @@ describe("native SQLite authority schema", () => {
     assert.equal(upgraded.authority.failures.listByRun(RUN_ID).length, 0);
     assert.equal(upgraded.authority.runResults.get(RUN_ID), undefined);
     assert.equal(upgraded.authority.runTerminalOutbox.findByRun(RUN_ID), undefined);
+    assert.equal(upgraded.authority.terminalAuthorizations.get(RUN_ID), undefined);
+  });
+
+  it("upgrades the exact released v7 shape to v8, reopens, and validates read-only", () => {
+    const path = databasePath("d110-d114-v7.sqlite");
+    const releasedV7 = SQLITE_MIGRATIONS.find(({ version }) => version === 7);
+    assert.notEqual(releasedV7, undefined);
+    assert.equal(releasedV7?.statements.length, 5);
+    assert.equal(
+      releasedV7?.statements.some((statement) => statement.includes("run_terminal_authorizations")),
+      false,
+      "released v7 must remain byte-equivalent in behavior and cannot create the v8 table",
+    );
+
+    const legacy = new DatabaseSync(path);
+    legacy.exec("BEGIN EXCLUSIVE");
+    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 7)) {
+      for (const statement of migration.statements) legacy.exec(statement);
+    }
+    legacy.prepare(`
+      INSERT INTO authority_meta (
+        singleton_id, schema_version, authority_generation, updated_at,
+        migration_owner, migration_started_at
+      ) VALUES (1, 7, 0, ?, NULL, NULL)
+    `).run(NOW);
+    legacy.prepare(`
+      INSERT INTO commands (record_key, family, record_json, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(UUID_1, "start", JSON.stringify(COMMAND_FIXTURES[0]), NOW);
+    legacy.exec("PRAGMA application_id = 1217249861");
+    legacy.exec("PRAGMA user_version = 7");
+    legacy.exec("COMMIT");
+    const v7Tables = (legacy.prepare(`
+      SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+    `).all() as Array<{ name: string }>).map(({ name }) => name);
+    assert.equal(v7Tables.includes("run_terminal_authorizations"), false);
+    legacy.close();
+
+    const upgraded = openDatabase(path);
+    assert.equal(upgraded.inspectSchema().schemaVersion, 8);
+    assert.deepEqual(upgraded.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
+    assert.equal(upgraded.authority.terminalAuthorizations.get(RUN_ID), undefined);
+    upgraded.close();
+
+    const migrated = new DatabaseSync(path, { readOnly: true });
+    assert.equal(
+      migrated.prepare(`
+        SELECT count(*) AS count FROM sqlite_master
+        WHERE type = 'index' AND name = 'run_terminal_authorizations_kind_idx'
+      `).get()?.count,
+      1,
+    );
+    migrated.close();
+    const reopened = openDatabase(path);
+    assert.equal(reopened.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    reopened.close();
+    assert.equal(
+      AuthorityDatabase.inspectExistingReadOnly(path).schemaVersion,
+      CURRENT_AUTHORITY_SCHEMA_VERSION,
+    );
   });
 
   it("reopens an already-current database without rerunning the migration", () => {

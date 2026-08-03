@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 7;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 8;
 
 /** The run lifecycle states in which exactly one worker owns the row (doc 02 §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -218,10 +218,10 @@ const V1_TABLE_ORDER = [
 const POST_V1_TABLE_ORDER = [
   "run_checkpoints",
   "start_plans",
-  "run_terminal_authorizations",
   "failures",
   "run_results",
   "run_terminal_outbox",
+  "run_terminal_authorizations",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -401,17 +401,25 @@ export const SQLITE_MIGRATIONS = deepFreeze([
   },
   {
     // D110/D114 terminal authority. Failed and successful settlements are
-    // immutable facts; the composite repository retains the exact pre-terminal
-    // CAS/claim authorization, writes its failure or result/outbox rows, and
-    // applies the matching terminal run transition in one outer transaction.
+    // immutable facts; the composite repository writes one of these rows and
+    // the matching terminal run transition in one outer transaction.
     version: 7,
     statements: [
-      SQLITE_TABLE_DDL.run_terminal_authorizations,
       SQLITE_TABLE_DDL.failures,
       SQLITE_TABLE_DDL.run_results,
       SQLITE_TABLE_DDL.run_terminal_outbox,
       "CREATE INDEX failures_run_id_idx ON failures(run_id)",
       "CREATE INDEX run_results_workflow_attempt_idx ON run_results(workflow, attempt)",
+    ],
+  },
+  {
+    // The D110/D114 review repair preserves the exact pre-terminal CAS/claim
+    // authorization separately from v7's released terminal facts. Existing v7
+    // databases must execute this migration rather than look current by mistake.
+    version: 8,
+    statements: [
+      SQLITE_TABLE_DDL.run_terminal_authorizations,
+      "CREATE INDEX run_terminal_authorizations_kind_idx ON run_terminal_authorizations(kind)",
     ],
   },
 ] as const);

@@ -26,6 +26,7 @@ import {
   deriveRunResultDigest,
   deriveTerminalDependencyDigest,
 } from "../../../src/domain/run/result.js";
+import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import {
@@ -58,7 +59,10 @@ import {
   QUEUED_RUN,
   WORKER_START_REQUEST,
 } from "../fixtures/phase1f-run-fixtures.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
+import {
+  CURRENT_AUTHORITY_SCHEMA_VERSION,
+  SQLITE_MIGRATIONS,
+} from "../../../src/infra/sqlite/migrations.js";
 import {
   PersonLookupCanonicalInput,
   personLookupDescriptor,
@@ -69,6 +73,7 @@ const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 const bootStores: AuthorityBootStore[] = [];
 const CLOCK = manualClock(new Date(NOW));
+const AFTER_NOW = "2026-07-31T17:01:00.000Z";
 const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
 const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
 const ARTIFACT_OUTBOX = {
@@ -271,6 +276,42 @@ function openDatabase(path: string): AuthorityDatabase {
   return database;
 }
 
+function corruptTerminalRun(
+  path: string,
+  runId: string,
+  mutate: (run: RunRecord) => unknown,
+): void {
+  const raw = new DatabaseSync(path);
+  try {
+    // Model offline corruption after write-time guards have run while keeping
+    // each strict record mismatch independent of an artificial version bump.
+    raw.exec("DROP TRIGGER tasks_monotonic_counters_update");
+    const row = raw.prepare("SELECT record_json FROM tasks WHERE record_key = ?")
+      .get(runId) as { record_json: string } | undefined;
+    if (row === undefined) throw new Error(`run ${runId} is absent from corruption fixture`);
+    const current = RunRecordSchema.parse(JSON.parse(row.record_json));
+    const corrupted = RunRecordSchema.parse(mutate(current));
+    const ownerWorkerId = "workerId" in corrupted.lifecycle ? corrupted.lifecycle.workerId : null;
+    const heartbeatAt = "heartbeatAt" in corrupted.lifecycle ? corrupted.lifecycle.heartbeatAt : null;
+    raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+      .run(JSON.stringify(corrupted), runId);
+    if (corrupted.version !== current.version) {
+      raw.prepare("UPDATE tasks SET version = ? WHERE record_key = ?").run(corrupted.version, runId);
+    }
+    if (corrupted.claimGeneration !== current.claimGeneration) {
+      raw.prepare("UPDATE tasks SET claim_generation = ? WHERE record_key = ?")
+        .run(corrupted.claimGeneration, runId);
+    }
+    if (corrupted.lifecycle.state !== current.lifecycle.state) {
+      raw.prepare(`
+        UPDATE tasks SET state = ?, owner_worker_id = ?, heartbeat_at = ? WHERE record_key = ?
+      `).run(corrupted.lifecycle.state, ownerWorkerId, heartbeatAt, runId);
+    }
+  } finally {
+    raw.close();
+  }
+}
+
 function openBootStore(path: string): AuthorityBootStore {
   const store = AuthorityBootStore.open(databaseOptions(path), CLOCK);
   bootStores.push(store);
@@ -336,6 +377,58 @@ afterEach(() => {
 });
 
 describe("verified native online backups", () => {
+  it("backs up and restores an exact v7 authority only after its immutable v8 upgrade", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "released-v7.sqlite");
+    const legacy = new DatabaseSync(authorityPath);
+    legacy.exec("BEGIN EXCLUSIVE");
+    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 7)) {
+      for (const statement of migration.statements) legacy.exec(statement);
+    }
+    legacy.prepare(`
+      INSERT INTO authority_meta (
+        singleton_id, schema_version, authority_generation, updated_at,
+        migration_owner, migration_started_at
+      ) VALUES (1, 7, 0, ?, NULL, NULL)
+    `).run(NOW);
+    legacy.exec("PRAGMA application_id = 1217249861");
+    legacy.exec("PRAGMA user_version = 7");
+    legacy.exec("COMMIT");
+    assert.equal(
+      legacy.prepare(`
+        SELECT count(*) AS count FROM sqlite_master
+        WHERE type = 'table' AND name = 'run_terminal_authorizations'
+      `).get()?.count,
+      0,
+    );
+    legacy.close();
+
+    const database = openDatabase(authorityPath);
+    assert.equal(database.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    const { manifestPath } = await createBackup(database, backupDirectory(root));
+    const verified = await verifyBackupManifestAtPath(manifestPath);
+    assert.equal(verified.manifest.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    database.close();
+    const reopened = openDatabase(authorityPath);
+    assert.equal(reopened.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    reopened.close();
+
+    writeFileSync(authorityPath, "corrupt after migrated backup");
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath),
+      async () => undefined,
+      CLOCK,
+    );
+    await restore.restore({
+      manifestPath,
+      stoppedSystemProof: stoppedProof(root, authorityPath),
+    });
+    assert.equal(
+      AuthorityDatabase.inspectExistingReadOnly(authorityPath).schemaVersion,
+      CURRENT_AUTHORITY_SCHEMA_VERSION,
+    );
+  });
+
   it("backs up through the private native handle and self-observes the completed copy", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
@@ -599,6 +692,62 @@ describe("fail-closed degraded boot and read-only doctor", () => {
         fixture.violation,
         fixture.name,
       );
+    }
+  });
+
+  it("degrades read-only for every schema-valid authorization/consequence mismatch in both arms", () => {
+    const commonCases: ReadonlyArray<readonly [string, (run: RunRecord) => unknown]> = [
+      ["version", (run) => ({ ...run, version: run.version + 1 })],
+      ["claim-generation", (run) => ({ ...run, claimGeneration: run.claimGeneration + 1 })],
+      ["lifecycle-state", (run) => ({ ...run, lifecycle: { state: "queued" } })],
+      ["outcome", (run) => ({
+        ...run,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+      })],
+      ["ended-at", (run) => ({
+        ...run,
+        lifecycle: run.lifecycle.state === "terminal"
+          ? { ...run.lifecycle, endedAt: AFTER_NOW }
+          : run.lifecycle,
+      })],
+      ["updated-at", (run) => ({ ...run, updatedAt: AFTER_NOW })],
+    ];
+    const arms = [
+      {
+        name: "failed",
+        runId: UUID_1,
+        cases: [
+          ...commonCases,
+          ["failure-id", (run: RunRecord): unknown => ({
+            ...run,
+            lifecycle: run.lifecycle.state === "terminal"
+              ? { ...run.lifecycle, failureId: UUID_7 }
+              : run.lifecycle,
+          })] as const,
+        ],
+      },
+      { name: "done", runId: UUID_2, cases: commonCases },
+    ] as const;
+
+    for (const arm of arms) {
+      for (const [name, mutate] of arm.cases) {
+        const path = join(testRoot(), `${arm.name}-${name}.sqlite`);
+        const database = openDatabase(path);
+        seedTerminalAuthority(database);
+        database.close();
+        corruptTerminalRun(path, arm.runId, mutate);
+        assert.throws(
+          () => AuthorityDatabase.inspectExistingReadOnly(path),
+          /terminal-authorization-binds-exact-terminal-authority/,
+          `${arm.name}/${name}`,
+        );
+        const store = openBootStore(path);
+        const report = store.report();
+        assert.equal(report.state, "degraded-read-only", `${arm.name}/${name}`);
+        if (report.state !== "degraded-read-only") throw new Error("expected degraded terminal authority");
+        assert.equal(report.cause.code, "authority-invariant", `${arm.name}/${name}`);
+        assert.match(report.cause.summary, /terminal-authorization-binds-exact-terminal-authority/);
+      }
     }
   });
 

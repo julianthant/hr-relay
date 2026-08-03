@@ -415,7 +415,7 @@ const INVARIANT_QUERIES = Object.freeze([
   },
   {
     name: "terminal-authorization-columns-match-record",
-    sql: "SELECT count(*) AS count FROM run_terminal_authorizations WHERE record_key IS NOT json_extract(record_json, '$.runId') OR kind IS NOT json_extract(record_json, '$.kind') OR expected_version IS NOT json_extract(record_json, '$.expectedVersion') OR worker_id IS NOT json_extract(record_json, '$.claim.workerId') OR claim_generation IS NOT json_extract(record_json, '$.claim.claimGeneration')",
+    sql: "SELECT count(*) AS count FROM run_terminal_authorizations WHERE record_key IS NOT json_extract(record_json, '$.runId') OR kind IS NOT json_extract(record_json, '$.kind') OR expected_version IS NOT json_extract(record_json, '$.expectedVersion') OR worker_id IS NOT json_extract(record_json, '$.claim.workerId') OR claim_generation IS NOT json_extract(record_json, '$.claim.claimGeneration') OR created_at IS NOT json_extract(record_json, '$.authorizedAt')",
   },
   {
     name: "failed-runs-bind-failure",
@@ -573,6 +573,7 @@ const INVARIANT_QUERIES = Object.freeze([
         ON outbox.run_id = authorization.record_key
           AND outbox.record_key = json_extract(authorization.record_json, '$.outboxId')
       WHERE run.record_key IS NULL
+        OR authorization.created_at IS NOT json_extract(authorization.record_json, '$.authorizedAt')
         OR json_extract(authorization.record_json, '$.workflowId')
           IS NOT json_extract(run.record_json, '$.envelope.workflow')
         OR json_extract(authorization.record_json, '$.attempt')
@@ -581,9 +582,20 @@ const INVARIANT_QUERIES = Object.freeze([
           IS NOT json_extract(run.record_json, '$.envelope.descriptorVersion')
         OR json_extract(authorization.record_json, '$.contractFingerprint')
           IS NOT json_extract(run.record_json, '$.envelope.contractFingerprint')
+        OR run.version IS NOT authorization.expected_version + 1
+        OR run.claim_generation IS NOT authorization.claim_generation
+        OR json_extract(run.record_json, '$.lifecycle.state') IS NOT 'terminal'
+        OR json_extract(run.record_json, '$.lifecycle.endedAt')
+          IS NOT json_extract(authorization.record_json, '$.authorizedAt')
+        OR json_extract(run.record_json, '$.updatedAt')
+          IS NOT json_extract(authorization.record_json, '$.authorizedAt')
         OR (authorization.kind = 'failed' AND (
           json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'failed'
+          OR json_extract(run.record_json, '$.lifecycle.failureId')
+            IS NOT json_extract(authorization.record_json, '$.failureId')
           OR failure.record_key IS NULL
+          OR json_extract(run.record_json, '$.lifecycle.errorSummary')
+            IS NOT json_extract(failure.record_json, '$.summary')
         ))
         OR (authorization.kind = 'done' AND (
           json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'done'
@@ -942,9 +954,8 @@ export class AuthorityDatabase implements Disposable {
         if (canonicalJsonStringify(existing) !== canonicalJsonStringify(request.failure)) {
           throw new Error(`failure ${request.failure.failureId} already exists with different content`);
         }
+        this.#assertTerminalAuthorizationConsequence(existingAuthorization, current);
         if (current.lifecycle.state !== "terminal"
-          || current.lifecycle.outcome !== "failed"
-          || current.lifecycle.failureId !== request.failure.failureId
           || current.lifecycle.errorSummary !== request.failure.summary) {
           throw new Error(`failure ${request.failure.failureId} exists without its exact terminal run transition`);
         }
@@ -979,6 +990,7 @@ export class AuthorityDatabase implements Disposable {
       });
       const violation = runTransitionViolation(current.lifecycle, terminal.lifecycle);
       if (violation !== undefined) throw new Error(`run ${request.failure.runId}: ${violation}`);
+      this.#assertTerminalAuthorizationConsequence(request.authorization, terminal);
       this.#insertTerminalAuthorization(request.authorization);
       this.#terminalizationHooks?.afterFailureStorageStep?.("authorization");
       this.#insertFailure(request.failure);
@@ -1024,9 +1036,7 @@ export class AuthorityDatabase implements Disposable {
         if (canonicalJsonStringify(existingOutbox) !== canonicalJsonStringify(request.outbox)) {
           throw new Error(`run terminal outbox for ${request.result.runId} already exists with different content`);
         }
-        if (current.lifecycle.state !== "terminal" || current.lifecycle.outcome !== "done") {
-          throw new Error(`run ${request.result.runId} has terminal result authority without an exact done transition`);
-        }
+        this.#assertTerminalAuthorizationConsequence(existingAuthorization, current);
         return SuccessTerminalizationReportSchema.parse({
           state: "replayed",
           authorization: existingAuthorization,
@@ -1060,6 +1070,7 @@ export class AuthorityDatabase implements Disposable {
       });
       const violation = runTransitionViolation(current.lifecycle, terminal.lifecycle);
       if (violation !== undefined) throw new Error(`run ${request.result.runId}: ${violation}`);
+      this.#assertTerminalAuthorizationConsequence(request.authorization, terminal);
 
       this.#insertTerminalAuthorization(request.authorization);
       this.#terminalizationHooks?.afterSuccessStorageStep?.("authorization");
@@ -1221,6 +1232,27 @@ export class AuthorityDatabase implements Disposable {
       || authorization.contractFingerprint !== envelope.contractFingerprint) {
       throw new Error(
         `terminal authorization for ${authorization.runId} does not match current run ${envelope.runId}`,
+      );
+    }
+  }
+
+  #assertTerminalAuthorizationConsequence(
+    authorization: TerminalAuthorizationRecord,
+    run: RunRecord,
+  ): void {
+    const exactCommonConsequence = Number(run.version) === Number(authorization.expectedVersion) + 1
+      && Number(run.claimGeneration) === Number(authorization.claim.claimGeneration)
+      && run.lifecycle.state === "terminal"
+      && run.lifecycle.outcome === authorization.kind
+      && run.lifecycle.endedAt === authorization.authorizedAt
+      && run.updatedAt === authorization.authorizedAt;
+    const exactArmConsequence = authorization.kind === "done"
+      || (run.lifecycle.state === "terminal"
+        && run.lifecycle.outcome === "failed"
+        && run.lifecycle.failureId === authorization.failureId);
+    if (!exactCommonConsequence || !exactArmConsequence) {
+      throw new Error(
+        `run ${authorization.runId} does not match its exact ${authorization.kind} terminal authorization consequence`,
       );
     }
   }
