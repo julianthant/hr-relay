@@ -99,6 +99,7 @@ import type { SessionNeed } from "../domain/session.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import type { SpanEmitter } from "./span-emitter.js";
 import { ExecutorSpanEventSchema } from "./span-emitter.js";
+import { WriteParkedError } from "./run-executor.js";
 import type { WriteSequencer, WriteSequencerContext } from "./run-executor.js";
 
 /* ── the mutation capability — this module is the SOLE minting point ──────── */
@@ -149,33 +150,12 @@ export function assertSequencerMintedMutationCapability(
 
 /* ── typed failure surfaces ──────────────────────────────────────────────── */
 
-/**
- * Raised AFTER the run and intent are durably parked. The Phase-1f interpreter
- * has no `parked-write` outcome arm yet, so this error surfaces loudly through
- * `executeClaimedRun` (its terminal settlement refuses because the claim was
- * released by the park — exactly fail-closed); the durable state is already
- * correct and the doc 09 §4.1 operator resolutions apply. The interpreter's
- * typed parked-write arm consumes this error when its owner lands it. NOTE:
- * this is a documented seam gap, not a silent behavior.
- */
-export class WriteParkedError extends Error {
-  readonly writeIntentId: string;
-  readonly intentGeneration: number;
-  readonly parkCode: WriteIntentParkCode;
-
-  constructor(input: Readonly<{
-    writeIntentId: string;
-    intentGeneration: number;
-    parkCode: WriteIntentParkCode;
-    message: string;
-  }>) {
-    super(input.message);
-    this.name = "WriteParkedError";
-    this.writeIntentId = input.writeIntentId;
-    this.intentGeneration = input.intentGeneration;
-    this.parkCode = input.parkCode;
-  }
-}
+// `WriteParkedError` moved to `run-executor.ts` with the `WriteSequencer` seam
+// it belongs to: the sequencer raises it AFTER durably parking intent + run,
+// and the interpreter's typed `parked-write` outcome arm consumes it. The
+// re-export below keeps this module the natural import site for sequencer
+// callers and tests.
+export { WriteParkedError };
 
 /** The probe→fence budget elapsed: the staged page is discarded, nothing clicked. */
 export class StagedPageDiscardedError extends Error {
