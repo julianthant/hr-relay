@@ -64,6 +64,33 @@ failed-login cleanup, so a resource whose cleanup could not be proved cannot dis
 ownership. The nine store providers now accept the worker resource's bounded authentication handle;
 concrete browser creation remains a factory injected at the runtime composition boundary.
 
+## Phase 1f concrete session factory (2026-08-03)
+
+That injected factory is now real. `src/infra/browser/` launches Playwright's FULL bundled Chromium
+(`channel: "chromium"`) in a persistent context with the Duo Autopilot extension loaded — all three
+are requirements rather than preferences: Chrome stable dropped `--load-extension`, the lightweight
+headless shell cannot run an extension, and an extension requires a persistent context. Profiles
+live under the runtime-isolation `browserProfileRoot`/`browserSessionNamespace`, namespaced per
+`(worker, system, resolvedInstance, configFingerprint)`, so D116's no-cross-snapshot-reuse rule also
+holds for on-disk state, not just for the in-memory context.
+
+`close()` returns a proof only after observing every page closed AND the context's own close event
+inside a bounded deadline; an unproven or hung close throws, and the manager's existing poison rule
+does the rest. A clean release re-navigates to the system's entry route and re-checks its
+authenticated marker, so "reusable" is an observation. Login recipes stay with their stores
+(`stores/<system>/session.ts`), which — together with `src/infra/browser/**` — are the two
+raw-browser owner families the task-driver boundary permits; task and workflow code may reach
+neither, transitively or otherwise. UCPath and CRM are bound today; a system without both a driver
+and a login recipe refuses at open rather than launching an unusable browser, and the exclusive
+OnBase identity lease is explicitly not landed here.
+
+The `fresh-session-boundary` guard is now ACTIVE against these pieces (doc 10 §5): the boundary
+close reason exists only in the session-ownership modules, every authored `session:` need is a
+string literal rather than a computed value, repeated `reuse-worker` needs mint no boundary, and
+both an authored `fresh` need and a D116 identity mismatch close with an accepted proof before the
+replacement opens. Its one outstanding arm — descriptor-level node-execution ordering — lands with
+the first workflow that authors a fresh-boundary node.
+
 ---
 
 ## 0. Settled decision

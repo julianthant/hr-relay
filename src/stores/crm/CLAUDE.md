@@ -33,3 +33,14 @@ Ported from legacy commit `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc`:
 ## Lessons learned
 
 - **2026-08-02: CRM fuzzy search must terminate in displayed-EID proof, and history owns invitation/completion.** Fresh read-only Playwright verification showed the broad result-row recipe includes one two-cell auxiliary row around exact five-cell data rows. The record page's verified Visualforce `th → following td` recipe resolved first name, last name, UCPath EID, and First Day exactly once. The history page contained one five-`th` header and five-`td` transition rows; only the New Value column of `ProcessStageText` is authoritative. Do not reintroduce the unverified broader field fallbacks, treat `Date Signed` as completion, or turn malformed selector/date states into blanks.
+- **2026-08-03: CRM's login is a separate auth system with a security-key Duo factor.** The recipe
+  lives in `session.ts` (a raw-browser owner) and is ported from legacy
+  `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc` `src/infra/auth/login.ts`
+  (blob `c8e6656de394b52aebd174e2a243c9464a1678e6`) and `src/infra/auth/sso-fields.ts`
+  (blob `e331e8a12523f3e824f89d7e151d02bbcdf54269`). Salesforce Communities sits in front of the same
+  UCSD AD realm, so it shares the credential and Duo but not the session, and its Duo prompt fires a
+  SECURITY-KEY ceremony — Duo Autopilot needs that credential enrolled specifically, not just the
+  platform authenticator the other systems use. The login-type `<select>` is often absent (a valid
+  rendering, so absence is not a failure) but a PRESENT control that cannot be set to Active
+  Directory fails loud: submitting under the wrong login type authenticates against the wrong realm.
+  `act-crm.my.site.com` alone is not a landing — the Communities login page lives on the same host.
