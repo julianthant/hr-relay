@@ -161,7 +161,8 @@ export interface SeedRunInput {
   readonly parentSeed?: number;
   readonly title?: string;
   readonly hidden?: boolean;
-  readonly lifecycle?: RunRecord["lifecycle"];
+  /** Plain-object lifecycle input; `RunRecordSchema.parse` proves it legal. */
+  readonly lifecycle?: unknown;
   readonly version?: number;
   readonly claimGeneration?: number;
   readonly enqueuedAt?: string;

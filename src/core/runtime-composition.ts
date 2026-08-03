@@ -21,8 +21,25 @@ export interface RebuildRuntimeStart {
   readonly isolation: RuntimeIsolation;
   readonly args?: readonly string[];
   readonly write?: (message: string) => void;
-  /** The 1g-spine BFF composition (`composeDashboardRuntime`), injected from the CLI. */
-  readonly dashboard?: (isolation: RuntimeIsolation) => Promise<RunningDashboard>;
+  /** Explicit seam override for tests; production registers via `registerDashboardComposer`. */
+  readonly dashboard?: DashboardComposer;
+}
+
+type DashboardComposer = (isolation: RuntimeIsolation) => Promise<RunningDashboard>;
+
+/**
+ * The production injection door. The operational-isolation audit pins
+ * `src/cli.ts` to ONE exact `startRebuildRuntime({ isolation:
+ * rebuildRuntimeIsolation })` call, so the dashboard composition registers
+ * itself in a separate statement instead of riding that call.
+ */
+let registeredDashboardComposer: DashboardComposer | undefined;
+
+export function registerDashboardComposer(composer: DashboardComposer): void {
+  if (registeredDashboardComposer !== undefined) {
+    throw new Error("a dashboard composer is already registered; two compositions cannot own one runtime");
+  }
+  registeredDashboardComposer = composer;
 }
 
 export function runtimeHelp(isolation: RuntimeIsolation): string {
@@ -58,10 +75,10 @@ export function startRebuildRuntime(input: RebuildRuntimeStart): void {
     return;
   }
   if (command === "dashboard") {
-    const compose = input.dashboard;
+    const compose = input.dashboard ?? registeredDashboardComposer;
     if (compose === undefined) {
       throw new Error(
-        "the dashboard command needs its composition seam; start it through src/cli.ts, which injects composeDashboardRuntime",
+        "the dashboard command needs its composition seam; start it through src/cli.ts, which registers composeDashboardRuntime",
       );
     }
     compose(input.isolation)

@@ -32,6 +32,7 @@ import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../domain/ids.js";
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
+import { configResolutionEnvironment } from "../../domain/secrets.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
@@ -76,7 +77,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")),
   ).version;
 
-  const resolved = resolveConfigWithProvenance(input.env ?? process.env, {}, clock);
+  const resolved = resolveConfigWithProvenance(input.env ?? configResolutionEnvironment(), {}, clock);
   mkdirSync(stateRoot, { recursive: true });
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },

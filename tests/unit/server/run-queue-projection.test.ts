@@ -112,7 +112,7 @@ describe("THE run/queue projection (D81)", () => {
 
     // Hidden run 5 is nowhere; members 7/8 ride flat for layout but are
     // contained in the operation's rollup, not in any count.
-    const runIds = day.queueSurfaces.map(({ runId }) => runId);
+    const runIds: readonly string[] = day.queueSurfaces.map(({ runId }) => runId);
     assert.equal(runIds.includes(uuidOf(5)), false);
     assert.equal(runIds.includes(uuidOf(7)), true);
     assert.equal(day.queueSurfaces.length, 8);

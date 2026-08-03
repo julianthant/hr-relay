@@ -45,7 +45,7 @@ describe("composed dashboard runtime on the isolation port", () => {
     const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
     const bootstrap = await client.bootstrap();
     assert.equal(bootstrap.appVersion, "0.1.0");
-    assert.deepEqual(bootstrap.workflows.map(({ id }) => id), ["person-lookup"]);
+    assert.deepEqual((bootstrap.workflows as { id: string }[]).map(({ id }) => id), ["person-lookup"]);
     assert.equal(bootstrap.storage.authority, "healthy");
 
     const today = new Date().toISOString().slice(0, 10);
