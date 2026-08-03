@@ -21,6 +21,8 @@
     "src/**/*",
     "tests/**/*",
     "scripts/**/*",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "vite.dashboard.config.ts",
+    "playwright.parity.config.ts"
   ]
 }

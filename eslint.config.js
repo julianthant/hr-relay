@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import ts from "typescript-eslint";
 import globals from "globals";
 import unusedImports from "eslint-plugin-unused-imports";
+import reactHooks from "eslint-plugin-react-hooks";
 
 // The `_`-prefix convention (a var/arg prefixed with `_` is intentionally
 // unused — e.g. `const { privateKey: _omit, ...rest } = obj`).
@@ -78,14 +79,18 @@ export default ts.config(
     rules: { ...unusedImportsRules, ...typeAwareTuning },
   },
 
-  // Rebuild browser sources (dashboard lands in 1i-spine). The block is present
-  // ahead of its first file so the file and its rules land atomically; the
-  // React plugins are added with the dashboard itself.
+  // Rebuild browser sources (the dashboard landed in 1i-spine): the same
+  // strict tier plus the React hooks rules that guard hook ordering/deps.
   {
     files: ["src/dashboard/**/*.ts", "src/dashboard/**/*.tsx"],
-    plugins: { "unused-imports": unusedImports },
+    plugins: { "unused-imports": unusedImports, "react-hooks": reactHooks },
     languageOptions: { globals: { ...globals.browser } },
-    rules: { ...unusedImportsRules, ...typeAwareTuning },
+    rules: {
+      ...unusedImportsRules,
+      ...typeAwareTuning,
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "error",
+    },
   },
 
   // Tests: same strict type-aware tier as source — this tree carries no debt
