@@ -19,6 +19,7 @@ import {
   HASH_A,
   HASH_B,
   IDEMPOTENCY_KEY,
+  LATER,
   NOTIFICATION,
   NOW,
   UUID_1,
@@ -75,7 +76,7 @@ const COMMAND_AUDIT = {
   result: {
     state: "applied",
     commandId: UUID_1,
-    affectedTargets: [{ family: "start", workflowId: "onboarding", startPlanId: UUID_3 }],
+    affectedTargets: [{ family: "start", workflowId: "onboarding", startPlanId: UUID_3, expectedVersion: 1 }],
   },
   completedAt: NOW,
   versionChanges: [],
@@ -96,6 +97,16 @@ const OBSERVED_PRESENT_WRITE_INTENT = {
   version: 1,
   createdAt: NOW,
   updatedAt: NOW,
+};
+const {
+  ingressSchemaHash: _legacyIngressSchemaHash,
+  canonicalInputSchemaHash: _legacyCanonicalInputSchemaHash,
+  inputFingerprint: _legacyInputFingerprint,
+  ...LEGACY_V5_START_PLAN_BASE
+} = START_PLAN;
+const LEGACY_V5_START_PLAN = {
+  ...LEGACY_V5_START_PLAN_BASE,
+  planned: START_PLAN.planned.map(({ rawInput: _rawInput, canonicalInputDigest: _canonicalInputDigest, ...planned }) => planned),
 };
 
 function databasePath(name = "authority.sqlite"): string {
@@ -183,6 +194,61 @@ describe("native SQLite authority schema", () => {
     }).state, "fenced");
     upgraded.commitWriteAttempt(ATOMIC_WRITE_COMMIT);
     assert.equal(AuthorityDatabase.inspectExistingReadOnly(path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  });
+
+  it("invalidates exact v5 start plans that cannot retain D109 raw ingress and boots requiring re-plan", () => {
+    const path = databasePath("d109-v5-start-plan.sqlite");
+    const legacy = new DatabaseSync(path);
+    legacy.exec("BEGIN EXCLUSIVE");
+    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 5)) {
+      for (const statement of migration.statements) legacy.exec(statement);
+    }
+    legacy.prepare(`
+      INSERT INTO authority_meta (
+        singleton_id, schema_version, authority_generation, updated_at,
+        migration_owner, migration_started_at
+      ) VALUES (1, 5, 0, ?, NULL, NULL)
+    `).run(NOW);
+    legacy.prepare(`
+      INSERT INTO start_plans (
+        record_key, workflow, consumed_by, expires_at, version, record_json, created_at
+      ) VALUES (?, ?, NULL, ?, ?, ?, ?)
+    `).run(
+      LEGACY_V5_START_PLAN.startPlanId,
+      LEGACY_V5_START_PLAN.workflowId,
+      LATER,
+      LEGACY_V5_START_PLAN.version,
+      JSON.stringify(LEGACY_V5_START_PLAN),
+      NOW,
+    );
+    legacy.exec("PRAGMA application_id = 1217249861");
+    legacy.exec("PRAGMA user_version = 5");
+    legacy.exec("COMMIT");
+    assert.equal(
+      legacy.prepare("SELECT record_json FROM start_plans WHERE record_key = ?")
+        .get(LEGACY_V5_START_PLAN.startPlanId)?.record_json,
+      JSON.stringify(LEGACY_V5_START_PLAN),
+    );
+    legacy.close();
+
+    const upgraded = openDatabase(path);
+    assert.equal(upgraded.inspectSchema().schemaVersion, 6);
+    assert.equal(upgraded.authority.startPlans.get(LEGACY_V5_START_PLAN.startPlanId), undefined);
+    assert.throws(
+      () => upgraded.authority.startPlans.consume({
+        startPlanId: LEGACY_V5_START_PLAN.startPlanId,
+        expectedVersion: 1,
+        commandId: UUID_1,
+        descriptorFingerprint: HASH_A,
+        configFingerprint: HASH_B,
+        ingressSchemaHash: HASH_A,
+        canonicalInputSchemaHash: HASH_B,
+        inputFingerprint: HASH_A,
+        now: NOW,
+      }),
+      /does not exist/,
+      "a v5 confirmation must re-plan; canonical input is never fabricated as raw ingress",
+    );
   });
 
   it("reopens an already-current database without rerunning the migration", () => {

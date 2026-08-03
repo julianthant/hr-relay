@@ -15,7 +15,6 @@
 import { workflowPlanning, workflowProjections } from "../../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../base/workflow.js";
 import { JsonValueSchema } from "../../domain/canonical-json.js";
-import type { JsonValue } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { deriveItemId, deriveTraceId } from "../../domain/identifiers.js";
 import type { IdFactory } from "../../domain/identifiers.js";
@@ -94,6 +93,21 @@ export function supportsDryRun(descriptor: AnyWorkflowDescriptor): boolean {
 
 export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): StartPlanRecord {
   const { descriptor } = request;
+  /**
+   * A non-JSON value cannot be preserved in the durable plan faithfully. Reject
+   * the whole planning request before minting any proposal rather than turning
+   * it into a plausible refusal with fabricated or dropped ingress.
+   */
+  const rawSubmissions = request.submissions.map((submission, index) => {
+    try {
+      return JsonValueSchema.parse(submission);
+    } catch (error) {
+      throw new Error(
+        `start plan ${descriptor.id} entry ${String(index + 1)} is not strict JSON and cannot be retained: ${errorText(error)}`,
+        { cause: error },
+      );
+    }
+  });
   const planning = workflowPlanning(descriptor);
   const now = IsoInstantSchema.parse(deps.clock.now().toISOString());
   const ingressSchemaHash = deriveSchemaHash(descriptor.input, "input");
@@ -104,10 +118,10 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
   const refused: StartRefusal[] = [];
   const seenItemIds = new Set<string>();
 
-  for (const [index, submission] of request.submissions.entries()) {
+  for (const [index, rawInput] of rawSubmissions.entries()) {
     const entry = PositiveIntSchema.parse(index + 1);
     const refuse = (code: StartRefusal["code"], message: string): void => {
-      refused.push({ entry, code, message });
+      refused.push({ entry, rawInput, code, message });
     };
 
     if (request.dryRun && !supportsDryRun(descriptor)) {
@@ -115,11 +129,9 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       continue;
     }
 
-    let rawInput: JsonValue;
     let parsed: unknown;
     let canonicalInput: unknown;
     try {
-      rawInput = JsonValueSchema.parse(submission);
       // This is the one and only ingress parse for this raw submission.
       parsed = planning.parseInput(rawInput);
       canonicalInput = planning.parseCanonicalInput(parsed);

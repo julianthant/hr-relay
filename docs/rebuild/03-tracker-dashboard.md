@@ -152,7 +152,8 @@ atomic and fail-closed. Phase 1d is next.
 Phase 1f completes the authority semantics that the Phase-1c storage shell intentionally left
 open:
 
-- `start_plans` retains the exact raw submission/artifact refs, the once-parsed canonical input,
+- `start_plans` retains the exact strict-JSON raw submission/artifact refs for every accepted and
+  refused entry, the once-parsed canonical input,
   separate ingress and canonical schema hashes, canonical-input digest, descriptor/version/
   contract/config fingerprints, config snapshot, resolved instances, match key/item id, proposed
   run set, expiry, revision, and consumption state. `start-run` reads and revalidates this row, then
@@ -160,7 +161,12 @@ open:
   policy, marks the plan consumed, and creates every accepted run with its immutable envelope/input
   snapshot. Any drift, expiry, spent-plan conflict, target lookup failure, or run insert failure
   rolls back plan consumption, command application, supersession, and every proposed run. Replay of
-  the same `commandId` returns the recorded result; another command cannot consume a spent plan.
+  the same `commandId` returns the recorded result only after every descriptor/config/ingress/
+  canonical/input binding has revalidated; another command cannot consume a spent plan. A
+  confirmation carries the plan id and pre-consume revision. Consumption advances the stored
+  revision once, while an exact same-command replay presents and validates the original revision.
+  Migration v6 deletes pre-D109 start plans because their transformed canonical input cannot
+  truthfully be reconstructed as raw ingress; they are short-lived proposals and must be re-planned.
 - `failures` is a non-rebuildable authority family in 1f. Every failed task/run writes doc 12's
   strict `FailureRecord` and stores its `failureId` with the failure transition; a display-safe span
   summary is not a substitute. This is the minimum durable record/lookup path. Automatic diagnostic
@@ -796,8 +802,8 @@ defaults to `all-or-none`; bulk hide defaults to `best-effort`. There is no clie
 response overwrites earlier errors.
 
 For descriptor-driven starts, the Enqueue row above is reached only by consuming the server-issued
-`start_plan` described in the Phase-1f ratification. The command payload carries the plan id/version,
-not mutable input. The handler compares every bound fingerprint/hash and consumes the plan in the
+`start_plan` described in the Phase-1f ratification. The command target carries the plan id and
+pre-consume version, not mutable input. The handler compares every bound fingerprint/hash and consumes the plan in the
 same transaction as active-run resolution and run creation; “plan consumed but no run” and “run
 created from an unconsumed/stale plan” are both invalid states.
 
@@ -808,7 +814,7 @@ or handler exists:
 
 | Target family | Closed action shell and authoritative target |
 |---|---|
-| `start` | `start-run`; exact workflow/start-plan token and its bound descriptor/config/input fingerprints |
+| `start` | `start-run`; exact workflow/start-plan token plus pre-consume revision and its bound descriptor/config/input fingerprints |
 | `intake` | inspect/confirm mapping, correct/exclude/validate, and enqueue-manifest actions; exact intake artifact/session/manifest id plus observed version |
 | `worker-browser` | plan/spawn/stop/pause/resume worker and refresh/reopen browser; exact worker id, or worker id + browser session id, plus observed version where authority is mutable |
 | `settings` | `apply-settings`; one expected config revision plus one strict atomic multi-leaf patch—never per-field route writes |

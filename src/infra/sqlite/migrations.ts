@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 5;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 6;
 
 /** The run lifecycle states in which exactly one worker owns the row (doc 02 §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -339,6 +339,19 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEGIN
           SELECT RAISE(ABORT, 'a start plan is consumed exactly once');
         END`,
+    ],
+  },
+  {
+    /*
+     * D109 makes raw ingress a mandatory durable part of every start-plan
+     * outcome. Pre-D109 records cannot be honestly upgraded: their canonical
+     * input may be transformed and is not a substitute for raw operator input.
+     * Plans are short-lived proposals, so invalidate them and require operators
+     * to re-plan rather than fabricate historical ingress.
+     */
+    version: 6,
+    statements: [
+      "DELETE FROM start_plans",
     ],
   },
 ] as const);

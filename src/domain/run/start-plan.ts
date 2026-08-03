@@ -64,6 +64,8 @@ export type PlannedRun = z.infer<typeof PlannedRunSchema>;
 export const StartRefusalSchema = z.strictObject({
   /** The submission's position in the operator's list, for display only. */
   entry: PositiveIntSchema,
+  /** Exact strict-JSON ingress, retained even when this entry cannot start. */
+  rawInput: JsonValueSchema,
   code: StartRefusalCodeSchema,
   message: z.string().min(1),
 });
@@ -141,6 +143,13 @@ export const StartPlanRecordSchema = z.strictObject({
       code: "custom",
       path: ["inputFingerprint"],
       message: "a start plan confirmation fingerprint must match its ordered accepted ingress identities",
+    });
+  }
+  if (plan.consumedBy !== undefined && plan.version < 2) {
+    context.addIssue({
+      code: "custom",
+      path: ["version"],
+      message: "a consumed start plan must retain its pre-consume revision",
     });
   }
 });

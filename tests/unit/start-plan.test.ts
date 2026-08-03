@@ -135,18 +135,17 @@ describe("start planning", () => {
     assert.equal(plan.refused.length, 1);
     assert.equal(plan.refused[0].entry, 2);
     assert.equal(plan.refused[0].code, "input-invalid");
+    assert.deepEqual(plan.refused[0].rawInput, { emplId: "99" });
   });
 
-  it("refuses non-JSON raw ingress instead of serializing or replacing it", () => {
+  it("fails the entire planning request when raw ingress cannot be retained as strict JSON", () => {
     const database = openDatabase();
-    const plan = planStart(plannerDeps(database), baseRequest([
+    const ids = sequentialIdFactory();
+    assert.throws(() => planStart(plannerDeps(database, ids), baseRequest([
       { emplId: "10873698" },
       undefined,
-    ]));
-    assert.equal(plan.planned.length, 1);
-    assert.deepEqual(plan.refused.map(({ entry, code }) => ({ entry, code })), [
-      { entry: 2, code: "input-invalid" },
-    ]);
+    ])), /entry 2 is not strict JSON and cannot be retained/);
+    assert.deepEqual(ids.minted(), [], "no proposal ids were minted");
   });
 
   it("refuses a repeat of a logical item already in the same plan", () => {
@@ -157,6 +156,7 @@ describe("start planning", () => {
     ]));
     assert.equal(plan.planned.length, 1);
     assert.deepEqual(plan.refused.map(({ code }) => code), ["active-run-exists"]);
+    assert.deepEqual(plan.refused[0].rawInput, { emplId: "10873698", includeCrmDates: true });
   });
 
   it("refuses a submission whose logical item already has an active run", () => {
@@ -185,6 +185,7 @@ describe("start planning", () => {
     const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
     assert.equal(plan.planned.length, 0);
     assert.equal(plan.refused[0].code, "active-run-exists");
+    assert.deepEqual(plan.refused[0].rawInput, { emplId: "10873698" });
     assert.match(plan.refused[0].message, /pl-170000-aaaa/);
   });
 
@@ -194,6 +195,7 @@ describe("start planning", () => {
     const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }], { dryRun: true }));
     assert.equal(plan.planned.length, 0);
     assert.equal(plan.refused[0].code, "dry-run-unsupported");
+    assert.deepEqual(plan.refused[0].rawInput, { emplId: "10873698" });
   });
 
   it("resolves every reached system to production unless test is requested", () => {
@@ -259,6 +261,7 @@ describe("start plan consumption", () => {
   function consumeRequest(plan: ReturnType<typeof storedPlan>, overrides: Record<string, unknown> = {}) {
     return {
       startPlanId: plan.startPlanId,
+      expectedVersion: plan.version,
       commandId: "cccccccc-0001-4000-8000-000100000000",
       descriptorFingerprint: plan.descriptorFingerprint,
       configFingerprint: plan.configFingerprint,
@@ -277,6 +280,20 @@ describe("start plan consumption", () => {
     assert.equal(first.state, "consumed");
     const again = database.authority.startPlans.consume(consumeRequest(plan));
     assert.equal(again.state, "already-consumed");
+    for (const field of [
+      "descriptorFingerprint",
+      "configFingerprint",
+      "ingressSchemaHash",
+      "canonicalInputSchemaHash",
+      "inputFingerprint",
+    ] as const) {
+      const changedReplay = database.authority.startPlans.consume(consumeRequest(plan, {
+        [field]: HASH_B,
+      }));
+      assert.equal(changedReplay.state, "refused");
+      if (changedReplay.state !== "refused") throw new Error("a changed replay must refuse");
+      assert.equal(changedReplay.code, "fingerprint-mismatch");
+    }
     const other = database.authority.startPlans.consume(consumeRequest(plan, {
       commandId: "cccccccc-0002-4000-8000-000200000000",
     }));
@@ -308,6 +325,24 @@ describe("start plan consumption", () => {
     }
   });
 
+  it("binds consumption to the pre-consume plan revision while preserving exact replay idempotency", () => {
+    const database = openDatabase();
+    const plan = storedPlan(database);
+    const stale = database.authority.startPlans.consume(consumeRequest(plan, {
+      expectedVersion: plan.version + 1,
+    }));
+    assert.equal(stale.state, "refused");
+    if (stale.state !== "refused") throw new Error("a stale revision must refuse");
+    assert.equal(stale.code, "version-mismatch");
+
+    const first = database.authority.startPlans.consume(consumeRequest(plan));
+    assert.equal(first.state, "consumed");
+    if (first.state !== "consumed") throw new Error("the original confirmation must consume");
+    assert.equal(first.plan.version, plan.version + 1);
+    const replay = database.authority.startPlans.consume(consumeRequest(plan));
+    assert.equal(replay.state, "already-consumed");
+  });
+
   it("refuses an expired confirmation rather than starting it late", () => {
     const database = openDatabase();
     const plan = storedPlan(database);
@@ -326,6 +361,7 @@ describe("start plan consumption", () => {
       () => database.authority.startPlans.create({
         ...plan,
         consumedBy: { commandId: "cccccccc-0003-4000-8000-000300000000", consumedAt: NOW },
+        version: plan.version + 1,
       }),
       /cannot be created already consumed/,
     );

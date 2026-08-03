@@ -142,6 +142,11 @@ export const RunItemQuerySchema = z.strictObject({
 
 export const StartPlanConsumeRequestSchema = z.strictObject({
   startPlanId: StartPlanIdSchema,
+  /**
+   * The plan revision the confirmation surface rendered. A successful consume
+   * increments storage to retain that pre-consume revision for idempotent replay.
+   */
+  expectedVersion: PositiveIntSchema,
   commandId: CommandIdSchema,
   /** Re-checked against the stored plan; a changed descriptor/config/input refuses. */
   descriptorFingerprint: FingerprintSchema,
@@ -158,7 +163,7 @@ export const StartPlanConsumeOutcomeSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("already-consumed"), plan: StartPlanRecordSchema }),
   z.strictObject({
     state: z.literal("refused"),
-    code: z.enum(["expired", "fingerprint-mismatch", "spent"]),
+    code: z.enum(["expired", "fingerprint-mismatch", "spent", "version-mismatch"]),
     message: z.string().min(1),
   }),
 ]);

@@ -80,7 +80,7 @@ describe("authority classification and D95 command families", () => {
     const result = {
       state: "applied",
       commandId: UUID_1,
-      affectedTargets: [{ family: "start", workflowId: "onboarding", startPlanId: UUID_3 }],
+      affectedTargets: [{ family: "start", workflowId: "onboarding", startPlanId: UUID_3, expectedVersion: 1 }],
     };
     assert.equal(CommandResultSchema.safeParse(result).success, true);
     assert.equal(CommandResultSchema.safeParse({ ...result, affectedRunIds: [UUID_2] }).success, false);

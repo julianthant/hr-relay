@@ -428,7 +428,7 @@ const COMMAND_ENVELOPE = {
 const COMMAND_RESULT = {
   state: "applied",
   commandId: UUID_1,
-  affectedTargets: [{ family: "start", workflowId: "onboarding", startPlanId: UUID_3 }],
+  affectedTargets: [{ family: "start", workflowId: "onboarding", startPlanId: UUID_3, expectedVersion: 1 }],
 };
 const COMMAND_AUDIT = {
   auditId: UUID_2,
@@ -876,7 +876,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "CaptureCommandRequest", schema: CaptureCommandRequestSchema, fixtures: commandFixtures("capture") },
   { name: "CommandRequest", schema: CommandRequestSchema, fixtures: COMMAND_FIXTURES },
   { name: "CommandTargetReference", schema: CommandTargetReferenceSchema, fixtures: [
-    { family: "start", workflowId: "onboarding", startPlanId: UUID_1 },
+    { family: "start", workflowId: "onboarding", startPlanId: UUID_1, expectedVersion: 1 },
     { family: "intake", intakeSessionId: UUID_1 },
     { family: "worker-browser", workerId: "worker-1" },
     { family: "settings", revision: 1 },

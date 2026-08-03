@@ -206,6 +206,9 @@ all fail.
   start command consumes that exact plan and creates every accepted run in one authority
   transaction; expiry, schema/config/descriptor drift, a spent token, or any enqueue-policy failure
   rolls back consumption and all runs.
+  Every accepted **and refused** entry retains its exact strict-JSON raw submission. A value that
+  cannot be represented as strict JSON fails the whole planning request before any proposal exists;
+  it is never serialized, dropped, or substituted into a plausible refusal.
 - A successful workflow has one durable terminal result. The executor evaluates `result.derive`
   only after every declared terminal dependency is durably resolved, parses the value through the
   descriptor's exact result schema, and writes one immutable `RunResultRecord` atomically with the

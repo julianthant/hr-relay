@@ -141,7 +141,11 @@ export const StartCommandRequestSchema = z.strictObject({
   ...CommandEnvelopeFields,
   family: z.literal("start"),
   type: z.literal("start-run"),
-  target: z.strictObject({ workflowId: WorkflowIdSchema, startPlanId: StartPlanIdSchema }),
+  target: z.strictObject({
+    workflowId: WorkflowIdSchema,
+    startPlanId: StartPlanIdSchema,
+    expectedVersion: PositiveIntSchema,
+  }),
   payload: z.strictObject({
     descriptorFingerprint: FingerprintSchema,
     configFingerprint: FingerprintSchema,
@@ -254,7 +258,12 @@ export const CommandRequestSchema = z.union([
 ]);
 
 export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
-  z.strictObject({ family: z.literal("start"), workflowId: WorkflowIdSchema, startPlanId: StartPlanIdSchema }),
+  z.strictObject({
+    family: z.literal("start"),
+    workflowId: WorkflowIdSchema,
+    startPlanId: StartPlanIdSchema,
+    expectedVersion: PositiveIntSchema,
+  }),
   z.strictObject({ family: z.literal("intake"), intakeSessionId: IntakeSessionIdSchema }),
   z.strictObject({ family: z.literal("worker-browser"), workerId: WorkerIdSchema }),
   z.strictObject({ family: z.literal("settings"), revision: PositiveIntSchema }),

@@ -1466,9 +1466,38 @@ export class AuthorityDatabase implements Disposable {
         return this.withAuthorityTransaction(() => {
           const plan = this.#readRecord("start_plans", request.startPlanId, StartPlanRecordSchema);
           if (plan === undefined) throw new Error(`start plan ${request.startPlanId} does not exist`);
+          const mismatched = [
+            ["descriptor", plan.descriptorFingerprint, request.descriptorFingerprint],
+            ["config", plan.configFingerprint, request.configFingerprint],
+            ["ingress schema", plan.ingressSchemaHash, request.ingressSchemaHash],
+            ["canonical-input schema", plan.canonicalInputSchemaHash, request.canonicalInputSchemaHash],
+            ["input", plan.inputFingerprint, request.inputFingerprint],
+          ].find(([, planned, presented]) => planned !== presented);
+          if (mismatched !== undefined) {
+            return StartPlanConsumeOutcomeSchema.parse({
+              state: "refused",
+              code: "fingerprint-mismatch",
+              message: `start plan ${request.startPlanId} was planned against a different ${String(mismatched[0])}; re-plan before starting`,
+            });
+          }
+          /*
+           * Consuming advances the durable record from its confirmation revision
+           * by exactly one. A retry must present that original revision so it
+           * confirms the same body, while an unconsumed plan uses its current
+           * revision normally.
+           */
+          const confirmationVersion = plan.consumedBy === undefined ? plan.version : plan.version - 1;
+          if (request.expectedVersion !== confirmationVersion) {
+            return StartPlanConsumeOutcomeSchema.parse({
+              state: "refused",
+              code: "version-mismatch",
+              message: `start plan ${request.startPlanId} confirmation expected revision ${String(confirmationVersion)} but received ${String(request.expectedVersion)}; re-plan before starting`,
+            });
+          }
           if (plan.consumedBy !== undefined) {
             // The same command retrying is idempotent; a different one is a
-            // second start wearing the first confirmation's clothes.
+            // second start wearing the first confirmation's clothes. This runs
+            // only after all immutable confirmation bindings revalidated.
             return StartPlanConsumeOutcomeSchema.parse(plan.consumedBy.commandId === request.commandId
               ? { state: "already-consumed", plan }
               : {
@@ -1482,20 +1511,6 @@ export class AuthorityDatabase implements Disposable {
               state: "refused",
               code: "expired",
               message: `start plan ${request.startPlanId} expired at ${plan.expiresAt}`,
-            });
-          }
-          const mismatched = [
-            ["descriptor", plan.descriptorFingerprint, request.descriptorFingerprint],
-            ["config", plan.configFingerprint, request.configFingerprint],
-            ["ingress schema", plan.ingressSchemaHash, request.ingressSchemaHash],
-            ["canonical-input schema", plan.canonicalInputSchemaHash, request.canonicalInputSchemaHash],
-            ["input", plan.inputFingerprint, request.inputFingerprint],
-          ].find(([, planned, presented]) => planned !== presented);
-          if (mismatched !== undefined) {
-            return StartPlanConsumeOutcomeSchema.parse({
-              state: "refused",
-              code: "fingerprint-mismatch",
-              message: `start plan ${request.startPlanId} was planned against a different ${String(mismatched[0])}; re-plan before starting`,
             });
           }
           const consumed = StartPlanRecordSchema.parse({
