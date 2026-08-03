@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "reviewedAt": "2026-08-01",
+  "reviewedAt": "2026-08-03",
   "architectureRoot": "tests/unit/architecture",
   "testScript": "test:architecture",
   "coveragePolicy": {
@@ -78,6 +78,14 @@
       "status": "active",
       "owner": "docs/rebuild/11-clock-config-secrets.md",
       "invariant": "manualClock references, imports, re-exports, calls, and dynamic property access remain test-only.",
+      "replacementRequired": true
+    },
+    {
+      "name": "migration-history-immutability",
+      "file": "tests/unit/architecture/migration-history-immutability.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/03-tracker-dashboard.md; docs/rebuild/10-guard-test-architecture.md",
+      "invariant": "Every released SQLite authority migration version and ordered statement byte sequence is SHA-256 pinned; new schema work appends a new version and digest without editing, inserting into, deleting from, or reordering prior history.",
       "replacementRequired": true
     },
     {

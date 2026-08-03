@@ -1,0 +1,83 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { describe, it } from "vitest";
+import {
+  CURRENT_AUTHORITY_SCHEMA_VERSION,
+  SQLITE_MIGRATIONS,
+} from "../../../src/infra/sqlite/migrations.js";
+
+interface MigrationShape {
+  readonly version: number;
+  readonly statements: readonly string[];
+}
+
+/**
+ * v1-v7 were derived from the known-correct history at 5ec912e; v8 was pinned
+ * when its repair shipped. Every newly released migration extends this literal
+ * list. A historical hash is never recomputed to bless edited old statements.
+ */
+const RELEASED_MIGRATION_DIGESTS = Object.freeze([
+  { version: 1, sha256: "19df8bb638864aefb5ef95d16d746cb36a4f215601d60873bf4d1b5823ef49d8" },
+  { version: 2, sha256: "405f1cde1a83ae0938fa113b827601e89ad840ae17048035fe251a18ae93bcff" },
+  { version: 3, sha256: "790f2bbd12791949ca77d9a794da37bc7646f4a1972173d27ce145e55aa7829c" },
+  { version: 4, sha256: "21467bf4ac80bef6fbb983cb6dee3c0bc97db49502b370851b9001cbeb48ed7e" },
+  { version: 5, sha256: "0c943b0e2019da062e4d9b665ee5815f4210f5f4cc4ecc91154eb72df9c77104" },
+  { version: 6, sha256: "cfad2a293f36ec666ce652a4fb424f92a30a3d678725955e0717bc62291f4006" },
+  { version: 7, sha256: "80a877874f1a5ac939fed0ed3c4939b9d6fe53e889529f215e8baf4ffb4e141a" },
+  { version: 8, sha256: "a07ef35f3c970822104220a1d7e8c4053f0e4ef7379a2be4976606fc3370b63d" },
+] as const);
+
+/** Version, count, statement position, byte length, and bytes are all framed. */
+function migrationDigest(migration: MigrationShape): string {
+  const hash = createHash("sha256");
+  hash.update("hrauto:sqlite-migration:v1\0");
+  hash.update(String(migration.version));
+  hash.update("\0");
+  hash.update(String(migration.statements.length));
+  hash.update("\0");
+  for (const [index, statement] of migration.statements.entries()) {
+    hash.update(String(index));
+    hash.update(":");
+    hash.update(String(Buffer.byteLength(statement, "utf8")));
+    hash.update("\0");
+    hash.update(statement, "utf8");
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+describe("immutable SQLite migration history", () => {
+  it("pins every released migration's metadata, order, and ordered statement bytes", () => {
+    assert.equal(
+      CURRENT_AUTHORITY_SCHEMA_VERSION,
+      RELEASED_MIGRATION_DIGESTS.at(-1)?.version,
+      "a new schema version must append its reviewed literal digest",
+    );
+    assert.deepEqual(
+      SQLITE_MIGRATIONS.map((migration) => ({
+        version: migration.version,
+        sha256: migrationDigest(migration),
+      })),
+      RELEASED_MIGRATION_DIGESTS,
+    );
+  });
+
+  it("changes its digest for metadata, statement edits, insertion, deletion, and reorder", () => {
+    const fixture = {
+      version: 41,
+      statements: [
+        "CREATE TABLE alpha (id INTEGER PRIMARY KEY)",
+        "CREATE INDEX alpha_id_idx ON alpha(id)",
+      ],
+    } as const;
+    const expected = migrationDigest(fixture);
+    const adversarial: readonly MigrationShape[] = [
+      { ...fixture, version: 42 },
+      { ...fixture, statements: [fixture.statements[0], `${fixture.statements[1]} `] },
+      { ...fixture, statements: [...fixture.statements, "SELECT 1"] },
+      { ...fixture, statements: [fixture.statements[0]] },
+      { ...fixture, statements: [fixture.statements[1], fixture.statements[0]] },
+    ];
+    for (const changed of adversarial) assert.notEqual(migrationDigest(changed), expected);
+  });
+});

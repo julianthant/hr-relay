@@ -28,6 +28,8 @@ import {
 } from "../../../src/domain/run/result.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
+import { TerminalAuthorizationRecordSchema } from "../../../src/domain/run/terminal-authorization.js";
+import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import {
   AuthorityBackupService,
@@ -748,6 +750,152 @@ describe("fail-closed degraded boot and read-only doctor", () => {
         assert.equal(report.cause.code, "authority-invariant", `${arm.name}/${name}`);
         assert.match(report.cause.summary, /terminal-authorization-binds-exact-terminal-authority/);
       }
+    }
+  });
+
+  it("degrades read-only for every authorization column and arm-specific authority mismatch", () => {
+    type SeededTerminalAuthority = ReturnType<typeof seedTerminalAuthority>;
+    const columnCases = [
+      {
+        name: "worker-id-column",
+        mutate: (raw: DatabaseSync, runId: string) => raw.prepare(`
+          UPDATE run_terminal_authorizations SET worker_id = ? WHERE record_key = ?
+        `).run("worker-corrupt", runId),
+      },
+      {
+        name: "expected-version-column",
+        mutate: (raw: DatabaseSync, runId: string) => raw.prepare(`
+          UPDATE run_terminal_authorizations
+          SET expected_version = expected_version + 1 WHERE record_key = ?
+        `).run(runId),
+      },
+      {
+        name: "authorized-at-column",
+        mutate: (raw: DatabaseSync, runId: string) => raw.prepare(`
+          UPDATE run_terminal_authorizations SET created_at = ? WHERE record_key = ?
+        `).run(AFTER_NOW, runId),
+      },
+    ] as const;
+    for (const arm of [
+      { name: "failed", runId: UUID_1 },
+      { name: "done", runId: UUID_2 },
+    ] as const) {
+      for (const fixture of columnCases) {
+        const path = join(testRoot(), `${arm.name}-${fixture.name}.sqlite`);
+        const database = openDatabase(path);
+        seedTerminalAuthority(database);
+        database.close();
+        const raw = new DatabaseSync(path);
+        fixture.mutate(raw, arm.runId);
+        raw.close();
+        assert.throws(
+          () => AuthorityDatabase.inspectExistingReadOnly(path),
+          /terminal-authorization-columns-match-record/,
+          `${arm.name}/${fixture.name}`,
+        );
+        const report = openBootStore(path).report();
+        assert.equal(report.state, "degraded-read-only", `${arm.name}/${fixture.name}`);
+        if (report.state !== "degraded-read-only") throw new Error("expected degraded authorization columns");
+        assert.match(report.cause.summary, /terminal-authorization-columns-match-record/);
+      }
+    }
+
+    const associatedRecordCases: ReadonlyArray<Readonly<{
+      name: string;
+      violation: RegExp;
+      mutate(raw: DatabaseSync, seeded: SeededTerminalAuthority): void;
+    }>> = [
+      {
+        name: "failed-run-error-summary",
+        violation: /terminal-authorization-binds-exact-terminal-authority/,
+        mutate: (raw) => {
+          const row = raw.prepare("SELECT record_json FROM tasks WHERE record_key = ?")
+            .get(UUID_1) as { record_json: string } | undefined;
+          if (row === undefined) throw new Error("failed run is absent from summary corruption fixture");
+          const run = RunRecordSchema.parse(JSON.parse(row.record_json));
+          if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed") {
+            throw new Error("summary corruption fixture requires a failed terminal run");
+          }
+          const corrupted = RunRecordSchema.parse({
+            ...run,
+            lifecycle: { ...run.lifecycle, errorSummary: "Different display-safe failure summary" },
+          });
+          raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+            .run(JSON.stringify(corrupted), UUID_1);
+        },
+      },
+      {
+        name: "failure-record-summary",
+        violation: /terminal-authorization-binds-exact-terminal-authority/,
+        mutate: (raw, seeded) => {
+          const row = raw.prepare("SELECT record_json FROM failures WHERE record_key = ?")
+            .get(seeded.failure.failureId) as { record_json: string } | undefined;
+          if (row === undefined) throw new Error("failure is absent from summary corruption fixture");
+          const failure = FailureRecordSchema.parse(JSON.parse(row.record_json));
+          const corrupted = FailureRecordSchema.parse({
+            ...failure,
+            summary: "Different structured failure summary",
+          });
+          raw.prepare("UPDATE failures SET record_json = ? WHERE record_key = ?")
+            .run(JSON.stringify(corrupted), failure.failureId);
+        },
+      },
+      {
+        name: "done-authorization-result-digest",
+        violation: /results-bind-terminal-authorization/,
+        mutate: (raw, seeded) => {
+          const row = raw.prepare(`
+            SELECT record_json FROM run_terminal_authorizations WHERE record_key = ?
+          `).get(seeded.result.runId) as { record_json: string } | undefined;
+          if (row === undefined) throw new Error("done authorization is absent from digest corruption fixture");
+          const authorization = TerminalAuthorizationRecordSchema.parse(JSON.parse(row.record_json));
+          if (authorization.kind !== "done") throw new Error("digest corruption fixture requires done authorization");
+          const corrupted = TerminalAuthorizationRecordSchema.parse({
+            ...authorization,
+            resultDigest: authorization.resultDigest === HASH_A ? HASH_B : HASH_A,
+          });
+          raw.prepare(`
+            UPDATE run_terminal_authorizations SET record_json = ? WHERE record_key = ?
+          `).run(JSON.stringify(corrupted), authorization.runId);
+        },
+      },
+      {
+        name: "done-authorization-outbox-id",
+        violation: /terminal-outbox-binds-terminal-authorization/,
+        mutate: (raw, seeded) => {
+          const row = raw.prepare(`
+            SELECT record_json FROM run_terminal_authorizations WHERE record_key = ?
+          `).get(seeded.result.runId) as { record_json: string } | undefined;
+          if (row === undefined) throw new Error("done authorization is absent from outbox corruption fixture");
+          const authorization = TerminalAuthorizationRecordSchema.parse(JSON.parse(row.record_json));
+          if (authorization.kind !== "done") throw new Error("outbox corruption fixture requires done authorization");
+          const corrupted = TerminalAuthorizationRecordSchema.parse({
+            ...authorization,
+            outboxId: UUID_8,
+          });
+          raw.prepare(`
+            UPDATE run_terminal_authorizations SET record_json = ? WHERE record_key = ?
+          `).run(JSON.stringify(corrupted), authorization.runId);
+        },
+      },
+    ];
+    for (const fixture of associatedRecordCases) {
+      const path = join(testRoot(), `${fixture.name}.sqlite`);
+      const database = openDatabase(path);
+      const seeded = seedTerminalAuthority(database);
+      database.close();
+      const raw = new DatabaseSync(path);
+      fixture.mutate(raw, seeded);
+      raw.close();
+      assert.throws(
+        () => AuthorityDatabase.inspectExistingReadOnly(path),
+        fixture.violation,
+        fixture.name,
+      );
+      const report = openBootStore(path).report();
+      assert.equal(report.state, "degraded-read-only", fixture.name);
+      if (report.state !== "degraded-read-only") throw new Error("expected degraded associated authority");
+      assert.match(report.cause.summary, fixture.violation);
     }
   });
 

@@ -462,7 +462,7 @@ describe("native SQLite authority schema", () => {
     assert.equal(
       releasedV7?.statements.some((statement) => statement.includes("run_terminal_authorizations")),
       false,
-      "released v7 must remain byte-equivalent in behavior and cannot create the v8 table",
+      "the digest guard pins exact bytes/order; this fixture pins that released v7 cannot create the v8 table",
     );
 
     const legacy = new DatabaseSync(path);
