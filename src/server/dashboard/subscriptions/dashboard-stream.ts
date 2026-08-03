@@ -46,14 +46,19 @@ interface Subscriber {
   queue: DashboardStreamEnvelope[];
   listener?: (envelope: DashboardStreamEnvelope) => void;
   closed: boolean;
+  /** After a loud overflow reset, nothing else queues until the reset is consumed. */
+  resetPending: boolean;
 }
 
-interface RetainedEnvelope {
-  readonly cursorNumber: number;
-  readonly generation: number;
-  readonly day?: string;
-  readonly envelope: DashboardStreamEnvelope;
-}
+/**
+ * One entry per projection change. Patch entries carry their envelope for
+ * replay; snapshot markers carry none — their presence in a resume window
+ * means the client's held payload is count-stale and only a fresh snapshot
+ * repairs it.
+ */
+type RetainedEntry =
+  | { readonly cursorNumber: number; readonly generation: number; readonly kind: "patch"; readonly day: string; readonly envelope: DashboardStreamEnvelope }
+  | { readonly cursorNumber: number; readonly generation: number; readonly kind: "snapshot" };
 
 function cursorNumber(cursor: string): number | undefined {
   const match = CURSOR_PATTERN.exec(cursor);
@@ -65,7 +70,7 @@ export class DashboardStreamHub {
   readonly #retention: number;
   readonly #maxPending: number;
   readonly #subscribers = new Set<Subscriber>();
-  #retained: RetainedEnvelope[] = [];
+  #retained: RetainedEntry[] = [];
   #disposeProjection: () => void;
 
   constructor(deps: DashboardStreamHubDeps) {
@@ -111,9 +116,13 @@ export class DashboardStreamHub {
       for (const subscriber of this.#subscribers) this.#push(subscriber, reset);
       return;
     }
+    const cursor = cursorNumber(change.cursor);
+    if (cursor === undefined) throw new Error(`projection produced a malformed cursor: ${change.cursor}`);
     if (change.kind === "snapshot") {
-      // Worker-card state changed; each subscriber gets its own day's fresh
-      // snapshot — the protocol allows snapshots at any point in the stream.
+      // A count-bearing change; each subscriber gets its own day's fresh
+      // snapshot — the protocol allows snapshots at any point in the stream —
+      // and the marker is retained so a resume across it re-snapshots too.
+      this.#retain({ cursorNumber: cursor, generation: this.#projection.generation(), kind: "snapshot" });
       for (const subscriber of this.#subscribers) this.#push(subscriber, this.#snapshot(subscriber.day));
       return;
     }
@@ -123,13 +132,21 @@ export class DashboardStreamHub {
       cursor: change.cursor,
       payload: change.patch,
     });
-    const cursor = cursorNumber(change.cursor);
-    if (cursor === undefined) throw new Error(`projection produced a malformed cursor: ${change.cursor}`);
-    this.#retained.push({ cursorNumber: cursor, generation: this.#projection.generation(), day: change.day, envelope });
-    if (this.#retained.length > this.#retention) this.#retained = this.#retained.slice(-this.#retention);
+    this.#retain({
+      cursorNumber: cursor,
+      generation: this.#projection.generation(),
+      kind: "patch",
+      day: change.day,
+      envelope,
+    });
     for (const subscriber of this.#subscribers) {
       if (subscriber.day === change.day) this.#push(subscriber, envelope);
     }
+  }
+
+  #retain(entry: RetainedEntry): void {
+    this.#retained.push(entry);
+    if (this.#retained.length > this.#retention) this.#retained = this.#retained.slice(-this.#retention);
   }
 
   #push(subscriber: Subscriber, envelope: DashboardStreamEnvelope): void {
@@ -138,6 +155,7 @@ export class DashboardStreamHub {
       subscriber.listener(envelope);
       return;
     }
+    if (subscriber.resetPending) return; // the queued reset already supersedes everything after it
     subscriber.queue.push(envelope);
     if (subscriber.queue.length > this.#maxPending) {
       subscriber.queue = [DashboardStreamEnvelopeSchema.parse({
@@ -145,12 +163,13 @@ export class DashboardStreamHub {
         reason: "cursor-expired",
         cursor: this.#projection.cursor(),
       })];
+      subscriber.resetPending = true;
     }
   }
 
   connect(input: Readonly<{ day: string; lastEventId?: string }>): DashboardStreamConnection {
     const day = z.iso.date().parse(input.day);
-    const subscriber: Subscriber = { day, queue: [], closed: false };
+    const subscriber: Subscriber = { day, queue: [], closed: false, resetPending: false };
     const initial: DashboardStreamEnvelope[] = [this.#hello()];
 
     if (this.#projection.health().state === "degraded") {
@@ -158,16 +177,26 @@ export class DashboardStreamHub {
     } else {
       const resumeFrom = input.lastEventId === undefined ? undefined : cursorNumber(input.lastEventId);
       const generation = this.#projection.generation();
+      const oldest = this.#retained[0];
+      // Resumable only when the retained window provably covers everything
+      // after the presented cursor, in the current generation.
+      const current = cursorNumber(this.#projection.cursor());
       const resumable = resumeFrom !== undefined
-        && this.#retained.some((entry) => entry.generation === generation && entry.cursorNumber <= resumeFrom)
+        && oldest !== undefined
+        && resumeFrom >= oldest.cursorNumber - 1
+        && current !== undefined
+        && resumeFrom <= current // a cursor from the future is foreign, not resumable
         && this.#retained.every((entry) => entry.generation === generation);
-      if (resumable) {
-        for (const entry of this.#retained) {
-          if (entry.cursorNumber > resumeFrom && (entry.day === undefined || entry.day === day)) {
-            initial.push(entry.envelope);
-          }
+      const window = resumable
+        ? this.#retained.filter((entry) => entry.cursorNumber > resumeFrom)
+        : undefined;
+      if (window !== undefined && window.every((entry) => entry.kind === "patch")) {
+        for (const entry of window) {
+          if (entry.day === day) initial.push(entry.envelope);
         }
       } else {
+        // Not resumable, or a count-bearing snapshot marker sits inside the
+        // window: a fresh snapshot supersedes whatever the client held.
         initial.push(this.#snapshot(day));
       }
       initial.push(DashboardStreamEnvelopeSchema.parse({ type: "health", state: "live" }));
@@ -178,6 +207,7 @@ export class DashboardStreamHub {
       initial: Object.freeze(initial),
       subscribe: (listener: (envelope: DashboardStreamEnvelope) => void): (() => void) => {
         subscriber.listener = listener;
+        subscriber.resetPending = false;
         for (const envelope of subscriber.queue.splice(0)) listener(envelope);
         return () => {
           delete subscriber.listener;

@@ -18,7 +18,7 @@
  * - the write-resolution executor (the doc 09 write sequencer is a parallel
  *   1f deliverable; `resolve-write-*` commands unwind loudly until it wires).
  */
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
@@ -77,6 +77,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   ).version;
 
   const resolved = resolveConfigWithProvenance(input.env ?? process.env, {}, clock);
+  mkdirSync(stateRoot, { recursive: true });
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
     clock,

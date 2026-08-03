@@ -106,16 +106,11 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   });
 
   app.get("/events/v1", (c) => {
-    const topics = z.string().min(1).parse(c.req.query("topics"));
+    const topics = z.string()
+      .regex(TOPICS_PATTERN, "topics must be dashboard-day:<YYYY-MM-DD>")
+      .parse(c.req.query("topics"));
     const match = TOPICS_PATTERN.exec(topics);
-    if (match === null) {
-      throw new z.ZodError([{
-        code: "custom",
-        message: `topics must be dashboard-day:<YYYY-MM-DD>, got ${topics}`,
-        path: ["topics"],
-        input: topics,
-      }]);
-    }
+    if (match === null) throw new Error(`topics ${topics} passed its schema but did not match; refusing to subscribe`);
     const lastEventId = c.req.header("Last-Event-ID") ?? c.req.query("cursor");
     const connection = deps.hub.connect({
       day: match[1],

@@ -89,7 +89,7 @@ export const SPAN_IDENTITY_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
   "descriptorVersion", "contractFingerprint", "resolvedInstance", "configFingerprint", "configSnapshotId",
 ]);
 
-const DetailKeySchema = z.string().regex(/^[a-z][A-Za-z0-9]*$/, "detail key must be lowerCamelCase")
+const DetailKeySchema = z.string().regex(/^[a-z][A-Za-z0-9-]*$/, "detail key must be kebab- or lowerCamel-case")
   .refine((key) => !SPAN_IDENTITY_ATTRIBUTE_KEYS.has(key), "identity attributes are write-once and can never ride a patch");
 
 export const DetailUpdateWireSchema = z.strictObject({
