@@ -19,6 +19,7 @@ import {
   StartPlanIdSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
+  WriteIntentIdSchema,
 } from "../../domain/ids.js";
 import { StartPlanRecordSchema } from "../../domain/run/start-plan.js";
 import {
@@ -143,6 +144,30 @@ export const RunClaimSweepRequestSchema = z.strictObject({
   staleBefore: IsoInstantSchema,
   now: IsoInstantSchema,
 });
+
+/**
+ * D118 (doc 05 §3): an expired claim is NOT ordinary requeue authority. The
+ * sweeper checks the authoritative write-intent set for the run's logical
+ * item first; any unfinished `attempting` intent routes the run to doc 09
+ * recovery — parked loudly when the row was `running`, and left unclaimable
+ * under its expired claim otherwise — and NEVER back to `queued`. Only the
+ * write sequencer's typed recovery resolutions may release it.
+ */
+export const RunClaimSweepOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("requeued"), run: RunRecordSchema }),
+  z.strictObject({
+    state: z.literal("recovery-required"),
+    run: RunRecordSchema,
+    writeIntentId: WriteIntentIdSchema,
+    intentGeneration: PositiveIntSchema,
+    /** `true` when the row transitioned to `parked-write`; `false` when it was
+     * left under its expired claim (a claimed/validating row has no legal
+     * parked-write edge — it stays unclaimable until recovery resolves). */
+    parked: z.boolean(),
+    message: z.string().min(1),
+  }),
+]);
+export type RunClaimSweepOutcome = z.infer<typeof RunClaimSweepOutcomeSchema>;
 
 export const RunItemQuerySchema = z.strictObject({
   workflow: WorkflowIdSchema,

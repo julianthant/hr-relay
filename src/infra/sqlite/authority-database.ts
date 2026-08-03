@@ -69,6 +69,7 @@ import {
 import {
   RunClaimOutcomeSchema,
   RunClaimRequestSchema,
+  RunClaimSweepOutcomeSchema,
   RunClaimSweepRequestSchema,
   RunClaimTokenSchema,
   RunHeartbeatOutcomeSchema,
@@ -286,7 +287,8 @@ type RunRepository = Readonly<{
   updatePresentation(input: unknown): RunUpdateOutcome;
   /** D95 run-priority `bump`: elevate one QUEUED row's claim class; never a requeue. */
   bumpPriority(input: unknown): RunUpdateOutcome;
-  sweepExpiredClaims(input: unknown): readonly RunRecord[];
+  /** D118: an `attempting` write intent routes to recovery, never to requeue. */
+  sweepExpiredClaims(input: unknown): readonly z.infer<typeof RunClaimSweepOutcomeSchema>[];
 }>;
 
 type FailureRepository = Readonly<{
@@ -2228,9 +2230,79 @@ export class AuthorityDatabase implements Disposable {
               WHERE state IN ('claimed', 'validating', 'running') AND heartbeat_at < ? AND workflow = ?
               ORDER BY heartbeat_at, record_key
             `).all(request.staleBefore, request.workflow);
-          const recovered: RunRecord[] = [];
+          const outcomes: z.infer<typeof RunClaimSweepOutcomeSchema>[] = [];
           for (const row of rows) {
             const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+            // D118 (doc 05 §3): before any queued/claimable transition, check
+            // the authoritative write-intent set for this logical item. An
+            // unfinished `attempting` intent means a write may have landed —
+            // the run routes to doc 09 recovery, never to ordinary requeue.
+            // The lookup runs inside this same transaction; if it throws, the
+            // whole sweep unwinds rather than defaulting to "no unfinished
+            // write".
+            const intents = this.#database.prepare(`
+              SELECT record_json FROM write_intents
+              WHERE status = 'attempting'
+                AND json_extract(record_json, '$.workflowId') = ?
+                AND json_extract(record_json, '$.itemId') = ?
+              ORDER BY record_key
+            `).all(current.envelope.workflow, current.envelope.itemId);
+            const attempting = intents.map((intentRow) =>
+              parseJsonRecord(WriteIntentRecordSchema, JsonRowSchema.parse(intentRow).record_json));
+            const unfinished = attempting[0];
+            if (unfinished !== undefined) {
+              if (unfinished.status !== "attempting") {
+                throw new Error(
+                  `write intent ${unfinished.writeIntentId} matched the attempting scan as ${unfinished.status}; `
+                  + "the intent index is inconsistent and the sweep refuses to requeue over it",
+                );
+              }
+              const message = `run ${current.envelope.runId} (${current.envelope.workflow}) has an unfinished `
+                + `attempting write intent ${unfinished.writeIntentId} (generation `
+                + `${String(unfinished.generation)}, task ${unfinished.taskId}); doc 09 recovery must settle it `
+                + "before this run can be released";
+              if (current.lifecycle.state === "running") {
+                const parked = RunRecordSchema.parse({
+                  ...current,
+                  lifecycle: {
+                    state: "parked-write",
+                    writeIntentId: unfinished.writeIntentId,
+                    intentGeneration: unfinished.generation,
+                    parkedAt: request.now,
+                    code: "unknown",
+                    message,
+                  },
+                  version: current.version + 1,
+                  updatedAt: request.now,
+                });
+                const violation = runTransitionViolation(current.lifecycle, parked.lifecycle);
+                if (violation !== undefined) {
+                  throw new Error(`run ${current.envelope.runId}: ${violation}`);
+                }
+                this.#writeRunRow(parked, "update");
+                outcomes.push(RunClaimSweepOutcomeSchema.parse({
+                  state: "recovery-required",
+                  run: parked,
+                  writeIntentId: unfinished.writeIntentId,
+                  intentGeneration: unfinished.generation,
+                  parked: true,
+                  message,
+                }));
+                continue;
+              }
+              // A claimed/validating row has no legal parked-write edge; it
+              // stays under its expired claim — unclaimable, loud in the
+              // report — until recovery resolves the intent.
+              outcomes.push(RunClaimSweepOutcomeSchema.parse({
+                state: "recovery-required",
+                run: current,
+                writeIntentId: unfinished.writeIntentId,
+                intentGeneration: unfinished.generation,
+                parked: false,
+                message,
+              }));
+              continue;
+            }
             const requeued = RunRecordSchema.parse({
               ...current,
               envelope: nextAttemptEnvelope(current.envelope),
@@ -2239,9 +2311,9 @@ export class AuthorityDatabase implements Disposable {
               updatedAt: request.now,
             });
             this.#writeRunRow(requeued, "update");
-            recovered.push(requeued);
+            outcomes.push(RunClaimSweepOutcomeSchema.parse({ state: "requeued", run: requeued }));
           }
-          return Object.freeze(recovered);
+          return Object.freeze(outcomes);
         });
       },
     });
