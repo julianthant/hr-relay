@@ -287,6 +287,15 @@ same commits as those targets. The acceptance set is non-vacuous and fail-both-w
   daily-use/cost limits before every adapter call; exhaustion performs zero remote calls and holds
   no sleeping worker. Production pool/consumer coverage remains 2h.
 
+The activated D112 guard walks every `src/**` import and each task's transitive local import graph:
+raw network/vendor modules and adapter implementations remain under `infra/providers/**`; task and
+store graphs cannot reach those adapters; only `core/provider-admission.ts` constructs the admitted
+client or consumes the adapter interface. It audits the closed capability/config mapping in both
+directions, pins one deterministic harness surface, proves denial/timeout/abort never fall through
+to remote I/O or worker sleep, and fails if a production provider module or consumer appears before
+Phase 2h. Durable tests pin exact fixed-window edges, restart/lease behavior, independent-connection
+races, conservative cost accounting, replay/divergence, settlement uncertainty, and v9 recovery.
+
 No existing Phase-1c four-row atomic-outbox test may stand in for the full beat-⑦ fixture, and no
 schema-only command-family test may stand in for exhaustive runtime dispatch.
 

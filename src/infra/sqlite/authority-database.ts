@@ -124,10 +124,7 @@ import {
   ProviderAdmissionSweepRequestSchema,
   ProviderBudgetCounterSchema,
   ProviderUnavailableReasonSchema,
-  type ProviderAdmissionMutationOutcome,
   type ProviderAdmissionRecord,
-  type ProviderAdmissionReserveOutcome,
-  type ProviderAdmissionSweepOutcome,
   type ProviderBudgetCounter,
 } from "../../domain/provider-admission.js";
 import {

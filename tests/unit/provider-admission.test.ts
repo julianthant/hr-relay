@@ -279,7 +279,11 @@ class ManualDeadlineScheduler implements MonotonicDeadlineScheduler {
 }
 
 describe("admitted provider client", () => {
-  function clientFixture(adapter: ProviderAdapter<"ocr.extract">, repositoryOverride?: AuthorityDatabase["authority"]["providerAdmissions"]) {
+  function clientFixture(
+    adapter: ProviderAdapter<"ocr.extract">,
+    repositoryOverride?: AuthorityDatabase["authority"]["providerAdmissions"],
+    runSignal = new AbortController().signal,
+  ) {
     const path = databasePath();
     const setupResult = setup(path, {
       timeoutMs: 10_000, concurrency: 1, requestsPerMinute: 10,
@@ -292,7 +296,7 @@ describe("admitted provider client", () => {
       configSnapshotId: SNAPSHOT_ID,
       configFingerprint: CONFIG_FINGERPRINT,
       configSnapshot: setupResult.snapshot,
-      runSignal: new AbortController().signal,
+      runSignal,
       adapters: { "ocr.extract": adapter },
       repository: repositoryOverride ?? setupResult.database.authority.providerAdmissions,
       clock: setupResult.clock,
@@ -351,6 +355,51 @@ describe("admitted provider client", () => {
     assert.equal(fixture.database.authority.providerAdmissions.getCounter("ocr.extract")?.activeReservations, 0);
   });
 
+  it("performs zero adapter invocations for pre-abort and durable capacity denial", async () => {
+    const harness = createDeterministicProviderHarness("ocr.extract", [{
+      kind: "throw", estimate: { maximumCostUsdMicros: 0 }, message: "must not invoke",
+    }]);
+    const preAbort = new AbortController();
+    preAbort.abort(new Error("run cancelled"));
+    const aborted = clientFixture(harness.adapter, undefined, preAbort.signal);
+    const abortedOutcome = await aborted.client.call(PAYLOAD);
+    assert.equal(abortedOutcome.state, "unavailable");
+    if (abortedOutcome.state !== "unavailable") throw new Error("expected pre-abort unavailable");
+    assert.equal(abortedOutcome.reason.code, "aborted");
+    assert.equal(harness.calls().length, 0);
+    assert.equal(aborted.database.authority.providerAdmissions.get(aborted.id)?.lifecycle.state, "denied");
+
+    const capacityHarness = createDeterministicProviderHarness("ocr.extract", [{
+      kind: "throw", estimate: { maximumCostUsdMicros: 0 }, message: "must not invoke",
+    }]);
+    const capacity = clientFixture(capacityHarness.adapter);
+    assert.equal(capacity.database.authority.providerAdmissions.reserve(reserveInput(80, NOW)).state, "reserved");
+    const deniedOutcome = await capacity.client.call(PAYLOAD);
+    assert.equal(deniedOutcome.state, "unavailable");
+    if (deniedOutcome.state !== "unavailable") throw new Error("expected capacity unavailable");
+    assert.equal(deniedOutcome.reason.code, "concurrency-exhausted");
+    assert.equal(capacityHarness.calls().length, 0);
+  });
+
+  it("returns aborted when a mid-call adapter ignores its composed signal", async () => {
+    const adapter: ProviderAdapter<"ocr.extract"> = Object.freeze({
+      capability: "ocr.extract",
+      estimate: () => ({ maximumCostUsdMicros: 10 }),
+      invoke: async () => new Promise<ProviderAdapterOutcome>(() => undefined),
+    });
+    const runAbort = new AbortController();
+    const fixture = clientFixture(adapter, undefined, runAbort.signal);
+    const pending = fixture.client.call(PAYLOAD);
+    runAbort.abort(new Error("operator cancelled run"));
+    const outcome = await pending;
+    assert.equal(outcome.state, "unavailable");
+    if (outcome.state !== "unavailable") throw new Error("expected aborted unavailable");
+    assert.equal(outcome.reason.code, "aborted");
+    const admission = fixture.database.authority.providerAdmissions.get(fixture.id);
+    assert.equal(admission?.lifecycle.state, "interrupted");
+    if (admission?.lifecycle.state === "interrupted") assert.equal(admission.lifecycle.code, "aborted");
+  });
+
   it("never returns remote data when durable settlement fails", async () => {
     const harness = createDeterministicProviderHarness("ocr.extract", [{
       kind: "return",
@@ -403,6 +452,42 @@ describe("admitted provider client", () => {
     assert.equal(fixture.database.authority.providerAdmissions.getCounter("ocr.extract")?.activeReservations, 0);
   });
 
+  it("settles a strict adapter-unavailable outcome instead of treating it as produced", async () => {
+    const harness = createDeterministicProviderHarness("ocr.extract", [{
+      kind: "return",
+      estimate: { maximumCostUsdMicros: 3 },
+      outcome: {
+        response: {
+          state: "unavailable",
+          reason: { code: "adapter-unavailable", message: "fixture provider is offline" },
+        },
+        usage: { requestCount: 1, costUsdMicros: 1 },
+        evidence: { summary: "redacted provider outage", capturedAt: IsoInstantSchema.parse(NOW) },
+      },
+    }]);
+    const fixture = clientFixture(harness.adapter);
+    const outcome = await fixture.client.call(PAYLOAD);
+    assert.equal(outcome.state, "unavailable");
+    assert.equal(fixture.database.authority.providerAdmissions.get(fixture.id)?.lifecycle.state, "settled");
+  });
+
+  it("fails loud and blocks admission when measured cost exceeds the conservative estimate", async () => {
+    const harness = createDeterministicProviderHarness("ocr.extract", [{
+      kind: "return",
+      estimate: { maximumCostUsdMicros: 1 },
+      outcome: {
+        response: { state: "produced", value: PAYLOAD },
+        usage: { requestCount: 1, costUsdMicros: 2 },
+        evidence: { summary: "redacted overspend", capturedAt: IsoInstantSchema.parse(NOW) },
+      },
+    }]);
+    const fixture = clientFixture(harness.adapter);
+    await assert.rejects(fixture.client.call(PAYLOAD), /breached its conservative maximum cost estimate/);
+    const admission = fixture.database.authority.providerAdmissions.get(fixture.id);
+    assert.equal(admission?.lifecycle.state, "interrupted");
+    assert.equal(fixture.database.authority.providerAdmissions.getCounter("ocr.extract")?.blockedByAdmissionId, fixture.id);
+  });
+
   it("strictly rejects malformed adapter outcomes and records full-reservation interruption", async () => {
     const valid = createDeterministicProviderHarness("ocr.extract", [{
       kind: "throw", estimate: { maximumCostUsdMicros: 5 }, message: "unused",
@@ -413,9 +498,11 @@ describe("admitted provider client", () => {
       invoke: (request, options) => valid.invoke(request, options),
     };
     const malformed = new Proxy(proxyTarget, {
-      get(target, property, receiver) {
+      get(target, property) {
         if (property === "invoke") return async () => ({ malformed: true });
-        return Reflect.get(target, property, receiver);
+        if (property === "estimate") return (request: Parameters<typeof target.estimate>[0]) => target.estimate(request);
+        if (property === "capability") return target.capability;
+        throw new Error(`unexpected deterministic adapter property ${String(property)}`);
       },
     });
     const fixture = clientFixture(malformed);
