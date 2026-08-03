@@ -275,11 +275,10 @@
     {
       "name": "fresh-session-boundary",
       "file": "tests/unit/architecture/fresh-session-boundary.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: fresh-session-boundary.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/05-execution-parallelism.md; docs/rebuild/11-clock-config-secrets.md",
+      "invariant": "A browser-session boundary is authored or identity-forced, never inferred: the `fresh-boundary` close reason exists only inside the session-ownership modules, every task/workflow `session:` need is a string literal rather than a computed value, repeated reuse-worker needs mint no boundary, and both an authored session:\"fresh\" need and a D116 (worker,system,resolvedInstance,configFingerprint) reuse-identity mismatch close the old resource with an accepted page/context proof BEFORE the replacement opens and authenticates. The descriptor-level node-execution ordering arm lands with the first workflow that authors a fresh-boundary node.",
+      "replacementRequired": true
     },
     {
       "name": "identity-gate-before-commit",
@@ -487,7 +486,7 @@
       "file": "tests/unit/architecture/task-driver-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/12-operator-trust-and-authoring.md; docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "AST and transitive import-graph audits confine static/dynamic Playwright access, raw browser types, locator/frame/getBy/newPage/evaluate/$ operations, and private driver/session ownership to per-system driver/session modules; task/workflow code consumes typed semantic ids and proofs, while MutationCapability forgery and commit implementations remain prohibited until the Phase-1f validator.",
+      "invariant": "AST and transitive import-graph audits confine static/dynamic Playwright access, raw browser types, locator/frame/getBy/newPage/evaluate/$ operations, and private driver/session ownership to the two raw-browser owner families — per-system driver/session modules and the `src/infra/browser/**` worker session factory that owns concrete browser creation; task/workflow code consumes typed semantic ids and proofs and may reach neither family transitively, while MutationCapability forgery and commit implementations remain prohibited until the Phase-1f validator.",
       "replacementRequired": true
     },
     {

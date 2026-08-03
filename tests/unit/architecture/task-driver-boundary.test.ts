@@ -36,6 +36,32 @@ describe("task to system-driver boundary", () => {
     }
   });
 
+  it("still fences tasks off from the session-factory raw-browser family", () => {
+    // Widening the owner set to `src/infra/browser/**` must not make it
+    // reachable: a task that imports the factory (directly or through a
+    // helper) is the same ownership bypass as importing a private driver.
+    const root = resolve(tmpdir(), `hrauto-ui-factory-${String(process.pid)}-${String(Date.now())}`);
+    const task = resolve(root, "src/stores/ucpath/tasks/bad.ts");
+    const helper = resolve(root, "src/stores/ucpath/helper.ts");
+    const factory = resolve(root, "src/infra/browser/browser-session-factory.ts");
+    try {
+      mkdirSync(dirname(task), { recursive: true });
+      mkdirSync(dirname(factory), { recursive: true });
+      writeFileSync(task, 'import { open } from "../helper.js";\nexport const bad = open;\n');
+      writeFileSync(helper, 'export { open } from "../../infra/browser/browser-session-factory.js";\n');
+      writeFileSync(factory, 'import { chromium } from "playwright";\nexport const open = chromium;\n');
+      const issues = auditTaskDriverBoundary(root).join("\n");
+      assert.match(issues, /import graph reaches private raw-browser owner src\/infra\/browser/);
+      assert.doesNotMatch(
+        issues,
+        /browser-session-factory\.ts: Playwright import/,
+        "the factory itself is a sanctioned owner",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("catches premature capability forgery and commit implementations", () => {
     const root = resolve(tmpdir(), `hrauto-ui-capability-${String(process.pid)}-${String(Date.now())}`);
     const path = resolve(root, "src/stores/ucpath/driver/bad.ts");
