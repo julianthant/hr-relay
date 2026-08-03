@@ -5402,9 +5402,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/hr-tasks.person-org-summary-link"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.navigation-link",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -5928,7 +5933,7 @@
       "semanticKind": "element",
       "canonicalId": "ucpath.person-org.eid-input",
       "evidence": {
-        "verifiedAt": "2026-08-01",
+        "verifiedAt": "2026-08-02",
         "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
         "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json"
       }
@@ -5947,9 +5952,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/person-org-summary.last-name-input"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.last-name-input",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -5966,9 +5976,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/person-org-summary.name-input"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.given-name-input",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -6002,9 +6017,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/person-org-summary.search-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.search-button",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -6041,7 +6061,7 @@
       "semanticKind": "element",
       "canonicalId": "ucpath.person-org.eid-display",
       "evidence": {
-        "verifiedAt": "2026-08-01",
+        "verifiedAt": "2026-08-02",
         "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
         "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json"
       }
@@ -6061,9 +6081,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/person-org-summary.person-name-value"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.name-display",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -6079,9 +6104,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/person-org-summary.body"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.assignments-grid",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -6168,9 +6198,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/person-org-summary.no-matching-values-text"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.no-results-status",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -6203,9 +6238,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/person-org-summary.results-table"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.results-grid",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -6220,9 +6260,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/person-org-summary.drill-in-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.result-drill-in",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -6238,9 +6283,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/person-org-summary.return-to-search-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.return-to-search",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/person-org.live.json"
+      }
     },
     {
       "system": "ucpath",

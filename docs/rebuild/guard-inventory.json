@@ -367,6 +367,14 @@
       "replacementRequired": true
     },
     {
+      "name": "ucpath-person-org-strict",
+      "file": "tests/unit/architecture/ucpath-person-org-strict.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/01-task-contract.md; docs/rebuild/10-guard-test-architecture.md; docs/rebuild/12-operator-trust-and-authoring.md",
+      "invariant": "The UCPath Person Organizational Summary runtime pins exact legacy provenance while rejecting body-name scans, observed-EID overwrite, extraction-error empty defaults, missing-grid not-found inference, swallowed clears, and drill-null fallbacks; every operation locator resolves through the dual-evidenced semantic registry, current-live zero-match legacy recipes remain recorded as rejected, and row-to-detail plus query-to-observation subject proofs fail loud.",
+      "replacementRequired": true
+    },
+    {
       "name": "preflight-coverage",
       "file": "tests/unit/architecture/preflight-coverage.test.ts",
       "status": "planned",

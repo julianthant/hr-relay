@@ -75,6 +75,13 @@ export const UiVerificationEvidenceManifestSchema = z.strictObject({
     matchedCount: z.literal(1),
     capturedValue: z.literal(false),
   })).min(1),
+  rejectedCandidates: z.array(z.strictObject({
+    legacyKey: z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/),
+    candidateDescription: z.string().min(1),
+    reason: z.literal("zero-live-matches"),
+    matchedCount: z.literal(0),
+    replacementSemanticId: ElementIdSchema,
+  })).optional(),
   externalWriteAttempted: z.literal(false),
   sanitized: z.literal(true),
 });

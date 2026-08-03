@@ -149,7 +149,7 @@ describe("semantic UI registry architecture", () => {
     const crossScreenState = structuredClone(UCPATH_UI_REGISTRY);
     crossScreenState.elements[0] = {
       ...crossScreenState.elements[0],
-      requiredStates: [crossScreenState.states[1].id],
+      requiredStates: [crossScreenState.states[3].id],
     };
     assert.match(auditUcpathUiRegistry(crossScreenState).join("\n"), /required state crosses screens/);
 

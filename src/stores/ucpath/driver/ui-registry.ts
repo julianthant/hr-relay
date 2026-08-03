@@ -21,11 +21,24 @@ import {
   UiVerificationSchema,
 } from "../../../domain/ui/contracts.js";
 import {
+  UCPATH_PERSON_ORG_ASSIGNMENTS_GRID,
   UCPATH_PERSON_ORG_DETAIL_READY,
   UCPATH_PERSON_ORG_DETAIL_SCREEN,
   UCPATH_PERSON_ORG_DISPLAYED_EID,
+  UCPATH_PERSON_ORG_DISPLAYED_NAME,
   UCPATH_PERSON_ORG_EID_DISPLAY,
   UCPATH_PERSON_ORG_EID_INPUT,
+  UCPATH_PERSON_ORG_GIVEN_NAME_INPUT,
+  UCPATH_PERSON_ORG_LAST_NAME_INPUT,
+  UCPATH_PERSON_ORG_NAME_DISPLAY,
+  UCPATH_PERSON_ORG_NAVIGATION_LINK,
+  UCPATH_PERSON_ORG_NO_RESULTS,
+  UCPATH_PERSON_ORG_NO_RESULTS_STATUS,
+  UCPATH_PERSON_ORG_RESULTS_GRID,
+  UCPATH_PERSON_ORG_RESULTS_READY,
+  UCPATH_PERSON_ORG_RESULT_DRILL_IN,
+  UCPATH_PERSON_ORG_RETURN_TO_SEARCH,
+  UCPATH_PERSON_ORG_SEARCH_BUTTON,
   UCPATH_PERSON_ORG_SEARCH_READY,
   UCPATH_PERSON_ORG_SEARCH_SCREEN,
 } from "../../../domain/ui/ucpath-person-org.js";
@@ -36,9 +49,20 @@ const UCPATH_SELECTOR_BLOB = "695d88fcc7a108f262b91b45eb1b9a276deaf427";
 const FIXTURE_EVIDENCE = "evidence/ui/ucpath/person-org.fixture.json";
 const LIVE_EVIDENCE = "evidence/ui/ucpath/person-org.live.json";
 const SEARCH_SCENARIO = "ui/ucpath-person-org-search-eid-input";
+const RESULTS_SCENARIO = "ui/ucpath-person-org-results-grid";
 const DISPLAY_SCENARIO = "ui/ucpath-person-org-displayed-eid";
+const NAVIGATION_PORT_KEY = "hrTasks.personOrgSummaryLink()";
 const INPUT_PORT_KEY = "personOrgSummary.emplIdInput()";
+const LAST_NAME_PORT_KEY = "personOrgSummary.lastNameInput()";
+const GIVEN_NAME_PORT_KEY = "personOrgSummary.nameInput()";
+const SEARCH_BUTTON_PORT_KEY = "personOrgSummary.searchButton()";
+const NO_RESULTS_PORT_KEY = "personOrgSummary.noMatchingValuesText()";
+const RESULTS_GRID_PORT_KEY = "personOrgSummary.resultsTable()";
+const DRILL_IN_PORT_KEY = "personOrgSummary.drillInButton()";
 const DISPLAY_PORT_KEY = "personOrgSummary.personIdValue()";
+const NAME_DISPLAY_PORT_KEY = "personOrgSummary.personNameValue()";
+const ASSIGNMENTS_GRID_PORT_KEY = "personOrgSummary.body()";
+const RETURN_PORT_KEY = "personOrgSummary.returnToSearchButton()";
 
 const GitBlobSchema = z.string().regex(/^[0-9a-f]{40}$/);
 const LegacySelectorProvenanceSchema = z.strictObject({
@@ -52,11 +76,16 @@ const LegacySelectorProvenanceSchema = z.strictObject({
 export const LocatorRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("role"),
-    role: z.literal("textbox"),
+    role: z.enum(["textbox", "link", "button"]),
     name: z.string().min(1),
     exact: z.boolean(),
   }),
   z.strictObject({ kind: z.literal("css"), selector: z.string().min(1) }),
+  z.strictObject({
+    kind: z.literal("indexed-css"),
+    selectorPrefix: z.string().min(1),
+    selectorSuffix: z.string().min(1),
+  }),
   z.strictObject({
     kind: z.literal("css-fallback"),
     selectors: z.array(z.string().min(1)).min(2),
@@ -71,7 +100,7 @@ export const StateEvidenceRuleSchema = z.strictObject({
 export const ObservationRecipeSchema = z.strictObject({
   kind: z.literal("element-text"),
   element: ElementIdSchema,
-  valueType: z.literal("eid"),
+  valueType: z.enum(["eid", "text"]),
 });
 
 const ScreenDefinitionSchema = z.strictObject({
@@ -92,7 +121,8 @@ const ElementDefinitionSchema = z.strictObject({
   role: UiRoleSchema,
   effect: UiEffectSchema,
   sensitivity: UiSensitivitySchema,
-  valueType: z.enum(["eid", "none"]),
+  valueType: z.enum(["eid", "text", "rows", "none"]),
+  scope: z.enum(["page", "content-frame"]),
   locator: LocatorRecipeSchema,
   requiredStates: z.array(PageStateIdSchema),
   verification: UiVerificationSchema,
@@ -119,7 +149,7 @@ const ObservationDefinitionSchema = z.strictObject({
   label: z.string().min(1),
   searchTerms: z.array(z.string().min(1)).min(1),
   sensitivity: UiSensitivitySchema,
-  valueType: z.literal("eid"),
+  valueType: z.enum(["eid", "text"]),
   read: ObservationRecipeSchema,
   authoritativeFor: z.array(z.enum(["subject", "completion", "page-state"])).min(1),
   verification: UiVerificationSchema,
@@ -170,11 +200,21 @@ const UiEvidenceBindingInputSchema = z.strictObject({
 
 function verification(scenario: string, legacyKey: string) {
   return {
-    verifiedAt: DateOnlySchema.parse("2026-08-01"),
+    verifiedAt: DateOnlySchema.parse("2026-08-02"),
     fixtureEvidenceRef: FIXTURE_EVIDENCE,
     liveReadOnlyEvidenceRef: LIVE_EVIDENCE,
     scenarios: [ScenarioIdSchema.parse(scenario)],
     portMapRows: [{ system: "ucpath" as const, legacyKey }],
+  };
+}
+
+function selectorProvenance(key: string, sourceLine: number) {
+  return {
+    commit: LEGACY_COMMIT,
+    path: "src/systems/ucpath/selectors.ts" as const,
+    key,
+    sourceLine,
+    blob: UCPATH_SELECTOR_BLOB,
   };
 }
 
@@ -212,6 +252,23 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
   ],
   elements: [
     {
+      id: UCPATH_PERSON_ORG_NAVIGATION_LINK,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
+      label: "Person Organizational Summary navigation link",
+      searchTerms: ["ucpath person org navigation link"],
+      role: "link",
+      effect: "navigate",
+      sensitivity: "hr",
+      valueType: "none",
+      scope: "page",
+      locator: { kind: "role", role: "link", name: "Person Organizational Summary", exact: true },
+      requiredStates: [],
+      verification: verification(SEARCH_SCENARIO, NAVIGATION_PORT_KEY),
+      provenance: selectorProvenance(NAVIGATION_PORT_KEY, 684),
+      supersedes: [],
+    },
+    {
       id: UCPATH_PERSON_ORG_EID_INPUT,
       system: "ucpath",
       screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
@@ -221,16 +278,120 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       effect: "prepare",
       sensitivity: "hr",
       valueType: "eid",
-      locator: { kind: "role", role: "textbox", name: "Empl ID", exact: true },
+      scope: "content-frame",
+      // Legacy's exact accessible-name recipe now matches zero because PeopleSoft appends
+      // "begins with". The exact stable id below matched once live on 2026-08-02.
+      locator: { kind: "css", selector: "#UC_ORG_SUM_VW_EMPLID" },
       requiredStates: [UCPATH_PERSON_ORG_SEARCH_READY],
       verification: verification(SEARCH_SCENARIO, INPUT_PORT_KEY),
-      provenance: {
-        commit: LEGACY_COMMIT,
-        path: "src/systems/ucpath/selectors.ts",
-        key: INPUT_PORT_KEY,
-        sourceLine: 908,
-        blob: UCPATH_SELECTOR_BLOB,
+      provenance: selectorProvenance(INPUT_PORT_KEY, 908),
+      supersedes: [],
+    },
+    {
+      id: UCPATH_PERSON_ORG_LAST_NAME_INPUT,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
+      label: "Person Org last-name input",
+      searchTerms: ["ucpath person org last name field"],
+      role: "field",
+      effect: "prepare",
+      sensitivity: "hr",
+      valueType: "text",
+      scope: "content-frame",
+      locator: { kind: "css", selector: "#UC_ORG_SUM_VW_PARTNER_LAST_NAME" },
+      requiredStates: [UCPATH_PERSON_ORG_SEARCH_READY],
+      verification: verification(SEARCH_SCENARIO, LAST_NAME_PORT_KEY),
+      provenance: selectorProvenance(LAST_NAME_PORT_KEY, 915),
+      supersedes: [],
+    },
+    {
+      id: UCPATH_PERSON_ORG_GIVEN_NAME_INPUT,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
+      label: "Person Org given-name input",
+      searchTerms: ["ucpath person org given name field"],
+      role: "field",
+      effect: "prepare",
+      sensitivity: "hr",
+      valueType: "text",
+      scope: "content-frame",
+      // The legacy exact "Name" accessible name also matches zero in the current render.
+      locator: { kind: "css", selector: "#UC_ORG_SUM_VW_NAME_DISPLAY" },
+      requiredStates: [UCPATH_PERSON_ORG_SEARCH_READY],
+      verification: verification(SEARCH_SCENARIO, GIVEN_NAME_PORT_KEY),
+      provenance: selectorProvenance(GIVEN_NAME_PORT_KEY, 923),
+      supersedes: [],
+    },
+    {
+      id: UCPATH_PERSON_ORG_SEARCH_BUTTON,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
+      label: "Person Org Search button",
+      searchTerms: ["ucpath person org execute search"],
+      role: "button",
+      effect: "navigate",
+      sensitivity: "hr",
+      valueType: "none",
+      scope: "content-frame",
+      locator: { kind: "css", selector: "#PTS_CFG_CL_WRK_PTS_SRCH_BTN" },
+      requiredStates: [UCPATH_PERSON_ORG_SEARCH_READY],
+      verification: verification(SEARCH_SCENARIO, SEARCH_BUTTON_PORT_KEY),
+      provenance: selectorProvenance(SEARCH_BUTTON_PORT_KEY, 939),
+      supersedes: [],
+    },
+    {
+      id: UCPATH_PERSON_ORG_NO_RESULTS_STATUS,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
+      label: "Person Org no-results status",
+      searchTerms: ["ucpath person org positive no results marker"],
+      role: "status",
+      effect: "observe",
+      sensitivity: "hr",
+      valueType: "text",
+      scope: "content-frame",
+      locator: { kind: "css", selector: "#PTS_CRITTEXT_DISP" },
+      requiredStates: [UCPATH_PERSON_ORG_NO_RESULTS],
+      verification: verification(RESULTS_SCENARIO, NO_RESULTS_PORT_KEY),
+      provenance: selectorProvenance(NO_RESULTS_PORT_KEY, 1028),
+      supersedes: [],
+    },
+    {
+      id: UCPATH_PERSON_ORG_RESULTS_GRID,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
+      label: "Person Org results grid",
+      searchTerms: ["ucpath person org search results grid"],
+      role: "grid",
+      effect: "observe",
+      sensitivity: "hr",
+      valueType: "rows",
+      scope: "content-frame",
+      locator: { kind: "css", selector: "table[id=\"tdgbrPTS_CFG_CL_STD_RSL$0\"]" },
+      requiredStates: [UCPATH_PERSON_ORG_RESULTS_READY],
+      verification: verification(RESULTS_SCENARIO, RESULTS_GRID_PORT_KEY),
+      provenance: selectorProvenance(RESULTS_GRID_PORT_KEY, 1042),
+      supersedes: [],
+    },
+    {
+      id: UCPATH_PERSON_ORG_RESULT_DRILL_IN,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
+      label: "Person Org result drill-in control",
+      searchTerms: ["ucpath person org result row drill in"],
+      role: "button",
+      effect: "navigate",
+      sensitivity: "hr",
+      valueType: "none",
+      scope: "content-frame",
+      locator: {
+        kind: "indexed-css",
+        selectorPrefix: "[id=\"PTS_CFG_CL_RSLT_PTS_DRILLIN$40$$IMG$",
+        selectorSuffix: "\"]",
       },
+      requiredStates: [UCPATH_PERSON_ORG_RESULTS_READY],
+      verification: verification(RESULTS_SCENARIO, DRILL_IN_PORT_KEY),
+      provenance: selectorProvenance(DRILL_IN_PORT_KEY, 1049),
       supersedes: [],
     },
     {
@@ -243,23 +404,66 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       effect: "observe",
       sensitivity: "hr",
       valueType: "eid",
-      locator: {
-        kind: "css-fallback",
-        selectors: [
-          "#PERSON_NPC_VW_EMPLID",
-          "#PER_INST_EMP_VW_OPRID\\$0",
-          "#PER_INST_EMP_VW_EMPLID\\$0",
-        ],
-      },
+      scope: "content-frame",
+      locator: { kind: "css", selector: "#PERSON_NPC_VW_EMPLID" },
       requiredStates: [UCPATH_PERSON_ORG_DETAIL_READY],
       verification: verification(DISPLAY_SCENARIO, DISPLAY_PORT_KEY),
-      provenance: {
-        commit: LEGACY_COMMIT,
-        path: "src/systems/ucpath/selectors.ts",
-        key: DISPLAY_PORT_KEY,
-        sourceLine: 959,
-        blob: UCPATH_SELECTOR_BLOB,
-      },
+      provenance: selectorProvenance(DISPLAY_PORT_KEY, 959),
+      supersedes: [],
+    },
+    {
+      id: UCPATH_PERSON_ORG_NAME_DISPLAY,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_DETAIL_SCREEN,
+      label: "Person Org displayed name",
+      searchTerms: ["ucpath person org authoritative displayed name"],
+      role: "display",
+      effect: "observe",
+      sensitivity: "hr",
+      valueType: "text",
+      scope: "content-frame",
+      // The unverified body scan is intentionally not ported. Current live detail pages expose
+      // the name at this exact, fixture-pinned primary id.
+      locator: { kind: "css", selector: "#PERSON_NAME_NAME" },
+      requiredStates: [UCPATH_PERSON_ORG_DETAIL_READY],
+      verification: verification(DISPLAY_SCENARIO, NAME_DISPLAY_PORT_KEY),
+      provenance: selectorProvenance(NAME_DISPLAY_PORT_KEY, 977),
+      supersedes: [],
+    },
+    {
+      id: UCPATH_PERSON_ORG_ASSIGNMENTS_GRID,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_DETAIL_SCREEN,
+      label: "Person Org assignments grid",
+      searchTerms: ["ucpath person org employment assignments grid"],
+      role: "grid",
+      effect: "observe",
+      sensitivity: "hr",
+      valueType: "rows",
+      scope: "content-frame",
+      // Legacy scanned every table under body(); the rebuild narrows that proven operation to
+      // the exact live assignment-grid id so extraction failure cannot look like an empty result.
+      locator: { kind: "css", selector: "table[id=\"tdgbrPER_ASGN_EMP_VW$0\"]" },
+      requiredStates: [UCPATH_PERSON_ORG_DETAIL_READY],
+      verification: verification(DISPLAY_SCENARIO, ASSIGNMENTS_GRID_PORT_KEY),
+      provenance: selectorProvenance(ASSIGNMENTS_GRID_PORT_KEY, 989),
+      supersedes: [],
+    },
+    {
+      id: UCPATH_PERSON_ORG_RETURN_TO_SEARCH,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_DETAIL_SCREEN,
+      label: "Person Org Return to Search button",
+      searchTerms: ["ucpath person org return to results"],
+      role: "button",
+      effect: "navigate",
+      sensitivity: "hr",
+      valueType: "none",
+      scope: "content-frame",
+      locator: { kind: "role", role: "button", name: "Return to Search", exact: true },
+      requiredStates: [UCPATH_PERSON_ORG_DETAIL_READY],
+      verification: verification(DISPLAY_SCENARIO, RETURN_PORT_KEY),
+      provenance: selectorProvenance(RETURN_PORT_KEY, 1057),
       supersedes: [],
     },
   ],
@@ -276,13 +480,38 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       verification: verification(SEARCH_SCENARIO, INPUT_PORT_KEY),
     },
     {
+      id: UCPATH_PERSON_ORG_RESULTS_READY,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
+      label: "Person Org results ready",
+      searchTerms: ["person org results grid ready state"],
+      sensitivity: "hr",
+      evidence: [{ kind: "visible", element: UCPATH_PERSON_ORG_RESULTS_GRID }],
+      timeoutMs: 30_000,
+      verification: verification(RESULTS_SCENARIO, RESULTS_GRID_PORT_KEY),
+    },
+    {
+      id: UCPATH_PERSON_ORG_NO_RESULTS,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
+      label: "Person Org no results",
+      searchTerms: ["person org positive no results state"],
+      sensitivity: "hr",
+      evidence: [{ kind: "visible", element: UCPATH_PERSON_ORG_NO_RESULTS_STATUS }],
+      timeoutMs: 30_000,
+      verification: verification(RESULTS_SCENARIO, NO_RESULTS_PORT_KEY),
+    },
+    {
       id: UCPATH_PERSON_ORG_DETAIL_READY,
       system: "ucpath",
       screen: UCPATH_PERSON_ORG_DETAIL_SCREEN,
       label: "Person Org detail ready",
       searchTerms: ["person org displayed eid ready state"],
       sensitivity: "hr",
-      evidence: [{ kind: "visible", element: UCPATH_PERSON_ORG_EID_DISPLAY }],
+      evidence: [
+        { kind: "visible", element: UCPATH_PERSON_ORG_EID_DISPLAY },
+        { kind: "visible", element: UCPATH_PERSON_ORG_ASSIGNMENTS_GRID },
+      ],
       timeoutMs: 30_000,
       verification: verification(DISPLAY_SCENARIO, DISPLAY_PORT_KEY),
     },
@@ -300,6 +529,18 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       authoritativeFor: ["subject", "page-state"],
       verification: verification(DISPLAY_SCENARIO, DISPLAY_PORT_KEY),
     },
+    {
+      id: UCPATH_PERSON_ORG_DISPLAYED_NAME,
+      system: "ucpath",
+      screen: UCPATH_PERSON_ORG_DETAIL_SCREEN,
+      label: "Displayed Person Org name",
+      searchTerms: ["authoritative person org displayed name"],
+      sensitivity: "hr",
+      valueType: "text",
+      read: { kind: "element-text", element: UCPATH_PERSON_ORG_NAME_DISPLAY, valueType: "text" },
+      authoritativeFor: ["subject"],
+      verification: verification(DISPLAY_SCENARIO, NAME_DISPLAY_PORT_KEY),
+    },
   ],
   scenarios: [
     {
@@ -307,17 +548,48 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       kind: "ui-verification",
       title: "UCPath Person Org EID input resolves",
       system: "ucpath",
-      semanticIds: [UCPATH_PERSON_ORG_EID_INPUT, UCPATH_PERSON_ORG_SEARCH_READY],
+      semanticIds: [
+        UCPATH_PERSON_ORG_NAVIGATION_LINK,
+        UCPATH_PERSON_ORG_EID_INPUT,
+        UCPATH_PERSON_ORG_LAST_NAME_INPUT,
+        UCPATH_PERSON_ORG_GIVEN_NAME_INPUT,
+        UCPATH_PERSON_ORG_SEARCH_BUTTON,
+        UCPATH_PERSON_ORG_SEARCH_READY,
+      ],
       fixtureEvidenceRef: FIXTURE_EVIDENCE,
       liveReadOnlyEvidenceRef: LIVE_EVIDENCE,
       assertions: ["exactly-one-visible", "accepts-canonical-eid", "recipe-resolves"],
+    },
+    {
+      id: RESULTS_SCENARIO,
+      kind: "ui-verification",
+      title: "UCPath Person Org result outcomes are explicit",
+      system: "ucpath",
+      semanticIds: [
+        UCPATH_PERSON_ORG_RESULTS_GRID,
+        UCPATH_PERSON_ORG_RESULT_DRILL_IN,
+        UCPATH_PERSON_ORG_NO_RESULTS_STATUS,
+        UCPATH_PERSON_ORG_RESULTS_READY,
+        UCPATH_PERSON_ORG_NO_RESULTS,
+      ],
+      fixtureEvidenceRef: FIXTURE_EVIDENCE,
+      liveReadOnlyEvidenceRef: LIVE_EVIDENCE,
+      assertions: ["recipe-resolves", "exactly-one-visible"],
     },
     {
       id: DISPLAY_SCENARIO,
       kind: "ui-verification",
       title: "UCPath Person Org displayed EID is authoritative",
       system: "ucpath",
-      semanticIds: [UCPATH_PERSON_ORG_EID_DISPLAY, UCPATH_PERSON_ORG_DISPLAYED_EID, UCPATH_PERSON_ORG_DETAIL_READY],
+      semanticIds: [
+        UCPATH_PERSON_ORG_EID_DISPLAY,
+        UCPATH_PERSON_ORG_NAME_DISPLAY,
+        UCPATH_PERSON_ORG_ASSIGNMENTS_GRID,
+        UCPATH_PERSON_ORG_RETURN_TO_SEARCH,
+        UCPATH_PERSON_ORG_DISPLAYED_EID,
+        UCPATH_PERSON_ORG_DISPLAYED_NAME,
+        UCPATH_PERSON_ORG_DETAIL_READY,
+      ],
       fixtureEvidenceRef: FIXTURE_EVIDENCE,
       liveReadOnlyEvidenceRef: LIVE_EVIDENCE,
       assertions: ["exactly-one-visible", "displayed-eid-equals-query", "recipe-resolves"],

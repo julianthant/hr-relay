@@ -347,7 +347,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "e0c777d2cee0c0164d0ea25f18c137c5b91dbe6a86f77e5c5ab5b7e08d515efc",
+      "fingerprint": "7a72412db6ca0fd0d7994ec963fcf2aa3331743cd0c92e4a76bb88c0a591866c",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -427,7 +427,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/contracts.ts",
-          "sha256": "69e78c26e621fe78cee7b8035d0b2cb135c7d80a8185058ff60c402e0a5d7407"
+          "sha256": "433922e57e6694fc1296be0be042e1aef6bf4e6523e2f1eb941f6485e8f39054"
         },
         {
           "path": "src/domain/ui/driver.ts",
@@ -435,7 +435,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/ucpath-person-org.ts",
-          "sha256": "a7f0d99e7ed612699c8038b056d7147dfde0f0a6bb72c0e78f93bcb442852f70"
+          "sha256": "64144cff8193a41d823a2c07a8b8062ab131ccd7f4729d603f65c0482339ce01"
         },
         {
           "path": "src/domain/unscoped-commit.ts",
@@ -446,20 +446,28 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "abc6dea2de0e5163130589baf6644d9048d50d01c91c1acbe2a5671fb78e3e95"
         },
         {
-          "path": "src/stores/ucpath/driver/declaration.ts",
-          "sha256": "0fd7cfb6f8d482bd7a16ae553bb69e516eac0b9171c54ea81e4ac43d4df8a641"
+          "path": "src/stores/ucpath/driver-declaration.ts",
+          "sha256": "8dd6f21fdfafc6144d8bde33709212a05fdac6b371efd0336e382d82f7a4d0cb"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "54bf6f7f6b24bca8ed1e30f6b353fa4fabb98e3d88957b4c2fab87f26d4218e5"
+          "sha256": "9faed8162a938df070b416d2058d8b198deeb32485a10669ccdfd6792a55b2f1"
+        },
+        {
+          "path": "src/stores/ucpath/driver/person-org-operation.ts",
+          "sha256": "4180c678918678c00b9cc18e47dc18ae12a8635c8cd70bc1e9cd69e6d10dbe12"
+        },
+        {
+          "path": "src/stores/ucpath/driver/registry-locators.ts",
+          "sha256": "2cae951a5ffa32bb4c7cdb8a9b9b897b399c1e923157162fe2698b82acb1609f"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
-          "sha256": "3316b01b0cf11d8ea6f66c4d48c06caf7ad47ac0990119c761c6259631bae03b"
+          "sha256": "87d1283999dfc6240f81dff59479d8cf2faf394ba18124a59ea748e1baafc9c6"
         },
         {
           "path": "src/stores/ucpath/tasks/search-person-org.ts",
-          "sha256": "c96eb27ffe3698ce3e1234f3a9e6c430de271e6c6152b3768ccfc61db5fcce90"
+          "sha256": "b9af00badb5320b7aa5164f5b7ae15eb6efead79772d8bb52ec32301af01ab2d"
         },
         {
           "path": "src/validation/contract-boundary.ts",

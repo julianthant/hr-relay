@@ -1,6 +1,6 @@
 import { defineBrowserStore } from "../../base/store.js";
-import { ucpathDriver } from "./driver/declaration.js";
-import { ucpathSession } from "./session.js";
+import { ucpathDriver } from "./driver-declaration.js";
+import { ucpathSession } from "./session-provider.js";
 import { searchPersonOrgTask } from "./tasks/search-person-org.js";
 
 export { ucpathDriver };
