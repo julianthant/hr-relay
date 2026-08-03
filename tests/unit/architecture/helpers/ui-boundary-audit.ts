@@ -79,7 +79,11 @@ function rawBrowserAstIssues(path: string, source: ts.SourceFile): readonly stri
         issues.push(`${path}: computed raw browser member ${member} crosses the driver/session boundary`);
       }
     }
-    if ((ts.isAsExpression(node) || ts.isTypeAssertionExpression(node))
+    // Doc 09 beat ⑤ / D111: the fenced write sequencer is the ONE sanctioned
+    // minting point (its WeakSet makes the token runtime-unforgeable); every
+    // other file asserting the brand is still a forgery.
+    if (path !== "src/core/write-sequencer.ts"
+      && (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node))
       && node.type.getText(source).includes("MutationCapability")) {
       issues.push(`${path}: MutationCapability cannot be minted by type assertion`);
     }

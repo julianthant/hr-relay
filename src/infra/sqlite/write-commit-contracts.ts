@@ -1,13 +1,21 @@
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { PositiveIntSchema, WriteIntentIdSchema } from "../../domain/ids.js";
+import {
+  IsoInstantSchema,
+  PositiveIntSchema,
+  RunIdSchema,
+  WriteIntentIdSchema,
+} from "../../domain/ids.js";
 import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
+import { RunCheckpointRecordSchema } from "../../domain/workflow/checkpoint.js";
 import { SchemaBoundCanonicalValueSchema } from "../../domain/schema-bound-value.js";
 import {
   TransactionOutcomeSchema,
+  WriteRetrySettlementSchema,
   WriteAttemptRecordSchema,
   WriteIntentRecordSchema,
 } from "../../domain/write-safety.js";
+import { RunClaimTokenSchema } from "./run-store-contracts.js";
 
 export const WriteFenceInputSchema = z.strictObject({
   intent: WriteIntentRecordSchema,
@@ -176,8 +184,141 @@ export const AtomicWriteCommitReportSchema = z.strictObject({
   }
 });
 
+/* ── Phase-1f intent state transitions (doc 09 §4/§4.1; D111/D118) ────────── */
+
+/** Doc 09 §4.3 park codes — mirrors the parked intent/run vocabulary exactly. */
+export const WriteIntentParkCodeSchema = z.enum([
+  "unknown",
+  "ambiguous",
+  "present-proof-invalid",
+  "binding-invalid",
+  "operator-required",
+]);
+
+/** CAS an `attempting` intent (and its current attempt) to `parked`. */
+export const WriteIntentParkRequestSchema = z.strictObject({
+  writeIntentId: WriteIntentIdSchema,
+  generation: PositiveIntSchema,
+  expectedVersion: PositiveIntSchema,
+  code: WriteIntentParkCodeSchema,
+  message: z.string().min(1),
+  now: IsoInstantSchema,
+});
+
+/**
+ * CAS an `attempting` or `parked` intent to `retryable` with its typed
+ * settlement — D64/D69 stabilized negative evidence, or the operator's
+ * confirmed-absent resolution. History is retained on the attempt row;
+ * only the NEXT fence may create a new generation.
+ */
+export const WriteIntentRetrySettlementRequestSchema = z.strictObject({
+  writeIntentId: WriteIntentIdSchema,
+  generation: PositiveIntSchema,
+  expectedVersion: PositiveIntSchema,
+  settlement: WriteRetrySettlementSchema,
+  now: IsoInstantSchema,
+}).superRefine((request, context) => {
+  if (request.settlement.writeIntentId !== request.writeIntentId) {
+    context.addIssue({ code: "custom", path: ["settlement", "writeIntentId"], message: "settlement must name the exact intent it resolves" });
+  }
+  if (request.settlement.generation !== request.generation) {
+    context.addIssue({ code: "custom", path: ["settlement", "generation"], message: "settlement must resolve the exact prior generation" });
+  }
+});
+
+/**
+ * CAS a `parked` intent (and attempt) back to `attempting` so the atomic
+ * commit primitive can accept an operator confirmed-present resolution.
+ * Restores the exact pre-park attempting shape; the primitive re-validates.
+ */
+export const WriteIntentReopenRequestSchema = z.strictObject({
+  writeIntentId: WriteIntentIdSchema,
+  generation: PositiveIntSchema,
+  expectedVersion: PositiveIntSchema,
+  now: IsoInstantSchema,
+});
+
+/**
+ * CAS a `retryable` permanent row to a NEW `attempting` generation. The intent
+ * keeps its permanent identity (same id/system/key); the generation advances by
+ * exactly one and carries a FRESH binding proof — no prior `WriteBindingProof`
+ * is ever reused across generations (doc 09 §4.1.2).
+ */
+export const WriteRefenceInputSchema = z.strictObject({
+  expectedVersion: PositiveIntSchema,
+  intent: WriteIntentRecordSchema,
+  attempt: WriteAttemptRecordSchema,
+}).superRefine(({ intent, attempt }, context) => {
+  const fence = WriteFenceInputSchema.safeParse({ intent, attempt });
+  if (!fence.success) {
+    context.addIssue({ code: "custom", message: "a re-fence must contain one semantically consistent attempting intent and attempt" });
+  }
+});
+
+/* ── the beat-⑦ outer bundle (doc 03 Phase-1f authority; doc 09 §3 beat ⑦) ── */
+
+export const SequencedWriteCommitStepSchema = z.enum([
+  "commit-write-attempt",
+  "transaction-checkpoint",
+  "run-transition",
+]);
+
+/**
+ * The complete beat-⑦ bundle. The Phase-1c four-row `commitWriteAttempt`
+ * primitive stays narrow INSIDE it (doc 03: "a storage primitive inside this
+ * complete bundle, not a separately committable terminal path"); this outer
+ * input additionally binds the current run claim, the schema-valid
+ * `TransactionOutcome` checkpoint, and the run transition — one outer authority
+ * transaction commits all of it or none.
+ *
+ * An evidence-receipt ref is deliberately ABSENT from this shape: the 2g trust
+ * service is not active, and a missing receipt is represented as absent, never
+ * fabricated. When 2g activates its terminal-receipt invariant this schema
+ * gains the required ref in the same commit.
+ */
+export const SequencedWriteCommitInputSchema = z.strictObject({
+  run: z.strictObject({
+    runId: RunIdSchema,
+    expectedVersion: PositiveIntSchema,
+    /** Present for the claim-holding executor arm; absent for the parked-write resume arms. */
+    claim: RunClaimTokenSchema.optional(),
+  }),
+  checkpoint: RunCheckpointRecordSchema,
+  commit: AtomicWriteCommitInputSchema,
+}).superRefine((input, context) => {
+  const ledger = input.commit.ledgerOutbox.payload;
+  if (ledger.kind !== "ledger-entry") return; // already refused by the inner schema
+  const { entry } = ledger;
+  if (input.run.runId !== entry.runId) {
+    context.addIssue({ code: "custom", path: ["run", "runId"], message: "beat-⑦ run must be the exact run the ledger entry names" });
+  }
+  for (const [field, checkpointValue, entryValue] of [
+    ["runId", input.checkpoint.runId, entry.runId],
+    ["workflowId", input.checkpoint.workflowId, entry.workflowId],
+    ["itemId", input.checkpoint.itemId, entry.itemId],
+    ["attempt", input.checkpoint.attempt, entry.attempt],
+  ] as const) {
+    if (checkpointValue !== entryValue) {
+      context.addIssue({ code: "custom", path: ["checkpoint", field], message: `checkpoint ${field} must match the committed ledger entry` });
+    }
+  }
+  if (canonicalJsonStringify(input.checkpoint.output.value) !== canonicalJsonStringify(input.commit.outcome)) {
+    context.addIssue({ code: "custom", path: ["checkpoint", "output", "value"], message: "checkpoint value must be the exact durable transaction outcome" });
+  }
+  if (input.checkpoint.writtenAt !== input.commit.confirmedAt) {
+    context.addIssue({ code: "custom", path: ["checkpoint", "writtenAt"], message: "checkpoint must be written at the atomic confirmation instant" });
+  }
+});
+
 export type WriteFenceInput = z.infer<typeof WriteFenceInputSchema>;
 export type PermanentWriteResolution = z.infer<typeof PermanentWriteResolutionSchema>;
 export type AtomicWriteCommitStorageStep = z.infer<typeof AtomicWriteCommitStorageStepSchema>;
 export type AtomicWriteCommitInput = z.infer<typeof AtomicWriteCommitInputSchema>;
 export type AtomicWriteCommitReport = z.infer<typeof AtomicWriteCommitReportSchema>;
+export type WriteIntentParkCode = z.infer<typeof WriteIntentParkCodeSchema>;
+export type WriteIntentParkRequest = z.infer<typeof WriteIntentParkRequestSchema>;
+export type WriteIntentRetrySettlementRequest = z.infer<typeof WriteIntentRetrySettlementRequestSchema>;
+export type WriteIntentReopenRequest = z.infer<typeof WriteIntentReopenRequestSchema>;
+export type WriteRefenceInput = z.infer<typeof WriteRefenceInputSchema>;
+export type SequencedWriteCommitStep = z.infer<typeof SequencedWriteCommitStepSchema>;
+export type SequencedWriteCommitInput = z.infer<typeof SequencedWriteCommitInputSchema>;

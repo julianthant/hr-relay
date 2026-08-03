@@ -163,6 +163,10 @@ import {
   AtomicWriteCommitReportSchema,
   PermanentWriteResolutionSchema,
   WriteFenceInputSchema,
+  WriteIntentParkRequestSchema,
+  WriteIntentReopenRequestSchema,
+  WriteIntentRetrySettlementRequestSchema,
+  WriteRefenceInputSchema,
   type AtomicWriteCommitReport,
   type AtomicWriteCommitStorageStep,
   type PermanentWriteResolution,
@@ -242,6 +246,14 @@ type DependencyRepository = Readonly<{
 type WriteIntentRepository = Readonly<{
   recordObservedPresent(input: unknown): PermanentWriteResolution;
   fenceAttempt(input: unknown): PermanentWriteResolution;
+  /** D111: CAS a `retryable` permanent row to `attempting` generation+1 with a FRESH binding proof. */
+  refenceRetryable(input: unknown): PermanentWriteResolution;
+  /** Doc 09 §4 arm 3: CAS `attempting` → `parked` on intent AND current attempt. */
+  parkAttempt(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
+  /** Doc 09 §4 arm 2 / §4.1.2: CAS `attempting`|`parked` → `retryable` with a typed settlement. */
+  settleRetryable(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
+  /** Doc 09 §4.1.1: CAS `parked` → `attempting` so beat ⑦ can accept confirmed-present. */
+  reopenParkedAttempt(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
   get(writeIntentId: string): z.infer<typeof WriteIntentRecordSchema> | undefined;
   findByPermanentKey(system: unknown, idempotencyKey: unknown): z.infer<typeof WriteIntentRecordSchema> | undefined;
 }>;
@@ -1891,6 +1903,134 @@ export class AuthorityDatabase implements Disposable {
             return PermanentWriteResolutionSchema.parse({ state: "fenced", intent, attempt });
           });
         },
+        refenceRetryable: (input: unknown) => {
+          const { expectedVersion, intent, attempt } = WriteRefenceInputSchema.parse(input);
+          if (intent.status !== "attempting") {
+            throw new Error(`re-fence of ${intent.writeIntentId} must present an attempting intent, not ${intent.status}`);
+          }
+          return this.withAuthorityTransaction(() => {
+            const current = this.#requireWriteIntent(intent.writeIntentId);
+            if (current.status !== "retryable") {
+              throw new Error(`write intent ${intent.writeIntentId} is ${current.status}; only a retryable intent may re-fence`);
+            }
+            if (current.version !== expectedVersion) {
+              throw new Error(`write intent ${intent.writeIntentId} is at version ${String(current.version)}, not ${String(expectedVersion)}; the re-fence is stale`);
+            }
+            if (intent.generation !== current.generation + 1) {
+              throw new Error(`re-fence of ${intent.writeIntentId} must advance generation ${String(current.generation)} by exactly one, not to ${String(intent.generation)}`);
+            }
+            for (const [field, currentValue, nextValue] of [
+              ["system", current.system, intent.system],
+              ["idempotencyKey", current.idempotencyKey, intent.idempotencyKey],
+              ["idempotencyKeyDigest", current.idempotencyKeyDigest, intent.idempotencyKeyDigest],
+              ["workflowId", current.workflowId, intent.workflowId],
+              ["itemId", current.itemId, intent.itemId],
+              ["taskId", current.taskId, intent.taskId],
+              ["createdAt", current.createdAt, intent.createdAt],
+            ] as const) {
+              if (currentValue !== nextValue) {
+                throw new Error(`re-fence of ${intent.writeIntentId} may not change permanent ${field}`);
+              }
+            }
+            if (intent.version !== current.version + 1) {
+              throw new Error(`re-fence of ${intent.writeIntentId} must advance version ${String(current.version)} by exactly one`);
+            }
+            if (canonicalJsonStringify(intent.bindingProof) === canonicalJsonStringify(current.bindingProof)) {
+              throw new Error(`re-fence of ${intent.writeIntentId} must carry a FRESH binding proof; reusing generation ${String(current.generation)}'s proof is refused`);
+            }
+            this.#replaceWriteIntent(intent);
+            this.#insertWriteAttempt(attempt);
+            return PermanentWriteResolutionSchema.parse({ state: "fenced", intent, attempt });
+          });
+        },
+        parkAttempt: (input: unknown) => {
+          const request = WriteIntentParkRequestSchema.parse(input);
+          return this.withAuthorityTransaction(() => {
+            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
+            if (current.status !== "attempting") {
+              throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only an attempting intent may park`);
+            }
+            const parked = WriteIntentRecordSchema.parse({
+              ...current,
+              status: "parked",
+              parkedCode: request.code,
+              message: request.message,
+              version: current.version + 1,
+              updatedAt: request.now,
+            });
+            const currentAttempt = this.#requireAttemptingWriteAttempt(current.currentAttemptId);
+            const parkedAttempt = WriteAttemptRecordSchema.parse({
+              ...currentAttempt,
+              outcome: { state: "parked", code: request.code, message: request.message },
+              recordedAt: request.now,
+            });
+            this.#replaceWriteIntent(parked);
+            this.#replaceWriteAttempt(parkedAttempt);
+            return parked;
+          });
+        },
+        settleRetryable: (input: unknown) => {
+          const request = WriteIntentRetrySettlementRequestSchema.parse(input);
+          return this.withAuthorityTransaction(() => {
+            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
+            if (current.status !== "attempting" && current.status !== "parked") {
+              throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only attempting or parked may settle retryable`);
+            }
+            const { parkedCode: _parkedCode, message: _message, ...base } = {
+              parkedCode: undefined,
+              message: undefined,
+              ...current,
+            };
+            const retryable = WriteIntentRecordSchema.parse({
+              ...base,
+              status: "retryable",
+              settlement: request.settlement,
+              resolvedAt: request.now,
+              version: current.version + 1,
+              updatedAt: request.now,
+            });
+            const currentAttempt = this.#requireWriteAttempt(current.currentAttemptId);
+            if (currentAttempt.outcome.state !== "attempting" && currentAttempt.outcome.state !== "parked") {
+              throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; it cannot settle retryable`);
+            }
+            const settledAttempt = WriteAttemptRecordSchema.parse({
+              ...currentAttempt,
+              outcome: { state: "safe-to-retry", settlement: request.settlement },
+              recordedAt: request.now,
+            });
+            this.#replaceWriteIntent(retryable);
+            this.#replaceWriteAttempt(settledAttempt);
+            return retryable;
+          });
+        },
+        reopenParkedAttempt: (input: unknown) => {
+          const request = WriteIntentReopenRequestSchema.parse(input);
+          return this.withAuthorityTransaction(() => {
+            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
+            if (current.status !== "parked") {
+              throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only a parked intent may reopen for resolution`);
+            }
+            const { parkedCode: _parkedCode, message: _message, ...base } = current;
+            const attempting = WriteIntentRecordSchema.parse({
+              ...base,
+              status: "attempting",
+              version: current.version + 1,
+              updatedAt: request.now,
+            });
+            const currentAttempt = this.#requireWriteAttempt(current.currentAttemptId);
+            if (currentAttempt.outcome.state !== "parked") {
+              throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; only a parked attempt may reopen`);
+            }
+            const reopenedAttempt = WriteAttemptRecordSchema.parse({
+              ...currentAttempt,
+              outcome: { state: "attempting" },
+              recordedAt: request.now,
+            });
+            this.#replaceWriteIntent(attempting);
+            this.#replaceWriteAttempt(reopenedAttempt);
+            return attempting;
+          });
+        },
         get: (writeIntentId: string) => this.#readRecord("write_intents", writeIntentId, WriteIntentRecordSchema),
         findByPermanentKey: (system: unknown, idempotencyKey: unknown) => this.#findPermanentWriteIntent(
           BrowserSystemIdSchema.parse(system),
@@ -3082,6 +3222,44 @@ export class AuthorityDatabase implements Disposable {
         });
       },
     });
+  }
+
+  #requireWriteIntent(writeIntentId: string): WriteIntentRecord {
+    const current = this.#readRecord("write_intents", writeIntentId, WriteIntentRecordSchema);
+    if (current === undefined) throw new Error(`write intent ${writeIntentId} does not exist`);
+    return current;
+  }
+
+  #requireAttemptBearingWriteIntent(
+    writeIntentId: string,
+    generation: number,
+    expectedVersion: number,
+  ): Exclude<WriteIntentRecord, { status: "observed-present" }> {
+    const current = this.#requireWriteIntent(writeIntentId);
+    if (current.status === "observed-present") {
+      throw new Error(`write intent ${writeIntentId} is observed-present; it carries no automation attempt to transition`);
+    }
+    if (current.generation !== generation) {
+      throw new Error(`write intent ${writeIntentId} is at generation ${String(current.generation)}, not ${String(generation)}; the transition is stale`);
+    }
+    if (current.version !== expectedVersion) {
+      throw new Error(`write intent ${writeIntentId} is at version ${String(current.version)}, not ${String(expectedVersion)}; the transition is stale`);
+    }
+    return current;
+  }
+
+  #requireWriteAttempt(writeAttemptId: string): WriteAttemptRecord {
+    const attempt = this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema);
+    if (attempt === undefined) throw new Error(`write attempt ${writeAttemptId} does not exist`);
+    return attempt;
+  }
+
+  #requireAttemptingWriteAttempt(writeAttemptId: string): WriteAttemptRecord {
+    const attempt = this.#requireWriteAttempt(writeAttemptId);
+    if (attempt.outcome.state !== "attempting") {
+      throw new Error(`write attempt ${writeAttemptId} is ${attempt.outcome.state}; only an attempting attempt may transition`);
+    }
+    return attempt;
   }
 
   #findPermanentWriteIntent(system: string, idempotencyKey: string): WriteIntentRecord | undefined {

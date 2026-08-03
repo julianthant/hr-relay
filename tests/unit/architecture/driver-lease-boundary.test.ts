@@ -7,8 +7,10 @@
  *
  * Enforced structurally over the whole tree:
  *
- * - `withDriver(` is called only by the manager itself and by the one graph
- *   interpreter (`src/core/run-executor.ts`);
+ * - `withDriver(` is called only by the manager itself, the one graph
+ *   interpreter (`src/core/run-executor.ts`), and the doc-09 write sequencer
+ *   (`src/core/write-sequencer.ts`), whose probe read lease and transaction
+ *   lease are exactly the callback leases doc 09 §3 assigns it;
  * - the browser-session factory's `.open(` — the raw resource mint — is
  *   invoked only inside `src/core/worker-sessions.ts`;
  * - `new WorkerSessionManager(` is constructed only by the worker loop, so a
@@ -30,7 +32,11 @@ function sourceFiles(): readonly { path: string; content: string }[] {
 
 describe("driver lease boundary", () => {
   it("keeps withDriver callers to the manager and the interpreter alone", () => {
-    const allowed = new Set(["src/core/worker-sessions.ts", "src/core/run-executor.ts"]);
+    const allowed = new Set([
+      "src/core/worker-sessions.ts",
+      "src/core/run-executor.ts",
+      "src/core/write-sequencer.ts",
+    ]);
     const violations = sourceFiles()
       .filter(({ path, content }) => content.includes(".withDriver(") && !allowed.has(path))
       .map(({ path }) => path);
