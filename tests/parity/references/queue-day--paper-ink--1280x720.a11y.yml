@@ -70,19 +70,19 @@
     - button "EID 10001573 — done":
       - text: EID 10001573
       - button "What this run did not report — EID 10001573"
-      - text: Done 9:35 AM pl-090303-0003 with CRM dates 30m 0s Right-click or press m for every command on EID 10001573
+      - text: Done 9:35 AM pl-090303-0003 with CRM dates took 5m 0s Right-click or press m for every command on EID 10001573
     - button "EID 10555001 — failed":
       - text: EID 10555001
       - button "What this run did not report — EID 10555001"
-      - text: Failed 9:33 AM pl-090404-0004 person lookup 32m 0s Right-click or press m for every command on EID 10555001
+      - text: Failed 9:33 AM pl-090404-0004 person lookup took 6m 0s Right-click or press m for every command on EID 10555001
     - button "EID 10222009 — cancelled":
       - text: EID 10222009
       - button "What this run did not report — EID 10222009"
-      - text: Cancelled 9:26 AM pl-090707-0007 person lookup 39m 0s Right-click or press m for every command on EID 10222009
+      - text: Cancelled 9:26 AM pl-090707-0007 person lookup took 4m 0s Right-click or press m for every command on EID 10222009
     - button "EID 10333015 — done":
       - text: EID 10333015
       - button "What this run did not report — EID 10333015"
-      - text: Done 9:24 AM pl-090808-0008 with CRM dates 41m 0s Right-click or press m for every command on EID 10333015
+      - text: Done 9:24 AM pl-090808-0008 with CRM dates took 5m 0s Right-click or press m for every command on EID 10333015
     - button "Onboarding cohort — July stragglers — done":
       - text: Onboarding cohort — July stragglers
       - button "What this run did not report — Onboarding cohort — July stragglers"
@@ -100,7 +100,7 @@
       - button "EID 10300110 person lookup"
       - button "EID 10300111 person lookup"
       - button "Expand"
-      - text: 9:05 AM pl-095050-0050 person lookup 1h 0m Right-click or press m for every command on Onboarding cohort — July stragglers
+      - text: 9:05 AM pl-095050-0050 person lookup took 2m 0s Right-click or press m for every command on Onboarding cohort — July stragglers
     - button "Separation audit — August — done":
       - text: Separation audit — August Done 2 members failed 12/13 2 Name Detail
       - button "Castillo, Ren person lookup"
@@ -117,7 +117,7 @@
       - button "EID 10410208 person lookup"
       - button "EID 10990032 person lookup"
       - button "Expand"
-      - text: 9:10 AM pl-091010-0070 person lookup 55m 0s Right-click or press m for every command on Separation audit — August
+      - text: 9:10 AM pl-091010-0070 person lookup took 2m 0s Right-click or press m for every command on Separation audit — August
 - dialog "Workflow Panel":
   - text: Workflow Panel
   - button "Dock the Workflow Panel as a sidebar"

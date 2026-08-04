@@ -102,6 +102,9 @@ function absent(reason: string) {
 function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
   const kind = input.surfaceKind ?? "single";
   const startedMinute = input.startedMinute ?? 40;
+  // Different per row, and clamped so the fixture instants stay inside the
+  // authored 09:xx hour rather than rolling into an unparseable minute.
+  const settledMinute = Math.min(startedMinute + 2 + (input.seed % 5), 59);
   const subtitle = input.subtitle === undefined
     ? present("person lookup")
     : typeof input.subtitle === "string"
@@ -130,12 +133,16 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
       { system: "crm", instance: "prod" },
     ],
     startedAt: at(startedMinute),
-    updatedAt: at(startedMinute + 2),
     // D124: a settled run carries its own terminal instant, so the row can
-    // show what it TOOK instead of counting since it started. An in-flight
-    // row states the absence and why.
+    // show what it TOOK instead of counting since it started, and the
+    // terminal-authority contract makes `updatedAt` that same instant. The
+    // durations deliberately DIFFER per row — a corpus where every finished
+    // run took the same time would render identically whether the row read
+    // `endedAt` or any other constant. An in-flight row states the absence
+    // and why, and may not carry a terminal instant at all.
+    updatedAt: at(settledMinute),
     endedAt: TERMINAL.has(input.status)
-      ? { state: "present", value: at(startedMinute + 2) }
+      ? { state: "present", value: at(settledMinute) }
       : { state: "absent", reason: `run is ${input.status} and has not ended` },
     title: input.title,
     subtitle,
