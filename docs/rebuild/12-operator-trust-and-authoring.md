@@ -122,10 +122,102 @@ should ratify rather than something this foundation guesses. §4.1's `knowledge/
 and the generated per-system `KNOWLEDGE.md` remain that slice's work; the table is the authority the
 generator reads.
 
-Still Phase-2g work, not landed here: automatic bundle capture triggers, the receipt builder,
-`explain run`/`explain failure`, retention/pinning sweeps, notification trigger wiring, and the
-dashboard projections. The `evidence-receipt`, `notification-durability`, and
-`knowledge-fix-integrity` guards stay **planned** until those features exist.
+Still Phase-2g work, not landed with D134: the receipt builder, `explain run`/`explain failure`, and
+the dashboard projections. The `evidence-receipt` guard stays **planned** until those exist;
+`notification-durability` and `knowledge-fix-integrity` activate with D137/D138 below.
+
+---
+
+## Phase 2g as-built — capture, inbox, and knowledge (2026-08-04, D136/D137/D138)
+
+### D136 — a bundle is captured at the trigger, redacted at capture, and bound to its failure
+
+The trigger set is **closed and is §2.2's own sentence**: unexpected state, task failure, subject
+mismatch, recovery park, operator-requested snapshot. Each maps one-to-one onto a stored
+`DiagnosticBundle.origin` arm, and the mapping is what decides whether a `failureId` or a
+`requestedBy` actor is mandatory — a mis-triggered capture fails before an artifact is written.
+
+**Redaction is schema-owned and happens at capture.** `redactDiagnosticFields` DROPS every field it
+cannot classify, with a warning naming its index; nothing unclassified is "passed through for the UI
+to hide". A second lock refuses a bundle in which a never-exportable key (any secret name, cookie,
+storage state, SSN) survived as an `allowed` value, so a mis-classification fails loud instead of
+exporting. Only a screenshot may stay `restricted`; every other attachment arm is redacted text.
+
+**The failure and its bundle land in one transaction, and the ordering is forced.**
+`diagnostic_bundles.failure_id` references `failures(record_key)` while
+`FailureRecord.diagnosticBundleId` is a forward reference the failure row must already carry — so
+neither can be written second on its own. Capture is therefore two phases: `prepare` redacts and
+writes attachments to the content-addressed store (nothing durable in authority has moved; a crash
+leaves at most an unreferenced artifact, which that writer already tolerates), and the interpreter
+then terminalizes the failure carrying the prepared `bundleId` and `persist`s the bundle inside the
+SAME authority transaction as the terminal CAS. A failure can never point at a bundle that does not
+exist, and a bundle can never outlive its failure. Injecting the capture port without an authority
+transaction fails loud rather than settling half of it.
+
+**Retention is a bounded delete, and a pin is a recorded fact.** An ordinary bundle's `purgeAfter` is
+derived from its OWN capture instant plus the D86 notes floor, never from wall-clock now at sweep
+time. The sweep reads the `(retention_kind, purge_after)` index, so a pinned bundle is structurally
+unreachable from it; purging a pinned bundle by name, or one whose instant has not passed, throws.
+Attachment rows and the bundle row are deleted together so the boot invariant tying a bundle's
+`attachments` array to its indexed rows can never observe a half-purged bundle.
+
+The content-addressed **artifact bytes are not deleted**. They are shared by digest, so a receipt, a
+second bundle, or a scenario fixture may still hold exactly those bytes; the sweep reports the
+now-unreferenced artifact ids and reclaiming them needs a reference count the artifact store does
+not keep. That is a named residual, not an oversight.
+
+**Named seams.** The interpreter terminalizes after its driver lease has closed, so it holds no page:
+screenshots and accessibility excerpts arrive through an injected `attachmentsFor` seam that the
+system-driver layer fills in. Absent, the bundle carries structured evidence only — never a
+fabricated screenshot. `FailureRecord.summary` is deliberately not copied into the bundle: it is
+free text that can carry a name or an EID, it already lives in the failure row the bundle joins to,
+and duplicating it into an exportable artifact widens the blast radius for nothing.
+
+### D137 — the durable row is committed BEFORE any delivery, and a failed toast changes nothing
+
+`publish` settles create-or-fold in one authority transaction and only then attempts OS delivery.
+A delivery that throws is **reported and never written back**: status, count, and version are
+untouched, so the operator who missed the toast still finds an unread item — that, not the toast, is
+the alert (§6, doc 03 §10.4). No per-attempt delivery state is stored; storing one would invite a
+retry loop that mutates the record the operator is reading. A missing desktop channel reports
+`no-channel`, never success.
+
+Doc 03 §2.6's event list routes onto D79b's six trigger keys: run failure and subject mismatch →
+`failed`; open operator gate → `gate-waiting`; unknown write outcome → `write-parked`; repeat
+threshold → `repeating`; storage degradation, stalled lease/outbox, and failed backup → `storage`;
+and the verified-done receipt → `verified-done`. The first five ping; `verified-done` is inbox-only.
+
+**A notification carries no free text.** Every trigger-event arm is ids, closed codes, and counts,
+and the title/summary are composed from those — because §2.6 forbids raw secrets and captured form
+contents in notification text, and the only way to guarantee that is to give leakage nowhere to
+enter. The dedupe fingerprint covers what makes two firings the same trigger and never the
+occurrence, the instant, or the count, so a repeat folds (§6.1) instead of minting a row. Snooze
+suppresses delivery only: it never flips status, and marking read never clears a snooze.
+
+### D138 — knowledge is admitted before it is inserted, and supersession is expressed forward
+
+The knowledge/fix tables are insert-only (D134), so a duplicate that lands cannot be retracted.
+Admission is therefore audited INSIDE the insert transaction. Two ACTIVE records may not claim the
+same scoped rule — identical scope plus either the same normalized title or a shared regression
+scenario — unless the successor explicitly supersedes the predecessor. An unknown supersedes ref, a
+self-reference, and a duplicate id are each refused with the conflict named.
+
+**Supersession is expressed forward by the new record**, and the active view subtracts every
+superseded id. Nothing rewrites the older row, so the generated guide stops showing stale advice
+without any record mutating and without the `version` field §4.3's audit would need. §4.3's
+"mark stale records `unverified`" still awaits that schema decision — this slice does not guess it.
+
+The generated per-system `KNOWLEDGE.md` is the ACTIVE view alone: superseded, retired, and
+unverified records never reach it, and its header says it is generated so it cannot read as a second
+authority. §4.1's `knowledge/records/` on-disk file layout is not built; the table is the authority
+and `writeKnowledgeProjection(root)` is the generator. Wiring it to an npm script is 2i's, with the
+explorer.
+
+A verified `FixRecord` requires a commit plus non-empty verification evidence plus a regression
+scenario; a draft may claim neither commit nor evidence; a verified fix may not link knowledge that
+is missing or itself `unverified`. **A raw appended lesson is not authority**: `triageLesson` has
+exactly one arm, and it returns the obligations the author still owes — there is no path from prose
+to a record.
 
 ---
 

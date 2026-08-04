@@ -36,6 +36,7 @@ import {
   DiagnosticBundleIdSchema,
   FailureFingerprintSchema,
   FingerprintSchema,
+  IsoInstantSchema,
   OutboxIdSchema,
   ProviderAdmissionIdSchema,
   ProviderCapabilityIdSchema,
@@ -250,6 +251,14 @@ export const AuthoritySchemaInspectionSchema = z.strictObject({
 
 export const ImmutableInsertDispositionSchema = z.enum(["inserted", "existing"]);
 
+/**
+ * Doc 12 §2.2's retention sweep result for one bundle. `absent` is a real
+ * outcome — two sweeps racing the same due bundle must not both claim a purge —
+ * and there is deliberately no "skipped" arm: a bundle that must not be purged
+ * throws rather than being reported as quietly handled.
+ */
+export const DiagnosticPurgeDispositionSchema = z.enum(["purged", "absent"]);
+
 type ImmutableInsertResult<RecordValue> = Readonly<{
   state: z.infer<typeof ImmutableInsertDispositionSchema>;
   record: RecordValue;
@@ -375,6 +384,21 @@ type DiagnosticBundleRepository = Readonly<{
   listByRun(runId: string): readonly DiagnosticBundle[];
   listAttachments(bundleId: string): readonly DiagnosticAttachmentStorageRecord[];
   findByArtifact(artifactId: string): readonly DiagnosticAttachmentStorageRecord[];
+  /**
+   * Doc 12 §2.2's retention floor, read through the
+   * `(retention_kind, purge_after)` index v10 created for exactly this query.
+   * A pinned bundle is structurally unreachable from here.
+   */
+  listRetentionDue(now: string): readonly DiagnosticBundle[];
+  /**
+   * The one authority family with a delete, and it is bounded: an ordinary
+   * bundle whose own `purgeAfter` has passed, with its attachment index removed
+   * in the same transaction so the boot invariant that ties a bundle's
+   * `attachments` array to its indexed rows can never see a half-purged bundle.
+   * A pinned bundle throws — retention never silently unpins evidence a
+   * knowledge/fix record or a write recovery still depends on.
+   */
+  purge(bundleId: string, now: string): z.infer<typeof DiagnosticPurgeDispositionSchema>;
 }>;
 
 /** Doc 12 §2.3. One terminal run, one server-derived receipt. */
@@ -384,16 +408,23 @@ type EvidenceReceiptRepository = Readonly<{
   findByRun(runId: string): RunEvidenceReceipt | undefined;
 }>;
 
-/** Doc 12 §4.1/§4.2. Authored guidance and proven fixes. */
+/**
+ * Doc 12 §4.1/§4.2. Authored guidance and proven fixes. `list` returns EVERY
+ * recorded row, whatever its status: the §4.3 duplicate/supersession audit has
+ * to see retired and superseded records too, or a candidate could claim to
+ * supersede something that never existed.
+ */
 type KnowledgeRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<KnowledgeRecord>;
   get(knowledgeId: string): KnowledgeRecord | undefined;
+  list(): readonly KnowledgeRecord[];
   listByStatus(status: unknown): readonly KnowledgeRecord[];
 }>;
 
 type FixRecordRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<FixRecord>;
   get(fixId: string): FixRecord | undefined;
+  list(): readonly FixRecord[];
   listByFailureFingerprint(fingerprint: string): readonly FixRecord[];
 }>;
 
@@ -1986,6 +2017,45 @@ export class AuthorityDatabase implements Disposable {
         "SELECT record_json FROM diagnostic_attachments WHERE artifact_id = ? ORDER BY record_key",
         ArtifactIdSchema.parse(artifactId),
       ),
+      listRetentionDue: (now: string) => {
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM diagnostic_bundles
+          WHERE retention_kind = 'ordinary' AND purge_after <= ?
+          ORDER BY purge_after, record_key
+        `).all(IsoInstantSchema.parse(now));
+        return Object.freeze(rows.map((row) => parseJsonRecord(
+          DiagnosticBundleSchema,
+          JsonRowSchema.parse(row).record_json,
+        )));
+      },
+      purge: (bundleId: string, now: string) => {
+        const key = DiagnosticBundleIdSchema.parse(bundleId);
+        const instant = IsoInstantSchema.parse(now);
+        return this.#authorityWrite("diagnostic_bundles", () => {
+          const existing = this.#readRecord("diagnostic_bundles", key, DiagnosticBundleSchema);
+          if (existing === undefined) {
+            return { result: DiagnosticPurgeDispositionSchema.parse("absent"), changes: 0 };
+          }
+          if (existing.retention.kind !== "ordinary") {
+            throw new Error(`diagnostic bundle ${key} is pinned for ${existing.retention.reason} and is never purged by retention`);
+          }
+          if (Date.parse(existing.retention.purgeAfter) > Date.parse(instant)) {
+            throw new Error(`diagnostic bundle ${key} is retained until ${existing.retention.purgeAfter}; refusing to purge it at ${instant}`);
+          }
+          const attachments = this.#database.prepare(
+            "DELETE FROM diagnostic_attachments WHERE bundle_id = ?",
+          ).run(key);
+          const bundle = this.#database.prepare(
+            "DELETE FROM diagnostic_bundles WHERE record_key = ?",
+          ).run(key);
+          const removed = sqliteChanges(bundle.changes);
+          if (removed !== 1) throw new Error(`diagnostic bundle ${key} purge removed ${String(removed)} rows`);
+          return {
+            result: DiagnosticPurgeDispositionSchema.parse("purged"),
+            changes: removed + sqliteChanges(attachments.changes),
+          };
+        });
+      },
     });
   }
 
@@ -2466,6 +2536,15 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (knowledgeId: string) => this.#readRecord("knowledge_records", knowledgeId, KnowledgeRecordSchema),
+        list: () => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM knowledge_records ORDER BY created_at, record_key
+          `).all();
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            KnowledgeRecordSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
         listByStatus: (status: unknown) => {
           const parsed = KnowledgeRecordSchema.shape.status.parse(status);
           const rows = this.#database.prepare(`
@@ -2497,6 +2576,15 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (fixId: string) => this.#readRecord("fix_records", fixId, FixRecordSchema),
+        list: () => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM fix_records ORDER BY created_at, record_key
+          `).all();
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            FixRecordSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
         listByFailureFingerprint: (fingerprint: string) => {
           const rows = this.#database.prepare(`
             SELECT record_json FROM fix_records WHERE failure_fingerprint = ? ORDER BY created_at, record_key

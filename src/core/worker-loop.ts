@@ -33,6 +33,7 @@ import type {
   WorkerRuntimeContext,
   WorkerRuntimeExecutor,
 } from "./command-kernel.js";
+import type { RunDiagnosticCapture } from "../base/diagnostics.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import {
   executeClaimedRun,
@@ -97,6 +98,8 @@ export interface WorkerLoopDependencies {
    */
   readonly writeSequencerFor?: (sessions: WorkerSessionManager) => WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
+  /** Doc 12 §2.2's automatic bundle capture; absent means no bundle is minted. */
+  readonly diagnostics?: RunDiagnosticCapture;
   /**
    * Doc 03 §2.4's durable worker directives, observed BETWEEN items: the loop
    * polls before each claim, so `stop` ends the loop only after the active run
@@ -316,6 +319,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
               : { canonicalInputMigrations: deps.canonicalInputMigrations }),
             ...(writeSequencer === undefined ? {} : { writeSequencer }),
             ...(deps.childRuns === undefined ? {} : { childRuns: deps.childRuns }),
+            ...(deps.diagnostics === undefined ? {} : { diagnostics: deps.diagnostics }),
           }, { run, claim, signal: runController.signal }),
         );
         outcomes.push(outcome);

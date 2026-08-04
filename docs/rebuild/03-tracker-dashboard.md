@@ -1038,6 +1038,22 @@ plus triggers freezing identity and creation and requiring a strictly advancing 
 durable `NotificationRecord` therefore carries `count` and `lastSeenAt` beside `version`. Doc 12
 §6.1 owns the justification and the boundary against the ledger's true immutability.
 
+**Publish ordering (D137).** "A failed toast never loses the unread inbox item" is an ORDER, not an
+aspiration. `publish` settles create-or-fold in one authority transaction and only then attempts OS
+delivery; the delivery call is made after that transaction returns, over a row authority can already
+read. A delivery that throws is reported to the caller and **never written back** — status, `count`,
+and `version` are untouched — and no per-attempt delivery state is stored at all. A missing desktop
+channel reports `no-channel`, never success. Snooze is evaluated at delivery time only: a snoozed
+row still folds durably, it just does not ping.
+
+**Trigger arguments are closed (D137).** "Notification text uses redacted arguments" is enforced by
+having no free-text argument: every trigger-event arm is ids, closed codes, and counts, and the
+title/message are composed from those. A caller cannot hand the inbox prose, so captured form
+contents have nowhere to enter. The doc-03 trigger list routes onto D79b's six keys as: run failure
+and subject mismatch → `failed`; open operator gate → `gate-waiting`; unknown write outcome →
+`write-parked`; repeat threshold → `repeating`; storage degradation, stalled lease/outbox, and
+failed backup → `storage`; verified-done receipt → `verified-done`.
+
 ---
 
 ## 3. Descriptor fields this layer consumes (shape owned by doc 02)

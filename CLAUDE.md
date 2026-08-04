@@ -24,8 +24,12 @@ as-built.
 durable table 2g needs (diagnostic bundles + attachments, evidence receipts, knowledge and fix
 records, the ledger projector's `(system,date)` lease and projection state, a searchable failure
 fingerprint, and the notification dedupe fold), and doc 09 §6's ordered actor-attributed ledger
-projector is built in `src/infra/ledger/`. The receipt builder, `explain run`, diagnostic capture
-triggers, and notification trigger wiring are later 2g slices.
+projector is built in `src/infra/ledger/`. **D136/D137/D138** land the next three over it:
+automatic diagnostic capture with capture-time redaction and the retention/pin sweep
+(`src/services/trust/`), the durable actor-keyed notification inbox whose row is committed before
+any OS delivery (`src/services/notifications/`), and knowledge/fix admission with the generated
+active-view `KNOWLEDGE.md`. The evidence receipt builder, `explain run`/`explain failure`, and the
+dashboard projections are the remaining 2g slices.
 
 Seeded 2026-07-31 from `hr-automation@5879004` (branch `feature/rebuild-phase1b`, which stays in the
 legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01.
@@ -281,6 +285,23 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   table with both fingerprints and the moved values, and `[held]`/`[MOVED]`/`[skip]` stay distinct.
   There is no waiver arm on purpose. A resolution releases the WRITE only: the run keeps its planned
   `contractFingerprint`, so doc 02 §5.3 replay and `executeClaimedRun` are untouched.
+- **2026-08-04: A forward reference decides the write order, and durability decides the delivery
+  order.** `diagnostic_bundles.failure_id` references the failure row while
+  `FailureRecord.diagnosticBundleId` is a forward ref the failure must already carry, so capture is
+  two phases (D136): `prepare` redacts and writes attachments to the content-addressed store with
+  nothing durable moved, then the interpreter terminalizes with the prepared `bundleId` and
+  `persist`s the bundle inside the SAME authority transaction as the terminal CAS. Redaction is
+  schema-owned and happens AT capture — unclassified fields are dropped with a warning, never passed
+  through — and a second lock refuses a bundle where a never-exportable key survived as `allowed`.
+  Retention purges the row and its attachment index together but **not** the content-addressed
+  bytes: they are shared by digest, so the sweep reports unreferenced artifact ids instead of
+  deleting something a receipt might still hold. The inbox (D137) commits create-or-fold in one
+  transaction and only then attempts OS delivery; a delivery that throws is reported and never
+  written back, so a missed toast still leaves an unread item. Its trigger union is ids, closed
+  codes, and counts — no free-text field — which is the only way "notification text carries no
+  captured form contents" is enforceable. Knowledge (D138) is insert-only, so admission is audited
+  inside the insert transaction and supersession is expressed forward by the new record; the active
+  view subtracts it, and nothing rewrites the older row.
 - **2026-08-04: A required config leaf is a durable-schema change, and a snapshot is evidence — so
   it is read forward, never back-filled (D133).** D125's `timeouts.sessionAcquireMs` shipped with a
   default for fresh resolves and no path for stored `config_snapshots`, which parse strictly at
