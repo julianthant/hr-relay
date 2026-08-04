@@ -30,6 +30,7 @@
  * settled park, verifies it against authority, and settles NOTHING else.
  */
 import { z } from "zod";
+import type { RunDiagnosticCapture } from "../base/diagnostics.js";
 import { TaskError, wrapUnhandledTaskError } from "../base/errors.js";
 import type { AnyTask, TaskLogger } from "../base/task.js";
 import type { TaskStoreRegistry } from "../base/store.js";
@@ -58,7 +59,7 @@ import {
 } from "../domain/run/record.js";
 import { RunTerminalOutboxRecordSchema } from "../domain/run/terminal-outbox.js";
 import type { SessionNeed } from "../domain/session.js";
-import type { FailureRecord } from "../domain/trust/failure.js";
+import { FailureRecordSchema, type FailureRecord } from "../domain/trust/failure.js";
 import {
   BUILD_MANIFEST,
   resolveTaskImplFingerprint,
@@ -113,6 +114,12 @@ export interface RunExecutionAuthority {
   readonly authority: Pick<AuthorityRepositories, "runs" | "runCheckpoints" | "gateResults">;
   terminalizeFailure(descriptor: AnyWorkflowDescriptor, input: unknown): FailureTerminalizationReport;
   terminalizeSuccess(input: unknown, factoryAuthorization?: object): SuccessTerminalizationReport;
+  /**
+   * Required only when a `RunDiagnosticCapture` port is injected: the bundle
+   * row and the failure terminalization have to land together or the failure's
+   * `diagnosticBundleId` forward reference could dangle.
+   */
+  withAuthorityTransaction?<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
 }
 
 type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transaction" }>;
@@ -197,6 +204,8 @@ export interface RunExecutorDependencies {
   readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
   readonly writeSequencer?: WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
+  /** Doc 12 §2.2. Absent means no automatic bundle, never a silent empty one. */
+  readonly diagnostics?: RunDiagnosticCapture;
 }
 
 export interface ClaimedRunInput {
@@ -366,16 +375,51 @@ export async function executeClaimedRun(
     }));
   };
 
-  const terminalizeAsFailure = (failure: FailureRecord): RunExecutionOutcome => {
+  /**
+   * Doc 12 §2.2's task-failure capture trigger, wired to the one place a
+   * Phase-1 run's `FailureRecord` becomes durable.
+   *
+   * The ordering is forced by the schema, not chosen: `FailureRecord`
+   * carries the bundle id as a forward reference, while
+   * `diagnostic_bundles.failure_id` references the failure row. So the bundle
+   * is PREPARED first (redaction and content-addressed attachments, nothing in
+   * authority yet), the failure is terminalized carrying its id, and the bundle
+   * row lands in the SAME authority transaction — a failure can never point at
+   * a bundle that does not exist, and a bundle can never outlive its failure.
+   *
+   * With no capture port injected the behaviour is exactly as before: no
+   * bundle, no `diagnosticBundleId`, and no transaction wrapper.
+   */
+  const terminalizeAsFailure = async (failure: FailureRecord): Promise<RunExecutionOutcome> => {
+    const capture = deps.diagnostics;
+    const prepared = capture === undefined ? undefined : await capture.captureForFailure({
+      failure,
+      configFingerprint: envelope.configFingerprint,
+      descriptorFingerprint: descriptor.contractFingerprint,
+    });
+    const bound = prepared === undefined
+      ? failure
+      : FailureRecordSchema.parse({ ...failure, diagnosticBundleId: prepared.bundleId });
     const current = getRun();
     const authorization = buildTerminalAuthorization({
       run: current,
       authorizedAt: instant(),
-      consequence: { kind: "failed", failure },
+      consequence: { kind: "failed", failure: bound },
     });
-    deps.authority.terminalizeFailure(descriptor, { failure, authorization });
-    emit({ t: "span.ended", kind: "run", ...runSpanIdentity, outcome: "failed", failureId: failure.failureId });
-    return RunExecutionOutcomeSchema.parse({ state: "failed", runId, failureId: failure.failureId });
+    if (prepared === undefined || capture === undefined) {
+      deps.authority.terminalizeFailure(descriptor, { failure: bound, authorization });
+    } else if (deps.authority.withAuthorityTransaction === undefined) {
+      throw new Error(
+        `run ${runId} has a diagnostic capture port but no authority transaction to settle its bundle with the failure`,
+      );
+    } else {
+      deps.authority.withAuthorityTransaction(() => {
+        deps.authority.terminalizeFailure(descriptor, { failure: bound, authorization });
+        capture.persist(prepared);
+      });
+    }
+    emit({ t: "span.ended", kind: "run", ...runSpanIdentity, outcome: "failed", failureId: bound.failureId });
+    return RunExecutionOutcomeSchema.parse({ state: "failed", runId, failureId: bound.failureId });
   };
 
   const interpret = async (): Promise<RunExecutionOutcome> => {
@@ -567,7 +611,7 @@ export async function executeClaimedRun(
         problems,
         occurredAt: instant(),
       });
-      return terminalizeAsFailure(failure);
+      return await terminalizeAsFailure(failure);
     }
 
     /* ── running: walk the plan in declaration order ─────────────────────── */
@@ -588,7 +632,7 @@ export async function executeClaimedRun(
       node: RuntimeFlowNode,
       taskId: string | undefined,
       error: unknown,
-    ): RunExecutionOutcome => terminalizeAsFailure(buildNodeFailureRecord({
+    ): Promise<RunExecutionOutcome> => terminalizeAsFailure(buildNodeFailureRecord({
       run: getRun(),
       failureId: deps.ids.uuid(),
       nodeId: node.id,
@@ -735,20 +779,20 @@ export async function executeClaimedRun(
       const contract = node.uses;
       const task = taskIndex.get(contract.id);
       if (task === undefined) {
-        return failNode(node, contract.id, new Error(`no store implements ${contract.id}`));
+        return await failNode(node, contract.id, new Error(`no store implements ${contract.id}`));
       }
       if (task.contract !== contract) {
-        return failNode(node, contract.id, new Error(
+        return await failNode(node, contract.id, new Error(
           `store task ${contract.id} binds a different contract object than the descriptor imports`,
         ));
       }
       if (contract.artifacts !== undefined) {
-        return failNode(node, contract.id, new Error(
+        return await failNode(node, contract.id, new Error(
           `${contract.id} declares content-addressed artifacts; the artifact writer lands with its owning slice`,
         ));
       }
       if (contract.providers !== undefined && contract.providers.length > 0) {
-        return failNode(node, contract.id, new Error(
+        return await failNode(node, contract.id, new Error(
           `${contract.id} requires provider capabilities; the admitted provider client is not wired into this executor`,
         ));
       }
@@ -794,7 +838,7 @@ export async function executeClaimedRun(
             errorSummary: taskError.message,
           });
           const retryable = taskError.transient && taskAttempt < attempts;
-          if (!retryable) return failNode(node, contract.id, taskError);
+          if (!retryable) return await failNode(node, contract.id, taskError);
           await waitForBackoff(backoffMs);
         }
       }
@@ -837,7 +881,7 @@ export async function executeClaimedRun(
           if (node.when !== undefined) {
             const condition = node.when(scope);
             if (typeof condition !== "boolean") {
-              return failNode(node, node.uses.id, new Error(`node "${node.id}" when() returned a non-boolean`));
+              return await failNode(node, node.uses.id, new Error(`node "${node.id}" when() returned a non-boolean`));
             }
             if (!condition) {
               skippedReasons.set(String(node.id), "condition-false");
@@ -869,7 +913,7 @@ export async function executeClaimedRun(
           const scope = scopeFor(node.dependsOn);
           const selected = node.choose(scope);
           if (!Object.hasOwn(node.cases, selected)) {
-            return failNode(node, undefined, new Error(
+            return await failNode(node, undefined, new Error(
               `branch "${node.id}" chose "${String(selected)}", which is not a declared case `
               + `(${Object.keys(node.cases).join(", ")})`,
             ));
@@ -884,7 +928,7 @@ export async function executeClaimedRun(
         case "parallel": {
           transitionTo(runningLifecycle(node.id));
           if (node.join !== "all") {
-            return failNode(node, undefined, new Error(
+            return await failNode(node, undefined, new Error(
               `parallel "${node.id}" join "${node.join}" is not interpretable in Phase 1; `
               + "the all-settled arm lands with its owning milestone (capability-unavailable)",
             ));
@@ -913,7 +957,7 @@ export async function executeClaimedRun(
         case "transaction": {
           transitionTo(runningLifecycle(node.id));
           if (deps.writeSequencer === undefined) {
-            return failNode(node, node.commit.uses.id, new TaskError(
+            return await failNode(node, node.commit.uses.id, new TaskError(
               node.commit.uses.id,
               "capability-unavailable",
               `transaction node "${node.id}" requires the doc-09 write sequencer, which is not wired; `
@@ -962,14 +1006,14 @@ export async function executeClaimedRun(
                 code: error.parkCode,
               });
             }
-            return failNode(node, node.commit.uses.id, error);
+            return await failNode(node, node.commit.uses.id, error);
           }
           continue;
         }
         case "child-run": {
           transitionTo(runningLifecycle(node.id));
           if (deps.childRuns === undefined) {
-            return failNode(node, undefined, new Error(
+            return await failNode(node, undefined, new Error(
               `child-run node "${node.id}" requires the delegation executor seam, which is not wired `
               + "(capability-unavailable); refusing to skip a delegation",
             ));
@@ -988,7 +1032,7 @@ export async function executeClaimedRun(
             outputs[String(node.id)] = JsonValueSchema.parse(schema.parse(raw));
           } catch (error) {
             if (error instanceof RunAbandonedError) throw error;
-            return failNode(node, undefined, error);
+            return await failNode(node, undefined, error);
           }
           continue;
         }
