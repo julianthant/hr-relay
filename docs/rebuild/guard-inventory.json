@@ -101,7 +101,7 @@
       "file": "tests/unit/architecture/config-snapshot-generations.test.ts",
       "status": "active",
       "owner": "docs/rebuild/11-clock-config-secrets.md",
-      "invariant": "The durable config leaf set is SHA-256 pinned per generation: adding or tightening a required config leaf without registering it in CONFIG_SNAPSHOT_GENERATIONS and bumping CURRENT_CONFIG_SNAPSHOT_GENERATION fails here, and a stored snapshot tolerates exactly the registered post-baseline leaves being absent — every other missing leaf, missing group, or unknown key still fails loud rather than being defaulted.",
+      "invariant": "The durable config leaf set is SHA-256 pinned per generation: adding or tightening a required config leaf without registering it in CONFIG_SNAPSHOT_GENERATIONS and bumping CURRENT_CONFIG_SNAPSHOT_GENERATION fails here, and a stored snapshot tolerates exactly the registered post-baseline leaves being absent \u2014 every other missing leaf, missing group, or unknown key still fails loud rather than being defaulted.",
       "replacementRequired": true
     },
     {
@@ -323,18 +323,17 @@
     {
       "name": "knowledge-fix-integrity",
       "file": "tests/unit/architecture/knowledge-fix-integrity.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: knowledge-fix-integrity.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/12-operator-trust-and-authoring.md",
+      "invariant": "D138 (doc 12 \u00a74, \u00a79): knowledge records carry status/scope/evidence/validity and forward supersession refs, and admission is audited INSIDE the insert transaction because an insert-only table cannot retract a duplicate. Two active records may not claim the same scoped rule \u2014 same scope plus same normalized title or a shared regression scenario \u2014 without the successor explicitly superseding the predecessor; a supersedes ref that names nothing recorded, a self-reference, and a duplicate id are each refused with the conflict named. The generated per-system KNOWLEDGE.md is the active view alone: superseded, retired, and unverified records never reach it. A verified FixRecord requires a commit plus non-empty verification evidence and a regression scenario, a draft may claim neither, and a verified fix may not link knowledge that is missing or itself unverified. A raw chronological lesson append is not authority: triageLesson has exactly one arm and it returns the obligations still owed, never a record.",
+      "replacementRequired": true
     },
     {
       "name": "ledger-projector",
       "file": "tests/unit/architecture/ledger-projector.test.ts",
       "status": "active",
       "owner": "docs/rebuild/09-write-safety.md",
-      "invariant": "D134 (doc 09 §6): the ledger is projected by ONE serialized, actor-attributed writer and is never pruned. No module outside src/infra/ledger/ may append the ledger, and no module that can name ledger/ may call a deletion primitive — both arms run against violating fixtures, and pruneEventStreams stays structurally blind to the ledger (EVENT_STREAMS is exactly spans+notes). A line's bytes and digest are a pure function of (outbox payload, seq) with a versioned domain separator, and its partition comes from the entry's own confirmedAt in UTC, never from wall-clock now. Sequence assignment is idempotent by outboxId, burns no sequence on repeat, refuses a conflicting line digest, and refuses any projector that does not hold the exact (system,date) lease generation. A non-dense partition sequence degrades the store read-only at boot, and the projection report's degraded arm is a closed reason set that no projected arm can smuggle.",
+      "invariant": "D134 (doc 09 \u00a76): the ledger is projected by ONE serialized, actor-attributed writer and is never pruned. No module outside src/infra/ledger/ may append the ledger, and no module that can name ledger/ may call a deletion primitive \u2014 both arms run against violating fixtures, and pruneEventStreams stays structurally blind to the ledger (EVENT_STREAMS is exactly spans+notes). A line's bytes and digest are a pure function of (outbox payload, seq) with a versioned domain separator, and its partition comes from the entry's own confirmedAt in UTC, never from wall-clock now. Sequence assignment is idempotent by outboxId, burns no sequence on repeat, refuses a conflicting line digest, and refuses any projector that does not hold the exact (system,date) lease generation. A non-dense partition sequence degrades the store read-only at boot, and the projection report's degraded arm is a closed reason set that no projected arm can smuggle.",
       "replacementRequired": true
     },
     {
@@ -368,11 +367,10 @@
     {
       "name": "notification-durability",
       "file": "tests/unit/architecture/notification-durability.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: notification-durability.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/03-tracker-dashboard.md; docs/rebuild/12-operator-trust-and-authoring.md",
+      "invariant": "D137 (doc 03 \u00a72.6/\u00a710.4 D79b; doc 12 \u00a76): a notification is a durable record FIRST and a desktop delivery second. `publish` settles create-or-fold in one authority transaction and only then attempts OS delivery, and the load-bearing arm injects a delivery that throws \u2014 the item must still be durably unread with its count and version untouched, because the operator who missed the toast has only the inbox left. No per-attempt delivery state is written. Each of doc 03 \u00a72.6's closed triggers commits an item and routes to its ratified D79b channel (failed/gate-waiting/write-parked/repeating/storage \u2192 ping, verified-done \u2192 inbox), each carries its own dedupe identity that excludes the occurrence, and a repeat FOLDS into the one (actorId, dedupeFingerprint) row \u2014 count up, lastSeenAt advanced, unread again \u2014 rather than minting a second. Snooze suppresses delivery only and never flips status; read state and snooze move independently; a stale version is refused. The trigger event union is ids, closed codes, and counts, so notification text has no free-text channel a captured value could enter through.",
+      "replacementRequired": true
     },
     {
       "name": "one-projection-counts",
@@ -465,7 +463,7 @@
       "file": "tests/unit/architecture/semantic-ui-registry.test.ts",
       "status": "active",
       "owner": "docs/rebuild/12-operator-trust-and-authoring.md; docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "Every server-private semantic UI definition has a globally unique classified id, collision-free search intent, resolved same-system/same-screen acyclic dependencies, non-vacuous globally unique verification scenarios, exact dual sanitized evidence-to-screen/scenario/date/port-row bindings, and byte-fresh recipe-free generated catalogs; disjoint legacy candidate ids cannot enter any runtime catalog kind. The guarded projection set is DERIVED, never enumerated: it equals the set of stores shipping a `driver/ui-registry.ts` in both directions (no unguarded publisher, no orphan UI-CATALOG.md), so a newly added store's markdown cannot escape freshness enforcement the way `src/stores/kuali/UI-CATALOG.md` did. Every derived projection — the JSON and each per-system markdown — carries stale and missing negative controls through an injected reader.",
+      "invariant": "Every server-private semantic UI definition has a globally unique classified id, collision-free search intent, resolved same-system/same-screen acyclic dependencies, non-vacuous globally unique verification scenarios, exact dual sanitized evidence-to-screen/scenario/date/port-row bindings, and byte-fresh recipe-free generated catalogs; disjoint legacy candidate ids cannot enter any runtime catalog kind. The guarded projection set is DERIVED, never enumerated: it equals the set of stores shipping a `driver/ui-registry.ts` in both directions (no unguarded publisher, no orphan UI-CATALOG.md), so a newly added store's markdown cannot escape freshness enforcement the way `src/stores/kuali/UI-CATALOG.md` did. Every derived projection \u2014 the JSON and each per-system markdown \u2014 carries stale and missing negative controls through an injected reader.",
       "replacementRequired": true
     },
     {
