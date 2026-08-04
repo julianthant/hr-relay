@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, relative, resolve } from "node:path";
 import { describe, it } from "vitest";
 import ts from "typescript";
+import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, PROVIDER_CAPABILITY_CONFIG_KEYS, providerBudget } from "../../../src/domain/config/schema.js";
 import { ProviderCapabilityIdSchema } from "../../../src/domain/ids.js";
 import { createDeterministicProviderHarness } from "../../../src/infra/providers/deterministic-provider.js";
@@ -133,7 +134,7 @@ describe("provider capability boundary", () => {
     assert.match(fixture, /ctx\.providers\["ocr\.extract"\]/u);
     assert.deepEqual(Object.keys(PROVIDER_CAPABILITY_CONFIG_KEYS).sort(), [...ProviderCapabilityIdSchema.options].sort());
     assert.equal(new Set(Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS)).size, ProviderCapabilityIdSchema.options.length);
-    const config = ConfigSchema.parse({});
+    const config = ConfigSchema.parse({ paths: defaultRuntimePaths() });
     for (const capability of ProviderCapabilityIdSchema.options) {
       assert.doesNotThrow(() => providerBudget(config, capability));
       assert.equal(createDeterministicProviderHarness(capability, [{

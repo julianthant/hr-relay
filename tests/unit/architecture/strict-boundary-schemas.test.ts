@@ -36,6 +36,7 @@ import {
   ResolvedConfigSchema,
   resolveConfigWithProvenance,
 } from "../../../src/domain/config/resolve.js";
+import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
 import {
   ConfigSchema,
   ProviderBudgetConfigSchema,
@@ -1028,7 +1029,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "IdleRefreshCadence", schema: IdleRefreshCadenceSchema, fixtures: [{ intervalMs: 30_000 }] },
   { name: "RetryPolicy", schema: RetryPolicySchema, fixtures: [{ attempts: 2, backoffMs: 500, retryOn: "transient" }] },
   { name: "ProviderBudget", schema: ProviderBudgetSchema, fixtures: [{ timeoutMs: 15_000, concurrency: 1, requestsPerMinute: 10, dailyRequestLimit: 100, costLimitUsdMicros: 0 }] },
-  { name: "ProviderBudgetConfig", schema: ProviderBudgetConfigSchema, fixtures: [ConfigSchema.parse({}).providers] },
+  { name: "ProviderBudgetConfig", schema: ProviderBudgetConfigSchema, fixtures: [ConfigSchema.parse({ paths: defaultRuntimePaths() }).providers] },
   { name: "ProviderUnavailableReason", schema: ProviderUnavailableReasonSchema, fixtures: [
     { code: "rate-exhausted", message: "fixed minute exhausted", retryAt: LATER },
     { code: "aborted", message: "run aborted" },
@@ -1242,7 +1243,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   ], openFixturePaths: ["result.result.value", "run.input.raw", "run.input.parsed.value"] },
   { name: "SuccessTerminalizationStorageStep", schema: SuccessTerminalizationStorageStepSchema, fixtures: SuccessTerminalizationStorageStepSchema.options },
   { name: "BoundaryFailure", schema: BoundaryFailureSchema, fixtures: [{ kind: "boundary-failure", source: "config", summary: "invalid config", issues: [{ path: ["urls"], code: "invalid", message: "invalid URL" }] }] },
-  { name: "Config", schema: ConfigSchema, fixtures: [ConfigSchema.parse({})] },
+  { name: "Config", schema: ConfigSchema, fixtures: [ConfigSchema.parse({ paths: defaultRuntimePaths() })] },
   { name: "SettingsOverride", schema: SettingsOverrideSchema, fixtures: [{}] },
   { name: "ResolvedConfig", schema: ResolvedConfigSchema, fixtures: [resolveConfigWithProvenance({}, {}, CLOCK)] },
   { name: "ConfigEnvBindings", schema: ConfigEnvBindingRegistrySchema, fixtures: [CONFIG_ENV_BINDINGS] },

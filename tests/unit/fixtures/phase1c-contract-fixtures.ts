@@ -1,3 +1,4 @@
+import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
 import { ConfigSchema } from "../../../src/domain/config/schema.js";
 import {
   deriveIdempotencyKeyDigest,
@@ -195,7 +196,7 @@ export const CONFIG_SNAPSHOT = {
   fingerprint: HASH_A,
   capturedAt: NOW,
   capturedBy: "local-operator",
-  config: ConfigSchema.parse({}),
+  config: ConfigSchema.parse({ paths: defaultRuntimePaths() }),
   provenance: {},
 };
 

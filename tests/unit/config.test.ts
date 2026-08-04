@@ -4,13 +4,14 @@ import { manualClock } from "../../src/domain/clock.js";
 import { assertNotPast, requireAnnualDates } from "../../src/domain/config/fiscal-year.js";
 import { resolveInstances, resolveSystemEntryUrl } from "../../src/domain/config/instance.js";
 import { CONFIG_ENV_BINDINGS, resolveConfig, resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, SettingsOverrideSchema } from "../../src/domain/config/schema.js";
 
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 
 describe("strict config resolution", () => {
   it("makes empty settings exactly equal schema defaults", () => {
-    assert.deepEqual(resolveConfig({}, {}, CLOCK), ConfigSchema.parse({}));
+    assert.deepEqual(resolveConfig({}, {}, CLOCK), ConfigSchema.parse({ paths: defaultRuntimePaths() }));
     assert.equal(resolveConfig({}, {}, CLOCK).timeouts.ukgNavigationMs, 60_000);
     assert.equal(ConfigSchema.safeParse({ unexpected: true }).success, false);
     assert.equal(ConfigSchema.safeParse({ urls: { unexpected: true } }).success, false);

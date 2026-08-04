@@ -12,6 +12,7 @@ import {
   type MonotonicDeadlineScheduler,
 } from "../../src/core/provider-admission.js";
 import { manualClock } from "../../src/domain/clock.js";
+import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, type ProviderBudget } from "../../src/domain/config/schema.js";
 import {
   ConfigSnapshotIdSchema,
@@ -54,7 +55,7 @@ function databasePath(): string {
 }
 
 function configWithBudget(budget: ProviderBudget) {
-  const defaults = ConfigSchema.parse({});
+  const defaults = ConfigSchema.parse({ paths: defaultRuntimePaths() });
   return ConfigSchema.parse({
     ...defaults,
     providers: { ...defaults.providers, ocrExtract: budget },
