@@ -92,13 +92,17 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
     const state = span.outcome === undefined
       ? "active"
       : ({ done: "done", failed: "failed", cancelled: "cancelled", discarded: "cancelled", skipped: "cancelled", interrupted: "blocked", superseded: "cancelled" } as const)[span.outcome];
-    timelineEvents.push({ at: span.startedAt ?? span.endedAt ?? row.queued.ts, label: span.name, state, seed: `task:${span.spanPath}` });
+    // The seed carries doc 03 §1.1's whole span identity. `<trace>/<node>#<taskAttempt>`
+    // repeats verbatim across RUN attempts, so a node re-run after a recovered
+    // failure yields two genuinely distinct folded spans that share a path — both
+    // are real history and both must render, so the attempt has to reach the id.
+    timelineEvents.push({ at: span.startedAt ?? span.endedAt ?? row.queued.ts, label: span.name, state, seed: `task:${String(span.attempt)}:${span.spanPath}` });
   }
   for (const gate of row.openGates) {
-    timelineEvents.push({ at: gate.openedAt, label: `gate:${gate.gate}`, state: "blocked", seed: `gate-open:${gate.gate}` });
+    timelineEvents.push({ at: gate.openedAt, label: `gate:${gate.gate}`, state: "blocked", seed: `gate-open:${gate.gate}:${gate.openedAt}` });
   }
   for (const gate of row.resolvedGates) {
-    timelineEvents.push({ at: gate.resolvedAt, label: `gate:${gate.gate}`, state: "done", seed: `gate-resolved:${gate.gate}` });
+    timelineEvents.push({ at: gate.resolvedAt, label: `gate:${gate.gate}`, state: "done", seed: `gate-resolved:${gate.gate}:${gate.resolvedAt}` });
   }
   timelineEvents.sort((a, b) => a.at.localeCompare(b.at) || a.seed.localeCompare(b.seed));
 

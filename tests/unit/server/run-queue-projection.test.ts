@@ -11,6 +11,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
+import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import {
   APP_VERSION,
@@ -199,6 +200,16 @@ describe("THE run/queue projection (D81)", () => {
     assert.ok(row);
     const step = row.pipeline.find((entry) => entry.id === "cross-verify");
     assert.equal(step?.state, "done");
+
+    // Both folded spans are real history and both must render. The timeline id
+    // seeded on the span path ALONE collapsed them to one uuid, so the strict
+    // wire schema refused the whole detail ("timeline note ids must be unique")
+    // and the Log Panel could not open. Observed live on the Phase-1 exit run.
+    const detail = buildRunDetail({ stateRoot: w.stateRoot, projection: w.projection, authority: w.authority }, uuidOf(1));
+    const crossVerify = detail.timeline.events.filter((event) => event.label === "cross-verify");
+    assert.equal(crossVerify.length, 2);
+    assert.equal(new Set(detail.timeline.events.map((event) => event.noteId)).size, detail.timeline.events.length);
+    assert.deepEqual(crossVerify.map((event) => event.state), ["cancelled", "done"]);
   });
 
   it("persists every folded row to the rebuildable runs_view table", () => {
