@@ -357,19 +357,29 @@ the run. No row was hand-edited. The evidence note records five independent
 reads of an empty field plus the captured mutation body that carried no entry at
 the field's formKey.
 
-That resolution exposed a real operational constraint, recorded here because it
-will bite again: **a parked write becomes unresolvable once ANY file in its
-descriptor's contract closure changes.** `requireDescriptorMatchesRun` compares
-the run's stored `contractFingerprint` with the current descriptor's, and the
-closure includes 31 files under `src/domain/**` (`src/domain/ids.ts` among
-them). Resolving generation 1 required restoring the tree to the exact state the
-run was created under. A second park, created later the same day, could NOT be
-resolved for exactly this reason — concurrent unrelated work had already touched
+That resolution exposed a real design defect, since fixed by **D136** (§4.1):
+**a parked write became unresolvable once ANY file in its descriptor's contract
+closure changed.** `requireDescriptorMatchesRun` compared the run's stored
+`contractFingerprint` with the current descriptor's, and the closure includes 31
+files under `src/domain/**` (`src/domain/ids.ts` among them). Resolving
+generation 1 required restoring the tree to the exact state the run was created
+under. A second park, created later the same day, could NOT be resolved for
+exactly this reason — concurrent unrelated work had already touched
 `src/domain/ids.ts` — so the successful commit was run under a fresh permanent
 key (a different timekeeper value is a different transaction by doc 09 §5), and
-that older intent is still parked. **Resolve parked writes BEFORE changing a
-contract closure.** The guard's message is also misleading: it prints ids and
-versions, which match, and not the fingerprints, which do not.
+that older intent stayed parked. The guard's message was misleading too: it
+printed ids and versions, which matched, and not the fingerprints, which did not.
+
+**Both halves are now fixed and the standing "resolve parked writes BEFORE
+touching a contract closure" rule is withdrawn.** §4.1's D136 binding re-verifies
+the six named semantic checks directly instead of comparing closure hashes, so an
+incidental closure move leaves both typed arms open; the refusal, when a check
+genuinely moves, prints the whole check table with both fingerprints and the
+moved value. **The still-parked intent from the 15:13 attempt needs no migration
+and no hand-edited row**: its workflow, version, transaction node, canonical
+input, permanent key and binding proof are all unchanged, so a plain
+`run/resolve-write-absent` on the current build resolves it — the same typed
+command that released generation 1, with the same evidence-note requirement.
 
 ### Exit-criteria status
 
@@ -886,6 +896,57 @@ version so a stale browser action cannot race recovery:
 Cancel or Hide may change the run/presentation but cannot alter the intent. There is no third “force
 done” or “retry anyway” endpoint. Every resolution emits an audited note and is covered by strict
 command schema, stale-generation, and double-click tests.
+
+**Resolvability binds to the semantic surface, not to the contract closure (D136, 2026-08-04).**
+A parked write is the one state in this system deliberately built to survive *across* time and code
+change: it waits for a human to go look in the target system, and humans are slow. Binding its
+resolvability to `descriptor.contractFingerprint` — a hash of the descriptor's whole SOURCE CLOSURE —
+made it expire on any edit anywhere in that closure. The person-lookup/Kuali closures span 31 files,
+and one unrelated edit to `src/domain/ids.ts` permanently stranded a real parked Kuali intent
+(see §Phase-2 controlled-commit as-built). Byte identity of the closure is a *sufficient* proof that
+nothing semantic moved; it is nowhere near necessary. Recovery (§4) and both §4.1 arms therefore
+state the necessary condition directly, one named check at a time
+(`src/core/write-resolution-binding.ts`):
+
+| check | what it proves | may it move? |
+|---|---|---|
+| `workflow-identity` | the descriptor and the run name the same workflow | **no** |
+| `descriptor-version` | a version bump is the author's explicit statement that semantics moved | **no** |
+| `transaction-node` | a transaction node still commits this intent's exact task | **no** |
+| `canonical-input` | the run's stored input snapshot is bound to the schema this build parses | **no** |
+| `permanent-key-identity` | this build re-derives the EXACT fenced key from the exact durable input | **no** |
+| `binding-proof-identity` | the retained binding proof still parses and stays bound to this task/run | **no** |
+| everything else in the closure | nothing a resolution reads | **yes** |
+
+`permanent-key-identity` is the load-bearing one: it re-runs `commit.bind`, the commit contract's
+`input` schema, and `idempotency.key` over the run's canonical input snapshot and its declared
+dependency checkpoints, and demands the exact fenced key and digest back. A key that re-derives
+differently names a DIFFERENT external transaction, which is the only drift that could make an
+operator resolution act on the wrong thing. When the closure is byte-identical the remaining checks
+are not re-run — identity already proves them, and re-deriving would only add failure modes (a
+pruned dependency checkpoint) to the ordinary path.
+
+A refusal prints the WHOLE check table — held rows included — with the two fingerprints, the arm
+that was refused, and, for the check that moved, both values (the fenced key and the re-derived one;
+both canonical-input schema hashes; the task the proof is bound to). `[held]` / `[MOVED]` / `[skip]`
+are distinct, and an unevaluated check is never reported as held.
+
+The completion PROOF rules are checked where the proof arrives and are not duplicated here:
+confirmed-present compares the operator's attested `proof.schemaHash` against the current
+`completion.proofSchema`, and recovery re-parses a present probe through the current parsers and
+parks `present-proof-invalid` on failure.
+
+**There is no waiver, override, or force arm, and D136 deliberately does not add one.** When a check
+moves, the honest repair is to restore the semantics or re-plan the run — not to resolve a parked
+real HR write against a target this build cannot prove is the same one.
+
+**What D136 deliberately does NOT change.** A resolution releases the WRITE; it never re-plans the
+run. The run keeps the `contractFingerprint` it was enqueued under, so doc 02 §5.3's replay binding
+and the interpreter's own descriptor↔run check (`executeClaimedRun`) stay exactly as strict as
+before: a resumed run whose closure moved still refuses to execute. That is a separate binding with
+a separate owner, and closing it (re-planning a queued run onto a newer closure) is left open rather
+than decided here. What D136 guarantees is that the parked *intent* — the durable write-safety
+authority, the thing that records whether a real HR transaction exists — always has a typed way out.
 
 ---
 

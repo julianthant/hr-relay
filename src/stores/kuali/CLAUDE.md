@@ -91,11 +91,14 @@ reached a document through the Action List search box; the deep link is live-ver
   Two things to carry forward. **A zero-write experiment is the right instrument here:** routing
   `submitDocumentV2` to `route.abort()` lets you read the payload Kuali WOULD send without sending
   it, which is how the section-ownership question was settled without touching the operator's data.
-  **A parked write is unresolvable once any file in its descriptor's 31-file contract closure
-  changes** — `requireDescriptorMatchesRun` compares stored vs current `contractFingerprint`, and it
-  prints ids and versions (which match) rather than fingerprints (which do not). Resolve parked
-  writes BEFORE touching a contract closure. See `docs/rebuild/09-write-safety.md` §Phase-2
-  controlled-commit.
+  **A parked write WAS unresolvable once any file in its descriptor's 31-file contract closure
+  changed** — `requireDescriptorMatchesRun` compared stored vs current `contractFingerprint` and
+  printed ids and versions (which match) rather than fingerprints (which do not). **Fixed by D136**
+  (doc 09 §4.1): resolvability now binds to six named semantic checks — workflow identity, descriptor
+  version, the transaction node committing this task, the canonical-input schema, the permanent key
+  RE-DERIVED from the exact durable input, and the retained binding proof — so an unrelated closure
+  edit no longer strands a park, and a genuine move refuses with the whole check table. The
+  "resolve parked writes before touching a contract closure" rule is withdrawn.
 - **2026-08-04: Kuali Build paints late, and one sample is not an observation.** The space serves a
   body with ZERO `[role]` nodes at `domcontentloaded` and its menubar ~1s later; the document route
   shows `["", "Action", "Action List"]` at ~1.5s — the document heading present and EMPTY beside two
