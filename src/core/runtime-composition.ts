@@ -61,9 +61,21 @@ export function registerWorkerComposer(composer: WorkerComposer): void {
   registeredWorkerComposer = composer;
 }
 
+/**
+ * The runtime's own phase status, in doc 07's identifiers.
+ *
+ * `completedThrough` is the LAST completed work item of §3's ordered table, not
+ * the phase letter — `1i-spine` is the final Phase-1 item, and Phase 1's exit
+ * test (D74, live person-lookup) passed on 2026-08-04. `active` names Phase 2's
+ * first work item, the controlled transaction proof (§Phase 2, mermaid node
+ * `TX`), which precedes the 2g/2h/2i/2j tails.
+ */
+const COMPLETED_THROUGH = "1i-spine";
+const ACTIVE_ITEM = "2-transaction-proof";
+
 export function runtimeHelp(isolation: RuntimeIsolation): string {
   return [
-    "HR Automation rebuild foundation (completed through 1e; active 1f)",
+    `HR Automation rebuild foundation (Phase 1 COMPLETE through ${COMPLETED_THROUGH}; active ${ACTIVE_ITEM})`,
     "Commands:",
     "  help       show this contract surface",
     "  phase      print the active isolated runtime resources",
@@ -86,8 +98,8 @@ export function startRebuildRuntime(input: RebuildRuntimeStart): void {
   }
   if (command === "phase") {
     write(JSON.stringify({
-      completedThrough: "1e",
-      active: "1f",
+      completedThrough: COMPLETED_THROUGH,
+      active: ACTIVE_ITEM,
       stateRoot: input.isolation.stateRoot,
       artifactRoot: input.isolation.artifactRoot,
       backendPort: input.isolation.backendPort,
