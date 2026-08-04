@@ -26,7 +26,7 @@ import { cn } from "../lib/utils.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
 import { useRunDetail } from "../state/use-run-detail.js";
-import { LogPanel, defaultTabFor, type PanelTab } from "../surfaces/log-panel.js";
+import { LogPanel, defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel.js";
 import { QueuePanel, type QueueSurfaceWire, type QueueViewState } from "../surfaces/queue.js";
 import { RunStartButton, RunStartSurfaces, type RunStartWorkflow } from "../surfaces/run-start.js";
 import {
@@ -51,6 +51,9 @@ import { parseRoute, routeToSearch, type AppRouteState } from "./url-state.js";
  * of the served array and nothing else in the tree changes.
  */
 const SERVED_ACTIONS: readonly ActionDescriptorWire[] = [];
+
+/** The closed tab vocabulary, so a `?section=` value is validated, not trusted. */
+const PANEL_TABS: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
 
 /** The route, kept in the URL so every screen is addressable. */
 function useRoute(): [AppRouteState, (next: AppRouteState) => void] {
@@ -182,7 +185,20 @@ function LoadedApp({
   const { day: dayResource, connection } = useDashboardDay(day);
   const detail = useRunDetail(route.run);
   const detailValue = detail.state === "loaded" ? detail.value : undefined;
-  const effectiveTab = tab ?? (detailValue === undefined ? "logs" : defaultTabFor(detailValue));
+  // Precedence: what the operator clicked this session, then what the URL asked
+  // for, then the panel's own default. The URL arm is what makes a link to a
+  // specific tab work — without it `?section=logs` was parsed and silently
+  // dropped, so a shared link landed on whatever the run's default happened to
+  // be. A section the panel does not offer is ignored rather than forced.
+  const routeTab = PANEL_TABS.find((candidate) => candidate === route.section);
+  const offered = detailValue === undefined ? [] : tabsFor(detailValue);
+  const effectiveTab =
+    tab ??
+    (routeTab !== undefined && offered.includes(routeTab)
+      ? routeTab
+      : detailValue === undefined
+        ? "logs"
+        : defaultTabFor(detailValue));
   const { sections } = usePanelSections(detailValue, effectiveTab);
 
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
