@@ -17,7 +17,14 @@
 import type { ComponentType, SVGProps } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
-import { DS_STATUS, StatusPill, dsStatusText, dsText, type DsStatus } from "../ds/ui.js";
+import {
+  DS_STATUS,
+  StatusPill,
+  dsStatusAccessibleName,
+  dsStatusText,
+  dsText,
+  type DsStatus,
+} from "../ds/ui.js";
 import type { QueueStatusSchema } from "../../domain/dashboard/projection.js";
 import type { OutcomeWireSchema } from "../../domain/dashboard/run-detail.js";
 
@@ -58,6 +65,13 @@ export type ProposedStatus = DsStatus;
 
 interface ProposedStatusSpec {
   label: string;
+  /**
+   * The name an `aria-label` must use. Equals `label` for six of the eight
+   * statuses; `doneWarnings` announces `Done with warnings` so it cannot
+   * collide with `verifiedDone`, whose visible word is also `Done` (D22,
+   * amended 2026-08-04). Never render this — it is the non-visual channel.
+   */
+  accessibleLabel: string;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   /**
    * Color alone — for a parent that wraps icon + text. Never put `iconClass`
@@ -81,6 +95,7 @@ export const PROPOSED_STATUS: Record<ProposedStatus, ProposedStatusSpec> = Objec
       status,
       {
         label: spec.label,
+        accessibleLabel: dsStatusAccessibleName(status),
         icon: spec.icon,
         soloTone: spec.soloTone,
         iconClass: cn(spec.soloTone, spec.spin && "animate-spin motion-reduce:animate-none"),
@@ -97,6 +112,18 @@ export const PROPOSED_STATUS: Record<ProposedStatus, ProposedStatusSpec> = Objec
  */
 export function statusText(status: ProposedStatus, age?: string): string {
   return dsStatusText(status, age);
+}
+
+/**
+ * The same status as a screen reader must hear it. Every `aria-label` (and
+ * every `title` that stands in for one) names a status through THIS function;
+ * `statusText` stays the visible word. The two differ only for `doneWarnings`,
+ * which shares the visible word `Done` with `verifiedDone` and is separated on
+ * screen by hue plus its `△ n` count chip — neither of which an assistive
+ * technology can read.
+ */
+export function statusAccessibleName(status: ProposedStatus, age?: string): string {
+  return dsStatusAccessibleName(status, age);
 }
 
 /**

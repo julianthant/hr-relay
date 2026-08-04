@@ -58,7 +58,13 @@ import {
   type DashboardActionHandler,
 } from "./actions.js";
 import { fmtClock, plural, runTiming } from "./format.js";
-import { PROPOSED_STATUS, StatusBadge, dsStatusOf, statusText, type ProposedStatus } from "./status.js";
+import {
+  PROPOSED_STATUS,
+  StatusBadge,
+  dsStatusOf,
+  statusAccessibleName,
+  type ProposedStatus,
+} from "./status.js";
 
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 type MemberSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "member" }>;
@@ -589,7 +595,11 @@ function MemberLine({
     <button
       type="button"
       data-demo-row-id={surface.runId}
-      title={`${surface.title} — ${statusText(status).toLowerCase()}`}
+      // A member line draws no status word at all — only the leading glyph —
+      // so this string is the whole of what an operator is told. It uses the
+      // ACCESSIBLE name: `done` alone cannot separate the verified done from
+      // the done-with-warnings (D22, amended 2026-08-04).
+      title={`${surface.title} — ${statusAccessibleName(status).toLowerCase()}`}
       onClick={onSelect}
       className={cn(
         MEMBER_GRID,
@@ -834,7 +844,10 @@ export function QueueRow({
           role="button"
           tabIndex={0}
           aria-pressed={selected}
-          aria-label={`${surface.title} — ${statusText(status).toLowerCase()}`}
+          // Same collision as the filter bar's, one surface down: the row's
+          // name ended `— done` for BOTH terminal dones. The badge inside the
+          // row still draws the short word; only the name lengthens.
+          aria-label={`${surface.title} — ${statusAccessibleName(status).toLowerCase()}`}
           data-demo-row-id={surface.runId}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {

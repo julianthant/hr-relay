@@ -76,6 +76,7 @@ export {
   DS_STATUS_ORDER,
   DS_ATTENTION_STATUSES,
   dsStatusText,
+  dsStatusAccessibleName,
   StatusPill,
   StatusDot,
   StatusIcon,

@@ -712,7 +712,12 @@ export function StatusFilters({
         key={status}
         type="button"
         aria-pressed={on}
-        aria-label={`${spec.label} — ${value}`}
+        // The ACCESSIBLE name, not the drawn word: `verifiedDone` and
+        // `doneWarnings` both DRAW `Done`, separated by hue and by the amber
+        // triangle — so the two filters computed the identical name
+        // `Done — 2` and a screen-reader operator could not tell which pill
+        // was which (D22, amended 2026-08-04). The visible pill is untouched.
+        aria-label={`${spec.accessibleLabel} — ${value}`}
         title={spec.meaning}
         onClick={() => onSelect(on ? "all" : status)}
         className={cn(

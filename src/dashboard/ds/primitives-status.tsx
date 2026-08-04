@@ -56,6 +56,22 @@ export type DsStatusTier = "solid" | "dashed" | "tinted" | "outline" | "ghost";
 export interface DsStatusSpec {
   /** The operator-facing name. Never abbreviate it, never translate it. */
   label: string;
+  /**
+   * The ACCESSIBLE name, when the visible word alone does not separate this
+   * status from a sibling (D22, amended 2026-08-04).
+   *
+   * `verifiedDone` and `doneWarnings` deliberately share the visible word
+   * `Done` — sighted operators separate them on hue plus the `△ n` warning
+   * count beside the pill, which is the design the operator ratified. A screen
+   * reader gets neither channel, so the two would otherwise compute the SAME
+   * accessible name (`Done — 2` twice in the filter bar) and the operator could
+   * not tell which filter is which. This field is the non-visual channel: it
+   * NEVER changes what is drawn, only what is announced.
+   *
+   * Omit it when the visible label is already unambiguous — `dsStatusAccessibleName`
+   * falls back to `label` for the other six statuses.
+   */
+  accessibleLabel?: string;
   tier: DsStatusTier;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   /** chip surface: background + border */
@@ -154,7 +170,10 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     // triangle count chip that already names the warning (operator: keep
     // Done + △ n, drop "with warnings"). Amber tint + that chip distinguish
     // it from the green solid Done; the CircleAlert stays for filters/solo.
+    // The qualifier survives on the ACCESSIBLE name only — a screen reader
+    // reads neither the tint nor the count chip.
     label: "Done",
+    accessibleLabel: "Done with warnings",
     tier: "tinted",
     icon: CircleAlert,
     chip:
@@ -255,6 +274,21 @@ export const DS_ATTENTION_STATUSES: DsStatus[] = ["waiting", "failed"];
  */
 export function dsStatusText(status: DsStatus, age?: string): string {
   const base = DS_STATUS[status].label;
+  return age ? `${base} · ${age}` : base;
+}
+
+/**
+ * The status as a SCREEN READER must hear it — never as a surface draws it.
+ *
+ * Use this for every `aria-label` that names a status, and `dsStatusText` for
+ * every visible word. They differ for exactly one status today
+ * (`doneWarnings` → `Done with warnings`), and that difference is the whole
+ * point: the visible pair `Done` / `Done` is separated by hue and by the `△ n`
+ * count chip, and neither of those reaches assistive technology.
+ */
+export function dsStatusAccessibleName(status: DsStatus, age?: string): string {
+  const spec = DS_STATUS[status];
+  const base = spec.accessibleLabel ?? spec.label;
   return age ? `${base} · ${age}` : base;
 }
 
@@ -374,7 +408,10 @@ export function StatusDot({
   return (
     <span
       role="img"
-      aria-label={spec.label}
+      // The NAME is the accessible one — a dot draws no word at all, so a
+      // screen reader has nothing but this. The tooltip stays the visible
+      // vocabulary the rest of the surface speaks.
+      aria-label={dsStatusAccessibleName(status)}
       title={spec.label}
       className={cn("inline-block shrink-0 rounded-full", shape, className)}
     />
