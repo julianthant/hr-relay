@@ -49,6 +49,7 @@ import {
   dsText,
 } from "../ds/ui.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import { isTerminalQueueStatus } from "../../domain/dashboard/projection.js";
 import type { QueueSurfaceWireSchema } from "../../domain/dashboard/projection.js";
 import {
   FooterActions,
@@ -56,7 +57,7 @@ import {
   RowContextMenu,
   type DashboardActionHandler,
 } from "./actions.js";
-import { elapsedSecondsBetween, fmtClock, fmtElapsed, plural } from "./format.js";
+import { fmtClock, plural, runTiming } from "./format.js";
 import { PROPOSED_STATUS, StatusBadge, dsStatusOf, statusText, type ProposedStatus } from "./status.js";
 
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
@@ -327,11 +328,16 @@ function RowFooterLine({
   onAction?: DashboardActionHandler;
   nowIso: string;
 }) {
-  // Elapsed is display-only arithmetic over two served instants. A queued run
-  // has started nothing, so it shows no timer at all.
-  const elapsed = surface.status === "queued"
-    ? undefined
-    : fmtElapsed(elapsedSecondsBetween(surface.startedAt, nowIso));
+  // Elapsed is display-only arithmetic over two SERVED instants (doc 13 §4).
+  //
+  // The second instant is the whole point. A queued run has started nothing,
+  // so it shows no timer. A run still in flight shows live elapsed against
+  // `now`. A FINISHED run shows what it took — `endedAt − startedAt` — because
+  // `now − startedAt` answers a question nobody asked of a settled run and
+  // grows forever: the live exit run displayed 2h 47m for ~14.5 minutes of
+  // execution (D124). A terminal row with no served end instant says the
+  // duration is unknown and names why; it never falls back to `now`.
+  const timing = runTiming(surface, nowIso, isTerminalQueueStatus);
   return (
     <div
       className={cn(
@@ -372,7 +378,11 @@ function RowFooterLine({
         {/* A first attempt is the ordinary case and says nothing; a re-run is a
             fact about this run that changes how its evidence reads. */}
         {surface.attempt > 1 && <span className="whitespace-nowrap">attempt {surface.attempt}</span>}
-        {elapsed !== undefined && <span className="whitespace-nowrap">{elapsed}</span>}
+        {timing !== undefined && (
+          <span className="whitespace-nowrap" {...(timing.title === undefined ? {} : { title: timing.title })}>
+            {timing.text}
+          </span>
+        )}
       </div>
       {/* The frequent commands, inline. The full set is one right-click away —
           there is no `⋯`, because a button whose only job is to admit there are

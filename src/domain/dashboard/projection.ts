@@ -55,6 +55,21 @@ const QueueBaseFields = {
   resolvedInstances: z.array(ResolvedInstanceSchema),
   startedAt: IsoInstantSchema,
   updatedAt: IsoInstantSchema,
+  /**
+   * The run's terminal instant, served explicitly (D124).
+   *
+   * `updatedAt` happens to equal `lifecycle.endedAt` on a settled run, but the
+   * wire never said so, and a row that computed a duration from it would be
+   * relying on an invariant it cannot see. A terminal row therefore carries
+   * `endedAt` in its own right so `endedAt − startedAt` is a real duration;
+   * an in-flight row carries an explicit, reasoned absence, and a terminal row
+   * whose end instant is genuinely unknown says exactly that instead of
+   * letting the client silently substitute `now` and count forever.
+   */
+  endedAt: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: IsoInstantSchema }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
   title: z.string().min(1),
   subtitle: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
@@ -71,14 +86,42 @@ const QueueBaseFields = {
   rowRevision: RowRevisionSchema,
 } as const;
 
+/** The statuses whose run has stopped for good — the ones that HAVE a duration. */
+export const TERMINAL_QUEUE_STATUSES: ReadonlySet<z.infer<typeof QueueStatusSchema>> =
+  new Set(["done", "failed", "cancelled", "partial"]);
+
+/** The same fact as a predicate, for surfaces that hold a plain status string. */
+export function isTerminalQueueStatus(status: string): boolean {
+  return TERMINAL_QUEUE_STATUSES.has(QueueStatusSchema.parse(status));
+}
+
+/**
+ * An in-flight row may never claim a terminal instant: the row that says when
+ * a run ended is the row that says it is over, and a running run that carried
+ * one would let a surface print a finished duration for live work.
+ */
+function refineEndedAt(
+  surface: { status: z.infer<typeof QueueStatusSchema>; endedAt: { state: "present" | "absent" } },
+  context: z.RefinementCtx,
+): void {
+  if (!TERMINAL_QUEUE_STATUSES.has(surface.status) && surface.endedAt.state === "present") {
+    context.addIssue({
+      code: "custom",
+      path: ["endedAt"],
+      message: `a ${surface.status} run has not ended and cannot carry a terminal instant`,
+    });
+  }
+}
+
 const RegularQueueSurfaceWireSchema = z.strictObject({
   ...QueueBaseFields,
   surfaceKind: z.enum(["single", "preview"]),
-});
+}).superRefine(refineEndedAt);
 const MemberQueueSurfaceWireSchema = z.strictObject({
   ...QueueBaseFields,
   surfaceKind: z.literal("member"),
 }).superRefine((surface, context) => {
+  refineEndedAt(surface, context);
   if (surface.lineage.state !== "child") {
     context.addIssue({ code: "custom", path: ["lineage"], message: "member surfaces require a parent run" });
   }
@@ -93,6 +136,7 @@ const OperationQueueSurfaceWireSchema = z.strictObject({
     failed: z.number().int().nonnegative(),
   }),
 }).superRefine((surface, context) => {
+  refineEndedAt(surface, context);
   if (new Set(surface.memberRunIds).size !== surface.memberRunIds.length) {
     context.addIssue({ code: "custom", path: ["memberRunIds"], message: "operation member ids must be unique" });
   }

@@ -43,6 +43,42 @@ export function elapsedSecondsBetween(fromIso: string, toIso: string): number {
 }
 
 /**
+ * THE queue row's one time fact, chosen by what the run actually is (D124).
+ *
+ * Three shapes, and none of them guesses:
+ * - a run that has not started shows nothing;
+ * - a run still in flight shows live elapsed against `now`;
+ * - a SETTLED run shows `took <duration>` — `endedAt − startedAt`, both served
+ *   instants — because `now − startedAt` answers a question nobody asks of a
+ *   finished run and grows forever. The live exit run displayed **2h 47m** for
+ *   ~14.5 minutes of execution, which is the defect this closes.
+ *
+ * A terminal row whose `endedAt` the server could not serve renders an
+ * explicit `duration unknown` carrying the server's own reason. It never
+ * substitutes `now`: "we do not know when it ended" and "it ended just now"
+ * are different facts and must not render as the same number.
+ */
+export function runTiming(
+  surface: {
+    readonly status: string;
+    readonly startedAt: string;
+    readonly endedAt: { readonly state: "present"; readonly value: string }
+    | { readonly state: "absent"; readonly reason: string };
+  },
+  nowIso: string,
+  isTerminalStatus: (status: string) => boolean,
+): { text: string; title?: string } | undefined {
+  if (surface.status === "queued") return undefined;
+  if (surface.endedAt.state === "present") {
+    return { text: `took ${fmtElapsed(elapsedSecondsBetween(surface.startedAt, surface.endedAt.value))}` };
+  }
+  if (isTerminalStatus(surface.status)) {
+    return { text: "duration unknown", title: surface.endedAt.reason };
+  }
+  return { text: fmtElapsed(elapsedSecondsBetween(surface.startedAt, nowIso)) };
+}
+
+/**
  * `n` with its noun, pluralised — a template literal is the easiest place to
  * write a number beside a word that does not agree with it.
  */
