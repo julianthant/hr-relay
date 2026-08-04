@@ -21,6 +21,22 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
   { scenarioId: "person-lookup/not-found", file: "tests/scenario/person-lookup.scenario.test.ts" },
   { scenarioId: "person-lookup/crm-failure-retry", file: "tests/scenario/person-lookup.scenario.test.ts" },
   { scenarioId: "person-lookup/crm-subject-mismatch", file: "tests/scenario/person-lookup-runtime.scenario.test.ts" },
+  {
+    scenarioId: "kuali-timekeeper-annotation/dry-run-preview",
+    file: "tests/scenario/kuali-timekeeper-annotation.scenario.test.ts",
+  },
+  {
+    scenarioId: "kuali-timekeeper-annotation/subject-mismatch",
+    file: "tests/scenario/kuali-timekeeper-annotation.scenario.test.ts",
+  },
+  {
+    scenarioId: "kuali-timekeeper-annotation/committed",
+    file: "tests/scenario/kuali-timekeeper-annotation.scenario.test.ts",
+  },
+  {
+    scenarioId: "kuali-timekeeper-annotation/already-present",
+    file: "tests/scenario/kuali-timekeeper-annotation.scenario.test.ts",
+  },
 ]));
 
 export const EXECUTABLE_SCENARIO_IDS: readonly ScenarioId[] = Object.freeze(

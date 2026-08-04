@@ -137,6 +137,12 @@ describe("Phase 1f Person Lookup task implementations", () => {
       [
         "crm/read-onboarding-dates",
         "crm/read-onboarding-record",
+        // Phase 2's Kuali transaction pair and its two reads share the one
+        // runtime index; a second workflow does not get a second registry.
+        "kuali/fill-timekeeper-annotation",
+        "kuali/read-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
         "ucpath/search-person-org",
         "workflow:person-lookup/read-active-status",
       ],

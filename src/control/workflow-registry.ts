@@ -20,9 +20,10 @@ import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { RegisteredTaskStore } from "../base/store.js";
 import { TaskIdSchema } from "../domain/ids.js";
 import { taskStoreRegistry } from "../stores/index.js";
+import { kualiTimekeeperAnnotationModule } from "../workflows/kuali-timekeeper-annotation/module.js";
 import { personLookupModule } from "../workflows/person-lookup/module.js";
 
-export const WORKFLOW_MODULES = Object.freeze([personLookupModule]);
+export const WORKFLOW_MODULES = Object.freeze([personLookupModule, kualiTimekeeperAnnotationModule]);
 
 export const DESCRIPTORS: readonly AnyWorkflowDescriptor[] = Object.freeze(
   WORKFLOW_MODULES.map((module) => module.descriptor),

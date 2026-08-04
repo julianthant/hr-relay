@@ -12,6 +12,10 @@
  * entry here is the exact object `WORKFLOW_MODULES` composes, in the same
  * order, so the two tuples cannot drift.
  */
+import { kualiTimekeeperAnnotationDescriptor } from "./kuali-timekeeper-annotation/descriptor.js";
 import { personLookupDescriptor } from "./person-lookup/descriptor.js";
 
-export const WORKFLOW_DESCRIPTORS = Object.freeze([personLookupDescriptor] as const);
+export const WORKFLOW_DESCRIPTORS = Object.freeze([
+  personLookupDescriptor,
+  kualiTimekeeperAnnotationDescriptor,
+] as const);
