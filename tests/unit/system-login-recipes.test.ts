@@ -50,6 +50,9 @@ const SSO = "https://a5.ucsd.edu/idp/profile/SAML2/Redirect/SSO";
 const DISCOVERY = "https://ucpath.universityofcalifornia.edu/ucpathdiscovery/disco?entity=ucsd";
 const CRM_APP = "https://act-crm.my.site.com/hr/ONB_SearchOnboardings";
 const CRM_ENTRY = CONFIG.urls.crm.prod.entry;
+/** Live-verified 2026-08-03 TritON login-type option values. */
+const AD_TYPE = "_eventId_authn/PasswordAD";
+const BUSINESS_TYPE = "_eventId_authn/PasswordRACF";
 
 /** PeopleSoft's single-signon token, issued only after a completed sign-in. */
 const PS_TOKEN: FakeCookie = {
@@ -59,8 +62,12 @@ const PS_TOKEN: FakeCookie = {
 };
 const SID: FakeCookie = { name: "sid", domain: "act-crm.my.site.com", value: "opaque" };
 
-/** The page state of an authenticated app: no sign-in form of any kind. */
+/**
+ * The page state of an authenticated app: no sign-in form of any kind, and no
+ * campus-discovery link (discovery is detected by that link, not by a path).
+ */
 const NO_SIGN_IN_FORMS = {
+  "campus-link": { count: 0 },
   "sso-submit": { count: 0 },
   "peoplesoft-signon": { count: 0 },
   "communities-login": { count: 0 },
@@ -276,6 +283,7 @@ describe("ucpath login recipe", () => {
       navigation: { [UCPATH_PORTAL]: UCPATH_PUBLIC_PORTAL },
       elements: {
         "portal-login": { navigatesTo: SSO },
+        "campus-link": { count: 0 },
         "sso-submit": { count: 0 },
       },
       // A cookie jar that would satisfy the positive fact if the URL were an
@@ -284,7 +292,8 @@ describe("ucpath login recipe", () => {
     });
     await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
-      assert.equal(error.step, "sso-form");
+      assert.equal(error.step, "navigate-login-entry");
+      assert.match(error.message, /neither campus discovery, nor the SSO form/);
       return true;
     });
     assert.equal(harness.actions().includes("click:portal-login"), true);
@@ -326,6 +335,7 @@ describe("ucpath login recipe", () => {
       navigation: { [UCPATH_PORTAL]: UCPATH_PORTAL, [UCPATH_ENTRY]: UCPATH_APP },
       elements: {
         "portal-login": { navigatesTo: SSO },
+        "campus-link": { count: 0 },
         "sso-submit": {},
         "sso-username": {},
         "sso-password": {},
@@ -345,6 +355,7 @@ describe("ucpath login recipe", () => {
       navigation: { [UCPATH_PORTAL]: UCPATH_PORTAL },
       elements: {
         "portal-login": { navigatesTo: SSO },
+        "campus-link": { count: 0 },
         "sso-submit": {},
         "sso-username": {},
         "sso-password": {},
@@ -365,9 +376,10 @@ describe("ucpath login recipe", () => {
     const { context } = contextFor({
       url: "about:blank",
       elements: {
-        "portal-login": { navigatesTo: SSO },
-        "sso-submit": { count: 0 },
+        "portal-login": { navigatesTo: DISCOVERY },
+        "campus-link": { navigatesTo: SSO },
       },
+      elementsByUrl: { [SSO]: { "campus-link": { count: 0 }, "sso-submit": { count: 0 } } },
     });
     await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
@@ -385,6 +397,7 @@ describe("ucpath login recipe", () => {
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO },
+        "campus-link": { count: 0 },
         "sso-submit": {},
         "sso-username": { count: 0 },
         "sso-password": {},
@@ -405,6 +418,7 @@ describe("ucpath login recipe", () => {
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO },
+        "campus-link": { count: 0 },
         "sso-submit": {},
         "sso-username": {},
         "sso-password": {},
@@ -425,6 +439,7 @@ describe("ucpath login recipe", () => {
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO },
+        "campus-link": { count: 0 },
         "sso-submit": {},
         "sso-username": {},
         "sso-password": {},
@@ -440,6 +455,7 @@ describe("ucpath login recipe", () => {
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO },
+        "campus-link": { count: 0 },
         "sso-submit": {},
         "sso-username": {},
         "sso-password": {},
@@ -476,7 +492,7 @@ describe("crm login recipe", () => {
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: {
-        "login-type-select": { value: "Active Directory" },
+        "login-type-select": { value: AD_TYPE },
         "sso-submit": {},
         "sso-username": {},
         "sso-password": {},
@@ -492,7 +508,7 @@ describe("crm login recipe", () => {
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: {
-        "login-type-select": { value: "Salesforce" },
+        "login-type-select": { value: BUSINESS_TYPE, valueAfterSelect: AD_TYPE },
         "sso-submit": {},
         "sso-username": {},
         "sso-password": {},
@@ -517,6 +533,31 @@ describe("crm login recipe", () => {
       settlesTo: [CRM_APP],
     });
     assert.equal(await crmLoginRecipe(absent.context), "logged-in");
+  });
+
+  it("refuses to submit credentials when the realm did not actually switch", async () => {
+    // The live 2026-08-03 failure: TritON defaults to Business Systems, the
+    // credentials go to the wrong realm, and Shibboleth answers "the username
+    // you entered cannot be identified" — a whole Duo window later.
+    const { context, harness } = contextFor({
+      url: "about:blank",
+      navigation: { [CRM_ENTRY]: SSO },
+      elements: {
+        "login-type-select": { value: BUSINESS_TYPE, valueAfterSelect: BUSINESS_TYPE },
+        "sso-submit": {},
+        "sso-username": {},
+        "sso-password": {},
+      },
+      ...authenticatedCrm,
+      settlesTo: [CRM_APP],
+    });
+    await assert.rejects(crmLoginRecipe(context), (error: unknown) => {
+      assert.ok(error instanceof BrowserLoginError);
+      assert.equal(error.step, "sso-form");
+      assert.match(error.message, /not Active Directory; refusing to submit credentials/);
+      return true;
+    });
+    assert.deepEqual(harness.filled(), [], "no credential may be typed into the wrong realm's form");
   });
 
   it("fails loud when a present login-type control cannot be set", async () => {

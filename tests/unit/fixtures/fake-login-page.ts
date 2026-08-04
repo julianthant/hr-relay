@@ -36,6 +36,12 @@ export interface FakeElementScript {
   readonly failWith?: string;
   /** Current value for a `<select>`-style control. */
   readonly value?: string;
+  /**
+   * The value the control reports AFTER a selection. TritON's login-type picker
+   * re-posts the whole form on change, so "did the realm actually switch" is a
+   * second observation, not an assumption.
+   */
+  readonly valueAfterSelect?: string;
   /** Navigate the page when this element is actioned (click/select). */
   readonly navigatesTo?: string;
 }
@@ -76,7 +82,7 @@ export interface FakePageHarness {
 
 function classify(kind: string, argument: string): FakeElementName | undefined {
   if (kind === "locator" && argument.includes("_eventId_proceed")) return "sso-submit";
-  if (kind === "locator" && argument === "select") return "login-type-select";
+  if (kind === "locator" && (argument === "select" || argument.includes("authtype"))) return "login-type-select";
   if (kind === "locator" && argument.includes("ssousername")) return "sso-username";
   if (kind === "locator" && argument.includes("ssopassword")) return "sso-password";
   if (kind === "locator" && argument.includes("#userid")) return "peoplesoft-signon";
@@ -94,6 +100,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   const actions: string[] = [];
   const filled: string[] = [];
   const settlements = [...(script.settlesTo ?? [])];
+  const selected = new Set<FakeElementName>();
 
   const scriptFor = (name: FakeElementName): FakeElementScript =>
     script.elementsByUrl?.[current]?.[name] ?? script.elements?.[name] ?? {};
@@ -133,6 +140,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
         if (name === undefined) throw new Error("fake page: inputValue on an unclassified locator");
         const element = scriptFor(name);
         if (element.failWith !== undefined) throw new Error(element.failWith);
+        if (selected.has(name)) return element.valueAfterSelect ?? element.value ?? "";
         return element.value ?? "";
       },
       selectOption: async () => {
@@ -140,6 +148,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
         const element = scriptFor(name);
         if (element.failWith !== undefined) throw new Error(element.failWith);
         actions.push(`select:${name}`);
+        selected.add(name);
         return [];
       },
     };
