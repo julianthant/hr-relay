@@ -176,6 +176,37 @@ describe("composed worker runtime", () => {
     );
   });
 
+  it("reclaims a lease whose process died without settling, instead of bricking the workflow", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const workerId = phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID));
+    const seed = reopen(stateRoot, clock);
+    // A worker that was SIGKILLed leaves a live `idle` lease behind whose
+    // heartbeat then ages out. Only a RUNNING worker sweeps, so without a
+    // reclaim-before-acquire pass no worker could ever start again.
+    assert.equal(seed.authority.workerLeases.start({
+      workerId, workflow: WORKFLOW_ID, processId: 999, requestedBy: "local-operator", now: NOW,
+    }).state, "started");
+    assert.equal(seed.authority.workerLeases.reportLifecycle({
+      workerId,
+      leaseGeneration: 1,
+      lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: NOW },
+      now: NOW,
+    }).state, "applied");
+    clock.advanceWall(120_000);
+    clock.advanceMonotonic(120_000);
+
+    const lines: string[] = [];
+    const report = await composeWorkerRuntime(composeInput({
+      repoRoot, clock, sessions: happySessionHarness(), lines,
+    }));
+    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
+    const lease = seed.authority.workerLeases.get(workerId);
+    assert.ok(lease && lease.leaseGeneration === 2 && lease.processId === 4242);
+    assert.ok(lines.some((line) => line.includes("stale worker lease reclaimed before start")));
+  });
+
   it("stops gracefully mid-run: the run is abandoned, never terminalized over a lost claim", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));

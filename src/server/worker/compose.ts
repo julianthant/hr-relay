@@ -357,6 +357,27 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
 
   try {
     const now = clock.now().toISOString();
+    /**
+     * Reclaim before acquiring. A worker that dies without settling (SIGKILL,
+     * OOM, power loss) leaves a live lease behind, and only a RUNNING worker's
+     * maintenance ticker sweeps expired leases — so without this pass the
+     * first `start` below refuses forever and the workflow is bricked with no
+     * operator path back. The sweep is the same one the ticker runs, at the
+     * same staleness threshold (12 missed heartbeats), so a genuinely live
+     * second process is still refused: its lease heartbeat is seconds old and
+     * cannot be swept. Nothing is assumed about the dead process — the sweep
+     * settles the lease it can PROVE is stale, and the new lease takes a fresh
+     * generation that fences any revenant.
+     */
+    for (const expired of database.authority.workerLeases.sweepExpired({
+      staleBefore: new Date(clock.nowMs() - claimStaleAfterMs).toISOString(),
+      now,
+    })) {
+      log.warn("stale worker lease reclaimed before start; its process never settled", {
+        workerId: expired.workerId,
+        workflow: expired.workflow,
+      });
+    }
     const started = database.authority.workerLeases.start({
       workerId,
       workflow: workflowId,
