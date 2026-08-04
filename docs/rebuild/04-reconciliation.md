@@ -718,6 +718,12 @@ changing those bytes, and later schema work must append v10.
 | **D124** | **A QUEUE ROW SERVES `endedAt` IN ITS OWN RIGHT; A TERMINAL ROW DISPLAYS `endedAt − startedAt`, AN IN-FLIGHT ROW MAY NOT CARRY A TERMINAL INSTANT AT ALL, AND A TERMINAL ROW WITHOUT ONE RENDERS AN EXPLICIT UNKNOWN RATHER THAN FALLING BACK TO `now`.** | doc 03 §Phase-1g/1i as-built presentation deltas (primary); doc 13 §4 |
 | **D125** | **BROWSER-SESSION ACQUISITION (OPEN + LOGIN) IS BOUNDED BY ITS OWN CONFIG LEAF `timeouts.sessionAcquireMs`, DISTINCT FROM AND MUCH SHORTER THAN `timeouts.taskMs`; EXPIRY FAILS THE LEASE LOUDLY AND NEVER RETRIES, AND A SESSION THAT LANDS AFTER THE BOUND IS POISON-CLOSED RATHER THAN REUSED.** | doc 05 §Session acquisition is bounded separately from the task (primary); doc 11 §3 config schema |
 
+## Reconciliation round 24 (2026-08-04) — the accessible name is its own channel
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D126** | **TWO STATUSES MAY SHARE A VISIBLE WORD ONLY IF A NON-TEXTUAL VISIBLE CHANNEL SEPARATES THEM *AND* THEY CARRY DISTINCT ACCESSIBLE NAMES; `verifiedDone`/`doneWarnings` ARE SEPARATED BY ICON + COLOUR ON SCREEN AND BY `accessibleLabel` OFF IT, AND THE FIX IS NEVER TO LENGTHEN THE DRAWN LABEL.** This amends doc 03 **row-model D22**, whose original ground ("the sibling deliberately did not shorten"; "the word remains") was superseded by a later operator direction. | doc 03 §9 row-model D22 as amended + §Phase-1g/1i as-built presentation deltas (primary); doc 07 §Phase 1 exit criteria; doc 13 §7.1 parity corpus |
+
 **Two separate D-series exist — do not confuse them.** This memo's `D1–D120` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
 types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the

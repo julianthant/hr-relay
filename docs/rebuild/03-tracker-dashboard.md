@@ -219,11 +219,12 @@ handler later.
 
 D74's live exit test (run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, master
 plan §Phase 1) rendered all four parity surfaces from the ONE projection and agreed on every count.
-It also surfaced four things about this doc's contracts that fixtures had passed. **Three are fixed
-and are now as-built contract; one remains open and is carried into 2i** — every one of them is
-presentation-only, with correct durable authority underneath, which is why none blocked the exit.
-The `skipped`-arm and terminal-duration deltas were closed on 2026-08-04 as D123/D124; the
-duplicate `Done` filter pair still needs an operator decision before any code changes.
+It also surfaced four things about this doc's contracts that fixtures had passed. **All four are now
+fixed and are as-built contract** — every one of them is presentation-only, with correct durable
+authority underneath, which is why none blocked the exit. The `skipped`-arm and terminal-duration
+deltas closed on 2026-08-04 as D123/D124; the duplicate `Done` pair closed on 2026-08-04 as D126,
+once the operator ratified the visible design and named the defect as an accessible-name collision
+only.
 
 **Fixed — folding and identity are keyed by the WHOLE span identity.** §1.1's task identity is
 `(runId, attempt, spanPath)` and that has to be honoured in both the projector and the wire. A node
@@ -285,20 +286,36 @@ As-built contract:
   carrying the server's own reason. It never substitutes `now` — "we do not know when it ended" and
   "it ended just now" are different facts and must not render as the same number.
 
-**Open, carried into 2i (the only one left) — two status filters are both named "Done", contradicting D22.**
-`verifiedDone` and `doneWarnings` (`src/dashboard/ds/primitives-status.tsx`) both carry
-`label: "Done"`. `StatusFilters` renders one pill per `QueueStatus`, and `done → verifiedDone` /
-`partial → doneWarnings`, so the bar shows two controls whose accessible names are `"Done — 1"` and
-`"Done — 0"`, separated only by hue and glyph. **This is a genuine contradiction with D22 as
-ratified in §9**, which shortened `Verified done` to `Done` on the explicit ground that *"the
-sibling deliberately did not shorten, because the qualifier IS the difference between them"*, and
-which justified the colour change by noting *"the word remains: this is not colour-only encoding."*
-With both words identical, the filter pair IS colour-only encoding. The code cites a later operator
-direction (keep `Done` + the `△ n` count chip, drop "with warnings") that was applied to the pill
-without being folded back into D22 — the exact drift risk register §11 names. **Required in 2i:**
-either amend D22 to record that direction and give the FILTER a non-colour distinguisher (the `△`
-count is a row affordance and is absent at count 0, so it cannot carry this), or restore the
-qualifier on the filter. This one needs a decision before a code change, not a fix.
+**Fixed (D126, 2026-08-04) — the two `Done` statuses are separated by ICON + COLOUR + a distinct
+ACCESSIBLE NAME; the visible word stays short.** `verifiedDone` and `doneWarnings`
+(`src/dashboard/ds/primitives-status.tsx`) both carry `label: "Done"`, and `StatusFilters` renders
+one pill per `QueueStatus` (`done → verifiedDone`, `partial → doneWarnings`), so the filter bar
+showed two controls whose accessible names were both `"Done — n"` and the queue rows both ended
+`"— done"`. The operator, asked directly, **ratified the visible design and refused the visible
+change**: on screen the two are not colour-only — `doneWarnings` renders its amber warning triangle
+with its count beside the pill and `verifiedDone` renders the bare green word, so icon + hue + the
+count chip are three visible channels and the shorter word is the one that fits the header. The
+defect was therefore **assistive-technology only**, and only the non-visual channel is fixed.
+
+As-built contract:
+
+- `DsStatusSpec` gains an optional `accessibleLabel`. It is **never rendered**. `dsStatusText`
+  stays the visible word; `dsStatusAccessibleName` (`primitives-status.tsx`, re-exported through
+  `surfaces/status.ts` as `statusAccessibleName`) returns `accessibleLabel ?? label` and is what
+  **every** `aria-label` naming a status must use. Only `doneWarnings` sets one today:
+  `"Done with warnings"`.
+- The three collisions that existed are closed at their name sites, not by lengthening any drawn
+  string: the `StatusFilters` pill (`"Done with warnings — 2"` vs `"Done — 2"`), the queue row and
+  member line (`"<title> — done with warnings"` vs `"<title> — done"`), and `StatusDot`, whose
+  `role="img"` name is all an assistive technology gets because a dot draws no word at all.
+- **The pixels are unchanged, and that is verified rather than asserted.** Re-freezing the doc 13
+  §7.1 parity corpus after the change rewrote 56 `.a11y.yml` references and **zero** `.png` files;
+  the only diffs are accessible names, with every visible text node (`Done 2`, `text: Done …`)
+  byte-identical.
+- **The rule this generalises to:** when two statuses deliberately share a visible word because a
+  non-textual channel carries the difference, that channel must have an assistive-technology
+  counterpart. Hue, a glyph, and a count chip have none. `accessibleLabel` is that counterpart, and
+  a future status that shortens its word owes one too.
 
 ---
 
@@ -1990,18 +2007,38 @@ The track therefore has exactly **three legible states**: **outlined-empty** (no
 
 ### D22 — the status vocabulary shortens: `Verified done` renders as `Done`
 
-**Ratified 2026-07-28.** The quietest status renders as a green **`Done`** with **no icon** on the
-pill. The qualifier was doing two jobs badly: it made the quietest status the longest label in the
-vocabulary, and beside `Done with warnings` it asked the operator to work out whether *that* one
-was verified too. `Done` / `Done with warnings` is the coherent pair — one word plus its
-qualifier — and the sibling deliberately did **not** shorten, because the qualifier IS the
-difference between them. The pill is green rather than muted (a muted `Done` beside a muted
-`Cancelled` is two greys) — safe, because **the word remains**: this is not colour-only encoding.
+**Ratified 2026-07-28. AMENDED 2026-08-04 (D126) — read the amendment, not the original ground.**
+The quietest status renders as a green **`Done`** with **no icon** on the pill. The qualifier was
+doing two jobs badly: it made the quietest status the longest label in the vocabulary, and beside
+`Done with warnings` it asked the operator to work out whether *that* one was verified too. The
+pill is green rather than muted (a muted `Done` beside a muted `Cancelled` is two greys).
+
+**What the amendment replaces.** As first ratified, D22 rested on two claims that a later operator
+direction and the live exit run each falsified, and both are hereby superseded:
+
+1. *"The sibling deliberately did not shorten, because the qualifier IS the difference between
+   them."* **No longer true.** The operator subsequently directed that `doneWarnings` also render
+   the bare word `Done` — `Done with warnings` shoved the run title off the row header, beside a
+   count chip that already named the warning. Both terminal dones now draw the same word, on
+   purpose, at the operator's direction.
+2. *"Safe, because the word remains: this is not colour-only encoding."* **The word can no longer
+   carry it**, so the justification is restated: the two are separated **by ICON + COLOUR**, not by
+   the visible word. `doneWarnings` draws an amber warning triangle carrying its warning count
+   beside an amber-tinted pill; `verifiedDone` draws the bare word on a solid green fill. Two
+   visible non-textual channels plus the count, not hue alone. The operator inspected this pair and
+   ratified it as-is on 2026-08-04; **the visible design is settled and is not to be relitigated.**
+
+**And a third channel that is not visible at all:** because the drawn word stopped distinguishing
+them, the two statuses must carry **distinct ACCESSIBLE names** — an assistive technology reads
+neither the tint nor the triangle. `doneWarnings` announces `Done with warnings`; `verifiedDone`
+announces `Done`. That is the mechanism (`accessibleLabel` / `dsStatusAccessibleName`) specified in
+this doc's *Phase 1g/1i-spine as-built presentation deltas*, and it is what makes the amended D22
+honest where the original relied on the word. **Never satisfy this by lengthening the drawn label.**
 
 **The guarantee is structural, not textual, and the shortening must not be read as a weakening:**
 the verdict is still reachable **only via read-back** (doc 12's completion contract), and the
 receipt still shows its read-back checks — only the *label* shortens. The wire/status key stays
-`verified-done`.
+`verified-done`, and `done-with-warnings` stays its own key.
 
 **Reconciliation debt, recorded rather than silently fixed:**
 `docs/rebuild/12-operator-trust-and-authoring.md:284` and this doc's D9 (…"`Verified done`
