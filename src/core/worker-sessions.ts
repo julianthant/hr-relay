@@ -28,8 +28,8 @@ import type {
   WorkerId,
   WorkflowId,
 } from "../domain/ids.js";
-import { SessionNeedSchema } from "../domain/session.js";
-import type { SessionNeed } from "../domain/session.js";
+import { LoginResultSchema, SessionNeedSchema } from "../domain/session.js";
+import type { LoginResult, SessionNeed } from "../domain/session.js";
 import type { RegisteredTaskStore, TaskStoreRegistry } from "../base/store.js";
 
 export type {
@@ -46,6 +46,14 @@ export type WorkerSessionEvent =
     workflowId: WorkflowId;
     system: BrowserSystemId;
     sessionId: BrowserSessionId;
+    /**
+     * Whether this session had to authenticate or rode a live one. Both are
+     * legitimate, and they are NOT interchangeable to an operator: a run of
+     * `already-authenticated` sessions that should have been cold is exactly
+     * the shape of the 2026-08-03 false pass, and an event that flattened the
+     * two hid it.
+     */
+    login: LoginResult;
     at: string;
   }>
   | Readonly<{
@@ -68,7 +76,13 @@ export type WorkerSessionEvent =
 
 type WorkerSessionEventCore =
   | Readonly<{
-    type: "browser-session:start" | "browser-session:reset";
+    type: "browser-session:start";
+    system: BrowserSystemId;
+    sessionId: BrowserSessionId;
+    login: LoginResult;
+  }>
+  | Readonly<{
+    type: "browser-session:reset";
     system: BrowserSystemId;
     sessionId: BrowserSessionId;
   }>
@@ -398,6 +412,7 @@ export class WorkerSessionManager {
       exclusive,
       signal,
     });
+    let login: LoginResult;
     try {
       BrowserSessionIdSchema.parse(resource.sessionId);
       BrowserSystemIdSchema.parse(resource.system);
@@ -412,10 +427,10 @@ export class WorkerSessionManager {
         || resource.exclusive !== exclusive) {
         throw new Error(`${need.system} session factory returned a resource with mismatched launch options`);
       }
-      await store.session.login(resource.authentication, {
+      login = LoginResultSchema.parse(await store.session.login(resource.authentication, {
         ...(instance === undefined ? {} : { instance }),
         signal,
-      });
+      }));
     } catch (loginError) {
       try {
         await this.#closeResource(resource, "login-failed", exclusive);
@@ -435,6 +450,7 @@ export class WorkerSessionManager {
       type: "browser-session:start",
       system: resource.system,
       sessionId: resource.sessionId,
+      login,
     });
     return resource;
   }
@@ -482,6 +498,10 @@ export class WorkerSessionManager {
     };
     if (event.type === "browser-session:close") {
       this.#onEvent({ ...common, type: event.type, reason: event.reason });
+      return;
+    }
+    if (event.type === "browser-session:start") {
+      this.#onEvent({ ...common, type: event.type, login: event.login });
       return;
     }
     this.#onEvent({ ...common, type: event.type });
