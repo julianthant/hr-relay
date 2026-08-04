@@ -107,6 +107,8 @@ export const SourceSurfaceIdSchema = slugText<"SourceSurfaceId">("source surface
 export const WorkerIdSchema = slugText<"WorkerId">("worker id must be kebab-case");
 export const GateIdSchema = slugText<"GateId">("gate id must be kebab-case");
 export const DelegationEdgeIdSchema = slugText<"DelegationEdgeId">("delegation edge id must be kebab-case");
+/** The identity that holds a ledger partition's projection lease (doc 09 §6). */
+export const LedgerProjectorIdSchema = slugText<"LedgerProjectorId">("ledger projector id must be kebab-case");
 
 export const TraceIdSchema = brandedText<"TraceId">(
   /^[a-z0-9]{2}-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/,
