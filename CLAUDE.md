@@ -263,6 +263,19 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-04: A required config leaf is a durable-schema change, and a snapshot is evidence — so
+  it is read forward, never back-filled (D133).** D125's `timeouts.sessionAcquireMs` shipped with a
+  default for fresh resolves and no path for stored `config_snapshots`, which parse strictly at
+  database OPEN — so every authority database created before it stopped opening entirely, every
+  unrelated row included. The repair is NOT a migration: `fingerprint` hashes exactly the stored
+  `config` bytes, the table is insert-only, and writing `60000` into an old row would claim a bound
+  that run never had (its absence is why a dead CRM session burned 262.9 s). Instead
+  `src/domain/config/snapshot-generations.ts` pins the leaf set per generation, `StoredConfigSchema`
+  lets exactly the registered post-baseline leaves be absent, `configSnapshotAbsentLeaves` reports
+  them, and reading a stored config applies NO group default — that hole is how `browser.*` landed
+  silently. Four earlier leaves (`urls.ucpath.*.login`, `paths.duoExtensionDir`,
+  `paths.browserProfileRoot`, and `paths.duoCredential`'s tightening to `AbsolutePathSchema`) were
+  the same defect and only escaped because no older database survived them.
 - **2026-08-04: A reference corpus that rewrites itself documents behavior instead of holding it
   (D132).** `npm run test:parity` asserted only the `.png` and rewrote every `.a11y.yml`/`.meta.json`
   unconditionally, so an accessible-name change rewrote 56 references, changed zero screenshots, and

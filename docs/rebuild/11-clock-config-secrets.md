@@ -486,6 +486,71 @@ A relative `profileRoot` is refused loudly rather than resolved. `test-runtime-r
 (doc 10) is the ratchet: no test may pass a real-root-derived path into a filesystem mutator, and a
 test that constructs the real session factory must bind its own profile root.
 
+### 4.1 The durable snapshot is versioned by its LEAF SET, not by the migration chain (D133)
+
+**A stored `config_snapshots` row is evidence of the configuration one run executed under, and it is
+never rewritten.** D125 added the required leaf `timeouts.sessionAcquireMs` with a default for FRESH
+resolves and no path for already-durable rows. Every snapshot parses strictly at database OPEN, so
+every authority database created before that change stopped opening — the whole runtime, including
+every unrelated row, was unreachable on a real pre-D125 database. The exact failure, reproduced
+against the preserved Phase-1 exit database:
+
+```
+authority table config_snapshots record 42a1d831-… failed strict record schema validation:
+  path ["config","timeouts","sessionAcquireMs"] — expected number, received undefined
+```
+
+This is the §3 config schema's own version line, and it is **separate from the SQLite migration
+chain**, because adding a required leaf changes no TABLE — it changes what a stored ROW must
+contain. Three facts forbid the obvious "migrate the rows" repair:
+
+1. `fingerprint` is a SHA-256 over exactly the stored `config` bytes and the run envelope retains
+   the same value (§4). Editing the row breaks the binding the row exists to prove.
+2. `config_snapshots` is an insert-only authority repository. A migration that `UPDATE`d it would
+   contradict the store's own immutability.
+3. **Back-filling the default misstates history.** A pre-D125 run had NO session-acquire bound at
+   all — that absence is precisely why a dead CRM session burned 262.9 s inside `withDriver` on the
+   live exit run. Writing `60000` into that row would claim the run held a bound it did not, and the
+   snapshot's only job is to say what actually governed the run. D109's precedent (delete rather
+   than fabricate) does not transfer either: a start plan is a short-lived proposal, while a config
+   snapshot is permanent evidence that completed runs and `provider_admissions` still reference.
+
+So the record is **read forward**, and the tolerance is registered rather than assumed
+(`src/domain/config/snapshot-generations.ts`):
+
+- `CONFIG_SNAPSHOT_GENERATIONS` is an ordered, append-only registry. Each generation names the
+  deciding decision, lists the leaves it INTRODUCED, and pins a literal SHA-256 over the complete
+  leaf set of the config at that generation. Generation 1 is the shape the 2026-08-04 Phase-1 exit
+  database actually carries; generation 2 is D125's `timeouts.sessionAcquireMs`.
+- `StoredConfigSchema` permits exactly the registered post-baseline leaves to be ABSENT and nothing
+  else. `configSnapshotAbsentLeaves(config)` reports which — **"this leaf did not exist at capture"
+  is a different fact from "this leaf was set to 60000", and only the former is true of an old row.**
+  No value is substituted, so the stored fingerprint keeps hashing exactly what it hashed at capture.
+- `StoredConfigSchema` also **strips every group `.default(...)`**. Defaults exist so a fresh resolve
+  can start from nothing; applying them while READING a durable row silently fabricates a whole group
+  the run never had. That hole is how `browser.headless` / `browser.closeProofMs` landed without a
+  visible brick — a pre-`browser` row quietly read back as today's launch policy. A stored row now
+  carries its own values or fails loud.
+- Reading an older generation forward is a concession to history; MINTING one is a bug.
+  `ConfigSnapshotWriteSchema` refuses an insert whose config omits any current-generation leaf.
+- `auditConfigSnapshotGenerations` is the ratchet, enforced by
+  `tests/unit/architecture/config-snapshot-generations.test.ts` (doc 10): the current leaf set must
+  digest to the newest generation's pin, and every older generation's pinned set must still be
+  reconstructible by removing the leaves introduced after it. **Adding or tightening a required
+  config leaf without registering it and bumping `CURRENT_CONFIG_SNAPSHOT_GENERATION` fails there,
+  before it can reach a durable row.**
+
+The same hazard had already fired four times unnoticed, each brickable for any database older than
+the change: `urls.ucpath.*.login`, `paths.duoExtensionDir`, and `paths.browserProfileRoot` were
+required leaves added inside existing required objects, and `paths.duoCredential` was TIGHTENED from
+a relative `z.literal(".auth-rebuild/duo-webauthn.json")` to `AbsolutePathSchema` — a tightening
+invalidates a stored row exactly as an addition does, because the stored value no longer satisfies
+the leaf. A fifth, `browser`, was a whole new group carrying a `.default(...)`, so it did not brick;
+it silently fabricated, which is worse. None of the five bricked a surviving database only because
+no database survives from before them. The registry covers tightenings as well as additions: any
+change to the effective leaf set moves the digest, and the stripped group defaults turn the silent
+half loud.
+
 ---
 
 ## 5. Fiscal-year dates — fail-loud, not silently stale

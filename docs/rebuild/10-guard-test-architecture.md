@@ -913,6 +913,16 @@ set. The test asserts:
    and the emitted output digest. Both arms run against violating fixtures AND through the lane's
    own entry points, because a check that cannot fail reads as coverage — the same failure mode as a
    scan that resolves an empty file set (item 4).
+10. **The durable config leaf set is pinned per generation, the same way released migration bytes
+    are (D133).** `config-snapshot-generations.test.ts` (doc 11 §4.1, owner) is
+    `migration-history-immutability.test.ts`'s sibling for the OTHER durable contract: a required
+    config leaf added — or tightened — without registering it in `CONFIG_SNAPSHOT_GENERATIONS` and
+    bumping `CURRENT_CONFIG_SNAPSHOT_GENERATION` invalidates every stored `config_snapshots` row and
+    makes an existing authority database unopenable. The guard proves both directions against
+    synthetic leaf sets: an unregistered addition fails with the remedy named, and a released
+    generation's pinned set cannot be edited away. It also pins that a stored snapshot tolerates
+    exactly the registered post-baseline leaves being absent, and that a missing group is a loud
+    failure rather than a silently applied default.
 
 ESLint's known empty-pattern behavior is part of the ordering contract: no unmatched glob argument
 is added before the first real file in its family, and `--no-error-on-unmatched-pattern` is
