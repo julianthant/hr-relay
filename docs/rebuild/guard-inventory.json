@@ -332,11 +332,10 @@
     {
       "name": "ledger-projector",
       "file": "tests/unit/architecture/ledger-projector.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: ledger-projector.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/09-write-safety.md",
+      "invariant": "D134 (doc 09 §6): the ledger is projected by ONE serialized, actor-attributed writer and is never pruned. No module outside src/infra/ledger/ may append the ledger, and no module that can name ledger/ may call a deletion primitive — both arms run against violating fixtures, and pruneEventStreams stays structurally blind to the ledger (EVENT_STREAMS is exactly spans+notes). A line's bytes and digest are a pure function of (outbox payload, seq) with a versioned domain separator, and its partition comes from the entry's own confirmedAt in UTC, never from wall-clock now. Sequence assignment is idempotent by outboxId, burns no sequence on repeat, refuses a conflicting line digest, and refuses any projector that does not hold the exact (system,date) lease generation. A non-dense partition sequence degrades the store read-only at boot, and the projection report's degraded arm is a closed reason set that no projected arm can smuggle.",
+      "replacementRequired": true
     },
     {
       "name": "legacy-preservation",
