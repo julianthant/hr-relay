@@ -158,14 +158,18 @@ nothing in the kernel promotes it. `verify` is a distinct contract from the
 `idempotency.probe` on purpose: a verifier that was the probe would never
 reload.
 
-**`recoveryAbsence` is `operator-only`, and that is a measurement gap, not a
-judgement about Kuali.** Kuali's negative read is the same deterministic field
-read its positive uses. What is missing is a MEASURED propagation window, and
-measuring one requires the controlled commit that has not been authorized.
-Inventing `minSinceFenceMs` would be exactly the plausible-but-unverified
-constant this program bans, so every post-fence absence parks. When the
-controlled commit lands and supplies real numbers, this may become `stabilized`
-— that is the one contract field the commit is expected to change.
+**`recoveryAbsence` is `stabilized` as of 2026-08-04 (D135), on measured
+numbers.** Kuali's negative read was always the same deterministic field read
+its positive uses; what was missing was a MEASURED propagation window. Four
+operator-authorized write/restore cycles on doc 4490 supplied it (§Phase-2
+controlled-commit below): the save's own click→response is the dominant term at
+2 459–3 036 ms, Kuali's document query already returns the new value on the
+first sample after that answer (~270 ms, mostly the query's own round trip), and
+a full browser reload agrees within ~3 s. Worst observed fence→trustworthy
+negative is ≈3.3 s, so `minSinceFenceMs` is **30 000** — about nine times that —
+with `consistentReads: 2`, `minBetweenReadsMs: 5 000`, `requireSameSourceState`.
+The margin is deliberately large because the measurement is n=4 on one
+document.
 
 **The mutation-capability registry moved to `src/base/mutation-capability.ts`.**
 Beat ⑤ requires the external-write helper to throw BEFORE the click, and that
@@ -206,12 +210,14 @@ guessed.
 
 ---
 
-## Phase 2 controlled-commit as-built — the WRITE half is BLOCKED (2026-08-04, D128)
+## Phase 2 controlled-commit as-built — COMPLETE (2026-08-04, D128 superseded by D135)
 
 The operator authorized ONE controlled real commit on named sacrificial Kuali
-RRSS documents **4489** and **4490**. It was attempted. **It fenced, it clicked
-Save, and it could not land** — and the reason is a property of the target, not
-of this kernel.
+RRSS documents **4489** and **4490**, and confirmed those are the documents they
+genuinely work. The first attempt fenced, clicked `Save`, and did not land. The
+diagnosis recorded that morning — *"the current workflow step cannot write this
+field"* — **was wrong**, and this section replaces it. The write lands. Two
+defects in this repository's own driver were hiding it, and both are fixed.
 
 ### What the documents are (confirmed read-only before any write)
 
@@ -224,91 +230,157 @@ of this kernel.
 | `Timekeeper Name:*` BEFORE | `""` | `""` |
 | `Save` / `Send Back` / `Mark Complete` | exactly 1 each | exactly 1 each |
 
-### The finding: a FIELD's writability is a property of the workflow STEP
+### Why the step-ownership diagnosis was wrong
 
-The commit clicked `Save`. Kuali answered `200` on its `submitDocumentV2`
-mutation and rendered a **`Form saved`** status node. The reload read-back read
-`absent`, and an independent read minutes later confirmed the field was still
-empty. Capturing the mutation body settled why:
+It rested on one true observation — the mutation body did not contain the
+timekeeper control — and one unchecked inference. Kuali's own `ActionPage`
+query answers the ownership question directly, and it says the opposite:
 
 ```
-{"operationName":"submitDocumentV2","variables":{"documentId":"…","data":{
-   "-QcO_b5Pil":{…},"9nJKKhG2wT":{…},"ER1WhBzjcm":…,"NYHPLZtn0g":{…},
-   "cEPl6poKIz":"…EID…","fRD9muFvzN":"…name…","oEcp1xtQkj":…,
-   "uEYp9lpmFg":{…},"zxtLoFSehG":"ECEC"},
- "actionId":"…","status":"saved","timeZone":"America/Los_Angeles"}}
+action.details.sectionSettings = { …, "a_Alfq9a2":"edit", "cF6IPyCVw":"edit",
+                                   "4WIES6A7P":"hide", "VhuKxRTrN":"hide", … }
 ```
 
-The timekeeper control is DOM id `BWmkKqx40`. **It is absent from `data`.** The
-save carries only the fields belonging to the CURRENT workflow step's section.
-This was verified not to be a staging artefact: the control is neither
-`disabled` nor `readOnly`, and React's own `memoizedProps.value` held
-`PROBE-DELETE-ME` under BOTH `fill()` and real key events
-(`clear()` + `pressSequentially`) — the value was in application state and was
-still not submitted.
+`BWmkKqx40` (`Timekeeper Name:*`) sits in section `cF6IPyCVw`
+(*Timekeeper Tasks - Step 1*) inside `a_Alfq9a2` (*Tasks*) — **both `edit`** at
+this step. A zero-write experiment settled it beyond argument: every
+`submitDocumentV2` was intercepted and **aborted**, so the payload Kuali *would*
+have sent could be read without sending it. Checking the
+`Request Acknowledged - In Progress` checkbox **in the same section** put its
+formKey in the payload immediately. The step owns the section. The textarea was
+the outlier, not the section.
 
-This generalizes the store's existing "an `actionId` names a workflow STEP, not
-a document" lesson one level deeper: **a field being rendered and editable is
-not evidence that the current step can write it.** The 2026-07-23 probe (D78)
-succeeded on doc 4444 because that document was at a step that owned the field.
-Docs 4489/4490 are not, so they are not a valid target for this write, and the
-authorization forbids substituting a different document.
+### Defect 1 — a Kuali text gadget DEBOUNCES into the document model
 
-### Measured numbers (the propagation window, as far as it can be measured)
+`submitDocumentV2` serializes the document MODEL, not the DOM. A Kuali Build
+`Textarea` is a controlled input over LOCAL state: typing updates the DOM and
+the gadget's own React props at once, and only later commits upward. Measured on
+doc 4489 with aborted mutations, 16 samples:
 
-Doc 4490, raw-driver instrument, two save cycles:
+| settle after the last keystroke | staged value present in `data` |
+|---|---|
+| 300 / 400 / 400 / 500 / 500 / 600 / 600 / 600 ms | **0 of 8** |
+| 700 / 700 / 750 / 750 / 800 / 800 / 900 / 1000 ms | **8 of 8** |
 
-| Observation | Cycle 1 (write) | Cycle 2 (restore) |
-|---|---|---|
-| first non-GET `kualibuild` POST after click | +241 ms | +254 ms |
-| last save-related POST | +3 655 ms | +3 455 ms |
-| `networkidle` | +4 157 ms | +3 957 ms |
-| `Form saved` status node | present | present |
-| reload read-backs | 6 reads, +6 857 → +18 759 ms, ALL `absent` | value (empty) observed at +6 519 ms |
-| full document open (cold / warm) | ~6 s / ~2.1 s | |
-| dry run, whole beat ② + ③, warm session | 8.3 s | |
-| TritON SSO + Duo Autopilot, cold profile | ~90 s to the Kuali space | |
+Neither blur, nor a real `Tab`, nor `fill()`-versus-keystrokes changes this — a
+cycle with NO blur at all and a 4 s settle carried the value, and a cycle with a
+real `Tab` and no settle did not. The barrier is TIME, and the earlier run
+simply fenced and clicked inside the debounce.
 
-**`recoveryAbsence` therefore STAYS `operator-only`.** The controlled commit was
-supposed to be what earned `stabilized`; it could not, because a write that
-never lands measures no propagation window at all. Writing a `minSinceFenceMs`
-from these numbers would be the plausible-but-unverified constant this program
-bans. The contract field is unchanged and the reason text still holds.
+A sleep is forbidden in `src/stores` and would be the wrong answer anyway, so
+the driver waits for the commit ITSELF. A 3 s attribute-level sample of the
+control found exactly one change in the whole window — at **+723 ms** the
+control's React props OBJECT IDENTITY was replaced, while its attributes,
+classes, DOM value and the surrounding section markup stayed byte-identical.
+That replacement is the parent re-render the model update causes, and it is the
+only observable this page offers. `stageTimekeeperName` therefore stamps the
+current props object and waits (bounded, loud on timeout) for a different one.
 
-### What the kernel did, and the durable rows it left
+### Defect 2 — `commit` returned at REQUEST time, so the verifier's reload killed the save
 
-Exactly right, and they are still in `.tracker-rebuild/state.db`:
+With the barrier in place the mutation provably carried
+`"QGJ63YrCom":"PROBE-VERIFIED-0804"`, Kuali answered `200` — and the reload
+read-back still said `absent`, and the field was still empty minutes later. The
+cause was ours: `commit` waited for the `submitDocumentV2` REQUEST and returned,
+and beat ⑥ immediately called `page.reload()`, cancelling the in-flight POST
+before the server applied it. The same save, given its answer first, persisted
+every time.
 
-- `write_intents` — ONE row, key
-  `kuali:4489|6a712bf32ff7fb799788a79e|timekeeper-name|10001828|PROBE-DELETE-ME`,
-  intent `9545fdf9-ae3a-4d9a-b2dd-109e07e5a575`, generation 1, `fencedAt`
-  `2026-08-04T15:13:25.191Z`, **status `parked`, code `unknown`**, carrying the
-  full `subject-match` binding proof (EID suffix `5513`, digest
+`commit` now waits for the `submitDocumentV2` RESPONSE, then applies two checks
+that are both NEGATIVE by construction:
+
+1. **the wire proof** — the request's `variables.actionId` must be the staged
+   action, and `variables.data["QGJ63YrCom"]` must equal the staged value. This
+   is what makes the debounce barrier *verified* rather than assumed: if the
+   model had not taken the value, the save is reported as a failed write.
+2. **the refusal check** — GraphQL answers `200` for refusals too, so the body
+   is read for an `errors` array, a `status` other than `Ok`, and a non-null
+   `validations`. Passing it means "not refused", never "landed": the mutation
+   that dropped the field entirely also answered `{"status":"Ok","validations":null}`.
+
+`QGJ63YrCom` is the gadget's **`formKey`**, read from the app's own form
+template; the DOM id `BWmkKqx40` is a different string entirely, and a check
+written against the DOM id would silently never match.
+
+### Measured numbers
+
+Four operator-authorized write/restore cycles on doc 4490, each a real `Save`
+and a real reversal, sampling Kuali's own document query at ~250 ms cadence from
+the instant the save was answered:
+
+| cycle | staging (open→model commit) | click → response | server state agrees | browser reload agrees |
+|---|---|---|---|---|
+| write | 3 700 ms | 2 495 ms | +277 ms | +2 971 ms |
+| restore | 3 445 ms | 3 036 ms | +283 ms | +2 475 ms |
+| write | 3 938 ms | 2 699 ms | +269 ms | +2 418 ms |
+| restore | 2 834 ms | 2 459 ms | +270 ms | +2 320 ms |
+
+Propagation after the answer is effectively nil — the ~270 ms is the sampling
+query's own round trip, and it agreed on the FIRST sample every time. The cost
+is the save. Whole-transaction wall clock on doc 4489, warm session: **16.45 s**
+(probe + prepare + subject binding + fence + click + answer + reload read-back +
+the beat-⑦ bundle). Live dry run, same document: **6.6 s**.
+
+### The controlled commit, and the durable rows it left
+
+Doc 4489, EID `10001828`, value `PROBE-VERIFIED-0804`, key
+`kuali:4489|6a712bf32ff7fb799788a79e|timekeeper-name|10001828|PROBE-VERIFIED-0804`:
+
+- `write_intents` — ONE row, intent `d1254233-dd33-4bc5-afaf-c2bf52ea693f`,
+  generation 1, `fencedAt` `2026-08-04T17:08:48.805Z`, **status `committed`**,
+  carrying the full `subject-match` binding proof (EID suffix `5513`, digest
   `d77e42b6…`, page state `kuali.rrss-document.timekeeper-staged`).
-- `write_attempts` — ONE row, generation 1, outcome `{state:"parked"}`.
-- `run_checkpoints`, `durable_outbox` — **ZERO rows.** No transaction-output
-  checkpoint, no ledger entry, no terminal span: an unverified save is never
-  done, so none of the beat-⑦ bundle was written.
-- the run is `parked-write` on that intent.
+- `run_checkpoints` — the transaction checkpoint for `annotate-timekeeper`,
+  `disposition:"committed"`, whose proof is the verifier's reload read-back
+  (`source:"reload-read-back"`), `confirmedAt` `2026-08-04T17:08:54.867Z`.
+- `durable_outbox` — the `ledger-entry` row and the `write-committed-span` row,
+  both `pending` for the 2g projector.
+- spans: `prepare` started/done, `commit` started/done — exactly one commit span.
 
-**The intent is deliberately LEFT PARKED.** A human decision is genuinely
-required (the target is not writable at this step), so `confirmed-absent` — which
-would mint retry authority — would be the wrong answer, and `confirmed-present`
-would be a lie. A later fresh run on the same permanent key was executed live and
-refused in **1 ms, with zero browser sessions**: *"…is parked (unknown: …); only
-the typed operator resolutions may release it."* That is the honest live form of
-the permanent-key dedupe criterion.
+**Idempotency, re-proved live.** A brand-new run on the same permanent key
+returned `disposition:"already-present"` with `proofSource:"durable-intent"` in
+**2 ms**, emitting NO span and opening NO browser session. Zero second clicks.
+
+**Restore.** Both documents were returned to their captured original value
+(`""` on both) and each restore was proved by reload read-back:
+doc 4489 `"PROBE-VERIFIED-0804"` → `""` (click→response 2 502 ms, payload
+`"QGJ63YrCom":""`, `status:"Ok"`), doc 4490 already `""`. Final state on both
+documents is byte-identical to the captured original.
+
+### The parked intent from the failed attempt, and a drift finding
+
+The 2026-08-04 15:13 attempt's intent
+(`9545fdf9-…`, key `…|PROBE-DELETE-ME`, generation 1) was released through the
+TYPED path and nothing else — a real `run/resolve-write-absent` command on the
+real command kernel, which settled it `operator-confirmed-absent` and resumed
+the run. No row was hand-edited. The evidence note records five independent
+reads of an empty field plus the captured mutation body that carried no entry at
+the field's formKey.
+
+That resolution exposed a real operational constraint, recorded here because it
+will bite again: **a parked write becomes unresolvable once ANY file in its
+descriptor's contract closure changes.** `requireDescriptorMatchesRun` compares
+the run's stored `contractFingerprint` with the current descriptor's, and the
+closure includes 31 files under `src/domain/**` (`src/domain/ids.ts` among
+them). Resolving generation 1 required restoring the tree to the exact state the
+run was created under. A second park, created later the same day, could NOT be
+resolved for exactly this reason — concurrent unrelated work had already touched
+`src/domain/ids.ts` — so the successful commit was run under a fresh permanent
+key (a different timekeeper value is a different transaction by doc 09 §5), and
+that older intent is still parked. **Resolve parked writes BEFORE changing a
+contract closure.** The guard's message is also misleading: it prints ids and
+versions, which match, and not the fingerprints, which do not.
 
 ### Exit-criteria status
 
 | Doc 07 Phase-2 write criterion | Status |
 |---|---|
-| dry run: staged preview + subject observation, zero intent/fence/commit/click | **MET live** on doc 4489 (`prepare` returned `previousTimekeeperName:""`, `stagedTimekeeperName:"PROBE-DELETE-ME"`; subject `match` on EID suffix `5513`; zero durable rows) |
+| dry run: staged preview + subject observation, zero intent/fence/commit/click | **MET live** on doc 4489 (6.6 s; `prepare` returned `previousTimekeeperName:""`; subject `match` on EID suffix `5513`; zero durable rows) |
 | forced mismatch: no intent, no click | **MET live** — refused at beat ② with `subject-mismatch`, *"refusing to leave a staged value on another person's document"*, zero durable rows |
-| ONE external transaction → committed intent + typed checkpoint + validated proof + ledger entry + terminal span | **NOT MET.** One external transaction occurred; it produced no landing proof, so the kernel produced none of the five rows. Blocked on a writable target, not on the kernel |
-| permanent-key dedupe: a later fresh run performs no second click | **MET live in its parked form** (see above); the committed-key form stays fixture-proven |
-| measured propagation window → `stabilized` | **NOT MET** — unmeasurable without a landing write; `operator-only` stands |
-| restore the original value | **N/A and verified** — the original value was `""` on both documents and still is. Doc 4489's whole form was re-dumped and is semantically identical field-for-field (only Kuali's per-render element ids differ) |
+| ONE external transaction → committed intent + typed checkpoint + validated proof + ledger entry + terminal span | **MET live** on doc 4489 in 16.45 s — intent `d1254233-…` `committed`, transaction checkpoint, reload-read-back proof, `ledger-entry` + `write-committed-span` outbox rows |
+| permanent-key dedupe: a later fresh run performs no second click | **MET live in both forms** — `already-present` from the committed key in 2 ms with no browser; and the parked-key refusal (*"only the typed operator resolutions may release it"*) |
+| measured propagation window → `stabilized` | **MET** — n=4 write/restore cycles on doc 4490; `minSinceFenceMs: 30 000` against a ≈3.3 s worst observation |
+| restore the original value | **MET and verified** — both documents back to `""`, each proved by reload read-back |
 | crash matrix, recovery arms, context cleanup, multi-worker exclusive lease | **MET in repeatable fixtures** over the real Kuali store + a real authority database (`tests/unit/kuali-transaction-proof.test.ts`) |
 | ledger projector concurrency / tail-loss | **NOT BUILDABLE YET** — beat ⑦ writes the ledger `durable_outbox` row (schema and atomicity landed in 1c), but the serialized ordered JSONL projector is a 2g tail and does not exist. There is nothing to test concurrency or tail-loss against, and no fixture may pretend otherwise |
 

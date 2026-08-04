@@ -18,15 +18,20 @@ addressable through this store at all.
   answers `200` on its `submitDocumentV2` mutation — measured live 2026-08-04 — for a save that
   persisted nothing of the targeted field. So the earlier "the save is UI-silent" framing was too
   kind: the danger is not the absence of a signal, it is the presence of a POSITIVE one that means
-  only "the request was accepted". `commit` reports only that it clicked; the ONLY landing proof is
-  `verify-timekeeper-annotation`'s reload read-back. Never reintroduce banner detection in either
+  only "the request was accepted" — the mutation that dropped the field answered
+  `{"status":"Ok","validations":null}` too. `commit` reports only that it clicked and that the wire
+  carried the value; the ONLY landing proof is `verify-timekeeper-annotation`'s reload read-back. Never reintroduce banner detection in either
   direction: legacy deleted the error half 2026-04-10 as false-positive-prone, and the success half
   is a proven false positive.
-- **A field's WRITABILITY belongs to the workflow step, not the document.** `Save` serializes only
-  the fields in the current step's own section. On docs 4489/4490 (step `Task 1 - Kristina & TES`)
-  the timekeeper control renders, is neither `disabled` nor `readOnly`, accepts a value into React's
-  own `memoizedProps`, and is still absent from the mutation body — so nothing can write it there.
-  Confirm the step owns the field before naming a document as a write target.
+- **The DOM holding a value is not Kuali holding it.** `submitDocumentV2` serializes the document
+  MODEL, and a Kuali Build text gadget is a controlled input over LOCAL state that debounces into
+  that model — measured 0/8 carried at ≤600ms, 8/8 at ≥700ms, independent of blur, `Tab`, or
+  `fill()`-versus-keystrokes. `stageTimekeeperName` therefore waits for the commit itself (the
+  control's React props object identity is replaced at ~723ms; nothing else on the page moves), and
+  `commit` re-proves it on the wire against the gadget's **`formKey` `QGJ63YrCom`** — not its DOM id
+  `BWmkKqx40`, which is a different string. Step ownership is NOT the constraint: Kuali's own
+  `ActionPage` query reports `sectionSettings` `edit` for this field's section at
+  `Task 1 - Kristina & TES`, and the checkbox beside it binds instantly.
 - **Exactly one match, or throw.** `Save` shares its action group with `Send Back` and
   `Mark Complete`. There is no `.or()` chain and no `.first()`; a match count other than 1 is a
   loud refusal.
@@ -38,9 +43,14 @@ addressable through this store at all.
 - **Staging is read back or thrown.** Kuali controls silently drop `fill()`; the driver retries once
   through key events and then refuses, ported from legacy `fillWithVerify`.
 - **A failed check is never an absence.** Every read-back throw becomes `unknown`, which parks.
-- **Post-fence absence is `operator-only`.** Not because Kuali's negative read is untrustworthy, but
-  because no propagation window has been measured here. It becomes `stabilized` only when the
-  controlled commit supplies real numbers.
+- **A commit waits for the mutation's RESPONSE, never just its request.** Returning at request time
+  let beat ⑥'s `page.reload()` cancel the in-flight POST — a landed-capable save that persisted
+  nothing. After the answer arrives, the driver checks it only for a stated REFUSAL (`errors`, a
+  `status` other than `Ok`, non-null `validations`); passing that is never landing proof, because
+  the mutation that dropped the field entirely also answered `{"status":"Ok","validations":null}`.
+- **Post-fence absence is `stabilized`** (`minSinceFenceMs: 30_000`, 2 reads, 5s apart), on four
+  authorized write/restore cycles measured 2026-08-04 on doc 4490: click→response 2 459–3 036ms,
+  Kuali's own state agreeing on the first ~270ms sample, a browser reload agreeing within ~3s.
 
 ## Provenance
 
@@ -72,14 +82,20 @@ reached a document through the Action List search box; the deep link is live-ver
   Legacy's fallback chain begins with `button:has-text("Save")` — a substring match — inside an
   action bar that on the current DOM does not exist. A fallback that widened by one node here would
   advance a real separation. The port keeps the exact-name branch only and refuses ambiguity.
-- **2026-08-04: the controlled commit found the target, not the kernel, at fault.** The Phase-2
-  write on doc 4489 fenced, clicked `Save`, got `200` + `Form saved`, and read `absent`; an
-  independent read confirmed the field was still empty. Capturing the `submitDocumentV2` body showed
-  the timekeeper control's DOM id simply is not in `data`. Both staging techniques (`fill()` and
-  `clear()`+`pressSequentially`) put the value in React state, so this is not a staging bug and no
-  driver change fixes it. The kernel behaved exactly as designed — fence durable, park `unknown`,
-  zero checkpoint, zero ledger row — and the durable parked intent is left in place because a human
-  decision is genuinely required. See `docs/rebuild/09-write-safety.md` §Phase-2 controlled-commit.
+- **2026-08-04: the controlled commit found THIS DRIVER at fault, twice — and the write lands.**
+  The morning's conclusion ("the current step cannot write this field") was wrong and is withdrawn
+  (D135). Two defects hid the write: the gadget's debounce into the document model, and `commit`
+  returning at request time so the verifier's reload cancelled the save. Both are fixed; doc 4489
+  then committed end-to-end in 16.45s with a real reload-read-back proof, the idempotency re-run
+  answered `already-present` in 2ms with no browser, and both documents were restored to `""`.
+  Two things to carry forward. **A zero-write experiment is the right instrument here:** routing
+  `submitDocumentV2` to `route.abort()` lets you read the payload Kuali WOULD send without sending
+  it, which is how the section-ownership question was settled without touching the operator's data.
+  **A parked write is unresolvable once any file in its descriptor's 31-file contract closure
+  changes** — `requireDescriptorMatchesRun` compares stored vs current `contractFingerprint`, and it
+  prints ids and versions (which match) rather than fingerprints (which do not). Resolve parked
+  writes BEFORE touching a contract closure. See `docs/rebuild/09-write-safety.md` §Phase-2
+  controlled-commit.
 - **2026-08-04: Kuali Build paints late, and one sample is not an observation.** The space serves a
   body with ZERO `[role]` nodes at `domcontentloaded` and its menubar ~1s later; the document route
   shows `["", "Action", "Action List"]` at ~1.5s — the document heading present and EMPTY beside two

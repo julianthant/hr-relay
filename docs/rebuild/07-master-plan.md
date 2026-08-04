@@ -476,18 +476,25 @@ early `absent`, repeated but not-yet-aged absence, conflicting observations, sta
 positive proof, malformed proof, and unavailable target; only the policy-qualified stabilized arm
 may create a new intent generation, while every indeterminate arm parks. If no safe independently
 verifiable target exists, Phase 2 is blocked; write-heavy workflow migration may not begin.
-**Target status (§3.8) — REVISED 2026-08-04 by the controlled commit (D128).** The dry-run half is
-MET live and the crash/recovery/dedupe matrix is MET in fixtures, but **the controlled-commit half is
-BLOCKED.** The operator named docs **4489/4490**; both are genuine RRSS Separation Request Forms and
-both sit at workflow step `Task 1 - Kristina & TES`, which does **not own** the `Timekeeper Name:*`
-field. Kuali's `Save` serializes only its own step's section, so the write fenced, clicked, answered
-`200` + `Form saved`, persisted nothing, read `absent`, and parked — correctly. The 2026-07-23 probe
-(D78) succeeded on doc 4444 because that document was at a step that owned the field, so "Kuali is
-settled" was a statement about a DOCUMENT when it needed to be one about a STEP. **What Phase 2 now
-needs is a target at a step that owns the field it writes**, named by the operator; substituting one
-is outside the authorization. UCPath and ServiceNow targets are still being named; OnBase is gated on
-the next real upload. Full evidence, measured numbers and durable row ids: doc 09 §Phase-2
-controlled-commit as-built.
+**Target status (§3.8) — as-built 2026-08-04 (D135; supersedes the same-day D128 revision).** The
+Kuali write half is **MET live on the operator's own documents.** Every Phase-2 write criterion
+except the 2g ledger projector is now met against doc **4489**: dry run 6.6 s with zero durable rows;
+forced mismatch refused at beat ②; ONE controlled commit in 16.45 s producing a `committed` intent,
+a transaction checkpoint whose proof is the verifier's reload read-back, and both outbox rows; the
+idempotency re-run answering `already-present` in 2 ms with no browser and no second click; the
+propagation window measured over four write/restore cycles on doc 4490 so `recoveryAbsence` moved
+from `operator-only` to `stabilized`; and both documents restored to their captured original `""`
+with each restore proved by reload read-back.
+
+The same-day D128 conclusion — that step `Task 1 - Kristina & TES` does not own the
+`Timekeeper Name:*` field — **was wrong and is withdrawn.** Kuali's own `ActionPage` query reports
+that step's `sectionSettings` as `edit` for the section holding the field, and the checkbox beside it
+binds instantly. Two defects in THIS repository's driver were hiding the write: a Kuali text gadget
+debounces into the document model (~700 ms) and the run fenced and clicked inside that window, and
+`commit` returned at REQUEST time so the verifier's `page.reload()` cancelled the in-flight save.
+Both are fixed and both are now proven on the wire per run. UCPath and ServiceNow targets are still
+being named; OnBase is gated on the next real upload. Full evidence, measured numbers and durable row
+ids: doc 09 §Phase-2 controlled-commit as-built.
 
 **Then: the deferred base tails.** Each was a Phase-1 work item that D74 moved behind the first
 live proof. They land in this order, because each is a consumer of the one before:

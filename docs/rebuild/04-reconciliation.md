@@ -11,7 +11,9 @@ mechanics.
 Round 18 ratifies the remaining Phase-1f runtime/authority seams as D109–D118; Rounds 19–21 add
 D119–D121 from the live lane that produced Phase 1's exit test; Rounds 22–29 add D122–D130 and
 D132–D133 from the Phase-2 transaction proof, the 1i-spine live run, the UCPath receipt probe, and
-the verification lanes those exposed (`D131` was never issued — see the D-series note below).
+the verification lanes those exposed (`D131` was never issued — see the D-series note below). Round
+30 adds **D135**, which lands the Kuali write and withdraws D128; `D134` was claimed concurrently by
+the 2g event/trust work in the same session.
 
 > **What this doc is, as of Round 10: a decision CHANGELOG, not a specification.** Its job is to
 > record *what was decided, when, and which doc owns it* — so a reader can reconstruct why a
@@ -29,7 +31,7 @@ Amendment agents rewrite each doc to comply; a doc may reference another doc's o
 must never redefine it.
 
 > **Implementation rule:** don't implement from this file. D1–D25 are historical rationale, not
-> copyable current API/DDL; D26–D72 amend each other in round order (later wins); D73–D133 are
+> copyable current API/DDL; D26–D72 amend each other in round order (later wins); D73–D135 are
 > pointers only. **Read the owning doc.** If an owning doc contradicts a decision here, the doc is
 > either correct (it was folded) or stale (it wasn't) — check the doc's amendment date against the
 > round date and fix the doc, never work from this memo. Current contract shapes live in owning
@@ -41,7 +43,7 @@ must never redefine it.
 
 | Series | Range | Lives in | Cite it as |
 |---|---|---|---|
-| **Reconciliation series** — the cross-doc decisions in THIS memo | `D1`–`D133` | this file | `D22` (bare) |
+| **Reconciliation series** — the cross-doc decisions in THIS memo | `D1`–`D135` | this file | `D22` (bare) |
 | **Row-model series** — three row types, eight statuses, containment, delegation shapes | `row-model D1`–`row-model D24` | doc 03 §9 (ratified 2026-07-24/25) | **`row-model D22`**, prefix mandatory |
 
 The collision is live, not hypothetical: this memo's **D22** is the *contract-shape + guards owner
@@ -784,3 +786,9 @@ changing those bytes, and later schema work must append v10.
 | # | Decision | Owner (normative text) |
 |---|---|---|
 | **D133** | **A DURABLE `config_snapshots` ROW IS EVIDENCE OF THE CONFIGURATION ONE RUN EXECUTED UNDER, SO IT IS NEVER REWRITTEN AND ITS ABSENT LEAVES ARE NEVER BACK-FILLED. THE CONFIG SCHEMA CARRIES ITS OWN APPEND-ONLY, SHA-256-PINNED GENERATION LINE (`CONFIG_SNAPSHOT_GENERATIONS`), SEPARATE FROM THE SQLITE MIGRATION CHAIN, BECAUSE ADDING A REQUIRED LEAF CHANGES NO TABLE — IT CHANGES WHAT A STORED ROW MUST CONTAIN. AN OLDER SNAPSHOT IS READ FORWARD: EXACTLY THE REGISTERED POST-BASELINE LEAVES MAY BE ABSENT, `configSnapshotAbsentLeaves` REPORTS WHICH, AND NO VALUE IS SUBSTITUTED — "THIS LEAF DID NOT EXIST AT CAPTURE" IS A DIFFERENT FACT FROM "THIS LEAF WAS SET TO 60000", AND ONLY THE FORMER IS TRUE OF A PRE-D125 RUN. READING A STORED CONFIG APPLIES NO GROUP DEFAULT AT ALL, SO A MISSING GROUP FAILS LOUD INSTEAD OF SILENTLY READING BACK AS TODAY'S POLICY; MINTING A SNAPSHOT WITH ANY CURRENT-GENERATION LEAF MISSING IS REFUSED.** | doc 11 §4.1 (primary); doc 10 §5 item 10; `tests/unit/architecture/config-snapshot-generations.test.ts` |
+
+## Reconciliation round 30 (2026-08-04) — the Kuali write lands; the "step cannot write it" finding was wrong
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D135** | **THE KUALI TIMEKEEPER WRITE LANDS ON THE OPERATOR'S OWN DOCUMENTS, AND D128's "THE CURRENT STEP DOES NOT OWN THE FIELD" IS WITHDRAWN — KUALI'S OWN `ActionPage` QUERY REPORTS THAT STEP'S `sectionSettings` AS `edit` FOR THE SECTION HOLDING THE FIELD, AND THE CHECKBOX BESIDE IT BINDS INSTANTLY. TWO DEFECTS IN THIS TREE'S DRIVER HID THE WRITE. FIRST, A KUALI BUILD TEXT GADGET IS A CONTROLLED INPUT OVER LOCAL STATE THAT **DEBOUNCES** INTO THE DOCUMENT MODEL, AND ONLY THE MODEL IS SERIALIZED BY `submitDocumentV2`: MEASURED 0/8 CARRIED AT ≤600ms AND 8/8 AT ≥700ms, INDEPENDENT OF BLUR, `Tab`, OR `fill()`-VERSUS-KEYSTROKES. A SLEEP IS NOT THE BARRIER — STAGING WAITS FOR THE COMMIT ITSELF, THE ONE OBSERVABLE THE PAGE OFFERS (THE CONTROL'S REACT PROPS OBJECT IDENTITY IS REPLACED AT +723ms WHILE EVERY ATTRIBUTE, CLASS AND THE SECTION MARKUP STAY BYTE-IDENTICAL). SECOND, `commit` RETURNED AT **REQUEST** TIME, SO BEAT ⑥'s `page.reload()` CANCELLED THE IN-FLIGHT SAVE; IT NOW WAITS FOR THE **RESPONSE**. THE CLICK IS THEN PROVED ON THE WIRE — `variables.actionId` MUST BE THE STAGED ACTION AND `variables.data["QGJ63YrCom"]` (THE `formKey`, **NOT** THE DOM ID `BWmkKqx40`) MUST EQUAL THE STAGED VALUE — PLUS A PURELY NEGATIVE REFUSAL CHECK, BECAUSE GRAPHQL ANSWERS `200` FOR REFUSALS AND THE MUTATION THAT DROPPED THE FIELD ALSO ANSWERED `{"status":"Ok","validations":null}`. LANDING PROOF REMAINS THE RELOAD READ-BACK AND NOTHING MAY SUBSTITUTE FOR IT. WITH FOUR AUTHORIZED WRITE/RESTORE CYCLES MEASURED (CLICK→RESPONSE 2 459–3 036ms; SERVER AGREES ON THE FIRST ~270ms SAMPLE; RELOAD AGREES WITHIN ~3s), `recoveryAbsence` MOVES FROM `operator-only` TO `stabilized` AT `minSinceFenceMs: 30_000` / 2 READS / 5 000ms APART. A CONSEQUENCE RECORDED WITH IT: A PARKED WRITE IS UNRESOLVABLE ONCE ANY FILE IN ITS DESCRIPTOR'S 31-FILE CONTRACT CLOSURE CHANGES, SO PARKED WRITES MUST BE RESOLVED BEFORE A CONTRACT CLOSURE IS TOUCHED.** | doc 09 §Phase-2 controlled-commit as-built (primary); doc 09 §Kuali `recoveryAbsence`; doc 07 §3.8 target status; `src/stores/kuali/CLAUDE.md` |
