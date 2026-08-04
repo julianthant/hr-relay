@@ -119,16 +119,53 @@ function assertExactKualiDocumentUrl(rawUrl: string, actionId: string): void {
   }
 }
 
+/**
+ * A level-1 heading whose accessible name is a bare document number.
+ *
+ * NOT a widening of "the first h1" — a narrowing, and the reason is live
+ * measurement (2026-08-04, doc 4489). Kuali Build is client-rendered and paints
+ * this route in three stages:
+ *
+ * | t (after `domcontentloaded`) | level-1 headings |
+ * |---|---|
+ * | ~0.4s | none at all |
+ * | ~1.5s | `["", "Action", "Action List"]` — the document heading exists and is EMPTY |
+ * | ~3.0s | `["4489", "Action", "Action List"]` |
+ *
+ * So "the first h1" is the right node but reads `""` for a second and a half,
+ * and "the first NON-EMPTY h1" is the wrong node ("Action") during that window.
+ * Both would have refused a perfectly good document. Matching on the shape of
+ * the value itself is the only recipe that is correct at every stage, and it is
+ * still an independent READ: the number is read off the page and compared to
+ * the run's, so opening a different document refuses with both numbers named.
+ */
+const DOCUMENT_NUMBER_HEADING_NAME = /^\s*\d{3,8}\s*$/u;
+
 async function readDocumentNumberHeading(page: Page, actionId: string): Promise<string> {
-  const heading = page.getByRole("heading", { level: 1 });
+  const heading = page.getByRole("heading", { level: 1, name: DOCUMENT_NUMBER_HEADING_NAME });
+  // A BOUNDED WAIT FOR THE SAME FACT, not a fallback: when no document-number
+  // heading renders inside the bound, the identical refusal below still fires.
+  try {
+    await heading.first().waitFor({ state: "attached", timeout: STATE_TIMEOUT_MS });
+  } catch {
+    // Not a swallow: the timeout IS the observation, and the count check turns
+    // it into the loud refusal an immediately-absent heading produced.
+  }
   const count = await heading.count();
   if (count === 0) {
     throw new Error(
-      `Kuali action ${actionId} did not render a document heading; the action id may be stale `
-      + "(a completed step redirects to the Action List) — refusing to treat this page as a document",
+      `Kuali action ${actionId} did not render a document-number heading within ${String(STATE_TIMEOUT_MS)}ms; `
+      + "the action id may be stale (a completed step redirects to the Action List) — refusing to "
+      + "treat this page as a document",
     );
   }
-  const raw = await heading.first().textContent({ timeout: STATE_TIMEOUT_MS });
+  if (count !== 1) {
+    throw new Error(
+      `Kuali action ${actionId} rendered ${String(count)} document-number headings; exactly one is `
+      + "required and there is no fallback — refusing to identify an ambiguous page",
+    );
+  }
+  const raw = await heading.textContent({ timeout: STATE_TIMEOUT_MS });
   const trimmed = (raw ?? "").trim();
   const parsed = KualiDocumentNumberSchema.safeParse(trimmed);
   if (!parsed.success) {

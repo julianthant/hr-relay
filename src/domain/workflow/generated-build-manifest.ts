@@ -581,7 +581,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "c729889c0d43729ddbf741c5ea93375f00b4bd430dcde58b2ce121f11824c874",
+      "fingerprint": "d619d1a13a38287c5f3af6f772ddea1c764a4a8ffdc4239e486e87df964acd8a",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -721,7 +721,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "98141ad79dc3e7d7cae467a0df4416eeaac75e90d8694b116b6405b5265866bb"
+          "sha256": "206d97553e8bd90b72078ca32a200c2f3c2f2a56458235baad981329769babf3"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
@@ -739,7 +739,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/fill-timekeeper-annotation"
     },
     {
-      "fingerprint": "18c3c7d6d6f65cb0709e7c28c6cb855e935c969e2f42c14290251e231f9039ca",
+      "fingerprint": "4f716612db17a35108f947f1b4dfbbe552659155f5fcec92ea90df08455c3954",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -887,7 +887,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "98141ad79dc3e7d7cae467a0df4416eeaac75e90d8694b116b6405b5265866bb"
+          "sha256": "206d97553e8bd90b72078ca32a200c2f3c2f2a56458235baad981329769babf3"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
@@ -909,7 +909,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/read-timekeeper-annotation"
     },
     {
-      "fingerprint": "0f3d479a4b35d81c684ad5db29a7517271e4813fd8b9fb968989a5d2b8a29e03",
+      "fingerprint": "79e131507b9dc34eaee2937a07d14348c2237d2eefb056c2ba8ff0e4560a62e8",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1053,7 +1053,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "98141ad79dc3e7d7cae467a0df4416eeaac75e90d8694b116b6405b5265866bb"
+          "sha256": "206d97553e8bd90b72078ca32a200c2f3c2f2a56458235baad981329769babf3"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
@@ -1071,7 +1071,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/save-timekeeper-annotation"
     },
     {
-      "fingerprint": "0eb970e444ebcb7645806170575f1def6dfe7d843187bf3e156076c836857638",
+      "fingerprint": "ff8b702f4fa492408a9a48938ab5ab51cc442c44a3643c334fad0ce33bf6a601",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1223,7 +1223,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "98141ad79dc3e7d7cae467a0df4416eeaac75e90d8694b116b6405b5265866bb"
+          "sha256": "206d97553e8bd90b72078ca32a200c2f3c2f2a56458235baad981329769babf3"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",

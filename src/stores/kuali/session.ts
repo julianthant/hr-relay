@@ -58,6 +58,23 @@ const KUALI_APP_HOST = "ucsd.kualibuild.com";
  * live 2026-08-04 read-only session.
  */
 const KUALI_APP_CONTROL_SELECTOR = '[role="menuitem"], [role="menubar"]';
+/**
+ * How long the application chrome may take to render before its absence counts
+ * as a refusal.
+ *
+ * Kuali Build is a client-rendered SPA: measured live 2026-08-04, the space
+ * serves a body with ZERO `[role]` nodes at `domcontentloaded` and paints its
+ * menubar ~1s later, on a warm authenticated profile. The landing wait resolves
+ * on the URL, so a single immediate sample of the positive fact races the
+ * hydration and reports "no application chrome" for a session that is in fact
+ * authenticated — which is what the first live Kuali login attempt did.
+ *
+ * This is a bounded wait for the SAME fact, not a fallback: if the chrome never
+ * renders inside the bound, the probe still reports `holds:false` and the login
+ * still refuses. The bound costs nothing on the unauthenticated paths, because
+ * `verifyUcsdAuthenticatedApplication` short-circuits on the URL first.
+ */
+const KUALI_APP_CONTROL_RENDER_MS = 15_000;
 /** The TritON sign-in form; if it is on screen we are not in the application. */
 const SSO_FORM_SELECTOR = 'input#ssousername, input[name="j_username"], input[type="password"]';
 
@@ -87,7 +104,19 @@ export const verifyKualiAuthenticatedApplication: AuthenticatedApplicationVerifi
   urlIsApplication: isAuthenticatedKualiUrl,
   urlRefusal: "the observed URL is not the Kuali Build application",
   positive: async (): Promise<ObservedFact> => {
-    const count = await context.page.locator(KUALI_APP_CONTROL_SELECTOR).count();
+    const chrome = context.page.locator(KUALI_APP_CONTROL_SELECTOR);
+    try {
+      await chrome.first().waitFor({ state: "attached", timeout: KUALI_APP_CONTROL_RENDER_MS });
+    } catch (error) {
+      // Not a swallow: the timeout IS the observation, and it reports the
+      // fact as NOT holding, which refuses the login.
+      return {
+        holds: false,
+        detail: `no Kuali Build application chrome rendered within ${String(KUALI_APP_CONTROL_RENDER_MS)}ms `
+          + `(${error instanceof Error ? error.message.split("\n")[0] ?? "timeout" : "timeout"})`,
+      };
+    }
+    const count = await chrome.count();
     return count > 0
       ? { holds: true, detail: "Kuali Build application chrome is rendered" }
       : { holds: false, detail: "no Kuali Build application chrome is rendered on this page" };
