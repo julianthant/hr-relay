@@ -4,7 +4,7 @@
   "architectureRoot": "tests/unit/architecture",
   "testScript": "test:architecture",
   "coveragePolicy": {
-    "exclusionListSha256": "421c37ddfdb84b4b16c0678ef06c77199f7bb69650daccd90bf638d40a9b38bd",
+    "exclusionListSha256": "3fd6cca7742da0cc489985c45cccf163136643a6819eb98fb3114a41f35dcc30",
     "minimumFloors": {
       "global": 60,
       "safetyCritical": 80
@@ -22,6 +22,14 @@
       "status": "active",
       "owner": "docs/rebuild/11-clock-config-secrets.md",
       "invariant": "All rebuild wall-clock and monotonic-time reads route through the sole clock adapter, including aliased, imported, destructured, computed, and globalThis forms.",
+      "replacementRequired": true
+    },
+    {
+      "name": "dashboard-wire-boundary",
+      "file": "tests/unit/architecture/dashboard-wire-boundary.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/13-frontend-backend-integration.md",
+      "invariant": "Doc 13 \u00a78.2/\u00a78.3: src/dashboard declares no handwritten structural mirror of a *Wire contract (schema-inferred types only), and no dashboard file carries a registered workflow-id string literal \u2014 workflow identity reaches surfaces only as served data or the bundle-safe descriptor tuple, never as a branchable literal.",
       "replacementRequired": true
     },
     {
@@ -491,7 +499,7 @@
       "file": "tests/unit/architecture/task-driver-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/12-operator-trust-and-authoring.md; docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "AST and transitive import-graph audits confine static/dynamic Playwright access, raw browser types, locator/frame/getBy/newPage/evaluate/$ operations, and private driver/session ownership to the two raw-browser owner families — per-system driver/session modules and the `src/infra/browser/**` worker session factory that owns concrete browser creation; task/workflow code consumes typed semantic ids and proofs and may reach neither family transitively, while MutationCapability forgery and commit implementations remain prohibited until the Phase-1f validator.",
+      "invariant": "AST and transitive import-graph audits confine static/dynamic Playwright access, raw browser types, locator/frame/getBy/newPage/evaluate/$ operations, and private driver/session ownership to the two raw-browser owner families \u2014 per-system driver/session modules and the `src/infra/browser/**` worker session factory that owns concrete browser creation; task/workflow code consumes typed semantic ids and proofs and may reach neither family transitively, while MutationCapability forgery and commit implementations remain prohibited until the Phase-1f validator.",
       "replacementRequired": true
     },
     {

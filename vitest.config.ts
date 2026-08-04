@@ -8,22 +8,22 @@ export const REBUILD_COVERAGE_EXCLUSIONS = [
     activation: { ownerRoot: "src/generated", status: "planned" },
     reason: "Generated projections are verified by determinism guards.",
   },
-  // The 1g transport client made src/dashboard exist as pure .ts; the .tsx
-  // presentation subtrees (doc 13 §2) stay planned per-directory and flip
-  // as the 1i shell lands each one. Extracted .ts logic remains measured.
+  // The .tsx presentation subtrees (doc 13 §2) landed with the 1i shell;
+  // their rendered behavior is proven by the headless Playwright parity lane
+  // (tests/parity), not v8 line counting. Extracted .ts logic stays measured.
   {
     pattern: "src/dashboard/app/**/*.tsx",
-    activation: { ownerRoot: "src/dashboard/app", status: "planned" },
+    activation: { ownerRoot: "src/dashboard/app", status: "active" },
     reason: "Presentation components use the headless Playwright lane; extracted .ts logic remains measured.",
   },
   {
     pattern: "src/dashboard/surfaces/**/*.tsx",
-    activation: { ownerRoot: "src/dashboard/surfaces", status: "planned" },
+    activation: { ownerRoot: "src/dashboard/surfaces", status: "active" },
     reason: "Presentation components use the headless Playwright lane; extracted .ts logic remains measured.",
   },
   {
     pattern: "src/dashboard/ds/**/*.tsx",
-    activation: { ownerRoot: "src/dashboard/ds", status: "planned" },
+    activation: { ownerRoot: "src/dashboard/ds", status: "active" },
     reason: "Presentation components use the headless Playwright lane; extracted .ts logic remains measured.",
   },
 ] as const;
