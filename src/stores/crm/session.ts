@@ -26,14 +26,23 @@
  */
 import { resolveSystemLoginUrl } from "../../domain/config/instance.js";
 import type { LoginResult } from "../../domain/session.js";
+import {
+  defineVerifiedLoginRecipe,
+  probeAbsentControl,
+  probeSessionCookie,
+} from "../../infra/browser/authenticated-application.js";
 import { BrowserLoginError } from "../../infra/browser/login-contract.js";
-import type { SystemLoginContext, SystemLoginRecipe } from "../../infra/browser/login-contract.js";
+import type {
+  AuthenticatedApplicationVerifier,
+  AuthenticationProbe,
+  SystemLoginContext,
+} from "../../infra/browser/login-contract.js";
 import {
   abortIfCancelled,
-  assertVerifiedLanding,
   fillSsoCredentials,
   raceCancellation,
   submitSsoForm,
+  verifyUcsdAuthenticatedApplication,
   waitForAuthenticatedLanding,
   waitForSsoForm,
 } from "../../infra/browser/ucsd-sso.js";
@@ -44,14 +53,46 @@ const SYSTEM = "crm" as const;
 const CRM_APP_HOST = "act-crm.my.site.com";
 /** legacy src/infra/auth/login.ts:264 — the login-type option label. */
 const ACTIVE_DIRECTORY_OPTION = "Active Directory";
+/**
+ * The POSITIVE fact. Salesforce issues `sid` — the Communities session id —
+ * only after a completed authentication; the Communities login page, which
+ * lives on the SAME host, has no `sid`. The value is never read.
+ */
+const SALESFORCE_SESSION_COOKIE = "sid";
+const SALESFORCE_COOKIE_DOMAIN = "my.site.com";
+/** Salesforce Communities' own login form, on the same host as the app. */
+const COMMUNITIES_LOGIN_SELECTOR = 'input#username, input[name="username"], input[name="pw"]';
 
-/** legacy src/infra/auth/login.ts:247-251 — authenticated landing predicate. */
+/**
+ * legacy src/infra/auth/login.ts:247-251 — the landing predicate. NECESSARY,
+ * never sufficient: `verifyCrmAuthenticatedApplication` is the proof (see
+ * `src/infra/browser/authenticated-application.ts` for why a URL is not one).
+ */
 export function isAuthenticatedCrmUrl(rawUrl: string): boolean {
   const url = rawUrl.toLowerCase();
   return url.includes(CRM_APP_HOST)
     && !url.includes("login")
     && !url.startsWith("chrome-error");
 }
+
+/** The two-fact proof: Salesforce's own session cookie, and no sign-in form. */
+export const verifyCrmAuthenticatedApplication: AuthenticatedApplicationVerifier = async (
+  context,
+): Promise<AuthenticationProbe> => verifyUcsdAuthenticatedApplication(SYSTEM, context.page, {
+  urlIsApplication: isAuthenticatedCrmUrl,
+  urlRefusal: "the observed URL is not the ACT CRM Communities application; the Communities login page shares this host and is refused here",
+  positive: async () => probeSessionCookie(context.page, {
+    name: SALESFORCE_SESSION_COOKIE,
+    domainSuffix: SALESFORCE_COOKIE_DOMAIN,
+    issuer: "ACT CRM Salesforce Communities",
+  }),
+  additionalAbsences: [
+    async () => probeAbsentControl(context.page, {
+      selector: COMMUNITIES_LOGIN_SELECTOR,
+      description: "the Salesforce Communities login form",
+    }),
+  ],
+});
 
 /**
  * legacy src/infra/auth/login.ts:256-273 — the login-type picker. Active
@@ -84,44 +125,47 @@ async function ensureActiveDirectorySelected(context: SystemLoginContext): Promi
   }
 }
 
-export const crmLoginRecipe: SystemLoginRecipe = async (context): Promise<LoginResult> => {
-  const { page, config } = context;
-  if (isAuthenticatedCrmUrl(page.url())) return "already-authenticated";
+export const crmLoginRecipe = defineVerifiedLoginRecipe({
+  system: SYSTEM,
+  verify: verifyCrmAuthenticatedApplication,
+  flow: async (context, probe): Promise<LoginResult> => {
+    const { page, config } = context;
+    if ((await probe()).authenticated) return "already-authenticated";
 
-  const loginUrl = resolveSystemLoginUrl(config, SYSTEM, context.instance, context.label);
-  abortIfCancelled(SYSTEM, "navigate-login-entry", context);
-  try {
-    await raceCancellation(
-      page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs }),
+    const loginUrl = resolveSystemLoginUrl(config, SYSTEM, context.instance, context.label);
+    abortIfCancelled(SYSTEM, "navigate-login-entry", context);
+    try {
+      await raceCancellation(
+        page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs }),
+        SYSTEM,
+        "navigate-login-entry",
+        context,
+      );
+    } catch (error) {
+      if (error instanceof BrowserLoginError) throw error;
+      throw new BrowserLoginError(
+        SYSTEM,
+        "navigate-login-entry",
+        "the ACT CRM entry route did not load",
+        page.url(),
+        { cause: error },
+      );
+    }
+
+    // A warm profile can land straight on the Communities app — but only the
+    // two-fact probe may say so; the Communities login page shares the host.
+    if ((await probe()).authenticated) return "already-authenticated";
+
+    await ensureActiveDirectorySelected(context);
+    await waitForSsoForm(SYSTEM, context);
+    await fillSsoCredentials(SYSTEM, context);
+    await submitSsoForm(SYSTEM, context);
+    await waitForAuthenticatedLanding(
       SYSTEM,
-      "navigate-login-entry",
       context,
+      isAuthenticatedCrmUrl,
+      config.timeouts.duoApprovalCrmSeconds * 1_000,
     );
-  } catch (error) {
-    if (error instanceof BrowserLoginError) throw error;
-    throw new BrowserLoginError(
-      SYSTEM,
-      "navigate-login-entry",
-      "the ACT CRM entry route did not load",
-      page.url(),
-      { cause: error },
-    );
-  }
-
-  // A warm profile can land straight on the Communities app.
-  if (isAuthenticatedCrmUrl(page.url())) return "already-authenticated";
-
-  await ensureActiveDirectorySelected(context);
-  await waitForSsoForm(SYSTEM, context);
-  await fillSsoCredentials(SYSTEM, context);
-  await submitSsoForm(SYSTEM, context);
-  await waitForAuthenticatedLanding(
-    SYSTEM,
-    context,
-    isAuthenticatedCrmUrl,
-    config.timeouts.duoApprovalCrmSeconds * 1_000,
-  );
-
-  await assertVerifiedLanding(SYSTEM, context, isAuthenticatedCrmUrl);
-  return "logged-in";
-};
+    return "logged-in";
+  },
+});
