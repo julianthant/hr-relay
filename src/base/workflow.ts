@@ -57,8 +57,9 @@ import {
   CompletionConsumptionSpecSchema,
   CoordinatorPolicySchema,
 } from "../domain/workflow/completion.js";
-import { GraphNodeKindSchema } from "../domain/workflow/graph.js";
+import { GraphNodeKindSchema, projectTransactionOutcome } from "../domain/workflow/graph.js";
 import type { GraphNodeBase, RuntimeFlowNode } from "../domain/workflow/graph.js";
+import { TransactionOutcomeSchema } from "../domain/write-safety-primitives.js";
 import { WorkflowSurfacesSchema } from "../domain/workflow/ingress.js";
 import type { WorkflowSurfaces } from "../domain/workflow/ingress.js";
 import {
@@ -466,11 +467,60 @@ function contractsOf(node: RuntimeFlowNode): readonly AnyTaskContract[] {
   }
 }
 
+/**
+ * "Which schema owns this node's output FIELD PATHS" — the question a detail or
+ * surface asks. For a transaction node that is the COMMIT contract's output,
+ * because a detail names `savedState.timekeeperName`, not the kernel wrapper
+ * around it. This is deliberately NOT the same question as "which schema is this
+ * node's durable checkpoint bound to" (see `terminalEvidenceOf`); conflating the
+ * two is what left a transaction node unable to be a terminal dependency (D144).
+ */
 function outputSchemaOf(node: RuntimeFlowNode): z.ZodType | undefined {
   switch (node.kind) {
     case "task": return node.uses.output;
     case "transaction": return node.commit.uses.output;
     case "gate": return node.result;
+    default: return undefined;
+  }
+}
+
+/**
+ * D144 — what a node's DURABLE checkpoint is bound to, and how that stored value
+ * becomes the scope value the authored `derive` reads.
+ *
+ * For a task or gate the two coincide: the row stores the contract's own parsed
+ * output under that schema's hash, and the scope value is that output verbatim.
+ *
+ * For a transaction node they do not, and the row is right: doc 09 beat ⑦ stores
+ * the full durable `TransactionOutcome`, so the row's `output.schemaHash` is that
+ * envelope's hash — the only hash that truthfully describes the bytes stored.
+ * Demanding the commit contract's bare output hash here would have required a
+ * checkpoint the sequencer never wrote, which D110/D114 forbid outright. The
+ * commit contract's identity is not lost, it is checked one level down by
+ * `projectTransactionOutcome`, which then lowers the envelope onto the
+ * `TypedTransactionOutcome<C>` shape the descriptor authored against — the same
+ * shape the interpreter puts in every other consumer's scope.
+ */
+type TerminalEvidenceBinding = Readonly<{
+  /** The schema the durable checkpoint row is bound to. */
+  checkpointSchema: z.ZodType;
+  /** Durable value → the scope value handed to `derive`. Fails loud on drift. */
+  project: (storedValue: unknown, context: string) => unknown;
+}>;
+
+function terminalEvidenceOf(node: RuntimeFlowNode): TerminalEvidenceBinding | undefined {
+  switch (node.kind) {
+    case "task":
+      return { checkpointSchema: node.uses.output, project: (value) => node.uses.output.parse(value) };
+    case "gate":
+      return { checkpointSchema: node.result, project: (value) => node.result.parse(value) };
+    case "transaction": {
+      const commit = node.commit.uses;
+      return {
+        checkpointSchema: TransactionOutcomeSchema,
+        project: (value, context) => projectTransactionOutcome(commit, value, context),
+      };
+    }
     default: return undefined;
   }
 }
@@ -765,7 +815,7 @@ export function defineWorkflowDescriptor<
   const terminalDependencies: WorkflowTerminalResultExecution["dependencies"] = Object.freeze(
     terminalDependsOn.map((nodeId) => {
       const node = nodeByIdOrThrow(id, nodes, nodeId, "terminal result");
-      if (outputSchemaOf(node) === undefined) {
+      if (terminalEvidenceOf(node) === undefined) {
         throw new Error(`${id}: terminal result dependency ${nodeId} owns no output schema`);
       }
       const isBranchTarget = branchTargets.has(nodeId);
@@ -869,18 +919,21 @@ export function defineWorkflowDescriptor<
           );
         }
         const node = nodeByIdOrThrow(id, nodes, entry.nodeId, "terminal result");
-        const outputSchema = outputSchemaOf(node);
-        if (outputSchema === undefined) {
+        const binding = terminalEvidenceOf(node);
+        if (binding === undefined) {
           throw new Error(`${id}: terminal result dependency ${entry.nodeId} owns no output schema`);
         }
-        const outputSchemaHash = deriveSchemaHash(outputSchema, "output");
+        const outputSchemaHash = deriveSchemaHash(binding.checkpointSchema, "output");
         if (checkpoint.output.schemaHash !== outputSchemaHash) {
           throw new Error(
             `terminal dependency ${entry.nodeId} checkpoint output schema `
             + `${checkpoint.output.schemaHash} does not match ${outputSchemaHash}`,
           );
         }
-        outputs[entry.nodeId] = outputSchema.parse(checkpoint.output.value);
+        outputs[entry.nodeId] = binding.project(
+          checkpoint.output.value,
+          `terminal dependency ${entry.nodeId}`,
+        );
         return {
           state: "resolved",
           nodeId: entry.nodeId,

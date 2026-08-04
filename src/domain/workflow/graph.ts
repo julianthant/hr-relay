@@ -19,6 +19,8 @@ import type {
   AnyReadTaskContract,
 } from "../contracts/base.js";
 import type { CompletionCheck } from "../contracts/write-safety.js";
+import { deriveSchemaHash } from "../schema-bound-value.js";
+import { TransactionOutcomeSchema } from "../write-safety-primitives.js";
 import {
   DelegationEdgeIdSchema,
   DelegationManifestIdSchema,
@@ -116,6 +118,59 @@ export type TypedTransactionOutcome<C extends AnyCommitTaskContract> =
     output: z.output<C["output"]>;
     proof: ProofOf<C>;
   }>;
+
+/**
+ * Lower the DURABLE `TransactionOutcome` a `run_checkpoints` row stores onto the
+ * graph-scope `TypedTransactionOutcome<C>` every descriptor is authored against
+ * (D144). This is the ONE direction that crossing between the two altitudes is
+ * allowed to travel, and it is a projection, never a re-derivation: no field is
+ * defaulted, substituted, or invented, and both nested schema hashes must be the
+ * commit contract's own before either value is parsed.
+ *
+ * Checking the nesting is what lets a transaction checkpoint carry the durable
+ * outcome's schema hash without losing the commit contract's identity: the
+ * envelope hash proves the ROW round-trips, `output.schemaHash` proves the
+ * commit contract that produced it has not moved, and `proof.schemaHash` proves
+ * the same of its completion proof. A drift in any of the three fails loud here
+ * rather than reaching an authored `derive`.
+ */
+export function projectTransactionOutcome<C extends AnyCommitTaskContract>(
+  commit: C,
+  storedValue: unknown,
+  context: string,
+): TypedTransactionOutcome<C> {
+  const outcome = TransactionOutcomeSchema.parse(storedValue);
+  const outputSchemaHash = deriveSchemaHash(commit.output, "output");
+  if (outcome.output.schemaHash !== outputSchemaHash) {
+    throw new Error(
+      `${context}: stored transaction outcome binds commit output schema ${outcome.output.schemaHash}, `
+      + `and ${commit.id} now declares ${outputSchemaHash}`,
+    );
+  }
+  const proofSchema = commit.writeSafety.completion.proofSchema;
+  const proofSchemaHash = deriveSchemaHash(proofSchema, "output");
+  if (outcome.proof.schemaHash !== proofSchemaHash) {
+    throw new Error(
+      `${context}: stored transaction outcome binds completion proof schema ${outcome.proof.schemaHash}, `
+      + `and ${commit.id} now declares ${proofSchemaHash}`,
+    );
+  }
+  const projected = Object.freeze({
+    disposition: outcome.disposition,
+    proofSource: outcome.proofSource,
+    output: commit.output.parse(outcome.output.value),
+    proof: proofSchema.parse(outcome.proof.value),
+  });
+  // A checked identity bridge, not an assertion: every field above was parsed by
+  // the commit contract's OWN schemas, and only after both nested schema hashes
+  // were proven to be that contract's. This narrows an object this function
+  // assembled; it never re-types one it was handed.
+  const ExactProjection = z.custom<TypedTransactionOutcome<C>>(
+    (candidate) => candidate === projected,
+    "transaction outcome projection was not assembled by projectTransactionOutcome",
+  );
+  return ExactProjection.parse(projected);
+}
 
 export interface TransactionNode<
   Scope,

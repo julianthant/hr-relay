@@ -39,8 +39,9 @@ import {
   workflowTerminalResultExecution,
   type AnyWorkflowDescriptor,
 } from "../base/workflow.js";
-import { JsonValueSchema } from "../domain/canonical-json.js";
+import { JsonValueSchema, canonicalJsonStringify } from "../domain/canonical-json.js";
 import type { JsonValue } from "../domain/canonical-json.js";
+import { TransactionOutcomeSchema } from "../domain/write-safety-primitives.js";
 import type { Clock } from "../domain/clock.js";
 import type { AnyReadTaskContract } from "../domain/contracts/base.js";
 import type { IdFactory } from "../domain/identifiers.js";
@@ -979,7 +980,44 @@ export async function executeClaimedRun(
               output: node.commit.uses.output,
               proof: JsonValueSchema,
             });
-            outputs[String(node.id)] = JsonValueSchema.parse(OutcomeSchema.parse(raw));
+            const settled = JsonValueSchema.parse(OutcomeSchema.parse(raw));
+            outputs[String(node.id)] = settled;
+
+            // D144 — a transaction node may be named in `terminalDependsOn`, so
+            // its durable checkpoint has to become terminal evidence like any
+            // other node's. The sequencer wrote that row inside beat ⑦'s own
+            // authority transaction; the interpreter reads THAT EXACT ROW back
+            // rather than minting a record from the value it was handed. A
+            // missing row means the sequencer reported a settlement it never
+            // durably recorded, and a row that does not project to the very
+            // settlement just observed means the two disagree — both are hard
+            // errors, never a substituted checkpoint.
+            const stored = deps.authority.authority.runCheckpoints.latest(
+              descriptor.id,
+              envelope.itemId,
+              String(node.id),
+            );
+            if (stored === undefined) {
+              throw new Error(
+                `transaction node "${node.id}" settled but run ${runId} has no durable checkpoint for it; `
+                + "beat ⑦ writes one in the same authority transaction as the settlement",
+              );
+            }
+            const record = RunCheckpointRecordSchema.parse(stored);
+            const storedOutcome = TransactionOutcomeSchema.parse(record.output.value);
+            const projected = JsonValueSchema.parse(OutcomeSchema.parse({
+              disposition: storedOutcome.disposition,
+              proofSource: storedOutcome.proofSource,
+              output: storedOutcome.output.value,
+              proof: storedOutcome.proof.value,
+            }));
+            if (canonicalJsonStringify(projected) !== canonicalJsonStringify(settled)) {
+              throw new Error(
+                `transaction node "${node.id}" durable checkpoint does not carry the settlement `
+                + `the sequencer reported for run ${runId}`,
+              );
+            }
+            checkpointRecords.set(String(node.id), record);
           } catch (error) {
             if (error instanceof RunAbandonedError) throw error;
             if (error instanceof WriteParkedError) {

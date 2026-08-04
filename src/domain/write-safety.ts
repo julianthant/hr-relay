@@ -37,10 +37,14 @@ export {
   AbsentEvidenceSchema,
   NegativeSettlementPolicySchema,
   probeVerdictSchema,
+  // The durable transaction settlement lives in the browser-safe half so a
+  // descriptor closure can hash it (D144); doc 09's module stays its address.
+  TransactionOutcomeSchema,
 } from "./write-safety-primitives.js";
 export type {
   NegativeSettlementPolicy,
   ProbeVerdict,
+  TransactionOutcome,
 } from "./write-safety-primitives.js";
 
 export const SpanPathSchema = z.string().regex(
@@ -401,23 +405,6 @@ export const WriteAttemptRecordSchema = z.strictObject({
   }
 });
 
-export const TransactionOutcomeSchema = z.discriminatedUnion("disposition", [
-  z.strictObject({
-    disposition: z.literal("committed"),
-    proofSource: z.enum(["normal-output", "recovery-probe", "operator-attestation"]),
-    proof: SchemaBoundCanonicalValueSchema,
-    output: SchemaBoundCanonicalValueSchema,
-    confirmedAt: IsoInstantSchema,
-  }),
-  z.strictObject({
-    disposition: z.literal("already-present"),
-    proofSource: z.enum(["live-probe", "durable-intent"]),
-    proof: SchemaBoundCanonicalValueSchema,
-    output: SchemaBoundCanonicalValueSchema,
-    observedAt: IsoInstantSchema,
-  }),
-]);
-
 export type OperatorAbsenceResolution = z.infer<typeof OperatorAbsenceResolutionSchema>;
 export type WriteRetrySettlement = z.infer<typeof WriteRetrySettlementSchema>;
 export type SubjectProof = z.infer<typeof SubjectProofSchema>;
@@ -427,4 +414,3 @@ export type AbsentEvidence = z.infer<typeof AbsentEvidenceSchema>;
 export type NegativeSettlementDecision = z.infer<typeof NegativeSettlementDecisionSchema>;
 export type WriteIntentRecord = z.infer<typeof WriteIntentRecordSchema>;
 export type WriteAttemptRecord = z.infer<typeof WriteAttemptRecordSchema>;
-export type TransactionOutcome = z.infer<typeof TransactionOutcomeSchema>;
