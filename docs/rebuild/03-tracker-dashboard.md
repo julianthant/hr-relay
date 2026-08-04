@@ -1635,7 +1635,7 @@ decisions.)*
 
 ---
 
-## 9. Ratified delegation and presentation decisions (D6–D24)
+## 9. Ratified delegation and presentation decisions (**row-model** D6–D24)
 
 Status: **ratified by the operator 2026-07-25.** These continue the **row-model decision series**
 ratified 2026-07-24 (`reviews/second-look-2026-07-22.md` §6.6 — D1: three row types Run/Group/Member
@@ -1643,7 +1643,10 @@ with review-as-status and eight statuses; D2: a PDF upload is always a Group; D3
 are typed Rejected Member Rows, delete-only; D4: a delegated OCR run keeps its own Run Row in the
 OCR panel plus a link from the parent; D5: groups default collapsed, auto-expand on a member
 `Waiting on you` or `Failed`). **This series is not the reconciliation memo's D-numbers**
-(`04-reconciliation.md` D1–D87) — cite these as *row-model D6…D24*.
+(`04-reconciliation.md` D1–D133) — cite these as *row-model D6…D24*, prefix mandatory. The
+collision is real: this section's **row-model D22** shortens the status vocabulary, while the memo's
+bare **D22** is an unrelated contract-shape/guards ownership split. `04-reconciliation.md` carries
+the matching warning at its top; keep both in step.
 
 D6–D17 close the twelve delegation questions in `reviews/delegation-layouts-2026-07-25.md` §7;
 D18–D20 close three build-gating decisions in `reviews/demo-feature-plan-2026-07-25.md` §6. The

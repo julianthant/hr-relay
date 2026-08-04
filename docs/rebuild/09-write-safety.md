@@ -312,7 +312,7 @@ the permanent-key dedupe criterion.
 | crash matrix, recovery arms, context cleanup, multi-worker exclusive lease | **MET in repeatable fixtures** over the real Kuali store + a real authority database (`tests/unit/kuali-transaction-proof.test.ts`) |
 | ledger projector concurrency / tail-loss | **NOT BUILDABLE YET** — beat ⑦ writes the ledger `durable_outbox` row (schema and atomicity landed in 1c), but the serialized ordered JSONL projector is a 2g tail and does not exist. There is nothing to test concurrency or tail-loss against, and no fixture may pretend otherwise |
 
-### Two defects this lane found outside the write path
+### Two defects this lane found outside the write path (D129 · D133)
 
 1. **Kuali Build is client-rendered, and two probes sampled it once.** The login
    recipe's positive fact and `openDocument`'s heading read both counted a node

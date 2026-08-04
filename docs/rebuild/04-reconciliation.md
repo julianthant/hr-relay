@@ -1,6 +1,6 @@
 # Reconciliation memo — binding cross-doc decisions (2026-07-17 through 2026-08-04)
 
-Status: **binding revision 2026-08-04 (Round 21).** Earlier rounds remain as decision history;
+Status: **binding revision 2026-08-04 (Round 29).** Earlier rounds remain as decision history;
 Round 7 supersedes incompatible typing, UI-access, control, delegation, recovery, trust,
 knowledge, and workflow-editor claims; Round 9 supersedes the proposed executor-lane/session-pool
 capacity model; Round 10 supersedes D73 and ratifies isolated coexistence, one all-at-once cutover,
@@ -8,14 +8,17 @@ legacy preservation/change accounting, coverage floors, and deferred probe miles
 moves the rebuild out of `temp_src/` into its own repository, superseding the in-tree half of D88
 and amending the mechanics of D89/D90; Round 12 ratifies D94's fail-closed cross-repo accounting
 mechanics.
-Round 18 ratifies the remaining Phase-1f runtime/authority seams as D109–D118; Rounds 19–21 add D119–D121 from the live lane that produced Phase 1's exit test.
+Round 18 ratifies the remaining Phase-1f runtime/authority seams as D109–D118; Rounds 19–21 add
+D119–D121 from the live lane that produced Phase 1's exit test; Rounds 22–29 add D122–D130 and
+D132–D133 from the Phase-2 transaction proof, the 1i-spine live run, the UCPath receipt probe, and
+the verification lanes those exposed (`D131` was never issued — see the D-series note below).
 
 > **What this doc is, as of Round 10: a decision CHANGELOG, not a specification.** Its job is to
 > record *what was decided, when, and which doc owns it* — so a reader can reconstruct why a
 > contract has its current shape. It is **not** where you read the current contract. The owning
 > doc (D1 matrix below) is the only readable current truth, and every ratified decision must be
 > folded into that doc **in the same commit that records it** (charter standing rule, added
-> 2026-07-26). Round 8–21 entries are therefore deliberately one-liners with a pointer: the normative
+> 2026-07-26). Round 8–29 entries are therefore deliberately one-liners with a pointer: the normative
 > text lives in the owner. Rounds 1–7 predate that rule and still carry normative prose; treat
 > the owning doc as authoritative wherever they differ.
 
@@ -26,11 +29,38 @@ Amendment agents rewrite each doc to comply; a doc may reference another doc's o
 must never redefine it.
 
 > **Implementation rule:** don't implement from this file. D1–D25 are historical rationale, not
-> copyable current API/DDL; D26–D72 amend each other in round order (later wins); D73–D121 are
+> copyable current API/DDL; D26–D72 amend each other in round order (later wins); D73–D133 are
 > pointers only. **Read the owning doc.** If an owning doc contradicts a decision here, the doc is
 > either correct (it was folded) or stale (it wasn't) — check the doc's amendment date against the
 > round date and fix the doc, never work from this memo. Current contract shapes live in owning
 > docs 01–03 and 05–06/09–12.
+
+## ⚠ Read before citing any `D<n>`: TWO independent D-series exist
+
+**A bare `D22` is ambiguous, and the two `D22`s are unrelated decisions.**
+
+| Series | Range | Lives in | Cite it as |
+|---|---|---|---|
+| **Reconciliation series** — the cross-doc decisions in THIS memo | `D1`–`D133` | this file | `D22` (bare) |
+| **Row-model series** — three row types, eight statuses, containment, delegation shapes | `row-model D1`–`row-model D24` | doc 03 §9 (ratified 2026-07-24/25) | **`row-model D22`**, prefix mandatory |
+
+The collision is live, not hypothetical: this memo's **D22** is the *contract-shape + guards owner
+split* (doc 09 owns write-safety shapes), while doc 03's **row-model D22** is *the status vocabulary
+shortens — `Verified done` renders as `Done`*. They share nothing but the number, and D126 amends
+the row-model one. **Never write a row-model decision without the `row-model` prefix**, and when you
+read a bare `D<n>` in a doc-03 presentation context, check which series it belongs to before acting
+on it.
+
+**Numbering rule for new decisions.** Take the next unused number in this memo's series and ratify it
+into its owning doc in the SAME commit. Under concurrent authoring, two agents can mint the same
+number — if you find yours already taken when you go to commit, renumber YOURS (the
+earliest-committed claim keeps the number) and re-grep `docs/rebuild/`, `src/**`, and `tests/**` for
+the id you are abandoning.
+
+**Known gap: `D131` was never issued.** It was claimed and then released during the 2026-08-04
+concurrent-authoring contention that produced D126–D133; the claiming work landed under a different
+number. No decision text was lost — `D131` appears nowhere in this repository, and it must not be
+reused, so the gap stays visible as the record of the race.
 
 ## D1 — Contract ownership matrix (one owner per concept, others reference)
 
@@ -729,11 +759,6 @@ changing those bytes, and later schema work must append v10.
 | # | Decision | Owner (normative text) |
 |---|---|---|
 | **D127** | **`kuali-timekeeper-annotation` TAKES NO IDENTITY-APPROVAL GATE: ITS WRONG-PERSON SAFETY IS THE MACHINE-VERIFIED SUBJECT BINDING (ZERO FENCE, ZERO CLICK ON MISMATCH / UNREADABLE / CHANGED-AFTER-PREPARE). SCOPED TO THIS WORKFLOW ONLY — NOT A WAIVER OF D77, WHICH STILL BINDS EVERY SEPARATION-CLASS WORKFLOW AND EVERY COMMIT THAT CONSUMES AN OPERATOR-APPROVED SUBJECT. THE EXEMPTION REQUIRES BOTH: THE RUN RESOLVES NO PERSON, AND THE WRITE IS NOT SEPARATION CLASS.** | doc 09 §14.8 (primary); doc 09 §14 D77 status + §Phase-2 transaction-proof as-built |
-
-**Two separate D-series exist — do not confuse them.** This memo's `D1–D120` are cross-doc
-reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
-types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the
-distinction at its §9 header; always cite the row-model series with the `row-model` prefix.
 
 ## Reconciliation round 26 (2026-08-04) — the controlled commit, and what the target taught
 
