@@ -10,7 +10,7 @@
  * exercised is every arm that must fail loud before or around one.
  */
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve as resolvePath } from "node:path";
 import { describe, it } from "vitest";
@@ -144,10 +144,23 @@ function recordingBindings(options: Readonly<{
   };
 }
 
+/**
+ * Every filesystem effect this suite can produce is confined to one throwaway
+ * temp root.
+ *
+ * `factory.open()` really does `mkdirSync` its profile directory, and the Duo
+ * prerequisites are really read off disk, so a suite that ran against the
+ * default config would create — and any cleanup it then wrote would DELETE —
+ * the operator's real `.auth-rebuild/`, including the Duo WebAuthn credential
+ * whose re-enrollment is the one ceremony Duo Autopilot cannot do unattended.
+ * The profile root is therefore bound to this temp root, exactly as an operator
+ * could bind it through a settings override; the real root is never named.
+ */
 function withTempRuntime(body: (input: Readonly<{ config: Config; root: string }>) => void | Promise<void>): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), "hrauto-browser-factory-"));
   const extensionDir = join(root, "duo-autopilot");
   const credential = join(root, "duo-webauthn.json");
+  const profileRoot = join(root, "profiles");
   mkdirSync(extensionDir, { recursive: true });
   writeFileSync(join(extensionDir, "manifest.json"), "{}\n");
   writeFileSync(credential, "{\"credentials\":[]}\n");
@@ -155,7 +168,7 @@ function withTempRuntime(body: (input: Readonly<{ config: Config; root: string }
   const base = resolveConfig({}, {}, CLOCK);
   const config: Config = {
     ...base,
-    paths: { ...base.paths, duoExtensionDir: extensionDir, duoCredential: credential as typeof base.paths.duoCredential },
+    paths: { ...base.paths, browserProfileRoot: profileRoot, duoExtensionDir: extensionDir, duoCredential: credential },
   };
   return Promise.resolve(body({ config, root })).finally(() => {
     rmSync(root, { recursive: true, force: true });
@@ -193,8 +206,17 @@ const OPEN_INPUT = {
 } as const;
 
 describe("worker browser session factory", () => {
-  it("derives every profile segment from the isolation contract, not literals", () => {
+  it("derives every profile segment from the isolation contract and an absolute root", () => {
+    // The production derivation is proven as a STRING: the default profile
+    // root is the isolation contract's root, resolved once and absolutely, and
+    // the credential home sits inside it. Nothing here reads or writes it.
+    const production = resolveConfig({}, {}, CLOCK).paths;
+    assert.equal(production.browserProfileRoot, resolvePath(rebuildRuntimeIsolation.browserProfileRoot));
+    assert.equal(production.duoCredential, join(production.browserProfileRoot, "duo-webauthn.json"));
+
+    const profileRoot = join(tmpdir(), "hrauto-profile-derivation");
     const directory = workerProfileDirectory({
+      profileRoot,
       isolation: rebuildRuntimeIsolation,
       workerId: WORKER_ID,
       system: "ucpath",
@@ -204,7 +226,7 @@ describe("worker browser session factory", () => {
     assert.equal(
       directory,
       resolvePath(
-        rebuildRuntimeIsolation.browserProfileRoot,
+        profileRoot,
         rebuildRuntimeIsolation.browserSessionNamespace,
         WORKER_ID,
         `ucpath-prod-${FINGERPRINT.slice(0, 12)}`,
@@ -214,12 +236,26 @@ describe("worker browser session factory", () => {
     // unreachable from this derivation, whatever the identity.
     assert.doesNotMatch(directory, /\.auth\/|hrauto-legacy/u);
 
+    // A cwd-relative root is what made a worker's profile home depend on where
+    // it was started; it is refused, never silently resolved.
+    assert.throws(
+      () => workerProfileDirectory({
+        profileRoot: rebuildRuntimeIsolation.browserProfileRoot,
+        isolation: rebuildRuntimeIsolation,
+        workerId: WORKER_ID,
+        system: "ucpath",
+        instance: "prod",
+        configFingerprint: FINGERPRINT,
+      }),
+      /path must be absolute/,
+    );
+
     const distinct = new Set([
       directory,
-      workerProfileDirectory({ isolation: rebuildRuntimeIsolation, workerId: WORKER_ID, system: "crm", instance: "prod", configFingerprint: FINGERPRINT }),
-      workerProfileDirectory({ isolation: rebuildRuntimeIsolation, workerId: WORKER_ID, system: "ucpath", instance: "test", configFingerprint: FINGERPRINT }),
-      workerProfileDirectory({ isolation: rebuildRuntimeIsolation, workerId: WORKER_ID, system: "ucpath", instance: "prod", configFingerprint: OTHER_FINGERPRINT }),
-      workerProfileDirectory({ isolation: rebuildRuntimeIsolation, workerId: WorkerIdSchema.parse("person-lookup-worker-2"), system: "ucpath", instance: "prod", configFingerprint: FINGERPRINT }),
+      workerProfileDirectory({ profileRoot, isolation: rebuildRuntimeIsolation, workerId: WORKER_ID, system: "crm", instance: "prod", configFingerprint: FINGERPRINT }),
+      workerProfileDirectory({ profileRoot, isolation: rebuildRuntimeIsolation, workerId: WORKER_ID, system: "ucpath", instance: "test", configFingerprint: FINGERPRINT }),
+      workerProfileDirectory({ profileRoot, isolation: rebuildRuntimeIsolation, workerId: WORKER_ID, system: "ucpath", instance: "prod", configFingerprint: OTHER_FINGERPRINT }),
+      workerProfileDirectory({ profileRoot, isolation: rebuildRuntimeIsolation, workerId: WorkerIdSchema.parse("person-lookup-worker-2"), system: "ucpath", instance: "prod", configFingerprint: FINGERPRINT }),
     ]);
     assert.equal(distinct.size, 5, "every identity axis must partition the profile directory");
   });
@@ -241,6 +277,7 @@ describe("worker browser session factory", () => {
       assert.equal(
         launch.profileDirectory,
         workerProfileDirectory({
+          profileRoot: config.paths.browserProfileRoot,
           isolation: rebuildRuntimeIsolation,
           workerId: WORKER_ID,
           system: "ucpath",
@@ -248,10 +285,14 @@ describe("worker browser session factory", () => {
           configFingerprint: FINGERPRINT,
         }),
       );
+      // The launch really created a profile directory — under the bound temp
+      // root, never the operator's credential home.
+      assert.ok(typeof launch.profileDirectory === "string");
+      assert.equal(existsSync(launch.profileDirectory), true);
+      assert.equal(launch.profileDirectory.startsWith(`${config.paths.browserProfileRoot}/`), true);
       assert.equal(resource.configFingerprint, FINGERPRINT);
       assert.equal(resource.system, "ucpath");
       await resource.close({ reason: "worker-stop" });
-      rmSync(rebuildRuntimeIsolation.browserProfileRoot, { recursive: true, force: true });
     });
   });
 
@@ -268,7 +309,7 @@ describe("worker browser session factory", () => {
 
       const missingCredential: Config = {
         ...config,
-        paths: { ...config.paths, duoCredential: join(root, "absent.json") as typeof config.paths.duoCredential },
+        paths: { ...config.paths, duoCredential: join(root, "absent.json") },
       };
       assert.throws(
         () => { assertDuoAutopilotReady(missingCredential); },
@@ -282,7 +323,7 @@ describe("worker browser session factory", () => {
         () => {
           assertDuoAutopilotReady({
             ...config,
-            paths: { ...config.paths, duoCredential: loosePermissions as typeof config.paths.duoCredential },
+            paths: { ...config.paths, duoCredential: loosePermissions },
           });
         },
         /duoWebauthnCredential is unavailable/,
@@ -335,7 +376,6 @@ describe("worker browser session factory", () => {
         /opened for instance prod but login requested test/,
       );
       await resource.close({ reason: "worker-stop" });
-      rmSync(rebuildRuntimeIsolation.browserProfileRoot, { recursive: true, force: true });
     });
   });
 
@@ -359,7 +399,6 @@ describe("worker browser session factory", () => {
         if (previousSecret !== undefined) process.env.UCPATH_PASSWORD = previousSecret;
       }
       await resource.close({ reason: "login-failed" });
-      rmSync(rebuildRuntimeIsolation.browserProfileRoot, { recursive: true, force: true });
     });
   });
 
@@ -386,7 +425,6 @@ describe("worker browser session factory", () => {
       );
       await resource.close({ reason: "worker-stop" });
       await dropped.close({ reason: "poisoned" });
-      rmSync(rebuildRuntimeIsolation.browserProfileRoot, { recursive: true, force: true });
     });
   });
 
@@ -431,7 +469,6 @@ describe("worker browser session factory", () => {
         hangingResource.close({ reason: "worker-stop" }),
         /did not complete within its .*proof deadline/,
       );
-      rmSync(rebuildRuntimeIsolation.browserProfileRoot, { recursive: true, force: true });
     });
   });
 
@@ -494,7 +531,6 @@ describe("worker browser session factory", () => {
         ),
         /unresolved failed-close proof/,
       );
-      rmSync(rebuildRuntimeIsolation.browserProfileRoot, { recursive: true, force: true });
     });
   });
 });

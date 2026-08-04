@@ -137,6 +137,14 @@
       "replacementRequired": true
     },
     {
+      "name": "test-runtime-root-isolation",
+      "file": "tests/unit/architecture/test-runtime-root-isolation.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/10-guard-test-architecture.md; docs/rebuild/11-clock-config-secrets.md",
+      "invariant": "No test may create, mutate, or delete a path rooted at a real runtime-isolation root (the isolation binding's state/artifact/lock/browser-profile properties, or a .auth*/.tracker* literal), directly or through a local binding; a test that constructs the real worker session factory must bind its own non-real paths.browserProfileRoot.",
+      "replacementRequired": true
+    },
+    {
       "name": "ai-advisory-no-authority",
       "file": "tests/unit/architecture/ai-advisory-no-authority.test.ts",
       "status": "planned",
