@@ -731,6 +731,25 @@ Add these to doc 10’s inventory when their owning code lands:
 12. **Demo isolation:** the dev demo stays in the legacy repo, so no rebuild production import can
     reach `components/dev/rebuild-demo/**` or its mock wire modules — structural under D93. The
     guard survives only for mock wire modules copied into the rebuild repo as test fixtures.
+13. **Browser-bundle purity:** no module the dashboard entry can value-reach may statically import a
+    Node built-in. The closure starts at the entry declared in `src/dashboard/index.html` (read, not
+    assumed) and follows every specifier that survives emission — type-only imports are exempt,
+    bare side-effect imports and dynamic `import()` are not.
+
+    `src/dashboard` imports shared `src/domain/**` contracts, so "browser code" is not a directory:
+    a `node:*` import several modules deep is browser code the moment anything under `src/dashboard`
+    can reach it. Vite's dev server replaces an externalized built-in with a proxy that throws on the
+    first property read, so the named-import BINDING alone kills the app at module evaluation — a
+    blank page before any component renders. The production build only warns and ships a bundle that
+    fails later, if at all, so dev and prod fail differently and neither can be trusted to catch it.
+
+    The required fix is structural: the browser-reachable module keeps the pure contract, and
+    anything needing a filesystem, a process, or a working directory moves to a server-only module
+    the browser never reaches. A bundler alias, a polyfill, or a browser stub for `node:path` is
+    explicitly rejected — a stubbed `resolve()` invents a plausible-but-wrong absolute path, which is
+    the silent-wrong-value failure the charter forbids. A config leaf whose default can only be
+    produced at runtime is REQUIRED in the schema and supplied by the server resolver, so a caller
+    without it gets a loud zod error naming the leaf.
 
 ---
 

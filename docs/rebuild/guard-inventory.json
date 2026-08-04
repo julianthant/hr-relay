@@ -29,7 +29,7 @@
       "file": "tests/unit/architecture/dashboard-wire-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/13-frontend-backend-integration.md",
-      "invariant": "Doc 13 \u00a78.2/\u00a78.3: src/dashboard declares no handwritten structural mirror of a *Wire contract (schema-inferred types only), and no dashboard file carries a registered workflow-id string literal \u2014 workflow identity reaches surfaces only as served data or the bundle-safe descriptor tuple, never as a branchable literal.",
+      "invariant": "Doc 13 \u00a78.2/\u00a78.3/\u00a78.13: src/dashboard declares no handwritten structural mirror of a *Wire contract (schema-inferred types only), no dashboard file carries a registered workflow-id string literal \u2014 workflow identity reaches surfaces only as served data or the bundle-safe descriptor tuple, never as a branchable literal \u2014 and the bundled-import closure of the entry declared in src/dashboard/index.html reaches no Node built-in, so a shared domain contract can never drag node:path/node:fs/node:crypto into the browser bundle.",
       "replacementRequired": true
     },
     {

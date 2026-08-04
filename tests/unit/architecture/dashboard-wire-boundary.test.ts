@@ -15,15 +15,139 @@
  *     under src/dashboard (client, surfaces, app, ds) fails. Workflow identity
  *     reaches surfaces only as data (bootstrap projections and descriptor
  *     objects), never as a literal a branch can hang off.
+ *
+ * (13) Browser-bundle purity: no module the dashboard entry can VALUE-reach may
+ *     statically import a Node built-in. `src/dashboard` imports shared domain
+ *     contracts, so a `node:*` import several modules deep — one that typechecks,
+ *     lints, and unit-tests perfectly on the server — silently becomes browser
+ *     code. This is not a theoretical boundary: `src/domain/config/schema.ts`
+ *     carried `import { join, resolve } from "node:path"` for its filesystem
+ *     path DEFAULTS, and `src/domain/commands.ts` imports its settings-override
+ *     contract, so the dashboard bundle reached it. Vite's dev server replaces
+ *     an externalized built-in with a proxy that THROWS on the first property
+ *     read, so the named-import binding alone killed the whole app at module
+ *     evaluation — a blank page, before a single component rendered. Making the
+ *     defaults lazy was not enough and never could be: the import itself has to
+ *     be gone. The production build is even more dangerous, because it only
+ *     WARNS and ships a bundle that fails later, if at all.
+ *
+ *     The fix direction this guard enforces is structural, not cosmetic: a
+ *     browser-reachable module keeps the pure contract, and anything that needs
+ *     a filesystem, a process, or a working directory moves to a server-only
+ *     module the browser never reaches (here, `src/domain/config/runtime-paths.ts`).
+ *     Aliasing, polyfilling, or stubbing `node:path` in the browser would be
+ *     strictly worse — a stubbed `resolve()` invents a plausible-but-wrong
+ *     absolute path, which is exactly the silent-wrong-value failure this
+ *     program forbids.
  */
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { builtinModules } from "node:module";
+import { join, resolve } from "node:path";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { REPO_ROOT, repoRelative, walkFiles } from "./helpers/guard-files.js";
 
 const DASHBOARD_ROOT = resolve(REPO_ROOT, "src/dashboard");
+
+/** The `@` alias in `vite.dashboard.config.ts` — kept in sync by the arm below. */
+const DASHBOARD_ALIAS = "@/";
+
+const NODE_BUILTINS = new Set(builtinModules);
+
+function isNodeBuiltin(specifier: string): boolean {
+  return specifier.startsWith("node:") || NODE_BUILTINS.has(specifier);
+}
+
+/**
+ * The module specifiers that survive into the emitted bundle: `import type …`
+ * and a clause whose every named binding is `type`-marked are erased, and so is
+ * `export type …`. Everything else — including bare side-effect imports and
+ * dynamic `import()` — ships.
+ */
+function bundledSpecifiers(file: string, source: ts.SourceFile): readonly string[] {
+  const specifiers: string[] = [];
+  visit(source, (node) => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      const clause = node.importClause;
+      if (clause?.isTypeOnly === true) return;
+      const bindings = clause?.namedBindings;
+      const everyBindingIsType = clause?.name === undefined
+        && bindings !== undefined
+        && ts.isNamedImports(bindings)
+        && bindings.elements.length > 0
+        && bindings.elements.every((element) => element.isTypeOnly);
+      if (everyBindingIsType) return;
+      specifiers.push(node.moduleSpecifier.text);
+    }
+    if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.moduleSpecifier !== undefined
+      && ts.isStringLiteral(node.moduleSpecifier)) {
+      specifiers.push(node.moduleSpecifier.text);
+    }
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const argument = node.arguments[0];
+      if (argument !== undefined && ts.isStringLiteral(argument)) specifiers.push(argument.text);
+    }
+  });
+  return specifiers.map((specifier) => specifier.startsWith(DASHBOARD_ALIAS)
+    ? `${repoRelative(DASHBOARD_ROOT)}/${specifier.slice(DASHBOARD_ALIAS.length)}`
+    : specifier)
+    .filter((specifier) => specifier !== file);
+}
+
+/**
+ * Resolves a project-internal specifier to a source file, or `undefined` when it
+ * is not one (`react`, `zod`, `./index.css`). `verbatimModuleSyntax` means every
+ * relative specifier carries a `.js` extension that maps back to `.ts`/`.tsx`.
+ */
+function resolveSourceFile(fromFile: string, specifier: string): string | undefined {
+  const base = specifier.startsWith(".")
+    ? resolve(fromFile, "..", specifier)
+    : specifier.startsWith("src/") ? join(REPO_ROOT, specifier) : undefined;
+  if (base === undefined) return undefined;
+  const candidates = base.endsWith(".js")
+    ? [`${base.slice(0, -3)}.ts`, `${base.slice(0, -3)}.tsx`]
+    : [`${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx")];
+  return candidates.find((candidate) => existsSync(candidate));
+}
+
+/** Every Node built-in the entry's bundled-import closure can reach, with the chain that got there. */
+function nodeBuiltinReach(entry: string): readonly string[] {
+  const violations: string[] = [];
+  const parents = new Map<string, string>();
+  const seen = new Set<string>();
+  const pending = [resolve(REPO_ROOT, entry)];
+  while (pending.length > 0) {
+    const file = pending.pop();
+    if (file === undefined || seen.has(file)) continue;
+    seen.add(file);
+    const source = parse(file);
+    for (const specifier of bundledSpecifiers(file, source)) {
+      if (isNodeBuiltin(specifier)) {
+        const chain = [repoRelative(file)];
+        for (let cursor = parents.get(file); cursor !== undefined; cursor = parents.get(cursor)) {
+          chain.push(repoRelative(cursor));
+        }
+        violations.push(`${repoRelative(file)}: imports Node built-in "${specifier}" — reached from ${entry} via ${chain.reverse().join(" -> ")}`);
+        continue;
+      }
+      const target = resolveSourceFile(file, specifier);
+      if (target === undefined || seen.has(target)) continue;
+      parents.set(target, file);
+      pending.push(target);
+    }
+  }
+  return violations.sort();
+}
+
+/** The entry the bundler actually uses, read from the HTML rather than assumed. */
+function dashboardEntries(): readonly string[] {
+  const html = readFileSync(join(DASHBOARD_ROOT, "index.html"), "utf8");
+  const entries = [...html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)]
+    .map((match) => `src/dashboard${match[1] ?? ""}`);
+  expect(entries.length).toBeGreaterThan(0);
+  return entries;
+}
 
 function parse(file: string): ts.SourceFile {
   return ts.createSourceFile(
@@ -64,6 +188,23 @@ describe("dashboard wire boundary (doc 13 §8)", () => {
       });
     }
     expect(violations).toEqual([]);
+  });
+
+  it("reaches no Node built-in from the dashboard bundle entry", () => {
+    const entries = dashboardEntries();
+    // The `@` alias the walker rewrites must be the one the bundler resolves.
+    expect(readFileSync(join(REPO_ROOT, "vite.dashboard.config.ts"), "utf8"))
+      .toContain('"@": resolve(import.meta.dirname, "src/dashboard")');
+    for (const entry of entries) {
+      expect(nodeBuiltinReach(entry), entry).toEqual([]);
+    }
+    // The rule only means something because the walker catches a real breach:
+    // the config RESOLVER is server-only and imports node:crypto, and the
+    // server-only path defaults it pulls in import node:path.
+    const breach = nodeBuiltinReach("src/domain/config/resolve.ts");
+    expect(breach.some((violation) => violation.includes('"node:crypto"'))).toBe(true);
+    expect(breach.some((violation) =>
+      violation.includes("src/domain/config/runtime-paths.ts") && violation.includes('"node:path"'))).toBe(true);
   });
 
   it("branches on no concrete workflow id anywhere under src/dashboard", () => {
