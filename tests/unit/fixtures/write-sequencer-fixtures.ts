@@ -389,13 +389,33 @@ const WriteFixtureCanonicalInput = defineCanonicalInput(
   [{ eid: WRITE_FIXTURE_EID }],
 );
 
-function buildDescriptor(commitVariant: "receipt" | "save-verify"): AnyWorkflowDescriptor {
+/**
+ * D136 knobs. `contractFingerprint` models an edit ANYWHERE in the descriptor's
+ * ~31-file source closure (the incidental case a parked write must survive);
+ * `version` and `commitEid` model the two semantic moves that must still refuse
+ * — a declared version bump, and a `commit.bind` that makes the permanent key
+ * name a DIFFERENT external transaction.
+ */
+interface FixtureDescriptorOptions {
+  readonly contractFingerprint?: string;
+  readonly version?: number;
+  readonly commitEid?: string;
+}
+
+function buildDescriptor(
+  commitVariant: "receipt" | "save-verify",
+  options: FixtureDescriptorOptions = {},
+): AnyWorkflowDescriptor {
   const commitContract = commitVariant === "receipt" ? WriteFixtureCommit : WriteFixtureSaveCommit;
+  const commitEid = options.commitEid;
   const fixtureFlow = flow(WriteFixtureInput)
     .transaction(WRITE_FIXTURE_NODE_ID, {
       dependsOn: [],
       prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
-      commit: { uses: commitContract, bind: ({ input }) => ({ eid: input.eid }) },
+      commit: {
+        uses: commitContract,
+        bind: ({ input }) => ({ eid: EidSchema.parse(commitEid === undefined ? input.eid : commitEid) }),
+      },
       dryRun: "stop-after-prepare",
       probePolicy: "always",
       probeToFenceMaxMs: 30_000,
@@ -407,8 +427,8 @@ function buildDescriptor(commitVariant: "receipt" | "save-verify"): AnyWorkflowD
     });
   return defineWorkflowDescriptor({
     id: WRITE_FIXTURE_WORKFLOW_ID,
-    version: 1,
-    contractFingerprint: WRITE_FIXTURE_FINGERPRINT,
+    version: options.version ?? 1,
+    contractFingerprint: FingerprintSchema.parse(options.contractFingerprint ?? WRITE_FIXTURE_FINGERPRINT),
     code: "wf",
     label: "Write Fixture",
     icon: "ShieldCheck",
@@ -429,6 +449,34 @@ function buildDescriptor(commitVariant: "receipt" | "save-verify"): AnyWorkflowD
 
 export const writeFixtureDescriptor = buildDescriptor("receipt");
 export const writeFixtureSaveDescriptor = buildDescriptor("save-verify");
+
+/* ── D136 drift variants ─────────────────────────────────────────────────── */
+
+/** What an unrelated edit to `src/domain/ids.ts` looks like to a stored run. */
+export const WRITE_FIXTURE_MOVED_FINGERPRINT = FingerprintSchema.parse("f".repeat(64));
+export const WRITE_FIXTURE_MOVED_EID = "10899999";
+
+/** Same graph, same semantics, moved source closure — must stay resolvable. */
+export const writeFixtureDescriptorAfterUnrelatedEdit = buildDescriptor("receipt", {
+  contractFingerprint: WRITE_FIXTURE_MOVED_FINGERPRINT,
+});
+
+/** Moved closure AND a moved `commit.bind` — the permanent key names another transaction. */
+export const writeFixtureDescriptorWithMovedKey = buildDescriptor("receipt", {
+  contractFingerprint: WRITE_FIXTURE_MOVED_FINGERPRINT,
+  commitEid: WRITE_FIXTURE_MOVED_EID,
+});
+
+/** Moved closure AND a declared semantic version bump — never re-derived away. */
+export const writeFixtureDescriptorAtVersion2 = buildDescriptor("receipt", {
+  contractFingerprint: WRITE_FIXTURE_MOVED_FINGERPRINT,
+  version: 2,
+});
+
+/** Moved closure AND the transaction now commits a different task entirely. */
+export const writeFixtureSaveDescriptorAfterUnrelatedEdit = buildDescriptor("save-verify", {
+  contractFingerprint: WRITE_FIXTURE_MOVED_FINGERPRINT,
+});
 
 export function writeFixtureTransactionNode(
   descriptor: AnyWorkflowDescriptor,

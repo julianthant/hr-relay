@@ -23,6 +23,7 @@ import { createCommandKernel, type CommandKernel } from "../../src/core/command-
 import { runWorkerLoop, type WorkerLoopReport } from "../../src/core/worker-loop.js";
 import { createWriteResolutionExecutor } from "../../src/core/write-recovery.js";
 import { createWriteSequencer } from "../../src/core/write-sequencer.js";
+import type { AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
@@ -42,6 +43,8 @@ import {
   WRITE_FIXTURE_WORKFLOW_ID,
   WriteFixtureProofSchema,
   writeFixtureDescriptor,
+  writeFixtureDescriptorAfterUnrelatedEdit,
+  writeFixtureDescriptorWithMovedKey,
   writeFixtureQueuedRun,
   writeFixtureSessions,
   type WriteFixtureWorld,
@@ -63,7 +66,12 @@ interface RoundTrip {
   readonly park: () => Promise<WorkerLoopReport>;
 }
 
-function roundTrip(): RoundTrip {
+/**
+ * `resolutionDescriptor` is the build the OPERATOR resolves under, which is not
+ * necessarily the build the run parked under: a parked write waits for a human,
+ * and the tree moves meanwhile (D136).
+ */
+function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDescriptor): RoundTrip {
   const root = mkdtempSync(join(tmpdir(), "hrauto-parked-write-"));
   roots.push(root);
   const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
@@ -86,13 +94,13 @@ function roundTrip(): RoundTrip {
     clock,
     ids: sequentialIdFactory("d"),
     descriptors: {
-      resolve: (workflowId) => (workflowId === WRITE_FIXTURE_WORKFLOW_ID ? writeFixtureDescriptor : undefined),
+      resolve: (workflowId) => (workflowId === WRITE_FIXTURE_WORKFLOW_ID ? resolutionDescriptor : undefined),
     },
     // The deliverable's exact requirement: the SAME AuthorityDatabase instance
     // the kernel transacts on, so `commitWriteAttempt` nests as a savepoint.
     writeResolution: createWriteResolutionExecutor({
       descriptors: {
-        resolve: (workflowId) => (workflowId === WRITE_FIXTURE_WORKFLOW_ID ? writeFixtureDescriptor : undefined),
+        resolve: (workflowId) => (workflowId === WRITE_FIXTURE_WORKFLOW_ID ? resolutionDescriptor : undefined),
       },
       authority: database,
       ids,
@@ -277,6 +285,114 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
       WRITE_FIXTURE_NODE_ID,
     );
     assert.ok(checkpoint);
+  });
+
+  /*
+   * D136 — the stranded-intent path. This is the exact live shape recorded in
+   * doc 09's Phase-2 as-built: an intent parked on 2026-08-04, then unrelated
+   * work touched a file in the descriptor's ~31-file contract closure before
+   * the operator got to it. Under the old whole-closure binding the typed
+   * resolutions refused forever and the only way out was hand-editing rows or
+   * restoring the tree; both arms must now go through.
+   */
+  it("resolves confirmed-absent after an unrelated edit moved the contract closure", async () => {
+    const harness = roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
+    await harness.park();
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(parked);
+    assert.notEqual(
+      parked.envelope.contractFingerprint,
+      writeFixtureDescriptorAfterUnrelatedEdit.contractFingerprint,
+      "the fixture must actually model a moved closure",
+    );
+
+    const result = harness.kernel.execute(resolutionCommand("resolve-write-absent", {
+      runId: WRITE_FIXTURE_RUN_ID,
+      expectedVersion: parked.version,
+      writeIntentId: intent.writeIntentId,
+      intentGeneration: intent.generation,
+    }, { evidenceNote: "five reads of an empty field; the mutation body carried no entry at the formKey" }));
+    assert.equal(result.state, "applied", "an incidental closure move may not strand a parked write");
+
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "retryable");
+    const resumed = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(resumed && resumed.lifecycle.state === "queued");
+    assert.equal(resumed.envelope.startAt, WRITE_FIXTURE_NODE_ID);
+    // The resolution releases the WRITE; it never re-plans the run. The run
+    // keeps the contract identity it was enqueued under, so doc 02 §5.3's
+    // replay binding stays exactly as strict as it was (see doc 09 §4.1).
+    assert.equal(resumed.envelope.contractFingerprint, parked.envelope.contractFingerprint);
+  });
+
+  it("resolves confirmed-present after an unrelated edit moved the contract closure", async () => {
+    const harness = roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
+    await harness.park();
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(parked);
+
+    const result = harness.kernel.execute(resolutionCommand("resolve-write-present", {
+      runId: WRITE_FIXTURE_RUN_ID,
+      expectedVersion: parked.version,
+      writeIntentId: intent.writeIntentId,
+      intentGeneration: intent.generation,
+    }, {
+      proof: {
+        schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
+        value: { transactionId: "T998877" },
+      },
+      evidenceNote: "receipt T998877 is visible in UCPath",
+    }));
+    assert.equal(result.state, "applied");
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "committed");
+  });
+
+  it("still refuses loudly when the permanent key itself moved, naming the exact check", async () => {
+    const harness = roundTrip(writeFixtureDescriptorWithMovedKey);
+    await harness.park();
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(parked);
+
+    assert.throws(
+      () => harness.kernel.execute(resolutionCommand("resolve-write-absent", {
+        runId: WRITE_FIXTURE_RUN_ID,
+        expectedVersion: parked.version,
+        writeIntentId: intent.writeIntentId,
+        intentGeneration: intent.generation,
+      }, { evidenceNote: "checked the target system" })),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /permanent-key-identity moved/);
+        assert.ok(error.message.includes(WRITE_FIXTURE_KEY), "the fenced key must be named");
+        assert.ok(error.message.includes("[held]  transaction-node"), "held checks are shown too");
+        return true;
+      },
+    );
+    // Nothing moved: the park is exactly as it was.
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
+    assert.equal(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
+  });
+
+  it("gives no arm but the typed resolutions any way out of a park", async () => {
+    const harness = roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
+    await harness.park();
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(parked);
+
+    const retry = harness.kernel.execute({
+      commandId: nextCommandId(),
+      requestedAt: WRITE_FIXTURE_NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "run",
+      type: "retry",
+      target: { runId: WRITE_FIXTURE_RUN_ID, expectedVersion: parked.version },
+    });
+    assert.equal(retry.state, "rejected");
+    assert.equal(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
+    assert.equal(parkedIntent(harness.database).status, "parked");
   });
 
   it("refuses a stale resolution against the parked generation", async () => {

@@ -49,6 +49,8 @@ import {
   WRITE_FIXTURE_WORKFLOW_ID,
   WriteFixtureProofSchema,
   writeFixtureDescriptor,
+  writeFixtureDescriptorAfterUnrelatedEdit,
+  writeFixtureDescriptorWithMovedKey,
   writeFixtureQueuedRun,
   writeFixtureSaveDescriptor,
   writeFixtureSessionManager,
@@ -441,6 +443,36 @@ describe("doc 09 §4 recovery matrix", () => {
       "the intent is untouched — a precondition refusal is not a probe verdict and parks nothing",
     );
     assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
+  });
+
+  it("D136: a worker restarted onto a moved contract closure still recovers the crash it caused", async () => {
+    const h = harness();
+    const { writeIntentId } = parkedAttemptingWrite(h);
+    h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
+
+    const decision = await h.recovery.recover({
+      descriptor: writeFixtureDescriptorAfterUnrelatedEdit, writeIntentId, signal: SIGNAL,
+    });
+    assert.deepEqual(decision, { state: "backfilled", writeIntentId, generation: 1 });
+    assert.equal(intentByKey(h.database)?.status, "committed");
+  });
+
+  it("D136: recovery still refuses loudly when the permanent key itself moved", async () => {
+    const h = harness();
+    const { writeIntentId } = parkedAttemptingWrite(h);
+    h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
+
+    await assert.rejects(
+      h.recovery.recover({ descriptor: writeFixtureDescriptorWithMovedKey, writeIntentId, signal: SIGNAL }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /refusing recovery-probe: permanent-key-identity moved/);
+        assert.ok(error.message.includes(WRITE_FIXTURE_KEY));
+        return true;
+      },
+    );
+    assert.deepEqual(h.world.events, [], "a refused binding never opens a browser session");
+    assert.equal(intentByKey(h.database)?.status, "attempting", "a binding refusal parks nothing");
   });
 });
 
