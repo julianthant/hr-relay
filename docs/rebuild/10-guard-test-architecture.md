@@ -903,6 +903,16 @@ set. The test asserts:
    strict, and in the LEGACY repo ordinary source lint is green while the legacy-test ratchet
    consumes the reviewed fingerprint manifest rather than ignoring failures or comparing only a
    total count. The `*:rebuild` script names are retired by D93.
+9. **The visual-parity lane is held to the same standard as a guard arm (D132).** `npm run
+   test:parity` (doc 13 §7, owner) is outside the vitest projects, so §5's file-set audit cannot see
+   it; `parity-reference-authority.test.ts` covers it from inside the architecture suite instead. It
+   proves the lane can FAIL in both of the ways it silently could not: a stored `.a11y.yml` /
+   `.meta.json` reference is compared and left untouched on mismatch rather than rewritten (refresh
+   is the deliberate `npm run test:parity:update`, one switch for the pixel and semantic halves
+   alike), and the served `dist/dashboard` must carry a stamp binding the working-tree input digest
+   and the emitted output digest. Both arms run against violating fixtures AND through the lane's
+   own entry points, because a check that cannot fail reads as coverage — the same failure mode as a
+   scan that resolves an empty file set (item 4).
 
 ESLint's known empty-pattern behavior is part of the ordering contract: no unmatched glob argument
 is added before the first real file in its family, and `--no-error-on-unmatched-pattern` is

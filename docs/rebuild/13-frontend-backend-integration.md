@@ -656,6 +656,36 @@ Freeze deterministic target screenshots and accessibility snapshots for at least
 The stored reference includes viewport, theme, fixture id, descriptor hash, app version, and
 capture date. A screenshot without the matching a11y snapshot is incomplete.
 
+**The reference set is an expectation, not a log (D132).** Both halves of every pair are
+**compared** on a normal `npm run test:parity`: the pixels through Playwright's baseline, the
+`.a11y.yml` tree and the `.meta.json` provenance record byte-for-byte against their stored files.
+A mismatch fails with a diff naming the reference, its fixture id, theme, viewport and variant; a
+**missing** reference fails rather than being minted. Nothing on the assert path writes a reference
+file — a failing comparison leaves the stored bytes untouched.
+
+Refreshing is one deliberate act with one switch: `npm run test:parity:update` sets `PARITY_UPDATE=1`,
+which the config hands to Playwright's `updateSnapshots` *and* the a11y/provenance writer, so the
+pixel and semantic halves can never be refreshed independently. `updateSnapshots` is `"none"`
+otherwise, and `"changed"` under the switch, so an intentional refresh produces a reviewable diff of
+exactly what moved.
+
+**The lane serves the working tree, never whatever is on disk.** `tests/parity/helpers/bundle.ts`
+builds `dist/dashboard` through the repo's own `rebuild:dashboard:web:build` before anything serves
+it, and writes a stamp binding two digests: every build input (all of `src/**`, the Vite config,
+`tsconfig.json`, `package.json`, `package-lock.json`) and every emitted output file. Each parity
+server asserts that stamp **before it binds a port** and declares what it serves — `proof:
+"working-tree"` for anything that renders the app, or an explicitly reasoned `proof: "unverified"`
+for an API-only route probe that never renders. A stale, unstamped, or post-build-edited bundle is
+refused with a legible error; it is never served.
+
+Both properties are proven by negative control in `tests/unit/architecture/parity-reference-authority.test.ts`,
+which executes the real arms — including the lane's own `captureA11yReference` and
+`startFixtureServer` entry points — against violating fixtures, in the same style as the ratchet
+arms. Rationale: an accessibility-only change once rewrote 56 `.a11y.yml` references, changed zero
+screenshots, and left the lane green; a run against a stale bundle likewise passed while testing
+code that was not in the working tree. A verification lane that cannot fail is worse than none,
+because it reads as coverage.
+
 ### 7.2 Dual-adapter parity harness during construction
 
 Use the same production components with two **test-only** data sources:

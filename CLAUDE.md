@@ -73,6 +73,9 @@ npm run test:architecture  # the guard suite alone
 npm run test:coverage      # 60/80 lines/statements/functions floors + the suite-size report
 npm run test:watch
 
+npm run test:parity        # doc 13 §7 visual/a11y parity lane — builds the bundle, ASSERTS every reference
+npm run test:parity:update # the ONE deliberate way to re-freeze a reference (PARITY_UPDATE=1)
+
 npm run rebuild:cli        # the isolated rebuild runtime (help | phase)
 npm run rebuild:dashboard  # reserved — lands with the 1g-spine BFF
 
@@ -260,6 +263,20 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-04: A reference corpus that rewrites itself documents behavior instead of holding it
+  (D132).** `npm run test:parity` asserted only the `.png` and rewrote every `.a11y.yml`/`.meta.json`
+  unconditionally, so an accessible-name change rewrote 56 references, changed zero screenshots, and
+  stayed green — and it served a `dist/dashboard` it never rebuilt, so a run could pass against code
+  that was not in the working tree. Both halves of a pair are now compared; a mismatch fails with a
+  diff naming the reference and leaves the file untouched; a missing reference fails rather than
+  being minted. `PARITY_UPDATE=1` (`npm run test:parity:update`) is the single switch driving
+  Playwright's `updateSnapshots` AND the a11y/provenance writer, so the halves cannot re-freeze
+  independently. The lane builds the bundle itself and stamps it with the working-tree input digest
+  plus the emitted output digest; every parity server asserts that stamp before binding a port and
+  must declare `proof: "working-tree"` or an explicitly reasoned `proof: "unverified"`. Both arms
+  carry negative controls executed through the lane's own entry points — the same reason the ratchet
+  arms run against violating fixtures. Generalize the shape, not the file: any "write the
+  expectation, then pass" tool is a check that cannot fail.
 - **2026-08-04: the controlled commit proved the kernel and disqualified the target (D128/D129).**
   Phase 2's ONE authorized real write fenced, clicked `Save`, got HTTP `200` and a rendered
   `Form saved`, and still persisted nothing — Kuali serializes only the CURRENT workflow step's
