@@ -270,6 +270,17 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-04: A parked write must outlive an unrelated refactor (D136).** Resolvability binds to
+  the SEMANTIC surface a resolution consumes — `workflow-identity`, `descriptor-version`,
+  `transaction-node`, `canonical-input`, `permanent-key-identity`, `binding-proof-identity` — not to
+  `descriptor.contractFingerprint`, a hash of the whole 31-file source closure. A park waits for a
+  human, so expiring it on an edit to `src/domain/ids.ts` is not a recovery path. Byte identity of
+  the closure stays the fast path (it proves every check at once); when the closure moves the checks
+  run directly, and the load-bearing one re-derives the fenced permanent key from the exact durable
+  input — a different key names a DIFFERENT external transaction. Refusals print the whole check
+  table with both fingerprints and the moved values, and `[held]`/`[MOVED]`/`[skip]` stay distinct.
+  There is no waiver arm on purpose. A resolution releases the WRITE only: the run keeps its planned
+  `contractFingerprint`, so doc 02 §5.3 replay and `executeClaimedRun` are untouched.
 - **2026-08-04: A required config leaf is a durable-schema change, and a snapshot is evidence — so
   it is read forward, never back-filled (D133).** D125's `timeouts.sessionAcquireMs` shipped with a
   default for fresh resolves and no path for stored `config_snapshots`, which parse strictly at
