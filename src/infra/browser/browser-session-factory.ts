@@ -11,10 +11,12 @@
  *    preferences: Chrome stable disabled `--load-extension`, the lightweight
  *    headless shell cannot run extensions at all, and an extension needs a
  *    persistent context (`duo-autopilot/README.md`).
- * 2. **Isolation.** The profile lives under the rebuild's own
- *    `browserProfileRoot`/`browserSessionNamespace`, namespaced per
+ * 2. **Isolation.** The profile lives under the rebuild's own absolute
+ *    `paths.browserProfileRoot` (default: the isolation contract's root) and
+ *    the isolation contract's `browserSessionNamespace`, namespaced per
  *    `(worker, system, instance, configFingerprint)` — never a literal path,
- *    never a directory the legacy runtime could also open.
+ *    never a cwd-relative one, never a directory the legacy runtime could also
+ *    open.
  * 3. **Authentication.** It hands the store's login recipe a live page plus
  *    credentials resolved through `domain/secrets.ts`, the single credential
  *    reader. The factory itself never reads the environment.
@@ -37,6 +39,7 @@ import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js"
 import type { Clock } from "../../domain/clock.js";
 import { RuntimeInstanceSchema, resolveSystemEntryUrl } from "../../domain/config/instance.js";
 import type { RuntimeInstance } from "../../domain/config/instance.js";
+import { AbsolutePathSchema } from "../../domain/config/schema.js";
 import type { Config } from "../../domain/config/schema.js";
 import {
   BrowserSessionIdSchema,
@@ -110,27 +113,39 @@ const DEFAULT_LAUNCHER: PersistentContextLauncher = {
 /**
  * The on-disk profile for one worker browser session.
  *
- * Every segment is derived from the runtime-isolation contract and the session
- * identity — there is no literal `.auth-rebuild` here, and the namespace
- * segment is what keeps a rebuild profile from ever being the legacy one. The
- * config fingerprint is part of the path because D116 forbids reusing a
- * context authenticated or configured under another run snapshot; sharing one
- * profile directory across fingerprints would reintroduce exactly that through
- * disk state.
+ * Every segment below the root is derived from the runtime-isolation contract
+ * and the session identity — there is no literal `.auth-rebuild` here, and the
+ * `browserSessionNamespace` segment is what keeps a rebuild profile from ever
+ * being the legacy one even if both roots were ever pointed at the same
+ * directory. The config fingerprint is part of the path because D116 forbids
+ * reusing a context authenticated or configured under another run snapshot;
+ * sharing one profile directory across fingerprints would reintroduce exactly
+ * that through disk state.
+ *
+ * `profileRoot` is an explicit ABSOLUTE base (`config.paths.browserProfileRoot`,
+ * whose default is the isolation contract's root resolved once in
+ * `domain/config/schema.ts`). It is a parameter rather than a re-resolution of
+ * the isolation literal for two reasons: `resolve(".auth-rebuild")` is
+ * cwd-dependent, so a worker started elsewhere would silently open a different
+ * profile home; and a caller that must NOT touch the operator's real profile
+ * root — every unit test — has to be able to say so, rather than being forced
+ * through the real credential directory. A relative root is refused loudly.
  */
 export function workerProfileDirectory(input: Readonly<{
+  profileRoot: string;
   isolation: RuntimeIsolation;
   workerId: WorkerId;
   system: BrowserSystemId;
   instance: RuntimeInstance;
   configFingerprint: Fingerprint;
 }>): string {
+  const root = AbsolutePathSchema.parse(input.profileRoot);
   const worker = WorkerIdSchema.parse(input.workerId);
   const system = BrowserSystemIdSchema.parse(input.system);
   const instance = RuntimeInstanceSchema.parse(input.instance);
   const fingerprint = FingerprintSchema.parse(input.configFingerprint);
   return resolve(
-    input.isolation.browserProfileRoot,
+    root,
     input.isolation.browserSessionNamespace,
     worker,
     `${system}-${instance}-${fingerprint.slice(0, 12)}`,
@@ -209,6 +224,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
 
     assertDuoAutopilotReady(config);
     const profileDirectory = workerProfileDirectory({
+      profileRoot: config.paths.browserProfileRoot,
       isolation, workerId, system, instance, configFingerprint,
     });
     mkdirSync(profileDirectory, { recursive: true });

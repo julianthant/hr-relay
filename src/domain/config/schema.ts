@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 import { LocalOperatorActorSchema, LOCAL_OPERATOR_ACTOR_ID } from "../ids.js";
@@ -7,7 +7,7 @@ import { deepFreeze } from "../immutability.js";
 
 const UrlSchema = z.url();
 const HttpsUrlSchema = z.url().refine((value) => value.startsWith("https://"), "URL must use HTTPS");
-const AbsolutePathSchema = z.string().min(1).refine((value) => value.startsWith("/"), "path must be absolute");
+export const AbsolutePathSchema = z.string().min(1).refine((value) => value.startsWith("/"), "path must be absolute");
 export const FiscalYearKeySchema = z.string().regex(/^FY\d{4}$/, "fiscal-year key must be FY<year>");
 export const UsDateSchema = z.string().regex(
   /^(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/\d{4}$/,
@@ -104,17 +104,50 @@ export const PROVIDER_CAPABILITY_CONFIG_KEYS = deepFreeze({
   "ai.advisory": "aiAdvisory",
 } as const satisfies Record<ProviderCapabilityId, keyof z.output<typeof ProviderBudgetConfigSchema>>);
 
-const DEFAULT_PATHS = {
-  reportsDir: resolve("data/reports"),
-  downloadsDir: resolve("data/downloads"),
-  onboardingDocsDir: resolve("data/onboarding"),
-  i9CheckTrackerPath: resolve("data/reports/i9-check-tracker.xlsx"),
-  stateRoot: resolve(".tracker-rebuild"),
-  artifactRoot: resolve(".tracker-rebuild/artifacts"),
-  duoCredential: `${rebuildRuntimeIsolation.browserProfileRoot}/duo-webauthn.json`,
-  /** The unpacked Duo Autopilot MV3 extension loaded into every browser session. */
-  duoExtensionDir: resolve("duo-autopilot"),
-} as const satisfies Record<string, string>;
+/**
+ * The rebuild's own Chromium profile root, absolute (D115/D116, doc 11 §4).
+ *
+ * The runtime-isolation contract states the root as a repo-relative literal
+ * (`.auth-rebuild`) because that is what the operational-isolation audit reads
+ * as text on both sides. A RUNTIME path may never be that literal: a worker or
+ * daemon started from any other working directory would otherwise resolve a
+ * different, empty profile root and silently re-authenticate — or, worse, write
+ * a second credential home. It is resolved exactly once per process, on first
+ * use, so every consumer receives an absolute path and `paths.browserProfileRoot`
+ * can be redirected (settings override) without any consumer re-deriving it.
+ *
+ * LAZY ON PURPOSE. This module also carries the settings-override contract that
+ * `src/domain/commands.ts` — and through it the dashboard bundle — depends on,
+ * so it is imported into the browser. `node:path` does not exist there. Resolving
+ * at module scope therefore crashed the bundle on load with `resolve is not a
+ * function`; behind a function, a browser that never materializes a filesystem
+ * default never calls it, and a runtime that does gets the same absolute path it
+ * always got. A path default is a RUNTIME concern by definition — the browser
+ * has no working directory to resolve against and no business inventing one.
+ */
+let browserProfileRootMemo: string | undefined;
+
+export function defaultBrowserProfileRoot(): string {
+  browserProfileRootMemo ??= resolve(rebuildRuntimeIsolation.browserProfileRoot);
+  return browserProfileRootMemo;
+}
+
+function defaultPaths() {
+  const profileRoot = defaultBrowserProfileRoot();
+  return {
+    reportsDir: resolve("data/reports"),
+    downloadsDir: resolve("data/downloads"),
+    onboardingDocsDir: resolve("data/onboarding"),
+    i9CheckTrackerPath: resolve("data/reports/i9-check-tracker.xlsx"),
+    stateRoot: resolve(".tracker-rebuild"),
+    artifactRoot: resolve(".tracker-rebuild/artifacts"),
+    /** Every worker browser profile is namespaced BENEATH this root. */
+    browserProfileRoot: profileRoot,
+    duoCredential: join(profileRoot, "duo-webauthn.json"),
+    /** The unpacked Duo Autopilot MV3 extension loaded into every browser session. */
+    duoExtensionDir: resolve("duo-autopilot"),
+  };
+}
 
 export const ConfigSchema = z.strictObject({
   actor: LocalOperatorActorSchema
@@ -178,9 +211,12 @@ export const ConfigSchema = z.strictObject({
     i9CheckTrackerPath: AbsolutePathSchema,
     stateRoot: AbsolutePathSchema,
     artifactRoot: AbsolutePathSchema,
-    duoCredential: z.literal(`${rebuildRuntimeIsolation.browserProfileRoot}/duo-webauthn.json`),
+    browserProfileRoot: AbsolutePathSchema,
+    duoCredential: AbsolutePathSchema,
     duoExtensionDir: AbsolutePathSchema,
-  }).default(DEFAULT_PATHS),
+    // A THUNK, not a value: see `defaultPaths` — materializing filesystem
+    // defaults at module scope is what broke the browser bundle.
+  }).default(() => defaultPaths()),
   annualDates: z.record(FiscalYearKeySchema, AnnualDateEntrySchema).default({}),
   operator: z.strictObject({ timekeeperName: z.string() }).default({ timekeeperName: "" }),
   display: z.strictObject({ screenWidth: z.number().int().positive(), screenHeight: z.number().int().positive() })
