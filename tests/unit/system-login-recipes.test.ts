@@ -3,36 +3,79 @@
  *
  * These flows drive REAL HR systems, so every arm here is about the same
  * question: can this code ever report "authenticated" without having observed
- * it? The landing predicates carry live-verified legacy knowledge and are
- * tested exhaustively; the flows are tested for their fail-loud behavior on
- * each step, including the landings that LOOK authenticated and are not.
+ * it? On 2026-08-03 the answer was yes — twice — so the arms below are written
+ * against the two shapes that produced it:
+ *
+ *   - the PUBLIC UCPath portal, which sits inside the host substring the legacy
+ *     landing predicate matched; and
+ *   - PeopleSoft's signon page, which renders at the SAME route shape as the
+ *     application it guards.
+ *
+ * Neither is distinguishable by URL, so the proof is content-level: a session
+ * cookie the server only issues after a completed sign-in, plus the absence of
+ * every sign-in form. The wrapper (`defineVerifiedLoginRecipe`) runs it on
+ * EVERY return path, so the early "already authenticated" branch is pinned here
+ * exactly as hard as the full login.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { resolveConfig } from "../../src/domain/config/resolve.js";
 import { BrowserLoginError } from "../../src/infra/browser/login-contract.js";
-import type { SystemLoginContext } from "../../src/infra/browser/login-contract.js";
-import { crmLoginRecipe, isAuthenticatedCrmUrl } from "../../src/stores/crm/session.js";
-import { isAuthenticatedUcpathAppUrl, ucpathLoginRecipe } from "../../src/stores/ucpath/session.js";
-import { fakeLoginPage, type FakePageScript } from "./fixtures/fake-login-page.js";
+import type {
+  AuthenticatedApplicationEvidence,
+  SystemLoginContext,
+} from "../../src/infra/browser/login-contract.js";
+import {
+  crmLoginRecipe,
+  isAuthenticatedCrmUrl,
+  verifyCrmAuthenticatedApplication,
+} from "../../src/stores/crm/session.js";
+import {
+  isAuthenticatedUcpathAppUrl,
+  isUcpathPostSsoLanding,
+  ucpathLoginRecipe,
+  verifyUcpathAuthenticatedApplication,
+} from "../../src/stores/ucpath/session.js";
+import { fakeLoginPage, type FakeCookie, type FakePageScript } from "./fixtures/fake-login-page.js";
 
 const CONFIG = resolveConfig({}, {}, manualClock(new Date("2026-08-03T09:00:00.000Z")));
 const CREDENTIALS = Object.freeze({ userId: "fixture-user", password: "fixture-value" });
 const UCPATH_APP = "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app";
+const UCPATH_ENTRY = CONFIG.urls.ucpath.prod.smartHr;
 const UCPATH_PORTAL = CONFIG.urls.ucpath.prod.login;
+/** The page that produced the false pass: public, unauthenticated, same host. */
+const UCPATH_PUBLIC_PORTAL = "https://ucpath.universityofcalifornia.edu/";
 const SSO = "https://a5.ucsd.edu/idp/profile/SAML2/Redirect/SSO";
 const DISCOVERY = "https://ucpath.universityofcalifornia.edu/ucpathdiscovery/disco?entity=ucsd";
 const CRM_APP = "https://act-crm.my.site.com/hr/ONB_SearchOnboardings";
 const CRM_ENTRY = CONFIG.urls.crm.prod.entry;
 
+/** PeopleSoft's single-signon token, issued only after a completed sign-in. */
+const PS_TOKEN: FakeCookie = {
+  name: "PS_TOKEN",
+  domain: "ucphrprdpub.universityofcalifornia.edu",
+  value: "opaque",
+};
+const SID: FakeCookie = { name: "sid", domain: "act-crm.my.site.com", value: "opaque" };
+
+/** The page state of an authenticated app: no sign-in form of any kind. */
+const NO_SIGN_IN_FORMS = {
+  "sso-submit": { count: 0 },
+  "peoplesoft-signon": { count: 0 },
+  "communities-login": { count: 0 },
+} as const;
+
 function contextFor(script: FakePageScript, signal = new AbortController().signal): {
   context: SystemLoginContext;
   harness: ReturnType<typeof fakeLoginPage>;
+  evidence: () => readonly AuthenticatedApplicationEvidence[];
 } {
   const harness = fakeLoginPage(script);
+  const recorded: AuthenticatedApplicationEvidence[] = [];
   return {
     harness,
+    evidence: () => Object.freeze([...recorded]),
     context: {
       page: harness.page,
       config: CONFIG,
@@ -40,14 +83,25 @@ function contextFor(script: FakePageScript, signal = new AbortController().signa
       label: "worker person-lookup-worker-1 session",
       signal,
       credentials: CREDENTIALS,
+      recordEvidence: (evidence) => recorded.push(evidence),
     },
   };
 }
 
 describe("ucpath landing verification", () => {
-  it("accepts only the authenticated application URL", () => {
+  it("requires a PeopleSoft application route, not just the UC host", () => {
     assert.equal(isAuthenticatedUcpathAppUrl(UCPATH_APP), true);
+    assert.equal(isAuthenticatedUcpathAppUrl(UCPATH_ENTRY), true);
+    assert.equal(
+      isAuthenticatedUcpathAppUrl(
+        "https://ucphrprdpub.universityofcalifornia.edu/psp/ucphrprd/EMPLOYEE/HRMS/c/profile",
+      ),
+      true,
+    );
     for (const rejected of [
+      // THE regression: the public portal is inside the legacy host substring.
+      UCPATH_PUBLIC_PORTAL,
+      "https://ucpath.universityofcalifornia.edu/dashboard",
       DISCOVERY,
       SSO,
       "https://duosecurity.com/frame/prompt",
@@ -60,6 +114,15 @@ describe("ucpath landing verification", () => {
     ]) {
       assert.equal(isAuthenticatedUcpathAppUrl(rejected), false, rejected);
     }
+  });
+
+  it("keeps the post-SSO WAIT predicate deliberately wider than the proof", () => {
+    // The portal IS a legitimate place for the SSO chain to come back to; it is
+    // simply not the application. Conflating the two is the defect.
+    assert.equal(isUcpathPostSsoLanding(UCPATH_PUBLIC_PORTAL), true);
+    assert.equal(isAuthenticatedUcpathAppUrl(UCPATH_PUBLIC_PORTAL), false);
+    assert.equal(isUcpathPostSsoLanding(DISCOVERY), false);
+    assert.equal(isUcpathPostSsoLanding(SSO), false);
   });
 });
 
@@ -77,16 +140,158 @@ describe("crm landing verification", () => {
   });
 });
 
+describe("authenticated-application proof", () => {
+  it("proves a UCPath session from the session cookie AND the absent sign-in forms", async () => {
+    const { context, evidence } = contextFor({
+      url: UCPATH_APP,
+      elements: NO_SIGN_IN_FORMS,
+      cookies: [PS_TOKEN],
+    });
+    const probe = await verifyUcpathAuthenticatedApplication(context);
+    assert.ok(probe.authenticated);
+    assert.equal(probe.evidence.system, "ucpath");
+    assert.equal(probe.evidence.url, UCPATH_APP);
+    assert.match(probe.evidence.positive, /PS_TOKEN session cookie/);
+    assert.match(probe.evidence.negative, /TritON SSO form is absent/);
+    assert.match(probe.evidence.negative, /PeopleSoft signon form is absent/);
+    // A probe is not an assertion: nothing is recorded until something asserts.
+    assert.deepEqual(evidence(), []);
+  });
+
+  it("refuses the public portal even when a session cookie exists", async () => {
+    const { context } = contextFor({
+      url: UCPATH_PUBLIC_PORTAL,
+      elements: NO_SIGN_IN_FORMS,
+      cookies: [PS_TOKEN],
+    });
+    const probe = await verifyUcpathAuthenticatedApplication(context);
+    assert.ok(!probe.authenticated);
+    assert.match(probe.reason, /not a UCPath PeopleSoft application route/);
+  });
+
+  it("refuses the PeopleSoft signon page, which shares the application's URL shape", async () => {
+    // Exactly the 2026-08-03 page: right host, right route, titled
+    // "Oracle PeopleSoft Sign-in", no session, signon form rendered.
+    const { context } = contextFor({
+      url: UCPATH_ENTRY,
+      elements: { ...NO_SIGN_IN_FORMS, "peoplesoft-signon": { count: 1 } },
+    });
+    const probe = await verifyUcpathAuthenticatedApplication(context);
+    assert.ok(!probe.authenticated);
+    // The cookie is checked first, so THAT is what indicts the page; the form
+    // is the backstop for a session that exists but has dropped to signon.
+    assert.match(probe.reason, /never issued its PS_TOKEN session cookie/);
+
+    const withStaleSession = contextFor({
+      url: UCPATH_ENTRY,
+      elements: { ...NO_SIGN_IN_FORMS, "peoplesoft-signon": { count: 1 } },
+      cookies: [PS_TOKEN],
+    });
+    const second = await verifyUcpathAuthenticatedApplication(withStaleSession.context);
+    assert.ok(!second.authenticated);
+    assert.match(second.reason, /PeopleSoft signon form is still present/);
+  });
+
+  it("refuses a page still showing the UCSD SSO form", async () => {
+    const { context } = contextFor({
+      url: UCPATH_APP,
+      elements: { ...NO_SIGN_IN_FORMS, "sso-submit": { count: 1 } },
+      cookies: [PS_TOKEN],
+    });
+    const probe = await verifyUcpathAuthenticatedApplication(context);
+    assert.ok(!probe.authenticated);
+    assert.match(probe.reason, /TritON SSO form is still present/);
+  });
+
+  it("does not accept PS_TOKENEXPIRE, a blank token, or a foreign domain", async () => {
+    for (const issued of [
+      { ...PS_TOKEN, name: "PS_TOKENEXPIRE" },
+      { ...PS_TOKEN, value: "" },
+      { ...PS_TOKEN, domain: "ucpath.ucsd.edu" },
+    ]) {
+      const { context } = contextFor({
+        url: UCPATH_APP,
+        elements: NO_SIGN_IN_FORMS,
+        cookies: [issued],
+      });
+      const probe = await verifyUcpathAuthenticatedApplication(context);
+      assert.ok(!probe.authenticated, `${issued.name} ${issued.domain}`);
+      assert.match(probe.reason, /never issued its PS_TOKEN session cookie/);
+    }
+  });
+
+  it("treats an unreadable cookie store as unproven, never as proven", async () => {
+    const { context } = contextFor({
+      url: UCPATH_APP,
+      elements: NO_SIGN_IN_FORMS,
+      cookieStoreFailsWith: "context detached",
+    });
+    const probe = await verifyUcpathAuthenticatedApplication(context);
+    assert.ok(!probe.authenticated);
+    assert.match(probe.reason, /could not be read, so UCPath PeopleSoft cannot be proven/);
+  });
+
+  it("proves a CRM session from the Salesforce session cookie and absent forms", async () => {
+    const { context } = contextFor({ url: CRM_APP, elements: NO_SIGN_IN_FORMS, cookies: [SID] });
+    const probe = await verifyCrmAuthenticatedApplication(context);
+    assert.ok(probe.authenticated);
+    assert.match(probe.evidence.positive, /sid session cookie for my\.site\.com/);
+
+    const noSession = contextFor({ url: CRM_APP, elements: NO_SIGN_IN_FORMS });
+    const refused = await verifyCrmAuthenticatedApplication(noSession.context);
+    assert.ok(!refused.authenticated);
+    assert.match(refused.reason, /never issued its sid session cookie/);
+
+    const communitiesLogin = contextFor({
+      url: CRM_APP,
+      elements: { ...NO_SIGN_IN_FORMS, "communities-login": { count: 1 } },
+      cookies: [SID],
+    });
+    const refusedForm = await verifyCrmAuthenticatedApplication(communitiesLogin.context);
+    assert.ok(!refusedForm.authenticated);
+    assert.match(refusedForm.reason, /Communities login form is still present/);
+  });
+});
+
 describe("ucpath login recipe", () => {
-  it("reuses an already-authenticated page without navigating", async () => {
-    const { context, harness } = contextFor({ url: UCPATH_APP });
+  it("reuses a PROVEN session without navigating, and records what proved it", async () => {
+    const { context, harness, evidence } = contextFor({
+      url: UCPATH_APP,
+      elements: NO_SIGN_IN_FORMS,
+      cookies: [PS_TOKEN],
+    });
     assert.equal(await ucpathLoginRecipe(context), "already-authenticated");
     assert.deepEqual(harness.actions(), []);
     assert.deepEqual(harness.filled(), []);
+    assert.equal(evidence().length, 1);
+    assert.match(evidence()[0]?.positive ?? "", /PS_TOKEN/);
+  });
+
+  it("REGRESSION: the public portal never short-circuits the login", async () => {
+    // The exact false pass. `goto` lands on the public portal, which the legacy
+    // predicate accepted; the recipe must keep going into the SSO chain, and —
+    // with no SSO form scripted — fail loud rather than report success.
+    const { context, harness } = contextFor({
+      url: "about:blank",
+      navigation: { [UCPATH_PORTAL]: UCPATH_PUBLIC_PORTAL },
+      elements: {
+        "portal-login": { navigatesTo: SSO },
+        "sso-submit": { count: 0 },
+      },
+      // A cookie jar that would satisfy the positive fact if the URL were an
+      // application route: the refusal has to come from the URL, not luck.
+      cookies: [PS_TOKEN],
+    });
+    await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
+      assert.ok(error instanceof BrowserLoginError);
+      assert.equal(error.step, "sso-form");
+      return true;
+    });
+    assert.equal(harness.actions().includes("click:portal-login"), true);
   });
 
   it("walks portal → campus discovery → SSO → verified landing", async () => {
-    const { context, harness } = contextFor({
+    const { context, harness, evidence } = contextFor({
       url: "about:blank",
       navigation: { [UCPATH_PORTAL]: UCPATH_PORTAL },
       elements: {
@@ -96,8 +301,9 @@ describe("ucpath login recipe", () => {
         "sso-username": {},
         "sso-password": {},
       },
-      elementsByUrl: { [UCPATH_APP]: { "sso-submit": { count: 0 } } },
+      elementsByUrl: { [UCPATH_APP]: NO_SIGN_IN_FORMS },
       settlesTo: [UCPATH_APP],
+      cookiesByUrl: { [UCPATH_APP]: [PS_TOKEN] },
     });
     assert.equal(await ucpathLoginRecipe(context), "logged-in");
     assert.deepEqual(harness.actions(), [
@@ -111,6 +317,48 @@ describe("ucpath login recipe", () => {
       `sso-password=${CREDENTIALS.password}`,
     ]);
     assert.equal(harness.url(), UCPATH_APP);
+    assert.equal(evidence().length, 1);
+  });
+
+  it("enters the application when SSO returns to the portal instead", async () => {
+    const { context, harness } = contextFor({
+      url: "about:blank",
+      navigation: { [UCPATH_PORTAL]: UCPATH_PORTAL, [UCPATH_ENTRY]: UCPATH_APP },
+      elements: {
+        "portal-login": { navigatesTo: SSO },
+        "sso-submit": {},
+        "sso-username": {},
+        "sso-password": {},
+      },
+      elementsByUrl: { [UCPATH_APP]: NO_SIGN_IN_FORMS },
+      settlesTo: [UCPATH_PUBLIC_PORTAL],
+      cookiesByUrl: { [UCPATH_APP]: [PS_TOKEN] },
+    });
+    assert.equal(await ucpathLoginRecipe(context), "logged-in");
+    assert.equal(harness.actions().includes(`goto:${UCPATH_ENTRY}`), true);
+    assert.equal(harness.url(), UCPATH_APP);
+  });
+
+  it("refuses a logged-in landing that never got a PeopleSoft session", async () => {
+    const { context } = contextFor({
+      url: "about:blank",
+      navigation: { [UCPATH_PORTAL]: UCPATH_PORTAL },
+      elements: {
+        "portal-login": { navigatesTo: SSO },
+        "sso-submit": {},
+        "sso-username": {},
+        "sso-password": {},
+      },
+      elementsByUrl: { [UCPATH_APP]: NO_SIGN_IN_FORMS },
+      settlesTo: [UCPATH_APP],
+    });
+    await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
+      assert.ok(error instanceof BrowserLoginError);
+      assert.equal(error.step, "verify-landing");
+      assert.match(error.message, /the login could not prove the authenticated application/);
+      assert.match(error.message, /never issued its PS_TOKEN session cookie/);
+      return true;
+    });
   });
 
   it("fails loud, naming the step, when the SSO form never renders", async () => {
@@ -128,6 +376,28 @@ describe("ucpath login recipe", () => {
       assert.match(error.message, /SSO form never rendered/);
       return true;
     });
+  });
+
+  it("fails loud, naming the stale chain, when the username field matches nothing", async () => {
+    // The 2026-08-03 CRM failure mode, pinned for every UCSD system: a
+    // relabelled TritON field must never be filled "somewhere else" or skipped.
+    const { context, harness } = contextFor({
+      url: "about:blank",
+      elements: {
+        "portal-login": { navigatesTo: SSO },
+        "sso-submit": {},
+        "sso-username": { count: 0 },
+        "sso-password": {},
+      },
+    });
+    await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
+      assert.ok(error instanceof BrowserLoginError);
+      assert.equal(error.step, "credential-fill");
+      assert.match(error.message, /username field matched no element/);
+      assert.match(error.message, /ssousername/);
+      return true;
+    });
+    assert.deepEqual(harness.filled(), [], "nothing may be typed into an unidentified page");
   });
 
   it("fails loud when Duo never clears, and never names a credential", async () => {
@@ -174,12 +444,14 @@ describe("ucpath login recipe", () => {
         "sso-username": {},
         "sso-password": {},
       },
+      elementsByUrl: { [UCPATH_APP]: { "peoplesoft-signon": { count: 0 } } },
       settlesTo: [UCPATH_APP],
+      cookiesByUrl: { [UCPATH_APP]: [PS_TOKEN] },
     });
     await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.step, "verify-landing");
-      assert.match(error.message, /SSO form is still present/);
+      assert.match(error.message, /TritON SSO form is still present/);
       return true;
     });
   });
@@ -194,6 +466,11 @@ describe("ucpath login recipe", () => {
 });
 
 describe("crm login recipe", () => {
+  const authenticatedCrm = {
+    elementsByUrl: { [CRM_APP]: NO_SIGN_IN_FORMS },
+    cookiesByUrl: { [CRM_APP]: [SID] },
+  } as const;
+
   it("selects Active Directory only when the control disagrees", async () => {
     const preselected = contextFor({
       url: "about:blank",
@@ -204,11 +481,12 @@ describe("crm login recipe", () => {
         "sso-username": {},
         "sso-password": {},
       },
-      elementsByUrl: { [CRM_APP]: { "sso-submit": { count: 0 } } },
+      ...authenticatedCrm,
       settlesTo: [CRM_APP],
     });
     assert.equal(await crmLoginRecipe(preselected.context), "logged-in");
     assert.equal(preselected.harness.actions().includes("select:login-type-select"), false);
+    assert.equal(preselected.evidence().length, 1);
 
     const wrongType = contextFor({
       url: "about:blank",
@@ -219,7 +497,7 @@ describe("crm login recipe", () => {
         "sso-username": {},
         "sso-password": {},
       },
-      elementsByUrl: { [CRM_APP]: { "sso-submit": { count: 0 } } },
+      ...authenticatedCrm,
       settlesTo: [CRM_APP],
     });
     assert.equal(await crmLoginRecipe(wrongType.context), "logged-in");
@@ -235,7 +513,7 @@ describe("crm login recipe", () => {
         "sso-username": {},
         "sso-password": {},
       },
-      elementsByUrl: { [CRM_APP]: { "sso-submit": { count: 0 } } },
+      ...authenticatedCrm,
       settlesTo: [CRM_APP],
     });
     assert.equal(await crmLoginRecipe(absent.context), "logged-in");
@@ -272,6 +550,27 @@ describe("crm login recipe", () => {
     await assert.rejects(crmLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.step, "duo-clearance");
+      return true;
+    });
+  });
+
+  it("refuses a Communities landing with no Salesforce session", async () => {
+    const { context } = contextFor({
+      url: "about:blank",
+      navigation: { [CRM_ENTRY]: SSO },
+      elements: {
+        "login-type-select": { count: 0 },
+        "sso-submit": {},
+        "sso-username": {},
+        "sso-password": {},
+      },
+      elementsByUrl: { [CRM_APP]: NO_SIGN_IN_FORMS },
+      settlesTo: [CRM_APP],
+    });
+    await assert.rejects(crmLoginRecipe(context), (error: unknown) => {
+      assert.ok(error instanceof BrowserLoginError);
+      assert.equal(error.step, "verify-landing");
+      assert.match(error.message, /never issued its sid session cookie/);
       return true;
     });
   });

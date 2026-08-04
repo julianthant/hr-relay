@@ -4,11 +4,17 @@
  *
  * Locators are classified by what the recipe ASKS FOR — the SSO submit control,
  * the username/password fields, the campus-discovery link, the portal log-in
- * control, CRM's login-type picker, the Shibboleth stale-request text — so a
- * test scripts page STATE ("the SSO form never renders") rather than selector
- * strings. If a recipe ever asks for something unclassified, the fake fails
- * loud instead of quietly reporting "not found", which would let a broken
- * recipe look like a legitimately absent element.
+ * control, CRM's login-type picker, the Shibboleth stale-request text, and the
+ * two application-side sign-in forms (PeopleSoft's signon, Salesforce
+ * Communities' login) — so a test scripts page STATE ("the SSO form never
+ * renders") rather than selector strings. If a recipe ever asks for something
+ * unclassified, the fake fails loud instead of quietly reporting "not found",
+ * which would let a broken recipe look like a legitimately absent element.
+ *
+ * The fake also serves the browser CONTEXT's cookie store, because that is
+ * where the positive half of an authentication proof lives (2026-08-03): a
+ * scripted page can look exactly like the authenticated application and still
+ * have no session cookie, which is the state a URL check could not see.
  */
 import type { Page } from "playwright";
 
@@ -19,6 +25,8 @@ export type FakeElementName =
   | "campus-link"
   | "portal-login"
   | "login-type-select"
+  | "peoplesoft-signon"
+  | "communities-login"
   | "stale-request";
 
 export interface FakeElementScript {
@@ -30,6 +38,12 @@ export interface FakeElementScript {
   readonly value?: string;
   /** Navigate the page when this element is actioned (click/select). */
   readonly navigatesTo?: string;
+}
+
+export interface FakeCookie {
+  readonly name: string;
+  readonly domain: string;
+  readonly value: string;
 }
 
 export interface FakePageScript {
@@ -45,6 +59,12 @@ export interface FakePageScript {
   readonly navigation?: Readonly<Record<string, string>>;
   /** Where a `waitForURL` settles, in order. `undefined` entries time out. */
   readonly settlesTo?: readonly (string | undefined)[];
+  /** The browser context's cookie store. Empty unless a test issues one. */
+  readonly cookies?: readonly FakeCookie[];
+  /** Cookies the context grows once the page reaches a given URL. */
+  readonly cookiesByUrl?: Readonly<Record<string, readonly FakeCookie[]>>;
+  /** Make the cookie store unreadable, so "unprovable" can be tested. */
+  readonly cookieStoreFailsWith?: string;
 }
 
 export interface FakePageHarness {
@@ -57,9 +77,11 @@ export interface FakePageHarness {
 function classify(kind: string, argument: string): FakeElementName | undefined {
   if (kind === "locator" && argument.includes("_eventId_proceed")) return "sso-submit";
   if (kind === "locator" && argument === "select") return "login-type-select";
-  if (kind === "locator" && argument.includes("j_username")) return "sso-username";
-  if (kind === "locator" && argument.includes("j_password")) return "sso-password";
-  if (kind === "label" && /user ?name|email address/i.test(argument)) return "sso-username";
+  if (kind === "locator" && argument.includes("ssousername")) return "sso-username";
+  if (kind === "locator" && argument.includes("ssopassword")) return "sso-password";
+  if (kind === "locator" && argument.includes("#userid")) return "peoplesoft-signon";
+  if (kind === "locator" && argument.includes("#username")) return "communities-login";
+  if (kind === "label" && /account id|user ?name|email address/i.test(argument)) return "sso-username";
   if (kind === "label" && /password/i.test(argument)) return "sso-password";
   if (kind === "role" && /university of california, san diego/i.test(argument)) return "campus-link";
   if (kind === "role" && /log in to ucpath/i.test(argument)) return "portal-login";
@@ -124,8 +146,16 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
     return locator;
   }
 
+  const browserContext = {
+    cookies: async (): Promise<readonly FakeCookie[]> => {
+      if (script.cookieStoreFailsWith !== undefined) throw new Error(script.cookieStoreFailsWith);
+      return [...(script.cookies ?? []), ...(script.cookiesByUrl?.[current] ?? [])];
+    },
+  };
+
   const page = {
     url: () => current,
+    context: () => browserContext,
     goto: async (target: string) => {
       actions.push(`goto:${target}`);
       current = script.navigation?.[target] ?? target;

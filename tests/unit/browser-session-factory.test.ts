@@ -30,6 +30,12 @@ import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../src/d
 import { WorkerSessionManager } from "../../src/core/worker-sessions.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import type { BrowserSystemBindings } from "../../src/infra/browser/system-bindings.js";
+import type {
+  AuthenticatedApplicationEvidence,
+  AuthenticatedApplicationVerifier,
+  AuthenticationProbe,
+  AuthenticationVerificationContext,
+} from "../../src/infra/browser/login-contract.js";
 
 const CLOCK = manualClock(new Date("2026-08-03T09:00:00.000Z"));
 const WORKER_ID = WorkerIdSchema.parse("person-lookup-worker-1");
@@ -78,6 +84,34 @@ function fakePage(options: Readonly<{ url?: string; refuseClose?: boolean }> = {
   return page;
 }
 
+/**
+ * The neutral reset now runs the system's FULL authentication proof, so the
+ * binding fake is a recording verifier rather than a URL predicate: what this
+ * suite pins is that the reset ASKS, and refuses when the answer is no.
+ */
+function verifierFor(options: Readonly<{ authenticated?: boolean; reason?: string }> = {}) {
+  const seen: string[] = [];
+  return {
+    seen: () => Object.freeze([...seen]),
+    verify: async (context: AuthenticationVerificationContext): Promise<AuthenticationProbe> => {
+      const url = context.page.url();
+      seen.push(url);
+      if (options.authenticated === false) {
+        return { authenticated: false, reason: options.reason ?? "the fake verifier refused" };
+      }
+      return {
+        authenticated: true,
+        evidence: {
+          system: "ucpath",
+          url,
+          positive: "fake PS_TOKEN session cookie",
+          negative: "fake: no sign-in form",
+        },
+      };
+    },
+  };
+}
+
 interface FakeContextHarness {
   readonly launcher: PersistentContextLauncher;
   readonly launches: () => readonly Readonly<Record<string, unknown>>[];
@@ -123,7 +157,7 @@ function fakeLauncher(options: Readonly<{
 function recordingBindings(options: Readonly<{
   onLogin?: (context: { credentials: Readonly<{ userId: string; password: string }>; label: string; instance: string }) => void;
   fail?: Error;
-  authenticatedUrl?: (url: string) => boolean;
+  verify?: AuthenticatedApplicationVerifier;
 }> = {}): BrowserSystemBindings {
   return {
     ucpath: {
@@ -138,8 +172,7 @@ function recordingBindings(options: Readonly<{
         if (options.fail !== undefined) throw options.fail;
         return "logged-in";
       },
-      isAuthenticatedUrl: options.authenticatedUrl
-        ?? ((url: string) => url.includes("universityofcalifornia.edu")),
+      verifyAuthenticated: options.verify ?? verifierFor().verify,
     },
   };
 }
@@ -402,26 +435,53 @@ describe("worker browser session factory", () => {
     });
   });
 
-  it("verifies the neutral reset landed instead of assuming reuse is safe", async () => {
+  it("runs the system's full authentication proof on the neutral reset", async () => {
     await withTempRuntime(async ({ config }) => {
       const page = fakePage();
       const harness = fakeLauncher({ page });
-      const factory = factoryFor(config, harness, recordingBindings());
+      const verifier = verifierFor();
+      const evidence: AuthenticatedApplicationEvidence[] = [];
+      const factory = new PlaywrightWorkerSessionFactory({
+        config,
+        isolation: rebuildRuntimeIsolation,
+        clock: CLOCK,
+        scheduler: NEVER_SCHEDULER,
+        newSessionId: () => SESSION_ID,
+        bindings: recordingBindings({ verify: verifier.verify }),
+        launcher: harness.launcher,
+        onAuthenticationEvidence: (observed) => evidence.push(observed),
+      });
       const resource = await factory.open(OPEN_INPUT);
       await resource.reset({ signal: new AbortController().signal });
       assert.deepEqual(page.gotoUrls, [config.urls.ucpath.prod.smartHr]);
+      // The proof ran against the page AFTER the entry navigation, and what it
+      // observed is surfaced rather than assumed.
+      assert.deepEqual(verifier.seen(), [config.urls.ucpath.prod.smartHr]);
+      assert.equal(evidence.length, 1);
+      assert.equal(evidence[0]?.positive, "fake PS_TOKEN session cookie");
 
+      // A PeopleSoft signon page passes a URL predicate and must NOT pass here.
       const droppedPage = fakePage();
       const droppedHarness = fakeLauncher({ page: droppedPage });
       const droppedFactory = factoryFor(
         config,
         droppedHarness,
-        recordingBindings({ authenticatedUrl: () => false }),
+        recordingBindings({
+          verify: verifierFor({
+            authenticated: false,
+            reason: "the PeopleSoft signon form is still present on the page",
+          }).verify,
+        }),
       );
       const dropped = await droppedFactory.open(OPEN_INPUT);
       await assert.rejects(
         dropped.reset({ signal: new AbortController().signal }),
-        /the neutral reset did not land on the authenticated application/,
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          assert.match(error.message, /the neutral reset did not land on the authenticated application/);
+          assert.match(error.message, /PeopleSoft signon form is still present/);
+          return true;
+        },
       );
       await resource.close({ reason: "worker-stop" });
       await dropped.close({ reason: "poisoned" });
