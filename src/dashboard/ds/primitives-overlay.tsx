@@ -972,6 +972,12 @@ const TOAST_TONE: Record<DsToastTone, { icon: typeof Info; accent: string; tint:
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<DsToast[]>([]);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  // A per-provider sequence, NOT a clock read. The legacy demo minted toast
+  // ids from `Date.now()` + `Math.random()`; both are banned here — the clock
+  // guard owns every time read (`clock-single-source`), and a nondeterministic
+  // id would change the DOM between two parity captures of the same state.
+  // Uniqueness within one provider is all an id was ever for.
+  const nextToastId = useRef(0);
 
   const dismiss = useCallback((id: string) => {
     const timer = timers.current.get(id);
@@ -984,7 +990,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const toast = useCallback(
     (input: Omit<DsToast, "id">) => {
-      const id = `toast-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      nextToastId.current += 1;
+      const id = `toast-${String(nextToastId.current)}`;
       setToasts((current) => [...current, { ...input, id }]);
       // A failure stays until acknowledged. Everything else clears itself at 3s.
       if (input.tone !== "danger") {
