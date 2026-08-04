@@ -92,6 +92,12 @@ export interface BrowserSessionFactoryOptions {
    * data the runtime branches on, so an absent observer changes nothing.
    */
   readonly onAuthenticationEvidence?: (evidence: AuthenticatedApplicationEvidence) => void;
+  /**
+   * Main-frame navigations, in order. Also purely diagnostic: it is how a live
+   * smoke can SHOW that a login really traversed `a5.ucsd.edu` and Duo instead
+   * of asking the reader to infer it from elapsed time.
+   */
+  readonly onNavigation?: (url: string) => void;
 }
 
 /** Resolved once per authentication; never logged, never interpolated. */
@@ -250,6 +256,12 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     try {
       const existing = context.pages();
       const page = existing[0] ?? await context.newPage();
+      const onNavigation = this.#options.onNavigation;
+      if (onNavigation !== undefined) {
+        page.on("framenavigated", (frame) => {
+          if (frame === page.mainFrame()) onNavigation(frame.url());
+        });
+      }
       const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
       const label = `worker ${workerId} ${system} session`;
       const resource: WorkerBrowserResource = {

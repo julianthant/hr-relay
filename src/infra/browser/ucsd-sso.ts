@@ -86,38 +86,47 @@ export async function raceCancellation<Result>(
  * The legacy chain (hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
  * `src/infra/auth/sso-fields.ts:19-22`:
  * `getByLabel("User name (or email address)")` → `getByLabel("Username")` →
- * `input[name="j_username"]`) matches NOTHING on today's page — the field was
- * relabelled and it was never a `j_username` Tomcat form.
+ * `input[name="j_username"]`) is LABEL-first, and the live page proves why that
+ * is the wrong shape: TritON renders the SAME field under a different label per
+ * login type, so the label answers "which realm is this form for", not "where
+ * do the credentials go".
  *
- * Live-verified 2026-08-03 against `a5.ucsd.edu`: label
- * "Account ID or email address", `id="ssousername"`,
- * `name="urn:mace:ucsd.edu:sso:username"`.
+ * Live-verified 2026-08-03 against `a5.ucsd.edu/tritON`:
  *
- * Order is deliberate: the two structural anchors (id, then the Shibboleth
- * attribute name) come first because they survive copy changes; the visible
- * label is the last resort because it is the thing that just moved. The legacy
- * candidates are NOT kept — a chain that can only match a page shape that no
- * longer exists is dead weight that hides which anchor actually matched.
+ * | login type ("Signing on using:") | username label                  |
+ * |---------------------------------|---------------------------------|
+ * | Business Systems (the default)  | "Account ID or email address"   |
+ * | Active Directory (what HR uses) | "User name (or email address)"  |
+ * | UCPath's SSO entry              | "Username"                      |
+ *
+ * `id="ssousername"` / `name="urn:mace:ucsd.edu:sso:username"` are the same on
+ * ALL of them, so the structural anchors come first and every observed label is
+ * kept behind them as a corroborating fallback. `input[name="j_username"]` did
+ * NOT come across: it matches no page here and would only mask a real break.
  */
 const SSO_USERNAME_SELECTOR = '#ssousername, input[name="urn:mace:ucsd.edu:sso:username"]';
-const SSO_USERNAME_LABEL = "Account ID or email address";
+const SSO_USERNAME_LABELS = [
+  "User name (or email address)",
+  "Account ID or email address",
+  "Username",
+] as const;
 /**
  * legacy src/infra/auth/sso-fields.ts:25-28 — password chain. Live-verified
  * still current 2026-08-03: label "Password:", `id="ssopassword"`.
  */
 const SSO_PASSWORD_SELECTOR = '#ssopassword, input[name="urn:mace:ucsd.edu:sso:password"]';
-const SSO_PASSWORD_LABEL = "Password:";
+const SSO_PASSWORD_LABELS = ["Password:", "Password"] as const;
+
+function byLabels(page: Page, base: Locator, labels: readonly string[]): Locator {
+  return labels.reduce<Locator>((chain, label) => chain.or(page.getByLabel(label)), base);
+}
 
 function usernameField(page: Page): Locator {
-  return page.locator(SSO_USERNAME_SELECTOR)
-    .or(page.getByLabel(SSO_USERNAME_LABEL))
-    .first();
+  return byLabels(page, page.locator(SSO_USERNAME_SELECTOR), SSO_USERNAME_LABELS).first();
 }
 
 function passwordField(page: Page): Locator {
-  return page.locator(SSO_PASSWORD_SELECTOR)
-    .or(page.getByLabel(SSO_PASSWORD_LABEL))
-    .first();
+  return byLabels(page, page.locator(SSO_PASSWORD_SELECTOR), SSO_PASSWORD_LABELS).first();
 }
 
 export function ssoSubmitButton(page: Page): Locator {
@@ -301,6 +310,19 @@ async function describeStalledLanding(
   }
   if (observed.includes(DUO_HOST)) {
     return "the Duo prompt never cleared; check that Duo Autopilot is loaded and its credential is current";
+  }
+  // Live-verified 2026-08-03: TritON re-renders its OWN form, on the same URL,
+  // when the first factor is rejected ("The username you entered cannot be
+  // identified" — the CRM login-type defect). Reporting that as "Duo never
+  // cleared" sent the diagnosis a whole ceremony downstream of the failure.
+  let ssoStillPresent: boolean;
+  try {
+    ssoStillPresent = await isSsoFormPresent(context.page);
+  } catch (error) {
+    return `no authenticated landing appeared, and the stalled page could not be probed further: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  if (ssoStillPresent) {
+    return "the UCSD SSO form is still on the page; the first factor was rejected, so no Duo prompt was ever reached";
   }
   return "no authenticated landing appeared";
 }
