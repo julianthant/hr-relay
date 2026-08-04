@@ -946,6 +946,7 @@ export async function executeClaimedRun(
                   `transaction node "${node.id}" raised WriteParkedError for intent ${error.writeIntentId} `
                   + `generation ${String(error.intentGeneration)}, but run ${runId} is `
                   + `"${parked.lifecycle.state}" in authority; the park signal does not match durable state`,
+                  { cause: error },
                 );
               }
               return RunExecutionOutcomeSchema.parse({

@@ -278,7 +278,9 @@ function startWorkerMaintenance(input: Readonly<{
     }
     handle = input.scheduler.schedule(clock.monotonicMs() + input.heartbeatIntervalMs, tick);
   };
-  handle = input.scheduler.schedule(clock.monotonicMs() + input.heartbeatIntervalMs, tick);
+  // The first beat runs SYNCHRONOUSLY: recovery has scheduling priority over
+  // claim expiry (doc 09 §4), so the boot sweep must precede the first claim.
+  tick();
 
   return Object.freeze({
     stop: (): void => {
