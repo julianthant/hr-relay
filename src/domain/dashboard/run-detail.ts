@@ -32,12 +32,43 @@ export const RunIdentityWireSchema = z.strictObject({
   attempt: z.number().int().positive(),
 });
 
+/**
+ * The closed `not-run` reasons a conditional node can record (doc 02 §5.5,
+ * mirrored by `RunResultRecord`'s `not-run` arm). This is the SAME vocabulary
+ * the durable result uses; the timeline never invents a third value.
+ */
+export const TimelineNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected"]);
+
 export const TimelineEventWireSchema = z.strictObject({
   noteId: NoteIdSchema,
   sequence: z.number().int().nonnegative(),
   at: IsoInstantSchema,
   label: z.string().min(1),
-  state: z.enum(["pending", "active", "done", "failed", "blocked", "cancelled"]),
+  /**
+   * `skipped` is its own arm and is NOT a flavour of `cancelled` (doc 03 §9
+   * D-status vocabulary: `Cancelled` means *"You stopped it"*). A node whose
+   * `when` was false, or that a branch did not select, was never started by
+   * anyone — presenting it as an act the operator took is exactly the kind of
+   * lie the charter forbids, independently of the durable result being right.
+   */
+  state: z.enum(["pending", "active", "done", "failed", "blocked", "cancelled", "skipped"]),
+  /**
+   * WHY a `skipped` step did not run, carried through from the executor's span
+   * rather than re-derived. Absence stays explicit and reasoned: a span that
+   * recorded no reason must say so, never borrow a plausible one.
+   */
+  notRun: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+    z.strictObject({ state: z.literal("present"), reason: TimelineNotRunReasonSchema }),
+  ]),
+}).superRefine((event, context) => {
+  if (event.state !== "skipped" && event.notRun.state === "present") {
+    context.addIssue({
+      code: "custom",
+      path: ["notRun"],
+      message: `a ${event.state} timeline event cannot carry a not-run reason`,
+    });
+  }
 });
 export const TimelineWireSchema = z.strictObject({ events: z.array(TimelineEventWireSchema) })
   .superRefine((timeline, context) => {

@@ -851,6 +851,11 @@ export async function executeClaimedRun(
                 t: "span.ended", kind: "task",
                 ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,
                 outcome: "skipped",
+                // The SAME closed reason the terminal result records for this
+                // node (D114). The timeline must be able to say *why* a step
+                // did not run, and re-deriving it from the descriptor later
+                // would be a second source for one fact.
+                notRunReason: "condition-false",
               });
               continue;
             }

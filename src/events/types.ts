@@ -53,6 +53,14 @@ export const SpanOutcomeWireSchema = z.enum([
 ]);
 export type SpanOutcomeWire = z.infer<typeof SpanOutcomeWireSchema>;
 
+/**
+ * Why a `skipped` task span did not run. Pinned against
+ * `TerminalNotRunReasonSchema` (`src/domain/run/result.ts`) — the durable
+ * result and the timeline must name a skip with the SAME closed word, or the
+ * surface and the record disagree about the same fact.
+ */
+export const SpanNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected"]);
+
 /** Why a queued row re-queued; pinned against `RequeueCauseSchema`. */
 export const SpanRequeueCauseSchema = z.enum(["reassign", "bump", "recovery", "provider-capacity"]);
 
@@ -197,6 +205,20 @@ const TaskSpanEndedSchema = z.strictObject({
   failureId: UuidSchema.optional(),
   /** Display-safe summary; never the only failure evidence. */
   errorSummary: z.string().min(1).optional(),
+  /**
+   * Present only on `skipped`, and only when the executor actually recorded a
+   * reason. Its absence means "no reason was recorded" and must stay legible
+   * as that — never be back-filled with a plausible one.
+   */
+  notRunReason: SpanNotRunReasonSchema.optional(),
+}).superRefine((event, context) => {
+  if (event.outcome !== "skipped" && event.notRunReason !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["notRunReason"],
+      message: `a ${event.outcome} task span cannot carry a not-run reason`,
+    });
+  }
 });
 
 const RunSpanEndedSchema = z.strictObject({

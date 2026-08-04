@@ -273,7 +273,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "966aa704a2b2a229139d6a22f0af36b9cee87559098826b944e325205eecc9f3",
+      "fingerprint": "02f6ef52a90cd39a381e02d1dffafa1b3b02a4f9cc4d0eb3eae269ab7ffe7fbd",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -309,7 +309,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "8d2869752a5d58ec1d9d4e4508370cba632c9852f58637ab0f8e0d48148a13da"
+          "sha256": "a64b3ce2936dba2aed59c1136406f7aee7af556cd087082900169096aa340d86"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -427,7 +427,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "02b0a0996477a95c230c4002aec5e10d948c38191429ba57d1a6fc1e0377d820",
+      "fingerprint": "dec6607878bc3cc06bd5082645d0048e461c07ee0bff5a0d8b5fabb4a596035e",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -463,7 +463,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "8d2869752a5d58ec1d9d4e4508370cba632c9852f58637ab0f8e0d48148a13da"
+          "sha256": "a64b3ce2936dba2aed59c1136406f7aee7af556cd087082900169096aa340d86"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -581,7 +581,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "3a79cd10da2e4140ae6a49ecf8a09efca2072162014f4b82ae6d12b2563721c1",
+      "fingerprint": "c729889c0d43729ddbf741c5ea93375f00b4bd430dcde58b2ce121f11824c874",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -625,7 +625,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "8d2869752a5d58ec1d9d4e4508370cba632c9852f58637ab0f8e0d48148a13da"
+          "sha256": "a64b3ce2936dba2aed59c1136406f7aee7af556cd087082900169096aa340d86"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -739,7 +739,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/fill-timekeeper-annotation"
     },
     {
-      "fingerprint": "c2834298781036c5e45821e1848a44f08232999f6b14fcd3e1f5f2fb4b7725cd",
+      "fingerprint": "18c3c7d6d6f65cb0709e7c28c6cb855e935c969e2f42c14290251e231f9039ca",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -783,7 +783,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "8d2869752a5d58ec1d9d4e4508370cba632c9852f58637ab0f8e0d48148a13da"
+          "sha256": "a64b3ce2936dba2aed59c1136406f7aee7af556cd087082900169096aa340d86"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -909,7 +909,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/read-timekeeper-annotation"
     },
     {
-      "fingerprint": "5c7638d6993c41c5d80d9cf006b1910889f10152ac86d2d882be3aa628a56ead",
+      "fingerprint": "0f3d479a4b35d81c684ad5db29a7517271e4813fd8b9fb968989a5d2b8a29e03",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -953,7 +953,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "8d2869752a5d58ec1d9d4e4508370cba632c9852f58637ab0f8e0d48148a13da"
+          "sha256": "a64b3ce2936dba2aed59c1136406f7aee7af556cd087082900169096aa340d86"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -1071,7 +1071,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/save-timekeeper-annotation"
     },
     {
-      "fingerprint": "3f4689b61ef6a53dc77dfca4fd7c3d1c28203a8428c14f12a4a9f385b1cc2c14",
+      "fingerprint": "0eb970e444ebcb7645806170575f1def6dfe7d843187bf3e156076c836857638",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1115,7 +1115,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "8d2869752a5d58ec1d9d4e4508370cba632c9852f58637ab0f8e0d48148a13da"
+          "sha256": "a64b3ce2936dba2aed59c1136406f7aee7af556cd087082900169096aa340d86"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -1245,7 +1245,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-timekeeper-annotation"
     },
     {
-      "fingerprint": "2479d46eec58f0ca69b212e17d85f62dfe432bbc7122f479427a4d9981081880",
+      "fingerprint": "b41fd1411ad08bd34a7708e14cc6f0a082b4f2cc07770b5a41961dc1b2b949d6",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1281,7 +1281,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "8d2869752a5d58ec1d9d4e4508370cba632c9852f58637ab0f8e0d48148a13da"
+          "sha256": "a64b3ce2936dba2aed59c1136406f7aee7af556cd087082900169096aa340d86"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -1403,7 +1403,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "4825386d085fad4e570d9d5ab44e37936a4737bb8106c737f07107f06f100d58",
+      "fingerprint": "70ffeb5d1590e3234a69bd806effa6da59ba92fb5ea2abae953d114bdaf9ad5d",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1431,7 +1431,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "8d2869752a5d58ec1d9d4e4508370cba632c9852f58637ab0f8e0d48148a13da"
+          "sha256": "a64b3ce2936dba2aed59c1136406f7aee7af556cd087082900169096aa340d86"
         },
         {
           "path": "src/domain/contracts/base.ts",

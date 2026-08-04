@@ -53,6 +53,13 @@ export const SpanOutcomeSchema = z.enum([
 ]);
 export type SpanOutcome = z.infer<typeof SpanOutcomeSchema>;
 
+/**
+ * Why a `skipped` task span did not run — the same closed vocabulary the
+ * durable result uses (`TerminalNotRunReasonSchema`, doc 02 §5.5). The
+ * timeline reads this; it never re-derives a skip reason from a descriptor.
+ */
+export const SpanNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected"]);
+
 /** Run/task span identity — `(runId, attempt, spanPath)` (doc 03 §1.1). */
 const RunSpanIdentityFields = {
   runId: RunIdSchema,
@@ -108,6 +115,8 @@ export const ExecutorSpanEventSchema = z.union([
     failureId: FailureIdSchema.optional(),
     /** Display-safe summary; never the only failure evidence (doc 03 §1.1). */
     errorSummary: z.string().min(1).optional(),
+    /** Only on `skipped`, and only when a reason was actually recorded. */
+    notRunReason: SpanNotRunReasonSchema.optional(),
   }),
   z.strictObject({
     t: z.literal("span.ended"),

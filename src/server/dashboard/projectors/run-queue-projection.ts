@@ -40,6 +40,7 @@ import { localDatePart } from "../../../domain/clock.js";
 import {
   DashboardDayWireSchema,
   QueueSurfaceWireSchema,
+  TERMINAL_QUEUE_STATUSES,
   type DashboardDayWire,
   type QueueSurfaceWire,
 } from "../../../domain/dashboard/projection.js";
@@ -73,6 +74,12 @@ const TaskSpanFoldSchema = z.strictObject({
   startedAt: z.iso.datetime({ offset: true }).optional(),
   endedAt: z.iso.datetime({ offset: true }).optional(),
   outcome: z.enum(["done", "failed", "cancelled", "discarded", "skipped", "interrupted", "superseded"]).optional(),
+  /**
+   * The executor's recorded skip reason, folded verbatim. Absent means the
+   * span carried none — the run-detail timeline then says exactly that rather
+   * than choosing a likely one.
+   */
+  notRunReason: z.enum(["condition-false", "branch-not-selected"]).optional(),
 });
 
 const RunFoldRecordSchema = z.strictObject({
@@ -441,6 +448,7 @@ export class RunQueueProjection {
       }
       span.endedAt = event.ts;
       span.outcome = event.outcome;
+      if (event.notRunReason !== undefined) span.notRunReason = event.notRunReason;
       row.lastEventAt = event.ts;
       row.eventCount += 1;
       return { runIds: [event.runId], workerChanged: false };
@@ -567,6 +575,33 @@ export class RunQueueProjection {
     return "queued";
   }
 
+  /**
+   * D124: the terminal instant a finished row's duration is measured against.
+   *
+   * Authority is preferred because the terminal-authority contract writes
+   * `lifecycle.endedAt` as the commit marker; the run's own `span.ended` is
+   * the fallback for a row whose status came from the span stream while
+   * authority had not settled yet. When neither exists the row says so — a
+   * terminal run with no end instant is a real (if rare) state, and naming it
+   * is the only honest option. The client never fills the gap with `now`.
+   */
+  #endedAt(
+    row: RunFoldRecord,
+    authority: RunRecord,
+    status: QueueSurfaceWire["status"],
+  ): { state: "present"; value: string } | { state: "absent"; reason: string } {
+    if (!TERMINAL_QUEUE_STATUSES.has(status)) {
+      return { state: "absent", reason: `run is ${status} and has not ended` };
+    }
+    const { lifecycle } = authority;
+    if (lifecycle.state === "terminal") return { state: "present", value: lifecycle.endedAt };
+    if (row.ended !== undefined) return { state: "present", value: row.ended.endedAt };
+    return {
+      state: "absent",
+      reason: `run reads ${status} but neither authority nor its run span recorded an end instant`,
+    };
+  }
+
   #pipeline(row: RunFoldRecord): QueueSurfaceWire["pipeline"] {
     const descriptor = this.#deps.descriptors.resolve(row.queued.workflow);
     const spanByNode = new Map<string, z.infer<typeof TaskSpanFoldSchema>>();
@@ -625,6 +660,7 @@ export class RunQueueProjection {
       resolvedInstances: Object.entries(queued.resolvedInstance).map(([system, instance]) => ({ system, instance })),
       startedAt: queued.ts,
       updatedAt: authority.updatedAt,
+      endedAt: this.#endedAt(row, authority, status),
       title: authority.displayName ?? queued.title,
       subtitle: queued.subtitle === undefined
         ? { state: "absent", reason: "the start plan proposed no subtitle" }

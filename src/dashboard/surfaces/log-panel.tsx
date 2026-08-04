@@ -187,7 +187,37 @@ const EVENT_TONE: Record<TimelineEvent["state"], { dot: string; bar: string; tex
     bar: "bg-[var(--ds-status-cancelled-mark)]",
     text: "text-[color:var(--ds-status-cancelled-fg)]",
   },
+  /**
+   * SKIPPED is not cancelled and must not read as it. `Cancelled` is a solid
+   * bar in the cancelled hue because somebody stopped the run; a step whose
+   * condition was false was never started at all, so it draws a HOLLOW ring
+   * and an outlined bar — the "nothing happened here" shape — in the faint
+   * foreground, and its accessible name says `skipped` plus the reason. Hue is
+   * never the distinguisher: shape and word are.
+   */
+  skipped: {
+    dot: "border border-[color:var(--ds-border-strong)] bg-transparent",
+    bar: "border border-dashed border-[color:var(--ds-border-strong)] bg-transparent",
+    text: "text-[color:var(--ds-fg-faint)]",
+  },
 };
+
+/** The one sentence a skipped step is allowed to say about itself. */
+const NOT_RUN_PHRASE: Record<"condition-false" | "branch-not-selected", string> = {
+  "condition-false": "its condition was false",
+  "branch-not-selected": "its branch was not selected",
+};
+
+function timelineEventLabel(event: TimelineEvent, spanSec: number | undefined): string {
+  const duration = spanSec === undefined ? "" : `, ${fmtElapsed(spanSec)}`;
+  if (event.state !== "skipped") return `${event.label} — ${event.state}${duration}`;
+  // A skipped step reports WHY it did not run, or says plainly that the reason
+  // was not recorded. It never borrows a plausible one.
+  const why = event.notRun.state === "present"
+    ? NOT_RUN_PHRASE[event.notRun.reason]
+    : "no reason was recorded";
+  return `${event.label} — skipped, did not run: ${why}`;
+}
 
 /**
  * The persistent, equal-width timeline.
@@ -219,6 +249,7 @@ function Timeline({ detail }: { detail: RunDetailWire }) {
           const next = ordered[index + 1];
           const spanSec = next === undefined ? undefined : elapsedSecondsBetween(event.at, next.at);
           const blocked = event.state === "blocked";
+          const skipped = event.state === "skipped";
           return (
             <div key={event.noteId} className="group relative min-w-0 flex-1 basis-0">
               <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
@@ -230,10 +261,12 @@ function Timeline({ detail }: { detail: RunDetailWire }) {
                     (event.state === "active" || blocked) && "animate-pulse motion-reduce:animate-none",
                   )}
                 />
-                <span className={cn(dsClip.text, dsText.micro, tone.text)}>{event.label}</span>
+                <span className={cn(dsClip.text, dsText.micro, tone.text, skipped && "line-through decoration-1")}>
+                  {event.label}
+                </span>
               </div>
               <span
-                aria-label={`${event.label} — ${event.state}${spanSec === undefined ? "" : `, ${fmtElapsed(spanSec)}`}`}
+                aria-label={timelineEventLabel(event, spanSec)}
                 className={cn(
                   "mt-[var(--ds-space-tight)] block w-full",
                   "h-[var(--ds-h-timeline-bar)]",

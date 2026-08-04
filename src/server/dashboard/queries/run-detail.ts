@@ -16,6 +16,13 @@
  *   key named in the reason rather than coercing it into a boolean verdict.
  * - note level → NoteWire level: `error→error`, `warn|waiting→warning`,
  *   everything else `info`.
+ * - task span outcome → timeline state: `done→done`, `failed→failed`,
+ *   `skipped→skipped`, `interrupted→blocked`,
+ *   `cancelled|discarded|superseded→cancelled`. `skipped` got its own arm on
+ *   2026-08-04 (D123): it used to fold into `cancelled`, which names an act
+ *   someone took, and the live exit run rendered a `condition-false` branch as
+ *   "Cancelled". A skipped row now also carries the executor's recorded
+ *   `not-run` reason, or an explicit statement that none was recorded.
  */
 import { z } from "zod";
 import { localDatePart } from "../../../domain/clock.js";
@@ -87,22 +94,36 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
   const { row, authority } = requireRun(deps, runId);
   const status = statusOf(row, authority);
 
-  const timelineEvents: { at: string; label: string; state: "pending" | "active" | "done" | "failed" | "blocked" | "cancelled"; seed: string }[] = [];
+  const timelineEvents: {
+    at: string;
+    label: string;
+    state: "pending" | "active" | "done" | "failed" | "blocked" | "cancelled" | "skipped";
+    notRun: { state: "absent"; reason: string } | { state: "present"; reason: "condition-false" | "branch-not-selected" };
+    seed: string;
+  }[] = [];
   for (const span of row.taskSpans) {
     const state = span.outcome === undefined
       ? "active"
-      : ({ done: "done", failed: "failed", cancelled: "cancelled", discarded: "cancelled", skipped: "cancelled", interrupted: "blocked", superseded: "cancelled" } as const)[span.outcome];
+      : ({ done: "done", failed: "failed", cancelled: "cancelled", discarded: "cancelled", skipped: "skipped", interrupted: "blocked", superseded: "cancelled" } as const)[span.outcome];
+    // A skip is not a cancellation, and a skip WITHOUT a recorded reason is
+    // not a skip with a guessed one. Both absences stay named.
+    const notRun = state !== "skipped"
+      ? { state: "absent", reason: "this step ran" } as const
+      : span.notRunReason === undefined
+        ? { state: "absent", reason: "this step did not run; its span recorded no reason" } as const
+        : { state: "present", reason: span.notRunReason } as const;
     // The seed carries doc 03 §1.1's whole span identity. `<trace>/<node>#<taskAttempt>`
     // repeats verbatim across RUN attempts, so a node re-run after a recovered
     // failure yields two genuinely distinct folded spans that share a path — both
     // are real history and both must render, so the attempt has to reach the id.
-    timelineEvents.push({ at: span.startedAt ?? span.endedAt ?? row.queued.ts, label: span.name, state, seed: `task:${String(span.attempt)}:${span.spanPath}` });
+    timelineEvents.push({ at: span.startedAt ?? span.endedAt ?? row.queued.ts, label: span.name, state, notRun, seed: `task:${String(span.attempt)}:${span.spanPath}` });
   }
+  const gateNotRun = { state: "absent", reason: "a gate is not a workflow step" } as const;
   for (const gate of row.openGates) {
-    timelineEvents.push({ at: gate.openedAt, label: `gate:${gate.gate}`, state: "blocked", seed: `gate-open:${gate.gate}:${gate.openedAt}` });
+    timelineEvents.push({ at: gate.openedAt, label: `gate:${gate.gate}`, state: "blocked", notRun: gateNotRun, seed: `gate-open:${gate.gate}:${gate.openedAt}` });
   }
   for (const gate of row.resolvedGates) {
-    timelineEvents.push({ at: gate.resolvedAt, label: `gate:${gate.gate}`, state: "done", seed: `gate-resolved:${gate.gate}:${gate.resolvedAt}` });
+    timelineEvents.push({ at: gate.resolvedAt, label: `gate:${gate.gate}`, state: "done", notRun: gateNotRun, seed: `gate-resolved:${gate.gate}:${gate.resolvedAt}` });
   }
   timelineEvents.sort((a, b) => a.at.localeCompare(b.at) || a.seed.localeCompare(b.seed));
 
@@ -166,6 +187,7 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
         at: event.at,
         label: event.label,
         state: event.state,
+        notRun: event.notRun,
       })),
     },
     gate,
