@@ -19,17 +19,22 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { StagedPageDiscardedError, WriteParkedError } from "../../src/core/write-sequencer.js";
 import { KualiSaveTimekeeperAnnotation } from "../../src/domain/contracts/kuali/save-timekeeper-annotation.js";
-import { KUALI_RRSS_SAVE_BUTTON } from "../../src/domain/ui/kuali-rrss-document.js";
+import {
+  KUALI_RRSS_SAVE_BUTTON,
+  KUALI_RRSS_TIMEKEEPER_FORM_KEY,
+} from "../../src/domain/ui/kuali-rrss-document.js";
 import { deriveWriteBindingProofDigest } from "../../src/domain/write-safety.js";
 import {
   AtomicWriteCommitStorageStepSchema,
   SequencedWriteCommitStepSchema,
 } from "../../src/infra/sqlite/index.js";
-import { createDeterministicKualiDriver } from "../../src/stores/kuali/driver/fake.js";
+import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../src/stores/kuali/driver/fake.js";
 import { createKualiRrssDocumentDriver } from "../../src/stores/kuali/driver/interpreter.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { fakeKualiPage } from "./fixtures/fake-kuali-page.js";
 import {
+  KUALI_ACTION_ID,
+  KUALI_DOCUMENT_NUMBER,
   KUALI_EID,
   KUALI_IDEMPOTENCY_KEY,
   KUALI_ITEM_ID,
@@ -276,14 +281,104 @@ describe("Kuali fail-closed completion — every non-present verdict parks", () 
   });
 });
 
-describe("Kuali write-safety contract shape", () => {
-  it("declares operator-only absence settlement, so no absence can authorize a retry", () => {
-    const { recoveryAbsence } = KualiSaveTimekeeperAnnotation.writeSafety.idempotency;
-    assert.equal(recoveryAbsence.kind, "operator-only");
-    assert.match(
-      recoveryAbsence.kind === "operator-only" ? recoveryAbsence.reason : "",
-      /no propagation window has been measured/,
+/**
+ * The 2026-08-04 controlled commit on doc 4489 fenced, clicked `Save`, got
+ * `200` + `Form saved`, and persisted NOTHING: a Kuali Build text gadget
+ * debounces into the document model, and only the model reaches
+ * `submitDocumentV2`. These pin both halves of the fix — the pre-fence barrier
+ * that waits for the model to take the value, and the post-click wire proof
+ * that the mutation actually carried it.
+ */
+describe("Kuali model commit — the DOM holding the value is not Kuali holding it", () => {
+  it("a value that never reaches the document model fails BEFORE the fence, with zero clicks", async () => {
+    const h = harness();
+    const { run, claim } = kualiClaimRunning(h.database, h.clock);
+    h.world.modelNeverCommits = true;
+
+    await assert.rejects(
+      h.bound(() => h.sequencer.executeTransaction(kualiContext(run, claim))),
+      /did not commit the staged timekeeper value into its document model/,
     );
+
+    // The barrier is in PREPARE, so this costs nothing durable at all: the
+    // failure happens before any intent, any fence and any click exist.
+    assertNothingHappened(h);
+  });
+
+  it("a Save whose mutation drops the staged value parks; it is never a completed write", async () => {
+    const h = harness();
+    const { run, claim } = kualiClaimRunning(h.database, h.clock);
+    h.world.commitPayloadOmitsValue = true;
+
+    await assert.rejects(
+      h.bound(() => h.sequencer.executeTransaction(kualiContext(run, claim))),
+      (error: unknown) => {
+        assert.ok(error instanceof WriteParkedError);
+        assert.equal(error.parkCode, "unknown");
+        return true;
+      },
+    );
+
+    assert.equal(clicked(h), true, "the click happened — the throw is post-fence, so it must park");
+    assert.equal(h.world.persistedTimekeeperName, "", "and it wrote nothing");
+    const intent = h.database.authority.writeIntents.findByPermanentKey("kuali", KUALI_IDEMPOTENCY_KEY);
+    assert.equal(intent?.status, "parked");
+    assert.equal(
+      h.database.authority.runCheckpoints.latest(KUALI_WORKFLOW_ID, KUALI_ITEM_ID, KUALI_NODE_ID),
+      undefined,
+      "no checkpoint: a save that carried nothing is not a save",
+    );
+  });
+
+  it("refuses to click Save with nothing staged, even holding a genuinely minted capability", async () => {
+    // A real minted capability, taken from a real completed fence — the test
+    // may not mint one itself (`src/core/write-sequencer.ts` is the only
+    // permitted minter), and a forged one would fail on the capability check
+    // before ever reaching the staging check this pins.
+    const h = harness();
+    const { run, claim } = kualiClaimRunning(h.database, h.clock);
+    await h.bound(() => h.sequencer.executeTransaction(kualiContext(run, claim)));
+    const minted = h.world.lastCapability;
+    assert.ok(minted !== undefined && minted !== null, "the completed transaction minted a capability");
+
+    const unstaged = createDeterministicKualiDriver(
+      createKualiFakeWorld({
+        actionId: KUALI_ACTION_ID,
+        documentNumber: KUALI_DOCUMENT_NUMBER,
+        displayedEid: KUALI_EID,
+      }),
+      h.clock,
+    );
+    await assert.rejects(
+      unstaged.commit(KUALI_RRSS_SAVE_BUTTON, minted as Parameters<typeof unstaged.commit>[1]),
+      /refuses to click Save without a staging on this exact page/,
+    );
+  });
+
+  it("pins the timekeeper formKey the save mutation is keyed by — it is NOT the DOM id", () => {
+    // Read live 2026-08-04 from Kuali's own `ActionPage` form template on docs
+    // 4489/4490: gadget id `BWmkKqx40` (the DOM id) → formKey `QGJ63YrCom` (what
+    // `submitDocumentV2.variables.data` uses). A check written against the DOM
+    // id would never match, so this pin is what keeps the wire proof honest.
+    assert.equal(KUALI_RRSS_TIMEKEEPER_FORM_KEY, "QGJ63YrCom");
+    assert.notEqual(KUALI_RRSS_TIMEKEEPER_FORM_KEY, "BWmkKqx40");
+  });
+});
+
+describe("Kuali write-safety contract shape", () => {
+  it("declares a stabilized absence window that is far wider than the measured propagation", () => {
+    const { recoveryAbsence } = KualiSaveTimekeeperAnnotation.writeSafety.idempotency;
+    assert.equal(recoveryAbsence.kind, "stabilized");
+    if (recoveryAbsence.kind !== "stabilized") return;
+    // Measured 2026-08-04 over four authorized write/restore cycles on doc 4490:
+    // the worst fence→trustworthy-negative was ~3.3s (click→response 3036ms plus
+    // ~283ms for Kuali's own state to agree). The window must stay comfortably
+    // above that, and a single observation may never settle a negative.
+    assert.ok(recoveryAbsence.minSinceFenceMs >= 3_300 * 5, "the window must dwarf the measured worst case");
+    assert.equal(recoveryAbsence.minSinceFenceMs, 30_000);
+    assert.equal(recoveryAbsence.consistentReads, 2);
+    assert.equal(recoveryAbsence.minBetweenReadsMs, 5_000);
+    assert.equal(recoveryAbsence.requireSameSourceState, true);
   });
 
   it("verifies through a reload read-back, not through the commit's own output", () => {
