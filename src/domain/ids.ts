@@ -216,6 +216,7 @@ export type ScenarioId = z.infer<typeof ScenarioIdSchema>;
 export type ActorId = z.infer<typeof ActorIdSchema>;
 export type TraceId = z.infer<typeof TraceIdSchema>;
 export type Fingerprint = z.infer<typeof FingerprintSchema>;
+export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
 export type ElementId = z.infer<typeof ElementIdSchema>;
 export type PageStateId = z.infer<typeof PageStateIdSchema>;
 export type ScreenId = z.infer<typeof ScreenIdSchema>;

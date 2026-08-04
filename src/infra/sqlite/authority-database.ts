@@ -36,12 +36,14 @@ import {
   DiagnosticBundleIdSchema,
   FailureFingerprintSchema,
   FingerprintSchema,
+  ItemIdSchema,
   OutboxIdSchema,
   ProviderAdmissionIdSchema,
   ProviderCapabilityIdSchema,
   RunIdSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
+  WriteIntentIdSchema,
 } from "../../domain/ids.js";
 import { nextAttemptEnvelope } from "../../domain/run/envelope.js";
 import {
@@ -304,6 +306,14 @@ type WriteIntentRepository = Readonly<{
   reopenParkedAttempt(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
   get(writeIntentId: string): z.infer<typeof WriteIntentRecordSchema> | undefined;
   findByPermanentKey(system: unknown, idempotencyKey: unknown): z.infer<typeof WriteIntentRecordSchema> | undefined;
+  /**
+   * Doc 12 §2.3/§2.5: what external writes did THIS run fence? `write_intents`
+   * has no `run_id` column — an intent outlives the run that created it, which
+   * is the point of a permanent key — so the run identity is read out of the
+   * record itself. An `observed-present` row carries no `runId` at all and is
+   * therefore correctly absent here: no run fenced it.
+   */
+  listByRun(runId: string): readonly z.infer<typeof WriteIntentRecordSchema>[];
 }>;
 
 export interface AuthorityWriteCommitHooks {
@@ -325,6 +335,8 @@ type RunCheckpointRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<RunCheckpointRecord>;
   get(workflowId: string, itemId: string, nodeId: string, attempt: number): RunCheckpointRecord | undefined;
   latest(workflowId: string, itemId: string, nodeId: string): RunCheckpointRecord | undefined;
+  /** Doc 12 §2.3: a receipt explains one logical item across every attempt. */
+  listByItem(workflowId: string, itemId: string): readonly RunCheckpointRecord[];
 }>;
 
 /**
@@ -493,7 +505,9 @@ export type AuthorityRepositories = Readonly<{
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
   versionPlans: ImmutableRepository<VersionPlanStorageRecord>;
   writeIntents: WriteIntentRepository;
-  writeAttempts: ReadRepository<z.infer<typeof WriteAttemptRecordSchema>>;
+  writeAttempts: ReadRepository<z.infer<typeof WriteAttemptRecordSchema>> & Readonly<{
+    listByIntent(writeIntentId: string): readonly z.infer<typeof WriteAttemptRecordSchema>[];
+  }>;
   durableOutbox: ReadRepository<z.infer<typeof AtomicOutboxRecordSchema>>;
   artifactOutbox: ImmutableRepository<ArtifactOutboxStorageRecord>;
   opaque: OpaqueAuthorityRepositories;
@@ -2654,6 +2668,17 @@ export class AuthorityDatabase implements Disposable {
           if (row === undefined) return undefined;
           return parseJsonRecord(RunCheckpointRecordSchema, JsonRowSchema.parse(row).record_json);
         },
+        listByItem: (workflowId: string, itemId: string) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM run_checkpoints
+            WHERE workflow = ? AND item_id = ?
+            ORDER BY attempt, node_id
+          `).all(WorkflowIdSchema.parse(workflowId), ItemIdSchema.parse(itemId));
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            RunCheckpointRecordSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
       }),
       notifications: this.#buildNotificationRepository(),
       configSnapshots: Object.freeze({
@@ -2832,9 +2857,29 @@ export class AuthorityDatabase implements Disposable {
           BrowserSystemIdSchema.parse(system),
           IdempotencyKeySchema.parse(idempotencyKey),
         ),
+        listByRun: (runId: string) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM write_intents
+            WHERE json_extract(record_json, '$.runId') = ?
+            ORDER BY created_at, record_key
+          `).all(RunIdSchema.parse(runId));
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            WriteIntentRecordSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
       }),
       writeAttempts: Object.freeze({
         get: (writeAttemptId: string) => this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema),
+        listByIntent: (writeIntentId: string) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM write_attempts WHERE write_intent_id = ? ORDER BY generation
+          `).all(WriteIntentIdSchema.parse(writeIntentId));
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            WriteAttemptRecordSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
       }),
       durableOutbox: Object.freeze({
         get: (outboxId: string) => this.#readRecord("durable_outbox", outboxId, AtomicOutboxRecordSchema),
