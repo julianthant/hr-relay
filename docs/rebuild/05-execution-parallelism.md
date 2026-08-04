@@ -326,6 +326,21 @@ Removing lanes does not preserve the fixed-sleep tax:
 For batch speed, start more workers. A warm worker amortizes login across sequential items unless a
 workflow-authored fresh boundary or failed reset requires replacement.
 
+**As-built after the Phase-1 live exit run (2026-08-04) — the budget is met at zero, and wall clock
+is not the budget.** This section's quantity is **fixed sleep time**, and nothing else. On the exit
+run (`4ebf7275-0158-49af-a78f-1f37948efb27`, master plan §Phase 1) `sleepMs` was **absent from every
+task span**: the executor emitted no fixed sleeps whatsoever, so item 4's "cumulative fixed-sleep
+time" is zero and legacy's ~24s of `waitForTimeout` on the UCPath person-org read path is removed
+rather than reduced.
+
+The same run's **total wall clock** for that read was **22.5s**, dominated by UCPath's own page
+loads. That figure is an observation and is deliberately **not** a threshold here: it is a total,
+the ~24s it is often set beside was legacy's sleep alone, and **22.5s is not materially below 24s**.
+Reporting it as a speed win would be comparing two different measurements, which is exactly the kind
+of plausible-but-unearned claim this program bans elsewhere. Whatever wall clock remains after the
+sleep tax is gone is real work at the far end of the network; reducing it is a separate exercise
+with its own evidence, not something this criterion has already claimed.
+
 ---
 
 ## 6. Failure isolation

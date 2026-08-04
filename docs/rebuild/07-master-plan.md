@@ -306,7 +306,9 @@ shape simplification rather than being normalized as editor lag.
   Session Card, Workflow Panel count) rendered from the descriptor via the single 1g-spine
   projection — verified headless with the `playwright-cli` seed→boot→assert loop (root
   `CLAUDE.md`). This criterion is not satisfiable by fixtures; that is the point of moving it here.
-  Its `descriptor-coverage` guard is green, and speed sanity is recorded.
+  Its `descriptor-coverage` guard is green, and the speed criterion — which budgets **fixed sleep
+  time**, doc 05 §5 — is met at **zero**, with wall clock recorded beside it as an observation and
+  not as a threshold.
 
   **The run.** `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, workflow
   `person-lookup`, input EID `10873698`, terminal `done` **at attempt 2**. Node walk:
@@ -331,11 +333,25 @@ shape simplification rather than being normalized as editor lag.
   Projection counts agreed across every surface (All 1 / Done 1 / workflow 1) — D81 proved by a real
   run, not only by its guard.
 
-  **Speed sanity (doc 05 §4.1).** The executor emitted **zero fixed sleeps** — no `sleepMs` on any
-  task span — and the UCPath person-org read path took **22.5s wall clock against legacy's ~24s
-  SLEEP budget alone**, so the new path is doing real work in less time than the old path spent
-  waiting. Authentication is D120 content-level proof, live-verified at ~17s (ucpath) and ~12s (crm)
-  including a real Duo ceremony.
+  **Speed sanity — what this criterion budgets is FIXED SLEEP, and it is zero (doc 05 §5).** Doc 05
+  §5 is the speed contract, and the quantity it names is the *sleep tax*: fixed `waitForTimeout`
+  sleeps are replaced by waits on real readiness predicates, and cumulative fixed-sleep time is
+  recorded per task span. **Met exactly, and at the floor:** `sleepMs` is **absent on every task
+  span** of the exit run. The executor emitted no fixed sleeps at all, because it waits on
+  conditions and never on a hardcoded duration — so legacy's ~24s of `waitForTimeout` on this path
+  is *removed*, not reduced, and there is no residual sleep budget to shrink later.
+
+  **Wall clock is recorded as an OBSERVATION, not as a pass/fail threshold.** The UCPath person-org
+  read took **22.5s end to end**, dominated by UCPath's own page loads. Stated plainly: **22.5s is
+  not materially below the old ~24s**, and it must never be reported as though it were a speed win.
+  The two numbers do not measure the same thing — 22.5s is total wall clock for the read, ~24s was
+  legacy's *sleep alone* — so comparing them proves nothing in either direction, and **no exit
+  criterion turns on the 22.5s.** What the measurement does establish is that removing the sleep tax
+  cost nothing, and that the remaining time is real work on the far side of the network. Making that
+  work faster is a Phase-2 concern and was not attempted here.
+
+  Authentication is D120 content-level proof, live-verified at ~17s (ucpath) and ~12s (crm)
+  including a real Duo ceremony — also observations, on the same footing.
 
   **Failure latency — root-caused and FIXED 2026-08-04 (D125).** The `cross-verify` cancellation took
   **262.9s** to surface. The run recovered correctly and no wrong data was produced, but 4m23s is the
