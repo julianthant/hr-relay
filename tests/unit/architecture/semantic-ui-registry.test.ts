@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "vitest";
 import { PageStateIdSchema, ScenarioIdSchema } from "../../../src/domain/ids.js";
 import { UiCatalogSchema, UiVerificationEvidenceManifestSchema } from "../../../src/domain/ui/contracts.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../src/domain/trust/preflight-scenarios.js";
 import {
+  auditUiCatalogProjections,
   buildSafeUiCatalog,
-  renderSystemUiCatalogMarkdown,
+  uiCatalogMarkdownPath,
+  uiCatalogProjections,
+  uiCatalogSystems,
 } from "../../../src/stores/ucpath/driver/catalog.js";
 import {
   CRM_UI_REGISTRY,
@@ -114,16 +117,60 @@ describe("semantic UI registry architecture", () => {
     assert.equal(new Set(ids).size, ids.length);
   });
 
-  it("keeps generated safe catalogs byte-fresh", () => {
+  it("derives the guarded projection set from the stores that publish, not from a list", () => {
     const catalog = buildSafeUiCatalog();
-    assert.deepEqual(UiCatalogSchema.parse(readJson("generated/ui-catalog.json")), catalog);
-    assert.equal(
-      readFileSync(resolve(REPO_ROOT, "src/stores/ucpath/UI-CATALOG.md"), "utf8"),
-      renderSystemUiCatalogMarkdown(catalog, "ucpath"),
+    // The set of stores that ship a semantic registry is the ONLY authority for
+    // which markdown projections must exist. `src/stores/kuali/UI-CATALOG.md`
+    // was generated but guarded nowhere precisely because that set was retyped
+    // by hand in three places; both directions are asserted so neither a
+    // registry the catalog forgot nor an orphan markdown can hide.
+    const storesRoot = resolve(REPO_ROOT, "src/stores");
+    const registryStores = readdirSync(storesRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory()
+        && existsSync(resolve(storesRoot, entry.name, "driver/ui-registry.ts")))
+      .map((entry) => entry.name)
+      .sort();
+    assert.deepEqual([...uiCatalogSystems(catalog)], registryStores);
+    assert.ok(registryStores.includes("kuali"), "the kuali registry must be inside the derived set");
+
+    const markdownStores = readdirSync(storesRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory()
+        && existsSync(resolve(storesRoot, entry.name, "UI-CATALOG.md")))
+      .map((entry) => entry.name)
+      .sort();
+    assert.deepEqual(markdownStores, registryStores, "an orphan UI-CATALOG.md has no registry behind it");
+    assert.deepEqual(
+      uiCatalogProjections(catalog).map(({ path }) => path),
+      ["generated/ui-catalog.json", ...registryStores.map((store) => `src/stores/${store}/UI-CATALOG.md`)],
     );
-    assert.equal(
-      readFileSync(resolve(REPO_ROOT, "src/stores/crm/UI-CATALOG.md"), "utf8"),
-      renderSystemUiCatalogMarkdown(catalog, "crm"),
+  });
+
+  it("keeps every generated safe projection byte-fresh", () => {
+    const catalog = buildSafeUiCatalog();
+    const read = (path: string): string | undefined => {
+      const full = resolve(REPO_ROOT, path);
+      return existsSync(full) ? readFileSync(full, "utf8") : undefined;
+    };
+    assert.deepEqual(auditUiCatalogProjections(catalog, read), []);
+    assert.deepEqual(UiCatalogSchema.parse(readJson("generated/ui-catalog.json")), catalog);
+
+    // Negative controls, one per projection. Before this guard existed the kuali
+    // arm was the one that silently passed, so it is asserted by name — but the
+    // loop proves EVERY derived projection is load-bearing, including the next
+    // store's, which no one will remember to add a case for.
+    for (const { path } of uiCatalogProjections(catalog)) {
+      const stale = auditUiCatalogProjections(catalog, (candidate) =>
+        candidate === path ? "# stale projection\n" : read(candidate));
+      assert.deepEqual(stale, [`${path} is stale — run \`npm run ui:catalog\` and commit the result`]);
+
+      const missing = auditUiCatalogProjections(catalog, (candidate) =>
+        candidate === path ? undefined : read(candidate));
+      assert.deepEqual(missing, [`${path} is missing — run \`npm run ui:catalog\` and commit the result`]);
+    }
+    assert.match(
+      auditUiCatalogProjections(catalog, (path) =>
+        path === uiCatalogMarkdownPath("kuali") ? "# stale projection\n" : read(path)).join("\n"),
+      /src\/stores\/kuali\/UI-CATALOG\.md is stale/,
     );
   });
 

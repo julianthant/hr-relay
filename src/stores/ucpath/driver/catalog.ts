@@ -1,9 +1,18 @@
 import { UiCatalogSchema } from "../../../domain/ui/contracts.js";
 import type { UiCatalog, UiCatalogEntry } from "../../../domain/ui/contracts.js";
 import { TaskIdSchema } from "../../../domain/ids.js";
+import type { BrowserSystemId } from "../../../domain/ids.js";
 import { CRM_UI_REGISTRY } from "../../crm/driver/ui-registry.js";
 import { KUALI_UI_REGISTRY } from "../../kuali/driver/ui-registry.js";
 import { UCPATH_UI_REGISTRY } from "./ui-registry.js";
+
+/** One generated artifact: its repo-relative path and its exact bytes. */
+export interface UiCatalogProjection {
+  readonly path: string;
+  readonly content: string;
+}
+
+export const UI_CATALOG_JSON_PATH = "generated/ui-catalog.json";
 
 const UCPATH_SOURCE_LINK = "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY";
 const CRM_SOURCE_LINK = "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY";
@@ -209,9 +218,62 @@ export function assertSafeUiCatalogFresh(input: unknown): UiCatalog {
   return generated;
 }
 
+/**
+ * Every system that publishes semantic UI facts, DERIVED from the built catalog
+ * rather than enumerated.
+ *
+ * The projection set used to be a hand-maintained list in three places (the
+ * generator, the freshness guard, and the CLI fixture), and `kuali` reached only
+ * the generator — so a stale `src/stores/kuali/UI-CATALOG.md` passed every gate.
+ * A fourth store would have escaped the same way, so the list is gone: the
+ * catalog's own entries decide which markdown files exist, and the guard proves
+ * that set equals the set of stores that actually ship a `driver/ui-registry.ts`.
+ */
+export function uiCatalogSystems(catalog: UiCatalog): readonly BrowserSystemId[] {
+  return [...new Set(catalog.entries.map((entry) => entry.system))].sort();
+}
+
+export function uiCatalogMarkdownPath(system: BrowserSystemId): string {
+  return `src/stores/${system}/UI-CATALOG.md`;
+}
+
+/** The complete generated projection set: the JSON, plus one markdown per publishing system. */
+export function uiCatalogProjections(catalog: UiCatalog): readonly UiCatalogProjection[] {
+  return [
+    { path: UI_CATALOG_JSON_PATH, content: `${JSON.stringify(catalog, null, 2)}\n` },
+    ...uiCatalogSystems(catalog).map((system) => ({
+      path: uiCatalogMarkdownPath(system),
+      content: renderSystemUiCatalogMarkdown(catalog, system),
+    })),
+  ];
+}
+
+/**
+ * The freshness arm, over an INJECTED reader so a negative control can hand it
+ * stale or absent bytes for one exact projection. A missing projection is a
+ * violation in its own right — an unwritten file must never read as fresh.
+ */
+export function auditUiCatalogProjections(
+  catalog: UiCatalog,
+  read: (path: string) => string | undefined,
+): readonly string[] {
+  const violations: string[] = [];
+  for (const { path, content } of uiCatalogProjections(catalog)) {
+    const current = read(path);
+    if (current === undefined) {
+      violations.push(`${path} is missing — run \`npm run ui:catalog\` and commit the result`);
+      continue;
+    }
+    if (current !== content) {
+      violations.push(`${path} is stale — run \`npm run ui:catalog\` and commit the result`);
+    }
+  }
+  return violations;
+}
+
 export function renderSystemUiCatalogMarkdown(
   catalog: UiCatalog,
-  system: "ucpath" | "crm" | "kuali",
+  system: BrowserSystemId,
 ): string {
   const entries = catalog.entries.filter((entry) => entry.system === system);
   const lines = [

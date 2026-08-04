@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { buildSafeUiCatalog } from "../../src/stores/ucpath/driver/catalog.js";
+import { buildSafeUiCatalog, uiCatalogProjections } from "../../src/stores/ucpath/driver/catalog.js";
 
 /**
  * Behavioural fixtures for the two 1d maintenance CLIs that close the legacy
@@ -36,11 +36,12 @@ import { buildSafeUiCatalog } from "../../src/stores/ucpath/driver/catalog.js";
 const CLI_TIMEOUT_MS = 180_000;
 const run = promisify(execFile);
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
-const TRACKED_PROJECTIONS = [
-  "generated/ui-catalog.json",
-  "src/stores/ucpath/UI-CATALOG.md",
-  "src/stores/crm/UI-CATALOG.md",
-] as const;
+// Derived, never listed: this used to be a hand-maintained triple that omitted
+// `src/stores/kuali/UI-CATALOG.md`, so the generator wrote a projection no
+// fixture ever read back. The generator and this fixture now agree by
+// construction, and the `semantic-ui-registry` guard pins the derived set
+// against the stores that actually ship a registry.
+const TRACKED_PROJECTIONS = uiCatalogProjections(buildSafeUiCatalog()).map(({ path }) => path);
 
 /** Exact bytes of every tracked projection at import, re-checked at the end. */
 const TRACKED_BYTES_AT_IMPORT = TRACKED_PROJECTIONS.map(

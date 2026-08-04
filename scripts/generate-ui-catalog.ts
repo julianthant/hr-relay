@@ -2,7 +2,7 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
   buildSafeUiCatalog,
-  renderSystemUiCatalogMarkdown,
+  uiCatalogProjections,
 } from "../src/stores/ucpath/driver/catalog.js";
 
 const USAGE = "usage: npm run ui:catalog -- [--out-root <path>]";
@@ -38,21 +38,11 @@ async function publishArtifact(path: string, content: string): Promise<void> {
 const outRoot = parseOutRoot(process.argv.slice(2));
 const catalog = buildSafeUiCatalog();
 
-await publishArtifact(
-  resolve(outRoot, "generated/ui-catalog.json"),
-  `${JSON.stringify(catalog, null, 2)}\n`,
-);
-await publishArtifact(
-  resolve(outRoot, "src/stores/ucpath/UI-CATALOG.md"),
-  renderSystemUiCatalogMarkdown(catalog, "ucpath"),
-);
-await publishArtifact(
-  resolve(outRoot, "src/stores/crm/UI-CATALOG.md"),
-  renderSystemUiCatalogMarkdown(catalog, "crm"),
-);
-await publishArtifact(
-  resolve(outRoot, "src/stores/kuali/UI-CATALOG.md"),
-  renderSystemUiCatalogMarkdown(catalog, "kuali"),
-);
+// The projection set is derived from the catalog, never listed here: a store
+// whose registry starts publishing facts gets its markdown written AND guarded
+// without anyone remembering to add a line.
+for (const { path, content } of uiCatalogProjections(catalog)) {
+  await publishArtifact(resolve(outRoot, path), content);
+}
 
 process.stdout.write(`Generated ${String(catalog.entries.length)} semantic UI catalog entries.\n`);
