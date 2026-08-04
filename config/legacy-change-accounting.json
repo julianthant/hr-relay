@@ -18,6 +18,19 @@
         "npm run test:coverage",
         "git diff --check"
       ]
+    },
+    {
+      "id": "d94-full-gates-2026-08-04",
+      "closedAt": "2026-08-04",
+      "evidence": [
+        "npm run typecheck",
+        "npm run lint",
+        "npm run test",
+        "npm run test:architecture",
+        "npm run test:coverage",
+        "npm run test:parity",
+        "docs/rebuild/04-reconciliation.md D130 — the (transactionNumber, approvalStatus) receipt pair is already ratified in the rebuild"
+      ]
     }
   ],
   "commits": [
@@ -729,6 +742,307 @@
           "impactRationale": "The OCR provider/environment layer serves the OCR workflow and every OCR-backed consumer; verify enrichment also delegates to Person Lookup and I-9 Lookup, so all listed consumers require recheck.",
           "rebuildRecheckIds": [
             "d94-full-gates-2026-07-31"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "4d40f5c988f858c53deddff3a7825566c51a198b",
+      "parentCommit": "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc",
+      "changes": [
+        {
+          "path": "src/systems/ucpath/CLAUDE.md",
+          "changeKind": "modified",
+          "beforeSha256": "c562816dd0f5b85109c6c6fd7b56703d32703f10c12a5ad5f5a3c834f84d8cff",
+          "afterSha256": "56f89d48a7170006e49e7619eced71d5cd1f3f467f571c0719f33da5d5efcddc",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Records the same change in the shared legacy UCPath module's contract, selector, and lesson files — the receipt pair, the two RECORD_FIELD-anchored detail selectors and their 2026-08-04 live verification, and the rule that the URL is never state evidence on that route. No executable path changes here, but these files are the ported page-state record every UCPath capability's rebuild port is read from. The rebuild already encodes the corrected proof as D130 (doc 09 §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        },
+        {
+          "path": "src/systems/ucpath/LESSONS.md",
+          "changeKind": "modified",
+          "beforeSha256": "010e7a25f50d7e63b24355bb254ded76690c9278a6885285ef3a52101fc5f9a1",
+          "afterSha256": "fb63f9f9524fb4c7cf279cef640f7b3a21f5768ad01c6453190f8a6260f208ab",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Records the same change in the shared legacy UCPath module's contract, selector, and lesson files — the receipt pair, the two RECORD_FIELD-anchored detail selectors and their 2026-08-04 live verification, and the rule that the URL is never state evidence on that route. No executable path changes here, but these files are the ported page-state record every UCPath capability's rebuild port is read from. The rebuild already encodes the corrected proof as D130 (doc 09 §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        },
+        {
+          "path": "src/systems/ucpath/SELECTORS.md",
+          "changeKind": "modified",
+          "beforeSha256": "57fb1caeac412725c3c5defb0430dd9d5d910db97d077328cf2f37368d6fb1f4",
+          "afterSha256": "28b13880b7b4ddfe118136b0b1f12e48dfcde6656ae287ad210e49d9e63cfb8e",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Records the same change in the shared legacy UCPath module's contract, selector, and lesson files — the receipt pair, the two RECORD_FIELD-anchored detail selectors and their 2026-08-04 live verification, and the rule that the URL is never state evidence on that route. No executable path changes here, but these files are the ported page-state record every UCPath capability's rebuild port is read from. The rebuild already encodes the corrected proof as D130 (doc 09 §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        },
+        {
+          "path": "src/systems/ucpath/index.ts",
+          "changeKind": "modified",
+          "beforeSha256": "799e4d5bdf7bbdc6767abd13469b87d1183a9fb19f1fe00dc8adc07f8df36d2f",
+          "afterSha256": "ff2d14d42606dc3c0f2848d65462690bbc6955247c3262854538b19523c717d7",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Production logic in the shared legacy UCPath system module: interpretPostSubmitTxnReadback stops proving post-submit success from the T-number alone (a Denied transaction carries a well-formed one) and now returns the accepted/pending/refused/unknown outcome of the (transactionNumber, approvalStatus) pair; readSubmittedHireReceipt reads that pair off the SS Smart HR transaction-detail route instead of reusing the fail-open pre-submit duplicate guard, behind two new RECORD_FIELD-anchored selectors. Every legacy capability that drives UCPath consumes this module, and its selectors and outcome rules are what the rebuild ports. The rebuild already encodes the corrected proof as D130 (doc 09 §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        },
+        {
+          "path": "src/systems/ucpath/selectors.ts",
+          "changeKind": "modified",
+          "beforeSha256": "4f6992525998eb6e3db8d2b3a4b67bb551aa0565e6a03710efd92a095d958aa5",
+          "afterSha256": "4791154cf631bd01b252b80555e56f9b2cba02a8e364119769d3c175a2677267",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Production logic in the shared legacy UCPath system module: interpretPostSubmitTxnReadback stops proving post-submit success from the T-number alone (a Denied transaction carries a well-formed one) and now returns the accepted/pending/refused/unknown outcome of the (transactionNumber, approvalStatus) pair; readSubmittedHireReceipt reads that pair off the SS Smart HR transaction-detail route instead of reusing the fail-open pre-submit duplicate guard, behind two new RECORD_FIELD-anchored selectors. Every legacy capability that drives UCPath consumes this module, and its selectors and outcome rules are what the rebuild ports. The rebuild already encodes the corrected proof as D130 (doc 09 §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        },
+        {
+          "path": "src/systems/ucpath/ss-smart-hr.ts",
+          "changeKind": "modified",
+          "beforeSha256": "6524118fb49e244442824d134484709530bf2a80a5be73bf183fd7d5cac847f2",
+          "afterSha256": "059dc4e3ac10a82317492618ea2c8d8baa8414f69a3376c8b6bafdddec904f32",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Production logic in the shared legacy UCPath system module: interpretPostSubmitTxnReadback stops proving post-submit success from the T-number alone (a Denied transaction carries a well-formed one) and now returns the accepted/pending/refused/unknown outcome of the (transactionNumber, approvalStatus) pair; readSubmittedHireReceipt reads that pair off the SS Smart HR transaction-detail route instead of reusing the fail-open pre-submit duplicate guard, behind two new RECORD_FIELD-anchored selectors. Every legacy capability that drives UCPath consumes this module, and its selectors and outcome rules are what the rebuild ports. The rebuild already encodes the corrected proof as D130 (doc 09 §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        },
+        {
+          "path": "src/systems/ucpath/transaction.ts",
+          "changeKind": "modified",
+          "beforeSha256": "1edbfd04c254d3a9a780431899ec30569b746536b45e53c1e1194ad84237bf94",
+          "afterSha256": "9cb55871baed0f7d22c42373f650920a4bdd8adfd7612bbaa07e2c4ae8adc155",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Production logic in the shared legacy UCPath system module: interpretPostSubmitTxnReadback stops proving post-submit success from the T-number alone (a Denied transaction carries a well-formed one) and now returns the accepted/pending/refused/unknown outcome of the (transactionNumber, approvalStatus) pair; readSubmittedHireReceipt reads that pair off the SS Smart HR transaction-detail route instead of reusing the fail-open pre-submit duplicate guard, behind two new RECORD_FIELD-anchored selectors. Every legacy capability that drives UCPath consumes this module, and its selectors and outcome rules are what the rebuild ports. The rebuild already encodes the corrected proof as D130 (doc 09 §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        },
+        {
+          "path": "src/workflows/onboarding/CLAUDE.md",
+          "changeKind": "modified",
+          "beforeSha256": "f7c38194ca9ef657840af3a87e56bc5dbae307f5e471d0605e729ff0e01872c2",
+          "afterSha256": "5da277c642b2ac09474ebe709808348cc200171465392224d66c6c8e013708e4",
+          "capabilityIds": [
+            "legacy-workflow-onboarding"
+          ],
+          "impactRationale": "The legacy onboarding workflow is the caller of the corrected receipt: it stops stamping a submitted hire as Done on a T-number alone and now branches on the pair into Done / Pending Approval / Transaction Refused / Needs Review without throwing (a retry would file a duplicate hire). Its CLAUDE.md records that contract. The rebuild already encodes the corrected proof as D130 (doc 09 §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        },
+        {
+          "path": "src/workflows/onboarding/workflow.ts",
+          "changeKind": "modified",
+          "beforeSha256": "3fdbf1d1ed90700c5ad7aeaa93024083e6a319ecf778bdaf0874e8648c98b8a8",
+          "afterSha256": "eca9fa65c4371731444aea7a1d7952bd276baba9b5ee531f4efe510b7a467904",
+          "capabilityIds": [
+            "legacy-workflow-onboarding"
+          ],
+          "impactRationale": "The legacy onboarding workflow is the caller of the corrected receipt: it stops stamping a submitted hire as Done on a T-number alone and now branches on the pair into Done / Pending Approval / Transaction Refused / Needs Review without throwing (a retry would file a duplicate hire). Its CLAUDE.md records that contract. The rebuild already encodes the corrected proof as D130 (doc 09 §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/nullish-literal-data-fallback.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "e47e31669abcada1e829e79f8bea3b6710c6f1147f49c47e395473bffa3ba203",
+          "afterSha256": "d5e81185d0e7132b6f36233132738d87009335bb4884af8433aac162b76c9c57",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "Adjusts the legacy architecture-gate allowlists to cover the new receipt-reader code in the same commit. The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program; the rebuild guard suite is re-run green and needs no corresponding change.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        },
+        {
+          "path": "tests/unit/architecture/wait-for-timeout-allowlist.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "0a110e5fd6ca71bbabdd6f6b26eb027a8c6e2e1e55eb32c40547987852fbd696",
+          "afterSha256": "2bd3130e8496ae5f40edbac28cc8626edd326fd383c8c90671042a1ac0e0677f",
+          "capabilityIds": [
+            "legacy-dev-tool-architecture-guards"
+          ],
+          "impactRationale": "Adjusts the legacy architecture-gate allowlists to cover the new receipt-reader code in the same commit. The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program; the rebuild guard suite is re-run green and needs no corresponding change.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        },
+        {
+          "path": "tests/unit/systems/ucpath/ss-smart-hr.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "57506848064063459502da280dc9cb31d8a5dc6c5e9f44bc42bbf5be8b098f43",
+          "afterSha256": "d125f66d150d0febad496c36fb734211b1e051910a1e62e35d88932cbbaaa00a",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Pins the corrected receipt behavior in the shared legacy UCPath module: an Approved receipt is success, a Denied receipt with a valid T-number is not, an unreadable status fails loud as unknown, and the search-form render for an unknown id is not mistaken for a receipt. These are the executable statements of the rule the rebuild ports. The rebuild already encodes the corrected proof as D130 (doc 09 §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        },
+        {
+          "path": "tests/unit/systems/ucpath/transaction.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "425eac4dcc2c7ee649533bee1e83fa3670dd51f46a30998600438b5f037dfcdb",
+          "afterSha256": "a12dae87acdb5c1c703e7b0de4bbd9b0045d53e266976082fbdec19d4453fa10",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Pins the corrected receipt behavior in the shared legacy UCPath module: an Approved receipt is success, a Denied receipt with a valid T-number is not, an unreadable status fails loud as unknown, and the search-form render for an unknown id is not mistaken for a receipt. These are the executable statements of the rule the rebuild ports. The rebuild already encodes the corrected proof as D130 (doc 09 §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "25970b10d1dbb00c36d428de54b49dbc29206520",
+      "parentCommit": "4d40f5c988f858c53deddff3a7825566c51a198b",
+      "changes": [
+        {
+          "path": "src/systems/ucpath/LESSONS.md",
+          "changeKind": "modified",
+          "beforeSha256": "fb63f9f9524fb4c7cf279cef640f7b3a21f5768ad01c6453190f8a6260f208ab",
+          "afterSha256": "45a6ed38a999517ba293d26ff15fcf3bdc4df81b130a994cc06fb24c1440a5c7",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Documentation only — appends one LESSONS.md entry recording a live-verified UCPath break: PeopleSoft now points each Find-an-Existing-Value search input's aria-labelledby at the label AND the adjacent operator select, so every exact: true textbox arm matched zero elements while the one non-exact arm silently survived. No legacy executable path changes in this commit, so no legacy behavior moved. It is recorded against every UCPath consumer because LESSONS.md is the shared ported page-state record those capabilities' rebuild selectors are derived from, and this entry invalidates the recorded accessible names for the Person Org Summary search form. The rebuild has not yet ported a Person Org Summary search locator, so no rebuild source change is implied and the recheck is closed by a green rebuild gate run.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "cc548fa3a7fa5c2bbcc699d4e225d91bcfbd5a13",
+      "parentCommit": "25970b10d1dbb00c36d428de54b49dbc29206520",
+      "changes": [
+        {
+          "path": "src/systems/ucpath/LESSONS.md",
+          "changeKind": "modified",
+          "beforeSha256": "45a6ed38a999517ba293d26ff15fcf3bdc4df81b130a994cc06fb24c1440a5c7",
+          "afterSha256": "d2a518410d2d5e6056860de22685c1a17da88aeb571d55f4df4d96c91b676721",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Documentation only — edits the same LESSONS.md entry to correct the blast radius it claimed: Workforce Job Summary, not PayPath Actions, is the search form production drives, and it is structurally immune because its only textbox arm is written non-exact; payPathActions keeps the fragile exact: true shape but is left unedited rather than changed unverified. Adds the carry-forward rule that a Find-an-Existing-Value search textbox must never be pinned exact on the bare label. No legacy executable path changes in this commit, so no legacy behavior moved. It is recorded against every UCPath consumer for the same reason as its predecessor — LESSONS.md is the shared ported page-state record — and because it narrows which ported selector shapes the rebuild must avoid. No rebuild source change is implied and the recheck is closed by a green rebuild gate run.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-04"
           ]
         }
       ]

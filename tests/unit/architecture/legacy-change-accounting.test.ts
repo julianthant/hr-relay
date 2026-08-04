@@ -62,6 +62,26 @@ const OCR_CAPABILITY_IDS = [
 ] as const;
 
 /**
+ * Every legacy capability that consumes `src/systems/ucpath/**`. Derived by
+ * reading the legacy import graph (`grep -rl "systems/ucpath" src/`): eight
+ * workflows drive UCPath directly and the OCR form-verify service reads it.
+ * A change anywhere in that shared module — the selector registry, the
+ * transaction/receipt rules, or the recorded page-state facts the rebuild
+ * ports from — can reach every one of them.
+ */
+const UCPATH_CAPABILITY_IDS = [
+  "legacy-service-ocr",
+  "legacy-workflow-emergency-contact",
+  "legacy-workflow-i9-check",
+  "legacy-workflow-oath-signature",
+  "legacy-workflow-ocr",
+  "legacy-workflow-onboarding",
+  "legacy-workflow-person-lookup",
+  "legacy-workflow-separations",
+  "legacy-workflow-work-study",
+] as const;
+
+/**
  * Reviewed D94 affected-capability floor.
  *
  * Rules are intentionally independent of the accounting JSON: a manifest edit
@@ -96,6 +116,18 @@ const REVIEWED_IMPACT_RULES: readonly ReviewedImpactRule[] = [
     kind: "prefix",
     path: "tests/unit/workflows/separations/",
     capabilityIds: ["legacy-workflow-separations"],
+  },
+  { kind: "prefix", path: "src/systems/ucpath/", capabilityIds: UCPATH_CAPABILITY_IDS },
+  { kind: "prefix", path: "tests/unit/systems/ucpath/", capabilityIds: UCPATH_CAPABILITY_IDS },
+  {
+    kind: "prefix",
+    path: "src/workflows/onboarding/",
+    capabilityIds: ["legacy-workflow-onboarding"],
+  },
+  {
+    kind: "prefix",
+    path: "tests/unit/workflows/onboarding/",
+    capabilityIds: ["legacy-workflow-onboarding"],
   },
 ];
 
