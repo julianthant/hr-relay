@@ -1,0 +1,547 @@
+/**
+ * The two runs THIS program actually produced, as receipt evidence.
+ *
+ * 1. **The live person-lookup exit run** (doc 07 §Phase-1 exit criteria): EID
+ *    10873698, trace `pl-000619-4ebf`, terminal `done` at ATTEMPT 2 after the
+ *    CRM browser died mid-run, `crm-dates` skipped `condition-false`, result
+ *    `activeStatus.state = "active"` cross-verified against CRM record
+ *    `a1ZVr000004Xoq9MAC`. This one is seeded through the REAL authority
+ *    database and the REAL D110/D114 terminalization — nothing is hand-built.
+ *
+ * 2. **The controlled Kuali timekeeper commit** (doc 09 §15): doc 4489, EID
+ *    10001828, value `PROBE-VERIFIED-0804`, intent
+ *    `d1254233-dd33-4bc5-afaf-c2bf52ea693f` committed with a `subject-match`
+ *    binding proof and a `reload-read-back` completion proof.
+ *
+ *    Its terminal RESULT is assembled here rather than through
+ *    `buildRunResult`, and that is a stated gap, not a shortcut: a transaction
+ *    node cannot currently BE a terminal dependency (see
+ *    `kualiTerminalDependencyGap` and the pinning test beside it). Every field
+ *    of the assembled record is still computed by the real authored code —
+ *    the result VALUE comes from the descriptor's own sealed `derive` over the
+ *    real stored outcome, the digests from the real derive functions — so
+ *    nothing here invents a fact. What it stands in for is the RUN reaching
+ *    `done`, which the write lane must close.
+ */
+import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
+import { manualClock } from "../../../src/domain/clock.js";
+import { CrmReadOnboardingRecord } from "../../../src/domain/contracts/crm/read-onboarding-record.js";
+import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
+import { SearchPersonOrg } from "../../../src/domain/contracts/ucpath/search-person-org.js";
+import { KualiSaveTimekeeperAnnotation } from "../../../src/domain/contracts/kuali/save-timekeeper-annotation.js";
+import {
+  deriveCheckpointOutputDigest,
+  deriveCheckpointProvenanceDigest,
+  deriveRunResultDigest,
+  deriveTerminalDependencyDigest,
+  RunResultRecordSchema,
+} from "../../../src/domain/run/result.js";
+import { RunTerminalOutboxRecordSchema } from "../../../src/domain/run/terminal-outbox.js";
+import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
+import {
+  deriveIdempotencyKeyDigest,
+  deriveWriteBindingProofDigest,
+  TransactionOutcomeSchema,
+  WriteAttemptRecordSchema,
+  WriteIntentRecordSchema,
+} from "../../../src/domain/write-safety.js";
+import { workflowTerminalResultExecution } from "../../../src/base/workflow.js";
+import { buildRunResult } from "../../../src/core/run-result.js";
+import type { ReceiptWriteEvidence } from "../../../src/core/evidence-receipt.js";
+import type { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import type { RunRecord } from "../../../src/domain/run/record.js";
+import {
+  PersonLookupCanonicalInput,
+  personLookupDescriptor,
+} from "../../../src/workflows/person-lookup/descriptor.js";
+import {
+  KualiTimekeeperAnnotationCanonicalInput,
+  kualiTimekeeperAnnotationDescriptor,
+} from "../../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
+
+/* ── person-lookup: the live Phase-1 exit run ────────────────────────────── */
+
+export const EXIT_RUN_ID = "4ebf7275-0158-49af-a78f-1f37948efb27";
+export const EXIT_TRACE_ID = "pl-000619-4ebf";
+export const EXIT_ITEM_ID = "10873698-0000-4000-8000-000000000001";
+export const EXIT_EID = "10873698";
+export const EXIT_CRM_RECORD_ID = "a1ZVr000004Xoq9MAC";
+
+const ENQUEUED_AT = "2026-08-04T00:06:19.000Z";
+/** attempt 1 — `searching` succeeded before the CRM browser died. */
+const SEARCH_OBSERVED_AT = "2026-08-04T00:06:41.500Z";
+/** attempt 2 — the re-run after the worker reopened the poisoned CRM session. */
+const ATTEMPT_2_AT = "2026-08-04T00:11:00.000Z";
+const CROSS_VERIFY_OBSERVED_AT = "2026-08-04T00:11:12.800Z";
+const ACTIVE_STATUS_AT = "2026-08-04T00:11:13.000Z";
+export const EXIT_TERMINAL_AT = "2026-08-04T00:11:13.500Z";
+
+const CONFIG_FINGERPRINT = "b".repeat(64);
+const IMPL_FINGERPRINT = "c".repeat(64);
+const INGRESS_SCHEMA_HASH = "a".repeat(64);
+const CONFIG_SNAPSHOT_ID = "44444444-4444-4444-8444-444444444444";
+
+const SELECTED_CANDIDATE = Object.freeze({
+  emplId: EXIT_EID,
+  name: "Battistessa, Johnnie",
+  department: "Housing Dining Hospitality",
+  jobTitle: "Dining Assistant",
+  employeeStatus: "active",
+  hdh: true,
+});
+
+const SEARCH_OUTPUT = Object.freeze({
+  results: [SELECTED_CANDIDATE],
+  selection: { status: "resolved", selected: SELECTED_CANDIDATE, candidateEids: [EXIT_EID] },
+});
+
+const CRM_OUTPUT = Object.freeze({
+  state: "found",
+  record: {
+    recordId: EXIT_CRM_RECORD_ID,
+    emplId: EXIT_EID,
+    fullName: "Battistessa, Johnnie",
+    rawStage: "Completed",
+  },
+});
+
+const ACTIVE_STATUS_OUTPUT = Object.freeze({
+  state: "active",
+  reason: `UCPath reports active and CRM record ${EXIT_CRM_RECORD_ID} matches the selected EID`,
+  hdh: true,
+});
+
+function provenance(
+  paths: readonly string[],
+  source: "live" | "derived",
+  observedAt: string,
+): readonly unknown[] {
+  return paths.map((path) => ({ path, source, observedAt, originalObservedAt: observedAt }));
+}
+
+function checkpoint(input: Readonly<{
+  nodeId: string;
+  attempt: number;
+  schema: Parameters<typeof deriveSchemaHash>[0];
+  value: unknown;
+  provenance: readonly unknown[];
+  writtenAt: string;
+}>): unknown {
+  return RunCheckpointRecordSchema.parse({
+    workflowId: personLookupDescriptor.id,
+    itemId: EXIT_ITEM_ID,
+    nodeId: input.nodeId,
+    attempt: input.attempt,
+    runId: EXIT_RUN_ID,
+    output: { schemaHash: deriveSchemaHash(input.schema, "output"), value: input.value },
+    descriptorVersion: personLookupDescriptor.version,
+    contractFingerprint: personLookupDescriptor.contractFingerprint,
+    implFingerprint: IMPL_FINGERPRINT,
+    provenance: input.provenance,
+    writtenAt: input.writtenAt,
+  });
+}
+
+export interface SeededExitRun {
+  readonly run: RunRecord;
+  readonly checkpoints: readonly unknown[];
+}
+
+/**
+ * Seed the exit run through the REAL authority database: enqueue at attempt 2
+ * (the attempt that actually settled), claim it, walk it to `running`, write
+ * the three checkpoints, and terminalize through the D110/D114 composite with
+ * a factory-sealed result. Nothing about the terminal row is hand-built.
+ */
+export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExitRun {
+  const enqueued = database.authority.runs.enqueue({
+    envelope: {
+      runId: EXIT_RUN_ID,
+      workflow: personLookupDescriptor.id,
+      itemId: EXIT_ITEM_ID,
+      traceId: EXIT_TRACE_ID,
+      descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint,
+      resolvedInstance: { ucpath: "prod", crm: "prod" },
+      configFingerprint: CONFIG_FINGERPRINT,
+      configSnapshotId: CONFIG_SNAPSHOT_ID,
+      shape: "single",
+      priority: "interactive",
+      dryRun: false,
+      attempt: 2,
+      enqueuedAt: ENQUEUED_AT,
+    },
+    input: {
+      raw: { emplId: EXIT_EID },
+      parsed: {
+        schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
+        value: { emplId: EXIT_EID, keepNonHdh: false, includeCrmDates: false },
+      },
+      ingressSchemaHash: INGRESS_SCHEMA_HASH,
+    },
+    lifecycle: { state: "queued" },
+    claimGeneration: 0,
+    hidden: false,
+    version: 1,
+    createdAt: ATTEMPT_2_AT,
+    updatedAt: ATTEMPT_2_AT,
+  });
+
+  const workerId = "person-lookup-worker-1";
+  const claimed = database.authority.runs.claimNext({
+    workflow: personLookupDescriptor.id,
+    workerId,
+    now: ATTEMPT_2_AT,
+  });
+  if (claimed.state !== "claimed") throw new Error(`exit run was not claimed: ${claimed.state}`);
+  const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
+  const claimFields = { workerId, claimedAt: ATTEMPT_2_AT, heartbeatAt: ATTEMPT_2_AT };
+
+  const validating = database.authority.runs.transition({
+    runId: EXIT_RUN_ID,
+    expectedVersion: claimed.run.version,
+    claim,
+    lifecycle: { state: "validating", ...claimFields },
+    now: ATTEMPT_2_AT,
+  });
+  if (validating.state !== "applied") throw new Error("exit run did not enter validating");
+  const running = database.authority.runs.transition({
+    runId: EXIT_RUN_ID,
+    expectedVersion: validating.run.version,
+    claim,
+    lifecycle: { state: "running", ...claimFields, currentNodeId: "active-status" },
+    now: ATTEMPT_2_AT,
+  });
+  if (running.state !== "applied") throw new Error("exit run did not enter running");
+
+  const searching = checkpoint({
+    nodeId: "searching",
+    attempt: 1,
+    schema: SearchPersonOrg.output,
+    value: SEARCH_OUTPUT,
+    provenance: provenance(
+      [
+        "results", "selection.status", "selection.selected.emplId", "selection.selected.name",
+        "selection.selected.department", "selection.selected.jobTitle",
+        "selection.selected.employeeStatus", "selection.selected.hdh", "selection.candidateEids",
+      ],
+      "live",
+      SEARCH_OBSERVED_AT,
+    ),
+    writtenAt: SEARCH_OBSERVED_AT,
+  });
+  const crossVerify = checkpoint({
+    nodeId: "cross-verify",
+    attempt: 2,
+    schema: CrmReadOnboardingRecord.output,
+    value: CRM_OUTPUT,
+    provenance: provenance(
+      ["state", "record.recordId", "record.emplId", "record.fullName", "record.rawStage"],
+      "live",
+      CROSS_VERIFY_OBSERVED_AT,
+    ),
+    writtenAt: CROSS_VERIFY_OBSERVED_AT,
+  });
+  const activeStatus = checkpoint({
+    nodeId: "active-status",
+    attempt: 2,
+    schema: ReadActiveStatus.output,
+    value: ACTIVE_STATUS_OUTPUT,
+    provenance: provenance(["state", "reason", "hdh"], "derived", ACTIVE_STATUS_AT),
+    writtenAt: ACTIVE_STATUS_AT,
+  });
+  for (const record of [searching, crossVerify, activeStatus]) {
+    database.authority.runCheckpoints.insert(record);
+  }
+
+  const built = buildRunResult(
+    personLookupDescriptor,
+    running.run,
+    [
+      { state: "resolved", nodeId: "active-status", checkpoint: activeStatus },
+      { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
+    ],
+    manualClock(new Date(EXIT_TERMINAL_AT)),
+  );
+  const outboxId = "0e0e0e0e-0e0e-4e0e-8e0e-0e0e0e0e0e0e";
+  database.terminalizeSuccess({
+    result: built.record,
+    outbox: RunTerminalOutboxRecordSchema.parse({
+      outboxId,
+      payload: {
+        kind: "run-terminal-result",
+        runId: built.record.runId,
+        workflowId: built.record.workflowId,
+        attempt: built.record.attempt,
+        resultDigest: built.record.resultDigest,
+      },
+      projection: { state: "pending" },
+      createdAt: built.record.createdAt,
+    }),
+    authorization: {
+      kind: "done",
+      runId: built.record.runId,
+      workflowId: built.record.workflowId,
+      attempt: built.record.attempt,
+      descriptorVersion: built.record.descriptorVersion,
+      contractFingerprint: built.record.contractFingerprint,
+      expectedVersion: running.run.version,
+      claim,
+      authorizedAt: EXIT_TERMINAL_AT,
+      resultDigest: built.record.resultDigest,
+      outboxId,
+    },
+  }, built.authorization);
+
+  const terminal = database.authority.runs.get(EXIT_RUN_ID);
+  if (terminal === undefined) throw new Error("exit run vanished after terminalization");
+  void enqueued;
+  return { run: terminal, checkpoints: [searching, crossVerify, activeStatus] };
+}
+
+/* ── kuali: the controlled transaction proof ─────────────────────────────── */
+
+export const KUALI_RUN_ID = "d1254233-dd33-4bc5-afaf-c2bf52ea693f";
+export const KUALI_INTENT_ID = "9c1e4b2a-7d55-4a11-9f6e-2b8c0d3f1a77";
+export const KUALI_TRACE_ID = "kt-170848-d125";
+export const KUALI_ITEM_ID = "44894489-4489-4489-8489-448944894489";
+export const KUALI_ACTION_ID = "6a712bf32ff7fb799788a79e";
+export const KUALI_DOCUMENT_NUMBER = "4489";
+export const KUALI_EID = "10001828";
+export const KUALI_VALUE = "PROBE-VERIFIED-0804";
+export const KUALI_FENCED_AT = "2026-08-04T17:08:48.805Z";
+export const KUALI_CONFIRMED_AT = "2026-08-04T17:08:54.867Z";
+export const KUALI_IDEMPOTENCY_KEY =
+  `kuali:${KUALI_DOCUMENT_NUMBER}|${KUALI_ACTION_ID}|timekeeper-name|${KUALI_EID}|${KUALI_VALUE}`;
+
+const KUALI_SAVED_PROOF = Object.freeze({
+  kind: "kuali-saved-timekeeper",
+  actionId: KUALI_ACTION_ID,
+  documentNumber: KUALI_DOCUMENT_NUMBER,
+  timekeeperName: KUALI_VALUE,
+  observedEid: KUALI_EID,
+  source: "reload-read-back",
+});
+
+const KUALI_SUBJECT_EVIDENCE = Object.freeze({
+  kind: "person",
+  identifierKind: "eid",
+  bindingDigest: "d77e42b6".padEnd(64, "0"),
+  displaySuffix: "5513",
+});
+
+const KUALI_BINDING_PROOF = Object.freeze({
+  kind: "subject-match",
+  version: 1,
+  proofId: "7f3a1c88-2e44-4b90-8a51-6d2f9c0b4e13",
+  runId: KUALI_RUN_ID,
+  attempt: 1,
+  leaseId: "1b9d7e40-5c33-4a28-8f77-0c6e2a5b9d81",
+  taskId: "kuali/save-timekeeper-annotation",
+  observationId: "kuali.rrss-document.displayed-eid",
+  pageStateId: "kuali.rrss-document.timekeeper-staged",
+  expected: KUALI_SUBJECT_EVIDENCE,
+  observed: KUALI_SUBJECT_EVIDENCE,
+  match: "match",
+  observedAt: KUALI_FENCED_AT,
+  afterPrepareSpanPath: "annotate-timekeeper/prepare",
+});
+
+export interface KualiReceiptEvidence {
+  readonly run: unknown;
+  readonly result: unknown;
+  readonly checkpoints: readonly unknown[];
+  readonly writes: readonly ReceiptWriteEvidence[];
+}
+
+/**
+ * The exact durable shapes the controlled commit left behind, plus the
+ * terminal rows the run WOULD carry once a transaction node can be a terminal
+ * dependency. See this module's header for what is real and what stands in.
+ */
+export function kualiReceiptEvidence(): KualiReceiptEvidence {
+  const descriptor = kualiTimekeeperAnnotationDescriptor;
+  const proofSchemaHash = deriveSchemaHash(
+    KualiSaveTimekeeperAnnotation.writeSafety.completion.proofSchema,
+    "output",
+  );
+  const outputSchemaHash = deriveSchemaHash(KualiSaveTimekeeperAnnotation.output, "output");
+  const outcome = TransactionOutcomeSchema.parse({
+    disposition: "committed",
+    proofSource: "normal-output",
+    proof: { schemaHash: proofSchemaHash, value: KUALI_SAVED_PROOF },
+    output: { schemaHash: outputSchemaHash, value: { savedState: KUALI_SAVED_PROOF } },
+    confirmedAt: KUALI_CONFIRMED_AT,
+  });
+  const transactionCheckpoint = RunCheckpointRecordSchema.parse({
+    workflowId: descriptor.id,
+    itemId: KUALI_ITEM_ID,
+    nodeId: "annotate-timekeeper",
+    attempt: 1,
+    runId: KUALI_RUN_ID,
+    output: {
+      schemaHash: deriveSchemaHash(TransactionOutcomeSchema, "output"),
+      value: outcome,
+    },
+    descriptorVersion: descriptor.version,
+    contractFingerprint: descriptor.contractFingerprint,
+    implFingerprint: IMPL_FINGERPRINT,
+    provenance: provenance(
+      ["disposition", "proofSource", "proof", "output"],
+      "live",
+      KUALI_CONFIRMED_AT,
+    ),
+    writtenAt: KUALI_CONFIRMED_AT,
+  });
+
+  const canonicalInput = {
+    actionId: KUALI_ACTION_ID,
+    documentNumber: KUALI_DOCUMENT_NUMBER,
+    emplId: KUALI_EID,
+    timekeeperName: KUALI_VALUE,
+  };
+  const run = {
+    envelope: {
+      runId: KUALI_RUN_ID,
+      workflow: descriptor.id,
+      itemId: KUALI_ITEM_ID,
+      traceId: KUALI_TRACE_ID,
+      descriptorVersion: descriptor.version,
+      contractFingerprint: descriptor.contractFingerprint,
+      resolvedInstance: { kuali: "prod" },
+      configFingerprint: CONFIG_FINGERPRINT,
+      configSnapshotId: CONFIG_SNAPSHOT_ID,
+      shape: "single",
+      priority: "interactive",
+      dryRun: false,
+      attempt: 1,
+      enqueuedAt: KUALI_FENCED_AT,
+    },
+    input: {
+      raw: canonicalInput,
+      parsed: {
+        schemaHash: deriveSchemaHash(KualiTimekeeperAnnotationCanonicalInput, "output"),
+        value: canonicalInput,
+      },
+      ingressSchemaHash: INGRESS_SCHEMA_HASH,
+    },
+    lifecycle: { state: "terminal", outcome: "done", endedAt: KUALI_CONFIRMED_AT },
+    claimGeneration: 1,
+    hidden: false,
+    version: 5,
+    createdAt: KUALI_FENCED_AT,
+    updatedAt: KUALI_CONFIRMED_AT,
+  };
+
+  // The VALUE comes from the descriptor's own sealed derive over the real
+  // stored outcome — never from a literal typed here.
+  const resultValue = workflowTerminalResultExecution(descriptor).derive({
+    input: canonicalInput,
+    outputs: {
+      "annotate-timekeeper": {
+        disposition: outcome.disposition,
+        proofSource: outcome.proofSource,
+        output: outcome.output.value,
+        proof: outcome.proof.value,
+      },
+    },
+  } as never) as unknown;
+  const resultSchemaHash = deriveSchemaHash(
+    workflowTerminalResultExecution(descriptor).schema,
+    "output",
+  );
+  const boundResult = { schemaHash: resultSchemaHash, value: resultValue };
+  const dependencies = [{
+    state: "resolved",
+    nodeId: "annotate-timekeeper",
+    checkpoint: {
+      workflowId: descriptor.id,
+      itemId: KUALI_ITEM_ID,
+      attempt: 1,
+      runId: KUALI_RUN_ID,
+    },
+    outputSchemaHash: transactionCheckpoint.output.schemaHash,
+    descriptorVersion: descriptor.version,
+    contractFingerprint: descriptor.contractFingerprint,
+    implFingerprint: IMPL_FINGERPRINT,
+    outputDigest: deriveCheckpointOutputDigest(transactionCheckpoint.output),
+    provenanceDigest: deriveCheckpointProvenanceDigest(transactionCheckpoint.provenance),
+  }];
+  const result = RunResultRecordSchema.parse({
+    runId: KUALI_RUN_ID,
+    attempt: 1,
+    workflowId: descriptor.id,
+    descriptorVersion: descriptor.version,
+    contractFingerprint: descriptor.contractFingerprint,
+    configFingerprint: CONFIG_FINGERPRINT,
+    configSnapshotId: CONFIG_SNAPSHOT_ID,
+    resultSchemaHash,
+    result: boundResult,
+    resultDigest: deriveRunResultDigest(boundResult),
+    dependencies,
+    dependencyDigest: deriveTerminalDependencyDigest(dependencies),
+    createdAt: KUALI_CONFIRMED_AT,
+  });
+
+  const bindingProofDigest = deriveWriteBindingProofDigest(KUALI_BINDING_PROOF);
+  const writeAttemptId = "3d5f8a12-9b04-4c6e-8a33-77e1c2b9d045";
+  const intent = WriteIntentRecordSchema.parse({
+    writeIntentId: KUALI_INTENT_ID,
+    workflowId: descriptor.id,
+    itemId: KUALI_ITEM_ID,
+    taskId: "kuali/save-timekeeper-annotation",
+    system: "kuali",
+    idempotencyKey: KUALI_IDEMPOTENCY_KEY,
+    idempotencyKeyDigest: deriveIdempotencyKeyDigest("kuali", KUALI_IDEMPOTENCY_KEY),
+    currentAttemptId: writeAttemptId,
+    generation: 1,
+    runId: KUALI_RUN_ID,
+    runAttempt: 1,
+    bindingProof: KUALI_BINDING_PROOF,
+    bindingProofDigest,
+    fencedAt: KUALI_FENCED_AT,
+    version: 2,
+    createdAt: KUALI_FENCED_AT,
+    updatedAt: KUALI_CONFIRMED_AT,
+    status: "committed",
+    completionProof: { schemaHash: proofSchemaHash, value: KUALI_SAVED_PROOF },
+    confirmedAt: KUALI_CONFIRMED_AT,
+  });
+  const attempt = WriteAttemptRecordSchema.parse({
+    writeAttemptId,
+    writeIntentId: KUALI_INTENT_ID,
+    generation: 1,
+    runId: KUALI_RUN_ID,
+    runAttempt: 1,
+    leaseId: KUALI_BINDING_PROOF.leaseId,
+    bindingProof: KUALI_BINDING_PROOF,
+    bindingProofDigest,
+    fencedAt: KUALI_FENCED_AT,
+    outcome: {
+      state: "committed",
+      completionProof: { schemaHash: proofSchemaHash, value: KUALI_SAVED_PROOF },
+      confirmedAt: KUALI_CONFIRMED_AT,
+    },
+    recordedAt: KUALI_CONFIRMED_AT,
+  });
+
+  return {
+    run,
+    result,
+    checkpoints: [transactionCheckpoint],
+    writes: [{ intent, attempts: [attempt] }],
+  };
+}
+
+/**
+ * The named gap this fixture stands in for: the write sequencer stores a
+ * transaction checkpoint under the DURABLE `TransactionOutcome` schema hash,
+ * while the descriptor factory's terminal `build` requires the COMMIT
+ * CONTRACT's output schema hash — and the interpreter never registers a
+ * transaction checkpoint as terminal evidence at all. Both must change
+ * together before `kuali-timekeeper-annotation` can reach terminal `done`.
+ */
+export const kualiTerminalDependencyGap = Object.freeze({
+  storedSchemaHash: () => deriveSchemaHash(TransactionOutcomeSchema, "output"),
+  requiredSchemaHash: () => deriveSchemaHash(KualiSaveTimekeeperAnnotation.output, "output"),
+});

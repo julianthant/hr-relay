@@ -1,8 +1,7 @@
-import { createHash } from "node:crypto";
-import { basename } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify, JsonValueSchema } from "./canonical-json.js";
 import { FingerprintSchema } from "./ids.js";
+import { sha256Hex } from "./sha256.js";
 
 export const DataClassificationSchema = z.enum([
   "secret",
@@ -21,13 +20,26 @@ const ALLOWED_TRANSFORMS = {
   "safe-diagnostic": new Set(["allow", "count", "basename"]),
 } satisfies Record<z.infer<typeof DataClassificationSchema>, ReadonlySet<string>>;
 
+/**
+ * Whether a classification permits a transform. Exported because a
+ * DECLARATION of (classification, transform) — doc 12 §2.3's receipt field
+ * classifications — must be refused at declaration time, not only when a value
+ * is finally pushed through `redactDiagnosticFields`. One table, two callers.
+ */
+export function evidenceTransformAllowed(
+  classification: z.infer<typeof DataClassificationSchema>,
+  transform: z.infer<typeof EvidenceTransformSchema>,
+): boolean {
+  return ALLOWED_TRANSFORMS[classification].has(transform);
+}
+
 export const ClassifiedDiagnosticValueSchema = z.strictObject({
   key: z.string().regex(/^[a-z][A-Za-z0-9]*$/),
   classification: DataClassificationSchema,
   transform: EvidenceTransformSchema,
   value: JsonValueSchema,
 }).superRefine((field, context) => {
-  if (!ALLOWED_TRANSFORMS[field.classification].has(field.transform)) {
+  if (!evidenceTransformAllowed(field.classification, field.transform)) {
     context.addIssue({ code: "custom", path: ["transform"], message: `${field.transform} is forbidden for ${field.classification}` });
   }
 });
@@ -62,9 +74,27 @@ export const RedactionResultSchema = z.strictObject({
 
 export function redactionDigest(value: z.infer<typeof JsonValueSchema>) {
   const canonical = canonicalJsonStringify(value);
-  return FingerprintSchema.parse(
-    createHash("sha256").update("hrauto:redaction-digest:v1\0").update(canonical).digest("hex"),
-  );
+  return FingerprintSchema.parse(sha256Hex(`hrauto:redaction-digest:v1\0${canonical}`));
+}
+
+/**
+ * The last path segment, over BOTH separators, with trailing separators
+ * dropped — `node:path`'s `basename` in a form the dashboard bundle can
+ * reach.
+ *
+ * This module is value-reachable from the browser entry (doc 12 §2.3's
+ * receipt rides the run-detail wire), and Vite replaces an externalized
+ * built-in with a proxy that throws on the first property read, so the
+ * `node:path` import alone would kill the app at module evaluation. Splitting
+ * on `\` as well as `/` is deliberately WIDER than POSIX `basename`: a
+ * classified `credential-file` value may be a Windows path, and leaking a
+ * whole directory tree because the platform separator differed is the exact
+ * failure this transform exists to prevent.
+ */
+function pathBasename(value: string): string {
+  const trimmed = value.replace(/[\\/]+$/, "");
+  const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return cut === -1 ? trimmed : trimmed.slice(cut + 1);
 }
 
 function safeText(value: z.infer<typeof JsonValueSchema>): string {
@@ -100,7 +130,7 @@ function redact(field: z.infer<typeof ClassifiedDiagnosticValueSchema>): z.infer
       key: field.key,
       classification: field.classification,
       transform: "basename",
-      value: basename(safeText(field.value)),
+      value: pathBasename(safeText(field.value)),
     };
     case "count": return {
       state: "transformed",

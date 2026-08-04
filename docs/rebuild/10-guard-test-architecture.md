@@ -615,6 +615,19 @@ read while still permitting replay-safe browser downloads.
   explicit confidence (`verified|partial|unknown`). `done` requires all mandatory evidence and no
   unresolved write/subject/storage condition. Diagnostic bundle tests prove schema redaction and
   assert no env/cookie/storage-state/raw-SSN leakage.
+
+  **ACTIVE as of 2026-08-04 (D136–D139).** Both halves execute. Strictness is proven by violating
+  fixtures — `verified-done` is refused for non-verified confidence, an unresolved mandatory fact,
+  an `unknown`/`ambiguous` mandatory obligation, any warning, and a failure id; a `verified` write
+  without a filed proof ref and a commit claiming it was never attempted are rejected. Redaction is
+  proven by canaries (password, cookie, storage state, SSN, private key, every registered env key)
+  plus three structural arms: a forbidden (classification, transform) pairing is refused at
+  DECLARATION time, an undeclared leaf fails loud instead of dropping, and a receipt classification
+  that disagrees with `domain/secrets.ts` for the same field name fails. Coverage walks every
+  registered canonical-input sample and every used contract's sealed `example`, so a new contract
+  lands unclassified and this guard goes red before any receipt could quietly drop its fields. The
+  **diagnostic-bundle** arm of this spec activates with the bundle capture slice, which owns the
+  capture triggers this guard would otherwise have nothing to run against.
 - **`notification-durability.test.ts`.** Each closed trigger commits a durable inbox item; dedupe,
   read/unread state, snooze, redaction, and run/failure links are pinned. An injected OS delivery
   failure must leave the critical inbox notification durably unread; no per-attempt delivery state

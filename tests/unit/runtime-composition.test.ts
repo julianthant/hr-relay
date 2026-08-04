@@ -42,6 +42,31 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     );
   });
 
+  it("routes `explain` through its injected seam and refuses without one", () => {
+    const output: string[] = [];
+    const seen: string[][] = [];
+    startRebuildRuntime({
+      isolation: rebuildRuntimeIsolation,
+      args: ["explain", "run", "pl-000619-4ebf", "--json"],
+      write: (value) => output.push(value),
+      explain: (isolation, args) => {
+        assert.equal(isolation.stateRoot, ".tracker-rebuild");
+        seen.push([...args]);
+        return "the explanation";
+      },
+    });
+    assert.deepEqual(seen, [["run", "pl-000619-4ebf", "--json"]]);
+    assert.deepEqual(output, ["the explanation"]);
+    assert.throws(
+      () => startRebuildRuntime({
+        isolation: rebuildRuntimeIsolation,
+        args: ["explain", "run", "pl-000619-4ebf"],
+        write: () => undefined,
+      }),
+      /needs its composition seam/,
+    );
+  });
+
   it("starts the dashboard through the injected 1g-spine composition seam", async () => {
     const output: string[] = [];
     const seen: number[] = [];

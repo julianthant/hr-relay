@@ -55,6 +55,7 @@ import { createDashboardApp } from "./routes/api.js";
 import { createRunQueueProjection } from "./projectors/run-queue-projection.js";
 import { createDashboardStreamHub } from "./subscriptions/dashboard-stream.js";
 import { startDashboardHttpServer } from "./http-server.js";
+import { createReceiptService } from "../trust/receipt-service.js";
 
 export interface DashboardRuntime {
   readonly port: number;
@@ -229,6 +230,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       stateRoot,
       projection,
       authority: { getRun: (runId) => database.authority.runs.get(runId) },
+      // D136/D138: the receipt and failure sections serve CONTENT through the
+      // one authority-backed derivation, the same one `explain run` reads.
+      trust: createReceiptService({ database, descriptors: DESCRIPTORS }),
     },
     commands,
     startPlans,

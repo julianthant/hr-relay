@@ -34,6 +34,7 @@ import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
@@ -661,7 +662,12 @@ export async function startSeededServer(
       authorityMeta: () => database.getMeta(),
     },
     projection,
-    runDetail: { stateRoot, projection, authority: { getRun: (runId) => database.authority.runs.get(runId) } },
+    runDetail: {
+      stateRoot,
+      projection,
+      authority: { getRun: (runId) => database.authority.runs.get(runId) },
+      trust: createReceiptService({ database, descriptors: [personLookupDescriptor] }),
+    },
     commands,
     startPlans,
     hub,

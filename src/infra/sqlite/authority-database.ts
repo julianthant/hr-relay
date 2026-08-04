@@ -37,12 +37,15 @@ import {
   FailureFingerprintSchema,
   FingerprintSchema,
   IsoInstantSchema,
+  ItemIdSchema,
   OutboxIdSchema,
   ProviderAdmissionIdSchema,
   ProviderCapabilityIdSchema,
   RunIdSchema,
+  TraceIdSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
+  WriteIntentIdSchema,
 } from "../../domain/ids.js";
 import { nextAttemptEnvelope } from "../../domain/run/envelope.js";
 import {
@@ -313,6 +316,14 @@ type WriteIntentRepository = Readonly<{
   reopenParkedAttempt(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
   get(writeIntentId: string): z.infer<typeof WriteIntentRecordSchema> | undefined;
   findByPermanentKey(system: unknown, idempotencyKey: unknown): z.infer<typeof WriteIntentRecordSchema> | undefined;
+  /**
+   * Doc 12 §2.3/§2.5: what external writes did THIS run fence? `write_intents`
+   * has no `run_id` column — an intent outlives the run that created it, which
+   * is the point of a permanent key — so the run identity is read out of the
+   * record itself. An `observed-present` row carries no `runId` at all and is
+   * therefore correctly absent here: no run fenced it.
+   */
+  listByRun(runId: string): readonly z.infer<typeof WriteIntentRecordSchema>[];
 }>;
 
 export interface AuthorityWriteCommitHooks {
@@ -334,6 +345,8 @@ type RunCheckpointRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<RunCheckpointRecord>;
   get(workflowId: string, itemId: string, nodeId: string, attempt: number): RunCheckpointRecord | undefined;
   latest(workflowId: string, itemId: string, nodeId: string): RunCheckpointRecord | undefined;
+  /** Doc 12 §2.3: a receipt explains one logical item across every attempt. */
+  listByItem(workflowId: string, itemId: string): readonly RunCheckpointRecord[];
 }>;
 
 /**
@@ -348,6 +361,13 @@ type RunRepository = Readonly<{
   listByItem(input: unknown): readonly RunRecord[];
   listByWorker(workerId: string): readonly RunRecord[];
   listChildren(parentRunId: string): readonly RunRecord[];
+  /**
+   * Doc 12 §2.5: `explain run <traceId|runId>` accepts either identity. The
+   * trace id is not a column — it is frozen at enqueue inside the envelope —
+   * so this reads it out of the record rather than inventing an index for a
+   * single-operator lookup.
+   */
+  findByTrace(traceId: string): RunRecord | undefined;
   claimNext(input: unknown): RunClaimOutcome;
   renewClaim(input: unknown): RunHeartbeatOutcome;
   transition(input: unknown): RunUpdateOutcome;
@@ -524,7 +544,9 @@ export type AuthorityRepositories = Readonly<{
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
   versionPlans: ImmutableRepository<VersionPlanStorageRecord>;
   writeIntents: WriteIntentRepository;
-  writeAttempts: ReadRepository<z.infer<typeof WriteAttemptRecordSchema>>;
+  writeAttempts: ReadRepository<z.infer<typeof WriteAttemptRecordSchema>> & Readonly<{
+    listByIntent(writeIntentId: string): readonly z.infer<typeof WriteAttemptRecordSchema>[];
+  }>;
   durableOutbox: ReadRepository<z.infer<typeof AtomicOutboxRecordSchema>>;
   artifactOutbox: ImmutableRepository<ArtifactOutboxStorageRecord>;
   opaque: OpaqueAuthorityRepositories;
@@ -2742,6 +2764,17 @@ export class AuthorityDatabase implements Disposable {
           if (row === undefined) return undefined;
           return parseJsonRecord(RunCheckpointRecordSchema, JsonRowSchema.parse(row).record_json);
         },
+        listByItem: (workflowId: string, itemId: string) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM run_checkpoints
+            WHERE workflow = ? AND item_id = ?
+            ORDER BY attempt, node_id
+          `).all(WorkflowIdSchema.parse(workflowId), ItemIdSchema.parse(itemId));
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            RunCheckpointRecordSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
       }),
       notifications: this.#buildNotificationRepository(),
       configSnapshots: Object.freeze({
@@ -2920,9 +2953,29 @@ export class AuthorityDatabase implements Disposable {
           BrowserSystemIdSchema.parse(system),
           IdempotencyKeySchema.parse(idempotencyKey),
         ),
+        listByRun: (runId: string) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM write_intents
+            WHERE json_extract(record_json, '$.runId') = ?
+            ORDER BY created_at, record_key
+          `).all(RunIdSchema.parse(runId));
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            WriteIntentRecordSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
       }),
       writeAttempts: Object.freeze({
         get: (writeAttemptId: string) => this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema),
+        listByIntent: (writeIntentId: string) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM write_attempts WHERE write_intent_id = ? ORDER BY generation
+          `).all(WriteIntentIdSchema.parse(writeIntentId));
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            WriteAttemptRecordSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
       }),
       durableOutbox: Object.freeze({
         get: (outboxId: string) => this.#readRecord("durable_outbox", outboxId, AtomicOutboxRecordSchema),
@@ -3058,6 +3111,22 @@ export class AuthorityDatabase implements Disposable {
         });
       },
       get: (runId: string) => this.#readRunRow(runId),
+      findByTrace: (traceId: string) => {
+        const parsed = TraceIdSchema.parse(traceId);
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM tasks
+          WHERE json_extract(record_json, '$.envelope.traceId') = ?
+          ORDER BY created_at, record_key
+        `).all(parsed);
+        if (rows.length === 0) return undefined;
+        if (rows.length > 1) {
+          // A trace id is frozen at enqueue and carries the run id's own first
+          // four hex digits, so two rows sharing one is corruption — never a
+          // "pick the newest" situation.
+          throw new Error(`trace ${parsed} identifies ${String(rows.length)} runs; a trace id names exactly one`);
+        }
+        return parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(rows[0]).record_json);
+      },
       listByItem: (input: unknown) => {
         const query = RunItemQuerySchema.parse(input);
         const rows = this.#database.prepare(`

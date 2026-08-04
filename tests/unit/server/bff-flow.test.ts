@@ -22,6 +22,7 @@ import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js
 import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
@@ -138,7 +139,12 @@ function harness(): Harness {
       authorityMeta: () => database.getMeta(),
     },
     projection,
-    runDetail: { stateRoot, projection, authority: { getRun: (runId) => database.authority.runs.get(runId) } },
+    runDetail: {
+      stateRoot,
+      projection,
+      authority: { getRun: (runId) => database.authority.runs.get(runId) },
+      trust: createReceiptService({ database, descriptors: [fixtureDescriptor] }),
+    },
     commands,
     startPlans,
     hub,
@@ -341,8 +347,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(review.status, 409);
     assert.equal((await json(review)).code, "SECTION_UNAVAILABLE");
 
+    // A receipt states a SETTLED verdict, so a queued run's absence names the
+    // state rather than a missing feature (D137).
     const receipt = await json(await h.app.request(`/api/v1/runs/${runId}/receipt`));
-    assert.deepEqual(receipt.payload, { state: "missing", reason: "evidence receipts land with the 2g trust surfaces" });
+    assert.deepEqual(receipt.payload, {
+      state: "missing",
+      reason: "run is queued; a receipt states a settled verdict and this run has none yet",
+    });
 
     const failure = await json(await h.app.request(`/api/v1/runs/${runId}/failure`));
     assert.equal((failure.payload as { state: string }).state, "missing");

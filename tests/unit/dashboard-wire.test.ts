@@ -9,6 +9,7 @@ import {
   DashboardTopicPatchSchema,
   DashboardTopicSnapshotSchema,
 } from "../../src/domain/dashboard/subscription.js";
+import { failureDetailWireFixture, receiptWireFixture } from "./fixtures/trust-wire-fixtures.js";
 
 const RUN_1 = "11111111-1111-4111-8111-111111111111";
 const RUN_2 = "22222222-2222-4222-8222-222222222222";
@@ -17,7 +18,6 @@ const NOTE_1 = "44444444-4444-4444-8444-444444444444";
 const RECORD_1 = "55555555-5555-4555-8555-555555555555";
 const ARTIFACT_1 = "66666666-6666-4666-8666-666666666666";
 const NOTIFICATION_1 = "77777777-7777-4777-8777-777777777777";
-const RECEIPT_1 = "88888888-8888-4888-8888-888888888888";
 const FAILURE_1 = "99999999-9999-4999-8999-999999999999";
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
@@ -216,13 +216,18 @@ describe("lazy detail and artifact resources", () => {
   it("correlates every lazy section with a closed payload", () => {
     const sections = [
       { section: "logs", payload: NOTE_PAGE },
-      { section: "receipt", payload: { state: "available", value: { runId: RUN_1, receiptId: RECEIPT_1 } } },
+      // D136/D138: both sections carry CONTENT now, not a pointer. The
+      // receipt is the real builder's output so this stays honest when its
+      // shape moves; the failure is the strict, already-redacted projection.
+      { section: "receipt", payload: { state: "available", value: receiptWireFixture() } },
       { section: "review", payload: REVIEW_PAGE },
       { section: "people", payload: PEOPLE_PAGE },
       { section: "context-data", payload: { runId: RUN_1, entries: [{ label: "EID", valueRedacted: "••••1234" }] } },
       { section: "context-evidence", payload: { runId: RUN_1, entries: [] } },
       { section: "context-attempts", payload: { runId: RUN_1, entries: [] } },
-      { section: "failure", payload: { state: "available", value: { runId: RUN_1, failureId: FAILURE_1 } } },
+      { section: "failure", payload: { state: "available", value: failureDetailWireFixture({
+        runId: RUN_1, failureId: FAILURE_1, traceId: "on-120000-1111", workflowId: "onboarding",
+      }) } },
       { section: "captures", payload: { runId: RUN_1, artifacts: [ARTIFACT] } },
     ];
     for (const section of sections) assert.equal(RunDetailSectionResponseSchema.safeParse(section).success, true, section.section);
