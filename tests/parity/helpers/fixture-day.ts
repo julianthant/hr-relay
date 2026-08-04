@@ -131,6 +131,12 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
     ],
     startedAt: at(startedMinute),
     updatedAt: at(startedMinute + 2),
+    // D124: a settled run carries its own terminal instant, so the row can
+    // show what it TOOK instead of counting since it started. An in-flight
+    // row states the absence and why.
+    endedAt: TERMINAL.has(input.status)
+      ? { state: "present", value: at(startedMinute + 2) }
+      : { state: "absent", reason: `run is ${input.status} and has not ended` },
     title: input.title,
     subtitle,
     status: input.status,
@@ -378,7 +384,14 @@ interface DetailSeed {
   readonly status: Status;
   readonly gate: unknown;
   readonly outcome: unknown;
-  readonly timeline: readonly { seed: number; minute: number; label: string; state: "pending" | "active" | "done" | "failed" | "blocked" | "cancelled" }[];
+  readonly timeline: readonly {
+    seed: number;
+    minute: number;
+    label: string;
+    state: "pending" | "active" | "done" | "failed" | "blocked" | "cancelled" | "skipped";
+    /** Only on a `skipped` step, and only when the executor recorded one. */
+    notRunReason?: "condition-false" | "branch-not-selected";
+  }[];
   readonly dataFacts?: number;
 }
 
@@ -403,6 +416,14 @@ function detailOf(input: DetailSeed): RunDetailWire {
         at: at(event.minute),
         label: event.label,
         state: event.state,
+        notRun: event.notRunReason === undefined
+          ? {
+            state: "absent",
+            reason: event.state === "skipped"
+              ? "this step did not run; its span recorded no reason"
+              : "this step ran",
+          }
+          : { state: "present", reason: event.notRunReason },
       })),
     },
     gate: input.gate,
@@ -465,6 +486,9 @@ export const FIXTURE_RUN_DETAILS: Readonly<Record<string, RunDetailWire>> = Obje
       { seed: 31, minute: 29, label: "searching", state: "done" },
       { seed: 31, minute: 30, label: "cross-verify", state: "done" },
       { seed: 31, minute: 31, label: "active-status", state: "done" },
+      // The live exit run's exact shape (master plan §Phase 1): a conditional
+      // node whose `when` was false. It is SKIPPED, never "cancelled".
+      { seed: 31, minute: 32, label: "crm-dates", state: "skipped", notRunReason: "condition-false" },
     ],
   }),
   [FIXTURE_IDS.groupOf13]: detailOf({

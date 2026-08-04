@@ -60,6 +60,7 @@ function loopHarness(options: Readonly<{
     ids: sequentialIdFactory("c"),
     scheduler,
     taskDeadlineMs: 60_000,
+    sessionAcquireMs: 20_000,
     heartbeatIntervalMs: options.heartbeatIntervalMs ?? 500,
     idleRepollMs: 1_000,
     log: recordingLogger().log,

@@ -46,6 +46,7 @@ import {
 } from "../../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
 import { UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
 import {
+  FIXTURE_SESSION_ACQUIRE_MS,
   ManualScheduler,
   recordingEmitter,
   recordingLogger,
@@ -163,6 +164,8 @@ export function kualiHarness(options: Readonly<{
     stores: taskStoreRegistry,
     factory: sessions.factory,
     clock,
+    scheduler: new ManualScheduler(clock),
+    acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
   });
   const emitter = recordingEmitter();
   const ids = sequentialIdFactory("c");

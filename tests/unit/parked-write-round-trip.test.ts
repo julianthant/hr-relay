@@ -132,6 +132,7 @@ function roundTrip(): RoundTrip {
       ids,
       scheduler,
       taskDeadlineMs: 60_000,
+      sessionAcquireMs: 20_000,
       heartbeatIntervalMs: 600_000,
       idleRepollMs: 1_000,
       log,

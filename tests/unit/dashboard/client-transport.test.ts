@@ -35,6 +35,7 @@ function surfaceOf(rowRevision: number, status = "queued"): Record<string, unkno
     resolvedInstances: [{ system: "ucpath", instance: "prod" }],
     startedAt: "2026-08-03T17:00:00.000Z",
     updatedAt: "2026-08-03T17:00:00.000Z",
+    endedAt: { state: "absent", reason: "run is running" },
     title: "EID 10873698",
     subtitle: { state: "absent", reason: "none planned" },
     status,

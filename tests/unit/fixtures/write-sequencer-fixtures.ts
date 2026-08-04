@@ -42,6 +42,8 @@ import { WorkerSessionManager } from "../../../src/core/worker-sessions.js";
 import { assertSequencerMintedMutationCapability } from "../../../src/core/write-sequencer.js";
 import { HASH_C, UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
 import {
+  FIXTURE_SESSION_ACQUIRE_MS,
+  ManualScheduler,
   recordingEmitter,
   recordingLogger,
   sessionFactoryHarness,
@@ -496,6 +498,8 @@ export function writeFixtureSessionManager(
     stores: registry,
     factory: harness.factory,
     clock,
+    scheduler: new ManualScheduler(clock),
+    acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
   });
 }
 

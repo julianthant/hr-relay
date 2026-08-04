@@ -160,6 +160,17 @@ describe("person-lookup full walk", () => {
       ["span.ended", taskSpanPath(trace, node("crm-dates"), 1), "skipped"],
       ["span.ended", trace, "done"],
     ]);
+
+    // D123: the skip span carries the SAME closed reason the durable result
+    // records, so the timeline can say why the node did not run instead of
+    // presenting it as an act somebody took.
+    const skipSpan = harness.emitter.events().find((event) =>
+      event.t === "span.ended" && "outcome" in event && event.outcome === "skipped");
+    assert.ok(skipSpan);
+    assert.equal(
+      skipSpan.t === "span.ended" && "notRunReason" in skipSpan ? skipSpan.notRunReason : undefined,
+      crmDates.reason,
+    );
   });
 
   it("includes crm-dates when the operator asked for it", async () => {

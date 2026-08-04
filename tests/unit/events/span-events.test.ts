@@ -9,7 +9,13 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { ExecutorSpanEventSchema, SpanOutcomeSchema } from "../../../src/core/span-emitter.js";
+import {
+  ExecutorSpanEventSchema,
+  SpanNotRunReasonSchema as ExecutorNotRunReasonSchema,
+  SpanOutcomeSchema,
+} from "../../../src/core/span-emitter.js";
+import { TimelineNotRunReasonSchema } from "../../../src/domain/dashboard/run-detail.js";
+import { TerminalNotRunReasonSchema } from "../../../src/domain/run/result.js";
 import { BrowserSystemIdSchema } from "../../../src/domain/ids.js";
 import { RequeueCauseSchema, RunOutcomeSchema } from "../../../src/domain/run/record.js";
 import {
@@ -17,6 +23,7 @@ import {
   SPAN_IDENTITY_ATTRIBUTE_KEYS,
   SpanBrowserSystemSchema,
   SpanEventWireSchema,
+  SpanNotRunReasonSchema,
   SpanOutcomeWireSchema,
   SpanRequeueCauseSchema,
 } from "../../../src/events/types.js";
@@ -54,6 +61,35 @@ describe("span wire leaf parity with the domain vocabulary", () => {
     assert.deepEqual(SpanOutcomeWireSchema.options, SpanOutcomeSchema.options);
     // The run-outcome union is the wire union minus the task-only `skipped`.
     assert.deepEqual([...RunOutcomeSchema.options, "skipped"].sort(), [...SpanOutcomeWireSchema.options].sort());
+  });
+
+  it("pins ONE not-run vocabulary across the durable result, the span, and the timeline (D123)", () => {
+    // A skip is one fact. If the durable result said `condition-false` and a
+    // surface could say something else, the two would disagree about the same
+    // node — which is exactly the class of defect this arm exists to stop.
+    assert.deepEqual(SpanNotRunReasonSchema.options, TerminalNotRunReasonSchema.options);
+    assert.deepEqual(ExecutorNotRunReasonSchema.options, TerminalNotRunReasonSchema.options);
+    assert.deepEqual(TimelineNotRunReasonSchema.options, TerminalNotRunReasonSchema.options);
+  });
+
+  it("carries a not-run reason ONLY on a skipped task span", () => {
+    const ended = {
+      t: "span.ended", kind: "task", ...BASE, ...RUN_IDENTITY,
+      spanPath: `${TRACE}/crm-dates#1`,
+    } as const;
+    assert.equal(
+      SpanEventWireSchema.parse({ ...ended, outcome: "skipped", notRunReason: "condition-false" }).t,
+      "span.ended",
+    );
+    // Absence is legal and means "no reason was recorded"; it is never
+    // back-filled downstream.
+    assert.equal(SpanEventWireSchema.parse({ ...ended, outcome: "skipped" }).t, "span.ended");
+    assert.throws(() => SpanEventWireSchema.parse({ ...ended, outcome: "done", notRunReason: "condition-false" }));
+    assert.throws(() => SpanEventWireSchema.parse({ ...ended, outcome: "skipped", notRunReason: "gave-up" }));
+    assert.throws(() => ExecutorSpanEventSchema.parse({
+      t: "span.ended", kind: "run", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY,
+      outcome: "skipped", notRunReason: "condition-false",
+    }));
   });
 
   it("accepts every executor span event once the writer stamps pid", () => {

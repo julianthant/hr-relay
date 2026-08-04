@@ -29,6 +29,7 @@ import type { Config } from "../../src/domain/config/schema.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { WorkerSessionManager } from "../../src/core/worker-sessions.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
+import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "./fixtures/phase1f-executor-harness.js";
 import type { BrowserSystemBindings } from "../../src/infra/browser/system-bindings.js";
 import type {
   AuthenticatedApplicationEvidence,
@@ -560,6 +561,8 @@ describe("worker browser session factory", () => {
         // proven because this context never announces its close.
         factory,
         clock: CLOCK,
+        scheduler: new ManualScheduler(CLOCK),
+        acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
       });
       manager.bindRunConfigFingerprint(FINGERPRINT);
       const previousUser = process.env.UCPATH_USER_ID;

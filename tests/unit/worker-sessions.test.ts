@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
+import type { TestClock } from "../../src/domain/clock.js";
+import type { MonotonicDeadlineScheduler } from "../../src/core/deadline-scheduler.js";
 import {
   BrowserSessionIdSchema,
   FingerprintSchema,
@@ -16,6 +18,7 @@ import type {
   WorkerSessionEvent,
 } from "../../src/core/worker-sessions.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
+import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "./fixtures/phase1f-executor-harness.js";
 
 const WORKER_ID = WorkerIdSchema.parse("worker-session-fixture");
 const WORKFLOW_ID = WorkflowIdSchema.parse("person-lookup");
@@ -28,6 +31,13 @@ function sessionFactory(options: Readonly<{
   loginFailure?: boolean;
   closeFailureAt?: number;
   omitExclusiveRelease?: boolean;
+  /**
+   * A driver that stops responding: `authenticate` never settles until the
+   * caller's signal aborts. This is the live exit run's CRM failure — every
+   * step inside the login recipe is individually bounded, but the CHAIN was
+   * not, so nothing surfaced for 262.9s.
+   */
+  loginHangs?: boolean;
 }> = {}): Readonly<{
   factory: WorkerBrowserSessionFactory;
   opens: () => number;
@@ -55,13 +65,25 @@ function sessionFactory(options: Readonly<{
           exclusive: input.exclusive,
           driver: { system: input.system },
           authentication: {
-            authenticate(system) {
+            authenticate(system, authOptions) {
               if (system !== input.system) {
                 return Promise.reject(new Error(`${input.system} resource cannot authenticate ${system}`));
               }
               logins += 1;
               if (options.loginFailure === true) {
                 return Promise.reject(new Error("injected login failure"));
+              }
+              if (options.loginHangs === true) {
+                // Settles ONLY when someone aborts it. A cooperative recipe
+                // rejects on the acquisition signal; a wedged one never would,
+                // and the manager's race is what bounds that case.
+                return new Promise<"logged-in">((_resolve, reject) => {
+                  authOptions.signal?.addEventListener(
+                    "abort",
+                    () => reject(new Error("the hung login observed its abort")),
+                    { once: true },
+                  );
+                });
               }
               return Promise.resolve("logged-in" as const);
             },
@@ -96,13 +118,17 @@ function sessionFactory(options: Readonly<{
 function manager(
   harness: ReturnType<typeof sessionFactory>,
   events: WorkerSessionEvent[] = [],
+  options: { clock?: TestClock; scheduler?: MonotonicDeadlineScheduler } = {},
 ): WorkerSessionManager {
+  const clock = options.clock ?? manualClock(new Date("2026-08-02T18:00:00.000Z"));
   const sessions = new WorkerSessionManager({
     workerId: WORKER_ID,
     workflowId: WORKFLOW_ID,
     stores: taskStoreRegistry,
     factory: harness.factory,
-    clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
+    clock,
+    scheduler: options.scheduler ?? new ManualScheduler(clock),
+    acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
     onEvent: (event) => events.push(event),
   });
   // Stand-in for the worker loop's per-run D116 bind.
@@ -289,6 +315,8 @@ describe("worker browser sessions", () => {
       stores: taskStoreRegistry,
       factory: harness.factory,
       clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
+      scheduler: new ManualScheduler(manualClock(new Date("2026-08-02T18:00:00.000Z"))),
+      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
     });
     await assert.rejects(
       sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "must not run"),
@@ -362,6 +390,8 @@ describe("worker browser sessions", () => {
       stores: taskStoreRegistry,
       factory: forging,
       clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
+      scheduler: new ManualScheduler(manualClock(new Date("2026-08-02T18:00:00.000Z"))),
+      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
     await assert.rejects(
@@ -395,5 +425,176 @@ describe("worker browser sessions", () => {
       ),
       /unresolved failed-close proof/,
     );
+  });
+});
+
+/**
+ * D125 — session acquisition is bounded SEPARATELY from the task that wants
+ * a driver.
+ *
+ * The Phase-1 live exit run (`pl-000619-4ebf`, 2026-08-04) spent **262.9s**
+ * inside one `withDriver` when the CRM browser died: `factory.open` succeeded,
+ * the login recipe then chained a series of individually-bounded steps, and
+ * the only bound reaching this code was the interpreter's whole-task deadline
+ * — which must stay long enough for the real read (UCPath person-org ~22s,
+ * Kuali fill→save→reload→verify 8–10s per cycle). Claim expiry surfaced the
+ * dead session before the task deadline did.
+ */
+describe("bounded browser-session acquisition (D125)", () => {
+  const UCPATH_NEED = { system: "ucpath", access: "read", session: "reuse-worker" } as const;
+
+  it("fails the lease at timeouts.sessionAcquireMs when the driver stops responding", async () => {
+    const harness = sessionFactory({ loginHangs: true });
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const scheduler = new ManualScheduler(clock);
+    const sessions = manager(harness, [], { clock, scheduler });
+
+    const lease = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => "must not run");
+    const rejection = assert.rejects(lease, (error) => error instanceof Error
+      && /exceeded its 60000ms timeouts\.sessionAcquireMs bound/.test(error.message)
+      // The refusal must tell the operator which leaf to move, and must not
+      // suggest lengthening the task deadline to hide a dead session.
+      && /timeouts\.duoApprovalSeconds/.test(error.message)
+      && /never lengthen taskMs/.test(error.message));
+
+    // Let the acquisition reach the hung login, then expire its bound. The
+    // TASK deadline is not involved: nothing here arms one.
+    await new Promise((resolve) => setImmediate(resolve));
+    const pending = scheduler.pending();
+    assert.equal(pending.length, 1, "exactly one bound is armed: the acquisition's");
+    assert.equal(pending[0].deadlineMonotonicMs, clock.monotonicMs() + FIXTURE_SESSION_ACQUIRE_MS);
+    pending[0].fire();
+    await rejection;
+
+    // The bound is a REFUSAL, never a silent retry that hides a dead session.
+    assert.equal(harness.opens(), 1);
+    assert.equal(harness.logins(), 1);
+  });
+
+  it("poison-closes a session whose non-cooperative login lands after the bound expired", async () => {
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const base = sessionFactory();
+    // A login that IGNORES its abort signal — the case the race exists for. It
+    // is already past `defineWorkerSessionProvider`'s pre-flight abort check
+    // when the bound expires, so it lands a live, authenticated session on a
+    // lease that has already given up on it.
+    const stubborn: WorkerBrowserSessionFactory = {
+      async open(input) {
+        const resource = await base.factory.open(input);
+        return {
+          ...resource,
+          authentication: {
+            async authenticate(system: typeof input.system) {
+              await gate;
+              return resource.authentication.authenticate(system, {});
+            },
+          },
+        };
+      },
+    };
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const scheduler = new ManualScheduler(clock);
+    const events: WorkerSessionEvent[] = [];
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID,
+      workflowId: WORKFLOW_ID,
+      stores: taskStoreRegistry,
+      factory: stubborn,
+      clock,
+      scheduler,
+      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      onEvent: (event) => events.push(event),
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+
+    const lease = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => "must not run");
+    const rejection = assert.rejects(lease, /timeouts\.sessionAcquireMs bound/);
+    await new Promise((resolve) => setImmediate(resolve));
+    scheduler.pending()[0].fire();
+    await rejection;
+
+    // Now the abandoned acquisition completes. Its session is uncertain by
+    // construction, so it is poison-closed rather than inherited as a warm
+    // reuse by the next lease.
+    release?.();
+    for (let tick = 0; tick < 5; tick += 1) await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(sessions.activeSystems(), []);
+    assert.deepEqual(
+      events.filter((event) => event.type === "browser-session:close").map((event) => event.reason),
+      ["poisoned"],
+    );
+  });
+
+  it("lets an abandoned acquisition run its OWN proven cleanup when it is cooperative", async () => {
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const base = sessionFactory();
+    const slowOpen: WorkerBrowserSessionFactory = {
+      async open(input) {
+        const resource = await base.factory.open(input);
+        await gate;
+        return resource;
+      },
+    };
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const scheduler = new ManualScheduler(clock);
+    const events: WorkerSessionEvent[] = [];
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID,
+      workflowId: WORKFLOW_ID,
+      stores: taskStoreRegistry,
+      factory: slowOpen,
+      clock,
+      scheduler,
+      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      onEvent: (event) => events.push(event),
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+
+    const lease = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => "must not run");
+    const rejection = assert.rejects(lease, /timeouts\.sessionAcquireMs bound/);
+    await new Promise((resolve) => setImmediate(resolve));
+    scheduler.pending()[0].fire();
+    await rejection;
+
+    release?.();
+    for (let tick = 0; tick < 5; tick += 1) await new Promise((resolve) => setImmediate(resolve));
+    // The provider refuses to authenticate under an aborted signal, so
+    // `#openAndLogin` proved its own close; nothing is left owned or leaked.
+    assert.deepEqual(sessions.activeSystems(), []);
+    assert.deepEqual(
+      events.filter((event) => event.type === "browser-session:close").map((event) => event.reason),
+      ["login-failed"],
+    );
+  });
+
+  it("leaves a healthy acquisition alone and cancels its bound", async () => {
+    const harness = sessionFactory();
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const scheduler = new ManualScheduler(clock);
+    const sessions = manager(harness, [], { clock, scheduler });
+
+    assert.equal(await sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => "read"), "read");
+    assert.deepEqual(scheduler.pending(), []);
+    assert.equal(harness.opens(), 1);
+  });
+
+  it("refuses to be built without a positive acquisition bound", () => {
+    const harness = sessionFactory();
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    assert.throws(() => new WorkerSessionManager({
+      workerId: WORKER_ID,
+      workflowId: WORKFLOW_ID,
+      stores: taskStoreRegistry,
+      factory: harness.factory,
+      clock,
+      scheduler: new ManualScheduler(clock),
+      acquireDeadlineMs: 0,
+    }));
   });
 });

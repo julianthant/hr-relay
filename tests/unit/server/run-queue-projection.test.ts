@@ -292,3 +292,108 @@ describe("THE run/queue projection (D81)", () => {
     assert.equal(patch.patch.operation, "replace-queue-surface");
   });
 });
+
+/**
+ * The two presentation defects the Phase-1 live exit run
+ * (`4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`) exposed,
+ * pinned in the run's exact shape: `searching → cross-verify → active-status`
+ * done, then `crm-dates` skipped by its own `when`, and a terminal run whose
+ * execution took minutes rather than the hours a live clock kept counting.
+ */
+describe("the live exit-run presentation shapes (D123/D124)", () => {
+  /** Exactly the exit run's node walk, at one run attempt. */
+  function seedExitRunShape(w: DashboardWorld): void {
+    queuedEventOf(w, { seed: 1 });
+    claimEventOf(w, 1);
+    taskEventsOf(w, 1, "searching", "done");
+    taskEventsOf(w, 1, "cross-verify", "done");
+    taskEventsOf(w, 1, "active-status", "done");
+    taskEventsOf(w, 1, "crm-dates", "skipped", "condition-false");
+    w.writer.emit({
+      t: "span.ended", kind: "run", ts: w.clock.now().toISOString(), workflow: "person-lookup",
+      runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1), outcome: "done",
+    });
+    w.authority.put(runRecordOf({
+      seed: 1,
+      lifecycle: { state: "terminal", outcome: "done", endedAt: "2026-08-03T17:14:30.000Z" },
+      version: 3,
+    }));
+  }
+
+  it("renders a conditionally-skipped node as SKIPPED with its closed reason, never as cancelled", () => {
+    const w = world();
+    seedExitRunShape(w);
+
+    const detail = buildRunDetail(
+      { stateRoot: w.stateRoot, projection: w.projection, authority: w.authority },
+      uuidOf(1),
+    );
+    const crmDates = detail.timeline.events.find((event) => event.label === "crm-dates");
+    assert.ok(crmDates, "the skipped node must still appear on the timeline");
+    assert.equal(crmDates.state, "skipped");
+    assert.deepEqual(crmDates.notRun, { state: "present", reason: "condition-false" });
+
+    // "Cancelled" names an act someone took; nobody acted on this run.
+    assert.deepEqual(detail.timeline.events.filter((event) => event.state === "cancelled"), []);
+    // Every step that DID run keeps an explicit, reasoned absence.
+    for (const event of detail.timeline.events.filter((event) => event.state !== "skipped")) {
+      assert.equal(event.notRun.state, "absent");
+    }
+  });
+
+  it("keeps a skipped span whose reason was never recorded explicitly reasonless", () => {
+    const w = world();
+    queuedEventOf(w, { seed: 1 });
+    claimEventOf(w, 1);
+    // A pre-D123 span, or any emitter that recorded no reason: absence must
+    // stay absence rather than borrowing the only reason we happen to know.
+    taskEventsOf(w, 1, "crm-dates", "skipped");
+
+    const detail = buildRunDetail(
+      { stateRoot: w.stateRoot, projection: w.projection, authority: w.authority },
+      uuidOf(1),
+    );
+    const crmDates = detail.timeline.events.find((event) => event.label === "crm-dates");
+    assert.ok(crmDates);
+    assert.equal(crmDates.state, "skipped");
+    assert.equal(crmDates.notRun.state, "absent");
+    assert.match(
+      crmDates.notRun.state === "absent" ? crmDates.notRun.reason : "",
+      /recorded no reason/,
+    );
+  });
+
+  it("serves the terminal instant on a settled row and an explicit absence while in flight", () => {
+    const w = world();
+    seedExitRunShape(w);
+    queuedEventOf(w, { seed: 2 });
+    w.authority.put(runRecordOf({
+      seed: 2, lifecycle: { state: "running", ...CLAIM }, claimGeneration: 1, version: 2,
+    }));
+    claimEventOf(w, 2);
+
+    const day = w.projection.buildDashboardDayWire(DAY);
+    const done = day.queueSurfaces.find((surface) => surface.runId === uuidOf(1));
+    const running = day.queueSurfaces.find((surface) => surface.runId === uuidOf(2));
+    assert.ok(done && running);
+    assert.deepEqual(done.endedAt, { state: "present", value: "2026-08-03T17:14:30.000Z" });
+    assert.equal(running.endedAt.state, "absent");
+  });
+
+  it("falls back to the run span's end instant, and names the absence when neither exists", () => {
+    const w = world();
+    queuedEventOf(w, { seed: 1 });
+    claimEventOf(w, 1);
+    // Authority has not settled yet, so the status comes from the run span —
+    // and so must the instant a duration is measured against.
+    w.writer.emit({
+      t: "span.ended", kind: "run", ts: "2026-08-03T17:20:00.000Z", workflow: "person-lookup",
+      runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1), outcome: "cancelled",
+    });
+    const surface = w.projection.buildDashboardDayWire(DAY).queueSurfaces
+      .find((row) => row.runId === uuidOf(1));
+    assert.ok(surface);
+    assert.equal(surface.status, "cancelled");
+    assert.deepEqual(surface.endedAt, { state: "present", value: "2026-08-03T17:20:00.000Z" });
+  });
+});

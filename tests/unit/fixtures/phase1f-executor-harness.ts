@@ -310,10 +310,14 @@ export function happySessionHarness(): SessionFactoryHarness {
   });
 }
 
+/** The production default for `timeouts.sessionAcquireMs` (D125). */
+export const FIXTURE_SESSION_ACQUIRE_MS = 60_000;
+
 export function sessionManagerFor(
   harness: SessionFactoryHarness,
   clock: TestClock,
   onEvent?: (event: WorkerSessionEvent) => void,
+  scheduler: MonotonicDeadlineScheduler = new ManualScheduler(clock),
 ): WorkerSessionManager {
   const manager = new WorkerSessionManager({
     workerId: EXECUTOR_WORKER_ID,
@@ -321,6 +325,8 @@ export function sessionManagerFor(
     stores: taskStoreRegistry,
     factory: harness.factory,
     clock,
+    scheduler,
+    acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
     ...(onEvent === undefined ? {} : { onEvent }),
   });
   // D116: production binds the claimed run's fingerprint in the worker loop;

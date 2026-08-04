@@ -233,7 +233,13 @@ export function queuedEventOf(world: DashboardWorld, input: SeedRunInput): RunQu
   return event as unknown as RunQueuedWire;
 }
 
-export function taskEventsOf(world: DashboardWorld, seed: number, node: string, outcome?: "done" | "failed" | "skipped"): void {
+export function taskEventsOf(
+  world: DashboardWorld,
+  seed: number,
+  node: string,
+  outcome?: "done" | "failed" | "skipped",
+  notRunReason?: "condition-false" | "branch-not-selected",
+): void {
   const base = {
     ts: world.clock.now().toISOString(),
     workflow: "person-lookup",
@@ -243,7 +249,10 @@ export function taskEventsOf(world: DashboardWorld, seed: number, node: string, 
   };
   world.writer.emit({ ...base, t: "span.started", kind: "task", spanPath: `${traceOf(seed)}/${node}#1`, parentSpanPath: traceOf(seed), name: node });
   if (outcome !== undefined) {
-    world.writer.emit({ ...base, t: "span.ended", kind: "task", spanPath: `${traceOf(seed)}/${node}#1`, outcome });
+    world.writer.emit({
+      ...base, t: "span.ended", kind: "task", spanPath: `${traceOf(seed)}/${node}#1`, outcome,
+      ...(notRunReason === undefined ? {} : { notRunReason }),
+    });
   }
 }
 
