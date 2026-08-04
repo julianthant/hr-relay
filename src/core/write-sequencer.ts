@@ -1360,9 +1360,21 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         + "(zero intent, zero fence, zero commit) once the preview arm lands",
       );
     }
-    if (node.dryRun === "unsupported" && envelope.dryRun) {
+    // The run's OWN immutable envelope, not the caller's claim about it.
+    // `context.dryRun` above is what the caller passed; the interpreter derives
+    // it from this same field, so in production the two always agree. They are
+    // still checked separately on purpose: a caller that passes `dryRun:false`
+    // for a run the operator enqueued as a dry run would otherwise reach the
+    // fence and click a REAL external write, and this is the one path in the
+    // program where "the caller said so" is not good enough. Found 2026-08-04,
+    // when a Phase-2 live lane claimed a leftover dry-run row and the kernel
+    // had nothing of its own to refuse with. This subsumes the older
+    // `node.dryRun === "unsupported"` arm: no node policy makes a real write
+    // legal on a dry-run envelope.
+    if (envelope.dryRun) {
       throw new TaskError(commitContract.id, "capability-unavailable",
-        `transaction node "${node.id}" does not support dry-run`);
+        `run ${envelope.runId} was enqueued as a dry run; transaction node "${node.id}" refuses to fence or `
+        + "click a real external write for it, whatever the caller passed — use executeDryRun");
     }
 
     /* step 0 — this node's settled outcome replays byte-exact, never re-clicks */

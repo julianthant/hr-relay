@@ -21,7 +21,14 @@ import { StagedPageDiscardedError, WriteParkedError } from "../../src/core/write
 import { KualiSaveTimekeeperAnnotation } from "../../src/domain/contracts/kuali/save-timekeeper-annotation.js";
 import { KUALI_RRSS_SAVE_BUTTON } from "../../src/domain/ui/kuali-rrss-document.js";
 import { deriveWriteBindingProofDigest } from "../../src/domain/write-safety.js";
+import {
+  AtomicWriteCommitStorageStepSchema,
+  SequencedWriteCommitStepSchema,
+} from "../../src/infra/sqlite/index.js";
 import { createDeterministicKualiDriver } from "../../src/stores/kuali/driver/fake.js";
+import { createKualiRrssDocumentDriver } from "../../src/stores/kuali/driver/interpreter.js";
+import { manualClock } from "../../src/domain/clock.js";
+import { fakeKualiPage } from "./fixtures/fake-kuali-page.js";
 import {
   KUALI_EID,
   KUALI_IDEMPOTENCY_KEY,
@@ -373,5 +380,270 @@ describe("Kuali permanent-key dedupe", () => {
       undefined,
     );
     assert.equal(h.world.displayedEid, KUALI_EID);
+  });
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Phase 2's CONTROLLED-COMMIT half.
+ *
+ * The live lane on operator-named documents 4489/4490 (2026-08-04) fenced,
+ * clicked Save, and read `absent` — the Kuali save mutation for that workflow
+ * step does not carry the timekeeper field at all, so the write cannot land
+ * there and the kernel parked, fail-closed. These arms are the repeatable
+ * fixtures doc 07 asks for around that same code path: crash injection at
+ * EVERY supported beat-⑦ seam, the recovery arms, browser-context cleanup, and
+ * the context-exclusive lease under two workers on ONE authority database.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+describe("Kuali beat ⑦ — every crash seam is all-or-none", () => {
+  for (const step of AtomicWriteCommitStorageStepSchema.options) {
+    it(`inner primitive crash after ${step} leaves the intent attempting and nothing else`, async () => {
+      const h = harness({
+        commitHooks: {
+          afterStorageStep(failed) {
+            if (failed === step) throw new Error(`injected inner crash after ${failed}`);
+          },
+        },
+      });
+      const { run, claim } = kualiClaimRunning(h.database, h.clock);
+      const versionBefore = h.database.authority.runs.get(run.envelope.runId)?.version;
+
+      await assert.rejects(
+        h.bound(() => h.sequencer.executeTransaction(kualiContext(run, claim))),
+        new RegExp(`injected inner crash after ${step}`),
+      );
+
+      const intent = h.database.authority.writeIntents.findByPermanentKey("kuali", KUALI_IDEMPOTENCY_KEY);
+      assert.equal(intent?.status, "attempting", "the fence survives for doc-09 §4 recovery");
+      assert.equal(
+        h.database.authority.runCheckpoints.latest(KUALI_WORKFLOW_ID, KUALI_ITEM_ID, KUALI_NODE_ID),
+        undefined,
+        "no transaction checkpoint",
+      );
+      assert.equal(h.database.authority.runs.get(run.envelope.runId)?.version, versionBefore, "no run advance");
+      assert.deepEqual(kualiDurableFootprint(h).outboxes, [], "no ledger or terminal-span outbox");
+      assert.equal(clicked(h), true, "the click DID happen — this is the crash window recovery exists for");
+    });
+  }
+
+  for (const step of SequencedWriteCommitStepSchema.options) {
+    it(`outer bundle crash after ${step} leaves the intent attempting and nothing else`, async () => {
+      const h = harness({
+        hooks: {
+          afterSequencedStep(failed) {
+            if (failed === step) throw new Error(`injected outer crash after ${failed}`);
+          },
+        },
+      });
+      const { run, claim } = kualiClaimRunning(h.database, h.clock);
+      const versionBefore = h.database.authority.runs.get(run.envelope.runId)?.version;
+
+      await assert.rejects(
+        h.bound(() => h.sequencer.executeTransaction(kualiContext(run, claim))),
+        new RegExp(`injected outer crash after ${step}`),
+      );
+
+      const intent = h.database.authority.writeIntents.findByPermanentKey("kuali", KUALI_IDEMPOTENCY_KEY);
+      assert.equal(intent?.status, "attempting");
+      assert.equal(
+        h.database.authority.runCheckpoints.latest(KUALI_WORKFLOW_ID, KUALI_ITEM_ID, KUALI_NODE_ID),
+        undefined,
+      );
+      assert.equal(h.database.authority.runs.get(run.envelope.runId)?.version, versionBefore);
+      assert.deepEqual(kualiDurableFootprint(h).outboxes, []);
+    });
+  }
+});
+
+describe("Kuali recovery of a crashed attempt (doc 09 §4)", () => {
+  it("a validated present read-back backfills committed WITHOUT a second click", async () => {
+    const h = harness({
+      hooks: {
+        afterSequencedStep(step) {
+          if (step === "run-transition") throw new Error("injected crash before the run advanced");
+        },
+      },
+    });
+    const first = kualiClaimRunning(h.database, h.clock);
+    await assert.rejects(h.bound(() => h.sequencer.executeTransaction(kualiContext(first.run, first.claim))));
+    const clicks = h.world.events.filter((event) => event.startsWith("commit:")).length;
+    assert.equal(clicks, 1);
+    assert.equal(
+      h.database.authority.writeIntents.findByPermanentKey("kuali", KUALI_IDEMPOTENCY_KEY)?.status,
+      "attempting",
+    );
+    // The click DID land in Kuali; the crash only lost our record of it.
+    assert.equal(h.world.persistedTimekeeperName, KUALI_TIMEKEEPER_VALUE);
+
+    const resumedHarness = harness({ database: h.database, persistedTimekeeperName: KUALI_TIMEKEEPER_VALUE });
+    const current = h.database.authority.runs.get(first.run.envelope.runId);
+    assert.ok(current !== undefined);
+    const outcome = await resumedHarness.bound(() => resumedHarness.sequencer.executeTransaction({
+      ...kualiContext(current, first.claim),
+      run: current,
+    }));
+
+    assert.equal(Reflect.get(outcome as object, "disposition"), "committed");
+    assert.equal(Reflect.get(outcome as object, "proofSource"), "recovery-probe");
+    assert.equal(
+      resumedHarness.world.events.filter((event) => event.startsWith("commit:")).length,
+      0,
+      "recovery probes; it never clicks a second time",
+    );
+    assert.equal(
+      h.database.authority.writeIntents.findByPermanentKey("kuali", KUALI_IDEMPOTENCY_KEY)?.status,
+      "committed",
+    );
+  });
+
+  it("an absent read-back after the crash parks: one observation is never retry authority", async () => {
+    const h = harness({
+      hooks: {
+        afterSequencedStep(step) {
+          if (step === "run-transition") throw new Error("injected crash before the run advanced");
+        },
+      },
+    });
+    const first = kualiClaimRunning(h.database, h.clock);
+    await assert.rejects(h.bound(() => h.sequencer.executeTransaction(kualiContext(first.run, first.claim))));
+    assert.equal(
+      h.database.authority.writeIntents.findByPermanentKey("kuali", KUALI_IDEMPOTENCY_KEY)?.status,
+      "attempting",
+    );
+
+    // The resumed lane opens a document that does NOT show the value — the
+    // write was rolled back, or never landed. The recovery probe therefore
+    // reads a well-evidenced `absent`, and `operator-only` settlement means
+    // that single observation carries zero retry authority.
+    const resumed = harness({ database: h.database });
+    const current = h.database.authority.runs.get(first.run.envelope.runId);
+    assert.ok(current !== undefined);
+    await assert.rejects(
+      resumed.bound(() => resumed.sequencer.executeTransaction({ ...kualiContext(current, first.claim), run: current })),
+      (error: unknown) => {
+        assert.ok(error instanceof WriteParkedError, `unexpected error: ${String(error)}`);
+        assert.equal(error.parkCode, "unknown");
+        return true;
+      },
+    );
+    const intent = h.database.authority.writeIntents.findByPermanentKey("kuali", KUALI_IDEMPOTENCY_KEY);
+    assert.equal(intent?.status, "parked", "operator-only absence settlement can never mint a generation");
+    assert.equal(intent?.generation, 1, "no new generation was created");
+  });
+});
+
+describe("Kuali context lifecycle and the context-exclusive lease", () => {
+  it("a post-fence park closes the browser context before the run parks", async () => {
+    const h = harness();
+    const { run, claim } = kualiClaimRunning(h.database, h.clock);
+    h.world.commitThrows = new Error("post-fence uncertainty");
+    await assert.rejects(h.bound(() => h.sequencer.executeTransaction(kualiContext(run, claim))));
+    assert.deepEqual(h.manager.activeSystems(), [], "no browser resource survives a parked write");
+    assert.equal(h.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "parked-write");
+  });
+
+  it("two workers on ONE authority database: the permanent key admits exactly one fence", async () => {
+    const first = harness();
+    const second = harness({ database: first.database, workerId: "kuali-transaction-worker-2" });
+    const a = kualiClaimRunning(first.database, first.clock);
+    await first.bound(() => first.sequencer.executeTransaction(kualiContext(a.run, a.claim)));
+
+    const otherRun = {
+      ...kualiQueuedRun(),
+      envelope: {
+        ...(kualiQueuedRun().envelope as Record<string, unknown>),
+        runId: "77777777-7777-4777-8777-777777777777",
+        itemId: "66666666-6666-4666-8666-666666666666",
+        traceId: "kt-100002-4444",
+      },
+    };
+    const b = kualiClaimRunning(first.database, first.clock, otherRun, "kuali-transaction-worker-2");
+    const outcome = await second.bound(() => second.sequencer.executeTransaction({
+      ...kualiContext(b.run, b.claim),
+      run: b.run,
+    }));
+
+    assert.equal(Reflect.get(outcome as object, "disposition"), "already-present");
+    assert.equal(
+      second.world.events.filter((event) => event.startsWith("commit:")).length,
+      0,
+      "the second worker never clicked",
+    );
+  });
+
+  it("a run enqueued as a dry run can never reach the fence, whatever the caller passes", async () => {
+    const h = harness();
+    const { run, claim } = kualiClaimRunning(h.database, h.clock, kualiQueuedRun({ dryRun: true }));
+    await assert.rejects(
+      // `dryRun:false` is deliberately a LIE about a dry-run envelope: this is
+      // exactly the shape a mis-wired caller produces, and the kernel must
+      // refuse on the run's own immutable envelope rather than the claim.
+      h.bound(() => h.sequencer.executeTransaction(kualiContext(run, claim, false))),
+      /was enqueued as a dry run.*refuses to fence or click/s,
+    );
+    assertNothingHappened(h);
+  });
+});
+
+describe("Kuali document identification on a client-rendered page", () => {
+  const ACTION = "6a712bf32ff7fb799788a79e";
+  const VIEW_URL = `https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb/actions/${ACTION}/view`;
+
+  it("identifies the document beside an EMPTY heading and two decoy headings", async () => {
+    // The exact live neighbourhood: the document heading paints last, and the
+    // page carries "Action" / "Action List" headings the whole time.
+    const { page } = fakeKualiPage({
+      url: VIEW_URL,
+      headings: ["4489", "Action", "Action List"],
+      eid: " 10001828 ",
+      timekeeper: "  ",
+    });
+    const driver = createKualiRrssDocumentDriver(page, manualClock(new Date("2026-08-04T15:00:00.000Z")));
+    const view = await driver.openDocument({ actionId: ACTION, documentNumber: "4489" });
+    assert.equal(view.documentNumber, "4489");
+    assert.equal(view.observedEid, "10001828", "every Kuali read trims");
+    assert.equal(view.currentTimekeeperName, "");
+  });
+
+  it("refuses when no heading has the shape of a document number — the stale-action-id case", async () => {
+    const { page } = fakeKualiPage({
+      url: VIEW_URL,
+      headings: ["", "Action", "Action List"],
+      eid: "10001828",
+      timekeeper: "",
+    });
+    const driver = createKualiRrssDocumentDriver(page, manualClock(new Date("2026-08-04T15:00:00.000Z")));
+    await assert.rejects(
+      driver.openDocument({ actionId: ACTION, documentNumber: "4489" }),
+      /did not render a document-number heading .*the action id may be stale/s,
+    );
+  });
+
+  it("refuses a page that shows a DIFFERENT document, naming both numbers", async () => {
+    const { page } = fakeKualiPage({
+      url: VIEW_URL,
+      headings: ["4490", "Action", "Action List"],
+      eid: "10631689",
+      timekeeper: "",
+    });
+    const driver = createKualiRrssDocumentDriver(page, manualClock(new Date("2026-08-04T15:00:00.000Z")));
+    await assert.rejects(
+      driver.openDocument({ actionId: ACTION, documentNumber: "4489" }),
+      /opened document 4490, but the run named 4489/,
+    );
+  });
+
+  it("refuses an ambiguous page carrying two document-number headings", async () => {
+    const { page } = fakeKualiPage({
+      url: VIEW_URL,
+      headings: ["4489", "4490"],
+      eid: "10001828",
+      timekeeper: "",
+    });
+    const driver = createKualiRrssDocumentDriver(page, manualClock(new Date("2026-08-04T15:00:00.000Z")));
+    await assert.rejects(
+      driver.openDocument({ actionId: ACTION, documentNumber: "4489" }),
+      /rendered 2 document-number headings; exactly one is required/,
+    );
   });
 });

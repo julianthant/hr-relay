@@ -22,6 +22,7 @@ import type { WriteSequencerContext } from "../../../src/core/run-executor.js";
 import {
   createWriteSequencer,
   type ProductionWriteSequencer,
+  type WriteSequencerHooks,
 } from "../../../src/core/write-sequencer.js";
 import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../src/core/worker-sessions.js";
 import {
@@ -33,6 +34,7 @@ import type { RunRecord } from "../../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import type { RuntimeFlowNode } from "../../../src/domain/workflow/graph.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import type { AuthorityWriteCommitHooks } from "../../../src/infra/sqlite/authority-database.js";
 import {
   createDeterministicKualiDriver,
   createKualiFakeWorld,
@@ -139,12 +141,22 @@ export function kualiHarness(options: Readonly<{
   displayedEid?: string;
   /** What the EID field shows AFTER prepare stages — the beat-③ mismatch arm. */
   displayedEidAfterStage?: string;
+  /** Crash injection inside the Phase-1c four-row primitive (beat ⑦ inner). */
+  commitHooks?: AuthorityWriteCommitHooks;
+  /** Crash injection between the outer beat-⑦ bundle's steps. */
+  hooks?: WriteSequencerHooks;
+  /** Share one authority database across harnesses (the multi-worker arms). */
+  database?: AuthorityDatabase;
+  /** Distinguish concurrent workers over one database. */
+  workerId?: string;
 }> = {}): KualiHarness {
   const clock = manualClock(new Date(KUALI_NOW));
   const root = mkdtempSync(join(tmpdir(), "hrauto-kuali-transaction-"));
-  const database = AuthorityDatabase.open(
+  const owned = options.database === undefined;
+  const database = options.database ?? AuthorityDatabase.open(
     { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "kuali-transaction-test" },
     clock,
+    options.commitHooks,
   );
   const world = createKualiFakeWorld({
     actionId: KUALI_ACTION_ID,
@@ -159,7 +171,7 @@ export function kualiHarness(options: Readonly<{
   }
   const sessions = sessionFactoryHarness({ kuali: () => createDeterministicKualiDriver(world, clock) });
   const manager = new WorkerSessionManager({
-    workerId: WorkerIdSchema.parse(KUALI_WORKER_ID),
+    workerId: WorkerIdSchema.parse(options.workerId ?? KUALI_WORKER_ID),
     workflowId: WorkflowIdSchema.parse(KUALI_WORKFLOW_ID),
     stores: taskStoreRegistry,
     factory: sessions.factory,
@@ -181,13 +193,14 @@ export function kualiHarness(options: Readonly<{
     operator: "local-operator",
     log: recordingLogger().log,
     resolveImplFingerprint: () => KUALI_IMPL_FINGERPRINT,
+    ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
   });
   return {
     world, database, clock, manager, emitter, ids, sequencer,
     bound: <Result>(work: () => Promise<Result>): Promise<Result> =>
       withBoundRunConfigFingerprint(manager, KUALI_CONFIG_FINGERPRINT, work),
     dispose: (): void => {
-      database.close();
+      if (owned) database.close();
       rmSync(root, { recursive: true, force: true });
     },
   };

@@ -27,6 +27,7 @@ export type FakeElementName =
   | "login-type-select"
   | "peoplesoft-signon"
   | "communities-login"
+  | "kuali-app-chrome"
   | "stale-request";
 
 export interface FakeElementScript {
@@ -44,6 +45,14 @@ export interface FakeElementScript {
   readonly valueAfterSelect?: string;
   /** Navigate the page when this element is actioned (click/select). */
   readonly navigatesTo?: string;
+  /**
+   * Model a CLIENT-RENDERED control: `count()` reports 0 until a `waitFor` has
+   * resolved for it, and `count` afterwards. This is the shape Kuali Build
+   * actually has (measured live 2026-08-04: the space paints zero `[role]`
+   * nodes at `domcontentloaded` and its menubar ~1s later), and it is what
+   * distinguishes a probe that WAITS for a fact from one that samples it once.
+   */
+  readonly rendersAfterWait?: boolean;
 }
 
 export interface FakeCookie {
@@ -87,6 +96,7 @@ function classify(kind: string, argument: string): FakeElementName | undefined {
   if (kind === "locator" && argument.includes("ssopassword")) return "sso-password";
   if (kind === "locator" && argument.includes("#userid")) return "peoplesoft-signon";
   if (kind === "locator" && argument.includes("#username")) return "communities-login";
+  if (kind === "locator" && argument.includes("menuitem")) return "kuali-app-chrome";
   if (kind === "label" && /account id|user ?name|email address/i.test(argument)) return "sso-username";
   if (kind === "label" && /password/i.test(argument)) return "sso-password";
   if (kind === "role" && /university of california, san diego/i.test(argument)) return "campus-link";
@@ -101,6 +111,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   const filled: string[] = [];
   const settlements = [...(script.settlesTo ?? [])];
   const selected = new Set<FakeElementName>();
+  const rendered = new Set<FakeElementName>();
 
   const scriptFor = (name: FakeElementName): FakeElementScript =>
     script.elementsByUrl?.[current]?.[name] ?? script.elements?.[name] ?? {};
@@ -111,13 +122,16 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
       or: (other: Record<string, unknown>) => (name === undefined ? other : locator),
       count: async () => {
         if (name === undefined) return 0;
-        return scriptFor(name).count ?? 1;
+        const element = scriptFor(name);
+        if (element.rendersAfterWait === true && !rendered.has(name)) return 0;
+        return element.count ?? 1;
       },
       waitFor: async () => {
         if (name === undefined) throw new Error("fake page: waitFor on an unclassified locator");
         const element = scriptFor(name);
         if ((element.count ?? 1) === 0) throw new Error(`fake page: ${name} never appeared`);
         if (element.failWith !== undefined) throw new Error(element.failWith);
+        rendered.add(name);
       },
       fill: async (value: string) => {
         if (name === undefined) throw new Error("fake page: fill on an unclassified locator");

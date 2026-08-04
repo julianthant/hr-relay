@@ -3,6 +3,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "vitest";
 import { UiVerificationEvidenceManifestSchema } from "../../../src/domain/ui/contracts.js";
+import {
+  UCPATH_PERSON_ORG_DETAIL_SCREEN,
+  UCPATH_PERSON_ORG_SEARCH_SCREEN,
+} from "../../../src/domain/ui/ucpath-person-org.js";
+import { UCPATH_SS_SMART_HR_TRANSACTION_SCREEN } from "../../../src/domain/ui/ucpath-ss-smart-hr.js";
 import { UCPATH_PERSON_ORG_OPERATION_ELEMENTS } from "../../../src/stores/ucpath/driver/person-org-operation.js";
 import { UCPATH_UI_REGISTRY } from "../../../src/stores/ucpath/driver/ui-registry.js";
 
@@ -61,10 +66,40 @@ describe("strict UCPath Person Org port", () => {
   });
 
   it("keeps every raw operation locator behind an exact semantic registry element", () => {
+    // Scoped to the two Person Org screens on purpose. The UCPath registry is
+    // no longer single-family — the 2026-08-04 receipt probe added the
+    // SS Smart HR transaction screen — so equality against EVERY registry
+    // element would make an unrelated family's growth fail this guard while
+    // saying nothing about Person Org. The invariant that matters is
+    // unchanged: this operation's raw locators and the Person Org screens'
+    // registered elements are the SAME set, in both directions.
+    const personOrgScreens = new Set([
+      UCPATH_PERSON_ORG_SEARCH_SCREEN,
+      UCPATH_PERSON_ORG_DETAIL_SCREEN,
+    ]);
     assert.deepEqual(
       [...UCPATH_PERSON_ORG_OPERATION_ELEMENTS].sort(),
-      UCPATH_UI_REGISTRY.elements.map(({ id }) => id).sort(),
+      UCPATH_UI_REGISTRY.elements
+        .filter(({ screen }) => personOrgScreens.has(screen))
+        .map(({ id }) => id)
+        .sort(),
     );
+  });
+
+  it("keeps the SS Smart HR receipt family out of the Person Org operation", () => {
+    // The other direction of the same fence: a receipt element must never be
+    // reachable from the Person Org read, and the receipt family must never be
+    // silently empty (which would make the scoped assertion above vacuous).
+    const receiptElements = UCPATH_UI_REGISTRY.elements
+      .filter(({ screen }) => screen === UCPATH_SS_SMART_HR_TRANSACTION_SCREEN)
+      .map(({ id }) => id);
+    assert.deepEqual(receiptElements.sort(), [
+      "ucpath.ss-smart-hr.approval-status-display",
+      "ucpath.ss-smart-hr.receipt-display",
+    ]);
+    for (const id of receiptElements) {
+      assert.equal(UCPATH_PERSON_ORG_OPERATION_ELEMENTS.includes(id), false);
+    }
   });
 
   it("records current-live zero-match legacy accessible-name recipes as rejected", () => {

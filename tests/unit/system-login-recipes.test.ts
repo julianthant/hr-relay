@@ -37,6 +37,7 @@ import {
   ucpathLoginRecipe,
   verifyUcpathAuthenticatedApplication,
 } from "../../src/stores/ucpath/session.js";
+import { verifyKualiAuthenticatedApplication } from "../../src/stores/kuali/session.js";
 import { fakeLoginPage, type FakeCookie, type FakePageScript } from "./fixtures/fake-login-page.js";
 
 const CONFIG = resolveConfig({}, {}, manualClock(new Date("2026-08-03T09:00:00.000Z")));
@@ -614,5 +615,53 @@ describe("crm login recipe", () => {
       assert.match(error.message, /never issued its sid session cookie/);
       return true;
     });
+  });
+});
+
+/**
+ * Kuali Build is CLIENT-RENDERED, and the first live Kuali session (2026-08-04)
+ * proved that matters: `waitForAuthenticatedLanding` resolves on the URL, and
+ * the space serves a body with ZERO `[role]` nodes at `domcontentloaded`,
+ * painting its menubar ~1s later. A verifier that COUNTS the chrome once at
+ * that instant reports "no Kuali Build application chrome" for a session that
+ * is in fact authenticated — and the flow then hunts for an SSO form that will
+ * never render. These arms pin the wait, and pin that the wait is not a
+ * fallback: chrome that never renders still refuses.
+ */
+describe("kuali landing verification — a client-rendered positive fact", () => {
+  const KUALI_APP = CONFIG.urls.kuali.prod.entry;
+
+  it("proves the session when the application chrome renders AFTER the landing URL settles", async () => {
+    const { context } = contextFor({
+      url: KUALI_APP,
+      elements: {
+        ...NO_SIGN_IN_FORMS,
+        "sso-username": { count: 0 },
+        "sso-password": { count: 0 },
+        "kuali-app-chrome": { count: 1, rendersAfterWait: true },
+      },
+    });
+    const probe = await verifyKualiAuthenticatedApplication(context);
+    assert.equal(probe.authenticated, true, "a late-painting menubar is still a rendered menubar");
+  });
+
+  it("still refuses when the application chrome never renders", async () => {
+    const { context } = contextFor({
+      url: KUALI_APP,
+      elements: { ...NO_SIGN_IN_FORMS, "kuali-app-chrome": { count: 0 } },
+    });
+    const probe = await verifyKualiAuthenticatedApplication(context);
+    assert.equal(probe.authenticated, false);
+    assert.match(probe.authenticated ? "" : probe.reason, /no Kuali Build application chrome/);
+  });
+
+  it("never pays the wait off the application host: the URL is checked first", async () => {
+    const { context } = contextFor({
+      url: SSO,
+      elements: { "kuali-app-chrome": { count: 0 } },
+    });
+    const probe = await verifyKualiAuthenticatedApplication(context);
+    assert.equal(probe.authenticated, false);
+    assert.match(probe.authenticated ? "" : probe.reason, /not the Kuali Build application/);
   });
 });

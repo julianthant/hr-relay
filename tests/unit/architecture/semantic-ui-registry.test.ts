@@ -59,6 +59,8 @@ function evidenceBindingInput(): unknown {
     evidenceByRef: {
       "evidence/ui/ucpath/person-org.fixture.json": readJson("evidence/ui/ucpath/person-org.fixture.json"),
       "evidence/ui/ucpath/person-org.live.json": readJson("evidence/ui/ucpath/person-org.live.json"),
+      "evidence/ui/ucpath/ss-smart-hr.fixture.json": readJson("evidence/ui/ucpath/ss-smart-hr.fixture.json"),
+      "evidence/ui/ucpath/ss-smart-hr.live.json": readJson("evidence/ui/ucpath/ss-smart-hr.live.json"),
     },
     portBindings,
   };

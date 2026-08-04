@@ -44,6 +44,14 @@ import {
   UCPATH_PERSON_ORG_SEARCH_READY,
   UCPATH_PERSON_ORG_SEARCH_SCREEN,
 } from "../../../domain/ui/ucpath-person-org.js";
+import {
+  UCPATH_SS_SMART_HR_APPROVAL_STATUS,
+  UCPATH_SS_SMART_HR_APPROVAL_STATUS_DISPLAY,
+  UCPATH_SS_SMART_HR_RECEIPT_DISPLAY,
+  UCPATH_SS_SMART_HR_TRANSACTION_READY,
+  UCPATH_SS_SMART_HR_TRANSACTION_RECEIPT,
+  UCPATH_SS_SMART_HR_TRANSACTION_SCREEN,
+} from "../../../domain/ui/ucpath-ss-smart-hr.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../domain/trust/preflight-scenarios.js";
 
 const LEGACY_COMMIT = "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc";
@@ -67,6 +75,17 @@ const NAME_DISPLAY_PORT_KEY = "personOrgSummary.personNameValue()";
 const ASSIGNMENTS_GRID_PORT_KEY = "personOrgSummary.body()";
 const RETURN_PORT_KEY = "personOrgSummary.returnToSearchButton()";
 
+/**
+ * The SS Smart HR receipt surface (doc 09 §13 OQ2). Its own evidence pair and
+ * its own `verifiedAt` — the person-org family was verified 2026-08-02 and
+ * must not inherit this probe's date, nor this family that one's.
+ */
+const SS_SMART_HR_FIXTURE_EVIDENCE = "evidence/ui/ucpath/ss-smart-hr.fixture.json";
+const SS_SMART_HR_LIVE_EVIDENCE = "evidence/ui/ucpath/ss-smart-hr.live.json";
+const RECEIPT_SCENARIO = "ui/ucpath-ss-smart-hr-transaction-receipt";
+const RECEIPT_PORT_KEY = "ssSmartHRTransactions.transactionResultRow()";
+const APPROVAL_STATUS_PORT_KEY = "ssSmartHRTransactions.approvalStatusSelect()";
+
 const GitBlobSchema = z.string().regex(/^[0-9a-f]{40}$/);
 const LegacySelectorProvenanceSchema = z.strictObject({
   commit: z.literal(LEGACY_COMMIT),
@@ -74,6 +93,12 @@ const LegacySelectorProvenanceSchema = z.strictObject({
   key: z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/),
   sourceLine: z.number().int().positive(),
   blob: GitBlobSchema,
+  /**
+   * When the rebuild does NOT copy the legacy recipe verbatim, the reason is
+   * recorded here and reviewed — the same rule Kuali's registry carries. A
+   * silent narrowing would be indistinguishable from a transcription error.
+   */
+  narrowedFromLegacy: z.string().min(1).optional(),
 });
 const UiPortContextSchema = z.enum([
   "search-results-view-toggle",
@@ -235,13 +260,25 @@ function verification(scenario: string, legacyKey: string) {
   };
 }
 
-function selectorProvenance(key: string, sourceLine: number) {
+function selectorProvenance(key: string, sourceLine: number, narrowedFromLegacy?: string) {
   return {
     commit: LEGACY_COMMIT,
     path: "src/systems/ucpath/selectors.ts" as const,
     key,
     sourceLine,
     blob: UCPATH_SELECTOR_BLOB,
+    ...(narrowedFromLegacy === undefined ? {} : { narrowedFromLegacy }),
+  };
+}
+
+/** The SS Smart HR receipt family's own verification stamp (2026-08-04). */
+function receiptVerification(legacyKey: string) {
+  return {
+    verifiedAt: DateOnlySchema.parse("2026-08-04"),
+    fixtureEvidenceRef: SS_SMART_HR_FIXTURE_EVIDENCE,
+    liveReadOnlyEvidenceRef: SS_SMART_HR_LIVE_EVIDENCE,
+    scenarios: [ScenarioIdSchema.parse(RECEIPT_SCENARIO)],
+    portMapRows: [{ system: "ucpath" as const, legacyKey }],
   };
 }
 
@@ -275,6 +312,14 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       searchTerms: ["ucpath person org detail screen"],
       sensitivity: "hr",
       verification: verification(DISPLAY_SCENARIO, DISPLAY_PORT_KEY),
+    },
+    {
+      id: UCPATH_SS_SMART_HR_TRANSACTION_SCREEN,
+      system: "ucpath",
+      label: "SS Smart HR transaction detail",
+      searchTerms: ["ucpath ss smart hr transaction detail screen"],
+      sensitivity: "restricted",
+      verification: receiptVerification(RECEIPT_PORT_KEY),
     },
   ],
   elements: [
@@ -545,6 +590,74 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       provenance: selectorProvenance(RETURN_PORT_KEY, 1057),
       supersedes: [],
     },
+    {
+      id: UCPATH_SS_SMART_HR_RECEIPT_DISPLAY,
+      system: "ucpath",
+      screen: UCPATH_SS_SMART_HR_TRANSACTION_SCREEN,
+      label: "SS Smart HR transaction receipt display",
+      searchTerms: ["ucpath ss smart hr transaction id receipt display"],
+      role: "display",
+      effect: "observe",
+      sensitivity: "restricted",
+      valueType: "text",
+      // `scope: "page"`, NOT `"content-frame"`. Reached by its keyed deep link
+      // the SS Smart HR component renders with NO iframe at all — live
+      // 2026-08-04 the page carried zero `<iframe>` elements and no
+      // `#main_target_win0`. Legacy routes every UCPath read through
+      // `getContentFrame(page)`, which on this route resolves to nothing.
+      scope: "page",
+      // PeopleSoft's own `RECORD_FIELD` id. There is NO role+name anchor to
+      // use: the value renders as a bare `<span>` with no programmatic
+      // relationship to its "Transaction ID" label, so the accessibility tree
+      // exposes two adjacent unnamed generics. Verified live 2026-08-04
+      // against three transactions spanning three templates and three
+      // approval statuses (T002125030 HIR/Approved, T002204014 REH/Denied,
+      // T002204964 XFR/Pending): `querySelectorAll` matched EXACTLY ONE node
+      // each time. The only other `T…`-bearing leaf on the page is the
+      // approval-strip `<td>` ("Transaction: T…, ID: …, Effdt: …, Unit: …"),
+      // which is why legacy's body-text scrape is unsafe here.
+      locator: { kind: "css", selector: "#UC_SS_TRANSACT_UC_TRANSACT_ID" },
+      requiredStates: [UCPATH_SS_SMART_HR_TRANSACTION_READY],
+      verification: receiptVerification(RECEIPT_PORT_KEY),
+      provenance: selectorProvenance(
+        RECEIPT_PORT_KEY,
+        1379,
+        "legacy's only transaction-id anchor on this page is the RESULTS-GRID row "
+        + "(tr[id^=trPTS_CFG_CL_STD_RSL] filtered by id, .or(link named id)); the rebuild binds the "
+        + "DETAIL page's display field instead, because the grid is capped at 100 rendered rows out "
+        + "of a server-side maximum of 300 and its default order is by the search key, not recency — "
+        + "so picking 'my' row out of a grid is a guess, while the keyed deep link is exact. The "
+        + "legacy `.or()` link branch is dropped: no view of this page renders the id as a hyperlink",
+      ),
+      supersedes: [],
+    },
+    {
+      id: UCPATH_SS_SMART_HR_APPROVAL_STATUS_DISPLAY,
+      system: "ucpath",
+      screen: UCPATH_SS_SMART_HR_TRANSACTION_SCREEN,
+      label: "SS Smart HR transaction approval status display",
+      searchTerms: ["ucpath ss smart hr transaction approval status display"],
+      role: "display",
+      effect: "observe",
+      sensitivity: "restricted",
+      valueType: "text",
+      scope: "page",
+      // Same shape and the same live proof as the receipt field: exactly one
+      // node on each of the three probed transactions, rendering "Approved",
+      // "Denied", and "Pending" respectively.
+      locator: { kind: "css", selector: "#UC_SS_TRANSACT_APPR_STATUS" },
+      requiredStates: [UCPATH_SS_SMART_HR_TRANSACTION_READY],
+      verification: receiptVerification(APPROVAL_STATUS_PORT_KEY),
+      provenance: selectorProvenance(
+        APPROVAL_STATUS_PORT_KEY,
+        1329,
+        "legacy's key is the SEARCH FILTER combobox (#UC_SS_TBH_DVW_APPR_STATUS) whose option list "
+        + "supplied the closed status vocabulary; the rebuild binds the DETAIL page's display span "
+        + "(#UC_SS_TRANSACT_APPR_STATUS), which is the authoritative per-transaction value rather "
+        + "than a query input",
+      ),
+      supersedes: [],
+    },
   ],
   states: [
     {
@@ -594,6 +707,30 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       timeoutMs: 30_000,
       verification: verification(DISPLAY_SCENARIO, DISPLAY_PORT_KEY),
     },
+    {
+      id: UCPATH_SS_SMART_HR_TRANSACTION_READY,
+      system: "ucpath",
+      screen: UCPATH_SS_SMART_HR_TRANSACTION_SCREEN,
+      label: "SS Smart HR transaction detail ready",
+      searchTerms: ["ucpath ss smart hr transaction detail ready state"],
+      sensitivity: "restricted",
+      // BOTH fields are required evidence, and that is the whole point of this
+      // state. An unknown transaction id does not error on this route — UCPath
+      // silently renders the ordinary Find-an-Existing-Value search form with
+      // no message, no marker, and a URL identical to the one that worked
+      // (live 2026-08-04, `T009999999`). "The page loaded" is therefore not
+      // evidence of anything; the receipt field's presence is. Requiring the
+      // status field alongside it also makes it impossible to reach a receipt
+      // read without the outcome that qualifies it.
+      evidence: [
+        { kind: "visible", element: UCPATH_SS_SMART_HR_RECEIPT_DISPLAY },
+        { kind: "visible", element: UCPATH_SS_SMART_HR_APPROVAL_STATUS_DISPLAY },
+      ],
+      // Live 2026-08-04: a cold keyed deep link rendered the detail in ~2s.
+      // 30s is the same budget every other UCPath state carries.
+      timeoutMs: 30_000,
+      verification: receiptVerification(RECEIPT_PORT_KEY),
+    },
   ],
   observations: [
     {
@@ -619,6 +756,40 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       read: { kind: "element-text", element: UCPATH_PERSON_ORG_NAME_DISPLAY, valueType: "text" },
       authoritativeFor: ["subject"],
       verification: verification(DISPLAY_SCENARIO, NAME_DISPLAY_PORT_KEY),
+    },
+    {
+      id: UCPATH_SS_SMART_HR_TRANSACTION_RECEIPT,
+      system: "ucpath",
+      screen: UCPATH_SS_SMART_HR_TRANSACTION_SCREEN,
+      label: "UCPath Smart HR transaction receipt",
+      searchTerms: ["authoritative ucpath smart hr transaction receipt number"],
+      sensitivity: "restricted",
+      valueType: "text",
+      read: { kind: "element-text", element: UCPATH_SS_SMART_HR_RECEIPT_DISPLAY, valueType: "text" },
+      // `completion` and nothing else. This is NOT a subject observation: the
+      // detail page carries the person only inside the approval strip's
+      // free text, so binding a subject from here would be a parse, not a read.
+      authoritativeFor: ["completion"],
+      verification: receiptVerification(RECEIPT_PORT_KEY),
+    },
+    {
+      id: UCPATH_SS_SMART_HR_APPROVAL_STATUS,
+      system: "ucpath",
+      screen: UCPATH_SS_SMART_HR_TRANSACTION_SCREEN,
+      label: "UCPath Smart HR transaction approval status",
+      searchTerms: ["authoritative ucpath smart hr transaction approval status"],
+      sensitivity: "restricted",
+      valueType: "text",
+      read: {
+        kind: "element-text",
+        element: UCPATH_SS_SMART_HR_APPROVAL_STATUS_DISPLAY,
+        valueType: "text",
+      },
+      // The second half of the receipt pair. A `T…` exists for Denied, Error,
+      // and Pushed Back transactions exactly as it does for Approved ones, so
+      // the number alone can never carry the completion claim.
+      authoritativeFor: ["completion"],
+      verification: receiptVerification(APPROVAL_STATUS_PORT_KEY),
     },
   ],
   scenarios: [
@@ -674,6 +845,22 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       fixtureEvidenceRef: FIXTURE_EVIDENCE,
       liveReadOnlyEvidenceRef: LIVE_EVIDENCE,
       assertions: ["exactly-one-visible", "displayed-eid-equals-query", "recipe-resolves"],
+    },
+    {
+      id: RECEIPT_SCENARIO,
+      kind: "ui-verification",
+      title: "A UCPath Smart HR transaction exposes an exact receipt AND its approval status",
+      system: "ucpath",
+      semanticIds: [
+        UCPATH_SS_SMART_HR_RECEIPT_DISPLAY,
+        UCPATH_SS_SMART_HR_APPROVAL_STATUS_DISPLAY,
+        UCPATH_SS_SMART_HR_TRANSACTION_READY,
+        UCPATH_SS_SMART_HR_TRANSACTION_RECEIPT,
+        UCPATH_SS_SMART_HR_APPROVAL_STATUS,
+      ],
+      fixtureEvidenceRef: SS_SMART_HR_FIXTURE_EVIDENCE,
+      liveReadOnlyEvidenceRef: SS_SMART_HR_LIVE_EVIDENCE,
+      assertions: ["recipe-resolves", "exactly-one-visible"],
     },
   ],
 }));

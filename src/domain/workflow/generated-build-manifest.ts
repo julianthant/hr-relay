@@ -1245,7 +1245,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-timekeeper-annotation"
     },
     {
-      "fingerprint": "b41fd1411ad08bd34a7708e14cc6f0a082b4f2cc07770b5a41961dc1b2b949d6",
+      "fingerprint": "887c902f1f10c19d7b02e2750d2c1060f27060d47c01d3e497e201e36777fcd3",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1352,6 +1352,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "5f13be6afe95ef90a99b815adb92d8ac5a55b798d8fa4f46d5aeed031bff643b"
         },
         {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "8aa13e47594683cd4ceb15b47e839d8ca012fabffe5f901146650a4a76f4a011"
+        },
+        {
           "path": "src/domain/unscoped-commit.ts",
           "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
         },
@@ -1389,7 +1393,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
-          "sha256": "70e1a785f58632ad0fad5dc5f16e40a316a530c5397d15c222f3a515275a1153"
+          "sha256": "8a7106d2b7116847f0ca37ab1b232a3f9050778ea3acefe063defbd9bb1af24f"
         },
         {
           "path": "src/stores/ucpath/tasks/search-person-org.ts",
