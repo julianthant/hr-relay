@@ -41,6 +41,7 @@ import {
   ProviderAdmissionIdSchema,
   ProviderCapabilityIdSchema,
   RunIdSchema,
+  TraceIdSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
   WriteIntentIdSchema,
@@ -351,6 +352,13 @@ type RunRepository = Readonly<{
   listByItem(input: unknown): readonly RunRecord[];
   listByWorker(workerId: string): readonly RunRecord[];
   listChildren(parentRunId: string): readonly RunRecord[];
+  /**
+   * Doc 12 §2.5: `explain run <traceId|runId>` accepts either identity. The
+   * trace id is not a column — it is frozen at enqueue inside the envelope —
+   * so this reads it out of the record rather than inventing an index for a
+   * single-operator lookup.
+   */
+  findByTrace(traceId: string): RunRecord | undefined;
   claimNext(input: unknown): RunClaimOutcome;
   renewClaim(input: unknown): RunHeartbeatOutcome;
   transition(input: unknown): RunUpdateOutcome;
@@ -3015,6 +3023,22 @@ export class AuthorityDatabase implements Disposable {
         });
       },
       get: (runId: string) => this.#readRunRow(runId),
+      findByTrace: (traceId: string) => {
+        const parsed = TraceIdSchema.parse(traceId);
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM tasks
+          WHERE json_extract(record_json, '$.envelope.traceId') = ?
+          ORDER BY created_at, record_key
+        `).all(parsed);
+        if (rows.length === 0) return undefined;
+        if (rows.length > 1) {
+          // A trace id is frozen at enqueue and carries the run id's own first
+          // four hex digits, so two rows sharing one is corruption — never a
+          // "pick the newest" situation.
+          throw new Error(`trace ${parsed} identifies ${String(rows.length)} runs; a trace id names exactly one`);
+        }
+        return parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(rows[0]).record_json);
+      },
       listByItem: (input: unknown) => {
         const query = RunItemQuerySchema.parse(input);
         const rows = this.#database.prepare(`
