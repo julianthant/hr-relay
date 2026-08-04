@@ -20,6 +20,13 @@ target at a step that owns the field, and write-heavy workflow migration may not
 measured numbers and durable row ids: `docs/rebuild/09-write-safety.md` §Phase-2 controlled-commit
 as-built.
 
+**Tail 2g — the event/trust layer — has begun (D134).** Authority schema **v10** creates every
+durable table 2g needs (diagnostic bundles + attachments, evidence receipts, knowledge and fix
+records, the ledger projector's `(system,date)` lease and projection state, a searchable failure
+fingerprint, and the notification dedupe fold), and doc 09 §6's ordered actor-attributed ledger
+projector is built in `src/infra/ledger/`. The receipt builder, `explain run`, diagnostic capture
+triggers, and notification trigger wiring are later 2g slices.
+
 Seeded 2026-07-31 from `hr-automation@5879004` (branch `feature/rebuild-phase1b`, which stays in the
 legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01.
 
@@ -461,6 +468,27 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   Login verifies twice — the ported landing predicate AND the SSO form being gone — because UCPath's
   `?cmd=login` expiry page sits on the same host as a real page, and CRM's login page sits on the
   same host as its app.
+- **2026-08-04: The ledger's sequence is assigned BEFORE the append, and degraded stops everything.**
+  `src/infra/ledger/ledger-projector.ts` is the only module that appends `.tracker-rebuild/ledger/`.
+  Its five durable facts are ordered lease → reconcile → assign `seq` + line digest → append + fsync
+  → mark appended/projected. Assigning first is what makes the append window repairable: the line's
+  bytes are a pure function of the stored outbox payload and its stored `seq`, so recovery
+  re-derives *the same* line and compares the digest rather than composing a replacement; a crash
+  after the append re-marks without re-appending. The partition comes from the entry's own
+  `confirmedAt` in UTC — never wall-clock now — so a restart days later reconciles into the same
+  file. A duplicate, gap, out-of-order line, torn tail, digest mismatch, or unrecorded line stops
+  that partition for **every** entry including valid waiting ones, because projecting past ledger
+  corruption is how history gets quietly renumbered. `ledger/` is never pruned structurally:
+  `pruneEventStreams` can only see `spans`/`notes`, and a ratchet fails any module that both names
+  `ledger/` and calls a deletion primitive.
+- **2026-08-04: A durable notification is the one authority row that is UPDATED, and that is not a
+  weakened ledger.** Schema v10 folds a repeated identical trigger into the one row its
+  `(actorId, dedupeFingerprint)` owns — `count`, `lastSeenAt`, and a version that advances by
+  exactly one — because the folded firings leave no rows behind to derive those values from, and
+  doc 03 §2.6 forbids spamming the inbox. Identity and `createdAt` are frozen by trigger. The ledger
+  tables in the SAME migration go the other way: abort-on-delete, one `assigned → appended`
+  transition, immutable seq/digest/partition. Never let "notifications are mutable" leak into
+  anything that records what was actually filed.
 - **2026-08-03: The interpreter re-reads authority before every CAS, and replay policy is
   structural.** The worker executor (`src/core/run-executor.ts` + `worker-loop.ts`) never tracks a
   run version locally: heartbeat renewal bumps the version concurrently with node transitions, so

@@ -1032,6 +1032,12 @@ export interface NotificationWire {
 }
 ```
 
+**Durable representation (D134).** "Repeated identical triggers update count/lastSeen" is stored as
+**one row per `(actorId, dedupeFingerprint)`, updated in place** — schema v10 adds that unique index
+plus triggers freezing identity and creation and requiring a strictly advancing `version`. The
+durable `NotificationRecord` therefore carries `count` and `lastSeenAt` beside `version`. Doc 12
+§6.1 owns the justification and the boundary against the ledger's true immutability.
+
 ---
 
 ## 3. Descriptor fields this layer consumes (shape owned by doc 02)

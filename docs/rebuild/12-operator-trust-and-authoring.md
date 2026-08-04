@@ -98,6 +98,37 @@ the full reviewed legacy three-arm `.or(...)` fallback order. External-commit im
 
 ---
 
+## Phase 2g as-built — the trust tables exist (2026-08-04, D134)
+
+Authority schema **v10** creates every durable table this doc's §2.2/§2.3/§4 records need, so no
+later 2g slice has to touch the released migration chain:
+
+| Table | Owns | Column-bound facts (boot invariants check them against `record_json`) |
+|---|---|---|
+| `diagnostic_bundles` | §2.2 | run, origin kind, failure id, content digest, retention kind, purge instant. `purge_after` exists **exactly** when retention is `ordinary`; a failure id exists **exactly** when the origin is not `operator-request`. |
+| `diagnostic_attachments` | §2.2 | one row per `(bundle, artifact)`, with kind/digest/sensitivity, so an artifact is findable without scanning bundle JSON. The bundle's `attachments` array length must equal its indexed row count. |
+| `evidence_receipts` | §2.3 | one receipt per terminal run (`run_id` UNIQUE), with result, confidence, and failure id. `failed` is the only result that may name a failure and the only one that must; `verified-done` may only carry `verified` confidence. |
+| `knowledge_records` · `fix_records` | §4.1/§4.2 | status column for the active-only view; `fix_records.failure_fingerprint` is indexed for `explain failure`. |
+
+`failures` also gains a searchable `fingerprint` column with an index and a not-null insert trigger,
+and `FailureRepository` gains `listByFingerprint`/`countByFingerprint` — §2.1's "same failure seen
+before" and §4.2's `explain failure <fingerprint>` are lookups, and the doc-03 repeat-threshold
+notification trigger needs a count, not a scan over parsed JSON.
+
+**Deliberately conservative, and named as such.** Knowledge and fix repositories are insert-only.
+§4.3's audit ("marks stale records `unverified`") needs a CAS on a record version, and
+`KnowledgeRecordSchema` carries no `version` — adding one is a schema decision the maintenance slice
+should ratify rather than something this foundation guesses. §4.1's `knowledge/records/` file layout
+and the generated per-system `KNOWLEDGE.md` remain that slice's work; the table is the authority the
+generator reads.
+
+Still Phase-2g work, not landed here: automatic bundle capture triggers, the receipt builder,
+`explain run`/`explain failure`, retention/pinning sweeps, notification trigger wiring, and the
+dashboard projections. The `evidence-receipt`, `notification-durability`, and
+`knowledge-fix-integrity` guards stay **planned** until those features exist.
+
+---
+
 ## 0. Why this is foundation work, not dashboard polish
 
 The old codebase already contains many correct selectors, identity checks, screenshots, lessons,
@@ -711,6 +742,30 @@ Transient acknowledgements (“copied”, “saved draft”, “retry requested�
 messages. Every durable notification links to a run/failure/gate/command/storage incident and offers
 only actions currently authorized by the server projection. Reading/snoozing affects the
 notification, never the underlying run or failure.
+
+### 6.1 The fold is an UPDATE, and that is not a weakened ledger (D134)
+
+A repeated identical trigger folds into the **one row** its `(actorId, dedupeFingerprint)` already
+owns: `count` increments, `lastSeenAt` advances, `status` returns to `unread` (a repeat is news
+again), and `version` advances exactly once. Schema v10 adds the unique `(actor_id,
+dedupe_fingerprint)` index and SQLite triggers that freeze `notificationId`, `actorId`,
+`dedupeFingerprint`, and `createdAt`, refuse a `version` that does not advance by exactly one, and
+refuse a `seen_count` that rewinds. `AuthorityRepositories.notifications` is therefore the one
+authority repository with a mutation surface (`fold`, `updateState`) rather than insert-only.
+
+**Why an update and not append-and-fold.** The folded firings leave no rows behind, so `count` and
+`lastSeenAt` are not derivable from any history — an append-only encoding would have to invent a row
+per firing purely to be counted, and doc 03 §2.6 explicitly says a repeat must NOT spam the inbox.
+Read/unread and snooze are per-notification operator state by nature; folding them would make the
+unread inbox a projection rather than the authority doc 03 names it.
+
+**Why it does not touch the ledger's immutability.** A notification is derived operator-facing state
+about something else that happened; the ledger is the record of what was really filed against a live
+HR system. Those are different classes of fact and schema v10 keeps them structurally different:
+`ledger_projections` and `ledger_partitions` carry `BEFORE DELETE` triggers that abort, a projection
+may make exactly one `assigned → appended` transition and can never have its `seq`, digest, or
+partition rewritten, and `ledger/*.jsonl` is append-only and never pruned. Nothing about the
+notification fold is available to the ledger, and nothing in the ledger is mutable.
 
 ---
 

@@ -991,6 +991,51 @@ code uses its inferred type. There is no unchecked cast from the generic canonic
   atomic outboxes, one ordered projector, actor attribution, backups, and reconciliation remain.
 - **Projection is idempotent** by `outboxId`. Recovery audits committed intents against ledger and
   terminal-span outboxes, creates only missing outboxes in SQLite, then lets projectors catch up.
+### 6.1 Phase-2g as-built — the projector exists (2026-08-04, D134)
+
+Phase-1c Stage A shipped the ledger's at-rest *shape* and explicitly claimed no projector; the
+Phase-2 transaction proof then recorded the projector as NOT BUILDABLE and refused to fake it. It is
+now built, in `src/infra/ledger/ledger-projector.ts`, and it is the ONLY module that appends
+`ledger/`.
+
+**Five durable facts, in this exact order** — the order is what makes every crash window repairable:
+
+1. take the `(system, date)` lease (`ledger_partitions`, CAS on the exact lease generation);
+2. reconcile the file against authority — STOP on any disagreement;
+3. assign the next `seq` and store the exact line digest (`ledger_projections`, state `assigned`);
+4. append that one line and **`fsync`**;
+5. mark the projection `appended` and the outbox `projected`.
+
+The sequence is assigned **before** the append on purpose. A crash between 3 and 4 leaves an
+`assigned` row whose bytes are a pure function of the stored outbox payload and the stored `seq`, so
+recovery re-derives *the same line* and compares the digest before appending — it repairs, it never
+composes. A crash between 4 and 5 leaves a line whose digest matches an `assigned` row, so recovery
+appends nothing and only marks; `markAppended` is separately idempotent for exactly that window.
+
+**The partition is derived from the entry, not from now.** `<system>-<date>` uses the UTC date of the
+entry's own `confirmedAt`, so a restart hours or days later reconciles into the same file and the
+partition of a stored entry never depends on the machine's time zone (the same reason D112 fixes
+provider budget windows to UTC). Doc 03 §2.1's spans/notes streams keep their local append-at-now
+partitioning; only the ledger is entry-derived, because only the ledger is replayed.
+
+**Sequences are dense from zero inside a partition**, so `ledger_partitions.next_seq` equals both the
+row count and `max(seq)+1`. That is a boot invariant, not a convention: a gap means a lost or
+rewritten entry and degrades the store read-only.
+
+**Degraded is a closed, non-continuable outcome.** `duplicate-sequence`, `duplicate-outbox`,
+`sequence-gap`, `sequence-out-of-order`, `malformed-tail`, `line-digest-mismatch`, `unrecorded-line`,
+`sequence-authority-mismatch`, and `missing-outbox-payload` each stop that partition with a named
+reason and a detail string. A degraded partition projects nothing further — including entries that
+are waiting and perfectly valid — because continuing past ledger corruption is how history gets
+quietly renumbered. Health is recomputed from disk plus authority on every attempt rather than
+cached, so it cannot go stale. Wiring degraded health to the notification/storage-health surface is
+the notification slice's work.
+
+**Never pruned, structurally.** `pruneEventStreams` can only see `spans/` and `notes/`
+(`EVENT_STREAMS`), and the `ledger-projector` guard fails if any module outside
+`src/infra/ledger/` both names `ledger/` and calls a deletion primitive — or if the projector module
+itself ever calls one.
+
 - **One entry = one filed transaction.** The ledger is the durable superset of the `write.committed`
   span events (gap-audit gap 5: "receipts ARE the ledger"). It records a confirmed automation
   attempt, not a claim that `confirmedAt` equals the external filing instant. A preflight probe that
