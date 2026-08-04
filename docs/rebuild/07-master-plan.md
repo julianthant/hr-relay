@@ -1,8 +1,10 @@
 # 07 — Master Plan: the single phased build order for the rebuild repo
 
-Status: **Plan ratified 2026-08-02 through Round 18. Phase 0 and Phases 1a–1e are complete.**
-This is the ONE plan the charter demands (§"One master plan"): every design doc converges here,
-and there must never be a competing plan. Phase 1 proceeds next with item 1f.
+Status: **Plan ratified 2026-08-02 through Round 18 (amended through Round 20, 2026-08-03).
+Phase 0 and ALL of Phase 1 are complete — 1a–1f, 1g-spine, 1i-spine, and the D74 live exit test
+(2026-08-04).** This is the ONE plan the charter demands (§"One master plan"): every design doc
+converges here, and there must never be a competing plan. The program proceeds at **Phase 2's
+controlled transaction proof**, which precedes the 2g/2h/2i/2j tails.
 
 **Round-18 amendment summary (Phase-1f contract ratification 2026-08-02).** D109–D118 close the
 remaining executor/authority seams before implementation: planned ingress is atomically consumed;
@@ -187,7 +189,7 @@ than inventing one mid-migration.
 | Phase | Headline deliverable | Gate to exit | Size |
 |---|---|---|---|
 | **0** | Corrected foundation design approved; empty rebuild repo | **COMPLETE 2026-07-31:** decisions reconciled through Round 12; testing policy ratified; executable feasibility + honest gate baseline recorded; write-proof probes carry explicit later milestone gates (§3.8) | **M** |
-| **1** | **The SPINE** — the minimum base that can carry one workflow end to end (1a–1f + the span/projection slice + the queue-surface slice) | **1a + 1b COMPLETE 2026-07-31; 1c + 1d COMPLETE 2026-08-01:** guard/accounting/isolation, strict domain/clock/config/secrets/preflight/trust/wire foundations, the typed native authority/backup/recovery/write-safety shell, and the semantic UI registry/typed drivers/task-contract-and-store seam are landed. **1e COMPLETE 2026-08-01**; 1f is next. Phase exit remains: **person-lookup runs LIVE on it** (D74 — a fixture cannot falsify a contract the way a real run can); full gates green; strict/subject/control/delegation/recovery/scenario fixtures pinned | **XL** |
+| **1** | **The SPINE** — the minimum base that can carry one workflow end to end (1a–1f + the span/projection slice + the queue-surface slice) | **COMPLETE 2026-08-04.** 1a + 1b COMPLETE 2026-07-31; 1c + 1d + 1e COMPLETE 2026-08-01; **1f + 1g-spine + 1i-spine COMPLETE 2026-08-04**. The phase exit — **person-lookup ran LIVE on the spine** (D74) against real UCPath + CRM, run `4ebf7275-0158-49af-a78f-1f37948efb27` / trace `pl-000619-4ebf` — is **MET**; full gates green; strict/subject/control/delegation/recovery/scenario fixtures pinned. Evidence and the carried-forward presentation defects are recorded under §Phase 1's exit criteria | **XL** |
 | **2** | **Transaction proof, then the deferred base tails** — controlled real commit + crash/recovery, *then* trust tails, data services/intake/capture, explorer | subject-bound dry-run and controlled commit/crash/outbox/ledger proof green; then evidence/notification/knowledge, intake/capture/Edit-Data, and read-only explorer land against a proven spine | **XL** |
 | **3+** | Per-workflow rebuild migration, one at a time (order §3.3), plus explicit non-workflow capability closure (§3.6) | each: §b questionnaire answered; isolated live dry-run + controlled write evidence where applicable; every capability inventory entry advances to native/replaced/retired; docs updated; legacy production remains authoritative until the final gate | **XL** |
 | **Cutover** | One all-at-once production authority switch (D89) | every workflow/shared capability ready; legacy enqueues stopped; active/uncertain work reconciled; both states backed up; imports versioned/idempotent; launcher switches atomically; rollback bridge verified; legacy code/tests preserved | **L** |
@@ -211,10 +213,12 @@ approved).
 **Status (2026-07-31).** **COMPLETE.** Docs 00–13 are reconciled through Round 12 (D1–D94); the
 operator ratified isolated coexistence, all-at-once cutover, the testing policy, and the later probe
 gates, then directed (D93) that the rebuild live in its own repository rather than in-tree. Phase 1
-has started; items 1a and 1b completed 2026-07-31, and items 1c, 1d, and 1e completed 2026-08-01.
+has since completed in full: items 1a and 1b completed 2026-07-31, items 1c, 1d, and 1e completed
+2026-08-01, and items 1f, 1g-spine, and 1i-spine completed 2026-08-04 with the D74 live exit test.
 
-**What remains.** Nothing in Phase 0. Phase 1 continues at 1f; system-specific proof questions below
-remain mandatory only at their named milestones (D92).
+**What remains.** Nothing in Phase 0 and nothing in Phase 1. The program is at Phase 2's controlled
+transaction proof; system-specific proof questions below remain mandatory only at their named
+milestones (D92).
 
 **Deferred decisions (logged, resolved at the named point).** OnBase
 `upload-verify` vs `unverifiableByPage` (doc 09 OQ2—before order 7); per-workflow prewrite
@@ -279,9 +283,9 @@ and a real consumer. **No contract in docs 01–06 changed — only delivery ord
 | 1c | **COMPLETE 2026-08-01 — Authority storage + recovery + command/write type shell.** Landed the private native `node:sqlite` authority adapter, exact authority/projection registry and immutable v1→v2 migration chain, savepoint-correct generation accounting, self-describing verified online backup with generation follow-up, strict authority-record validation, read-only doctor/degraded boot, one-time runtime/process-generation-bound stopped-system restore proof, full D95 command families, strict proof/settlement/binding/intent/attempt/dependency/manifest/gate/notification/outbox shells, permanent `(system,idempotency_key)` fencing, Clock-injected stabilized-negative settlement, and all-or-none intent+attempt+ledger+terminal-span commit. Runtime status reports completed-through 1c / active 1d. This is the authority/type shell: workers, browser mutation, command service, sequencer/projectors, HTTP/UI, and live writes remain later items | **Docs 03/09/11** | **MET:** exact v1 upgrade fixture, DDL/invariants and raw-`DatabaseSync` boundary; authority/projection enumeration; corrupt/foreign/newer/invariant/record-invalid boot fixtures; verified native backup + bounded follow-up; exact consumable stopped-proof restore and projection rebuild; sequential/competing-connection permanent-key dedupe; caught nested fence/commit rollback; observed-present zero attempt/write-outbox; exact Clock settlement boundaries; failure after every atomic storage step rolls back all rows and generation; no untyped command/proof/gate/notification/outcome arm; active `storage-recovery`, `permanent-key-dedupe`, `recovery-negative-proof-settlement`, and `atomic-write-outbox` guards; full gates and coverage green |
 | 1d | **COMPLETE 2026-08-01 — Semantic UI registry, typed drivers, task + provider contracts and stores/sessions.** Landed the full legacy selector port map with pinned commit/blob provenance, the server-only closed recipe registry, the recipe-free generated `ui-catalog.json` + per-system `UI-CATALOG.md` projection and its `selector:search` consumer, the typed driver boundary, sealed read/prepare/commit contract overloads with subject specs, freshness/provenance, unforgeable `MutationCapability`, the crash-recoverable content-addressed artifact writer, capability-declared provider adapters with narrowed injected clients, and all nine browser stores with matching session providers and OnBase-only exclusivity. D98/D99/D101 (conjunctive fixture+live verification, UI-owned verification scenarios, imported semantic ids) and D96/D97/D100 (one `SessionNeed`, separate artifact/content identity, provider scope stops at the seam) are ratified in their owning docs. The first `stores/common/` leaf (Kronos timecard) is ported with provenance. Login wiring, session lifecycle, mutation-token minting, and worker execution remain 1f | **Docs 01/05/12** | **MET:** semantic-id uniqueness/dependencies/catalog; catalog omits recipes and captured values; premature commit implementations and capability forgery rejected; raw Page/Locator absent outside driver/session internals through AST plus transitive import-graph checks; remote I/O requires provider declaration and an infra adapter; effect/capability/subject/contract/impl/example/error/store/no-any/artifact/OnBase guards active; every published observation/recipe carries both a fixture and a read-only live evidence ref bound to the same port-map row |
 | 1e | **COMPLETE 2026-08-01 — Complete workflow DAG + result/delegation/completion/scenario descriptor.** The mandated real-scale type-inference proof (21-node representative graph + sixteen `@ts-expect-error` controls; `tsc --extendedDiagnostics` 0.47s / 215 MiB against the 5s / 1 GiB budget); the bundle-safe node vocabulary and the ONE builder; the transform-free canonical-input validator with proven round-trip and fail-loud snapshot re-validation (D62); delegation fan-out planning, fingerprinted replay verification, and joins; graph-level scenario coverage derived from the node tuple; doc 03 §4's sealed completion program with its stage chain proven against a sample; the closed run-surface ingress specs and their exhaustive interpreters; descriptor assembly with derived steps/gates/systems/requires and build-manifest `contractFingerprint`; checkpoint storage (authority schema v3 `run_checkpoints`), checkpoint and canonical-snapshot migrations, and the D8 freshness walk; person-lookup registered as the first descriptor with its four contracts; `tests/scenario/`'s executable per-branch/gate/policy corpus; and all five architecture guards active. D102–D107 ratified in their owning docs | **Docs 02/03/12** | realistic graph type suite **MET**; transform-free canonical-input audit + round-trip **MET**; delegation matrix **MET**; no erased target **MET**; strict terminal/gate result **MET**; ingress→canonical round-trip over stored authority **MET**; transaction pairing **MET**; descriptor projection matrix **MET**; executable per-branch/gate/policy scenarios **MET** (`dry-run` and `subject-mismatch` are executor behaviours, pinned as 1f obligations and re-pointed at a real run there) |
-| 1f | **Core registry + workers/checkpoints/command service/write sequencer.** Composition root above workflows; exact raw+canonical start plans and atomic consumption; one-item claims with unfinished-write recovery before requeue; verified-neutral navigation and explicit fresh-session boundaries keyed by config fingerprint; required task provenance collector; minimal durable `FailureRecord` and terminal `RunResultRecord`; **D112 generic provider admission/budgets complete 2026-08-03 (authority schema v9)**; one exhaustive command kernel with Phase-1 start/worker-browser/run/gate/write-resolution arms active and later arms typed `capability-unavailable`; context-exclusive transactions; probe→prepare→binding proof→fence→commit→proof→complete beat-⑦ checkpoint/run/outbox transaction | **Docs 01/02/03/05/09/10/11/12** | atomic plan-consumption crash/conflict tests; command idempotency + typed unavailable zero-side-effect cases; one-active-item-per-worker; recovery-before-requeue; exact config-key session reuse; neutral-reset/fresh-boundary proof; live/derived provenance completeness; result/failure authority integrity; no visible-root fallback; dry-run commit-free; binding mismatch/unknown creates zero fence/click; **provider admission MET**; full beat-⑦ crash tests |
-| 1g-spine | **Span emission + the ONE projection (slice only).** Strict spans/notes on the executor's paths, and the single server-side run/queue projection that every surface reads. **D81: counts have exactly one code path** — Workflow Panel badges, Status Bar, and Queue Panel rows all read this projection; a second count path is a guard failure, not a bug to fix later. Evidence receipts, diagnostic bundles, rich failure projections/explain, notifications, knowledge, and the ledger *services* defer to Phase 2; 1f's minimal failure/result authority remains available (the ledger *tables + atomic outbox* already landed in 1c, so no write is unrecorded) | **Docs 03/09/12** | boundary corruption; redaction canaries; atomic projection tests; **one-projection guard: no count computed off a second path**; run/task identity `(runId, attempt, spanPath)` plus worker/browser identity `(workerId, spanPath)` |
-| 1i-spine | **The exact Person Lookup capability slice in the approved shell.** Queue Panel rows (three row types, eight statuses); run/member `Logs · Receipt`; persistent timeline; Context rail; typed Start Run; Session Cards; Workflow Panel/Status Bar/day counts. Rendered from the 1g-spine BFF. Review/People tabs, full trust/data surfaces, Archive/Explorer/Activity/Settings tails defer | **Docs 03/12/13** | one typed transport client; finished wires only; no workflow-id switches; both-theme headless a11y + screenshot parity at reference viewports |
+| 1f | **COMPLETE 2026-08-04 — Core registry + workers/checkpoints/command service/write sequencer.** Landed the composition root above workflows; exact raw+canonical start plans and atomic consumption (D109, schema v6); one-item claims with unfinished-write recovery before requeue (D118); verified-neutral navigation and explicit fresh-session boundaries keyed by config fingerprint (D116/D117); the required non-no-op task provenance collector (D115); minimal durable `FailureRecord` and terminal `RunResultRecord` under pre-terminal authorization (D110/D114, schema v7→v8); D112/D119 generic provider admission/budgets (schema v9, 2026-08-03); one exhaustive command kernel with Phase-1 start/worker-browser/run/gate/write-resolution arms active and later arms typed `capability-unavailable` (D113); context-exclusive transactions; the probe→prepare→binding proof→fence→commit→proof→complete beat-⑦ checkpoint/run/outbox transaction (D111). D120 additionally made a session's authentication a content-level proof rather than a URL, live-verified on ucpath (~17s) and crm (~12s) including a real Duo ceremony | **Docs 01/02/03/05/09/10/11/12** | **MET:** atomic plan-consumption crash/conflict tests; command idempotency + typed unavailable zero-side-effect cases; one-active-item-per-worker; recovery-before-requeue; exact config-key session reuse; neutral-reset/fresh-boundary proof; live/derived provenance completeness; result/failure authority integrity; no visible-root fallback; dry-run commit-free; binding mismatch/unknown creates zero fence/click; provider admission; full beat-⑦ crash tests; `authentication-proof-not-url` |
+| 1g-spine | **COMPLETE 2026-08-04 — Span emission + the ONE projection (slice only).** Landed strict spans/notes on the executor's paths and the single server-side run/queue projection that every surface reads, served by the in-process typed dashboard BFF on port 3938. **D81 holds as-built:** the live exit test's counts agreed across every surface (All 1 / Done 1 / workflow 1) because they are one projection, not three. Span folding is keyed by `(attempt, spanPath)` — a node re-run after a recovered failure is two real spans that share a path, and folding on the path alone erased one of them. Evidence receipts, diagnostic bundles, rich failure projections/explain, notifications, knowledge, and the ledger *services* remain deferred to Phase 2; 1f's minimal failure/result authority is available (the ledger *tables + atomic outbox* landed in 1c, so no write is unrecorded) | **Docs 03/09/12** | **MET:** boundary corruption; redaction canaries; atomic projection tests; one-projection guard (no count computed off a second path); run/task identity `(runId, attempt, spanPath)` plus worker/browser identity `(workerId, spanPath)` |
+| 1i-spine | **COMPLETE 2026-08-04 — The exact Person Lookup capability slice in the approved shell.** Landed Queue Panel rows (three row types, eight statuses); run/member `Logs · Receipt`; persistent timeline; Context rail; typed Start Run; Session Cards; Workflow Panel/Status Bar/day counts — all rendered from the 1g-spine BFF at the contracted frontend port 5174, and all four parity surfaces verified headless against the live run. Review/People tabs, full trust/data surfaces, and the Archive/Explorer/Activity/Settings tails remain deferred. Three presentation defects are recorded, not fixed, and carried into 2i (see the exit-criteria block below) | **Docs 03/12/13** | **MET:** one typed transport client; finished wires only; no workflow-id switches; both-theme headless a11y + screenshot parity at reference viewports; browser-bundle purity (doc 13 §8.13 — no browser-reachable module statically imports a Node built-in) |
 
 **Item 1e begins with a new real-scale type-inference proof.** The deleted spike covered only two
 effects and three linear steps. The replacement must compile a representative 15–25-node graph with
@@ -294,16 +298,81 @@ suite records `tsc --extendedDiagnostics` and fails if the representative file e
 1 GiB on the same baseline machine; a regression outside that budget stops builder work for type-
 shape simplification rather than being normalized as editor lag.
 
-**Hard exit criteria (Phase 1).**
+**Hard exit criteria (Phase 1) — ALL MET 2026-08-04.**
 
-- **THE exit test — person-lookup runs LIVE on the spine (D74).** A submit-free live run against
-  real UCPath + CRM (Duo cleared hands-off by Autopilot, charter §9) produces a correct
+- **THE exit test — person-lookup runs LIVE on the spine (D74). MET 2026-08-04.** A submit-free live
+  run against real UCPath + CRM (Duo cleared hands-off by Autopilot, charter §9) produced a correct
   person-lookup result on the new executor, and every projected surface (Queue Row, Log Panel,
-  Session Card, Workflow Panel count) renders from the descriptor via the single 1g-spine
+  Session Card, Workflow Panel count) rendered from the descriptor via the single 1g-spine
   projection — verified headless with the `playwright-cli` seed→boot→assert loop (root
   `CLAUDE.md`). This criterion is not satisfiable by fixtures; that is the point of moving it here.
-  Its `descriptor-coverage` guard is green, and speed sanity is recorded (`sleepMs` per task span;
-  the person-org read path materially below the old ~24s sleep budget, doc 05 §4.1).
+  Its `descriptor-coverage` guard is green, and speed sanity is recorded.
+
+  **The run.** `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, workflow
+  `person-lookup`, input EID `10873698`, terminal `done` **at attempt 2**. Node walk:
+  `searching` done (22.5s) → `cross-verify` **cancelled** (262.9s — the CRM browser died) → run
+  re-attempt → `cross-verify` done (12.8s) → `active-status` done → `crm-dates` **skipped**
+  (`condition-false`).
+
+  **The result is correct, not merely schema-valid.** `activeStatus.state = "active"`, `hdh = true`,
+  reason *"UCPath reports active and CRM record a1ZVr000004Xoq9MAC matches…"*;
+  `crmDates.state = "not-requested"`. The terminal dependencies record `active-status` resolved with
+  full output/provenance fingerprints and `crm-dates` as `state: not-run, reason: condition-false` —
+  a closed reason for a conditional node, exactly as D114 requires, never a silent omission.
+
+  **Mid-run recovery worked unprompted.** The poisoned CRM session was closed, reopened, and the node
+  re-ran under attempt 2 with no operator action. That is 1f's worker-owned browser lifecycle and
+  D118's recovery-before-requeue behaving as designed against a real failure rather than a fixture.
+
+  **The four parity surfaces, all from the ONE projection** (BFF 3938, frontend 5174), verified
+  headless against this run: Queue row (*"EID 10873698 — done"*, trace `pl-000619-4ebf`, attempt 2);
+  Workflow Panel count (1); Session Panel (*"0 working 1 idle"*, status Live, v0.1.0); Log Panel
+  run-detail timeline showing all five events **including both Cross Verification entries**.
+  Projection counts agreed across every surface (All 1 / Done 1 / workflow 1) — D81 proved by a real
+  run, not only by its guard.
+
+  **Speed sanity (doc 05 §4.1).** The executor emitted **zero fixed sleeps** — no `sleepMs` on any
+  task span — and the UCPath person-org read path took **22.5s wall clock against legacy's ~24s
+  SLEEP budget alone**, so the new path is doing real work in less time than the old path spent
+  waiting. Authentication is D120 content-level proof, live-verified at ~17s (ucpath) and ~12s (crm)
+  including a real Duo ceremony.
+
+  **Honest caveat — failure latency.** The `cross-verify` cancellation took **262.9s** to surface.
+  The run recovered correctly and no wrong data was produced, but 4m23s is the cost of discovering a
+  dead browser session, and it is charged to the operator's wall clock. Bounding it is Phase-2 work
+  (doc 05 §3's deadline contract already exists; what is missing is a tighter session-liveness
+  budget), not a Phase-1 regression.
+
+**Carried forward into 2i — three presentation defects, recorded rather than fixed.** All three are
+presentation-only: the durable authority is correct in every case, which is why none of them blocks
+the exit. They are logged here because this program's charter is that a surface must never mislead
+the operator, and each of these does. Normative text lives in doc 03's
+*Phase 1g/1i-spine as-built presentation deltas (2026-08-04)*.
+
+1. **A conditionally-skipped node renders as "cancelled" in the run-detail timeline.** The
+   `RunDetailWire` step-state enum (`src/domain/dashboard/run-detail.ts`) has no `skipped` arm, so
+   `src/server/dashboard/queries/run-detail.ts` maps `skipped → cancelled`. The durable result is
+   right (`crm-dates` = `not-run / condition-false`); the timeline is not. "Cancelled" names an act
+   someone took — doc 03 D-status vocabulary is explicit that it means *"You stopped it"* — and a
+   branch that was never supposed to run is the opposite of that. The fix is a `skipped` arm on the
+   wire enum plus its own timeline treatment, in **2i**.
+2. **The queue row's elapsed keeps counting after a run is terminal.** `RowFooterLine`
+   (`src/dashboard/surfaces/queue.tsx`) computes `now − startedAt` for every non-`queued` status, so
+   the exit-test row displayed **2h 47m** for a run whose actual execution was ~14.5 minutes. It is
+   **elapsed-since-start, not run duration** — verified in code, not inferred. The wire already
+   carries `updatedAt` (which the terminal-authority contract sets equal to `lifecycle.endedAt`), so
+   a terminal row can show a true duration without a new field; it needs an explicit terminal `endedAt`
+   on the queue wire to be unambiguous. **2i**.
+3. **Two status-filter buttons are both labelled "Done".** `verifiedDone` and `doneWarnings` in
+   `src/dashboard/ds/primitives-status.tsx` both carry `label: "Done"`, and `StatusFilters` renders a
+   pill per `QueueStatus` — so `done` and `partial` produce two controls whose accessible names are
+   `"Done — 1"` and `"Done — 0"`, distinguished only by hue and glyph. **This contradicts doc 03 D22
+   as ratified**, which shortened `Verified done` to `Done` *specifically on the grounds that the
+   sibling would keep its qualifier* ("the sibling deliberately did not shorten, because the
+   qualifier IS the difference between them"). The code cites a later operator direction (keep
+   `Done` + `△ n`, drop "with warnings"); either D22 is amended to record that direction and supply
+   a non-colour distinguisher for the filter, or the filter restores the qualifier. **2i**, and it
+   needs a decision before the code changes.
 - In the rebuild repo, `npm run typecheck`, `npm run lint`, `npm run test`, and
   `npm run test:architecture` are **all green**, with every guard inventoried and covering the
   rebuild `src/` and `tests/` roots. In the legacy repo, `npm run lint:legacy-tests-ratchet` is the
@@ -821,7 +890,7 @@ idempotent one-time command over an immutable backup; it is never a runtime adap
 
 | # | Risk | Why it bites | Mitigation |
 |---|---|---|---|
-| 1 | **A contract flaw surfaces late** | a fixture-proven base can be wrong in ways only a real run reveals | **D74 is the mitigation**: person-lookup runs live as Phase 1's *exit*, so the spine is falsified by reality before the tails are built on it; Phase 2 then adds the controlled transaction proof with crash/outbox/dedupe evidence |
+| 1 | **A contract flaw surfaces late** | a fixture-proven base can be wrong in ways only a real run reveals | **D74 is the mitigation, and it worked**: person-lookup ran live as Phase 1's *exit* on 2026-08-04, and the live lane that produced it found four defects every fixture had passed — a login concluded from a URL (D120, 2026-08-03), a `node:path` import that reached the browser bundle (doc 13 §8.13), a span fold keyed on path alone that erased a re-run node, and a timeline seed that collided across run attempts. All four were fixed before the tails were built on them. Phase 2 now adds the controlled transaction proof with crash/outbox/dedupe evidence |
 | 2 | **Phase 1 (XL) overruns** | a long isolated build increases integration drift and delays the single cutover | Phase 1 is cut to the spine (D74); §3.7 sizes each item; D79 trims are taken; D90 change accounting forces rebuild rechecks after legacy maintenance |
 | 3 | **The two maintained repos drift** | a necessary legacy production fix changes knowledge already copy-ported into the rebuild repo, and D93's physical separation means nothing breaks loudly when it does | D90 accounting is now cross-repo and is the *only* drift detector: every legacy commit maps to capability ids and rebuild evidence in the rebuild repo's `config/legacy-change-accounting.json`, keyed by legacy commit hash (the legacy repo's root `CLAUDE.md` carries the standing duty); affected rebuild scenarios/ports must be reverified before readiness |
 | 4 | **A target can make settlement unknowable** (write-safety residual) | UI-only systems may expose neither an idempotent API nor a trustworthy immediate negative read after a click; early absence can be eventual-consistency lag, and a positive match can still be for the wrong subject | D48/D64/D69/doc 09: permanent key fence; fresh binding proof; typed positive proof; every counted negative observation must occur after the target-specific propagation window and repeated authoritative checks must agree; unsettled/ambiguous evidence parks; per-probe live verification at migration. The guarantee is at most one unattended commit attempt per intent generation plus verified convergence—not unconditional distributed exactly-once |
