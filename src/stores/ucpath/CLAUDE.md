@@ -27,9 +27,31 @@ evidence before runtime use.
   discovery → Shibboleth) sits there rather than in the factory. Ported from legacy
   `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc` `src/infra/auth/login.ts`
   (blob `c8e6656de394b52aebd174e2a243c9464a1678e6`) and `src/infra/auth/sso-fields.ts`
-  (blob `e331e8a12523f3e824f89d7e151d02bbcdf54269`). `isAuthenticatedUcpathAppUrl` keeps every legacy
+  (blob `e331e8a12523f3e824f89d7e151d02bbcdf54269`). The landing predicate keeps every legacy
   exclusion — the `ucpathdiscovery/disco` page, the SSO/Duo hosts, and PeopleSoft's classic-PIA
   `?cmd=login` / `?cmd=expire` landings, which sit on the SAME host as a real page and would
-  otherwise read as success — and success additionally requires the SSO form to be gone. Legacy's
+  otherwise read as success. **Superseded in part the same day — see the next two entries: that
+  predicate was renamed `isUcpathPostSsoLanding` and is no longer a proof of anything.** Legacy's
   `waitForTimeout` settles and Duo poll loop did NOT come across: Duo Autopilot clears the ceremony,
   so the honest wait is a bounded `waitForURL` that fails loud by step.
+- **2026-08-03: the ported landing predicate matched the PUBLIC portal, and the whole login was
+  skipped behind it.** A cold live smoke reported success in ~3s having never reached
+  `a5.ucsd.edu`. `isAuthenticatedUcpathAppUrl` was a host-substring test, and UC serves the public
+  UCPath portal from inside that substring, so `already-authenticated` returned on an
+  unauthenticated page — and that early return also skipped the SSO-form check. Three live findings
+  fixed it: (1) the authenticated application is a PeopleSoft servlet route (`/psc/` or `/psp/`), so
+  the old predicate is renamed `isUcpathPostSsoLanding` and is now only a WAIT target; (2) the proof
+  is `PS_TOKEN` — PeopleSoft's single-signon cookie, absent on the signon page — plus the absence of
+  both the TritON form and PeopleSoft's own `input#userid`/`input#pwd` signon form; and (3) the
+  recipe is built by `defineVerifiedLoginRecipe`, so that proof runs on every return path.
+- **2026-08-03: campus discovery moved, and the portal click resolves before the hop chain does.**
+  Legacy's `ucpathdiscovery/disco` path no longer exists: UC serves "Select your UC location to log
+  in" from the PeopleSoft host ROOT (`https://ucphrprdpub.universityofcalifornia.edu/`), which has no
+  distinguishing path at all — so discovery is detected by its "University of California, San Diego"
+  LINK, not by a URL. And `click()` resolves before the SAML chain finishes, so reading `page.url()`
+  straight after it observes the page being left; `awaitLoginGate` waits for discovery, the SSO form,
+  or the application, and reports WHICH. Live hop chain from cold (2026-08-03, ~17.4s to
+  authenticated): `ucpath.ucsd.edu` → `ucphrprdpub…` (discovery) → `idpproxy-ucpath…` → `a5.ucsd.edu`
+  → `api-*.duosecurity.com` → `a5.ucsd.edu` → `idpproxy-ucpath…` → `ucphrprdpub…`. The SSO chain
+  returns to the portal, not to PeopleSoft, so the login's last hop navigates to the configured entry
+  route before it can prove anything.

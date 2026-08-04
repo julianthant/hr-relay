@@ -235,6 +235,32 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-03: authentication is a CONTENT-level observation; a URL is never a proof.** A live
+  UCPath login smoke passed in ~3 seconds having never authenticated: the recipe matched a host
+  SUBSTRING, so the PUBLIC UCPath portal read as the application, and that early
+  `already-authenticated` return also skipped the recipe's own second fact. The neutral reset had
+  the same hole from the other side — it validated reuse with a URL predicate alone, so PeopleSoft's
+  signon page (same host, same route shape) passed as the app; a person lookup would have scraped a
+  sign-in page and reported it as HR data. Every browser system now declares a verifier proving TWO
+  independent facts — a server-issued session artifact (`PS_TOKEN` for UCPath, `sid` for CRM) and
+  the absence of every sign-in form — and `defineVerifiedLoginRecipe` runs it AFTER the flow on
+  every return path, with the reset calling the identical verifier. A URL may be a necessary
+  precondition; it is never the conclusion, and a probe that cannot RUN reports "not authenticated"
+  with the reason. Two live findings came with it: UC now serves campus discovery from the
+  PeopleSoft host ROOT (legacy's `ucpathdiscovery/disco` path is gone), and `click()` resolves
+  before the SAML chain does — so the gate waits for what the chain actually presented instead of
+  reading a URL mid-flight. Cold-profile live proof (2026-08-03): ucpath 17.4s through
+  `a5.ucsd.edu` + `api-*.duosecurity.com`; crm 11.8s the same way.
+- **2026-08-03: a stale selector chain hides which realm you are in.** CRM's login failed at
+  `credential-fill`, then — once that was fixed — burned the whole Duo window and blamed Duo. The
+  real cause: TritON defaults to **Business Systems**, and the login-type picker was probed straight
+  after `goto` while the browser was still redirecting, so "picker absent" (a real rendering)
+  swallowed the actual page and the credentials went to the wrong realm. Its value comparison was
+  broken too — `inputValue()` returns `_eventId_authn/PasswordAD`, never the label. TritON also
+  renders the SAME `#ssousername` field under three different labels, one per realm, which is why
+  the legacy label-first chain looked "stale": a label identifies the REALM, not the field. Port
+  structural anchors (`id`, `name`) first, keep every observed label behind them, and make a
+  no-match a loud refusal that names the anchors rather than a navigation timeout.
 - **2026-08-03: No test may rewrite a tracked artifact in place — parallel forks share ONE working
   tree.** `ui-catalog-cli.test.ts` regenerated `generated/ui-catalog.json` and both `UI-CATALOG.md`
   files in the checkout, and one case deliberately wrote a stale catalog over the tracked one before

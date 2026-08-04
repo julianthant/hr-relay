@@ -76,9 +76,9 @@ holds for on-disk state, not just for the in-memory context.
 
 `close()` returns a proof only after observing every page closed AND the context's own close event
 inside a bounded deadline; an unproven or hung close throws, and the manager's existing poison rule
-does the rest. A clean release re-navigates to the system's entry route and re-checks its
-authenticated marker, so "reusable" is an observation. Login recipes stay with their stores
-(`stores/<system>/session.ts`), which — together with `src/infra/browser/**` — are the two
+does the rest. A clean release re-navigates to the system's entry route and re-runs the system's
+full authentication proof (§4.1), so "reusable" is an observation. Login recipes stay with their
+stores (`stores/<system>/session.ts`), which — together with `src/infra/browser/**` — are the two
 raw-browser owner families the task-driver boundary permits; task and workflow code may reach
 neither, transitively or otherwise. UCPath and CRM are bound today; a system without both a driver
 and a login recipe refuses at open rather than launching an unusable browser, and the exclusive
@@ -235,6 +235,37 @@ worker.
 - OnBase releases its identity lease only after every page/context close is proven.
 - Login is bounded and single-flight within that worker/system session creation. There is no
   cross-worker login promise or shared context.
+
+### 4.1 Authentication is a content-level observation, never a URL (D120)
+
+**A session is authenticated only when the page proves it. A URL never proves it.** A URL is chosen
+by whoever served the redirect; a system's sign-in page and its application routinely share a host,
+and PeopleSoft's signon renders at the same route shape as the application it guards. Every browser
+system therefore declares an **authenticated-application verifier** returning a discriminated probe,
+and it must establish TWO independent facts:
+
+1. a **positive** fact — a session artifact the server issues only after a completed authentication
+   (UCPath: PeopleSoft's `PS_TOKEN` cookie; CRM: Salesforce's `sid` Communities cookie). An
+   app-only DOM marker is an acceptable positive fact where no such artifact exists; and
+2. a **negative** fact — no sign-in form of any kind is on the page (the shared UCSD TritON form,
+   plus the system's own application-side login form).
+
+A URL predicate may be a NECESSARY precondition a verifier checks first — it is never sufficient,
+and it is never the conclusion. A probe that cannot RUN reports "not authenticated" with a reason
+that says so; "I could not check" must never read as "it passed".
+
+**The verification is unskippable and singly defined.** A login recipe is built by
+`defineVerifiedLoginRecipe`, which runs the verifier AFTER the recipe's flow whatever the flow
+returned, so `already-authenticated` and `logged-in` are labels on the same proven state and a later
+early `return` cannot reintroduce a bypass. The clean-release neutral reset asserts through the same
+verifier — there is one definition of "authenticated", not one per call site. The evidence that
+proved it travels on a required channel so an operator surface can show WHAT was observed, and
+`browser-session:start` carries the distinct `LoginResult` so a run that never authenticated cannot
+look like one that did.
+
+This ratifies a 2026-08-03 live finding: a UCPath login smoke reported success in ~3s having never
+authenticated, because the recipe matched a host substring on the PUBLIC UCPath portal and the
+neutral reset accepted a signon page. `authentication-proof-not-url` (doc 10) pins the shape.
 
 An individual workflow may declare internally proven parallel work, such as OCR provider page
 concurrency. That is workflow-owned behavior with its own tests, not a generic executor capacity

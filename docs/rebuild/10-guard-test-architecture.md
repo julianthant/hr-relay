@@ -938,7 +938,11 @@ contracts; the manifest owns that they exist and stay wired. The set (contract-o
   `storage-recovery`, `scenario-coverage`, `evidence-receipt`, `notification-durability`,
   `knowledge-fix-integrity`, `workflow-editor-compile-integrity`, `legacy-capability-disposition`,
   `capture-durability-and-scope`, `ai-advisory-no-authority`, `provider-capability-boundary`,
-  `runtime-dependency-coverage`, and `preflight-coverage`.
+  `runtime-dependency-coverage`, `preflight-coverage`, and `authentication-proof-not-url`
+  (doc 05 §4.1: no login recipe concludes authentication from a URL or returns a `LoginResult`
+  outside `defineVerifiedLoginRecipe`; every landed browser-system binding supplies a verifier
+  rather than an `isAuthenticatedUrl` predicate; the neutral reset asserts through the same
+  `assertAuthenticatedApplication`).
 - **Descriptor SSOT (doc 02):** `descriptor-coverage` — replaces `archetype-coverage`,
   `runtime-policy-coverage`, `instance-labels-coverage`, `queue-row-kind-coverage`, `i9-check-import-guard`.
 - **Task-store guards (doc 01):** pairing, reachability, bundle-safety, `example`-parse, freshness,

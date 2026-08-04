@@ -692,7 +692,13 @@ changing those bytes, and later schema work must append v10.
 |---|---|---|
 | **D119** | **PROVIDER RATE USES FIXED UTC-MINUTE WINDOWS; DAILY REQUEST AND COST CAPS USE FIXED UTC-DAY WINDOWS; A ZERO COST CAP ADMITS ONLY AN EXACT ZERO MAXIMUM ESTIMATE AND NEVER MEANS UNLIMITED.** | doc 11 §3 (primary); docs 01 §Phase-1f executor; 05 §3.1 |
 
-**Two separate D-series exist — do not confuse them.** This memo's `D1–D118` are cross-doc
+## Reconciliation round 20 (2026-08-03) — authentication proof
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D120** | **A BROWSER SESSION'S AUTHENTICATION IS PROVEN BY TWO INDEPENDENT CONTENT-LEVEL FACTS (A SERVER-ISSUED SESSION ARTIFACT AND THE ABSENCE OF EVERY SIGN-IN FORM), NEVER BY A URL; THE SAME VERIFIER RUNS ON EVERY LOGIN RETURN PATH AND ON THE NEUTRAL RESET.** | doc 05 §4.1 (primary); doc 10 §5 guard `authentication-proof-not-url` |
+
+**Two separate D-series exist — do not confuse them.** This memo's `D1–D120` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
 types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the
 distinction at its §9 header; always cite the row-model series with the `row-model` prefix.

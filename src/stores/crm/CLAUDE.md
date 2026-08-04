@@ -44,3 +44,22 @@ Ported from legacy commit `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc`:
   rendering, so absence is not a failure) but a PRESENT control that cannot be set to Active
   Directory fails loud: submitting under the wrong login type authenticates against the wrong realm.
   `act-crm.my.site.com` alone is not a landing — the Communities login page lives on the same host.
+- **2026-08-03: TritON defaults to Business Systems, and the picker must be read AFTER the form
+  renders.** A cold live CRM login failed at `duo-clearance` after burning the whole 60s Duo window.
+  It never reached Duo: `ensureActiveDirectorySelected` probed `select` straight after `goto`, while
+  the browser was still redirecting into `a5.ucsd.edu`, so `count()` was 0 and the legitimate
+  "picker absent" rendering swallowed the real page — the credentials went in under **Business
+  Systems** and Shibboleth answered "The username you entered cannot be identified." The comparison
+  was broken too: `inputValue()` returns the option VALUE, so `.includes("Active Directory")` could
+  never match. Live-verified 2026-08-03: `select#authtype[name="authtype"]` with
+  `_eventId_authn/PasswordRACF` (Business Systems, the DEFAULT), `_eventId_authn/PasswordAD` (Active
+  Directory) and `_eventId_authn/PasswordKrb` (Student SSO); changing it re-posts the form to a new
+  `execution=` step. The recipe now waits for the SSO form first, matches the VALUE, re-waits for
+  the rebuilt form, and refuses to type a credential unless the realm is confirmed Active Directory.
+  The Duo security-key note above stands as a legacy record but was NOT what failed here — after the
+  login-type fix Duo Autopilot cleared CRM unattended in ~12s from a cold profile.
+- **2026-08-03: the label identifies the REALM, not the field.** TritON renders the same
+  `#ssousername` under "Account ID or email address" (Business Systems), "User name (or email
+  address)" (Active Directory) and "Username" (UCPath's entry). A label-first locator chain
+  therefore silently tracks whichever realm the page happens to be showing; `id`/`name` first, every
+  observed label behind it.
