@@ -85,7 +85,17 @@ describe("closed secret access", () => {
   });
 
   it("does not accept an arbitrary secret-file path", () => {
-    const config = resolveConfig({}, {}, manualClock(new Date("2026-08-10T12:00:00-07:00")));
+    // The registered path is pointed at something that provably does not exist.
+    // Before D115/D116 resolved `paths.duoCredential` absolutely this test read
+    // a RELATIVE path and passed only because nothing was there — so on a
+    // machine that had actually enrolled Duo it started finding the real
+    // credential and stopped asserting anything. A guard whose outcome depends
+    // on the developer's filesystem is not a guard.
+    const config = resolveConfig(
+      {},
+      { paths: { duoCredential: "/nonexistent-rebuild-secret-root/duo-webauthn.json" } },
+      manualClock(new Date("2026-08-10T12:00:00-07:00")),
+    );
     assert.equal(requireSecretFile.length, 2);
     assert.throws(() => requireSecretFile("duoWebauthnCredential", config), /registered rebuild credential path/);
   });
