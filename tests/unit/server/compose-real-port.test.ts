@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
+import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
 import { createDashboardClient, type SubscriptionState } from "../../../src/dashboard/client/index.js";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/server/dashboard/compose.js";
 
@@ -45,7 +46,14 @@ describe("composed dashboard runtime on the isolation port", () => {
     const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
     const bootstrap = await client.bootstrap();
     assert.equal(bootstrap.appVersion, "0.1.0");
-    assert.deepEqual((bootstrap.workflows as { id: string }[]).map(({ id }) => id), ["person-lookup"]);
+    // DERIVED from the composition root, never a hand-listed set: this assertion
+    // was hardcoded to `["person-lookup"]` and went red the moment a second
+    // workflow registered, asserting the fixture rather than the contract —
+    // the bootstrap serves exactly what WORKFLOW_MODULES declares.
+    assert.deepEqual(
+      (bootstrap.workflows as { id: string }[]).map(({ id }) => id).toSorted(),
+      DESCRIPTORS.map(({ id }) => id).toSorted(),
+    );
     assert.equal(bootstrap.storage.authority, "healthy");
 
     const today = new Date().toISOString().slice(0, 10);
