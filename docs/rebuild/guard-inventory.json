@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "reviewedAt": "2026-08-03",
+  "reviewedAt": "2026-08-04",
   "architectureRoot": "tests/unit/architecture",
   "testScript": "test:architecture",
   "coveragePolicy": {
@@ -483,7 +483,7 @@
       "file": "tests/unit/architecture/subject-before-fence.test.ts",
       "status": "active",
       "owner": "docs/rebuild/09-write-safety.md",
-      "invariant": "Every transaction pairs compatible prepare/commit subject declarations observed after prepare in one system; the live sequencer orders prepare-end < fresh subject observation < fence-commit < mutation-call on one lease; mismatch/unknown/missing observation produces zero fence and zero click with a poisoned page; alternating EIDs through one pooled page bind distinct digests; every minted MutationCapability is bound to the exact fenced WriteBindingProof digest; unscoped commits require a reviewed allowlisted reason, fail-both-ways.",
+      "invariant": "Every transaction pairs compatible prepare/commit subject declarations observed after prepare in one system; the live sequencer orders prepare-end < fresh subject observation < fence-commit < mutation-call on one lease; mismatch/unknown/missing observation produces zero fence and zero click with a poisoned page; alternating EIDs through one pooled page bind distinct digests; every minted MutationCapability is bound to the exact fenced WriteBindingProof digest and is refused by the production Kuali driver when it was not sequencer-minted; unscoped commits require a reviewed allowlisted reason, fail-both-ways.",
       "replacementRequired": true
     },
     {
@@ -499,7 +499,7 @@
       "file": "tests/unit/architecture/task-driver-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/12-operator-trust-and-authoring.md; docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "AST and transitive import-graph audits confine static/dynamic Playwright access, raw browser types, locator/frame/getBy/newPage/evaluate/$ operations, and private driver/session ownership to the two raw-browser owner families \u2014 per-system driver/session modules and the `src/infra/browser/**` worker session factory that owns concrete browser creation; task/workflow code consumes typed semantic ids and proofs and may reach neither family transitively, while MutationCapability forgery and commit implementations remain prohibited until the Phase-1f validator.",
+      "invariant": "AST and transitive import-graph audits confine static/dynamic Playwright access, raw browser types, locator/frame/getBy/newPage/evaluate/$ operations, and private driver/session ownership to the two raw-browser owner families \u2014 per-system driver/session modules and the `src/infra/browser/**` worker session factory that owns concrete browser creation; task/workflow code consumes typed semantic ids and proofs and may reach neither family transitively. MutationCapability may be conjured by `as`/`satisfies` nowhere outside `src/base/mutation-capability.ts`, `mintMutationCapability` has exactly one permitted caller (`src/core/write-sequencer.ts`), and a `commit` implementation is legal only inside a `src/stores/<system>/driver/**` owner that validates its capability before clicking (D122).",
       "replacementRequired": true
     },
     {

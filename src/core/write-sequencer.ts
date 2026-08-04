@@ -55,12 +55,11 @@ import {
   WriteIntentIdSchema,
 } from "../domain/ids.js";
 import type { ActorId, Fingerprint, TaskId } from "../domain/ids.js";
-import type { PositiveInt } from "../domain/ids.js";
 import { runClaim, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
 import { sha256Hex } from "../domain/sha256.js";
 import type { DataPoint } from "../domain/task-provenance.js";
-import type { MutationCapability } from "../domain/ui/driver.js";
+import { assertMintedMutationCapability, mintMutationCapability } from "../base/mutation-capability.js";
 import {
   BUILD_MANIFEST,
   resolveTaskImplFingerprint,
@@ -104,49 +103,15 @@ import type { WriteSequencer, WriteSequencerContext } from "./run-executor.js";
 
 /* ── the mutation capability — this module is the SOLE minting point ──────── */
 
-const MINTED_MUTATION_CAPABILITIES = new WeakSet<object>();
-
-interface MintedCapabilityShape {
-  readonly intentGeneration: PositiveInt;
-  readonly bindingDigest: Fingerprint;
-}
-
-function mintMutationCapability(
-  intentGeneration: PositiveInt,
-  bindingDigest: Fingerprint,
-): MutationCapability {
-  const value: MintedCapabilityShape = Object.freeze({ intentGeneration, bindingDigest });
-  // The brand symbol is declare-only (no runtime value exists anywhere), so the
-  // ONE minting point carries the single assertion; unforgeability is enforced
-  // at runtime by the module-private WeakSet, not by this type-level brand.
-  const capability = value as MutationCapability;
-  MINTED_MUTATION_CAPABILITIES.add(capability);
-  return capability;
-}
-
 /**
- * The driver-side verification seam (doc 09 beat ⑤): a commit-capable driver
- * method validates its capability BEFORE any click. A structurally identical
- * object that this module did not mint, or one bound to a different intent
- * generation / binding-proof digest, throws.
+ * The WeakSet-backed registry moved to `src/base/mutation-capability.ts` in Phase 2, so
+ * a `stores/**` driver can run the beat-⑤ verification before its click without
+ * a layer inversion. THIS module remains the only permitted caller of
+ * `mintMutationCapability`; `subject-before-fence` fails if any other module
+ * names it. The verifier keeps its sequencer-scoped name here because that is
+ * the import site every caller and test already knows.
  */
-export function assertSequencerMintedMutationCapability(
-  capability: unknown,
-  expected?: Readonly<{ intentGeneration: number; bindingDigest: string }>,
-): void {
-  if (capability === null || typeof capability !== "object"
-    || !MINTED_MUTATION_CAPABILITIES.has(capability)) {
-    throw new Error("mutation capability was not minted by the fenced write sequencer; refusing to click");
-  }
-  if (expected === undefined) return;
-  const minted = capability as MintedCapabilityShape;
-  if (minted.intentGeneration !== expected.intentGeneration
-    || minted.bindingDigest !== expected.bindingDigest) {
-    throw new Error(
-      "mutation capability is bound to a different intent generation or binding-proof digest; refusing to click",
-    );
-  }
-}
+export { assertMintedMutationCapability as assertSequencerMintedMutationCapability };
 
 /* ── typed failure surfaces ──────────────────────────────────────────────── */
 

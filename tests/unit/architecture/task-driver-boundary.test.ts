@@ -70,7 +70,7 @@ describe("task to system-driver boundary", () => {
       writeFileSync(path, "const token = {} as MutationCapability;\nexport const driver = { commit: async () => token };\n");
       const issues = auditTaskDriverBoundary(root).join("\n");
       assert.match(issues, /cannot be minted by type assertion/);
-      assert.match(issues, /commit implementation is forbidden/);
+      assert.match(issues, /a commit implementation must live in a store driver owner/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

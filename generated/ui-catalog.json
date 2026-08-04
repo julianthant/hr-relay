@@ -817,6 +817,218 @@
         "subject",
         "page-state"
       ]
+    },
+    {
+      "system": "kuali",
+      "label": "Kuali RRSS Separation Request Form document",
+      "searchTerms": [
+        "kuali rrss separation request document screen"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json",
+        "scenarios": [
+          "ui/kuali-rrss-document-identity"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "screen",
+      "id": "kuali.rrss-document"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document EID field",
+      "searchTerms": [
+        "kuali rrss document eid field"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json",
+        "scenarios": [
+          "ui/kuali-rrss-document-identity"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.eid-field",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document timekeeper name field",
+      "searchTerms": [
+        "kuali rrss document timekeeper name field"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json",
+        "scenarios": [
+          "ui/kuali-rrss-timekeeper-write-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.timekeeper-field",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document Save button",
+      "searchTerms": [
+        "kuali rrss document save button external commit"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json",
+        "scenarios": [
+          "ui/kuali-rrss-timekeeper-write-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/save-timekeeper-annotation"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.save-button",
+      "screen": "kuali.rrss-document",
+      "role": "button",
+      "effect": "external-commit"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document loaded and identifiable",
+      "searchTerms": [
+        "kuali rrss document ready state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json",
+        "scenarios": [
+          "ui/kuali-rrss-document-identity"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "kuali.rrss-document.ready",
+      "screen": "kuali.rrss-document"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document with an unsaved staged timekeeper value",
+      "searchTerms": [
+        "kuali rrss document timekeeper staged state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json",
+        "scenarios": [
+          "ui/kuali-rrss-timekeeper-write-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/fill-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "kuali.rrss-document.timekeeper-staged",
+      "screen": "kuali.rrss-document"
+    },
+    {
+      "system": "kuali",
+      "label": "Displayed RRSS document EID",
+      "searchTerms": [
+        "authoritative kuali rrss displayed eid"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json",
+        "scenarios": [
+          "ui/kuali-rrss-document-identity"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "observation",
+      "id": "kuali.rrss-document.displayed-eid",
+      "screen": "kuali.rrss-document",
+      "authoritativeFor": [
+        "subject"
+      ]
+    },
+    {
+      "system": "kuali",
+      "label": "Displayed RRSS document timekeeper name",
+      "searchTerms": [
+        "authoritative kuali rrss displayed timekeeper name"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json",
+        "scenarios": [
+          "ui/kuali-rrss-timekeeper-write-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "observation",
+      "id": "kuali.rrss-document.displayed-timekeeper",
+      "screen": "kuali.rrss-document",
+      "authoritativeFor": [
+        "completion"
+      ]
     }
   ]
 }

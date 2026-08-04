@@ -31,8 +31,8 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     ]);
     assert.equal(portMap.entries.length, 406);
     assert.deepEqual(auditLegacySelectorPortMap(portMap, LEGACY_ROOT), []);
-    assert.equal(portMap.entries.filter((entry) => entry.disposition === "candidate").length, 387);
-    assert.equal(portMap.entries.filter((entry) => entry.disposition === "ported").length, 18);
+    assert.equal(portMap.entries.filter((entry) => entry.disposition === "candidate").length, 384);
+    assert.equal(portMap.entries.filter((entry) => entry.disposition === "ported").length, 21);
     assert.equal(portMap.entries.filter((entry) => entry.disposition === "driver-internal").length, 1);
   });
 

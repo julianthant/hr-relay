@@ -10,7 +10,7 @@ const DEFAULT_OUT_ROOT = resolve(import.meta.dirname, "..");
 
 /**
  * `--out-root` relocates the whole projection tree (`generated/ui-catalog.json`
- * plus both per-system `UI-CATALOG.md` files) under another root. It exists so a
+ * plus every per-system `UI-CATALOG.md`) under another root. It exists so a
  * behavioural fixture can exercise the real generator WITHOUT rewriting the
  * tracked artifacts that `semantic-ui-registry` and `ui-registry` read while the
  * suite runs in parallel; an unrecognised argument fails loud rather than being
@@ -49,6 +49,10 @@ await publishArtifact(
 await publishArtifact(
   resolve(outRoot, "src/stores/crm/UI-CATALOG.md"),
   renderSystemUiCatalogMarkdown(catalog, "crm"),
+);
+await publishArtifact(
+  resolve(outRoot, "src/stores/kuali/UI-CATALOG.md"),
+  renderSystemUiCatalogMarkdown(catalog, "kuali"),
 );
 
 process.stdout.write(`Generated ${String(catalog.entries.length)} semantic UI catalog entries.\n`);

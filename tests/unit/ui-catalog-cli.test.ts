@@ -141,7 +141,9 @@ describe("selector:search CLI", { timeout: CLI_TIMEOUT_MS }, () => {
   });
 
   it("fails loud on an intent nothing matches, instead of printing nothing", async () => {
-    const result = await tsx("scripts/search-ui.ts", ["kuali", "budget", "attachment"]);
+    // Deliberately a system with no published facts: `kuali` now HAS a
+    // registry, so it can no longer stand in for "nothing matches".
+    const result = await tsx("scripts/search-ui.ts", ["onbase", "budget", "ledger"]);
     assert.notEqual(result.code, 0);
     assert.match(result.stderr, /no semantic UI facts matched intent/);
   });

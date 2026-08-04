@@ -11,7 +11,15 @@ import type { Fingerprint, PositiveInt } from "../ids.js";
 
 declare const mutationCapabilityBrand: unique symbol;
 
-/** Created only by the fenced write sequencer (Phase 1f); no constructor/factory is exported. */
+/**
+ * Created only by the fenced write sequencer (Phase 1f). The brand symbol is
+ * declare-only, so the TYPE cannot make a token unforgeable — the runtime
+ * registry in `src/base/mutation-capability.ts` does, through a module-private
+ * WeakSet. That registry lives outside `domain` for two reasons: minting needs
+ * a type assertion, which no domain boundary source may contain, and the
+ * VERIFIER has to be callable from a `stores/**` driver before its click,
+ * which the layer matrix forbids reaching into `core` for.
+ */
 export type MutationCapability = Readonly<{
   intentGeneration: PositiveInt;
   bindingDigest: Fingerprint;

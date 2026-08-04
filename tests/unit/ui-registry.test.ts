@@ -97,7 +97,7 @@ describe("semantic UI registry", () => {
   it("publishes a schema-valid catalog with no private recipe or captured value", () => {
     const catalog = UiCatalogSchema.parse(buildSafeUiCatalog());
     const serialized = JSON.stringify(catalog);
-    assert.equal(catalog.entries.length, 35);
+    assert.equal(catalog.entries.length, 43);
     assert.doesNotMatch(
       serialized,
       /#main_target_win0|PERSON_NPC_VW_EMPLID|Empl ID|legacyKey|locator|selector|capturedValue|valueType|timeoutMs/,

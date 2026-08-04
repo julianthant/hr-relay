@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "deterministic-fixture",
+  "system": "kuali",
+  "screens": [
+    "kuali.rrss-document"
+  ],
+  "verifiedAt": "2026-08-04",
+  "method": "deterministic-driver",
+  "assertions": [
+    {
+      "semanticId": "kuali.rrss-document",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-rrss-document-identity",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.eid()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.eid-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-rrss-document-identity",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.eid()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.timekeeper-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-rrss-timekeeper-write-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "timekeeperTasks.timekeeperName()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.save-button",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-rrss-timekeeper-write-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "save.navbarSaveButton()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.ready",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-rrss-document-identity",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.eid()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.timekeeper-staged",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-rrss-timekeeper-write-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "timekeeperTasks.timekeeperName()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.displayed-eid",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-rrss-document-identity",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.eid()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.displayed-timekeeper",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-rrss-timekeeper-write-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "timekeeperTasks.timekeeperName()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    }
+  ],
+  "externalWriteAttempted": false,
+  "sanitized": true
+}

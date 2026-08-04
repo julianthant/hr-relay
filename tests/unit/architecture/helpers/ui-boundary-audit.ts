@@ -96,10 +96,10 @@ function rawBrowserAstIssues(path: string, source: ts.SourceFile): readonly stri
         issues.push(`${path}: computed raw browser member ${member} crosses the driver/session boundary`);
       }
     }
-    // Doc 09 beat ⑤ / D111: the fenced write sequencer is the ONE sanctioned
-    // minting point (its WeakSet makes the token runtime-unforgeable); every
-    // other file asserting the brand is still a forgery.
-    if (path !== "src/core/write-sequencer.ts"
+    // Doc 09 beat ⑤ / D111: `src/base/mutation-capability.ts` owns the ONE
+    // sanctioned minting point (its WeakSet makes the token runtime-
+    // unforgeable); every other file asserting the brand is still a forgery.
+    if (path !== MUTATION_CAPABILITY_REGISTRY
       && (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node))
       && node.type.getText(source).includes("MutationCapability")) {
       issues.push(`${path}: MutationCapability cannot be minted by type assertion`);
@@ -107,18 +107,37 @@ function rawBrowserAstIssues(path: string, source: ts.SourceFile): readonly stri
     if (ts.isSatisfiesExpression(node) && node.type.getText(source).includes("MutationCapability")) {
       issues.push(`${path}: MutationCapability cannot be minted by satisfies`);
     }
-    if (ts.isMethodDeclaration(node) && node.name.getText(source) === "commit" && node.body !== undefined) {
-      issues.push(`${path}: commit implementation is forbidden before the Phase 1f runtime token validator`);
+    // The minting FUNCTION has exactly one caller. Naming it anywhere else is
+    // a second minting point even though the assertion stayed in one file.
+    if (path !== MUTATION_CAPABILITY_REGISTRY && path !== MUTATION_CAPABILITY_MINTER
+      && ts.isIdentifier(node) && node.text === "mintMutationCapability") {
+      issues.push(`${path}: mintMutationCapability has exactly one permitted caller`);
     }
-    if (ts.isPropertyAssignment(node) && node.name.getText(source) === "commit"
-      && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
-      issues.push(`${path}: commit implementation is forbidden before the Phase 1f runtime token validator`);
+    // Phase 2: a commit implementation is legal ONLY inside a store's driver
+    // owner, and only in a file that runs the runtime token validator. Before
+    // the validator landed this was a blanket ban; the ban now names the
+    // condition it always stood for.
+    const commitImplementation = (ts.isMethodDeclaration(node) && node.name.getText(source) === "commit"
+      && node.body !== undefined)
+      || (ts.isPropertyAssignment(node) && node.name.getText(source) === "commit"
+        && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)))
+      || (ts.isFunctionDeclaration(node) && node.name?.getText(source) === "commit" && node.body !== undefined);
+    if (commitImplementation
+      && !(DRIVER_OWNER_PATTERN.test(path) && source.getFullText().includes("assertMintedMutationCapability"))) {
+      issues.push(
+        `${path}: a commit implementation must live in a store driver owner and validate its `
+        + "MutationCapability before clicking",
+      );
     }
     ts.forEachChild(node, visit);
   }
   visit(source);
   return [...new Set(issues)];
 }
+
+const MUTATION_CAPABILITY_REGISTRY = "src/base/mutation-capability.ts";
+const MUTATION_CAPABILITY_MINTER = "src/core/write-sequencer.ts";
+const DRIVER_OWNER_PATTERN = /^src\/stores\/[a-z0-9-]+\/driver\//u;
 
 export function auditTaskDriverBoundary(root: string): readonly string[] {
   const issues: string[] = [];

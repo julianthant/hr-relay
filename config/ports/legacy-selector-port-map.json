@@ -1278,9 +1278,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/separation-form.eid"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.eid-field",
+      "evidence": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1390,9 +1395,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/timekeeper-tasks.timekeeper-name"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.timekeeper-field",
+      "evidence": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1563,9 +1573,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/save.navbar-save-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.save-button",
+      "evidence": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json"
+      }
     },
     {
       "system": "new-kronos",
