@@ -157,9 +157,17 @@ export const kualiTimekeeperAnnotationDescriptor = defineWorkflowDescriptor({
   enqueue: "reject-active",
   actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {},
-  // The detail reads the COMMIT contract's output field, which is what the
-  // transaction node's output schema owns; the disposition itself lives on the
-  // kernel's `TransactionOutcome` wrapper and is surfaced by the result schema.
+  // `fieldPath` is a BUILD-TIME binding, not a runtime read. `defineWorkflowDescriptor`
+  // validates it against `outputSchemaOf(node)`, which for a transaction node is the
+  // COMMIT contract's bare output (`{ savedState }`) — per D144, "which schema owns this
+  // node's field paths" stays the commit output and is deliberately a different question
+  // from what the node's graph-scope value is. Read the contrast so the two are not
+  // conflated: the scope value is `TypedTransactionOutcome`, where this same value sits at
+  // `output.savedState.timekeeperName` and where `disposition` lives (which is why the
+  // disposition is surfaced by the result schema instead, and why a detail cannot name it).
+  // Declaring the scope path here fails loud at build: `output` is not a field of the
+  // commit output. Nothing resolves this path to a VALUE yet — detail values travel the
+  // `span.patched` channel keyed by `key`, and that channel has no producer (doc 03 §3.3).
   details: [
     {
       key: "timekeeper-name",

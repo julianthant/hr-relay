@@ -15,7 +15,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "d5a12632ae42973200b825e929a31f45731b2063c92deffe05defb3af7cc6842",
+      "fingerprint": "32bfefc1317dcde55312ab171d3cd05626d760978ea9f56be4ad6c852d0cfc94",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -139,7 +139,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/kuali-timekeeper-annotation/descriptor.ts",
-          "sha256": "0040a9f4500a6c31e2a971dbf3add6548edca6f9708c3a9927df3eb99cabcc94"
+          "sha256": "ac0ed6e625fef2428eda65350baf6dacb7d8d65e7f2031d236d96c727de39d18"
         }
       ],
       "id": "kuali-timekeeper-annotation"
