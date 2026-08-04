@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
+import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
 import {
   DashboardStreamEnvelopeSchema,
   type DashboardStreamEnvelope,
@@ -178,7 +179,13 @@ export interface FixtureServer {
   close(): Promise<void>;
 }
 
-export async function startFixtureServer(input: Readonly<{ distDir: string }>): Promise<FixtureServer> {
+export async function startFixtureServer(
+  input: Readonly<{ distDir: string; bundle: ParityBundleProof }>,
+): Promise<FixtureServer> {
+  // Doc 13 §7: a served bundle must provably be a build of the working tree.
+  // Asserted BEFORE a port is bound, so a stale `dist/dashboard` can never be
+  // reached over HTTP — and never leaks a listening socket on refusal.
+  assertServedBundle(input.distDir, input.bundle);
   const { app } = createFixtureBff();
   const openStreams = new Set<ServerResponse>();
 

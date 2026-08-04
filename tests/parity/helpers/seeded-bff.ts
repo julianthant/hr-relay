@@ -41,6 +41,7 @@ import {
   PersonLookupCanonicalInput,
   personLookupDescriptor,
 } from "../../../src/workflows/person-lookup/descriptor.js";
+import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 
@@ -566,7 +567,12 @@ export interface SeededServer {
   close(): Promise<void>;
 }
 
-export async function startSeededServer(input: Readonly<{ distDir: string }>): Promise<SeededServer> {
+export async function startSeededServer(
+  input: Readonly<{ distDir: string; bundle: ParityBundleProof }>,
+): Promise<SeededServer> {
+  // Doc 13 §7: the same working-tree proof the fixture adapter demands —
+  // asserted before any temp root, database or port exists.
+  assertServedBundle(input.distDir, input.bundle);
   const root = mkdtempSync(join(tmpdir(), "hrauto-parity-seeded-"));
   const stateRoot = join(root, ".tracker-rebuild");
   const clock = manualClock(SEEDED_AT);

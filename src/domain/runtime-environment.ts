@@ -145,7 +145,8 @@ const LEGACY_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
 
 const TEST_ONLY_ENVIRONMENT_KEYS = [
   "HRAUTO_E2E_STUBS", "HRAUTO_LEGACY_REPO", "HR_DRYRUN_DOC_ID", "HR_SOAK_ITERATIONS",
-  "HR_TEARDOWN_SOAK_ITERATIONS", "HR_TEST_HEADED", "SEL_SESSION", "TZ", "__NUMENV_TEST__",
+  "HR_TEARDOWN_SOAK_ITERATIONS", "HR_TEST_HEADED", "PARITY_UPDATE", "SEL_SESSION", "TZ",
+  "__NUMENV_TEST__",
 ] as const;
 
 const RETIRED_ENVIRONMENT_KEYS = [
@@ -185,6 +186,10 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
   HR_SOAK_ITERATIONS: ["legacy:tests/delegation/concurrency-soak.test.ts"],
   HR_TEARDOWN_SOAK_ITERATIONS: ["legacy:tests/delegation/daemon-teardown-soak.test.ts"],
   HR_TEST_HEADED: ["legacy:tests/live/auth.test.ts", "legacy:tests/live/onbase-import.test.ts", "legacy:tests/live/separations-collect.test.ts", "legacy:tests/live/separations-dryrun.test.ts", "legacy:tests/live/session-launch-multi.test.ts"],
+  // D132: the ONE switch that turns the doc 13 §7 parity lane from asserting
+  // its stored references into deliberately re-freezing them. Read in exactly
+  // one place, which the config and both capture halves share.
+  PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
   SEL_SESSION: ["duo-autopilot/launch-selector-browser.mjs", "legacy:duo-autopilot/launch-selector-browser.mjs"],
   TZ: ["legacy:tests/env-bootstrap.ts"],
   __NUMENV_TEST__: ["legacy:tests/unit/utils/env.test.ts"],

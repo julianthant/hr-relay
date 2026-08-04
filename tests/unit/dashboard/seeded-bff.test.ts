@@ -30,7 +30,12 @@ async function boot(): Promise<SeededServer> {
   const distDir = mkdtempSync(join(tmpdir(), "hrauto-parity-dist-"));
   roots.push(distDir);
   writeFileSync(join(distDir, "index.html"), "<!doctype html><title>parity</title>");
-  const server = await startSeededServer({ distDir });
+  // API-only probe: nothing renders the app here, so the bundle is declared
+  // unverified instead of demanding a working-tree build.
+  const server = await startSeededServer({
+    distDir,
+    bundle: { proof: "unverified", reason: "API/SSE route probe; the served dist is a one-file stub, never rendered" },
+  });
   servers.push(server);
   return server;
 }

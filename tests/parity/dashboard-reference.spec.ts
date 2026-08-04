@@ -7,11 +7,14 @@
  * state photographed twice is byte-identical, and a diff therefore means the
  * UI changed, never that the clock moved.
  *
- * Re-freeze with `PARITY_UPDATE=1 npm run test:parity -- --update-snapshots`.
+ * Every reference is ASSERTED — the pixels against Playwright's baseline, the
+ * a11y tree and provenance record against their stored files. Re-freeze the
+ * whole set deliberately with `npm run test:parity:update`.
  */
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
 import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
+import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import {
   FIXTURE_APP_VERSION,
   FIXTURE_DAY,
@@ -27,7 +30,6 @@ import {
 } from "./helpers/capture.js";
 import { gotoAppState, type AppRoute } from "./helpers/app-driver.js";
 
-const DIST = resolve(import.meta.dirname, "../../dist/dashboard");
 const REFERENCES = resolve(import.meta.dirname, "references");
 
 /** Every state the 1i slice can actually show, and the route that shows it. */
@@ -49,7 +51,11 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
 let server: FixtureServer;
 
 test.beforeAll(async () => {
-  server = await startFixtureServer({ distDir: DIST });
+  // Build (or prove the reuse of) the bundle under test before anything serves
+  // it: a reference captured from a stale `dist/dashboard` documents code that
+  // is not in the working tree.
+  ensureParityBundle();
+  server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
 });
 
 test.afterAll(async () => {

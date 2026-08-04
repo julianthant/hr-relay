@@ -92,7 +92,14 @@ describe("parity fixture corpus", () => {
   it("serves the corpus over real HTTP from an ephemeral port", async () => {
     const distDir = mkdtempSync(join(tmpdir(), "hrauto-parity-dist-"));
     writeFileSync(join(distDir, "index.html"), "<!doctype html><title>probe</title>");
-    const server = await startFixtureServer({ distDir });
+    // API-only probe: this server never renders the app, so it declares its
+    // bundle unverified rather than demanding a working-tree build. The parity
+    // lane itself may never take this branch — parity-reference-authority
+    // proves no spec does.
+    const server = await startFixtureServer({
+      distDir,
+      bundle: { proof: "unverified", reason: "API/SSE route probe; the served dist is a one-file stub, never rendered" },
+    });
     cleanups.push(async () => {
       await server.close();
       rmSync(distDir, { recursive: true, force: true });

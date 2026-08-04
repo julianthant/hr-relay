@@ -15,21 +15,20 @@
  * "the queue rendered these particular words".
  */
 import { expect, test } from "@playwright/test";
-import { resolve } from "node:path";
 import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
 import { startSeededServer, SEEDED_DAY, type SeededServer } from "./helpers/seeded-bff.js";
 import { FIXTURE_DAY, FIXTURE_IDS } from "./helpers/fixture-day.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { readA11yTree } from "./helpers/capture.js";
-
-const DIST = resolve(import.meta.dirname, "../../dist/dashboard");
+import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 
 let fixture: FixtureServer;
 let seeded: SeededServer;
 
 test.beforeAll(async () => {
-  fixture = await startFixtureServer({ distDir: DIST });
-  seeded = await startSeededServer({ distDir: DIST });
+  ensureParityBundle();
+  fixture = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+  seeded = await startSeededServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
 });
 
 test.afterAll(async () => {
