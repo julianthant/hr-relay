@@ -27,7 +27,7 @@
  * applies there.
  */
 import { z } from "zod";
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../base/workflow.js";
+import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import { JsonValueSchema } from "../domain/canonical-json.js";
 import type { JsonValue } from "../domain/canonical-json.js";
 import type { Clock } from "../domain/clock.js";
@@ -42,16 +42,23 @@ import {
 import type { Fingerprint, TaskId } from "../domain/ids.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
 import {
-  deriveIdempotencyKeyDigest,
   evaluateNegativeSettlement,
-  IdempotencyKeySchema,
   NegativeSettlementPolicySchema,
   RecoveryProbeVerdictSchema,
   type WriteIntentRecord,
 } from "../domain/write-safety.js";
-import type { RunRecord } from "../domain/run/record.js";
-import type { RuntimeFlowNode, RuntimeScope } from "../domain/workflow/graph.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
+import {
+  rebuildCommitInput,
+  requireWriteResolutionBinding,
+  type TransactionRuntimeNode,
+  type WriteBindingRepositories,
+  type WriteResolutionArm,
+} from "./write-resolution-binding.js";
+export {
+  findTransactionNodeByCommit,
+  rebuildCommitInput,
+} from "./write-resolution-binding.js";
 import {
   BUILD_MANIFEST,
   resolveTaskImplFingerprint,
@@ -145,102 +152,7 @@ export interface WriteRecoveryService {
   recover(input: WriteRecoveryInput): Promise<WriteRecoveryDecision>;
 }
 
-/* ── shared node / input reconstruction ──────────────────────────────────── */
-
-type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transaction" }>;
 type AttemptingIntent = Extract<WriteIntentRecord, { status: "attempting" }>;
-
-export function findTransactionNodeByCommit(
-  descriptor: AnyWorkflowDescriptor,
-  commitTaskId: string,
-): TransactionRuntimeNode {
-  const node = descriptorRuntimeNodes(descriptor).find((candidate): candidate is TransactionRuntimeNode =>
-    candidate.kind === "transaction" && candidate.commit.uses.id === commitTaskId);
-  if (node === undefined) {
-    throw new Error(
-      `${descriptor.id} v${String(descriptor.version)} declares no transaction node whose commit is `
-      + `${commitTaskId}; the stored intent is inconsistent with the descriptor`,
-    );
-  }
-  return node;
-}
-
-function requireDescriptorMatchesRun(descriptor: AnyWorkflowDescriptor, run: RunRecord): void {
-  if (descriptor.id !== run.envelope.workflow
-    || descriptor.version !== run.envelope.descriptorVersion
-    || descriptor.contractFingerprint !== run.envelope.contractFingerprint) {
-    throw new Error(
-      `run ${run.envelope.runId} is bound to ${run.envelope.workflow} `
-      + `v${String(run.envelope.descriptorVersion)}, not descriptor ${descriptor.id} `
-      + `v${String(descriptor.version)}; refusing to recover against a drifted contract`,
-    );
-  }
-}
-
-/**
- * Rebuild the transaction node's exact commit input from DURABLE state: the
- * run's canonical input snapshot plus the node's declared dependency outputs
- * (task checkpoints and stored gate results). The rebuilt input must re-derive
- * the EXACT fenced idempotency key — any drift refuses loudly.
- */
-export function rebuildCommitInput(
-  repositories: Pick<AuthorityRepositories, "runCheckpoints" | "gateResults">,
-  descriptor: AnyWorkflowDescriptor,
-  node: TransactionRuntimeNode,
-  run: RunRecord,
-  intent: WriteIntentRecord,
-): unknown {
-  const canonicalInput = descriptor.canonicalInput.parse(run.input.parsed.value);
-  const outputs: Record<string, JsonValue> = {};
-  const nodesById = new Map(descriptorRuntimeNodes(descriptor).map((candidate) => [String(candidate.id), candidate]));
-  for (const dependency of node.dependsOn) {
-    const dependencyNode = nodesById.get(String(dependency));
-    if (dependencyNode === undefined) {
-      throw new Error(`transaction "${node.id}" depends on unknown node "${dependency}"`);
-    }
-    if (dependencyNode.kind === "task") {
-      const checkpoint = repositories.runCheckpoints.latest(
-        descriptor.id,
-        run.envelope.itemId,
-        String(dependency),
-      );
-      if (checkpoint === undefined) {
-        throw new Error(
-          `recovery cannot rebuild the commit input: dependency "${dependency}" has no stored checkpoint`,
-        );
-      }
-      outputs[String(dependency)] = JsonValueSchema.parse(checkpoint.output.value);
-      continue;
-    }
-    if (dependencyNode.kind === "gate") {
-      const stored = repositories.gateResults.get(`${run.envelope.runId}:${String(dependency)}`);
-      if (stored === undefined) {
-        throw new Error(
-          `recovery cannot rebuild the commit input: gate "${dependency}" has no stored result`,
-        );
-      }
-      outputs[String(dependency)] = JsonValueSchema.parse(dependencyNode.result.parse(stored.result.value));
-      continue;
-    }
-    throw new Error(
-      `recovery cannot rebuild the commit input across a ${dependencyNode.kind} dependency "${dependency}" yet; `
-      + "that reconstruction lands with its owning interpreter seam",
-    );
-  }
-  const scope: RuntimeScope = { input: JsonValueSchema.parse(canonicalInput), outputs: Object.freeze(outputs) };
-  const commitContract = node.commit.uses;
-  const commitInput: unknown = commitContract.input.parse(node.commit.bind(scope));
-  const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
-  const key = IdempotencyKeySchema.parse(keyRaw);
-  const digest = deriveIdempotencyKeyDigest(intent.system, key);
-  if (key !== intent.idempotencyKey || digest !== intent.idempotencyKeyDigest) {
-    throw new Error(
-      `recovery rebuilt commit input derives key "${key}", but intent ${intent.writeIntentId} fenced `
-      + `"${intent.idempotencyKey}"; refusing to probe with a drifted identity`,
-    );
-  }
-  return commitInput;
-}
 
 /* ── the recovery service ────────────────────────────────────────────────── */
 
@@ -295,8 +207,21 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
     if (run === undefined) {
       throw new Error(`write intent ${input.writeIntentId} names run ${intent.runId}, which does not exist`);
     }
-    requireDescriptorMatchesRun(input.descriptor, run);
-    const node = findTransactionNodeByCommit(input.descriptor, intent.taskId);
+    /*
+     * D136: resolvability binds to the SEMANTIC surface this probe consumes —
+     * the workflow/version identity, the transaction node that commits this
+     * task, the canonical-input schema, the permanent key re-derived from the
+     * exact durable input, and the retained binding proof — not to the
+     * descriptor's whole source-closure hash. A worker that restarted onto a
+     * newer build must still be able to recover the crash it caused.
+     */
+    const { node } = requireWriteResolutionBinding({
+      arm: "recovery-probe",
+      descriptor: input.descriptor,
+      run,
+      intent,
+      repositories: deps.authority.authority,
+    });
     const commitContract: AnyCommitTaskContract = node.commit.uses;
     const commitInput = rebuildCommitInput(
       deps.authority.authority,
@@ -493,16 +418,35 @@ export interface WriteResolutionDependencies {
   readonly hooks?: WriteSequencerHooks;
 }
 
-function requireDescriptorFor(
+/**
+ * D136: the resolution's target — the registered descriptor and the exact
+ * transaction node this intent commits — validated against the SEMANTIC
+ * surface the arm consumes rather than the descriptor's whole closure hash.
+ *
+ * A parked write waits for a human to go look in the target system, and that
+ * wait routinely outlives an unrelated refactor somewhere in a ~31-file import
+ * closure. Expiring the operator's only release path on such an edit is not a
+ * recovery path; see `write-resolution-binding.ts` for exactly what may move
+ * and what may not.
+ */
+function requireResolutionTarget(
   deps: WriteResolutionDependencies,
+  repositories: WriteBindingRepositories,
   context: WriteResolutionContext,
-): AnyWorkflowDescriptor {
+  arm: WriteResolutionArm,
+): Readonly<{ descriptor: AnyWorkflowDescriptor; node: TransactionRuntimeNode }> {
   const descriptor = deps.descriptors.resolve(context.run.envelope.workflow);
   if (descriptor === undefined) {
     throw new Error(`workflow ${context.run.envelope.workflow} is not registered; the parked write cannot resolve`);
   }
-  requireDescriptorMatchesRun(descriptor, context.run);
-  return descriptor;
+  const { node } = requireWriteResolutionBinding({
+    arm,
+    descriptor,
+    run: context.run,
+    intent: context.intent,
+    repositories,
+  });
+  return Object.freeze({ descriptor, node });
 }
 
 function requireResolvableIntent(context: WriteResolutionContext): void {
@@ -524,8 +468,12 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
         throw new Error(`resolvePresent received a ${context.command.type} command`);
       }
       requireResolvableIntent(context);
-      const descriptor = requireDescriptorFor(deps, context);
-      const node = findTransactionNodeByCommit(descriptor, context.intent.taskId);
+      const { descriptor, node } = requireResolutionTarget(
+        deps,
+        repositories,
+        context,
+        "operator-confirmed-present",
+      );
       const commitContract = node.commit.uses;
       const completion = commitContract.writeSafety.completion;
       const proofSchemaHash = deriveSchemaHash(completion.proofSchema, "output");
@@ -584,8 +532,7 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
         throw new Error(`resolveAbsent received a ${context.command.type} command`);
       }
       requireResolvableIntent(context);
-      const descriptor = requireDescriptorFor(deps, context);
-      const node = findTransactionNodeByCommit(descriptor, context.intent.taskId);
+      const { node } = requireResolutionTarget(deps, repositories, context, "operator-confirmed-absent");
       repositories.writeIntents.settleRetryable({
         writeIntentId: context.intent.writeIntentId,
         generation: context.intent.generation,
