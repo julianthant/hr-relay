@@ -143,7 +143,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "70d39195cf5f11b590e8406ff6c92dc54dfdb2039846cb835823b8f5607d115f",
+      "fingerprint": "863238cfeb32b8e5a922eb9e18c0c9f0ee9df54e81a6d1f0d49e0151411f7da2",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -170,14 +170,6 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
         },
         {
-          "path": "src/config/define-runtime-isolation.ts",
-          "sha256": "b8553e1b22a79977017f2737dfec3e7395af10b6493db8387aa84234b6f6d9ba"
-        },
-        {
-          "path": "src/config/runtime-isolation.ts",
-          "sha256": "84fb5d47dbf2b066c45bd8945e4ca064132f88f1386083474a24cd9782a3b38a"
-        },
-        {
           "path": "src/domain/artifacts.ts",
           "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
         },
@@ -187,7 +179,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "9ff344a8b1af9c931c4ff217e534c0ed84712a3e4cad5199adb2b5a6f1520541"
+          "sha256": "8d2869752a5d58ec1d9d4e4508370cba632c9852f58637ab0f8e0d48148a13da"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -305,7 +297,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "83586351e3cd9ea1a1b23e02b92e3db71597a48b576bca72d386f3ce19f7ea8e",
+      "fingerprint": "bfe0cc5a7d3f60596b3f114d9a57c3f71886b8d193e07ddffd95f1fc6a697d33",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -332,14 +324,6 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
         },
         {
-          "path": "src/config/define-runtime-isolation.ts",
-          "sha256": "b8553e1b22a79977017f2737dfec3e7395af10b6493db8387aa84234b6f6d9ba"
-        },
-        {
-          "path": "src/config/runtime-isolation.ts",
-          "sha256": "84fb5d47dbf2b066c45bd8945e4ca064132f88f1386083474a24cd9782a3b38a"
-        },
-        {
           "path": "src/domain/artifacts.ts",
           "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
         },
@@ -349,7 +333,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "9ff344a8b1af9c931c4ff217e534c0ed84712a3e4cad5199adb2b5a6f1520541"
+          "sha256": "8d2869752a5d58ec1d9d4e4508370cba632c9852f58637ab0f8e0d48148a13da"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -467,7 +451,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "fba9c238b7835fd9a9c64c331748d246aea5a5d4e7c81aa6b03c43ddc4092d6a",
+      "fingerprint": "3b406d774e503465fca040acf44f0909cf016e9d310d95a37969d7514d7804c9",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -494,14 +478,6 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
         },
         {
-          "path": "src/config/define-runtime-isolation.ts",
-          "sha256": "b8553e1b22a79977017f2737dfec3e7395af10b6493db8387aa84234b6f6d9ba"
-        },
-        {
-          "path": "src/config/runtime-isolation.ts",
-          "sha256": "84fb5d47dbf2b066c45bd8945e4ca064132f88f1386083474a24cd9782a3b38a"
-        },
-        {
           "path": "src/domain/artifacts.ts",
           "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
         },
@@ -511,7 +487,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "9ff344a8b1af9c931c4ff217e534c0ed84712a3e4cad5199adb2b5a6f1520541"
+          "sha256": "8d2869752a5d58ec1d9d4e4508370cba632c9852f58637ab0f8e0d48148a13da"
         },
         {
           "path": "src/domain/contracts/base.ts",
@@ -611,15 +587,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "c56a7c4fa6353cc29feb58d42d71c2dd87325e8a4d576e5ae46a43d01bc5f92b"
+          "sha256": "cbaf95f7eff07f0eea706beaf276151384157a285a1e2ed93ff635be27488e49"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
-          "sha256": "c51900533e6813be278ee03bc31ddb4ab1c36905e19bc083843595980eb05da3"
+          "sha256": "01bc084c5ee4163bde98168f089b8cf847242da1efcac6da90d778674521c585"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
-          "sha256": "2660f2f4b90c045ee669edc4e10bc33f5fbd963f0f22c4dd5a58c9b5065aca5c"
+          "sha256": "70e1a785f58632ad0fad5dc5f16e40a316a530c5397d15c222f3a515275a1153"
         },
         {
           "path": "src/stores/ucpath/tasks/search-person-org.ts",
@@ -633,7 +609,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "86591a9998392c9645d5d70377e771e561a41a9c918dce45457d89def95e3415",
+      "fingerprint": "66d9ecd398df478914588fd69ff6a467aff3ff6bf6707784d3cb9c15c34338e1",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -652,14 +628,6 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
         },
         {
-          "path": "src/config/define-runtime-isolation.ts",
-          "sha256": "b8553e1b22a79977017f2737dfec3e7395af10b6493db8387aa84234b6f6d9ba"
-        },
-        {
-          "path": "src/config/runtime-isolation.ts",
-          "sha256": "84fb5d47dbf2b066c45bd8945e4ca064132f88f1386083474a24cd9782a3b38a"
-        },
-        {
           "path": "src/domain/artifacts.ts",
           "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
         },
@@ -669,7 +637,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/config/schema.ts",
-          "sha256": "9ff344a8b1af9c931c4ff217e534c0ed84712a3e4cad5199adb2b5a6f1520541"
+          "sha256": "8d2869752a5d58ec1d9d4e4508370cba632c9852f58637ab0f8e0d48148a13da"
         },
         {
           "path": "src/domain/contracts/base.ts",

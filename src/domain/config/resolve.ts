@@ -5,6 +5,7 @@ import type { Clock } from "../clock.js";
 import { systemClock } from "../clock.js";
 import { deepFreeze } from "../immutability.js";
 import { FingerprintSchema } from "../ids.js";
+import { defaultRuntimePaths } from "./runtime-paths.js";
 import {
   ConfigSchema,
   SettingsOverrideInputSchema,
@@ -331,7 +332,10 @@ function environmentValue(env: NodeJS.ProcessEnv, key: string): string | undefin
 
 function resolveInternal(env: NodeJS.ProcessEnv, settingsInput: unknown, clock: Clock): ResolvedConfig {
   const settings = SettingsOverrideInputSchema.parse(settingsInput);
-  const defaults = ConfigSchema.parse({});
+  // `paths` has no schema default on purpose — the filesystem defaults are a
+  // server concern the browser-reachable contract cannot carry. See
+  // `./runtime-paths.ts`.
+  const defaults = ConfigSchema.parse({ paths: defaultRuntimePaths() });
   let config = mergeSettings(defaults, settings);
   const fiscalYear = `FY${String(clock.fiscalYear())}`;
   const appliedEnvPaths: string[] = [];

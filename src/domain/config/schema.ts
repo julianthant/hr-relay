@@ -1,6 +1,4 @@
-import { join, resolve } from "node:path";
 import { z } from "zod";
-import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 import { LocalOperatorActorSchema, LOCAL_OPERATOR_ACTOR_ID } from "../ids.js";
 import type { ProviderCapabilityId } from "../ids.js";
 import { deepFreeze } from "../immutability.js";
@@ -105,49 +103,32 @@ export const PROVIDER_CAPABILITY_CONFIG_KEYS = deepFreeze({
 } as const satisfies Record<ProviderCapabilityId, keyof z.output<typeof ProviderBudgetConfigSchema>>);
 
 /**
- * The rebuild's own Chromium profile root, absolute (D115/D116, doc 11 §4).
+ * The absolute filesystem locations the runtime reads and writes (doc 11 §4).
  *
- * The runtime-isolation contract states the root as a repo-relative literal
- * (`.auth-rebuild`) because that is what the operational-isolation audit reads
- * as text on both sides. A RUNTIME path may never be that literal: a worker or
- * daemon started from any other working directory would otherwise resolve a
- * different, empty profile root and silently re-authenticate — or, worse, write
- * a second credential home. It is resolved exactly once per process, on first
- * use, so every consumer receives an absolute path and `paths.browserProfileRoot`
- * can be redirected (settings override) without any consumer re-deriving it.
- *
- * LAZY ON PURPOSE. This module also carries the settings-override contract that
- * `src/domain/commands.ts` — and through it the dashboard bundle — depends on,
- * so it is imported into the browser. `node:path` does not exist there. Resolving
- * at module scope therefore crashed the bundle on load with `resolve is not a
- * function`; behind a function, a browser that never materializes a filesystem
- * default never calls it, and a runtime that does gets the same absolute path it
- * always got. A path default is a RUNTIME concern by definition — the browser
- * has no working directory to resolve against and no business inventing one.
+ * PURE CONTRACT, NO DEFAULT — deliberately. This module also carries the
+ * settings-override contract that `src/domain/commands.ts`, and through it the
+ * dashboard bundle, depends on, so it is imported into the BROWSER. A path
+ * default can only be produced by resolving a repo-relative literal against a
+ * working directory, which is `node:path` work; a browser has no working
+ * directory to resolve against and no business inventing one. So the defaults
+ * live in the server-only `./runtime-paths.ts`, which `./resolve.ts` — the ONE
+ * `env > settings.json > default` resolver — supplies at parse time. A caller
+ * that hands `ConfigSchema` no `paths` gets a loud zod error naming the missing
+ * leaf, never a fabricated path.
  */
-let browserProfileRootMemo: string | undefined;
-
-export function defaultBrowserProfileRoot(): string {
-  browserProfileRootMemo ??= resolve(rebuildRuntimeIsolation.browserProfileRoot);
-  return browserProfileRootMemo;
-}
-
-function defaultPaths() {
-  const profileRoot = defaultBrowserProfileRoot();
-  return {
-    reportsDir: resolve("data/reports"),
-    downloadsDir: resolve("data/downloads"),
-    onboardingDocsDir: resolve("data/onboarding"),
-    i9CheckTrackerPath: resolve("data/reports/i9-check-tracker.xlsx"),
-    stateRoot: resolve(".tracker-rebuild"),
-    artifactRoot: resolve(".tracker-rebuild/artifacts"),
-    /** Every worker browser profile is namespaced BENEATH this root. */
-    browserProfileRoot: profileRoot,
-    duoCredential: join(profileRoot, "duo-webauthn.json"),
-    /** The unpacked Duo Autopilot MV3 extension loaded into every browser session. */
-    duoExtensionDir: resolve("duo-autopilot"),
-  };
-}
+export const ConfigPathsSchema = z.strictObject({
+  reportsDir: AbsolutePathSchema,
+  downloadsDir: AbsolutePathSchema,
+  onboardingDocsDir: AbsolutePathSchema,
+  i9CheckTrackerPath: AbsolutePathSchema,
+  stateRoot: AbsolutePathSchema,
+  artifactRoot: AbsolutePathSchema,
+  /** Every worker browser profile is namespaced BENEATH this root. */
+  browserProfileRoot: AbsolutePathSchema,
+  duoCredential: AbsolutePathSchema,
+  /** The unpacked Duo Autopilot MV3 extension loaded into every browser session. */
+  duoExtensionDir: AbsolutePathSchema,
+});
 
 export const ConfigSchema = z.strictObject({
   actor: LocalOperatorActorSchema
@@ -204,19 +185,9 @@ export const ConfigSchema = z.strictObject({
     duoApprovalCrmSeconds: 60,
     retryDelayMs: 5_000,
   }),
-  paths: z.strictObject({
-    reportsDir: AbsolutePathSchema,
-    downloadsDir: AbsolutePathSchema,
-    onboardingDocsDir: AbsolutePathSchema,
-    i9CheckTrackerPath: AbsolutePathSchema,
-    stateRoot: AbsolutePathSchema,
-    artifactRoot: AbsolutePathSchema,
-    browserProfileRoot: AbsolutePathSchema,
-    duoCredential: AbsolutePathSchema,
-    duoExtensionDir: AbsolutePathSchema,
-    // A THUNK, not a value: see `defaultPaths` — materializing filesystem
-    // defaults at module scope is what broke the browser bundle.
-  }).default(() => defaultPaths()),
+  // REQUIRED, not defaulted: `./runtime-paths.ts` owns the filesystem defaults
+  // and `./resolve.ts` supplies them. See `ConfigPathsSchema`.
+  paths: ConfigPathsSchema,
   annualDates: z.record(FiscalYearKeySchema, AnnualDateEntrySchema).default({}),
   operator: z.strictObject({ timekeeperName: z.string() }).default({ timekeeperName: "" }),
   display: z.strictObject({ screenWidth: z.number().int().positive(), screenHeight: z.number().int().positive() })
@@ -326,7 +297,7 @@ export const SettingsOverrideSchema = z.strictObject({
     sharepoint: partialEndpoints(SharePointRoutesSchema).optional(),
   }).optional(),
   timeouts: ConfigSchema.shape.timeouts.unwrap().partial().optional(),
-  paths: ConfigSchema.shape.paths.unwrap().partial().optional(),
+  paths: ConfigPathsSchema.partial().optional(),
   annualDates: z.record(FiscalYearKeySchema, AnnualDateEntrySchema.partial()).optional(),
   operator: ConfigSchema.shape.operator.unwrap().partial().optional(),
   display: ConfigSchema.shape.display.unwrap().partial().optional(),
@@ -356,6 +327,7 @@ export const SettingsOverrideSchema = z.strictObject({
 export const SettingsOverrideInputSchema = SettingsOverrideSchema.optional().default({});
 
 export type Config = z.output<typeof ConfigSchema>;
+export type ConfigPaths = z.output<typeof ConfigPathsSchema>;
 export type SettingsOverride = z.output<typeof SettingsOverrideSchema>;
 export type AnnualDateEntry = z.output<typeof AnnualDateEntrySchema>;
 export type ProviderBudget = z.output<typeof ProviderBudgetSchema>;
