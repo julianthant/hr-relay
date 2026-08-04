@@ -435,6 +435,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         ids,
         scheduler,
         taskDeadlineMs: resolved.config.timeouts.taskMs,
+        sessionAcquireMs: resolved.config.timeouts.sessionAcquireMs,
         heartbeatIntervalMs,
         idleRepollMs: resolved.config.daemon.idleRepollMs,
         log,

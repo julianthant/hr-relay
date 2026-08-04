@@ -6,6 +6,7 @@
  * uncertain release poison-closes the resource. An authored `fresh` need
  * closes the old resource before the replacement can emit `start`.
  */
+import { z } from "zod";
 import type {
   BrowserSessionCloseReason,
   WorkerBrowserResource,
@@ -13,6 +14,7 @@ import type {
 } from "../base/session.js";
 import type { BrowserDriver } from "../base/task.js";
 import type { Clock } from "../domain/clock.js";
+import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import {
   BrowserSessionIdSchema,
   BrowserSystemIdSchema,
@@ -99,6 +101,19 @@ export interface WorkerSessionManagerOptions {
   readonly stores: TaskStoreRegistry;
   readonly factory: WorkerBrowserSessionFactory;
   readonly clock: Clock;
+  /**
+   * The kernel-owned monotonic deadline port — the SAME one the interpreter
+   * arms task deadlines on, so a test drives acquisition time explicitly
+   * instead of waiting on a wall clock (D125).
+   */
+  readonly scheduler: MonotonicDeadlineScheduler;
+  /**
+   * D125: the bound on ONE acquisition — `factory.open` plus the system's
+   * login recipe. Required, with no default: a manager that could be built
+   * without it would silently inherit the whole-task deadline again, which is
+   * exactly the defect this closes. Non-positive values fail loud.
+   */
+  readonly acquireDeadlineMs: number;
   readonly onEvent?: (event: WorkerSessionEvent) => void;
 }
 
@@ -116,6 +131,63 @@ function browserStoreFor(
 
 function abortError(system: BrowserSystemId): Error {
   return new Error(`${system} driver lease was aborted before acquisition`);
+}
+
+/**
+ * D125. The message names the bound, its config leaf, and the ONE other leaf
+ * an operator might legitimately need to move — because the failure an
+ * operator sees at 60s must be actionable without reading this file.
+ */
+function acquisitionDeadlineError(system: BrowserSystemId, boundMs: number): Error {
+  return new Error(
+    `${system} browser-session acquisition (open + login) exceeded its ${String(boundMs)}ms `
+    + "timeouts.sessionAcquireMs bound; the session is treated as dead and this lease fails. "
+    + "This bound is deliberately much shorter than timeouts.taskMs, which covers the READ once a "
+    + "driver is in hand. If this deployment approves Duo by hand rather than through Duo Autopilot, "
+    + "raise timeouts.sessionAcquireMs above timeouts.duoApprovalSeconds — never lengthen taskMs to "
+    + "hide a dead session.",
+  );
+}
+
+/**
+ * The settled loser of an acquisition race. It is not discarded evidence: the
+ * lease has already thrown the deadline error the operator sees, and
+ * `#closeAbandonedAcquisition` owns whatever cleanup the late settlement
+ * implies. This exists only so a promise nobody awaits any more cannot be
+ * reported as an unhandled rejection.
+ */
+function observeAbandonedAcquisition(error: unknown): void {
+  void error;
+}
+
+/**
+ * Race one acquisition against its own bound. The loser is OBSERVED, never
+ * swallowed: if the acquisition settles after losing, its own settlement is
+ * handled by `#abandonAcquisition`, and this handler only keeps Node from
+ * reporting an unhandled rejection for a promise nobody awaits any more.
+ */
+async function waitForAcquisition<Result>(
+  acquisition: Promise<Result>,
+  signal: AbortSignal,
+  system: BrowserSystemId,
+): Promise<Result> {
+  acquisition.catch(observeAbandonedAcquisition);
+  if (signal.aborted) {
+    throw signal.reason instanceof Error ? signal.reason : abortError(system);
+  }
+  let removeAbort = (): void => undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    const listener = (): void => {
+      reject(signal.reason instanceof Error ? signal.reason : abortError(system));
+    };
+    signal.addEventListener("abort", listener, { once: true });
+    removeAbort = (): void => signal.removeEventListener("abort", listener);
+  });
+  try {
+    return await Promise.race([acquisition, aborted]);
+  } finally {
+    removeAbort();
+  }
 }
 
 async function waitForTurn(turn: Promise<void>, signal: AbortSignal, system: BrowserSystemId): Promise<void> {
@@ -189,6 +261,8 @@ export class WorkerSessionManager {
   readonly #stores: TaskStoreRegistry;
   readonly #factory: WorkerBrowserSessionFactory;
   readonly #clock: Clock;
+  readonly #scheduler: MonotonicDeadlineScheduler;
+  readonly #acquireDeadlineMs: number;
   readonly #onEvent: (event: WorkerSessionEvent) => void;
   readonly #resources = new Map<BrowserSystemId, WorkerBrowserResource>();
   readonly #poisoned = new Set<BrowserSystemId>();
@@ -203,6 +277,8 @@ export class WorkerSessionManager {
     this.#stores = options.stores;
     this.#factory = options.factory;
     this.#clock = options.clock;
+    this.#scheduler = options.scheduler;
+    this.#acquireDeadlineMs = z.number().int().positive().parse(options.acquireDeadlineMs);
     this.#onEvent = options.onEvent ?? (() => undefined);
   }
 
@@ -256,7 +332,7 @@ export class WorkerSessionManager {
       if (need.session === "fresh") {
         await this.#closeSystem(need.system, "fresh-boundary");
       }
-      const resource = await this.#getOrStart(need, instance, configFingerprint, signal);
+      const resource = await this.#acquireBounded(need, instance, configFingerprint, signal);
       try {
         const result = await waitForOperation(
           Promise.resolve().then(() => operation(resource.driver)),
@@ -349,6 +425,101 @@ export class WorkerSessionManager {
     } finally {
       releaseTurn();
       if (this.#tails.get(system) === tail) this.#tails.delete(system);
+    }
+  }
+
+  /**
+   * D125 — acquisition is bounded SEPARATELY from the task that wants it.
+   *
+   * The live exit run (2026-08-04, `pl-000619-4ebf`) spent 262.9s inside one
+   * `withDriver` because the only bound reaching this code was the
+   * interpreter's whole-task deadline. `#openAndLogin` is a chain of
+   * individually-bounded steps — `factory.open`, then a login recipe whose
+   * navigations and Duo window each carry their own timeout — and nothing
+   * bounded the CHAIN. The task deadline cannot do that job: it must stay long
+   * enough for the real read (UCPath person-org ~22s, Kuali fill→save→reload→
+   * verify 8–10s per cycle), and by the time it would have fired, claim expiry
+   * had already requeued the run. So acquisition gets its own, much shorter,
+   * kernel-scheduled monotonic bound, and blowing it FAILS — it is never
+   * converted into a silent retry that hides a dead session.
+   */
+  async #acquireBounded(
+    need: SessionNeed,
+    instance: string | undefined,
+    configFingerprint: Fingerprint,
+    signal: AbortSignal,
+  ): Promise<WorkerBrowserResource> {
+    const acquisition = new AbortController();
+    const forwardAbort = (): void => {
+      acquisition.abort(signal.reason instanceof Error ? signal.reason : abortError(need.system));
+    };
+    if (signal.aborted) forwardAbort();
+    signal.addEventListener("abort", forwardAbort, { once: true });
+    let expiry: Error | undefined;
+    const handle = this.#scheduler.schedule(
+      this.#clock.monotonicMs() + this.#acquireDeadlineMs,
+      () => {
+        expiry = acquisitionDeadlineError(need.system, this.#acquireDeadlineMs);
+        acquisition.abort(expiry);
+      },
+    );
+    // The acquisition runs under the ACQUISITION signal, so a cooperative
+    // login recipe aborts itself at the bound instead of only being raced.
+    const started = this.#getOrStart(need, instance, configFingerprint, acquisition.signal);
+    try {
+      return await waitForAcquisition(started, acquisition.signal, need.system);
+    } catch (error) {
+      if (expiry !== undefined) {
+        this.#abandonAcquisition(need.system, started);
+        throw expiry;
+      }
+      throw error;
+    } finally {
+      handle.cancel();
+      signal.removeEventListener("abort", forwardAbort);
+    }
+  }
+
+  /**
+   * An acquisition that outlived its bound is UNCERTAIN, so a session it
+   * produces late is poison-closed rather than inherited by the next lease as
+   * a warm reuse. A close that cannot be proven leaves `#poisoned` set, and
+   * the next `#getOrStart` refuses by name — the failure is retained in
+   * manager state, which is why nothing is rethrown out of a background task
+   * nobody awaits.
+   */
+  #abandonAcquisition(system: BrowserSystemId, started: Promise<WorkerBrowserResource>): void {
+    void this.#closeAbandonedAcquisition(system, started);
+  }
+
+  async #closeAbandonedAcquisition(
+    system: BrowserSystemId,
+    started: Promise<WorkerBrowserResource>,
+  ): Promise<void> {
+    let resource: WorkerBrowserResource;
+    try {
+      resource = await started;
+    } catch (error) {
+      // The abandoned acquisition failed on its own terms, which means
+      // `#openAndLogin` already ran its PROVEN cleanup (or retained the
+      // system as poisoned when it could not prove one). Nothing is left for
+      // this observer to do.
+      observeAbandonedAcquisition(error);
+      return;
+    }
+    if (this.#resources.get(system) !== resource) return;
+    try {
+      await this.#withSystemTurn(
+        system,
+        new AbortController().signal,
+        () => this.#closeSystem(system, "poisoned"),
+      );
+    } catch (error) {
+      // `#closeSystem` marks `#poisoned` BEFORE closing and clears it only on
+      // a proven close, so an unprovable close is RETAINED in manager state
+      // and the next `#getOrStart` refuses this system by name. The fact is
+      // kept; only the rethrow is dropped, because no caller awaits this.
+      observeAbandonedAcquisition(error);
     }
   }
 

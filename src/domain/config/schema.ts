@@ -171,6 +171,29 @@ export const ConfigSchema = z.strictObject({
     longNavigationMs: z.number().int().positive(),
     ukgNavigationMs: z.number().int().positive(),
     taskMs: z.number().int().positive(),
+    /**
+     * D125 — the bound on ACQUIRING a usable driver for one system: launching
+     * or attaching the browser context, plus that system's login recipe. It is
+     * deliberately distinct from, and much shorter than, `taskMs`.
+     *
+     * Why it exists: `taskMs` bounds a whole task once a driver is in hand, so
+     * it has to be generous (the UCPath person-org read is ~22s of real work,
+     * a Kuali fill→save→reload→verify cycle is 8–10s). A login recipe is a
+     * CHAIN of individually-bounded steps — each `navigationMs`, plus the Duo
+     * window — and nothing bounded the chain, so a dead CRM session on the
+     * live exit run burned 262.9s inside `withDriver` before anything noticed.
+     * Acquisition is not the slow part of a healthy run: authentication is
+     * live-verified at ~17s (UCPath) and ~12s (CRM) with Duo Autopilot
+     * clearing the ceremony hands-off (charter §9), so 60s is >3x the measured
+     * worst case and cannot fail a legitimately slow READ — reads happen after
+     * acquisition, under `taskMs`.
+     *
+     * A deployment that reverts to a HANDS-ON Duo approval must raise this
+     * above `duoApprovalSeconds`, because the inner Duo wait would otherwise
+     * outlive its own envelope. The refusal names both leaves so an operator
+     * who hits it knows exactly which one to move.
+     */
+    sessionAcquireMs: z.number().int().positive(),
     transactionMs: z.number().int().positive(),
     duoApprovalSeconds: z.number().int().positive(),
     duoApprovalCrmSeconds: z.number().int().positive(),
@@ -180,6 +203,7 @@ export const ConfigSchema = z.strictObject({
     longNavigationMs: 30_000,
     ukgNavigationMs: 60_000,
     taskMs: 180_000,
+    sessionAcquireMs: 60_000,
     transactionMs: 300_000,
     duoApprovalSeconds: 180,
     duoApprovalCrmSeconds: 60,

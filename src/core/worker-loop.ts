@@ -68,6 +68,13 @@ export interface WorkerLoopDependencies {
   readonly ids: IdFactory;
   readonly scheduler: MonotonicDeadlineScheduler;
   readonly taskDeadlineMs: number;
+  /**
+   * D125 — `timeouts.sessionAcquireMs`: the bound on acquiring one browser
+   * session (open + login), distinct from and much shorter than
+   * `taskDeadlineMs`. Required, so a composition cannot fall back to the
+   * whole-task deadline for session liveness.
+   */
+  readonly sessionAcquireMs: number;
   readonly heartbeatIntervalMs: number;
   readonly idleRepollMs: number;
   readonly log: TaskLogger;
@@ -180,6 +187,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     stores: deps.stores,
     factory: deps.sessionFactory,
     clock,
+    scheduler: deps.scheduler,
+    acquireDeadlineMs: deps.sessionAcquireMs,
     onEvent: (event: WorkerSessionEvent): void => {
       const spanPath = browserSessionSpanPath(workflowId, workerId, event.system, event.sessionId);
       if (event.type === "browser-session:start") {

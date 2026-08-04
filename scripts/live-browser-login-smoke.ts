@@ -167,6 +167,8 @@ async function main(): Promise<void> {
     stores: taskStoreRegistry,
     factory,
     clock: systemClock,
+    scheduler: realScheduler,
+    acquireDeadlineMs: config.timeouts.sessionAcquireMs,
     onEvent: (event) => {
       const detail = event.type === "browser-session:start" ? ` login=${event.login}` : "";
       write(`[session] ${event.type} ${event.system} ${event.sessionId}${detail} (+${elapsed(started)})`);
