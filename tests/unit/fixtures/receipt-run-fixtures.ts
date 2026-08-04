@@ -13,15 +13,14 @@
  *    `d1254233-dd33-4bc5-afaf-c2bf52ea693f` committed with a `subject-match`
  *    binding proof and a `reload-read-back` completion proof.
  *
- *    Its terminal RESULT is assembled here rather than through
- *    `buildRunResult`, and that is a stated gap, not a shortcut: a transaction
- *    node cannot currently BE a terminal dependency (see
- *    `kualiTerminalDependencyGap` and the pinning test beside it). Every field
- *    of the assembled record is still computed by the real authored code —
- *    the result VALUE comes from the descriptor's own sealed `derive` over the
- *    real stored outcome, the digests from the real derive functions — so
- *    nothing here invents a fact. What it stands in for is the RUN reaching
- *    `done`, which the write lane must close.
+ *    Its terminal RESULT now comes from the REAL `buildRunResult` over the real
+ *    stored transaction checkpoint — D144 closed the gap that used to force a
+ *    hand-assembled record here. The value, the dependency identities and every
+ *    digest are the descriptor factory's own. The whole path, from a queued run
+ *    to `done` to a receipt, is driven end to end by
+ *    `tests/unit/transaction-terminal-dependency.test.ts`; this fixture exists
+ *    to give the receipt assertions the exact durable rows the LIVE 2026-08-04
+ *    commit left behind, with the ids and instants that run actually had.
  */
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import { manualClock } from "../../../src/domain/clock.js";
@@ -29,13 +28,6 @@ import { CrmReadOnboardingRecord } from "../../../src/domain/contracts/crm/read-
 import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
 import { SearchPersonOrg } from "../../../src/domain/contracts/ucpath/search-person-org.js";
 import { KualiSaveTimekeeperAnnotation } from "../../../src/domain/contracts/kuali/save-timekeeper-annotation.js";
-import {
-  deriveCheckpointOutputDigest,
-  deriveCheckpointProvenanceDigest,
-  deriveRunResultDigest,
-  deriveTerminalDependencyDigest,
-  RunResultRecordSchema,
-} from "../../../src/domain/run/result.js";
 import { RunTerminalOutboxRecordSchema } from "../../../src/domain/run/terminal-outbox.js";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import {
@@ -45,7 +37,6 @@ import {
   WriteAttemptRecordSchema,
   WriteIntentRecordSchema,
 } from "../../../src/domain/write-safety.js";
-import { workflowTerminalResultExecution } from "../../../src/base/workflow.js";
 import { buildRunResult } from "../../../src/core/run-result.js";
 import type { ReceiptWriteEvidence } from "../../../src/core/evidence-receipt.js";
 import type { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
@@ -433,55 +424,17 @@ export function kualiReceiptEvidence(): KualiReceiptEvidence {
     updatedAt: KUALI_CONFIRMED_AT,
   };
 
-  // The VALUE comes from the descriptor's own sealed derive over the real
-  // stored outcome — never from a literal typed here.
-  const resultValue = workflowTerminalResultExecution(descriptor).derive({
-    input: canonicalInput,
-    outputs: {
-      "annotate-timekeeper": {
-        disposition: outcome.disposition,
-        proofSource: outcome.proofSource,
-        output: outcome.output.value,
-        proof: outcome.proof.value,
-      },
-    },
-  } as never) as unknown;
-  const resultSchemaHash = deriveSchemaHash(
-    workflowTerminalResultExecution(descriptor).schema,
-    "output",
+  // The terminal record is built by the REAL descriptor factory over the REAL
+  // stored checkpoint (D144). Nothing about it is typed here — not the value,
+  // not the dependency identities, not the digests — so if the factory's
+  // terminal contract moves, this fixture moves with it or fails loud.
+  const built = buildRunResult(
+    descriptor,
+    { ...run, lifecycle: RUNNING_LIFECYCLE, version: 4 },
+    [{ state: "resolved", nodeId: "annotate-timekeeper", checkpoint: transactionCheckpoint }],
+    manualClock(new Date(KUALI_CONFIRMED_AT)),
   );
-  const boundResult = { schemaHash: resultSchemaHash, value: resultValue };
-  const dependencies = [{
-    state: "resolved",
-    nodeId: "annotate-timekeeper",
-    checkpoint: {
-      workflowId: descriptor.id,
-      itemId: KUALI_ITEM_ID,
-      attempt: 1,
-      runId: KUALI_RUN_ID,
-    },
-    outputSchemaHash: transactionCheckpoint.output.schemaHash,
-    descriptorVersion: descriptor.version,
-    contractFingerprint: descriptor.contractFingerprint,
-    implFingerprint: IMPL_FINGERPRINT,
-    outputDigest: deriveCheckpointOutputDigest(transactionCheckpoint.output),
-    provenanceDigest: deriveCheckpointProvenanceDigest(transactionCheckpoint.provenance),
-  }];
-  const result = RunResultRecordSchema.parse({
-    runId: KUALI_RUN_ID,
-    attempt: 1,
-    workflowId: descriptor.id,
-    descriptorVersion: descriptor.version,
-    contractFingerprint: descriptor.contractFingerprint,
-    configFingerprint: CONFIG_FINGERPRINT,
-    configSnapshotId: CONFIG_SNAPSHOT_ID,
-    resultSchemaHash,
-    result: boundResult,
-    resultDigest: deriveRunResultDigest(boundResult),
-    dependencies,
-    dependencyDigest: deriveTerminalDependencyDigest(dependencies),
-    createdAt: KUALI_CONFIRMED_AT,
-  });
+  const result = built.record;
 
   const bindingProofDigest = deriveWriteBindingProofDigest(KUALI_BINDING_PROOF);
   const writeAttemptId = "3d5f8a12-9b04-4c6e-8a33-77e1c2b9d045";
@@ -534,14 +487,15 @@ export function kualiReceiptEvidence(): KualiReceiptEvidence {
 }
 
 /**
- * The named gap this fixture stands in for: the write sequencer stores a
- * transaction checkpoint under the DURABLE `TransactionOutcome` schema hash,
- * while the descriptor factory's terminal `build` requires the COMMIT
- * CONTRACT's output schema hash — and the interpreter never registers a
- * transaction checkpoint as terminal evidence at all. Both must change
- * together before `kuali-timekeeper-annotation` can reach terminal `done`.
+ * The claim the terminal record is built against. The Kuali run's own terminal
+ * lifecycle is the settled state AFTER the build; `buildRunResult` refuses any
+ * run that is not `running` under a live claim, which is exactly the check that
+ * makes this fixture's record a real one rather than a shape.
  */
-export const kualiTerminalDependencyGap = Object.freeze({
-  storedSchemaHash: () => deriveSchemaHash(TransactionOutcomeSchema, "output"),
-  requiredSchemaHash: () => deriveSchemaHash(KualiSaveTimekeeperAnnotation.output, "output"),
+const RUNNING_LIFECYCLE = Object.freeze({
+  state: "running",
+  workerId: "kuali-receipt-worker-1",
+  claimedAt: KUALI_FENCED_AT,
+  heartbeatAt: KUALI_CONFIRMED_AT,
+  currentNodeId: "annotate-timekeeper",
 });

@@ -31,7 +31,6 @@ import {
   KUALI_INTENT_ID,
   KUALI_RUN_ID,
   kualiReceiptEvidence,
-  kualiTerminalDependencyGap,
   seedPersonLookupExitRun,
 } from "./fixtures/receipt-run-fixtures.js";
 
@@ -325,15 +324,8 @@ describe("D82 — the controlled Kuali write explains itself", () => {
   });
 });
 
-/* ── the gap this Kuali fixture stands in for ────────────────────────────── */
+/* ── the gap this Kuali fixture once stood in for, now closed ────────────── */
 
-describe("the transaction-terminal-dependency gap, pinned rather than papered over", () => {
-  it("records that a transaction checkpoint's schema hash is not the one terminal build requires", () => {
-    assert.notEqual(
-      kualiTerminalDependencyGap.storedSchemaHash(),
-      kualiTerminalDependencyGap.requiredSchemaHash(),
-      "if these ever agree, kuali-timekeeper-annotation can terminalize done and this fixture's "
-      + "hand-assembled result must be replaced by a real buildRunResult call",
-    );
-  });
-});
+// D144 closed it: a transaction node IS a terminal dependency, this fixture's
+// terminal record comes from the real `buildRunResult`, and the whole path is
+// driven end to end by `tests/unit/transaction-terminal-dependency.test.ts`.
