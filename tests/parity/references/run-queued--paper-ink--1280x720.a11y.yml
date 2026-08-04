@@ -1,7 +1,7 @@
 # run-queued--paper-ink--1280x720
 # adapter: fixture
 # fixture: run-queued
-# descriptorHash: 212ed0f6d07327088fab9789023bfe66f7d58f6e9e9d95cbca50ecfc075743e4
+# descriptorHash: a3ea62a0cb1441331b1bf8b585cdce00b23ecad235dbb7b499d03c838de926d9
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -127,7 +127,7 @@
       - tab "Receipt"
     - text: 9:55 AM Run queued at interactive priority
     - searchbox "Search logs"
-    - text: wf 212ed0f6
+    - text: wf a3ea62a0
     - button "Run provenance"
   - complementary "Run data":
     - text: Run data

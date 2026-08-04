@@ -1,7 +1,7 @@
 # run-group--graphite-warm--narrow-1024x768
 # adapter: fixture
 # fixture: run-group
-# descriptorHash: 212ed0f6d07327088fab9789023bfe66f7d58f6e9e9d95cbca50ecfc075743e4
+# descriptorHash: a3ea62a0cb1441331b1bf8b585cdce00b23ecad235dbb7b499d03c838de926d9
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -128,7 +128,7 @@
       - tab "Receipt"
     - text: 9:10 AM Fan-out planned 13 member lookups 9:13 AM 2 members failed cross-verification
     - searchbox "Search logs"
-    - text: wf 212ed0f6
+    - text: wf a3ea62a0
     - button "Run provenance"
   - complementary "Run data":
     - text: Run data

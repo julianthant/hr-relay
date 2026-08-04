@@ -1,7 +1,7 @@
 # run-member--graphite-warm--narrow-1024x768
 # adapter: fixture
 # fixture: run-member
-# descriptorHash: 212ed0f6d07327088fab9789023bfe66f7d58f6e9e9d95cbca50ecfc075743e4
+# descriptorHash: a3ea62a0cb1441331b1bf8b585cdce00b23ecad235dbb7b499d03c838de926d9
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -126,7 +126,7 @@
     - tablist "Run detail sections":
       - tab "Logs"
       - tab "Receipt" [selected]
-    - text: Done completed 9:32 AM No receipt evidence receipts land with the 2g trust surfaces
+    - text: Done completed 9:32 AM No receipt this fixture adapter holds no authority rows to derive a receipt from
   - complementary "Run data":
     - text: Run data
     - button "Hide run data"
