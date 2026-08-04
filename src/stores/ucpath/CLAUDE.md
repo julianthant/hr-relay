@@ -4,9 +4,33 @@ The UCPath store exposes typed tasks through `driver-declaration.ts`, while raw 
 stays beneath `driver/`. `driver/person-org-operation.ts` owns the Person Organizational Summary
 navigation, search, result-grid, drill-in, assignment selection, and observed-subject checks.
 Locator recipes live only in `driver/ui-registry.ts` and require matching fixture plus live-read-only
-evidence before runtime use.
+evidence before runtime use. The registry now holds **two** screen families: Person Organizational
+Summary (2026-08-02) and the SS Smart HR **receipt** surface (2026-08-04). They share nothing but
+the system id — different route, different frame model, different anchor style — so a guard that
+means "Person Org" must say so rather than quantifying over the whole registry.
 
 ## Lessons learned
+
+- **2026-08-04: A UCPath `T…` is not proof of success, and the receipt page is not where you'd
+  guess.** The `receipt` completion arm reads SS Smart HR's transaction detail
+  (`UC_EXTENSIONS.UC_SS_TBH.GBL`) — **not** the submit, and **not** the Smart HR Transaction Status
+  dashboard, which has no Transaction ID column at all. Read the number and the approval status as a
+  PAIR: a **Denied** transaction carries a perfectly well-formed `T…` (live `T002204014`; 300 Denied
+  and 300 Pending rows existed on the day of the probe), so legacy's `/^T\d{6,}$/` test stamps a
+  refused write as a successful receipt. Five more live facts, each of which breaks a plausible
+  assumption: (1) the **bare** component URL is not a deep link and the URL is identical whether you
+  are on the detail or back on the search form, so URL is never state evidence — the keyed
+  `?Action=U&UC_TRANSACT_ID=T…` form *is* addressable and survives reload; (2) an **unknown** id
+  renders the ordinary search form with no error, no banner, and no marker, so "the page loaded"
+  proves nothing — assert the field resolved AND equals the requested id; (3) there is **no
+  role+label anchor** (both values are bare spans with no label association), so the anchors are
+  PeopleSoft `RECORD_FIELD` ids, the exact opposite of Kuali's role+exact-name rule; (4) that route
+  renders **no iframe at all**, so legacy's `getContentFrame(page)` funnel resolves to nothing and
+  the scope is `page`; (5) EID **discovery** is not a proof path — the grid caps at 100 rendered
+  rows out of a server maximum of 300 (a count of exactly 300 means *truncated*), orders by the
+  search key rather than recency, exposes no submitted-at column, and auto-drills to the detail when
+  exactly one row matches. Carry the `T…` you fenced; search only in recovery. Doc 09 §13.6 owns the
+  contract; the probe never created a transaction.
 
 - **2026-08-02: Person Org reads require positive page evidence and observed-subject binding.** The
   strict port is tied to legacy commit `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc`, but it deliberately

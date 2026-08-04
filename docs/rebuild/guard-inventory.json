@@ -113,6 +113,14 @@
       "replacementRequired": true
     },
     {
+      "name": "parity-reference-authority",
+      "file": "tests/unit/architecture/parity-reference-authority.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/13-frontend-backend-integration.md",
+      "invariant": "D128: the doc 13 \u00a77 parity lane can fail. Stored .a11y.yml/.meta.json references are compared, never rewritten, on a normal run \u2014 an accessibility-only change fails with a diff naming the reference and leaves the file untouched; refreshing requires PARITY_UPDATE=1 (npm run test:parity:update), the same single switch that drives Playwright's updateSnapshots so the pixel and semantic halves of a pair can never be refreshed independently. The served dist/dashboard must carry a build stamp binding both the working-tree source digest and the emitted output digest; a stale, unstamped, or post-build-edited bundle is refused before a port is bound. Both arms are executed against violating fixtures and through the lane's own captureA11yReference/startFixtureServer entry points.",
+      "replacementRequired": true
+    },
+    {
       "name": "runtime-dependency-coverage",
       "file": "tests/unit/architecture/runtime-dependency-coverage.test.ts",
       "status": "active",
@@ -389,7 +397,7 @@
       "file": "tests/unit/architecture/ucpath-person-org-strict.test.ts",
       "status": "active",
       "owner": "docs/rebuild/01-task-contract.md; docs/rebuild/10-guard-test-architecture.md; docs/rebuild/12-operator-trust-and-authoring.md",
-      "invariant": "The UCPath Person Organizational Summary runtime pins exact legacy provenance while rejecting body-name scans, observed-EID overwrite, extraction-error empty defaults, missing-grid not-found inference, swallowed clears, and drill-null fallbacks; search results expand before extraction and again after Return to Search, Employment Instances expand before assignment selection, enabled View All must transition to View N while disabled View All alone proves already-complete, contextual one-to-many selector ports remain closed and unique, every operation locator resolves through dual evidence, and both subject proofs fail loud.",
+      "invariant": "The UCPath Person Organizational Summary runtime pins exact legacy provenance while rejecting body-name scans, observed-EID overwrite, extraction-error empty defaults, missing-grid not-found inference, swallowed clears, and drill-null fallbacks; search results expand before extraction and again after Return to Search, Employment Instances expand before assignment selection, enabled View All must transition to View N while disabled View All alone proves already-complete, contextual one-to-many selector ports remain closed and unique, every operation locator resolves through dual evidence, and both subject proofs fail loud. The locator-coverage arm is scoped to the two Person Org SCREENS in both directions (D130 added a second UCPath screen family), and the SS Smart HR receipt elements are asserted present and unreachable from this operation so the scoping can never go vacuous.",
       "replacementRequired": true
     },
     {

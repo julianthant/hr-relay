@@ -349,7 +349,7 @@ Every row below is live-verified leaf knowledge the charter forbids re-deriving.
 
 | System | Confirmation today | Grounding (file:line) | Verdict |
 |---|---|---|---|
-| **UCPath** | Strong. `waitForTransactionOutcome` polls {error banner} vs {success marker}, error wins ties, and **RETURNS `"timeout"`** when neither appears; its caller **`clickSaveAndSubmit` then throws** *"…PeopleSoft's outcome is unknown, refusing to report success."* (`transaction.ts:855-859` — the throw is the caller's, not the poller's). T-number scraped by a second nav that re-finds the row **by EID (Person ID), not name**, and parses `Transaction ID: T…`; readback failure returns `""` which callers MUST treat as "couldn't read back," never "no transaction." | `ucpath/transaction.ts:42-66, 835-861, 919-985`; oath sibling `oath-signature/enter.ts:281-284` | Ports → `receipt` capture |
+| **UCPath** | Strong. `waitForTransactionOutcome` polls {error banner} vs {success marker}, error wins ties, and **RETURNS `"timeout"`** when neither appears; its caller **`clickSaveAndSubmit` then throws** *"…PeopleSoft's outcome is unknown, refusing to report success."* (`transaction.ts:855-859` — the throw is the caller's, not the poller's). T-number scraped by a second nav that re-finds the row **by EID (Person ID), not name**, and parses `Transaction ID: T…`; readback failure returns `""` which callers MUST treat as "couldn't read back," never "no transaction." **Amended 2026-08-04 (D130): "Strong" overstated it — the readback is STATUS-BLIND.** The live probe proved a Denied transaction carries a well-formed `T…`, so parsing the number says only that a submit happened; the port must read the approval status alongside it (§13.6). The body-text scrape's last regex arm (`\b(T\d{6,})\b`, `transaction.ts:1319-1328`) is also unanchored — it takes whichever number appears first, and the detail page carries a second one in its approval strip. | `ucpath/transaction.ts:42-66, 835-861, 919-985, 1310-1328`; oath sibling `oath-signature/enter.ts:281-284` | Ports → `receipt` capture |
 | **ServiceNow** | Medium. Only truly-positive receipt: `waitForURL` for a changed URL containing `number=`, parse `/^HRC\d{6,}$/`; **throws** *"no number= param in post-submit URL"* if absent. | `oath-upload/fill-form.ts:140-173` | Ports → `receipt` capture |
 | **Kuali** | **NONE.** `clickSave` = click + `networkidle(15s)` + 2s sleep + `log.success`. Error detection was **deliberately removed** as false-positive-prone (matched benign DOM). Weakest of all. | `kuali/navigate.ts:634-652`; `kuali/CLAUDE.md` gotchas + 2026-04-10 lesson | **Must EARN a `save-verify` read-back** |
 | **OnBase** | **NONE (negative only).** Success = the import postback landed on a page that is *not* a recognized ASP.NET error (`authenticated` OR `unknown` both pass). No positive "filed" signal. One-app-session-per-identity: never two logins at once. | `onbase/handler.ts:208-217`; `onbase/page-state.ts:149`; `onbase/LESSONS.md:137-176` | **Must EARN an `upload-verify` read-back, or allowlist unverifiable→always-park** |
@@ -569,7 +569,14 @@ writeSafety: {
     proofFromOutput: (o) => o.receipt,
     proofFromPresentProbe: (v) => v.proof,
     outputFromProof: (p) => ({ receipt: p }),
-    proofSchema: z.strictObject({ transactionNumber: z.string().regex(/^T\d{6,}$/) }) },
+    // The PAIR, never the number alone — settled by the 2026-08-04 live probe (§13.6).
+    // A Denied UCPath transaction carries a perfectly well-formed `T…`, so the
+    // earlier number-only schema accepted a REFUSED write as proof of landing.
+    proofSchema: z.strictObject({
+      transactionNumber: z.string().regex(/^T\d{6,}$/),
+      approvalStatus: z.enum([
+        "Approved", "Denied", "Error", "Manually Processed", "Pending", "Pushed Back",
+      ]) }) },
   idempotency: {
     probe: "ucpath/find-existing-termination",                 // by EID + effdt + "Terminatn"
     key:   (i) => `${i.emplId}|termination|${i.effectiveDate}`,
@@ -1228,6 +1235,66 @@ proves every business choice.
    sweep — the real duplicate guard today) be a first-class write-safety pre-step on every UCPath
    create path, or only on separations? It mutates (deletes rows), so it needs its own fence/ledger
    treatment — confirm the modeling.
+6. ~~**UCPath `receipt` readability**~~ — **RESOLVED 2026-08-04 by live probe (D130): BUILDABLE, and
+   the arm as previously specified was WRONG.** Settled **read-only**, with **no transaction
+   created** — the operator's authorization for one real submit was not spent, because the question
+   turned out to be answerable better without it (see the constraint (a) reasoning below). Probed
+   live against three real transactions spanning three templates and three approval statuses:
+   `T002125030` (HIR, Approved, EID 10873698), `T002204014` (REH, **Denied**), `T002204964`
+   (XFR, Pending).
+
+   **Where the receipt lives.** Not on the submit, and not on the page that looks like it should
+   carry it. The **Smart HR Transaction Status** dashboard (`HR_TBH_STATUS.GBL`) — the natural
+   "did my transaction land" screen — has **no Transaction ID column at all** (Template, Effective
+   Date, Transaction Status, Person ID, Empl Record, Action, Business Unit, First/Last Name). The
+   one surface that displays the number as an addressable field is **SS Smart HR Transactions**
+   (`UC_EXTENSIONS.UC_SS_TBH.GBL`), transaction detail.
+
+   **Six design constraints — requirements on the `receipt` arm, not trivia:**
+   (a) **A `T…` is NOT proof of success.** A Denied transaction carries a fully-formed receipt
+   number, and 300 Denied plus 300 Pending transactions were visible on the day of the probe. The
+   completion proof is therefore the **pair** `(transactionNumber, approvalStatus)`; §2.2's
+   number-only `proofSchema` is corrected in this pass. Legacy's `interpretPostSubmitTxnReadback`
+   (`transaction.ts:1310-1317`) tests only `/^T\d{6,}$/`, so it stamps a refused transaction as a
+   successful receipt — a real latent defect, found without writing anything. **This is also why the
+   probe did not submit:** a fresh submit could only ever have shown the `Pending` case, so reading
+   an already-Denied transaction settled the success/failure question strictly better than creating
+   one would have.
+   (b) **The bare component URL is not a deep link, and the URL is never state evidence.** Reloading
+   a search-drilled detail page silently returns to the Find-an-Existing-Value form while
+   `location.href` stays byte-identical. Adding PeopleSoft's search key —
+   `?Action=U&UC_TRANSACT_ID=T…` — makes the detail directly addressable **and** reload-stable
+   (`T002204014` re-rendered byte-identically across a reload). Runs carry the key, not a URL.
+   (c) **An unknown transaction id fails SILENTLY.** The keyed deep link for a nonexistent `T…`
+   renders the ordinary search form: no error, no banner, no marker, same URL shape. "The page
+   loaded" proves nothing. The reader must assert the receipt field resolved **and** that its text
+   equals the requested id; absence is a loud failure, never "no receipt."
+   (d) **There is no role+label anchor.** Both values render as bare `<span>`s with no programmatic
+   relationship to their labels, so the accessibility tree shows adjacent unnamed generics. The
+   anchors are PeopleSoft `RECORD_FIELD` ids — `#UC_SS_TRANSACT_UC_TRANSACT_ID` and
+   `#UC_SS_TRANSACT_APPR_STATUS` — each matching exactly one node on all three probed transactions.
+   This is the opposite of Kuali's constraint (c), and the two must not be generalized together.
+   (e) **This route has no content frame.** Reached by its deep link the component renders with
+   **zero** `<iframe>` elements and no `#main_target_win0`. Legacy funnels every UCPath read through
+   `getContentFrame(page)`, which here resolves to nothing.
+   (f) **Discovery by EID is a guess, so don't build on it.** The results grid renders at most 100
+   rows against a server-side maximum of 300 (both `Denied` and `Pending` reported exactly "300
+   results", so a count of 300 means *truncated*, not *complete*), it is ordered by the search key
+   rather than by recency, and it exposes no submitted-at column. A single-hit search auto-drills to
+   the detail while two or more render the grid, so even the landing shape is result-count
+   dependent. Positive markers exist and are good — `span#PTS_CRITTEXT_DISP` carries either
+   `"N results   -   <Key> \"<value>\""` (echoing the key, so the answer can be bound to the
+   question) or `"No matching values were found."` — but the run must carry the `T…` it fenced, and
+   use search only as recovery.
+
+   Evidence: `evidence/ui/ucpath/ss-smart-hr.{fixture,live}.json`; registered as
+   `ucpath.ss-smart-hr.{receipt-display,approval-status-display,transaction-ready,
+   transaction-receipt,approval-status}`. **Still unproven (needs one real submit):** whether the
+   post-submit confirmation dialog renders the number inline, and the propagation window between
+   submit and searchability. Legacy answers both from its own live mapping — "**Cannot read it from
+   the dialog itself**" (`workflows/separations/CLAUDE.md:147`, mapped 2026-04-01) and a 15s
+   readback poll (`transaction.ts:947-965`) — and those are ported as legacy knowledge, not as
+   rebuild-verified facts. Owner: this doc; gate: doc 07 §3.8.
 
 ---
 

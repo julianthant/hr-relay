@@ -858,7 +858,7 @@ Phase-1 blockers. Deferral changes timing only; it does not waive proof.
 | System | Completion arm | Status | Gate |
 |---|---|---|---|
 | **Kuali** | `save-verify` | ✅ **RESOLVED buildable** (live probe 2026-07-23, docs 4444/4453; read-only + a full write round-trip restored byte-identically) — **BUILT 2026-08-04** as `kuali/verify-timekeeper-annotation`, with its three element recipes ported and re-verified read-only the same day | — |
-| **UCPath** | `receipt` (`T…` transaction number) | ⏳ operator naming a target | before Phase 2's controlled commit |
+| **UCPath** | `receipt` (`T…` transaction number) | ✅ **RESOLVED buildable — and the arm as specified was WRONG** (live probe 2026-08-04, D130; **read-only, no transaction created**, so the authorized submit was not spent). The `T…` lives on SS Smart HR's transaction detail (`UC_EXTENSIONS.UC_SS_TBH.GBL`), NOT on the submit and NOT on the Transaction Status dashboard, which has no Transaction ID column at all. **A Denied transaction carries a well-formed `T…`** (`T002204014`; 300 Denied rows live), so the proof is the PAIR `(transactionNumber, approvalStatus)` — doc 09 §2.2's number-only schema is corrected. Six constraints in doc 09 §13.6 | residual submit-side questions before Phase 2's controlled commit |
 | **ServiceNow** | `receipt` (`HRC0…` from the post-submit redirect) | ⏳ operator naming a target | before order 7 |
 | **OnBase** | `upload-verify` or `unverifiableByPage`→always-park | ⏸ **blocked — no probe target exists today**; gated on the next real document upload | before order 7 |
 
@@ -870,6 +870,18 @@ proves the opened document's number from its level-1 heading before touching any
 ported anchors (`EID*`, `Timekeeper Name:*`, `Save`) each resolved to exactly one live node, and
 `Save` sits in one action group with `Send Back` and `Mark Complete` — which is why its port drops
 legacy's three-deep `.or()` chain and keeps only the exact role+name branch.
+
+**The UCPath probe changed what "settling a probe" costs (D130, 2026-08-04).** It was authorized to
+create one real transaction and did not need to, because **an already-FAILED transaction is a better
+witness than a fresh one**. A new submit can only ever show the `Pending` shape; the live system
+already held 300 Denied and 300 Pending transactions, so reading a Denied one answered the probe's
+deepest question — *is "submitted" distinguishable from "looked submitted"?* — strictly better than
+writing would have, and it answered it in the direction nobody had assumed: **it is not**, because a
+refused transaction carries a perfectly well-formed `T…`. Before spending a write on a probe, look
+for a real record already in the state you are trying to manufacture. Two of UCPath's six
+constraints (submit-side receipt silence, propagation window) genuinely need a submit and remain
+ported-from-legacy rather than rebuild-verified; that is the honest residual, and it is much smaller
+than the whole question was.
 
 Each probe is read-only-plus-restorable in the Kuali shape: read the completion surface, confirm a
 deterministic anchor, and where a write is authorized, write → verify → restore. If OnBase lands

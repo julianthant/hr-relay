@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "vitest";
+import type { ScreenId } from "../../../src/domain/ids.js";
 import { UiVerificationEvidenceManifestSchema } from "../../../src/domain/ui/contracts.js";
 import {
   UCPATH_PERSON_ORG_DETAIL_SCREEN,
@@ -73,7 +74,7 @@ describe("strict UCPath Person Org port", () => {
     // saying nothing about Person Org. The invariant that matters is
     // unchanged: this operation's raw locators and the Person Org screens'
     // registered elements are the SAME set, in both directions.
-    const personOrgScreens = new Set([
+    const personOrgScreens = new Set<ScreenId>([
       UCPATH_PERSON_ORG_SEARCH_SCREEN,
       UCPATH_PERSON_ORG_DETAIL_SCREEN,
     ]);
