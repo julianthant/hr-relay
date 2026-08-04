@@ -1,5 +1,5 @@
 /**
- * Deterministic receipt identities (D136).
+ * Deterministic receipt identities (D140).
  *
  * A receipt is DERIVED from authority, not minted beside it, so every id it
  * carries has to be a pure function of what it identifies. A fresh UUID per

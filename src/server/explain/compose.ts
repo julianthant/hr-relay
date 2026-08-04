@@ -1,5 +1,5 @@
 /**
- * The `explain run` composition value (D139) — the CLI's injected seam.
+ * The `explain run` composition value (D143) — the CLI's injected seam.
  *
  * It sits in `src/server/` for the same reason `dashboard/compose.ts` does:
  * it imports the workflow registry, which sits ABOVE `core` in the layer
@@ -8,7 +8,7 @@
  * It opens the SAME authority database the dashboard and workers use, in the
  * same isolated state root, and closes it before returning. `explain` is a
  * read-and-derive command: the only row it may create is the run's receipt,
- * and that insert is idempotent by construction (D137).
+ * and that insert is idempotent by construction (D141).
  */
 import { join } from "node:path";
 import { z } from "zod";

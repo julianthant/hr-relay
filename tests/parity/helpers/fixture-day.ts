@@ -533,7 +533,7 @@ function notePageOf(seed: number, notes: readonly NoteSeed[]): z.infer<typeof No
 
 /**
  * Adapter #1 authors payloads; it derives nothing. A receipt is DERIVED from
- * authority rows this adapter has none of (D137), so it truthfully serves an
+ * authority rows this adapter has none of (D141), so it truthfully serves an
  * absence with the reason — adapter #2, the seeded BFF over the real database,
  * is where a real receipt is exercised.
  */
@@ -542,7 +542,7 @@ const RECEIPT_MISSING = {
   reason: "this fixture adapter holds no authority rows to derive a receipt from",
 } as const;
 
-/** The failed run's record, in the strict already-redacted wire shape (D138). */
+/** The failed run's record, in the strict already-redacted wire shape (D142). */
 function failureDetail(runId: string, failureId: string, seed: number) {
   const summary = "cross-verify failed: subject mismatch between CRM and UCPath";
   return {

@@ -348,7 +348,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(review)).code, "SECTION_UNAVAILABLE");
 
     // A receipt states a SETTLED verdict, so a queued run's absence names the
-    // state rather than a missing feature (D137).
+    // state rather than a missing feature (D141).
     const receipt = await json(await h.app.request(`/api/v1/runs/${runId}/receipt`));
     assert.deepEqual(receipt.payload, {
       state: "missing",

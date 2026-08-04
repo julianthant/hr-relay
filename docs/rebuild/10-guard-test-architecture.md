@@ -616,7 +616,7 @@ read while still permitting replay-safe browser downloads.
   unresolved write/subject/storage condition. Diagnostic bundle tests prove schema redaction and
   assert no env/cookie/storage-state/raw-SSN leakage.
 
-  **ACTIVE as of 2026-08-04 (D136–D139).** Both halves execute. Strictness is proven by violating
+  **ACTIVE as of 2026-08-04 (D140–D143).** Both halves execute. Strictness is proven by violating
   fixtures — `verified-done` is refused for non-verified confidence, an unresolved mandatory fact,
   an `unknown`/`ambiguous` mandatory obligation, any warning, and a failure id; a `verified` write
   without a filed proof ref and a commit claiming it was never attempted are rejected. Redaction is

@@ -45,7 +45,7 @@ import type { RunFoldRecord, RunQueueProjection } from "../projectors/run-queue-
 import { deterministicUuid } from "../support.js";
 
 /**
- * The trust reads the receipt and failure sections need (D136/D138). They are
+ * The trust reads the receipt and failure sections need (D140/D142). They are
  * separate from `getRun` on purpose: the query never opens a database, and a
  * composition that cannot serve trust content must say so by omission rather
  * than by handing in a stub that returns nothing.

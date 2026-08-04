@@ -205,7 +205,7 @@ const ContextSectionSchema = z.strictObject({
 });
 
 /**
- * The receipt section serves the WHOLE `RunEvidenceReceipt` (D136), not a
+ * The receipt section serves the WHOLE `RunEvidenceReceipt` (D140), not a
  * pointer to it. Doc 12 §2.2 puts redaction at capture time — "Redaction is
  * not deferred to the UI" — and the receipt's every value is already a
  * `RedactedField` carrying its own classification and transform, so there is
@@ -215,7 +215,7 @@ const ContextSectionSchema = z.strictObject({
 const ReceiptSectionSchema = RunEvidenceReceiptSchema;
 
 /**
- * The failure section serves CONTENT, not `{ runId, failureId }` (D138).
+ * The failure section serves CONTENT, not `{ runId, failureId }` (D142).
  *
  * Every field below is one the schema itself made display-safe: subject
  * identity travels as a digest plus an already-redacted display suffix, the

@@ -122,15 +122,15 @@ should ratify rather than something this foundation guesses. §4.1's `knowledge/
 and the generated per-system `KNOWLEDGE.md` remain that slice's work; the table is the authority the
 generator reads.
 
-Still Phase-2g work, not landed with D134: the receipt builder, `explain run`/`explain failure`, and
-the dashboard projections. The `evidence-receipt` guard stays **planned** until those exist;
-`notification-durability` and `knowledge-fix-integrity` activate with D137/D138 below.
+Not landed with D134: the receipt builder, `explain run`/`explain failure`, and the dashboard
+projections — all three land below in D140–D143, which is where the `evidence-receipt` guard becomes
+**active**. `notification-durability` and `knowledge-fix-integrity` activate with D138/D139 below.
 
 ---
 
-## Phase 2g as-built — capture, inbox, and knowledge (2026-08-04, D136/D137/D138)
+## Phase 2g as-built — capture, inbox, and knowledge (2026-08-04, D137/D138/D139)
 
-### D136 — a bundle is captured at the trigger, redacted at capture, and bound to its failure
+### D137 — a bundle is captured at the trigger, redacted at capture, and bound to its failure
 
 The trigger set is **closed and is §2.2's own sentence**: unexpected state, task failure, subject
 mismatch, recovery park, operator-requested snapshot. Each maps one-to-one onto a stored
@@ -173,7 +173,7 @@ fabricated screenshot. `FailureRecord.summary` is deliberately not copied into t
 free text that can carry a name or an EID, it already lives in the failure row the bundle joins to,
 and duplicating it into an exportable artifact widens the blast radius for nothing.
 
-### D137 — the durable row is committed BEFORE any delivery, and a failed toast changes nothing
+### D138 — the durable row is committed BEFORE any delivery, and a failed toast changes nothing
 
 `publish` settles create-or-fold in one authority transaction and only then attempts OS delivery.
 A delivery that throws is **reported and never written back**: status, count, and version are
@@ -194,7 +194,7 @@ enter. The dedupe fingerprint covers what makes two firings the same trigger and
 occurrence, the instant, or the count, so a repeat folds (§6.1) instead of minting a row. Snooze
 suppresses delivery only: it never flips status, and marking read never clears a snooze.
 
-### D138 — knowledge is admitted before it is inserted, and supersession is expressed forward
+### D139 — knowledge is admitted before it is inserted, and supersession is expressed forward
 
 The knowledge/fix tables are insert-only (D134), so a duplicate that lands cannot be retracted.
 Admission is therefore audited INSIDE the insert transaction. Two ACTIVE records may not claim the
@@ -224,12 +224,12 @@ notification trigger wiring, and `explain failure`. The `notification-durability
 
 ---
 
-## Phase 2g as-built — the receipt is derived, not minted (2026-08-04, D136–D139)
+## Phase 2g as-built — the receipt is derived, not minted (2026-08-04, D140–D143)
 
 The §2.3 receipt builder, its declared redaction, the §2.1 rich failure projection, and §2.5's
 `explain run` landed together. `evidence-receipt` is now **active**.
 
-### D136 — evidence classification and cross-source obligations are DECLARED
+### D140 — evidence classification and cross-source obligations are DECLARED
 
 `src/domain/trust/evidence-classification.ts` binds every leaf of every workflow input, task output,
 and workflow result to one doc 11 §6 classification plus one permitted transform. Three rules make
@@ -260,7 +260,7 @@ the receipt carries the SERVER's verdict with the facts it compared. The operato
 redacted identifiers: the receipt already did the comparison. A source that is absent is reported
 absent — the comparison never silently shrinks to one side and calls that agreement.
 
-### D137 — the receipt is a pure function of authority, derived and then pinned
+### D141 — the receipt is a pure function of authority, derived and then pinned
 
 The receipt is **not** written inside the terminal settlement transaction. Two reasons, in order of
 weight. First, authority must never depend on a projection to terminalize: a receipt-shaped problem
@@ -283,7 +283,7 @@ A conditional node that did not run carries a `DecisionEvidence` with its closed
 closed is a correct outcome, not an unresolved one; treating it as unresolved would push every
 correct run with a skipped node to `partial`.
 
-### D138 — the failure section serves content through a whitelist schema
+### D142 — the failure section serves content through a whitelist schema
 
 `FailureDetailWireSchema` names every field it projects off the durable `FailureRecord`. That is doc
 11's "unclassified fields drop" applied structurally: a field added to the durable record later
@@ -298,7 +298,7 @@ value already carries its classification and transform, and a second wire projec
 them. Because the receipt now rides the run-detail wire, `src/domain/redaction.ts` is
 browser-reachable and drops `node:crypto`/`node:path` for `sha256Hex` and a two-separator basename.
 
-### D139 — `explain run` and the receipt are one derivation
+### D143 — `explain run` and the receipt are one derivation
 
 `rebuild:cli explain run <traceId|runId> [--json]` resolves either identity and prints §2.5's
 sections in §2.5's order. For a settled run it derives the SAME receipt the dashboard serves, so a

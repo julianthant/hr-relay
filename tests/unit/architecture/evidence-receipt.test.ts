@@ -1,6 +1,6 @@
 /**
  * `evidence-receipt` — doc 10 §3.10's guard, activated with the D82 receipt
- * builder (D136/D137).
+ * builder (D140/D141).
  *
  * Its spec has two halves and both are executed here:
  *

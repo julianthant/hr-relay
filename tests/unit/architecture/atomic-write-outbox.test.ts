@@ -226,7 +226,7 @@ describe("Phase 1c atomic write authority commit", () => {
     const database = open(databasePath());
     // The invariant is that no MUTATION reaches an attempt row outside
     // `commitWriteAttempt`'s single authority transaction. `listByIntent`
-    // (D136: the receipt's write evidence) is a read, so it joins the pinned
+    // (D140: the receipt's write evidence) is a read, so it joins the pinned
     // surface rather than weakening it — the arm below still proves the only
     // writer is the atomic commit.
     assert.deepEqual(Object.keys(database.authority.writeAttempts), ["get", "listByIntent"]);

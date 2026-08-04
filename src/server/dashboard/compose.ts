@@ -230,7 +230,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       stateRoot,
       projection,
       authority: { getRun: (runId) => database.authority.runs.get(runId) },
-      // D136/D138: the receipt and failure sections serve CONTENT through the
+      // D140/D142: the receipt and failure sections serve CONTENT through the
       // one authority-backed derivation, the same one `explain run` reads.
       trust: createReceiptService({ database, descriptors: DESCRIPTORS }),
     },

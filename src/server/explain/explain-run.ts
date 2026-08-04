@@ -1,6 +1,6 @@
 /**
  * `explain run <traceId|runId> [--json] [--bundle <dir>]` — doc 12 §2.5's
- * canonical debug entry point (D139).
+ * canonical debug entry point (D143).
  *
  * The section list is the doc's, in the doc's order: current/terminal state,
  * node timeline, checkpoint reuse, subject bindings, failure fingerprint, last

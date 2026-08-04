@@ -1,5 +1,5 @@
 /**
- * Declared cross-source verification obligations (D136) — the half of doc 12
+ * Declared cross-source verification obligations (D140) — the half of doc 12
  * §2.3 that makes a receipt a double-check rather than a transcript.
  *
  * D82's bar is that the operator finishes their double-check WITHOUT opening

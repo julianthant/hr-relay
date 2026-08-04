@@ -1,5 +1,5 @@
 /**
- * `explain run` against the real authority database (doc 12 §2.5, D139).
+ * `explain run` against the real authority database (doc 12 §2.5, D143).
  *
  * The command's value is that an operator can paste a trace id from a screen
  * and get every fact doc 12 lists — including the ones authority does NOT

@@ -216,7 +216,7 @@ describe("lazy detail and artifact resources", () => {
   it("correlates every lazy section with a closed payload", () => {
     const sections = [
       { section: "logs", payload: NOTE_PAGE },
-      // D136/D138: both sections carry CONTENT now, not a pointer. The
+      // D140/D142: both sections carry CONTENT now, not a pointer. The
       // receipt is the real builder's output so this stays honest when its
       // shape moves; the failure is the strict, already-redacted projection.
       { section: "receipt", payload: { state: "available", value: receiptWireFixture() } },

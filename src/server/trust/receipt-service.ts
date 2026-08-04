@@ -1,5 +1,5 @@
 /**
- * The ONE authority-backed receipt path (D137).
+ * The ONE authority-backed receipt path (D141).
  *
  * Both consumers — the dashboard's run-detail `receipt` section and the CLI's
  * `explain run` — go through this adapter, so a receipt an operator reads on

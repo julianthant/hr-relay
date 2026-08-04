@@ -1,5 +1,5 @@
 /**
- * The `RunEvidenceReceipt` builder (doc 12 §2.3, D136/D137).
+ * The `RunEvidenceReceipt` builder (doc 12 §2.3, D140/D141).
  *
  * ## What this is for
  *
@@ -18,7 +18,7 @@
  * - warnings ONLY where the uncertainty is non-load-bearing;
  * - one explicit confidence and one explicit result.
  *
- * ## Derived, not minted (D137)
+ * ## Derived, not minted (D141)
  *
  * The receipt is a **pure function of authority**, derived on demand and
  * persisted on first derivation — it is NOT written inside the terminal

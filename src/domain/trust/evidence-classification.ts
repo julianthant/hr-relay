@@ -1,6 +1,6 @@
 /**
  * Declared evidence classification — doc 11 §6's "redaction is schema-owned"
- * applied to doc 12 §2.3's receipt facts (D136).
+ * applied to doc 12 §2.3's receipt facts (D140).
  *
  * A receipt is the surface an operator uses to finish a double-check WITHOUT
  * opening the source system, so it carries real values. Which values, and in
