@@ -8,9 +8,12 @@
  * has one place to look and a live smoke can bind a subset.
  */
 import type { BrowserDriver } from "../../base/task.js";
+import type { Clock } from "../../domain/clock.js";
 import type { BrowserSystemId } from "../../domain/ids.js";
 import type { AuthenticatedApplicationVerifier, SystemLoginRecipe } from "./login-contract.js";
 import { createCrmOnboardingDriver } from "../../stores/crm/driver/interpreter.js";
+import { createKualiRrssDocumentDriver } from "../../stores/kuali/driver/interpreter.js";
+import { kualiLoginRecipe, verifyKualiAuthenticatedApplication } from "../../stores/kuali/session.js";
 import { crmLoginRecipe, verifyCrmAuthenticatedApplication } from "../../stores/crm/session.js";
 import { createUcpathPersonOrgDriver } from "../../stores/ucpath/driver/interpreter.js";
 import { ucpathLoginRecipe, verifyUcpathAuthenticatedApplication } from "../../stores/ucpath/session.js";
@@ -18,7 +21,12 @@ import type { Page } from "playwright";
 
 export interface BrowserSystemBinding {
   readonly system: BrowserSystemId;
-  readonly createDriver: (page: Page) => BrowserDriver;
+  /**
+   * The injected `Clock` is the ONE time source a driver may read (doc 11);
+   * a driver that stamps its own observations with `new Date()` would be a
+   * second clock the manual-clock tests could never control.
+   */
+  readonly createDriver: (page: Page, clock: Clock) => BrowserDriver;
   readonly login: SystemLoginRecipe;
   /**
    * The authenticated-application PROOF — the same one the login recipe must
@@ -52,5 +60,12 @@ export const BROWSER_SYSTEM_BINDINGS: BrowserSystemBindings = Object.freeze({
     createDriver: (page: Page): BrowserDriver => createCrmOnboardingDriver(page),
     login: crmLoginRecipe,
     verifyAuthenticated: verifyCrmAuthenticatedApplication,
+  }),
+  kuali: Object.freeze({
+    system: "kuali",
+    createDriver: (page: Page, clock: Clock): BrowserDriver =>
+      createKualiRrssDocumentDriver(page, clock),
+    login: kualiLoginRecipe,
+    verifyAuthenticated: verifyKualiAuthenticatedApplication,
   }),
 } as const satisfies BrowserSystemBindings);

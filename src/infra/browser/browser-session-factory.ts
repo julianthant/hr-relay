@@ -271,7 +271,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         configFingerprint,
         acceptDownloads: input.acceptDownloads,
         exclusive: input.exclusive,
-        driver: binding.createDriver(page),
+        driver: binding.createDriver(page, this.#options.clock),
         authentication: {
           authenticate: async (requested: BrowserSystemId, options): Promise<"logged-in" | "already-authenticated"> => {
             if (requested !== system) {
