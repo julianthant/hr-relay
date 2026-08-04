@@ -43,6 +43,26 @@
     },
     {
       "system": "ucpath",
+      "label": "SS Smart HR transaction detail",
+      "searchTerms": [
+        "ucpath ss smart hr transaction detail screen"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.live.json",
+        "scenarios": [
+          "ui/ucpath-ss-smart-hr-transaction-receipt"
+        ]
+      },
+      "taskUses": [],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "screen",
+      "id": "ucpath.ss-smart-hr.transaction"
+    },
+    {
+      "system": "ucpath",
       "label": "Person Organizational Summary navigation link",
       "searchTerms": [
         "ucpath person org navigation link"
@@ -366,6 +386,52 @@
     },
     {
       "system": "ucpath",
+      "label": "SS Smart HR transaction receipt display",
+      "searchTerms": [
+        "ucpath ss smart hr transaction id receipt display"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.live.json",
+        "scenarios": [
+          "ui/ucpath-ss-smart-hr-transaction-receipt"
+        ]
+      },
+      "taskUses": [],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.ss-smart-hr.receipt-display",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "role": "display",
+      "effect": "observe"
+    },
+    {
+      "system": "ucpath",
+      "label": "SS Smart HR transaction approval status display",
+      "searchTerms": [
+        "ucpath ss smart hr transaction approval status display"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.live.json",
+        "scenarios": [
+          "ui/ucpath-ss-smart-hr-transaction-receipt"
+        ]
+      },
+      "taskUses": [],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.ss-smart-hr.approval-status-display",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "role": "display",
+      "effect": "observe"
+    },
+    {
+      "system": "ucpath",
       "label": "Person Org search ready",
       "searchTerms": [
         "person org search eid ready state"
@@ -450,6 +516,27 @@
     },
     {
       "system": "ucpath",
+      "label": "SS Smart HR transaction detail ready",
+      "searchTerms": [
+        "ucpath ss smart hr transaction detail ready state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.live.json",
+        "scenarios": [
+          "ui/ucpath-ss-smart-hr-transaction-receipt"
+        ]
+      },
+      "taskUses": [],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "ucpath.ss-smart-hr.transaction-ready",
+      "screen": "ucpath.ss-smart-hr.transaction"
+    },
+    {
+      "system": "ucpath",
       "label": "Displayed Person Org EID",
       "searchTerms": [
         "authoritative person org displayed eid"
@@ -495,6 +582,54 @@
       "screen": "ucpath.person-org.detail",
       "authoritativeFor": [
         "subject"
+      ]
+    },
+    {
+      "system": "ucpath",
+      "label": "UCPath Smart HR transaction receipt",
+      "searchTerms": [
+        "authoritative ucpath smart hr transaction receipt number"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.live.json",
+        "scenarios": [
+          "ui/ucpath-ss-smart-hr-transaction-receipt"
+        ]
+      },
+      "taskUses": [],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "observation",
+      "id": "ucpath.ss-smart-hr.transaction-receipt",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "authoritativeFor": [
+        "completion"
+      ]
+    },
+    {
+      "system": "ucpath",
+      "label": "UCPath Smart HR transaction approval status",
+      "searchTerms": [
+        "authoritative ucpath smart hr transaction approval status"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.live.json",
+        "scenarios": [
+          "ui/ucpath-ss-smart-hr-transaction-receipt"
+        ]
+      },
+      "taskUses": [],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "observation",
+      "id": "ucpath.ss-smart-hr.approval-status",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "authoritativeFor": [
+        "completion"
       ]
     },
     {

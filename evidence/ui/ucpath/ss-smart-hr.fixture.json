@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "deterministic-fixture",
+  "system": "ucpath",
+  "screens": ["ucpath.ss-smart-hr.transaction"],
+  "verifiedAt": "2026-08-04",
+  "method": "deterministic-driver",
+  "assertions": [
+    {
+      "semanticId": "ucpath.ss-smart-hr.transaction",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "scenarioId": "ui/ucpath-ss-smart-hr-transaction-receipt",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "ssSmartHRTransactions.transactionResultRow()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.receipt-display",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "scenarioId": "ui/ucpath-ss-smart-hr-transaction-receipt",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "ssSmartHRTransactions.transactionResultRow()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.approval-status-display",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "scenarioId": "ui/ucpath-ss-smart-hr-transaction-receipt",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "ssSmartHRTransactions.approvalStatusSelect()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.transaction-ready",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "scenarioId": "ui/ucpath-ss-smart-hr-transaction-receipt",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "ssSmartHRTransactions.transactionResultRow()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.transaction-receipt",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "scenarioId": "ui/ucpath-ss-smart-hr-transaction-receipt",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "ssSmartHRTransactions.transactionResultRow()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.approval-status",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "scenarioId": "ui/ucpath-ss-smart-hr-transaction-receipt",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "ssSmartHRTransactions.approvalStatusSelect()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    }
+  ],
+  "externalWriteAttempted": false,
+  "sanitized": true
+}

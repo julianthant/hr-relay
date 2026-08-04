@@ -63,11 +63,12 @@ function recordingPage(events: string[]): Page {
 }
 
 describe("semantic UI registry", () => {
-  it("resolves every Person Org semantic dependency without collisions", () => {
+  it("resolves every UCPath semantic dependency without collisions", () => {
     assert.deepEqual(auditUcpathUiRegistry(), []);
     assert.equal(UCPATH_UI_REGISTRY.system, "ucpath");
-    assert.equal(UCPATH_UI_REGISTRY.elements.length, 14);
-    assert.equal(UCPATH_UI_REGISTRY.scenarios.length, 3);
+    // 14 Person Org (2026-08-02) + 2 SS Smart HR receipt (2026-08-04).
+    assert.equal(UCPATH_UI_REGISTRY.elements.length, 16);
+    assert.equal(UCPATH_UI_REGISTRY.scenarios.length, 4);
   });
 
   it("runs the deterministic read-only Person Org scenario through typed ids", async () => {
@@ -97,11 +98,14 @@ describe("semantic UI registry", () => {
   it("publishes a schema-valid catalog with no private recipe or captured value", () => {
     const catalog = UiCatalogSchema.parse(buildSafeUiCatalog());
     const serialized = JSON.stringify(catalog);
-    assert.equal(catalog.entries.length, 43);
+    assert.equal(catalog.entries.length, 49);
     assert.doesNotMatch(
       serialized,
       /#main_target_win0|PERSON_NPC_VW_EMPLID|Empl ID|legacyKey|locator|selector|capturedValue|valueType|timeoutMs/,
     );
+    // The receipt family's PeopleSoft field ids are recipes, so they are
+    // server-private for exactly the same reason the Person Org ones are.
+    assert.doesNotMatch(serialized, /UC_SS_TRANSACT_UC_TRANSACT_ID|UC_SS_TRANSACT_APPR_STATUS/);
   });
 
   it("enforces element states immediately and uses the one verified display locator", async () => {

@@ -6937,9 +6937,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.approval-status-select"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.ss-smart-hr.approval-status-display",
+      "evidence": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -7046,9 +7051,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.transaction-result-row"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.ss-smart-hr.receipt-display",
+      "evidence": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/ss-smart-hr.live.json"
+      }
     },
     {
       "system": "ucpath",
