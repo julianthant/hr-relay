@@ -724,6 +724,12 @@ changing those bytes, and later schema work must append v10.
 |---|---|---|
 | **D126** | **TWO STATUSES MAY SHARE A VISIBLE WORD ONLY IF A NON-TEXTUAL VISIBLE CHANNEL SEPARATES THEM *AND* THEY CARRY DISTINCT ACCESSIBLE NAMES; `verifiedDone`/`doneWarnings` ARE SEPARATED BY ICON + COLOUR ON SCREEN AND BY `accessibleLabel` OFF IT, AND THE FIX IS NEVER TO LENGTHEN THE DRAWN LABEL.** This amends doc 03 **row-model D22**, whose original ground ("the sibling deliberately did not shorten"; "the word remains") was superseded by a later operator direction. | doc 03 §9 row-model D22 as amended + §Phase-1g/1i as-built presentation deltas (primary); doc 07 §Phase 1 exit criteria; doc 13 §7.1 parity corpus |
 
+## Reconciliation round 25 (2026-08-04) — the identity-gate scope for the transaction proof
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D127** | **`kuali-timekeeper-annotation` TAKES NO IDENTITY-APPROVAL GATE: ITS WRONG-PERSON SAFETY IS THE MACHINE-VERIFIED SUBJECT BINDING (ZERO FENCE, ZERO CLICK ON MISMATCH / UNREADABLE / CHANGED-AFTER-PREPARE). SCOPED TO THIS WORKFLOW ONLY — NOT A WAIVER OF D77, WHICH STILL BINDS EVERY SEPARATION-CLASS WORKFLOW AND EVERY COMMIT THAT CONSUMES AN OPERATOR-APPROVED SUBJECT. THE EXEMPTION REQUIRES BOTH: THE RUN RESOLVES NO PERSON, AND THE WRITE IS NOT SEPARATION CLASS.** | doc 09 §14.8 (primary); doc 09 §14 D77 status + §Phase-2 transaction-proof as-built |
+
 **Two separate D-series exist — do not confuse them.** This memo's `D1–D120` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
 types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the

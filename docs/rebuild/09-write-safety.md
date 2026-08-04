@@ -145,7 +145,10 @@ for the 2026-07-23 write round-trip on doc 4444 (D78). Its workflow —
 `kuali-timekeeper-annotation`, one transaction node — is deliberately NOT
 separation-class: it files nothing, so §14's ALWAYS-GATE does not attach, and
 claiming it would misdescribe what the graph does. The identity control is the
-kernel's own beat-③ binding against the document's displayed EID.
+kernel's own beat-③ binding against the document's displayed EID. **The operator
+ratified that scope on 2026-08-04 (D127): this workflow takes NO identity-approval
+gate, and §14.8 records the two facts the exemption rests on plus the boundary at
+which it expires.** It is scoped to this graph and is not a general waiver of D77.
 
 **The completion arm can only be `save-verify`.** Kuali's save is UI-silent, so
 `kuali/verify-timekeeper-annotation` RELOADS the document and reads the field
@@ -1095,7 +1098,11 @@ proves every business choice.
 
 Status: **designed 2026-07-26 (D77).** Policy ratified by the operator 2026-07-24: **ALWAYS-GATE**
 — manual approval on every separation, for both separation types the operator distinguishes
-(**Kuali separations** and **I-9 separations**), with **no auto-approve-on-match mode**.
+(**Kuali separations** and **I-9 separations**), with **no auto-approve-on-match mode**. **Scope
+(D127, 2026-08-04): §14.8** records the one ratified exemption — `kuali-timekeeper-annotation`,
+which resolves no person and files nothing — and the two checkable facts any future exemption must
+show. D77 is otherwise unchanged and still binds every commit that consumes an operator-approved
+subject.
 
 ### 14.1 Why this section exists at all
 
@@ -1227,3 +1234,40 @@ The gate is designed here; two values belong to the separations §b questionnair
 limit** on the approval (how long may an approval sit before re-gating — hours, not days), and
 whether **I-9 separations** show a different candidate packet than Kuali separations (the operator
 distinguishes the two types; the resolver schema is shared either way).
+
+### 14.8 Scope — the Kuali timekeeper-annotation workflow takes NO identity-approval gate (D127)
+
+**Ratified by the operator 2026-08-04.** `kuali-timekeeper-annotation` — the Phase-2 transaction
+proof (§Phase 2 transaction-proof as-built, D122) — **does not get an identity-approval gate.** Its
+wrong-person safety rests entirely on the **machine-verified subject binding**: the write sequencer
+reads the EID displayed on the live document and produces **zero fence and zero click** on
+mismatch, on an unreadable EID, or on a subject that changed after `prepare`. That is a proven
+control in this tree, not an assumption — the dry-run half drives those exact arms at beat ① and
+beat ③ over a real authority database.
+
+**Why the gate does not attach, stated as a rule and not as a preference.** §14 exists for the
+wrong-**business-selection** class: a run resolves *which human* to act on from a name search or a
+roster, and no page observation can catch a correct-looking selection of the wrong person. This
+workflow resolves nothing. The operator supplies the document, the run opens that exact document by
+its deep link, and the only question left — *is the document in front of me the one I mean?* — is a
+question the page can answer, which is precisely what binding does. Adding a gate here would ask
+the operator to confirm an identity the machine already verified against the live page, on every
+run, which is §14.6 risk 1 (rubber-stamping) manufactured deliberately: gates that carry no signal
+train the operator to click through the ones that do.
+
+**This is a SCOPED decision, not a general waiver, and must never be cited as one.** D77's
+ALWAYS-GATE policy is untouched and still binds every separation-class workflow, both types. More
+generally **D77 still binds any commit that consumes an operator-approved subject**: where a run's
+`expected` subject originates in an operator decision, the gate is mandatory, the binding proof
+still runs at the fence, and neither layer substitutes for the other (§14.1). The exemption here is
+narrow and rests on two facts that are checkable, so a future workflow claiming it must show both:
+
+1. **The subject is not selected by the run.** It arrives as an operator-supplied document/record
+   identity, and the run never resolves a person from a search, a name match, or a roster row.
+2. **The write files nothing of separation class.** `kuali/save-timekeeper-annotation` writes a
+   benign annotation field on a draft, reversible by writing the captured previous value back
+   (D122/D78). It does not terminate, hire, pay, or separate anyone.
+
+Lose either fact — the workflow starts resolving a person, or its target widens past the annotation
+field — and §14 attaches again. Recording that boundary is the point of writing this down: the
+exemption is a property of this graph, and it expires the moment the graph changes.
