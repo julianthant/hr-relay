@@ -44,6 +44,7 @@ import {
 import {
   resolveUcpathElement,
   resolveUcpathIndexedElement,
+  waitForUcpathContentFrameDocument,
   waitForUcpathState,
 } from "./registry-locators.js";
 
@@ -585,6 +586,9 @@ function createPlaywrightPersonOrgPage(page: Page): PersonOrgPagePort {
     });
     const navigation = resolveUcpathElement(page, UCPATH_PERSON_ORG_NAVIGATION_LINK);
     await navigation.waitFor({ state: "visible", timeout: OUTCOME_TIMEOUT_MS });
+    // The step control routes through the nav collection's content frame, so
+    // clicking before that frame holds a document is silently dropped.
+    await waitForUcpathContentFrameDocument(page, OUTCOME_TIMEOUT_MS);
     await navigation.click();
     await waitForUcpathState(page, UCPATH_PERSON_ORG_SEARCH_READY);
   };

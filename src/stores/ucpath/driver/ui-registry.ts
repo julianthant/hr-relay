@@ -289,7 +289,17 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "hr",
       valueType: "none",
       scope: "page",
-      locator: { kind: "role", role: "link", name: "Person Organizational Summary", exact: true },
+      // Legacy's exact accessible-name recipe (legacy 793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+      // src/systems/ucpath/selectors.ts:684) matches ZERO live: the step is a
+      // `div[role=link]` whose label span ("Step Label") is visually suppressed
+      // but still part of the computed name, so the page renders it as
+      // "Step LabelPerson Organizational Summary". The structural anchor below
+      // is PeopleSoft's own nav-collection attribute carrying the exact label.
+      // verified 2026-08-04Z (2026-08-03 local) — matched exactly one element
+      // live, and drove a real EID 10873698 read to its detail page. A miss
+      // stays a loud `waitFor` failure; there is no second candidate to fall
+      // back to.
+      locator: { kind: "css", selector: "[role=\"link\"][steplabel=\"Person Organizational Summary\"]" },
       requiredStates: [],
       verification: verification(SEARCH_SCENARIO, NAVIGATION_PORT_KEY),
       provenance: selectorProvenance(NAVIGATION_PORT_KEY, 684),

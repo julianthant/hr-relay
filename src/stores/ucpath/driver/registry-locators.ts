@@ -16,6 +16,38 @@ function frameRoot(page: Page): FrameLocator {
   return page.frameLocator(UCPATH_UI_REGISTRY.root.selector);
 }
 
+/**
+ * The positive precondition for clicking a nav-collection step.
+ *
+ * A PeopleSoft nav-collection page renders its shell first and loads the
+ * registry root's content frame afterwards; a step control's handler routes
+ * THROUGH that frame. Clicking while the frame still holds `about:blank` is
+ * silently dropped — PeopleSoft neither errors nor navigates — so the step
+ * click waits for the frame to hold a real, loaded document instead of for a
+ * duration. Verified live 2026-08-04Z (EID 10873698): without this wait the
+ * Person Organizational Summary step click is lost and the search form never
+ * appears (30s timeout); with it the form is ready ~0.4s after the click.
+ *
+ * It is a WAIT target only, never a proof of what the frame contains — the
+ * caller still waits for its own declared page state.
+ */
+export async function waitForUcpathContentFrameDocument(page: Page, timeoutMs: number): Promise<void> {
+  const selector = UCPATH_UI_REGISTRY.root.selector;
+  try {
+    // `body > *` is document structure, not app knowledge: an unnavigated
+    // frame holds `about:blank`, whose body has no children, so the first
+    // rendered child IS the proof that the frame stopped being empty. The
+    // wait is Playwright's, so it survives the shell's own navigations.
+    await frameRoot(page).locator("body > *").first().waitFor({ state: "attached", timeout: timeoutMs });
+  } catch (error) {
+    throw new Error(
+      `UCPath content frame ${selector} never rendered a document within ${String(timeoutMs)}ms; `
+      + "a nav-collection step cannot be clicked against an empty frame",
+      { cause: error },
+    );
+  }
+}
+
 function roleLocator(
   page: Page,
   element: UcpathElementDefinition,
