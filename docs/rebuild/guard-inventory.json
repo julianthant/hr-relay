@@ -97,6 +97,14 @@
       "replacementRequired": true
     },
     {
+      "name": "config-snapshot-generations",
+      "file": "tests/unit/architecture/config-snapshot-generations.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/11-clock-config-secrets.md",
+      "invariant": "The durable config leaf set is SHA-256 pinned per generation: adding or tightening a required config leaf without registering it in CONFIG_SNAPSHOT_GENERATIONS and bumping CURRENT_CONFIG_SNAPSHOT_GENERATION fails here, and a stored snapshot tolerates exactly the registered post-baseline leaves being absent — every other missing leaf, missing group, or unknown key still fails loud rather than being defaulted.",
+      "replacementRequired": true
+    },
+    {
       "name": "no-secret-values-in-logs",
       "file": "tests/unit/architecture/no-secret-values-in-logs.test.ts",
       "status": "active",
@@ -117,7 +125,7 @@
       "file": "tests/unit/architecture/parity-reference-authority.test.ts",
       "status": "active",
       "owner": "docs/rebuild/13-frontend-backend-integration.md",
-      "invariant": "D128: the doc 13 \u00a77 parity lane can fail. Stored .a11y.yml/.meta.json references are compared, never rewritten, on a normal run \u2014 an accessibility-only change fails with a diff naming the reference and leaves the file untouched; refreshing requires PARITY_UPDATE=1 (npm run test:parity:update), the same single switch that drives Playwright's updateSnapshots so the pixel and semantic halves of a pair can never be refreshed independently. The served dist/dashboard must carry a build stamp binding both the working-tree source digest and the emitted output digest; a stale, unstamped, or post-build-edited bundle is refused before a port is bound. Both arms are executed against violating fixtures and through the lane's own captureA11yReference/startFixtureServer entry points.",
+      "invariant": "D132: the doc 13 \u00a77 parity lane can fail. Stored .a11y.yml/.meta.json references are compared, never rewritten, on a normal run \u2014 an accessibility-only change fails with a diff naming the reference and leaves the file untouched; refreshing requires PARITY_UPDATE=1 (npm run test:parity:update), the same single switch that drives Playwright's updateSnapshots so the pixel and semantic halves of a pair can never be refreshed independently. The served dist/dashboard must carry a build stamp binding both the working-tree source digest and the emitted output digest; a stale, unstamped, or post-build-edited bundle is refused before a port is bound. Both arms are executed against violating fixtures and through the lane's own captureA11yReference/startFixtureServer entry points.",
       "replacementRequired": true
     },
     {

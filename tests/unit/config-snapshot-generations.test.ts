@@ -1,0 +1,156 @@
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, describe, it } from "vitest";
+import { manualClock } from "../../src/domain/clock.js";
+import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
+import { ConfigSchema } from "../../src/domain/config/schema.js";
+import {
+  CURRENT_CONFIG_SNAPSHOT_GENERATION,
+  StoredConfigSchema,
+  configSnapshotAbsentLeaves,
+  configSnapshotGeneration,
+} from "../../src/domain/config/snapshot-generations.js";
+import { ConfigSnapshotRecordSchema } from "../../src/domain/config/snapshot.js";
+import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityBootStore } from "../../src/infra/sqlite/authority-boot.js";
+import { HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
+
+const roots: string[] = [];
+const SNAPSHOT_ID = UUID_4;
+const CLOCK = manualClock(new Date(NOW), 1_000);
+
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+function databasePath(): string {
+  const root = mkdtempSync(join(tmpdir(), "hrauto-config-generation-"));
+  roots.push(root);
+  return join(root, "authority.sqlite");
+}
+
+function currentConfig() {
+  return ConfigSchema.parse({ paths: defaultRuntimePaths() });
+}
+
+/**
+ * A current-generation database whose one config snapshot is then rewritten to
+ * the shape it had at `removed` — the same surgery history performed, so the
+ * row is a genuine older snapshot rather than a hand-written approximation of
+ * one. `.tracker-rebuild/phase1-exit-state.db` (the preserved Phase-1 exit
+ * database, gitignored) reproduces exactly this shape with `removed` set to
+ * `timeouts.sessionAcquireMs`.
+ */
+function databaseWithSnapshotMissing(removed: string): string {
+  const path = databasePath();
+  const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK);
+  database.authority.configSnapshots.insert({
+    configSnapshotId: SNAPSHOT_ID,
+    revision: 1,
+    fingerprint: HASH_B,
+    capturedAt: NOW,
+    capturedBy: "local-operator",
+    config: currentConfig(),
+    provenance: { "timeouts.taskMs": "default" },
+  });
+  database.close();
+
+  const raw = new DatabaseSync(path);
+  raw.exec("PRAGMA journal_mode = WAL");
+  raw.prepare("UPDATE config_snapshots SET record_json = json_remove(record_json, ?)")
+    .run(`$.config.${removed}`);
+  raw.close();
+  return path;
+}
+
+describe("pre-D125 config snapshots are read forward", () => {
+  it("opens an authority database whose snapshot predates timeouts.sessionAcquireMs", () => {
+    const path = databaseWithSnapshotMissing("timeouts.sessionAcquireMs");
+
+    const boot = AuthorityBootStore.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK);
+    const report = boot.report();
+    boot.close();
+    assert.equal(report.state, "healthy");
+
+    const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK);
+    const record = database.authority.configSnapshots.get(SNAPSHOT_ID);
+    database.close();
+    assert.notEqual(record, undefined);
+    if (record === undefined) return;
+
+    // The absence is REPORTED, not filled: a run that predates D125 held no
+    // session-acquire bound at all, and the record must not claim it held 60s.
+    assert.equal(record.config.timeouts.sessionAcquireMs, undefined);
+    assert.deepEqual(configSnapshotAbsentLeaves(record.config), ["timeouts.sessionAcquireMs"]);
+    assert.equal(configSnapshotGeneration(record.config), CURRENT_CONFIG_SNAPSHOT_GENERATION - 1);
+    // Every other leaf still parsed strictly.
+    assert.equal(record.config.timeouts.taskMs, currentConfig().timeouts.taskMs);
+  });
+
+  it("still fails loud when a snapshot lacks an unregistered leaf", () => {
+    const path = databaseWithSnapshotMissing("timeouts.taskMs");
+
+    assert.throws(
+      () => AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK),
+      /config_snapshots record .* failed strict record schema validation/,
+    );
+    const boot = AuthorityBootStore.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK);
+    const report = boot.report();
+    boot.close();
+    assert.equal(report.state, "degraded-read-only");
+    assert.equal(report.state === "degraded-read-only" ? report.cause.code : undefined, "authority-record-invalid");
+  });
+
+  it("still fails loud when a snapshot lacks a whole group rather than defaulting it", () => {
+    const path = databaseWithSnapshotMissing("browser");
+
+    assert.throws(
+      () => AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK),
+      /config_snapshots record .* failed strict record schema validation/,
+    );
+  });
+
+  it("refuses to WRITE a snapshot that omits a current-generation leaf", () => {
+    const path = databasePath();
+    const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK);
+    const { timeouts, ...rest } = currentConfig();
+    const { sessionAcquireMs: _omitted, ...withoutBound } = timeouts;
+    assert.throws(
+      () => database.authority.configSnapshots.insert({
+        configSnapshotId: SNAPSHOT_ID,
+        revision: 1,
+        fingerprint: HASH_B,
+        capturedAt: NOW,
+        capturedBy: "local-operator",
+        config: { ...rest, timeouts: withoutBound },
+        provenance: {},
+      }),
+      /omits current config leaves timeouts\.sessionAcquireMs/,
+    );
+    database.close();
+  });
+
+  it("reads a current-generation snapshot as the current generation", () => {
+    const record = ConfigSnapshotRecordSchema.parse({
+      configSnapshotId: SNAPSHOT_ID,
+      revision: 1,
+      fingerprint: HASH_B,
+      capturedAt: NOW,
+      capturedBy: "local-operator",
+      config: currentConfig(),
+      provenance: {},
+    });
+    assert.deepEqual(configSnapshotAbsentLeaves(record.config), []);
+    assert.equal(configSnapshotGeneration(record.config), CURRENT_CONFIG_SNAPSHOT_GENERATION);
+  });
+
+  it("never applies a group default while reading a stored config", () => {
+    const { browser: _browser, ...withoutBrowser } = currentConfig();
+    assert.equal(StoredConfigSchema.safeParse(withoutBrowser).success, false);
+    // …while the LIVE resolver still defaults it, which is what defaults are for.
+    assert.equal(ConfigSchema.parse({ paths: defaultRuntimePaths() }).browser.headless, true);
+  });
+});
