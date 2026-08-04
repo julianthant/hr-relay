@@ -33,9 +33,26 @@ export default defineConfig({
   updateSnapshots: parityUpdateRequested() ? "changed" : "none",
   expect: {
     toHaveScreenshot: {
-      // The two adapters must render the SAME pixels; the tiny allowance is
-      // for antialiasing nondeterminism only, never for content drift.
-      maxDiffPixelRatio: 0.001,
+      // D145 — NO pixel may move. The old `maxDiffPixelRatio: 0.001` allowance
+      // (786 px at 1024×768) was calibrated against nothing and was wide enough
+      // to swallow real content: the stale descriptor stamp `wf dd705833` sat
+      // under it at 112 px while the a11y half had already been refreshed to
+      // `wf a3ea62a0`, leaving eight reference PAIRS self-contradictory on disk.
+      // Worse, `updateSnapshots: "changed"` reuses this same comparison, so a
+      // deliberate `test:parity:update` could not repair what it could not fail.
+      //
+      // Measured floor, 46 references captured twice through two independent
+      // full lane runs (rebuild + fresh servers + fresh Chromium) on 2026-08-04:
+      // COUNTED differing pixels 0/46, always. Raw byte wobble reached 24 px of
+      // 786,432 (3.1e-5); the worst per-pixel YIQ delta from nondeterminism was
+      // 0.0682 normalized. So the nondeterminism budget belongs entirely in the
+      // PER-PIXEL colour tolerance, and the pixel COUNT allowance is zero.
+      maxDiffPixels: 0,
+      // Playwright's default, pinned explicitly because it is now the lane's
+      // ONLY nondeterminism allowance: 2.9× the measured 0.0682 floor. What it
+      // does not see is a colour change that stays under the tolerance on every
+      // pixel it touches — doc 13 §7.1 names that residual and what covers it.
+      threshold: 0.2,
     },
   },
   snapshotPathTemplate: "{testDir}/references/{arg}{ext}",

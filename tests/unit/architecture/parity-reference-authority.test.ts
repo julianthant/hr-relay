@@ -211,6 +211,46 @@ describe("parity lane reference authority (D132)", () => {
     assert.match(config, /updateSnapshots:\s*parityUpdateRequested\(\) \? "changed" : "none"/);
   });
 
+  it("allows ZERO moved pixels, and lets no caller widen that (D145)", async () => {
+    // D145. The pixel half's allowance used to be `maxDiffPixelRatio: 0.001` —
+    // 786 px at 1024x768 — and it was calibrated against nothing. It swallowed a
+    // real, visible content change (a stale `wf <descriptorHash>` stamp, 112 px)
+    // AND, because `updateSnapshots: "changed"` reuses the same comparison, it
+    // stopped the deliberate refresh from repairing what it could not fail: eight
+    // pairs shipped with a refreshed `.a11y.yml` beside a stale `.png`.
+    //
+    // Measured floor (46 references x 2 independent full lane runs, 2026-08-04):
+    // ZERO counted pixels every time. So the count allowance is zero, and the
+    // per-pixel colour tolerance is the lane's only nondeterminism budget.
+    const parityConfig = await import("../../../playwright.parity.config.js");
+    const screenshot = parityConfig.default.expect?.toHaveScreenshot;
+    assert.ok(screenshot !== undefined, "the parity config must state its screenshot comparison");
+    assert.equal(
+      screenshot.maxDiffPixels,
+      0,
+      "no pixel may move: a nonzero count allowance is where content drift hides",
+    );
+    // Playwright takes the MINIMUM of the two, so a ratio can only tighten this
+    // further — but an unpinned per-pixel tolerance would be an uncalibrated
+    // allowance again, and it is now the only one the lane has.
+    assert.ok(
+      typeof screenshot.threshold === "number" && screenshot.threshold > 0 && screenshot.threshold <= 0.2,
+      "the per-pixel colour tolerance must be pinned explicitly, at or below Playwright's default",
+    );
+
+    // A per-call override would reopen the hole one assertion at a time.
+    const parityScanned = gitVisibleFiles(["tests/parity"]).filter((file) => file.endsWith(".ts"));
+    assert.ok(parityScanned.length >= 5, "the per-call override scan must see the real lane");
+    for (const path of parityScanned) {
+      const source = readFileSync(join(REPO_ROOT, path), "utf8");
+      assert.doesNotMatch(
+        source,
+        /maxDiffPixel(?:s|Ratio)|threshold\s*:/u,
+        `${path} may not set its own screenshot allowance; the lane's comparison is config-wide`,
+      );
+    }
+  });
+
   it("keeps every reference write behind the update gate", () => {
     // Structural half of the wiring proof, audited in BOTH directions: a new
     // unconditional writer under tests/parity is exactly how hole #1 got in,
