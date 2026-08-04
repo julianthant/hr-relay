@@ -130,6 +130,79 @@ no write is unfinished.
 
 ---
 
+## Phase 2 transaction-proof as-built — the DRY-RUN half (2026-08-04, D122)
+
+The first `effect:"commit"` contract in this tree exists, and its whole
+fail-closed spine is proved end to end WITHOUT a real external write.
+
+**The target.** `kuali/save-timekeeper-annotation` writes the `Timekeeper Name:*`
+field of a Kuali RRSS Separation Request Form, reached by its
+`…/build/space/<space>/actions/<actionId>` deep link. It is the smallest
+genuinely reversible target the docs authorize: a benign annotation the legacy
+flow already fills on drafts, restorable by writing the previous value back
+(prepare captures and returns it), and the exact field the operator authorized
+for the 2026-07-23 write round-trip on doc 4444 (D78). Its workflow —
+`kuali-timekeeper-annotation`, one transaction node — is deliberately NOT
+separation-class: it files nothing, so §14's ALWAYS-GATE does not attach, and
+claiming it would misdescribe what the graph does. The identity control is the
+kernel's own beat-③ binding against the document's displayed EID.
+
+**The completion arm can only be `save-verify`.** Kuali's save is UI-silent, so
+`kuali/verify-timekeeper-annotation` RELOADS the document and reads the field
+back; every verdict but `present` parks (§7 row 6). The commit's own output
+carries the exact staged state it clicked Save on — a claim, never proof — and
+nothing in the kernel promotes it. `verify` is a distinct contract from the
+`idempotency.probe` on purpose: a verifier that was the probe would never
+reload.
+
+**`recoveryAbsence` is `operator-only`, and that is a measurement gap, not a
+judgement about Kuali.** Kuali's negative read is the same deterministic field
+read its positive uses. What is missing is a MEASURED propagation window, and
+measuring one requires the controlled commit that has not been authorized.
+Inventing `minSinceFenceMs` would be exactly the plausible-but-unverified
+constant this program bans, so every post-fence absence parks. When the
+controlled commit lands and supplies real numbers, this may become `stabilized`
+— that is the one contract field the commit is expected to change.
+
+**The mutation-capability registry moved to `src/base/mutation-capability.ts`.**
+Beat ⑤ requires the external-write helper to throw BEFORE the click, and that
+helper is a `stores/**` driver, which the layer matrix forbids importing `core`;
+minting also needs a type assertion, which no `src/domain/**` boundary source
+may contain. `src/base/` is the one place both hold. `src/core/write-sequencer.ts`
+remains the sole permitted CALLER of `mintMutationCapability`, now enforced
+mechanically: `task-driver-boundary` fails if any other module names it, and
+that same guard's blanket "no commit implementations" rule became its real
+condition — a `commit` implementation is legal only inside a store driver owner
+that validates its capability.
+
+**What the dry-run half proves, durably.** `tests/scenario/kuali-timekeeper-annotation.scenario.test.ts`
+and `tests/unit/kuali-transaction-proof.test.ts` drive the REAL sequencer over a
+REAL temporary authority database and a deterministic Kuali document. A dry run
+opens the document, stages the value, observes the subject — and leaves
+`write_intents`, `run_checkpoints`, and `durable_outbox` empty, with no minted
+capability and no commit span. A subject that changes AFTER prepare (the pooled-
+page case §2.1 names) produces zero fence and zero click on a page that WAS
+staged; so does an unreadable EID, at beat ③ and at beat ①. An expired
+probe→fence budget discards the staged page. A UI-silent save that did not
+persist reads `absent` and parks with the fence durable; a post-fence throw and
+a failed read-back both park `unknown`; a parked key refuses every later fence.
+Permanent-key dedupe and byte-exact checkpoint replay both prove zero second
+clicks.
+
+**What the dry-run half does NOT prove, and must not claim.** No external HR
+write has occurred. The crash-injection matrix across a REAL commit, the
+ledger/span projections of a real fenced attempt, `stabilized` negative
+settlement with measured numbers, and context cleanup after a real submit all
+belong to the controlled commit. So does the interpreter's dry-run PREVIEW
+outcome arm: `executeDryRun` exists and is proved, but `run-executor` still
+refuses a dry run at a transaction node rather than terminating the run at it,
+because "a dry run ends the run at the node" (doc 01 §6.2) has no durable
+run-lifecycle arm yet — inventing one would touch doc 03's operator status
+vocabulary, which is 2i's to change. Recorded as an open item rather than
+guessed.
+
+---
+
 ## 0. Grounding — what exists today (the port inventory, real code)
 
 Every row below is live-verified leaf knowledge the charter forbids re-deriving. It ports, wrapped.

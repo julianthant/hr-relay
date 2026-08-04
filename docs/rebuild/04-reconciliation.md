@@ -704,6 +704,12 @@ changing those bytes, and later schema work must append v10.
 |---|---|---|
 | **D121** | **NO MODULE THE DASHBOARD ENTRY CAN VALUE-REACH MAY STATICALLY IMPORT A NODE BUILT-IN; A CONFIG LEAF WHOSE DEFAULT ONLY EXISTS AT RUNTIME IS REQUIRED IN THE SHARED SCHEMA AND SUPPLIED BY THE SERVER RESOLVER, NEVER STUBBED OR POLYFILLED FOR THE BROWSER.** | doc 13 §8.13 (primary); doc 11 §Phase-1i-spine config-path delta; doc 10 guard `dashboard-wire-boundary` |
 
+## Reconciliation round 22 (2026-08-04) — the Phase-2 transaction proof, dry-run half
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D122** | **THE PHASE-2 TRANSACTION PROOF IS THE KUALI RRSS TIMEKEEPER ANNOTATION, WHOSE COMPLETION ARM IS A RELOAD READ-BACK AND WHOSE POST-FENCE ABSENCE IS `operator-only` UNTIL A CONTROLLED COMMIT MEASURES A REAL PROPAGATION WINDOW; THE MUTATION-CAPABILITY REGISTRY LIVES IN `src/base/mutation-capability.ts` WITH ONE PERMITTED MINTING CALLER, AND A `commit` IMPLEMENTATION IS LEGAL ONLY IN A STORE DRIVER OWNER THAT VALIDATES ITS CAPABILITY BEFORE CLICKING. AN `actionId` IS NOT STABLE ACROSS WORKFLOW STEPS, SO A RUN CARRIES THE DOCUMENT NUMBER AND THE DRIVER PROVES IT FROM THE PAGE.** | doc 09 §Phase-2 transaction-proof as-built (primary); doc 07 §3.8; doc 10 guards `task-driver-boundary`, `subject-before-fence` |
+
 **Two separate D-series exist — do not confuse them.** This memo's `D1–D120` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
 types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the

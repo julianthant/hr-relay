@@ -812,10 +812,19 @@ Phase-1 blockers. Deferral changes timing only; it does not waive proof.
 
 | System | Completion arm | Status | Gate |
 |---|---|---|---|
-| **Kuali** | `save-verify` | ✅ **RESOLVED buildable** (live probe 2026-07-23, docs 4444/4453; read-only + a full write round-trip restored byte-identically) | — |
+| **Kuali** | `save-verify` | ✅ **RESOLVED buildable** (live probe 2026-07-23, docs 4444/4453; read-only + a full write round-trip restored byte-identically) — **BUILT 2026-08-04** as `kuali/verify-timekeeper-annotation`, with its three element recipes ported and re-verified read-only the same day | — |
 | **UCPath** | `receipt` (`T…` transaction number) | ⏳ operator naming a target | before Phase 2's controlled commit |
 | **ServiceNow** | `receipt` (`HRC0…` from the post-submit redirect) | ⏳ operator naming a target | before order 7 |
 | **OnBase** | `upload-verify` or `unverifiableByPage`→always-park | ⏸ **blocked — no probe target exists today**; gated on the next real document upload | before order 7 |
+
+**A fifth Kuali constraint, found on the 2026-08-04 read-only re-verification (D122):** an
+`actionId` is **not stable across workflow steps**. Doc 4453's 2026-07-23 action id no longer
+resolved to a form — it silently redirected to the Action List. A deep link is reload-safe *within*
+a step and nothing more, so a run carries the action id AND the document number, and the driver
+proves the opened document's number from its level-1 heading before touching anything. The three
+ported anchors (`EID*`, `Timekeeper Name:*`, `Save`) each resolved to exactly one live node, and
+`Save` sits in one action group with `Send Back` and `Mark Complete` — which is why its port drops
+legacy's three-deep `.or()` chain and keeps only the exact role+name branch.
 
 Each probe is read-only-plus-restorable in the Kuali shape: read the completion surface, confirm a
 deterministic anchor, and where a write is authorized, write → verify → restore. If OnBase lands

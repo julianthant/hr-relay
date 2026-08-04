@@ -4,6 +4,14 @@ The ground-up rebuild of UCSD's UCPath HR automation. This repository is **not**
 legacy repository at `/Users/julianhein/Projects/hr-automation` runs every real HR transaction and
 stays the sole production authority until a single all-at-once cutover (D89/D93).
 
+Phase 1 closed 2026-08-04 (`completedThrough: "1i-spine"`); **Phase 2 — the transaction proof** is
+active. Its DRY-RUN half landed 2026-08-04: the Kuali RRSS timekeeper annotation is the authorized
+sacrificial target, `kuali-timekeeper-annotation` is the one-transaction-node workflow that carries
+it, and the whole fail-closed spine — staged preview with zero durable footprint, beat-③ subject
+binding, UI-silent-save read-back, permanent-key dedupe, post-fence parking — is proved over a real
+authority database with no external HR write. **No controlled commit has been performed; it needs
+explicit operator sign-off.**
+
 Seeded 2026-07-31 from `hr-automation@5879004` (branch `feature/rebuild-phase1b`, which stays in the
 legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01.
 
@@ -244,6 +252,25 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-04: the first commit contract is real, and everything about it is fail-closed by
+  construction.** `kuali/save-timekeeper-annotation` writes ONE benign, restorable field on a Kuali
+  RRSS document. Kuali's save is UI-silent, so `verify-timekeeper-annotation` reloads and reads the
+  field back; the commit's own output is a claim the kernel never promotes. Post-fence absence is
+  `operator-only` — not because the negative read is weak but because no propagation window has been
+  measured, and a guessed `minSinceFenceMs` is exactly the unverified constant this tree bans. The
+  mutation-capability registry moved to `src/base/mutation-capability.ts` so a `stores/**` driver can
+  refuse an unminted capability before its click without a layer inversion; `write-sequencer.ts` is
+  still the only permitted minting caller, and `task-driver-boundary` now enforces that plus "a
+  `commit` implementation lives only in a store driver owner that validates its capability". Dry-run,
+  wrong-subject, unknown-subject, stale-probe, and every post-fence park arm assert DURABLE absence
+  (no `write_intents` / `run_checkpoints` / `durable_outbox` rows), never log inspection.
+- **2026-08-04: a Kuali `actionId` names a workflow step, not a document.** The 2026-07-23 probe
+  recorded the document deep link as stable; re-opening doc 4453's captured action id on 2026-08-04
+  silently redirected to the Action List with no form. A run therefore carries the action id AND the
+  document number, and the driver proves the number from the page's level-1 heading before touching
+  anything. Live read-only re-verification also confirmed the three ported anchors resolve to exactly
+  one node each, and that `Save` sits beside `Send Back` and `Mark Complete` — which is why the port
+  drops legacy's three-deep `.or()` fallback chain entirely.
 - **2026-08-04: the live exit test found three classes of defect no fixture could — and each one was
   green on every gate.** D74's whole argument is that a real run falsifies contracts a fixture
   cannot; here is what it actually caught, so the next live gate is read as a *test*, not a demo.
