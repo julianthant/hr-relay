@@ -99,6 +99,76 @@ const FAILURE_RECORD = {
   remediation: [{ kind: "code-change", message: "Map the verified page state" }],
   occurredAt: LATER,
 };
+const DIAGNOSTIC_BUNDLE = {
+  bundleId: UUID_5,
+  runId: RUN_ID,
+  origin: { kind: "failure", failureId: FAILURE_RECORD.failureId },
+  createdAt: LATER,
+  contentDigest: HASH_A,
+  configFingerprint: HASH_B,
+  descriptorFingerprint: HASH_C,
+  redaction: {
+    fields: [{ state: "redacted", key: "input.ssn", classification: "sensitive-hr", transform: "drop" }],
+    warnings: [],
+  },
+  attachments: [{
+    kind: "accessibility-excerpt",
+    artifactId: UUID_7,
+    mediaType: "text/yaml",
+    byteLength: 128,
+    digest: HASH_B,
+    sensitivity: "redacted",
+  }],
+  retention: { kind: "pinned", reason: "write-recovery" },
+};
+const EVIDENCE_RECEIPT = {
+  receiptId: UUID_5,
+  runId: RUN_ID,
+  traceId: QUEUED_RUN.envelope.traceId,
+  workflowId: WORKFLOW_ID,
+  attempt: 1,
+  generatedAt: LATER,
+  descriptorFingerprint: HASH_A,
+  configFingerprint: HASH_B,
+  retryOf: { state: "absent" },
+  failure: { state: "present", value: FAILURE_RECORD.failureId },
+  input: [],
+  observations: [],
+  decisions: [],
+  actions: [],
+  verification: [],
+  output: [],
+  reuse: [],
+  warnings: [],
+  confidence: "unknown",
+  result: "failed",
+};
+const KNOWLEDGE_RECORD = {
+  id: UUID_5,
+  status: "active",
+  scope: { system: "ucpath" },
+  title: "Person Org Summary loses its accessible name under $op",
+  symptom: "The heading is present but unnamed",
+  trigger: "Navigating with the $op query parameter",
+  rootCause: "PeopleSoft renders the label in a sibling frame",
+  invariant: "Anchor on the RECORD_FIELD id, never the accessible name",
+  fix: "Read the field id",
+  regressionScenarios: ["ucpath/person-org-summary-named-heading"],
+  evidence: [`observation:${UUID_7}`],
+  verifiedAt: LATER,
+};
+const FIX_RECORD = {
+  id: UUID_5,
+  failureFingerprint: HASH_C,
+  status: "draft",
+  requestedBy: "claude",
+  summary: "Anchor the person-org heading on its record field id",
+  affected: ["ucpath.person-org-summary.heading"],
+  files: ["src/stores/ucpath/tasks/read-person-org.ts"],
+  scenarios: ["ucpath/person-org-summary-named-heading"],
+  verification: [],
+  createdAt: NOW,
+};
 const RUN_CHECKPOINT = {
   workflowId: "person-lookup",
   itemId: UUID_3,
@@ -229,6 +299,26 @@ function reserveProvider(database: AuthorityDatabase) {
     leaseExpiresAt: LATER,
     now: NOW,
   });
+}
+
+const LEDGER_PARTITION = { system: "ucpath" as const, date: "2026-07-31" };
+const LEDGER_PROJECTOR_ID = "generation-fixture";
+
+/** Doc 12's trust records hang off a real terminal run and its durable failure. */
+function terminalizeForTrust(database: AuthorityDatabase): void {
+  const run = prepareRunning(database);
+  database.terminalizeFailure(personLookupDescriptor, terminalFailureRequest(run));
+}
+
+function acquireLedgerLease(database: AuthorityDatabase): number {
+  const lease = database.authority.ledgerProjection.acquireLease({
+    ...LEDGER_PARTITION,
+    projectorId: LEDGER_PROJECTOR_ID,
+    now: NOW,
+    expiresAt: LATER,
+  });
+  if (lease.state !== "acquired") throw new Error("ledger generation fixture did not take its lease");
+  return lease.partition.leaseGeneration;
 }
 
 function terminalFailureRequest(run: ReturnType<typeof prepareRunning>) {
@@ -678,6 +768,44 @@ describe("authority generation accounting", () => {
         db.terminalizeSuccess(terminal.request, terminal.factoryAuthorization);
       },
     },
+    {
+      table: "diagnostic_bundles",
+      prepare: (db) => { terminalizeForTrust(db); },
+      mutate: (db) => { db.authority.diagnosticBundles.insert(DIAGNOSTIC_BUNDLE); },
+    },
+    {
+      table: "diagnostic_attachments",
+      prepare: (db) => { terminalizeForTrust(db); },
+      mutate: (db) => { db.authority.diagnosticBundles.insert(DIAGNOSTIC_BUNDLE); },
+    },
+    {
+      table: "evidence_receipts",
+      prepare: (db) => { terminalizeForTrust(db); },
+      mutate: (db) => { db.authority.evidenceReceipts.insert(EVIDENCE_RECEIPT); },
+    },
+    { table: "knowledge_records", mutate: (db) => { db.authority.knowledgeRecords.insert(KNOWLEDGE_RECORD); } },
+    { table: "fix_records", mutate: (db) => { db.authority.fixRecords.insert(FIX_RECORD); } },
+    { table: "ledger_partitions", mutate: (db) => { acquireLedgerLease(db); } },
+    {
+      table: "ledger_projections",
+      prepare: (db) => {
+        db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+        db.commitWriteAttempt(ATOMIC_WRITE_COMMIT);
+        acquireLedgerLease(db);
+      },
+      mutate: (db) => {
+        const partition = db.authority.ledgerProjection.getPartition(LEDGER_PARTITION.system, LEDGER_PARTITION.date);
+        if (partition === undefined) throw new Error("ledger generation fixture lost its partition");
+        db.authority.ledgerProjection.assignSequence({
+          ...LEDGER_PARTITION,
+          projectorId: LEDGER_PROJECTOR_ID,
+          leaseGeneration: partition.leaseGeneration,
+          outboxId: UUID_7,
+          lineDigest: HASH_A,
+          assignedAt: NOW,
+        });
+      },
+    },
     { table: "provider_budget_counters", prepare: prepareProviderRunning, mutate: reserveProvider },
     { table: "provider_admissions", prepare: prepareProviderRunning, mutate: reserveProvider },
     { table: "leases", mutate: (db) => { db.authority.workerLeases.start(WORKER_START_REQUEST); } },
@@ -685,7 +813,7 @@ describe("authority generation accounting", () => {
     { table: "dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
-    { table: "notifications", mutate: (db) => { db.authority.notifications.insert(NOTIFICATION); } },
+    { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
     { table: "config_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
     { table: "version_plans", mutate: (db) => { db.authority.versionPlans.insert(VERSION_PLAN); } },
     { table: "checkpoint_payloads", mutate: (db) => { db.authority.gateResults.insert(GATE_RESULT); } },
@@ -726,7 +854,7 @@ describe("authority generation accounting", () => {
     database.withAuthorityTransaction((authority) => {
       authority.commands.insert(COMMAND_FIXTURES[0]);
       database.withAuthorityTransaction((nested) => {
-        nested.notifications.insert(NOTIFICATION);
+        nested.notifications.create(NOTIFICATION);
       });
     });
     assert.equal(database.getMeta().authorityGeneration, 1);
@@ -769,7 +897,7 @@ describe("authority generation accounting", () => {
     const generationBefore = database.getMeta().authorityGeneration;
 
     database.withAuthorityTransaction((authority) => {
-      authority.notifications.insert(NOTIFICATION);
+      authority.notifications.create(NOTIFICATION);
       assert.throws(() => database.commitWriteAttempt(ATOMIC_WRITE_COMMIT), /injected nested outbox failure/);
     });
 
@@ -796,7 +924,7 @@ describe("authority generation accounting", () => {
     assert.equal(database.getMeta().authorityGeneration, 1);
 
     assert.throws(() => database.withAuthorityTransaction((authority) => {
-      authority.notifications.insert(NOTIFICATION);
+      authority.notifications.create(NOTIFICATION);
       throw new Error("roll back the authority unit");
     }), /roll back the authority unit/);
     assert.equal(database.getMeta().authorityGeneration, 1);

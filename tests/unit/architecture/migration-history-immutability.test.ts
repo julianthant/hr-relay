@@ -13,8 +13,10 @@ interface MigrationShape {
 
 /**
  * v1-v7 were derived from the known-correct history at 5ec912e; v8 was pinned
- * when its repair shipped. Every newly released migration extends this literal
- * list. A historical hash is never recomputed to bless edited old statements.
+ * when its repair shipped, v9 with provider admission, and v10 with the D134
+ * 2g trust/ledger foundation. Every newly released migration extends this
+ * literal list. A historical hash is never recomputed to bless edited old
+ * statements.
  */
 const RELEASED_MIGRATION_DIGESTS = Object.freeze([
   { version: 1, sha256: "19df8bb638864aefb5ef95d16d746cb36a4f215601d60873bf4d1b5823ef49d8" },
@@ -26,6 +28,7 @@ const RELEASED_MIGRATION_DIGESTS = Object.freeze([
   { version: 7, sha256: "80a877874f1a5ac939fed0ed3c4939b9d6fe53e889529f215e8baf4ffb4e141a" },
   { version: 8, sha256: "a07ef35f3c970822104220a1d7e8c4053f0e4ef7379a2be4976606fc3370b63d" },
   { version: 9, sha256: "92e27b25c7de354f12d0a381653d4d3b6ccf8fb707e084eb0c94730c977374f6" },
+  { version: 10, sha256: "e0d4f3a758a4fb282b3ccb22f1793cf3010124bcaec7bdc6546e1c1265347ced" },
 ] as const);
 
 /** Version, count, statement position, byte length, and bytes are all framed. */

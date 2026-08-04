@@ -185,6 +185,8 @@ export const NOTIFICATION = {
   title: "Write needs review",
   summary: "A termination write could not be proven present or absent.",
   links: [{ kind: "run", runId: UUID_2 }],
+  count: 1,
+  lastSeenAt: NOW,
   version: 1,
   createdAt: NOW,
   updatedAt: NOW,

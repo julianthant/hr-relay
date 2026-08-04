@@ -30,7 +30,13 @@ import {
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
 import {
+  ActorIdSchema,
+  ArtifactIdSchema,
   BrowserSystemIdSchema,
+  DiagnosticBundleIdSchema,
+  FailureFingerprintSchema,
+  FingerprintSchema,
+  OutboxIdSchema,
   ProviderAdmissionIdSchema,
   ProviderCapabilityIdSchema,
   RunIdSchema,
@@ -117,7 +123,43 @@ import {
   type RunCheckpointRecord,
 } from "../../domain/workflow/checkpoint.js";
 import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
-import { NotificationRecordSchema } from "../../domain/notifications.js";
+import {
+  NotificationFoldRequestSchema,
+  NotificationRecordOutcomeSchema,
+  NotificationRecordSchema,
+  NotificationStateRequestSchema,
+  type NotificationRecord,
+  type NotificationRecordOutcome,
+} from "../../domain/notifications.js";
+import {
+  LedgerLeaseOutcomeSchema,
+  LedgerPartitionRecordSchema,
+  LedgerProjectionRecordSchema,
+  ledgerPartitionRecordKey,
+  type LedgerLeaseOutcome,
+  type LedgerPartitionRecord,
+  type LedgerProjectionRecord,
+} from "../../domain/ledger-projection.js";
+import {
+  DiagnosticBundleSchema,
+  type DiagnosticBundle,
+} from "../../domain/trust/diagnostic.js";
+import {
+  RunEvidenceReceiptSchema,
+  type RunEvidenceReceipt,
+} from "../../domain/trust/evidence.js";
+import {
+  FixRecordSchema,
+  KnowledgeRecordSchema,
+  type FixRecord,
+  type KnowledgeRecord,
+} from "../../domain/trust/knowledge.js";
+import {
+  LedgerLeaseRequestSchema,
+  LedgerReleaseRequestSchema,
+  LedgerSequenceAssignmentSchema,
+  LedgerAppendConfirmationSchema,
+} from "./ledger-projection-contracts.js";
 import {
   ProviderAdmissionDenyRequestSchema,
   ProviderAdmissionInterruptRequestSchema,
@@ -154,10 +196,12 @@ import {
 import {
   ArtifactOutboxStorageRecordSchema,
   AUTHORITY_RECORD_SCHEMA_REGISTRY,
+  DiagnosticAttachmentStorageRecordSchema,
   OpaqueAuthorityRecordSchema,
   ProjectionStorageRecordSchema,
   VersionPlanStorageRecordSchema,
   type ArtifactOutboxStorageRecord,
+  type DiagnosticAttachmentStorageRecord,
   type OpaqueAuthorityRecord,
   type ProjectionStorageRecord,
   type VersionPlanStorageRecord,
@@ -307,9 +351,86 @@ type RunRepository = Readonly<{
   sweepExpiredClaims(input: unknown): readonly z.infer<typeof RunClaimSweepOutcomeSchema>[];
 }>;
 
+/**
+ * Doc 12 §2.1/§4.2: a failure fingerprint is a JOIN key, not message text.
+ * `listByFingerprint` powers "same failure seen before" and `explain failure`;
+ * `countByFingerprint` is what the doc-03 repeat-threshold trigger reads.
+ */
 type FailureRepository = Readonly<{
   get(failureId: string): FailureRecord | undefined;
   listByRun(runId: string): readonly FailureRecord[];
+  listByFingerprint(fingerprint: string): readonly FailureRecord[];
+  countByFingerprint(fingerprint: string): number;
+}>;
+
+/**
+ * Doc 12 §2.2. A bundle and its attachment index are written together: an
+ * attachment row that outlived its bundle would be an unreachable artifact
+ * reference, and a bundle whose attachments were not indexed would make
+ * artifact-scoped retention unanswerable.
+ */
+type DiagnosticBundleRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<DiagnosticBundle>;
+  get(bundleId: string): DiagnosticBundle | undefined;
+  listByRun(runId: string): readonly DiagnosticBundle[];
+  listAttachments(bundleId: string): readonly DiagnosticAttachmentStorageRecord[];
+  findByArtifact(artifactId: string): readonly DiagnosticAttachmentStorageRecord[];
+}>;
+
+/** Doc 12 §2.3. One terminal run, one server-derived receipt. */
+type EvidenceReceiptRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<RunEvidenceReceipt>;
+  get(receiptId: string): RunEvidenceReceipt | undefined;
+  findByRun(runId: string): RunEvidenceReceipt | undefined;
+}>;
+
+/** Doc 12 §4.1/§4.2. Authored guidance and proven fixes. */
+type KnowledgeRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<KnowledgeRecord>;
+  get(knowledgeId: string): KnowledgeRecord | undefined;
+  listByStatus(status: unknown): readonly KnowledgeRecord[];
+}>;
+
+type FixRecordRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<FixRecord>;
+  get(fixId: string): FixRecord | undefined;
+  listByFailureFingerprint(fingerprint: string): readonly FixRecord[];
+}>;
+
+/**
+ * Doc 03 §2.6 / doc 12 §6. This is the ONE authority repository that updates a
+ * row rather than appending: a repeated identical trigger folds into the row
+ * its `(actorId, dedupeFingerprint)` already owns, and read/snooze is per-row
+ * operator state. Identity, creation instant, and trigger are frozen by SQLite
+ * triggers; only `count`, `lastSeenAt`, `status`, `snooze`, `title`, `summary`,
+ * `updatedAt`, and a strictly advancing `version` move. A notification is
+ * derived operator state — it is NOT the transaction record, and nothing here
+ * weakens the ledger's true append-only immutability.
+ */
+type NotificationRepository = Readonly<{
+  create(input: unknown): ImmutableInsertResult<NotificationRecord>;
+  fold(input: unknown): NotificationRecordOutcome;
+  updateState(input: unknown): NotificationRecord;
+  get(notificationId: string): NotificationRecord | undefined;
+  findByDedupe(actorId: string, dedupeFingerprint: string): NotificationRecord | undefined;
+  listByActor(actorId: string, status?: unknown): readonly NotificationRecord[];
+}>;
+
+/**
+ * Doc 09 §6's serialized ledger projection authority. Executors never touch
+ * these rows; the projector does, one `(system, date)` partition at a time.
+ */
+type LedgerProjectionRepository = Readonly<{
+  listPendingOutbox(): readonly z.infer<typeof AtomicOutboxRecordSchema>[];
+  getOutbox(outboxId: string): z.infer<typeof AtomicOutboxRecordSchema> | undefined;
+  acquireLease(input: unknown): LedgerLeaseOutcome;
+  releaseLease(input: unknown): LedgerPartitionRecord;
+  getPartition(system: string, date: string): LedgerPartitionRecord | undefined;
+  assignSequence(input: unknown): LedgerProjectionRecord;
+  markAppended(input: unknown): LedgerProjectionRecord;
+  getProjection(outboxId: string): LedgerProjectionRecord | undefined;
+  listProjections(system: string, date: string): readonly LedgerProjectionRecord[];
+  listUnappendedProjections(): readonly LedgerProjectionRecord[];
 }>;
 
 type RunResultRepository = Readonly<{
@@ -354,6 +475,11 @@ export type AuthorityRepositories = Readonly<{
   failures: FailureRepository;
   runResults: RunResultRepository;
   runTerminalOutbox: RunTerminalOutboxRepository;
+  diagnosticBundles: DiagnosticBundleRepository;
+  evidenceReceipts: EvidenceReceiptRepository;
+  knowledgeRecords: KnowledgeRepository;
+  fixRecords: FixRecordRepository;
+  ledgerProjection: LedgerProjectionRepository;
   providerAdmissions: ProviderAdmissionRepository;
   startPlans: StartPlanRepository;
   workerLeases: WorkerLeaseRepository;
@@ -363,7 +489,7 @@ export type AuthorityRepositories = Readonly<{
   delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
   gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>>;
   runCheckpoints: RunCheckpointRepository;
-  notifications: ImmutableRepository<z.infer<typeof NotificationRecordSchema>>;
+  notifications: NotificationRepository;
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
   versionPlans: ImmutableRepository<VersionPlanStorageRecord>;
   writeIntents: WriteIntentRepository;
@@ -739,6 +865,100 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "durable-outbox-columns-match-record",
     sql: "SELECT count(*) AS count FROM durable_outbox WHERE write_intent_id <> json_extract(record_json, '$.aggregate.writeIntentId') OR generation <> json_extract(record_json, '$.aggregate.generation') OR kind <> json_extract(record_json, '$.payload.kind')",
+  },
+  {
+    name: "failure-fingerprint-column-matches-record",
+    sql: "SELECT count(*) AS count FROM failures WHERE fingerprint IS NOT json_extract(record_json, '$.fingerprint')",
+  },
+  {
+    name: "notification-columns-match-record",
+    sql: "SELECT count(*) AS count FROM notifications WHERE record_key IS NOT json_extract(record_json, '$.notificationId') OR actor_id IS NOT json_extract(record_json, '$.actorId') OR dedupe_fingerprint IS NOT json_extract(record_json, '$.dedupeFingerprint') OR status IS NOT json_extract(record_json, '$.status') OR seen_count IS NOT json_extract(record_json, '$.count') OR version IS NOT json_extract(record_json, '$.version')",
+  },
+  {
+    name: "diagnostic-bundle-columns-match-record",
+    sql: "SELECT count(*) AS count FROM diagnostic_bundles WHERE record_key IS NOT json_extract(record_json, '$.bundleId') OR run_id IS NOT json_extract(record_json, '$.runId') OR origin_kind IS NOT json_extract(record_json, '$.origin.kind') OR failure_id IS NOT json_extract(record_json, '$.origin.failureId') OR content_digest IS NOT json_extract(record_json, '$.contentDigest') OR retention_kind IS NOT json_extract(record_json, '$.retention.kind') OR purge_after IS NOT json_extract(record_json, '$.retention.purgeAfter')",
+  },
+  {
+    name: "diagnostic-attachment-binds-its-bundle",
+    sql: `
+      SELECT count(*) AS count FROM diagnostic_attachments AS attachment
+      LEFT JOIN diagnostic_bundles AS bundle ON bundle.record_key = attachment.bundle_id
+      WHERE bundle.record_key IS NULL
+        OR attachment.record_key IS NOT (attachment.bundle_id || ':' || attachment.artifact_id)
+        OR attachment.bundle_id IS NOT json_extract(attachment.record_json, '$.bundleId')
+        OR attachment.artifact_id IS NOT json_extract(attachment.record_json, '$.attachment.artifactId')
+        OR attachment.digest IS NOT json_extract(attachment.record_json, '$.attachment.digest')
+    `,
+  },
+  {
+    name: "diagnostic-bundle-attachments-are-indexed",
+    sql: `
+      SELECT count(*) AS count FROM diagnostic_bundles AS bundle
+      WHERE json_array_length(bundle.record_json, '$.attachments')
+        <> (SELECT count(*) FROM diagnostic_attachments AS attachment WHERE attachment.bundle_id = bundle.record_key)
+    `,
+  },
+  {
+    name: "evidence-receipt-columns-match-record",
+    sql: "SELECT count(*) AS count FROM evidence_receipts WHERE record_key IS NOT json_extract(record_json, '$.receiptId') OR run_id IS NOT json_extract(record_json, '$.runId') OR workflow IS NOT json_extract(record_json, '$.workflowId') OR attempt IS NOT json_extract(record_json, '$.attempt') OR result IS NOT json_extract(record_json, '$.result') OR confidence IS NOT json_extract(record_json, '$.confidence') OR failure_id IS NOT json_extract(record_json, '$.failure.value')",
+  },
+  {
+    name: "knowledge-and-fix-columns-match-record",
+    sql: `
+      SELECT (
+        SELECT count(*) FROM knowledge_records
+        WHERE record_key IS NOT json_extract(record_json, '$.id') OR status IS NOT json_extract(record_json, '$.status')
+      ) + (
+        SELECT count(*) FROM fix_records
+        WHERE record_key IS NOT json_extract(record_json, '$.id')
+          OR status IS NOT json_extract(record_json, '$.status')
+          OR failure_fingerprint IS NOT json_extract(record_json, '$.failureFingerprint')
+      ) AS count
+    `,
+  },
+  {
+    name: "ledger-partition-columns-match-record",
+    sql: "SELECT count(*) AS count FROM ledger_partitions WHERE record_key IS NOT (system || ':' || ledger_date) OR system IS NOT json_extract(record_json, '$.system') OR ledger_date IS NOT json_extract(record_json, '$.date') OR next_seq IS NOT json_extract(record_json, '$.nextSeq') OR lease_holder IS NOT json_extract(record_json, '$.lease.holder') OR lease_expires_at IS NOT json_extract(record_json, '$.lease.expiresAt') OR lease_generation IS NOT json_extract(record_json, '$.leaseGeneration') OR version IS NOT json_extract(record_json, '$.version')",
+  },
+  {
+    name: "ledger-projection-columns-match-record",
+    sql: "SELECT count(*) AS count FROM ledger_projections WHERE record_key IS NOT json_extract(record_json, '$.outboxId') OR partition_key IS NOT (system || ':' || ledger_date) OR system IS NOT json_extract(record_json, '$.system') OR ledger_date IS NOT json_extract(record_json, '$.date') OR seq IS NOT json_extract(record_json, '$.seq') OR state IS NOT json_extract(record_json, '$.lifecycle.state') OR line_digest IS NOT json_extract(record_json, '$.lineDigest') OR assigned_at IS NOT json_extract(record_json, '$.assignedAt') OR appended_at IS NOT json_extract(record_json, '$.lifecycle.appendedAt')",
+  },
+  {
+    // Doc 09 §6: sequences are dense from zero inside a partition, so
+    // `nextSeq` is the count. A gap here means a lost or rewritten entry.
+    name: "ledger-partition-sequence-is-dense",
+    sql: `
+      SELECT count(*) AS count FROM ledger_partitions AS partition
+      WHERE partition.next_seq <> (
+        SELECT count(*) FROM ledger_projections AS projection
+        WHERE projection.partition_key = partition.record_key
+      )
+      OR partition.next_seq <> COALESCE((
+        SELECT max(projection.seq) + 1 FROM ledger_projections AS projection
+        WHERE projection.partition_key = partition.record_key
+      ), 0)
+    `,
+  },
+  {
+    name: "ledger-projection-binds-a-ledger-outbox",
+    sql: `
+      SELECT count(*) AS count FROM ledger_projections AS projection
+      LEFT JOIN durable_outbox AS outbox ON outbox.record_key = projection.record_key
+      WHERE outbox.record_key IS NULL OR outbox.kind IS NOT 'ledger-entry'
+    `,
+  },
+  {
+    name: "projected-ledger-outbox-has-an-appended-line",
+    sql: `
+      SELECT count(*) AS count FROM durable_outbox AS outbox
+      LEFT JOIN ledger_projections AS projection ON projection.record_key = outbox.record_key
+      WHERE outbox.kind = 'ledger-entry'
+        AND json_extract(outbox.record_json, '$.projection.state') = 'projected'
+        AND (projection.record_key IS NULL
+          OR projection.state IS NOT 'appended'
+          OR projection.line_digest IS NOT json_extract(outbox.record_json, '$.projection.projectionFingerprint'))
+    `,
   },
   {
     name: "attempting-write-has-current-attempt",
@@ -1446,9 +1666,9 @@ export class AuthorityDatabase implements Disposable {
     const json = canonicalJsonStringify(record);
     this.#authorityWrite("failures", () => {
       const result = this.#database.prepare(`
-        INSERT INTO failures (record_key, run_id, record_json, created_at)
-        VALUES (?, ?, ?, ?)
-      `).run(record.failureId, record.runId, json, record.occurredAt);
+        INSERT INTO failures (record_key, run_id, fingerprint, record_json, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(record.failureId, record.runId, record.fingerprint, json, record.occurredAt);
       return { result: undefined, changes: sqliteChanges(result.changes) };
     });
   }
@@ -1679,6 +1899,483 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  #listFailures(sql: string, parameter: string): readonly FailureRecord[] {
+    const rows = this.#database.prepare(sql).all(parameter);
+    return Object.freeze(rows.map((row) => parseJsonRecord(
+      FailureRecordSchema,
+      JsonRowSchema.parse(row).record_json,
+    )));
+  }
+
+  #buildDiagnosticBundleRepository(): AuthorityRepositories["diagnosticBundles"] {
+    const readAttachments = (sql: string, parameter: string): readonly DiagnosticAttachmentStorageRecord[] => {
+      const rows = this.#database.prepare(sql).all(parameter);
+      return Object.freeze(rows.map((row) => parseJsonRecord(
+        DiagnosticAttachmentStorageRecordSchema,
+        JsonRowSchema.parse(row).record_json,
+      )));
+    };
+    return Object.freeze({
+      insert: (input: unknown) => {
+        const record = DiagnosticBundleSchema.parse(input);
+        const json = canonicalJsonStringify(record);
+        return this.#authorityWrite("diagnostic_bundles", () => {
+          const existing = this.#readRecord("diagnostic_bundles", record.bundleId, DiagnosticBundleSchema);
+          if (existing !== undefined) {
+            if (canonicalJsonStringify(existing) !== json) {
+              throw new Error(`diagnostic bundle ${record.bundleId} already exists with different content`);
+            }
+            return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+          }
+          const result = this.#database.prepare(`
+            INSERT INTO diagnostic_bundles
+              (record_key, run_id, origin_kind, failure_id, content_digest, retention_kind, purge_after, record_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            record.bundleId,
+            record.runId,
+            record.origin.kind,
+            record.origin.kind === "operator-request" ? null : record.origin.failureId,
+            record.contentDigest,
+            record.retention.kind,
+            record.retention.kind === "ordinary" ? record.retention.purgeAfter : null,
+            json,
+            record.createdAt,
+          );
+          let changes = sqliteChanges(result.changes);
+          for (const attachment of record.attachments) {
+            const stored = DiagnosticAttachmentStorageRecordSchema.parse({
+              bundleId: record.bundleId,
+              attachment,
+              createdAt: record.createdAt,
+            });
+            const inserted = this.#database.prepare(`
+              INSERT INTO diagnostic_attachments
+                (record_key, bundle_id, artifact_id, kind, digest, sensitivity, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              `${record.bundleId}:${attachment.artifactId}`,
+              record.bundleId,
+              attachment.artifactId,
+              attachment.kind,
+              attachment.digest,
+              attachment.sensitivity,
+              canonicalJsonStringify(stored),
+              record.createdAt,
+            );
+            changes += sqliteChanges(inserted.changes);
+          }
+          return { result: Object.freeze({ state: "inserted" as const, record }), changes };
+        });
+      },
+      get: (bundleId: string) => this.#readRecord("diagnostic_bundles", bundleId, DiagnosticBundleSchema),
+      listByRun: (runId: string) => {
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM diagnostic_bundles WHERE run_id = ? ORDER BY created_at, record_key
+        `).all(RunIdSchema.parse(runId));
+        return Object.freeze(rows.map((row) => parseJsonRecord(
+          DiagnosticBundleSchema,
+          JsonRowSchema.parse(row).record_json,
+        )));
+      },
+      listAttachments: (bundleId: string) => readAttachments(
+        "SELECT record_json FROM diagnostic_attachments WHERE bundle_id = ? ORDER BY record_key",
+        DiagnosticBundleIdSchema.parse(bundleId),
+      ),
+      findByArtifact: (artifactId: string) => readAttachments(
+        "SELECT record_json FROM diagnostic_attachments WHERE artifact_id = ? ORDER BY record_key",
+        ArtifactIdSchema.parse(artifactId),
+      ),
+    });
+  }
+
+  /**
+   * The one authority repository whose rows are UPDATED. `fold` is a
+   * read-modify-write inside the outer authority transaction, so two triggers
+   * firing at once cannot both create the `(actor, dedupeFingerprint)` row —
+   * the unique index and the transaction agree.
+   */
+  #buildNotificationRepository(): AuthorityRepositories["notifications"] {
+    const write = (record: NotificationRecord, mode: "insert" | "update"): void => {
+      const json = canonicalJsonStringify(record);
+      const result = mode === "insert"
+        ? this.#database.prepare(`
+            INSERT INTO notifications
+              (record_key, actor_id, dedupe_fingerprint, status, seen_count, version, record_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            record.notificationId, record.actorId, record.dedupeFingerprint,
+            record.status, record.count, record.version, json, record.createdAt,
+          )
+        : this.#database.prepare(`
+            UPDATE notifications
+            SET status = ?, seen_count = ?, version = ?, record_json = ?
+            WHERE record_key = ? AND version = ?
+          `).run(
+            record.status, record.count, record.version, json,
+            record.notificationId, record.version - 1,
+          );
+      const changes = sqliteChanges(result.changes);
+      if (changes !== 1) throw new Error(`notification ${record.notificationId} ${mode} affected ${String(changes)} rows`);
+    };
+    const findByDedupe = (actorId: string, dedupeFingerprint: string): NotificationRecord | undefined => {
+      const row = this.#database.prepare(`
+        SELECT record_json FROM notifications WHERE actor_id = ? AND dedupe_fingerprint = ?
+      `).get(ActorIdSchema.parse(actorId), FingerprintSchema.parse(dedupeFingerprint));
+      if (row === undefined) return undefined;
+      return parseJsonRecord(NotificationRecordSchema, JsonRowSchema.parse(row).record_json);
+    };
+    return Object.freeze({
+      create: (input: unknown) => {
+        const record = NotificationRecordSchema.parse(input);
+        const json = canonicalJsonStringify(record);
+        return this.#authorityWrite("notifications", () => {
+          const existing = this.#readRecord("notifications", record.notificationId, NotificationRecordSchema);
+          if (existing !== undefined) {
+            if (canonicalJsonStringify(existing) !== json) {
+              throw new Error(`notification ${record.notificationId} already exists with different content`);
+            }
+            return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+          }
+          write(record, "insert");
+          return { result: Object.freeze({ state: "inserted" as const, record }), changes: 1 };
+        });
+      },
+      fold: (input: unknown): NotificationRecordOutcome => {
+        const request = NotificationFoldRequestSchema.parse(input);
+        return this.#authorityWrite("notifications", () => {
+          const existing = findByDedupe(request.actorId, request.dedupeFingerprint);
+          if (existing === undefined) {
+            throw new Error(`notification fold found no row for ${request.actorId} fingerprint ${request.dedupeFingerprint}`);
+          }
+          if (Date.parse(request.seenAt) < Date.parse(existing.lastSeenAt)) {
+            throw new Error(`notification ${existing.notificationId} cannot fold an observation older than its last seen instant`);
+          }
+          const folded = NotificationRecordSchema.parse({
+            ...existing,
+            title: request.title,
+            summary: request.summary,
+            // A repeat is news again: the operator has not seen this occurrence.
+            status: "unread",
+            count: existing.count + 1,
+            lastSeenAt: request.seenAt,
+            version: existing.version + 1,
+            updatedAt: request.seenAt,
+          });
+          write(folded, "update");
+          return {
+            result: NotificationRecordOutcomeSchema.parse({ state: "folded", notification: folded }),
+            changes: 1,
+          };
+        });
+      },
+      updateState: (input: unknown) => {
+        const request = NotificationStateRequestSchema.parse(input);
+        return this.#authorityWrite("notifications", () => {
+          const existing = this.#readRecord("notifications", request.notificationId, NotificationRecordSchema);
+          if (existing === undefined) throw new Error(`notification ${request.notificationId} does not exist`);
+          if (existing.version !== request.expectedVersion) {
+            throw new Error(`notification ${request.notificationId} is at version ${String(existing.version)}, not ${String(request.expectedVersion)}`);
+          }
+          const updated = NotificationRecordSchema.parse({
+            ...existing,
+            status: request.status,
+            snooze: request.snooze,
+            version: existing.version + 1,
+            updatedAt: request.updatedAt,
+          });
+          write(updated, "update");
+          return { result: updated, changes: 1 };
+        });
+      },
+      get: (notificationId: string) => this.#readRecord("notifications", notificationId, NotificationRecordSchema),
+      findByDedupe,
+      listByActor: (actorId: string, status?: unknown) => {
+        const rows = status === undefined
+          ? this.#database.prepare(`
+              SELECT record_json FROM notifications WHERE actor_id = ? ORDER BY created_at, record_key
+            `).all(ActorIdSchema.parse(actorId))
+          : this.#database.prepare(`
+              SELECT record_json FROM notifications WHERE actor_id = ? AND status = ? ORDER BY created_at, record_key
+            `).all(ActorIdSchema.parse(actorId), NotificationRecordSchema.shape.status.parse(status));
+        return Object.freeze(rows.map((row) => parseJsonRecord(
+          NotificationRecordSchema,
+          JsonRowSchema.parse(row).record_json,
+        )));
+      },
+    });
+  }
+
+  #buildLedgerProjectionRepository(): AuthorityRepositories["ledgerProjection"] {
+    const readPartition = (system: string, date: string): LedgerPartitionRecord | undefined => this.#readRecord(
+      "ledger_partitions",
+      ledgerPartitionRecordKey(system, date),
+      LedgerPartitionRecordSchema,
+    );
+    const writePartition = (record: LedgerPartitionRecord, mode: "insert" | "update"): void => {
+      const key = ledgerPartitionRecordKey(record.system, record.date);
+      const json = canonicalJsonStringify(record);
+      const holder = record.lease.state === "held" ? record.lease.holder : null;
+      const expiresAt = record.lease.state === "held" ? record.lease.expiresAt : null;
+      const result = mode === "insert"
+        ? this.#database.prepare(`
+            INSERT INTO ledger_partitions
+              (record_key, system, ledger_date, next_seq, lease_holder, lease_expires_at, lease_generation, version, record_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            key, record.system, record.date, record.nextSeq, holder, expiresAt,
+            record.leaseGeneration, record.version, json, record.createdAt,
+          )
+        : this.#database.prepare(`
+            UPDATE ledger_partitions
+            SET next_seq = ?, lease_holder = ?, lease_expires_at = ?, lease_generation = ?, version = ?, record_json = ?
+            WHERE record_key = ? AND version = ?
+          `).run(
+            record.nextSeq, holder, expiresAt, record.leaseGeneration,
+            record.version, json, key, record.version - 1,
+          );
+      const changes = sqliteChanges(result.changes);
+      if (changes !== 1) throw new Error(`ledger partition ${key} ${mode} affected ${String(changes)} rows`);
+    };
+    const assertHeldLease = (
+      partition: LedgerPartitionRecord | undefined,
+      projectorId: string,
+      leaseGeneration: number,
+      key: string,
+    ): LedgerPartitionRecord => {
+      if (partition === undefined) throw new Error(`ledger partition ${key} does not exist`);
+      if (partition.lease.state !== "held"
+        || partition.lease.holder !== projectorId
+        || partition.leaseGeneration !== leaseGeneration) {
+        throw new Error(`ledger partition ${key} is not leased to ${projectorId} at generation ${String(leaseGeneration)}`);
+      }
+      return partition;
+    };
+    return Object.freeze({
+      listPendingOutbox: () => {
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM durable_outbox
+          WHERE kind = 'ledger-entry'
+            AND json_extract(record_json, '$.projection.state') = 'pending'
+          ORDER BY created_at, record_key
+        `).all();
+        return Object.freeze(rows.map((row) => parseJsonRecord(
+          AtomicOutboxRecordSchema,
+          JsonRowSchema.parse(row).record_json,
+        )));
+      },
+      getOutbox: (outboxId: string) => this.#readRecord(
+        "durable_outbox",
+        OutboxIdSchema.parse(outboxId),
+        AtomicOutboxRecordSchema,
+      ),
+      acquireLease: (input: unknown): LedgerLeaseOutcome => {
+        const request = LedgerLeaseRequestSchema.parse(input);
+        return this.#authorityWrite("ledger_partitions", () => {
+          const current = readPartition(request.system, request.date);
+          if (current === undefined) {
+            const created = LedgerPartitionRecordSchema.parse({
+              system: request.system,
+              date: request.date,
+              nextSeq: 0,
+              lease: { state: "held", holder: request.projectorId, expiresAt: request.expiresAt },
+              leaseGeneration: 1,
+              version: 1,
+              createdAt: request.now,
+              updatedAt: request.now,
+            });
+            writePartition(created, "insert");
+            return {
+              result: LedgerLeaseOutcomeSchema.parse({ state: "acquired", partition: created }),
+              changes: 1,
+            };
+          }
+          const live = current.lease.state === "held"
+            && Date.parse(current.lease.expiresAt) > Date.parse(request.now);
+          if (live && current.lease.state === "held" && current.lease.holder !== request.projectorId) {
+            return {
+              result: LedgerLeaseOutcomeSchema.parse({ state: "held", partition: current }),
+              changes: 0,
+            };
+          }
+          const renewed = LedgerPartitionRecordSchema.parse({
+            ...current,
+            lease: { state: "held", holder: request.projectorId, expiresAt: request.expiresAt },
+            leaseGeneration: current.leaseGeneration + 1,
+            version: current.version + 1,
+            updatedAt: request.now,
+          });
+          writePartition(renewed, "update");
+          return {
+            result: LedgerLeaseOutcomeSchema.parse({ state: "acquired", partition: renewed }),
+            changes: 1,
+          };
+        });
+      },
+      releaseLease: (input: unknown) => {
+        const request = LedgerReleaseRequestSchema.parse(input);
+        const key = ledgerPartitionRecordKey(request.system, request.date);
+        return this.#authorityWrite("ledger_partitions", () => {
+          const current = assertHeldLease(
+            readPartition(request.system, request.date),
+            request.projectorId,
+            request.leaseGeneration,
+            key,
+          );
+          const released = LedgerPartitionRecordSchema.parse({
+            ...current,
+            lease: { state: "unleased" },
+            version: current.version + 1,
+            updatedAt: request.now,
+          });
+          writePartition(released, "update");
+          return { result: released, changes: 1 };
+        });
+      },
+      getPartition: (system: string, date: string) => readPartition(system, date),
+      assignSequence: (input: unknown) => {
+        const request = LedgerSequenceAssignmentSchema.parse(input);
+        const key = ledgerPartitionRecordKey(request.system, request.date);
+        return this.#authorityWrite("ledger_projections", () => {
+          const current = assertHeldLease(
+            readPartition(request.system, request.date),
+            request.projectorId,
+            request.leaseGeneration,
+            key,
+          );
+          const existing = this.#readRecord("ledger_projections", request.outboxId, LedgerProjectionRecordSchema);
+          if (existing !== undefined) {
+            // Idempotent by outbox id. A second assignment for the same entry
+            // would mint a second sequence for one filed transaction.
+            if (existing.lineDigest !== request.lineDigest) {
+              throw new Error(`ledger outbox ${request.outboxId} was already assigned sequence ${String(existing.seq)} with a different line`);
+            }
+            return { result: existing, changes: 0 };
+          }
+          const outbox = this.#readRecord("durable_outbox", request.outboxId, AtomicOutboxRecordSchema);
+          if (outbox === undefined || outbox.payload.kind !== "ledger-entry") {
+            throw new Error(`ledger outbox ${request.outboxId} is not a durable ledger-entry row`);
+          }
+          const record = LedgerProjectionRecordSchema.parse({
+            outboxId: request.outboxId,
+            system: request.system,
+            date: request.date,
+            seq: current.nextSeq,
+            lineDigest: request.lineDigest,
+            projectedBy: request.projectorId,
+            lifecycle: { state: "assigned" },
+            assignedAt: request.assignedAt,
+          });
+          const inserted = this.#database.prepare(`
+            INSERT INTO ledger_projections
+              (record_key, partition_key, system, ledger_date, seq, state, line_digest, assigned_at, appended_at, record_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+          `).run(
+            record.outboxId, key, record.system, record.date, record.seq,
+            record.lifecycle.state, record.lineDigest, record.assignedAt,
+            canonicalJsonStringify(record), record.assignedAt,
+          );
+          if (sqliteChanges(inserted.changes) !== 1) {
+            throw new Error(`ledger projection ${request.outboxId} insertion affected no rows`);
+          }
+          writePartition(LedgerPartitionRecordSchema.parse({
+            ...current,
+            nextSeq: current.nextSeq + 1,
+            version: current.version + 1,
+            updatedAt: request.assignedAt,
+          }), "update");
+          return { result: record, changes: 1 };
+        });
+      },
+      markAppended: (input: unknown) => {
+        const request = LedgerAppendConfirmationSchema.parse(input);
+        const key = ledgerPartitionRecordKey(request.system, request.date);
+        return this.#authorityWrite("ledger_projections", () => {
+          assertHeldLease(
+            readPartition(request.system, request.date),
+            request.projectorId,
+            request.leaseGeneration,
+            key,
+          );
+          const existing = this.#readRecord("ledger_projections", request.outboxId, LedgerProjectionRecordSchema);
+          if (existing === undefined) throw new Error(`ledger projection ${request.outboxId} has no assigned sequence`);
+          if (existing.lineDigest !== request.lineDigest) {
+            throw new Error(`ledger projection ${request.outboxId} appended a line that does not match its assignment`);
+          }
+          if (existing.lifecycle.state === "appended" && existing.lifecycle.appendedAt !== request.appendedAt) {
+            throw new Error(`ledger projection ${request.outboxId} was already appended at ${existing.lifecycle.appendedAt}`);
+          }
+          const appended = LedgerProjectionRecordSchema.parse({
+            ...existing,
+            lifecycle: { state: "appended", appendedAt: request.appendedAt },
+          });
+          let changes = 0;
+          if (existing.lifecycle.state === "assigned") {
+            const updated = this.#database.prepare(`
+              UPDATE ledger_projections
+              SET state = 'appended', appended_at = ?, record_json = ?
+              WHERE record_key = ? AND state = 'assigned'
+            `).run(request.appendedAt, canonicalJsonStringify(appended), request.outboxId);
+            if (sqliteChanges(updated.changes) !== 1) {
+              throw new Error(`ledger projection ${request.outboxId} append confirmation affected no rows`);
+            }
+            changes += 1;
+          }
+          // Marking the outbox is separate and separately idempotent: the crash
+          // window between the line landing and the outbox flipping is exactly
+          // what recovery has to be able to close without re-appending.
+          const outbox = this.#readRecord("durable_outbox", request.outboxId, AtomicOutboxRecordSchema);
+          if (outbox === undefined) throw new Error(`ledger outbox ${request.outboxId} disappeared before projection`);
+          if (outbox.projection.state === "projected") {
+            if (outbox.projection.projectionFingerprint !== request.lineDigest) {
+              throw new Error(`ledger outbox ${request.outboxId} was already projected with a different line`);
+            }
+            return { result: appended, changes };
+          }
+          const projected = AtomicOutboxRecordSchema.parse({
+            ...outbox,
+            projection: {
+              state: "projected",
+              projectedAt: request.appendedAt,
+              projectionFingerprint: request.lineDigest,
+            },
+          });
+          const marked = this.#database.prepare(`
+            UPDATE durable_outbox SET record_json = ? WHERE record_key = ?
+          `).run(canonicalJsonStringify(projected), request.outboxId);
+          if (sqliteChanges(marked.changes) !== 1) {
+            throw new Error(`ledger outbox ${request.outboxId} projection marking affected no rows`);
+          }
+          return { result: appended, changes: changes + 1 };
+        });
+      },
+      getProjection: (outboxId: string) => this.#readRecord(
+        "ledger_projections",
+        OutboxIdSchema.parse(outboxId),
+        LedgerProjectionRecordSchema,
+      ),
+      listProjections: (system: string, date: string) => {
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM ledger_projections WHERE partition_key = ? ORDER BY seq
+        `).all(ledgerPartitionRecordKey(system, date));
+        return Object.freeze(rows.map((row) => parseJsonRecord(
+          LedgerProjectionRecordSchema,
+          JsonRowSchema.parse(row).record_json,
+        )));
+      },
+      /** The crash window: a sequence was handed out, the line never landed. */
+      listUnappendedProjections: () => {
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM ledger_projections WHERE state = 'assigned' ORDER BY partition_key, seq
+        `).all();
+        return Object.freeze(rows.map((row) => parseJsonRecord(
+          LedgerProjectionRecordSchema,
+          JsonRowSchema.parse(row).record_json,
+        )));
+      },
+    });
+  }
+
   #buildAuthorityRepositories(): AuthorityRepositories {
     const opaque = (tableInput: z.input<typeof OpaqueAuthorityTableSchema>): ImmutableRepository<OpaqueAuthorityRecord> => {
       const table = OpaqueAuthorityTableSchema.parse(tableInput);
@@ -1702,16 +2399,115 @@ export class AuthorityDatabase implements Disposable {
       }),
       failures: Object.freeze({
         get: (failureId: string) => this.#readRecord("failures", failureId, FailureRecordSchema),
-        listByRun: (runId: string) => {
+        listByRun: (runId: string) => this.#listFailures(
+          "SELECT record_json FROM failures WHERE run_id = ? ORDER BY created_at, record_key",
+          RunIdSchema.parse(runId),
+        ),
+        listByFingerprint: (fingerprint: string) => this.#listFailures(
+          "SELECT record_json FROM failures WHERE fingerprint = ? ORDER BY created_at, record_key",
+          FailureFingerprintSchema.parse(fingerprint),
+        ),
+        countByFingerprint: (fingerprint: string) => CountRowSchema.parse(this.#database.prepare(`
+          SELECT count(*) AS count FROM failures WHERE fingerprint = ?
+        `).get(FailureFingerprintSchema.parse(fingerprint))).count,
+      }),
+      diagnosticBundles: this.#buildDiagnosticBundleRepository(),
+      evidenceReceipts: Object.freeze({
+        insert: (input: unknown) => {
+          const record = RunEvidenceReceiptSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("evidence_receipts", () => {
+            const existing = this.#readRecord("evidence_receipts", record.receiptId, RunEvidenceReceiptSchema);
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`evidence receipt ${record.receiptId} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO evidence_receipts
+                (record_key, run_id, workflow, attempt, result, confidence, failure_id, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              record.receiptId, record.runId, record.workflowId, record.attempt,
+              record.result, record.confidence,
+              record.failure.state === "present" ? record.failure.value : null,
+              json, record.generatedAt,
+            );
+            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
+          });
+        },
+        get: (receiptId: string) => this.#readRecord("evidence_receipts", receiptId, RunEvidenceReceiptSchema),
+        findByRun: (runId: string) => {
+          const row = this.#database.prepare(`
+            SELECT record_json FROM evidence_receipts WHERE run_id = ?
+          `).get(RunIdSchema.parse(runId));
+          if (row === undefined) return undefined;
+          return parseJsonRecord(RunEvidenceReceiptSchema, JsonRowSchema.parse(row).record_json);
+        },
+      }),
+      knowledgeRecords: Object.freeze({
+        insert: (input: unknown) => {
+          const record = KnowledgeRecordSchema.parse(input);
+          const createdAt = record.verifiedAt ?? this.#now();
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("knowledge_records", () => {
+            const existing = this.#readRecord("knowledge_records", record.id, KnowledgeRecordSchema);
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`knowledge record ${record.id} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO knowledge_records (record_key, status, record_json, created_at) VALUES (?, ?, ?, ?)
+            `).run(record.id, record.status, json, createdAt);
+            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
+          });
+        },
+        get: (knowledgeId: string) => this.#readRecord("knowledge_records", knowledgeId, KnowledgeRecordSchema),
+        listByStatus: (status: unknown) => {
+          const parsed = KnowledgeRecordSchema.shape.status.parse(status);
           const rows = this.#database.prepare(`
-            SELECT record_json FROM failures WHERE run_id = ? ORDER BY created_at, record_key
-          `).all(RunIdSchema.parse(runId));
+            SELECT record_json FROM knowledge_records WHERE status = ? ORDER BY created_at, record_key
+          `).all(parsed);
           return Object.freeze(rows.map((row) => parseJsonRecord(
-            FailureRecordSchema,
+            KnowledgeRecordSchema,
             JsonRowSchema.parse(row).record_json,
           )));
         },
       }),
+      fixRecords: Object.freeze({
+        insert: (input: unknown) => {
+          const record = FixRecordSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("fix_records", () => {
+            const existing = this.#readRecord("fix_records", record.id, FixRecordSchema);
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`fix record ${record.id} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO fix_records (record_key, status, failure_fingerprint, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?)
+            `).run(record.id, record.status, record.failureFingerprint ?? null, json, record.createdAt);
+            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
+          });
+        },
+        get: (fixId: string) => this.#readRecord("fix_records", fixId, FixRecordSchema),
+        listByFailureFingerprint: (fingerprint: string) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM fix_records WHERE failure_fingerprint = ? ORDER BY created_at, record_key
+          `).all(FailureFingerprintSchema.parse(fingerprint));
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            FixRecordSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
+      }),
+      ledgerProjection: this.#buildLedgerProjectionRepository(),
       runResults: Object.freeze({
         get: (runId: string) => this.#readRecord(
           "run_results",
@@ -1859,13 +2655,7 @@ export class AuthorityDatabase implements Disposable {
           return parseJsonRecord(RunCheckpointRecordSchema, JsonRowSchema.parse(row).record_json);
         },
       }),
-      notifications: Object.freeze({
-        insert: (input: unknown) => {
-          const record = NotificationRecordSchema.parse(input);
-          return this.#insertSimpleRecord("notifications", record.notificationId, record, NotificationRecordSchema, record.createdAt);
-        },
-        get: (notificationId: string) => this.#readRecord("notifications", notificationId, NotificationRecordSchema),
-      }),
+      notifications: this.#buildNotificationRepository(),
       configSnapshots: Object.freeze({
         insert: (input: unknown) => {
           // The WRITE schema, not the read schema: an older generation is read

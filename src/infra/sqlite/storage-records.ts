@@ -6,12 +6,17 @@ import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/d
 import { GateResultRecordSchema } from "../../domain/gates.js";
 import {
   ArtifactIdSchema,
+  DiagnosticBundleIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   OutboxIdSchema,
   PositiveIntSchema,
   VersionPlanIdSchema,
 } from "../../domain/ids.js";
+import {
+  LedgerPartitionRecordSchema,
+  LedgerProjectionRecordSchema,
+} from "../../domain/ledger-projection.js";
 import { NotificationRecordSchema } from "../../domain/notifications.js";
 import {
   ProviderAdmissionRecordSchema,
@@ -27,7 +32,13 @@ import { WorkerLeaseRecordSchema } from "../../domain/run/worker.js";
 import { SchemaBoundCanonicalValueSchema } from "../../domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../domain/workflow/checkpoint.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../domain/write-safety.js";
+import {
+  DiagnosticAttachmentSchema,
+  DiagnosticBundleSchema,
+} from "../../domain/trust/diagnostic.js";
+import { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
 import { FailureRecordSchema } from "../../domain/trust/failure.js";
+import { FixRecordSchema, KnowledgeRecordSchema } from "../../domain/trust/knowledge.js";
 
 export const SqliteStorageRecordIdSchema = z.string().uuid().brand<"SqliteStorageRecordId">();
 
@@ -56,6 +67,18 @@ export const ArtifactOutboxStorageRecordSchema = z.strictObject({
   createdAt: IsoInstantSchema,
 });
 
+/**
+ * A diagnostic attachment is stored beside its bundle so a content-addressed
+ * artifact can be found without scanning every bundle's JSON array. The row
+ * retains the bundle id explicitly; the attachment arm itself is doc 12 §2.2's
+ * exact union, never a loosened copy.
+ */
+export const DiagnosticAttachmentStorageRecordSchema = z.strictObject({
+  bundleId: DiagnosticBundleIdSchema,
+  attachment: DiagnosticAttachmentSchema,
+  createdAt: IsoInstantSchema,
+});
+
 export const ProjectionStorageRecordSchema = z.strictObject({
   projectionKey: FingerprintSchema,
   payload: SchemaBoundCanonicalValueSchema,
@@ -74,6 +97,13 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   failures: FailureRecordSchema,
   run_results: RunResultRecordSchema,
   run_terminal_outbox: RunTerminalOutboxRecordSchema,
+  diagnostic_bundles: DiagnosticBundleSchema,
+  diagnostic_attachments: DiagnosticAttachmentStorageRecordSchema,
+  evidence_receipts: RunEvidenceReceiptSchema,
+  knowledge_records: KnowledgeRecordSchema,
+  fix_records: FixRecordSchema,
+  ledger_partitions: LedgerPartitionRecordSchema,
+  ledger_projections: LedgerProjectionRecordSchema,
   provider_budget_counters: ProviderBudgetCounterSchema,
   provider_admissions: ProviderAdmissionRecordSchema,
   leases: WorkerLeaseRecordSchema,
@@ -98,6 +128,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   artifact_sink_heads: OpaqueAuthorityRecordSchema,
 } satisfies Record<AuthorityRecordTableName, z.ZodType>);
 
+export type DiagnosticAttachmentStorageRecord = z.infer<typeof DiagnosticAttachmentStorageRecordSchema>;
 export type OpaqueAuthorityRecord = z.infer<typeof OpaqueAuthorityRecordSchema>;
 export type VersionPlanStorageRecord = z.infer<typeof VersionPlanStorageRecordSchema>;
 export type ArtifactOutboxStorageRecord = z.infer<typeof ArtifactOutboxStorageRecordSchema>;

@@ -451,7 +451,7 @@ describe("verified native online backups", () => {
     assert.equal(verified.manifest.byteSize > 0, true);
     assert.equal(AuthorityDatabase.inspectExistingReadOnly(verified.backupPath).authorityGeneration, 1);
 
-    database.authority.notifications.insert(NOTIFICATION);
+    database.authority.notifications.create(NOTIFICATION);
     assert.equal(database.getMeta().authorityGeneration, 2);
     assert.equal((await verifyBackupManifestAtPath(manifestPath)).manifest.authorityGeneration, 1);
   });
@@ -469,7 +469,7 @@ describe("verified native online backups", () => {
       onlineBackupTo: async (destinationPath: string) => {
         copies += 1;
         const pages = await database.onlineBackupTo(destinationPath);
-        if (copies === 1) database.authority.notifications.insert(NOTIFICATION);
+        if (copies === 1) database.authority.notifications.create(NOTIFICATION);
         return pages;
       },
     };
@@ -629,9 +629,15 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       {
         name: "failure",
         insert: (raw: DatabaseSync) => raw.prepare(`
-          INSERT INTO failures (record_key, run_id, record_json, created_at)
-          VALUES (?, ?, ?, ?)
-        `).run(partialFailure.failureId, partialFailure.runId, JSON.stringify(partialFailure), NOW),
+          INSERT INTO failures (record_key, run_id, fingerprint, record_json, created_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(
+          partialFailure.failureId,
+          partialFailure.runId,
+          partialFailure.fingerprint,
+          JSON.stringify(partialFailure),
+          NOW,
+        ),
         violation: /failures-bind-failed-run/,
       },
       {
@@ -1093,7 +1099,7 @@ describe("offline exact-backup restore", () => {
     const database = openDatabase(authorityPath);
     database.authority.commands.insert(COMMAND_FIXTURES[0]);
     const { manifestPath } = await createBackup(database, directory);
-    database.authority.notifications.insert(NOTIFICATION);
+    database.authority.notifications.create(NOTIFICATION);
     database.close();
     writeFileSync(`${authorityPath}-wal`, "suspect wal bytes");
     writeFileSync(`${authorityPath}-shm`, "suspect shm bytes");
@@ -1163,7 +1169,7 @@ describe("offline exact-backup restore", () => {
     const database = openDatabase(authorityPath);
     database.authority.commands.insert(COMMAND_FIXTURES[0]);
     const { manifestPath } = await createBackup(database, directory);
-    database.authority.notifications.insert(NOTIFICATION);
+    database.authority.notifications.create(NOTIFICATION);
     database.close();
     const liveGeneration = AuthorityDatabase.inspectExistingReadOnly(authorityPath).authorityGeneration;
     writeFileSync(`${authorityPath}-wal`, "live wal bytes");
@@ -1186,7 +1192,7 @@ describe("offline exact-backup restore", () => {
     const database = openDatabase(authorityPath);
     database.authority.commands.insert(COMMAND_FIXTURES[0]);
     const { manifestPath } = await createBackup(database, directory);
-    database.authority.notifications.insert(NOTIFICATION);
+    database.authority.notifications.create(NOTIFICATION);
     database.close();
     const liveGeneration = AuthorityDatabase.inspectExistingReadOnly(authorityPath).authorityGeneration;
     writeFileSync(`${authorityPath}-wal`, "live wal bytes");

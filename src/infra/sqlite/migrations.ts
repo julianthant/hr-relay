@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 9;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 10;
 
 /** The run lifecycle states in which exactly one worker owns the row (doc 02 §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -117,6 +117,112 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL,
       CHECK ((state = 'reserved') = (lease_expires_at IS NOT NULL AND deadline_at IS NOT NULL)),
       CHECK ((state = 'settled') = (actual_cost_usd_micros IS NOT NULL))
+    ) STRICT
+  `,
+  // Doc 12 §2.2. A bundle is content-addressed and pinned or purged EXPLICITLY:
+  // `purge_after` exists exactly when retention is ordinary, and an
+  // operator-requested bundle is the one origin that carries no failure.
+  diagnostic_bundles: `
+    CREATE TABLE diagnostic_bundles (
+      record_key TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES tasks(record_key) ON DELETE RESTRICT,
+      origin_kind TEXT NOT NULL CHECK (origin_kind IN ('failure','unexpected-state','subject-mismatch','recovery-park','operator-request')),
+      failure_id TEXT REFERENCES failures(record_key) ON DELETE RESTRICT,
+      content_digest TEXT NOT NULL,
+      retention_kind TEXT NOT NULL CHECK (retention_kind IN ('ordinary','pinned')),
+      purge_after TEXT,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      CHECK ((retention_kind = 'ordinary') = (purge_after IS NOT NULL)),
+      CHECK ((origin_kind = 'operator-request') = (failure_id IS NULL))
+    ) STRICT
+  `,
+  diagnostic_attachments: `
+    CREATE TABLE diagnostic_attachments (
+      record_key TEXT PRIMARY KEY,
+      bundle_id TEXT NOT NULL REFERENCES diagnostic_bundles(record_key) ON DELETE RESTRICT,
+      artifact_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      digest TEXT NOT NULL,
+      sensitivity TEXT NOT NULL CHECK (sensitivity IN ('redacted','restricted')),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      UNIQUE (bundle_id, artifact_id)
+    ) STRICT
+  `,
+  // Doc 12 §2.3. One terminal run, one server-derived receipt. `failed` is the
+  // only result that may name a failure, and the only one that must.
+  evidence_receipts: `
+    CREATE TABLE evidence_receipts (
+      record_key TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL UNIQUE REFERENCES tasks(record_key) ON DELETE RESTRICT,
+      workflow TEXT NOT NULL,
+      attempt INTEGER NOT NULL CHECK (attempt >= 1),
+      result TEXT NOT NULL CHECK (result IN ('verified-done','done-with-warnings','failed','cancelled','partial')),
+      confidence TEXT NOT NULL CHECK (confidence IN ('verified','partial','unknown')),
+      failure_id TEXT REFERENCES failures(record_key) ON DELETE RESTRICT,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      CHECK ((result = 'failed') = (failure_id IS NOT NULL)),
+      CHECK (result <> 'verified-done' OR confidence = 'verified')
+    ) STRICT
+  `,
+  // Doc 12 §4. Knowledge and fix records are authored records, not run output;
+  // they carry no run foreign key on purpose.
+  knowledge_records: `
+    CREATE TABLE knowledge_records (
+      record_key TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK (status IN ('active','superseded','retired','unverified')),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  fix_records: `
+    CREATE TABLE fix_records (
+      record_key TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK (status IN ('draft','verified')),
+      failure_fingerprint TEXT,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  // Doc 09 §6. One row per `(system, date)`: the sequence authority and the
+  // projection lease. `next_seq` advances only inside the same transaction that
+  // writes the assignment row it hands out.
+  ledger_partitions: `
+    CREATE TABLE ledger_partitions (
+      record_key TEXT PRIMARY KEY,
+      system TEXT NOT NULL,
+      ledger_date TEXT NOT NULL,
+      next_seq INTEGER NOT NULL CHECK (next_seq >= 0),
+      lease_holder TEXT,
+      lease_expires_at TEXT,
+      lease_generation INTEGER NOT NULL CHECK (lease_generation >= 0),
+      version INTEGER NOT NULL CHECK (version >= 1),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      UNIQUE (system, ledger_date),
+      CHECK ((lease_holder IS NULL) = (lease_expires_at IS NULL))
+    ) STRICT
+  `,
+  // Doc 09 §6. One row per projected outbox id — the projector's idempotency
+  // key — written BEFORE the append so the append window is repairable. `seq`
+  // is unique inside its partition; nothing may delete or rewrite a row.
+  ledger_projections: `
+    CREATE TABLE ledger_projections (
+      record_key TEXT PRIMARY KEY REFERENCES durable_outbox(record_key) ON DELETE RESTRICT,
+      partition_key TEXT NOT NULL REFERENCES ledger_partitions(record_key) ON DELETE RESTRICT,
+      system TEXT NOT NULL,
+      ledger_date TEXT NOT NULL,
+      seq INTEGER NOT NULL CHECK (seq >= 0),
+      state TEXT NOT NULL CHECK (state IN ('assigned','appended')),
+      line_digest TEXT NOT NULL,
+      assigned_at TEXT NOT NULL,
+      appended_at TEXT,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      UNIQUE (partition_key, seq),
+      CHECK ((state = 'appended') = (appended_at IS NOT NULL))
     ) STRICT
   `,
   leases: jsonRecordTable("leases"),
@@ -260,6 +366,13 @@ const POST_V1_TABLE_ORDER = [
   "run_terminal_authorizations",
   "provider_budget_counters",
   "provider_admissions",
+  "diagnostic_bundles",
+  "diagnostic_attachments",
+  "evidence_receipts",
+  "knowledge_records",
+  "fix_records",
+  "ledger_partitions",
+  "ledger_projections",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -495,6 +608,122 @@ export const SQLITE_MIGRATIONS = deepFreeze([
           OR NEW.version <> OLD.version + 1
         BEGIN
           SELECT RAISE(ABORT, 'provider admission may transition once from reserved to a terminal lifecycle');
+        END`,
+    ],
+  },
+  {
+    /*
+     * D134 — the 2g event/trust foundation. Three groups land together because
+     * they share one schema version and no later 2g slice may edit the chain:
+     *
+     *  1. doc 12's trust tables (diagnostic bundles + attachments, evidence
+     *     receipts, knowledge and fix records);
+     *  2. doc 09 §6's ledger sequencing lease and projection state;
+     *  3. the two column upgrades the projections doc 12 already requires —
+     *     a searchable failure fingerprint, and the notification dedupe fold.
+     *
+     * The notification upgrade is the only one that rewrites stored JSON, and
+     * it does so with the exactly-true values: a row that was inserted once has
+     * been seen once, at its own creation instant. No count is invented.
+     */
+    version: 10,
+    statements: [
+      SQLITE_TABLE_DDL.diagnostic_bundles,
+      SQLITE_TABLE_DDL.diagnostic_attachments,
+      SQLITE_TABLE_DDL.evidence_receipts,
+      SQLITE_TABLE_DDL.knowledge_records,
+      SQLITE_TABLE_DDL.fix_records,
+      SQLITE_TABLE_DDL.ledger_partitions,
+      SQLITE_TABLE_DDL.ledger_projections,
+      "CREATE INDEX diagnostic_bundles_run_idx ON diagnostic_bundles(run_id, created_at)",
+      "CREATE INDEX diagnostic_bundles_failure_idx ON diagnostic_bundles(failure_id)",
+      "CREATE INDEX diagnostic_bundles_retention_idx ON diagnostic_bundles(retention_kind, purge_after)",
+      "CREATE INDEX diagnostic_attachments_artifact_idx ON diagnostic_attachments(artifact_id)",
+      "CREATE INDEX evidence_receipts_workflow_idx ON evidence_receipts(workflow, created_at)",
+      "CREATE INDEX knowledge_records_status_idx ON knowledge_records(status, created_at)",
+      "CREATE INDEX fix_records_fingerprint_idx ON fix_records(failure_fingerprint, created_at)",
+      "CREATE INDEX ledger_projections_partition_idx ON ledger_projections(partition_key, seq)",
+      "CREATE INDEX ledger_projections_state_idx ON ledger_projections(state, assigned_at)",
+      "CREATE INDEX durable_outbox_kind_idx ON durable_outbox(kind, created_at)",
+      // History is appended, never rewritten or erased: an assignment may make
+      // exactly one transition to `appended`, and nothing may delete it.
+      `CREATE TRIGGER ledger_projections_append_once_update
+        BEFORE UPDATE ON ledger_projections
+        WHEN NEW.record_key IS NOT OLD.record_key
+          OR NEW.partition_key IS NOT OLD.partition_key
+          OR NEW.system IS NOT OLD.system
+          OR NEW.ledger_date IS NOT OLD.ledger_date
+          OR NEW.seq IS NOT OLD.seq
+          OR NEW.line_digest IS NOT OLD.line_digest
+          OR NEW.assigned_at IS NOT OLD.assigned_at
+          OR NEW.created_at IS NOT OLD.created_at
+          OR OLD.state <> 'assigned'
+          OR NEW.state <> 'appended'
+        BEGIN
+          SELECT RAISE(ABORT, 'a ledger projection may only transition once from assigned to appended');
+        END`,
+      `CREATE TRIGGER ledger_projections_never_deleted
+        BEFORE DELETE ON ledger_projections
+        BEGIN
+          SELECT RAISE(ABORT, 'ledger projections are never deleted');
+        END`,
+      `CREATE TRIGGER ledger_partitions_sequence_advances_update
+        BEFORE UPDATE OF next_seq, version, system, ledger_date ON ledger_partitions
+        WHEN NEW.system IS NOT OLD.system
+          OR NEW.ledger_date IS NOT OLD.ledger_date
+          OR NEW.next_seq < OLD.next_seq
+          OR NEW.version <> OLD.version + 1
+        BEGIN
+          SELECT RAISE(ABORT, 'a ledger partition sequence and version may only advance');
+        END`,
+      `CREATE TRIGGER ledger_partitions_never_deleted
+        BEFORE DELETE ON ledger_partitions
+        BEGIN
+          SELECT RAISE(ABORT, 'ledger partitions are never deleted');
+        END`,
+      // Doc 12 §2.1/§4.2: "same failure seen before" and `explain failure
+      // <fingerprint>` are lookups, not scans over parsed JSON.
+      "ALTER TABLE failures ADD COLUMN fingerprint TEXT",
+      "UPDATE failures SET fingerprint = json_extract(record_json, '$.fingerprint')",
+      "CREATE INDEX failures_fingerprint_idx ON failures(fingerprint, created_at)",
+      `CREATE TRIGGER failures_require_fingerprint_insert
+        BEFORE INSERT ON failures
+        WHEN NEW.fingerprint IS NULL
+        BEGIN
+          SELECT RAISE(ABORT, 'failures requires the searchable fingerprint column');
+        END`,
+      // Doc 03 §2.6 / doc 12 §6: one row per (actor, dedupe fingerprint), folded
+      // in place. Identity and creation are frozen; count/read/snooze are not.
+      "ALTER TABLE notifications ADD COLUMN actor_id TEXT",
+      "ALTER TABLE notifications ADD COLUMN dedupe_fingerprint TEXT",
+      "ALTER TABLE notifications ADD COLUMN status TEXT",
+      "ALTER TABLE notifications ADD COLUMN seen_count INTEGER",
+      "ALTER TABLE notifications ADD COLUMN version INTEGER",
+      "UPDATE notifications SET record_json = json_set(record_json, '$.count', 1, '$.lastSeenAt', json_extract(record_json, '$.createdAt'))",
+      "UPDATE notifications SET actor_id = json_extract(record_json, '$.actorId'), dedupe_fingerprint = json_extract(record_json, '$.dedupeFingerprint'), status = json_extract(record_json, '$.status'), seen_count = json_extract(record_json, '$.count'), version = json_extract(record_json, '$.version')",
+      "CREATE UNIQUE INDEX notifications_dedupe_idx ON notifications(actor_id, dedupe_fingerprint)",
+      "CREATE INDEX notifications_actor_status_idx ON notifications(actor_id, status, created_at)",
+      `CREATE TRIGGER notifications_require_columns_insert
+        BEFORE INSERT ON notifications
+        WHEN NEW.actor_id IS NULL OR NEW.dedupe_fingerprint IS NULL OR NEW.status IS NULL
+          OR NEW.seen_count IS NULL OR NEW.seen_count < 1 OR NEW.version IS NULL OR NEW.version < 1
+        BEGIN
+          SELECT RAISE(ABORT, 'notifications requires actor_id, dedupe_fingerprint, status, seen_count, and version');
+        END`,
+      `CREATE TRIGGER notifications_immutable_identity_update
+        BEFORE UPDATE ON notifications
+        WHEN NEW.record_key IS NOT OLD.record_key
+          OR NEW.actor_id IS NOT OLD.actor_id
+          OR NEW.dedupe_fingerprint IS NOT OLD.dedupe_fingerprint
+          OR NEW.created_at IS NOT OLD.created_at
+        BEGIN
+          SELECT RAISE(ABORT, 'notification identity and creation instant are immutable');
+        END`,
+      `CREATE TRIGGER notifications_monotonic_update
+        BEFORE UPDATE OF seen_count, version ON notifications
+        WHEN NEW.version <> OLD.version + 1 OR NEW.seen_count < OLD.seen_count
+        BEGIN
+          SELECT RAISE(ABORT, 'notification version advances exactly once and seen_count never rewinds');
         END`,
     ],
   },
