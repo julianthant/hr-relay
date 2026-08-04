@@ -7,9 +7,10 @@
  *  1. the document displays a subject EID (which the caller may set to a
  *     DIFFERENT person, to drive the wrong-subject arm, or make unreadable, to
  *     drive the unknown-subject arm);
- *  2. staging reads back or throws;
- *  3. `commit` refuses a capability the write sequencer did not mint, and
- *     records the click;
+ *  2. staging reads back AND reaches Kuali's document model, or throws;
+ *  3. `commit` refuses a capability the write sequencer did not mint, refuses a
+ *     Save with nothing staged, records the click, and can be made to click a
+ *     Save whose mutation drops the staged value (`commitPayloadOmitsValue`);
  *  4. the read-back reflects the persisted value ONLY — it is not affected by
  *     staging, so "staged but never saved" reads `absent` exactly as the live
  *     page would.
@@ -73,6 +74,19 @@ export interface KualiFakeWorld {
    * the page says anything, and only a reload read-back can tell.
    */
   commitDoesNotPersist?: boolean;
+  /**
+   * When set, the Save click's `submitDocumentV2` does NOT carry the staged
+   * value — the exact 2026-08-04 live failure, where Kuali answered `200` and
+   * rendered `Form saved` for a mutation whose `data` map had no timekeeper
+   * entry at all. The real driver reads the request body and throws; the fake
+   * throws the same way and persists nothing.
+   */
+  commitPayloadOmitsValue?: boolean;
+  /**
+   * When set, the document model never takes the staged value, so staging's
+   * model-commit barrier times out and throws BEFORE any fence exists.
+   */
+  modelNeverCommits?: boolean;
   /** When set, opening the document throws (a stale action id / dead page). */
   openThrows?: Error;
   /** When set, the reload read-back throws — which must become `unknown`, never `absent`. */
@@ -163,6 +177,13 @@ export function createDeterministicKualiDriver(
         + "the field reads back differently after two attempts — refusing to reach the fence",
       );
     }
+    if (world.modelNeverCommits === true) {
+      throw new Error(
+        `Kuali document ${world.documentNumber} did not commit the staged timekeeper value into its `
+        + "document model within 20000ms (measured commit point: ~723ms after the last keystroke); "
+        + "refusing to reach the fence",
+      );
+    }
     const previous = displayedTimekeeper();
     stagedTimekeeperName = input.timekeeperName;
     const staging = KualiTimekeeperStagingSchema.parse({
@@ -246,7 +267,25 @@ export function createDeterministicKualiDriver(
     if (id !== KUALI_RRSS_SAVE_BUTTON) {
       throw new Error(`Kuali driver refuses to commit through ${id}; only ${KUALI_RRSS_SAVE_BUTTON} may be clicked`);
     }
+    if (stagedTimekeeperName === undefined) {
+      throw new Error(
+        "Kuali driver refuses to click Save without a staging on this exact page; a Save with nothing "
+        + "staged re-submits the document unchanged and Kuali still answers 200 with `Form saved`",
+      );
+    }
     world.events.push(`commit:${id}`);
+    if (world.commitPayloadOmitsValue === true) {
+      // The click HAPPENED — this is a post-fence throw, exactly like the live
+      // case — but the mutation carried nothing of this field, so nothing
+      // persists and the caller may never read it as a completed write.
+      throw new Error(
+        `Kuali save on document ${world.documentNumber} did NOT carry the staged timekeeper value: `
+        + `submitDocumentV2 sent null at formKey QGJ63YrCom instead of `
+        + `${JSON.stringify(stagedTimekeeperName)}. Kuali accepts and reports success for such a save `
+        + "while persisting nothing of this field, so this is reported as a failed write, not a "
+        + "completed one",
+      );
+    }
     if (world.commitDoesNotPersist !== true) {
       world.persistedTimekeeperName = displayedTimekeeper();
     }

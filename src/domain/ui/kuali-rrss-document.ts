@@ -10,11 +10,15 @@
  * Two facts shape every recipe below and are not negotiable (doc 07 §3.8 /
  * doc 09 §13 OQ1, the operator-authorized 2026-07-23 live probe, D78):
  *
- *  - **A Kuali save is UI-silent.** No toast, no banner, no URL change. A
- *    reload read-back is therefore the ONLY landing proof; "clicked without an
- *    error" may never count. This independently re-confirms the legacy
- *    2026-04-10 lesson that deleted Kuali error detection as
- *    false-positive-prone (`kuali/LESSONS.md:17-23`).
+ *  - **A Kuali save signal is worthless in BOTH directions.** The 2026-07-23
+ *    probe recorded the save as UI-silent; the 2026-08-04 controlled attempt
+ *    measured the opposite and worse — Kuali renders `Form saved` and answers
+ *    `200` on its `submitDocumentV2` mutation for a save that persisted nothing
+ *    of the targeted field. A reload read-back is therefore the ONLY landing
+ *    proof; "clicked without an error" and "the app said saved" may never
+ *    count. This independently re-confirms the legacy 2026-04-10 lesson that
+ *    deleted Kuali error detection as false-positive-prone
+ *    (`kuali/LESSONS.md:17-23`).
  *  - **DOM refs change on every reload**, so every recipe anchors on role +
  *    the EXACT accessible name — including the literal `*` the form labels
  *    carry — and never on a captured ref.
@@ -46,6 +50,27 @@ export const KUALI_RRSS_TIMEKEEPER_FIELD = ElementIdSchema.parse(
   "kuali.rrss-document.timekeeper-field",
 );
 export const KUALI_RRSS_SAVE_BUTTON = ElementIdSchema.parse("kuali.rrss-document.save-button");
+
+/**
+ * The `formKey` Kuali's own save mutation uses for the `Timekeeper Name:*`
+ * control — NOT the control's DOM id.
+ *
+ * A Kuali Build gadget carries two identifiers: the template gadget id, which
+ * it renders as the DOM `id` (`BWmkKqx40` here), and the `formKey`, which is
+ * what the document's `data` map and the `submitDocumentV2` mutation are keyed
+ * by. They are unrelated strings, so a payload check written against the DOM id
+ * would never match anything and would silently pass or silently fail depending
+ * on which way it was phrased.
+ *
+ * Read live 2026-08-04 off the app's own `ActionPage` query for docs 4489/4490
+ * (`action.document.form.template`, gadget `BWmkKqx40` →
+ * `{"formKey":"QGJ63YrCom","label":"Timekeeper Name:","type":"Textarea"}`), and
+ * confirmed on the wire: a save that carries the staged value sends
+ * `variables.data["QGJ63YrCom"]`. If Kuali ever republishes the form under a
+ * new key, the commit's payload check fails LOUD — it can never pass by
+ * accident, because the check is an equality against the staged value.
+ */
+export const KUALI_RRSS_TIMEKEEPER_FORM_KEY = "QGJ63YrCom";
 
 export const KUALI_RRSS_DOCUMENT_READY = PageStateIdSchema.parse("kuali.rrss-document.ready");
 export const KUALI_RRSS_TIMEKEEPER_STAGED = PageStateIdSchema.parse(

@@ -25,17 +25,34 @@
  * factory checks, and to reconstruct node output from a probe-derived proof on
  * the preflight-present / recovery paths (`outputFromProof`).
  *
- * ## Why `recoveryAbsence` is `operator-only`
+ * ## Why `recoveryAbsence` is `stabilized`, and where its numbers come from
  *
  * D64/D69 let a stabilized negative settle into a new intent generation only
  * when the target has a trustworthy negative read AND a MEASURED propagation
- * window. Kuali's negative read is trustworthy — it is the same deterministic
- * field read the positive uses — but no propagation window has been measured in
- * this repo, because measuring one requires the controlled commit that has not
- * been authorized. Guessing `minSinceFenceMs` would be exactly the
- * plausible-but-unverified constant this program bans, so absence parks for the
- * operator until a real round-trip supplies the number. Over-parking is
- * fail-CLOSED; a guessed window is not.
+ * window. Kuali's negative read has always been trustworthy — it is the same
+ * deterministic field read the positive uses — and the window was measured on
+ * 2026-08-04 by four operator-authorized write/restore cycles on doc 4490,
+ * each one a real `Save` and a real reversal:
+ *
+ * | cycle | click → `submitDocumentV2` response | server state agrees | browser reload agrees |
+ * |---|---|---|---|
+ * | write   | 2495ms | +277ms | +2971ms |
+ * | restore | 3036ms | +283ms | +2475ms |
+ * | write   | 2699ms | +269ms | +2418ms |
+ * | restore | 2459ms | +270ms | +2320ms |
+ *
+ * The dominant term is the SAVE ITSELF, not propagation: once Kuali answers,
+ * its own document query already returns the new value on the first sample
+ * (~270ms, which is mostly that query's own round trip), and a full browser
+ * reload agrees within ~3s. Worst observed fence→trustworthy-negative is
+ * therefore ≈3.3s. `minSinceFenceMs` is set to **30_000** — about nine times
+ * that — and two reads 5s apart must agree, on the same source state. The
+ * margin is deliberately large because the measurement is n=4 on one document.
+ *
+ * This is what the driver's post-click barrier is for: `commit` now waits for
+ * the mutation's RESPONSE, not merely its request. Returning at request time is
+ * what made a landed write read `absent` at 16:56 on 2026-08-04 — the verifier
+ * reloaded while the save was still in flight.
  */
 import { z } from "zod";
 import { EidSchema, ObservationIdSchema, TaskIdSchema, taskId } from "../../ids.js";
@@ -100,11 +117,11 @@ export const KualiSaveTimekeeperAnnotation = defineTaskContract({
       probe: { taskId: TaskIdSchema.parse("kuali/read-timekeeper-annotation"), effect: "read" },
       key: kualiTimekeeperIdempotencyKey,
       recoveryAbsence: {
-        kind: "operator-only",
-        reason:
-          "Kuali's save is UI-silent and no propagation window has been measured for it in this "
-          + "repo; the controlled commit that would measure one is not authorized, so a post-fence "
-          + "absence parks for the operator rather than retrying on a guessed window (D64/D69)",
+        kind: "stabilized",
+        minSinceFenceMs: 30_000,
+        consistentReads: 2,
+        minBetweenReadsMs: 5_000,
+        requireSameSourceState: true,
       },
     },
   },
