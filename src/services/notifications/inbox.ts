@@ -27,7 +27,6 @@ import {
   NotificationDeliverabilitySchema,
   notificationDeliverability,
   projectNotificationTrigger,
-  type NotificationTriggerEvent,
 } from "../../domain/notification-triggers.js";
 import {
   NotificationRecordSchema,
@@ -61,7 +60,8 @@ export const NotificationPublishReportSchema = z.strictObject({
 export type NotificationPublishReport = z.infer<typeof NotificationPublishReportSchema>;
 
 export interface NotificationInbox {
-  publish(event: NotificationTriggerEvent): Promise<NotificationPublishReport>;
+  /** Takes `unknown` and parses: the trigger union is the boundary. */
+  publish(event: unknown): Promise<NotificationPublishReport>;
   list(actorId: string, status?: "unread" | "read"): readonly NotificationRecord[];
   get(notificationId: string): NotificationRecord | undefined;
   markRead(notificationId: string, expectedVersion: number): NotificationRecord;
@@ -117,7 +117,7 @@ export function createNotificationInbox(
   };
 
   return Object.freeze({
-    async publish(event: NotificationTriggerEvent): Promise<NotificationPublishReport> {
+    async publish(event: unknown): Promise<NotificationPublishReport> {
       const projection = projectNotificationTrigger(event);
       const seenAt = now();
 
