@@ -24,8 +24,16 @@ as-built.
 durable table 2g needs (diagnostic bundles + attachments, evidence receipts, knowledge and fix
 records, the ledger projector's `(system,date)` lease and projection state, a searchable failure
 fingerprint, and the notification dedupe fold), and doc 09 §6's ordered actor-attributed ledger
-projector is built in `src/infra/ledger/`. The receipt builder, `explain run`, diagnostic capture
-triggers, and notification trigger wiring are later 2g slices.
+projector is built in `src/infra/ledger/`. Diagnostic capture triggers and notification trigger
+wiring are later 2g slices.
+
+**2g's D82 core landed 2026-08-04 (D136–D139).** `RunEvidenceReceipt`s are DERIVED from authority
+(never minted at settlement) with declared per-field redaction and declared cross-source
+obligations, the run-detail `receipt` and `failure` sections serve real content instead of
+pointers, and `npm run rebuild:cli explain run <traceId|runId>` reads the same derivation. The
+`evidence-receipt` guard is active. One gap is recorded rather than papered over: a transaction
+node cannot yet be a terminal dependency, so `kuali-timekeeper-annotation` cannot reach terminal
+`done` — see doc 12 §Phase-2g as-built.
 
 Seeded 2026-07-31 from `hr-automation@5879004` (branch `feature/rebuild-phase1b`, which stays in the
 legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01.
@@ -83,7 +91,7 @@ npm run test:watch
 npm run test:parity        # doc 13 §7 visual/a11y parity lane — builds the bundle, ASSERTS every reference
 npm run test:parity:update # the ONE deliberate way to re-freeze a reference (PARITY_UPDATE=1)
 
-npm run rebuild:cli        # the isolated rebuild runtime (help | phase)
+npm run rebuild:cli        # the isolated rebuild runtime (help | phase | dashboard | worker | explain)
 npm run rebuild:dashboard  # reserved — lands with the 1g-spine BFF
 
 npm run build:manifest     # regenerate src/domain/workflow/generated-build-manifest.ts
@@ -489,6 +497,26 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   tables in the SAME migration go the other way: abort-on-delete, one `assigned → appended`
   transition, immutable seq/digest/partition. Never let "notifications are mutable" leak into
   anything that records what was actually filed.
+- **2026-08-04: A trust receipt is DERIVED from authority, and its redaction is declared.** The
+  D82 receipt (`src/core/evidence-receipt.ts`) is a pure function of the run record, terminal
+  result/failure, checkpoints + provenance, and write intents: identities fold from the run
+  identity and `generatedAt` is the terminal instant, so re-deriving one run yields the same bytes
+  and `evidenceReceipts.insert` refuses a divergent rebuild by name. It is deliberately NOT minted
+  inside `terminalizeSuccess` — authority must never depend on a projection to settle a real HR
+  transaction, and the two runs this program already produced would otherwise be permanently
+  receipt-less. Redaction is declared per field in `src/domain/trust/evidence-classification.ts`
+  and an UNDECLARED leaf fails loud: dropping it would make a receipt look complete while hiding
+  what the run read. Leaf granularity matches `task-provenance.ts` exactly (an array is one leaf)
+  so every fact is dated by a stored `FactProvenance` row instead of a guess, and `evidenceLeaves`
+  walks keys SORTED because a stored record round-trips through canonical JSON while an in-memory
+  value keeps its authored order — otherwise one run yields two byte-different receipts. Declared
+  cross-source obligations (`evidence-obligations.ts`) carry the SERVER's verdict plus the facts it
+  compared, so the operator never eyeballs two `last4` identifiers. Two gotchas: putting the
+  receipt on the run-detail wire made `src/domain/redaction.ts` browser-reachable and Vite turns an
+  externalized `node:*` import into a proxy that throws at module evaluation, so it lost
+  `node:crypto`/`node:path`; and a transaction checkpoint's provenance covers the WRAPPER fields
+  (`disposition`/`proofSource`/`proof`/`output`), so commit-output leaves are dated through the
+  prefix-covering rule rather than an exact path match.
 - **2026-08-03: The interpreter re-reads authority before every CAS, and replay policy is
   structural.** The worker executor (`src/core/run-executor.ts` + `worker-loop.ts`) never tracks a
   run version locally: heartbeat renewal bumps the version concurrently with node transitions, so

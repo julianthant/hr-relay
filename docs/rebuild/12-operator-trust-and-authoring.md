@@ -122,10 +122,104 @@ should ratify rather than something this foundation guesses. §4.1's `knowledge/
 and the generated per-system `KNOWLEDGE.md` remain that slice's work; the table is the authority the
 generator reads.
 
-Still Phase-2g work, not landed here: automatic bundle capture triggers, the receipt builder,
-`explain run`/`explain failure`, retention/pinning sweeps, notification trigger wiring, and the
-dashboard projections. The `evidence-receipt`, `notification-durability`, and
+Still Phase-2g work, not landed here: automatic bundle capture triggers, retention/pinning sweeps,
+notification trigger wiring, and `explain failure`. The `notification-durability` and
 `knowledge-fix-integrity` guards stay **planned** until those features exist.
+
+---
+
+## Phase 2g as-built — the receipt is derived, not minted (2026-08-04, D136–D139)
+
+The §2.3 receipt builder, its declared redaction, the §2.1 rich failure projection, and §2.5's
+`explain run` landed together. `evidence-receipt` is now **active**.
+
+### D136 — evidence classification and cross-source obligations are DECLARED
+
+`src/domain/trust/evidence-classification.ts` binds every leaf of every workflow input, task output,
+and workflow result to one doc 11 §6 classification plus one permitted transform. Three rules make
+it enforcement rather than decoration:
+
+- **An undeclared leaf fails loud.** `redactDiagnosticFields` drops an unclassified *diagnostic*
+  field with a warning because that channel accepts free-form payloads. A receipt's leaves come from
+  schemas this repository owns, so an undeclared leaf is a missing declaration — a code gap, closed
+  the way `pending-impl-bindings.json` closes one. Dropping it would make a receipt look complete
+  while hiding what the run read or wrote.
+- **The leaf rule is the provenance collector's.** An array is a leaf, an empty object is a leaf, a
+  populated object recurses — exactly `src/core/task-provenance.ts`. A finer rule would produce
+  facts no stored `FactProvenance` row could date, forcing the receipt to guess an observation
+  instant.
+- **The transform is refused at DECLARATION time.** `evidenceTransformAllowed` backs both the
+  diagnostic-field schema and the classification schema, so a `secret`/`allow` line cannot sit in
+  the table looking reviewed until the first run that carries that field.
+
+Business values (`employeeStatus`, `rawStage`, `documentNumber`, onboarding dates, page-state ids,
+proof sources) are `safe-diagnostic`: they describe the transaction, not the person, and the queue
+row already shows them. Person identifiers are `direct-identifier`/`last4`. A LIST of people is
+`sensitive-hr`/`count` — "one candidate matched" is the fact that decides whether a search was
+unambiguous, answerable without naming anyone who was not selected.
+
+`evidence-obligations.ts` is what makes the receipt a double-check rather than a transcript. Each
+obligation names its sources by `(workflow input | node output, dotted path)` and a closed rule, and
+the receipt carries the SERVER's verdict with the facts it compared. The operator never eyeballs two
+redacted identifiers: the receipt already did the comparison. A source that is absent is reported
+absent — the comparison never silently shrinks to one side and calls that agreement.
+
+### D137 — the receipt is a pure function of authority, derived and then pinned
+
+The receipt is **not** written inside the terminal settlement transaction. Two reasons, in order of
+weight. First, authority must never depend on a projection to terminalize: a receipt-shaped problem
+must not be able to block or unwind a settlement of a real HR transaction. Second, the runs this
+program has already produced — the live person-lookup exit run and the controlled Kuali commit —
+terminalized before the builder existed, and a mint-only design could never explain them.
+
+The safety a mint-at-settlement design would have bought is bought differently: every identity folds
+from the run identity, and `generatedAt` is the terminal settlement instant rather than a clock read,
+so re-deriving one run yields the same bytes. `ensureRunEvidenceReceipt` always routes through
+`evidenceReceipts.insert`, whose immutable-insert check refuses a divergent rebuild **by name**. A
+receipt that disagrees with authority is louder than no receipt.
+
+`generatedAt = lifecycle.endedAt` is a stated reading: the receipt describes the run AS OF the
+instant its evidence closed. Nothing about the run changes after that, so a "when was this rendered"
+stamp would carry no information and would destroy determinism.
+
+A conditional node that did not run carries a `DecisionEvidence` with its closed reason and an
+`absent`, **non-mandatory** obligation. An absence the descriptor authored and D114's terminal record
+closed is a correct outcome, not an unresolved one; treating it as unresolved would push every
+correct run with a skipped node to `partial`.
+
+### D138 — the failure section serves content through a whitelist schema
+
+`FailureDetailWireSchema` names every field it projects off the durable `FailureRecord`. That is doc
+11's "unclassified fields drop" applied structurally: a field added to the durable record later
+reaches no surface until someone decides how it is classified, rather than relying on a filter
+someone has to remember to update. Subject identity travels as a digest plus an already-redacted
+display suffix, the page as `urlRedacted`/`titleRedacted`. `sameFingerprintSeen` is §2.1's "same
+failure seen before" as a count — what the operator acts on, answerable without projecting other
+runs' subjects onto this panel. An absent diagnostic bundle names the slice that will fill it.
+
+The receipt section serves the WHOLE `RunEvidenceReceipt`: §2.2 puts redaction at capture time, every
+value already carries its classification and transform, and a second wire projection could only lose
+them. Because the receipt now rides the run-detail wire, `src/domain/redaction.ts` is
+browser-reachable and drops `node:crypto`/`node:path` for `sha256Hex` and a two-separator basename.
+
+### D139 — `explain run` and the receipt are one derivation
+
+`rebuild:cli explain run <traceId|runId> [--json]` resolves either identity and prints §2.5's
+sections in §2.5's order. For a settled run it derives the SAME receipt the dashboard serves, so a
+terminal explanation and a terminal receipt cannot disagree. Every section an operator could misread
+as "nothing happened" says why instead. `--bundle` **refuses**: exporting a diagnostic package
+missing the capture evidence its manifest claims is worse than refusing, because the recipient
+cannot tell.
+
+### Named gap: a transaction node cannot yet be a terminal dependency
+
+The write sequencer stores a transaction checkpoint under the durable `TransactionOutcome` schema
+hash while the descriptor factory's terminal `build` requires the COMMIT CONTRACT's output schema
+hash, and the interpreter never registers a transaction checkpoint as terminal evidence at all. So
+`kuali-timekeeper-annotation` cannot reach terminal `done` today, and the controlled commit has no
+receipt in authority. `tests/unit/evidence-receipt-d82.test.ts` pins that gap as a fact rather than
+papering over it, and its Kuali receipt is assembled from the real durable rows with the result
+VALUE computed by the descriptor's own sealed derive. Closing it belongs to the write lane.
 
 ---
 
