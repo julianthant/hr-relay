@@ -29,6 +29,7 @@ import {
   PictureInPicture2,
 } from "lucide-react";
 import { z } from "zod";
+import { readEnumPreference, writePreference } from "../lib/preference-storage.js";
 import { cn } from "../lib/utils.js";
 import {
   IconButton,
@@ -149,19 +150,14 @@ const PANEL_MODE_STORAGE_KEY = "hr-dashboard.workflow-panel";
 const WORKFLOW_PANEL_ID = "dashboard-workflow-panel";
 const WORKFLOW_PANEL_TOGGLE_ID = "dashboard-workflow-panel-toggle";
 
+/** The documented mode for an operator who has expressed no preference. */
+const PANEL_MODE_DEFAULT: WorkflowPanelMode = "floating";
+
 function readStoredPanelMode(): WorkflowPanelMode {
-  if (typeof window === "undefined") return "floating";
-  try {
-    const stored = window.localStorage.getItem(PANEL_MODE_STORAGE_KEY);
-    return PANEL_MODE_CYCLE.find((mode) => mode === stored) ?? "floating";
-  } catch {
-    // A blocked localStorage (private mode, storage off) is a real browser
-    // state, not a failure to read a mode: it means there is no stored
-    // preference, which is the documented default. Nothing here is
-    // load-bearing — the operator's panel position is a preference, and
-    // substituting the default for it cannot mislead anyone about a run.
-    return "floating";
-  }
+  // Nothing stored, storage refused, and a stored value outside the cycle are
+  // three different things; `readEnumPreference` keeps them apart and lands
+  // them all on the named default, rather than a catch block inventing one.
+  return readEnumPreference(PANEL_MODE_STORAGE_KEY, PANEL_MODE_CYCLE, PANEL_MODE_DEFAULT);
 }
 
 /**
@@ -184,12 +180,10 @@ export function useWorkflowPanelMode(): {
   const setMode = useCallback((next: WorkflowPanelMode) => {
     setOpened(true);
     setModeState(next);
-    try {
-      window.localStorage.setItem(PANEL_MODE_STORAGE_KEY, next);
-    } catch {
-      // Same as the read: an unwritable store loses the preference for next
-      // time, which is not a reason to refuse the operator this one.
-    }
+    // Same as the read: an unwritable store loses the preference for next time,
+    // which is not a reason to refuse the operator this one — but the outcome
+    // is returned rather than swallowed.
+    void writePreference(PANEL_MODE_STORAGE_KEY, next);
   }, []);
 
   const cycleMode = useCallback(() => {

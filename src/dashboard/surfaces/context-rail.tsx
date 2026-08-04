@@ -27,6 +27,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { Database, PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { z } from "zod";
+import { readEnumPreference, writePreference } from "../lib/preference-storage.js";
 import { cn } from "../lib/utils.js";
 import {
   EmptyState,
@@ -62,16 +63,18 @@ export type ContextSections = Partial<Record<ContextSectionKind, ContextSectionP
 
 const RAIL_STORAGE_KEY = "hrauto-rebuild.context-rail";
 
+/** The documented default for a rail nobody has expressed a preference about. */
+const RAIL_DEFAULT: RailPreference = "open";
+
+type RailPreference = "open" | "closed";
+
+const RAIL_PREFERENCES: readonly RailPreference[] = ["open", "closed"];
+
 function readStoredRailOpen(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    return window.localStorage.getItem(RAIL_STORAGE_KEY) !== "closed";
-  } catch {
-    // A blocked localStorage (private mode, storage off) is a real browser
-    // state, not a failed read: it means there is no stored preference, which
-    // is the documented default — open.
-    return true;
-  }
+  // `readEnumPreference` keeps "nothing stored", "storage refused" and "stored
+  // something we do not recognise" apart internally and lands all three on the
+  // named default above — rather than a catch block inventing `true`.
+  return readEnumPreference(RAIL_STORAGE_KEY, RAIL_PREFERENCES, RAIL_DEFAULT) === "open";
 }
 
 /**
@@ -109,12 +112,10 @@ export function useContextRail(): ContextRailState {
   const wide = useThreeColumnRegion();
   const setOpen = useCallback((next: boolean) => {
     setOpenState(next);
-    try {
-      window.localStorage.setItem(RAIL_STORAGE_KEY, next ? "open" : "closed");
-    } catch {
-      // An unwritable store loses the preference for next time. That is not a
-      // reason to refuse the operator this one.
-    }
+    // The write's outcome is returned, not thrown away: an unwritable store
+    // loses the preference for next time, which is not a reason to refuse the
+    // operator this one — but it is a distinguishable outcome, not a silence.
+    void writePreference(RAIL_STORAGE_KEY, next ? "open" : "closed");
   }, []);
   return { open, collapsed: !open && wide, setOpen };
 }

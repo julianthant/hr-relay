@@ -3,6 +3,7 @@
  * src/dashboard/components/dev/rebuild-demo/ds/theme.ts
  */
 import { useCallback, useLayoutEffect, useState } from "react";
+import { readEnumPreference, writePreference } from "../lib/preference-storage.js";
 
 /**
  * The dashboard's theme pair.
@@ -46,16 +47,13 @@ export const DEMO_THEME_LABEL: Record<DemoTheme, string> = {
   light: "Paper Ink",
 };
 
+/** The product ships dark; that is the documented default, not a catch-block guess. */
+const THEME_DEFAULT: DemoTheme = "dark";
+
+const THEMES: readonly DemoTheme[] = ["dark", "light"];
+
 function readStoredTheme(): DemoTheme {
-  if (typeof window === "undefined") return "dark";
-  try {
-    return window.localStorage.getItem(STORAGE_KEY) === "light" ? "light" : "dark";
-  } catch {
-    // A blocked localStorage is a real, expected browser state (private mode,
-    // storage disabled). It is not a failure to read a theme — it means there
-    // is no stored preference, which is the documented default.
-    return "dark";
-  }
+  return readEnumPreference(STORAGE_KEY, THEMES, THEME_DEFAULT);
 }
 
 /**
@@ -101,22 +99,16 @@ export function useDemoTheme(): {
 
   const setTheme = useCallback((next: DemoTheme) => {
     setThemeState(next);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // Persistence is best-effort and not load-bearing: the selection still
-      // applies for this session. Nothing downstream reads it back as truth.
-    }
+    // Persistence is best-effort and not load-bearing: the selection still
+    // applies for this session, and nothing downstream reads it back as truth.
+    // The outcome is still returned rather than swallowed by a bare catch.
+    void writePreference(STORAGE_KEY, next);
   }, []);
 
   const toggleTheme = useCallback(() => {
     setThemeState((current) => {
       const next: DemoTheme = current === "dark" ? "light" : "dark";
-      try {
-        window.localStorage.setItem(STORAGE_KEY, next);
-      } catch {
-        /* see setTheme */
-      }
+      void writePreference(STORAGE_KEY, next);
       return next;
     });
   }, []);

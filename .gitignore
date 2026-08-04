@@ -30,6 +30,16 @@ duo-autopilot/node_modules/
 # Coverage lane output (`npm run test:coverage`) — regenerated every run.
 coverage/
 
+# Built frontend bundle (`npm run rebuild:dashboard:web:build`) — regenerated,
+# and the parity lane rebuilds it before capturing.
+dist/
+
+# Playwright parity lane scratch: failure screenshots, traces, diff images.
+# The REFERENCE set under tests/parity/references/ is committed on purpose —
+# that is the evidence; this is only what a failing run left behind.
+tests/parity/.output/
+.playwright-cli/
+
 # OS
 .DS_Store
 Thumbs.db
