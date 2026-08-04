@@ -100,6 +100,41 @@ not.
 
 ---
 
+## Phase 1i-spine as-built config-path delta (2026-08-04, D121)
+
+**A path default is a RUNTIME value, so it cannot live in the browser-reachable config schema.**
+`src/domain/commands.ts` imports `SettingsOverrideSchema` from `src/domain/config/schema.ts`, and
+the dashboard bundle imports commands — so `schema.ts` is evaluated in the browser. Its
+`node:path`-derived defaults made that fatal: Vite's dev server replaces an externalized built-in
+with a proxy that throws on the first property read, so the named-import **binding alone** killed
+the bundle at module-evaluation time, before any default could be materialized. Making the defaults
+lazy is therefore not sufficient — the import itself has to be gone (doc 13 §8.13 owns the general
+rule and its guard).
+
+**As-built, the resolver keeps its `env > settings.json > default` precedence unchanged, and the
+split is on WHERE a default comes from, not on how it is chosen:**
+
+- `src/domain/config/schema.ts` stays a pure, browser-reachable contract. Every leaf whose default
+  can only be produced by resolving a repo-relative literal against a process working directory —
+  `reportsDir`, `downloadsDir`, `onboardingDocsDir`, `i9CheckTrackerPath`, `stateRoot`,
+  `artifactRoot`, `browserProfileRoot`, `duoCredential`, `duoExtensionDir` — is **REQUIRED** there
+  rather than defaulted, so a caller that omits it gets a loud zod error naming the exact leaf.
+- `src/domain/config/runtime-paths.ts` is server-only and owns those defaults. It resolves each to
+  an absolute path (memoizing the profile root, which every consumer and the Duo credential path
+  derive from) and **parses** the result through `ConfigPathsSchema`, so a default that failed to
+  resolve absolute fails loud at its source. The values are byte-identical to what the runtime
+  resolved before the split. `src/domain/config/resolve.ts` is its only caller.
+- A repo-relative literal is never a runtime path. A worker or daemon started from another working
+  directory would otherwise resolve a different, empty profile root and silently re-authenticate,
+  or write a second credential home.
+
+**A browser stub, bundler alias, or polyfill for `node:path` is explicitly rejected.** A stubbed
+`resolve()` invents a plausible-but-wrong absolute path, which would point Duo credential reads and
+artifact writes at the wrong location — the silent-wrong-value failure this program exists to
+prevent. The browser is not entitled to a filesystem default; it is entitled to a loud error.
+
+---
+
 ## 1. Grounding — what exists today, why it hurts
 
 - **No central clock.** `grep -c "new Date(" src` = 238, `grep -c "Date\.now(" src` = 207 → **445

@@ -1,6 +1,6 @@
-# Reconciliation memo — binding cross-doc decisions (2026-07-17 through 2026-08-02)
+# Reconciliation memo — binding cross-doc decisions (2026-07-17 through 2026-08-04)
 
-Status: **binding revision 2026-08-02 (Round 18).** Earlier rounds remain as decision history;
+Status: **binding revision 2026-08-04 (Round 21).** Earlier rounds remain as decision history;
 Round 7 supersedes incompatible typing, UI-access, control, delegation, recovery, trust,
 knowledge, and workflow-editor claims; Round 9 supersedes the proposed executor-lane/session-pool
 capacity model; Round 10 supersedes D73 and ratifies isolated coexistence, one all-at-once cutover,
@@ -8,14 +8,14 @@ legacy preservation/change accounting, coverage floors, and deferred probe miles
 moves the rebuild out of `temp_src/` into its own repository, superseding the in-tree half of D88
 and amending the mechanics of D89/D90; Round 12 ratifies D94's fail-closed cross-repo accounting
 mechanics.
-Round 18 ratifies the remaining Phase-1f runtime/authority seams as D109–D118.
+Round 18 ratifies the remaining Phase-1f runtime/authority seams as D109–D118; Rounds 19–21 add D119–D121 from the live lane that produced Phase 1's exit test.
 
 > **What this doc is, as of Round 10: a decision CHANGELOG, not a specification.** Its job is to
 > record *what was decided, when, and which doc owns it* — so a reader can reconstruct why a
 > contract has its current shape. It is **not** where you read the current contract. The owning
 > doc (D1 matrix below) is the only readable current truth, and every ratified decision must be
 > folded into that doc **in the same commit that records it** (charter standing rule, added
-> 2026-07-26). Round 8–18 entries are therefore deliberately one-liners with a pointer: the normative
+> 2026-07-26). Round 8–21 entries are therefore deliberately one-liners with a pointer: the normative
 > text lives in the owner. Rounds 1–7 predate that rule and still carry normative prose; treat
 > the owning doc as authoritative wherever they differ.
 
@@ -26,7 +26,7 @@ Amendment agents rewrite each doc to comply; a doc may reference another doc's o
 must never redefine it.
 
 > **Implementation rule:** don't implement from this file. D1–D25 are historical rationale, not
-> copyable current API/DDL; D26–D72 amend each other in round order (later wins); D73–D118 are
+> copyable current API/DDL; D26–D72 amend each other in round order (later wins); D73–D121 are
 > pointers only. **Read the owning doc.** If an owning doc contradicts a decision here, the doc is
 > either correct (it was folded) or stale (it wasn't) — check the doc's amendment date against the
 > round date and fix the doc, never work from this memo. Current contract shapes live in owning
@@ -697,6 +697,12 @@ changing those bytes, and later schema work must append v10.
 | # | Decision | Owner (normative text) |
 |---|---|---|
 | **D120** | **A BROWSER SESSION'S AUTHENTICATION IS PROVEN BY TWO INDEPENDENT CONTENT-LEVEL FACTS (A SERVER-ISSUED SESSION ARTIFACT AND THE ABSENCE OF EVERY SIGN-IN FORM), NEVER BY A URL; THE SAME VERIFIER RUNS ON EVERY LOGIN RETURN PATH AND ON THE NEUTRAL RESET.** | doc 05 §4.1 (primary); doc 10 §5 guard `authentication-proof-not-url` |
+
+## Reconciliation round 21 (2026-08-04) — browser-bundle purity
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D121** | **NO MODULE THE DASHBOARD ENTRY CAN VALUE-REACH MAY STATICALLY IMPORT A NODE BUILT-IN; A CONFIG LEAF WHOSE DEFAULT ONLY EXISTS AT RUNTIME IS REQUIRED IN THE SHARED SCHEMA AND SUPPLIED BY THE SERVER RESOLVER, NEVER STUBBED OR POLYFILLED FOR THE BROWSER.** | doc 13 §8.13 (primary); doc 11 §Phase-1i-spine config-path delta; doc 10 guard `dashboard-wire-boundary` |
 
 **Two separate D-series exist — do not confuse them.** This memo's `D1–D120` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row

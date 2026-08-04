@@ -215,6 +215,66 @@ handler later.
 
 ---
 
+## Phase 1g/1i-spine as-built presentation deltas (2026-08-04)
+
+D74's live exit test (run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, master
+plan §Phase 1) rendered all four parity surfaces from the ONE projection and agreed on every count.
+It also surfaced four things about this doc's contracts that fixtures had passed. **Two are fixed
+and are now as-built contract; three remain open and are carried into 2i** — every one of them is
+presentation-only, with correct durable authority underneath, which is why none blocked the exit.
+
+**Fixed — folding and identity are keyed by the WHOLE span identity.** §1.1's task identity is
+`(runId, attempt, spanPath)` and that has to be honoured in both the projector and the wire. A node
+that fails and re-runs under a later RUN attempt emits a second span at the same `spanPath`; the
+projector folded on `spanPath` alone and the run-detail timeline seeded its React keys with
+`<trace>/<node>#<taskAttempt>`, so the exit test's two `cross-verify` spans — a 262.9s cancellation
+and a 12.8s success — collapsed into one row. Both are real history and both must render. The
+projector now folds by `(attempt, spanPath)`; the timeline seed is `task:<attempt>:<spanPath>`.
+A folded span is a *fact about one execution*, never a per-node latest-wins slot — that is the same
+re-stamp failure §0 catalogues, in a new place.
+
+**Open, carried into 2i (1) — `skipped` has no wire arm, so a skipped node reads as "cancelled".**
+`RunDetailWire`'s timeline state enum (`src/domain/dashboard/run-detail.ts`) is
+`pending|active|done|failed|blocked|cancelled`, so `buildRunDetail`
+(`src/server/dashboard/queries/run-detail.ts`) maps span outcome `skipped → cancelled`. In the exit
+run the durable result was exactly right — `crm-dates` recorded `state: not-run,
+reason: condition-false` — while its timeline row said **Cancelled**. §9 D-status vocabulary defines
+`Cancelled` as *"You stopped it. Not an alert — a deliberate act."* A branch whose condition was
+false is the opposite: nobody acted, and nothing was interrupted. Presenting one as the other tells
+the operator an action was taken that was not, which the charter forbids independently of whether
+the stored data is right. **Required in 2i:** a `skipped` arm on the timeline state enum with its own
+treatment (and its own accessible name), plus the closed `not-run` reason carried through to the row
+so the surface can say *why* it did not run rather than only that it did not.
+
+**Open, carried into 2i (2) — the queue row's elapsed is time-since-start, not run duration.**
+`RowFooterLine` (`src/dashboard/surfaces/queue.tsx`) computes `fmtElapsed(elapsedSecondsBetween(
+surface.startedAt, nowIso))` for every status except `queued`, so a terminal row keeps counting
+forever: the exit test's row displayed **2h 47m** for a run whose execution was ~14.5 minutes. The
+row is not lying about a number it invented — it is answering a different question than the one the
+operator is asking of a finished run. §2.2's rule is that the wire carries surfaces, so the
+arithmetic staying on the client is fine; what is missing is the second instant. `QueueBaseFields`
+already carries `updatedAt`, which the terminal-authority contract sets equal to
+`lifecycle.endedAt`, but relying on that couples the display to an invariant the wire does not
+state. **Required in 2i:** an explicit terminal `endedAt` on the queue wire, and a row that shows
+`endedAt − startedAt` once a run is terminal.
+
+**Open, carried into 2i (3) — two status filters are both named "Done", contradicting D22.**
+`verifiedDone` and `doneWarnings` (`src/dashboard/ds/primitives-status.tsx`) both carry
+`label: "Done"`. `StatusFilters` renders one pill per `QueueStatus`, and `done → verifiedDone` /
+`partial → doneWarnings`, so the bar shows two controls whose accessible names are `"Done — 1"` and
+`"Done — 0"`, separated only by hue and glyph. **This is a genuine contradiction with D22 as
+ratified in §9**, which shortened `Verified done` to `Done` on the explicit ground that *"the
+sibling deliberately did not shorten, because the qualifier IS the difference between them"*, and
+which justified the colour change by noting *"the word remains: this is not colour-only encoding."*
+With both words identical, the filter pair IS colour-only encoding. The code cites a later operator
+direction (keep `Done` + the `△ n` count chip, drop "with warnings") that was applied to the pill
+without being folded back into D22 — the exact drift risk register §11 names. **Required in 2i:**
+either amend D22 to record that direction and give the FILTER a non-colour distinguisher (the `△`
+count is a row affordance and is absent at count 0, so it cannot carry this), or restore the
+qualifier on the filter. This one needs a decision before a code change, not a fix.
+
+---
+
 ## 0. What exists today (and what specifically hurts)
 
 | Today | Mechanism | Pain |
