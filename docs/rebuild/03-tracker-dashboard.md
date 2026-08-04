@@ -219,9 +219,11 @@ handler later.
 
 D74's live exit test (run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, master
 plan §Phase 1) rendered all four parity surfaces from the ONE projection and agreed on every count.
-It also surfaced four things about this doc's contracts that fixtures had passed. **Two are fixed
-and are now as-built contract; three remain open and are carried into 2i** — every one of them is
+It also surfaced four things about this doc's contracts that fixtures had passed. **Three are fixed
+and are now as-built contract; one remains open and is carried into 2i** — every one of them is
 presentation-only, with correct durable authority underneath, which is why none blocked the exit.
+The `skipped`-arm and terminal-duration deltas were closed on 2026-08-04 as D123/D124; the
+duplicate `Done` filter pair still needs an operator decision before any code changes.
 
 **Fixed — folding and identity are keyed by the WHOLE span identity.** §1.1's task identity is
 `(runId, attempt, spanPath)` and that has to be honoured in both the projector and the wire. A node
@@ -233,32 +235,57 @@ projector now folds by `(attempt, spanPath)`; the timeline seed is `task:<attemp
 A folded span is a *fact about one execution*, never a per-node latest-wins slot — that is the same
 re-stamp failure §0 catalogues, in a new place.
 
-**Open, carried into 2i (1) — `skipped` has no wire arm, so a skipped node reads as "cancelled".**
-`RunDetailWire`'s timeline state enum (`src/domain/dashboard/run-detail.ts`) is
-`pending|active|done|failed|blocked|cancelled`, so `buildRunDetail`
-(`src/server/dashboard/queries/run-detail.ts`) maps span outcome `skipped → cancelled`. In the exit
-run the durable result was exactly right — `crm-dates` recorded `state: not-run,
-reason: condition-false` — while its timeline row said **Cancelled**. §9 D-status vocabulary defines
-`Cancelled` as *"You stopped it. Not an alert — a deliberate act."* A branch whose condition was
-false is the opposite: nobody acted, and nothing was interrupted. Presenting one as the other tells
-the operator an action was taken that was not, which the charter forbids independently of whether
-the stored data is right. **Required in 2i:** a `skipped` arm on the timeline state enum with its own
-treatment (and its own accessible name), plus the closed `not-run` reason carried through to the row
-so the surface can say *why* it did not run rather than only that it did not.
+**Fixed (D123, 2026-08-04) — `skipped` is its own timeline arm and carries its closed reason.**
+`RunDetailWire`'s timeline state enum used to be `pending|active|done|failed|blocked|cancelled`, so
+`buildRunDetail` (`src/server/dashboard/queries/run-detail.ts`) mapped span outcome
+`skipped → cancelled`. In the exit run the durable result was exactly right — `crm-dates` recorded
+`state: not-run, reason: condition-false` — while its timeline row said **Cancelled**. §9 D-status
+vocabulary defines `Cancelled` as *"You stopped it. Not an alert — a deliberate act."* A branch
+whose condition was false is the opposite: nobody acted, and nothing was interrupted.
 
-**Open, carried into 2i (2) — the queue row's elapsed is time-since-start, not run duration.**
-`RowFooterLine` (`src/dashboard/surfaces/queue.tsx`) computes `fmtElapsed(elapsedSecondsBetween(
-surface.startedAt, nowIso))` for every status except `queued`, so a terminal row keeps counting
-forever: the exit test's row displayed **2h 47m** for a run whose execution was ~14.5 minutes. The
-row is not lying about a number it invented — it is answering a different question than the one the
-operator is asking of a finished run. §2.2's rule is that the wire carries surfaces, so the
-arithmetic staying on the client is fine; what is missing is the second instant. `QueueBaseFields`
-already carries `updatedAt`, which the terminal-authority contract sets equal to
-`lifecycle.endedAt`, but relying on that couples the display to an invariant the wire does not
-state. **Required in 2i:** an explicit terminal `endedAt` on the queue wire, and a row that shows
-`endedAt − startedAt` once a run is terminal.
+As-built contract:
 
-**Open, carried into 2i (3) — two status filters are both named "Done", contradicting D22.**
+- `TimelineEventWireSchema.state` is `pending|active|done|failed|blocked|cancelled|**skipped**`.
+  The query's closed mapping is `done→done`, `failed→failed`, `skipped→skipped`,
+  `interrupted→blocked`, `cancelled|discarded|superseded→cancelled`.
+- Every timeline event carries `notRun`, an explicit absence union. On a `skipped` event it is
+  `{ state: "present", reason }` over the **same closed vocabulary the durable result uses**
+  (`condition-false | branch-not-selected`, `TerminalNotRunReasonSchema`), or an explicit
+  `{ state: "absent", reason: "this step did not run; its span recorded no reason" }`. A non-skipped
+  event may never carry one — the schema refuses it. **A missing reason is never back-filled.**
+- The reason reaches the wire as data, not inference: the executor stamps `notRunReason` on the
+  `span.ended` task event when it skips a node by `when`, the projector folds it verbatim, and the
+  query reads it. A skip is ONE fact with one vocabulary in three places, pinned by a parity arm in
+  `tests/unit/events/span-events.test.ts`.
+- The surface renders it distinctly and NOT by hue: a skipped step draws a hollow ring and an
+  outlined dashed bar (the "nothing happened here" shape) against `cancelled`'s solid bar, and its
+  accessible name is `<label> — skipped, did not run: <why>` rather than `<label> — cancelled`.
+
+**Fixed (D124, 2026-08-04) — a terminal queue row shows its DURATION, and the wire carries the
+second instant.** `RowFooterLine` (`src/dashboard/surfaces/queue.tsx`) computed
+`fmtElapsed(elapsedSecondsBetween(surface.startedAt, nowIso))` for every status except `queued`, so
+a terminal row kept counting forever: the exit test's row displayed **2h 47m** for a run whose
+execution was ~14.5 minutes. The row was not lying about a number it invented — it was answering a
+different question than the one the operator asks of a finished run.
+
+As-built contract:
+
+- `QueueBaseFields` carries `endedAt`, an explicit presence union, in its own right. `updatedAt`
+  happens to equal `lifecycle.endedAt` on a settled run, but the wire never *said* so, and a row
+  that measured a duration from it would depend on an invariant it cannot see.
+- The projector serves `lifecycle.endedAt` when authority is terminal, the run span's `endedAt`
+  when the status came from the span stream, and an explicit reasoned absence otherwise. **An
+  in-flight row may never carry a terminal instant** — the schema refuses it, because a running run
+  that carried one would let a surface print a finished duration for live work.
+- §2.2's rule that arithmetic may stay on the client is unchanged; what changed is that the client
+  is now given both instants. `runTiming` (`src/dashboard/surfaces/format.ts`, extracted so it is
+  measured logic rather than presentation) renders: nothing for `queued`; live `now − startedAt`
+  while in flight, including the parked statuses; `took <endedAt − startedAt>` once terminal; and,
+  for a terminal row whose `endedAt` the server could not serve, an explicit **`duration unknown`**
+  carrying the server's own reason. It never substitutes `now` — "we do not know when it ended" and
+  "it ended just now" are different facts and must not render as the same number.
+
+**Open, carried into 2i (the only one left) — two status filters are both named "Done", contradicting D22.**
 `verifiedDone` and `doneWarnings` (`src/dashboard/ds/primitives-status.tsx`) both carry
 `label: "Done"`. `StatusFilters` renders one pill per `QueueStatus`, and `done → verifiedDone` /
 `partial → doneWarnings`, so the bar shows two controls whose accessible names are `"Done — 1"` and

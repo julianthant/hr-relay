@@ -84,6 +84,39 @@ neither, transitively or otherwise. UCPath and CRM are bound today; a system wit
 and a login recipe refuses at open rather than launching an unusable browser, and the exclusive
 OnBase identity lease is explicitly not landed here.
 
+## Session acquisition is bounded separately from the task (D125, 2026-08-04)
+
+**`timeouts.sessionAcquireMs` (default 60 000 ms) bounds ONE browser-session acquisition — the
+factory `open` plus that system's login recipe — and it is a different bound from
+`timeouts.taskMs`.** The kernel-owned `MonotonicDeadlineScheduler` arms it, the acquisition runs
+under its own linked `AbortSignal` so a cooperative recipe cancels itself, and expiry FAILS the
+lease with a message naming both leaves. It is never converted into a retry.
+
+**Why the whole-task deadline could not do this job.** The Phase-1 live exit run
+(`4ebf7275-0158-49af-a78f-1f37948efb27`, master plan §Phase 1) spent **262.9 s** inside one
+`withDriver` when the CRM browser died. Every step *inside* the login recipe was already bounded —
+each navigation by `navigationMs`, the Duo window by `duoApprovalCrmSeconds` — but **nothing bounded
+the chain**, and the only outer bound reaching that code was `taskMs`. `taskMs` must stay generous
+because it covers the real read (UCPath person-org ≈22 s; Kuali fill→save→reload→verify 8–10 s per
+cycle), so it is structurally the wrong instrument for "is this session alive?". In that run it
+never fired: the D118 claim sweep (60 s staleness on a 30 s cadence, measured on the WALL clock)
+requeued the run first, the next heartbeat reported the claim lost, and the task span closed
+`cancelled` at 4 m 23 s. Claim expiry is recovery, not a liveness bound — it is the last line, and
+it was doing first-line work.
+
+**Why 60 s is safe.** Acquisition is not the slow part of a healthy run: §4.1 authentication is
+live-verified at ~17 s (UCPath) and ~12 s (CRM) with Duo Autopilot clearing the ceremony hands-off
+(charter §9), so the default is >3x the measured worst case. It cannot fail a legitimately slow
+*read*, because a read happens after acquisition, under `taskMs`. A deployment that reverts to a
+HANDS-ON Duo approval must raise `sessionAcquireMs` above `duoApprovalSeconds` — the inner Duo wait
+would otherwise outlive its own envelope — and the refusal message says exactly that.
+
+**An acquisition that outlives its bound is UNCERTAIN.** A cooperative recipe rejects on the
+acquisition signal and runs `#openAndLogin`'s own proven cleanup. A non-cooperative one may still
+land a live session afterwards; that session is poison-closed rather than inherited by the next
+lease as a warm reuse, and a close that cannot be proven leaves the system poisoned so the next
+acquisition refuses by name (§4, doc 05 poison rule).
+
 The `fresh-session-boundary` guard is now ACTIVE against these pieces (doc 10 §5): the boundary
 close reason exists only in the session-ownership modules, every authored `session:` need is a
 string literal rather than a computed value, repeated `reuse-worker` needs mint no boundary, and

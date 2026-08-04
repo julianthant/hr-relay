@@ -285,10 +285,13 @@ export const ConfigSchema = z.strictObject({
     longNavigationMs: z.number().int().positive(),
     ukgNavigationMs: z.number().int().positive(),
     taskMs: z.number().int().positive(),
+    /** D125 — bounds ONE session acquisition (open + login); see doc 05. */
+    sessionAcquireMs: z.number().int().positive(),
     transactionMs: z.number().int().positive(),
     /* … */
   }).default({ navigationMs: 15_000, longNavigationMs: 30_000,
                         ukgNavigationMs: 60_000, taskMs: 180_000,
+                        sessionAcquireMs: 60_000,
                         transactionMs: 300_000, /* every required sibling */ }),
   paths: z.strictObject({ reportsDir: AbsolutePathSchema, stateBackupDir: AbsolutePathSchema,
                           /* … */ }).default({ /* full user-agnostic defaults */ }),

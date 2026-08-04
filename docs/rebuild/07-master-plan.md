@@ -337,42 +337,51 @@ shape simplification rather than being normalized as editor lag.
   waiting. Authentication is D120 content-level proof, live-verified at ~17s (ucpath) and ~12s (crm)
   including a real Duo ceremony.
 
-  **Honest caveat — failure latency.** The `cross-verify` cancellation took **262.9s** to surface.
-  The run recovered correctly and no wrong data was produced, but 4m23s is the cost of discovering a
-  dead browser session, and it is charged to the operator's wall clock. Bounding it is Phase-2 work
-  (doc 05 §3's deadline contract already exists; what is missing is a tighter session-liveness
-  budget), not a Phase-1 regression.
+  **Failure latency — root-caused and FIXED 2026-08-04 (D125).** The `cross-verify` cancellation took
+  **262.9s** to surface. The run recovered correctly and no wrong data was produced, but 4m23s is the
+  cost of discovering a dead browser session, and it was charged to the operator's wall clock. The
+  hang was in session ACQUISITION, not in the read: `factory.open` succeeded (which is why the run's
+  CRM close span reads `login-failed` with no matching start span), and the login recipe then chained
+  steps that are each individually bounded while **nothing bounded the chain**. The only outer bound
+  reaching that code was `timeouts.taskMs` (180 000 ms) — which must stay generous for the real read
+  and never fired here anyway: the D118 claim sweep (wall-clock 60s staleness, 30s cadence) requeued
+  the run first, the heartbeat then reported the claim lost, and the span closed `cancelled`. Claim
+  expiry is recovery, not a liveness bound. The fix is a separate, much shorter acquisition bound —
+  `timeouts.sessionAcquireMs`, default 60 000 ms — armed on the same kernel scheduler, failing loud
+  and never retrying. See doc 05 §"Session acquisition is bounded separately from the task".
 
-**Carried forward into 2i — three presentation defects, recorded rather than fixed.** All three are
-presentation-only: the durable authority is correct in every case, which is why none of them blocks
-the exit. They are logged here because this program's charter is that a surface must never mislead
-the operator, and each of these does. Normative text lives in doc 03's
-*Phase 1g/1i-spine as-built presentation deltas (2026-08-04)*.
+**Three presentation defects the exit run exposed — two FIXED 2026-08-04, one still needs an
+operator decision.** All three are presentation-only: the durable authority is correct in every
+case, which is why none of them blocked the exit. They were logged here because this program's
+charter is that a surface must never mislead the operator, and each of these did. Normative text
+lives in doc 03's *Phase 1g/1i-spine as-built presentation deltas*.
 
-1. **A conditionally-skipped node renders as "cancelled" in the run-detail timeline.** The
-   `RunDetailWire` step-state enum (`src/domain/dashboard/run-detail.ts`) has no `skipped` arm, so
-   `src/server/dashboard/queries/run-detail.ts` maps `skipped → cancelled`. The durable result is
-   right (`crm-dates` = `not-run / condition-false`); the timeline is not. "Cancelled" names an act
-   someone took — doc 03 D-status vocabulary is explicit that it means *"You stopped it"* — and a
-   branch that was never supposed to run is the opposite of that. The fix is a `skipped` arm on the
-   wire enum plus its own timeline treatment, in **2i**.
-2. **The queue row's elapsed keeps counting after a run is terminal.** `RowFooterLine`
-   (`src/dashboard/surfaces/queue.tsx`) computes `now − startedAt` for every non-`queued` status, so
-   the exit-test row displayed **2h 47m** for a run whose actual execution was ~14.5 minutes. It is
-   **elapsed-since-start, not run duration** — verified in code, not inferred. The wire already
-   carries `updatedAt` (which the terminal-authority contract sets equal to `lifecycle.endedAt`), so
-   a terminal row can show a true duration without a new field; it needs an explicit terminal `endedAt`
-   on the queue wire to be unambiguous. **2i**.
-3. **Two status-filter buttons are both labelled "Done".** `verifiedDone` and `doneWarnings` in
-   `src/dashboard/ds/primitives-status.tsx` both carry `label: "Done"`, and `StatusFilters` renders a
-   pill per `QueueStatus` — so `done` and `partial` produce two controls whose accessible names are
-   `"Done — 1"` and `"Done — 0"`, distinguished only by hue and glyph. **This contradicts doc 03 D22
-   as ratified**, which shortened `Verified done` to `Done` *specifically on the grounds that the
-   sibling would keep its qualifier* ("the sibling deliberately did not shorten, because the
-   qualifier IS the difference between them"). The code cites a later operator direction (keep
-   `Done` + `△ n`, drop "with warnings"); either D22 is amended to record that direction and supply
-   a non-colour distinguisher for the filter, or the filter restores the qualifier. **2i**, and it
-   needs a decision before the code changes.
+1. **FIXED (D123) — a conditionally-skipped node rendered as "cancelled" in the run-detail
+   timeline.** The `RunDetailWire` step-state enum (`src/domain/dashboard/run-detail.ts`) had no
+   `skipped` arm, so `src/server/dashboard/queries/run-detail.ts` mapped `skipped → cancelled`. The
+   durable result was right (`crm-dates` = `not-run / condition-false`); the timeline was not.
+   "Cancelled" names an act someone took — doc 03 D-status vocabulary is explicit that it means
+   *"You stopped it"* — and a branch that was never supposed to run is the opposite. The wire enum
+   now has a `skipped` arm, every timeline event carries an explicit `notRun` reason-or-absence over
+   the durable result's own closed vocabulary, the executor stamps that reason on the skip span, and
+   the surface draws a skipped step with its own shape and its own accessible name.
+2. **FIXED (D124) — the queue row's elapsed kept counting after a run went terminal.**
+   `RowFooterLine` (`src/dashboard/surfaces/queue.tsx`) computed `now − startedAt` for every
+   non-`queued` status, so the exit-test row displayed **2h 47m** for a run whose actual execution
+   was ~14.5 minutes. It was **elapsed-since-start, not run duration**. The queue wire now serves an
+   explicit terminal `endedAt`, an in-flight row may not carry one at all, and the row renders
+   `took <endedAt − startedAt>` once terminal — or an explicit `duration unknown` with the server's
+   reason if the instant is genuinely missing, never a silent fall back to `now`.
+3. **STILL OPEN, needs a decision — two status-filter buttons are both labelled "Done".**
+   `verifiedDone` and `doneWarnings` in `src/dashboard/ds/primitives-status.tsx` both carry
+   `label: "Done"`, and `StatusFilters` renders a pill per `QueueStatus` — so `done` and `partial`
+   produce two controls whose accessible names are `"Done — 1"` and `"Done — 0"`, distinguished only
+   by hue and glyph. **This contradicts doc 03 D22 as ratified**, which shortened `Verified done` to
+   `Done` *specifically on the grounds that the sibling would keep its qualifier* ("the sibling
+   deliberately did not shorten, because the qualifier IS the difference between them"). The code
+   cites a later operator direction (keep `Done` + `△ n`, drop "with warnings"); either D22 is
+   amended to record that direction and supply a non-colour distinguisher for the filter, or the
+   filter restores the qualifier. **2i**, and it needs a decision before the code changes.
 - In the rebuild repo, `npm run typecheck`, `npm run lint`, `npm run test`, and
   `npm run test:architecture` are **all green**, with every guard inventoried and covering the
   rebuild `src/` and `tests/` roots. In the legacy repo, `npm run lint:legacy-tests-ratchet` is the

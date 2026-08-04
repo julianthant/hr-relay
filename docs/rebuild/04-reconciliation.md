@@ -710,6 +710,14 @@ changing those bytes, and later schema work must append v10.
 |---|---|---|
 | **D122** | **THE PHASE-2 TRANSACTION PROOF IS THE KUALI RRSS TIMEKEEPER ANNOTATION, WHOSE COMPLETION ARM IS A RELOAD READ-BACK AND WHOSE POST-FENCE ABSENCE IS `operator-only` UNTIL A CONTROLLED COMMIT MEASURES A REAL PROPAGATION WINDOW; THE MUTATION-CAPABILITY REGISTRY LIVES IN `src/base/mutation-capability.ts` WITH ONE PERMITTED MINTING CALLER, AND A `commit` IMPLEMENTATION IS LEGAL ONLY IN A STORE DRIVER OWNER THAT VALIDATES ITS CAPABILITY BEFORE CLICKING. AN `actionId` IS NOT STABLE ACROSS WORKFLOW STEPS, SO A RUN CARRIES THE DOCUMENT NUMBER AND THE DRIVER PROVES IT FROM THE PAGE.** | doc 09 §Phase-2 transaction-proof as-built (primary); doc 07 §3.8; doc 10 guards `task-driver-boundary`, `subject-before-fence` |
 
+## Reconciliation round 23 (2026-08-04) — the live-run presentation and liveness defects
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D123** | **`skipped` IS ITS OWN TIMELINE STATE, NEVER A FLAVOUR OF `cancelled`, AND A SKIPPED STEP CARRIES THE SAME CLOSED `not-run` REASON THE DURABLE RESULT RECORDS — STAMPED ON THE SPAN BY THE EXECUTOR, FOLDED VERBATIM, AND EXPLICITLY ABSENT WHEN NONE WAS RECORDED.** | doc 03 §Phase-1g/1i as-built presentation deltas (primary); docs 02 §5.5; 13 §4 |
+| **D124** | **A QUEUE ROW SERVES `endedAt` IN ITS OWN RIGHT; A TERMINAL ROW DISPLAYS `endedAt − startedAt`, AN IN-FLIGHT ROW MAY NOT CARRY A TERMINAL INSTANT AT ALL, AND A TERMINAL ROW WITHOUT ONE RENDERS AN EXPLICIT UNKNOWN RATHER THAN FALLING BACK TO `now`.** | doc 03 §Phase-1g/1i as-built presentation deltas (primary); doc 13 §4 |
+| **D125** | **BROWSER-SESSION ACQUISITION (OPEN + LOGIN) IS BOUNDED BY ITS OWN CONFIG LEAF `timeouts.sessionAcquireMs`, DISTINCT FROM AND MUCH SHORTER THAN `timeouts.taskMs`; EXPIRY FAILS THE LEASE LOUDLY AND NEVER RETRIES, AND A SESSION THAT LANDS AFTER THE BOUND IS POISON-CLOSED RATHER THAN REUSED.** | doc 05 §Session acquisition is bounded separately from the task (primary); doc 11 §3 config schema |
+
 **Two separate D-series exist — do not confuse them.** This memo's `D1–D120` are cross-doc
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
 types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the

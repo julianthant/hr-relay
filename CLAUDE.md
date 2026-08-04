@@ -252,6 +252,22 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-04: a live run found three defects fixtures could not — two surfaces that misled, and a
+  bound that was the wrong instrument (D123/D124/D125).** `skipped` had no timeline arm, so a node
+  the descriptor's own `when` excluded rendered as **Cancelled** — a word that names an act somebody
+  took. `skipped` is now its own arm and every timeline event carries `notRun`: the executor stamps
+  the skip reason on the `span.ended` task span using the SAME closed vocabulary the durable result
+  records, the projector folds it verbatim, and a span with no reason stays explicitly reasonless.
+  The queue row computed `now − startedAt` for every non-`queued` status, so a finished run counted
+  forever (2h 47m for ~14.5 minutes of work); the wire now serves `endedAt` in its own right, an
+  in-flight row is schema-refused from carrying one, and a terminal row with none renders
+  `duration unknown` rather than substituting `now`. Third: a dead CRM session took **262.9s** to
+  surface, and the cause is structural — every step inside a login recipe is bounded, nothing
+  bounded the CHAIN, and the only outer bound was `timeouts.taskMs`, which must stay generous for
+  the real read. It never even fired: claim expiry (a RECOVERY mechanism, on the wall clock) requeued
+  the run first. Acquisition now has its own leaf, `timeouts.sessionAcquireMs` (60s, >3x the
+  live-verified ~17s/~12s logins), failing loud — never retrying — and poison-closing a session that
+  lands after its bound.
 - **2026-08-04: the first commit contract is real, and everything about it is fail-closed by
   construction.** `kuali/save-timekeeper-annotation` writes ONE benign, restorable field on a Kuali
   RRSS document. Kuali's save is UI-silent, so `verify-timekeeper-annotation` reloads and reads the
