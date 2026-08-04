@@ -5,6 +5,7 @@
  *   npx tsx --env-file=.env scripts/live-browser-login-smoke.ts crm
  *   npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath --headed
  *   npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath --cold
+ *   npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath --reuse
  *
  * It drives the REAL factory, the REAL store login recipe, and the REAL
  * `WorkerSessionManager` lease against production SSO — the only pieces that
@@ -84,10 +85,18 @@ function elapsed(since: number): string {
   return `${((systemClock.monotonicMs() - since) / 1_000).toFixed(1)}s`;
 }
 
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch (error) {
+    return `<unparseable navigation target: ${error instanceof Error ? error.message : String(error)}>`;
+  }
+}
+
 async function main(): Promise<void> {
   const requested = process.argv[2];
   if (requested === undefined || !SUPPORTED.has(requested)) {
-    throw new Error(`usage: live-browser-login-smoke <${[...SUPPORTED].join("|")}> [--headed] [--cold]`);
+    throw new Error(`usage: live-browser-login-smoke <${[...SUPPORTED].join("|")}> [--headed] [--cold] [--reuse]`);
   }
   const system = BrowserSystemIdSchema.parse(requested);
   const config = resolveConfig({}, {}, systemClock);
@@ -95,9 +104,21 @@ async function main(): Promise<void> {
   const workerId = WorkerIdSchema.parse("live-smoke-worker-1");
   const workflowId = WorkflowIdSchema.parse("person-lookup");
   const instance = RuntimeInstanceSchema.parse("prod");
-  // A synthetic but well-formed reuse identity: the smoke is one "run".
+  // A synthetic but well-formed reuse identity: the smoke is one "run", and a
+  // fresh fingerprint means a fresh profile directory (D116 partitions the
+  // profile by fingerprint). `--reuse` pins it, so a second run rides the same
+  // persistent profile and its live IdP session.
+  //
+  // Live-measured 2026-08-03: that shortens UCPath from ~21.5s to ~15.0s and
+  // still reports `logged-in`, because a persistent context always opens on
+  // about:blank and this recipe enters at the UCSD portal — neither is a
+  // PeopleSoft application route, so the two-fact probe correctly refuses to
+  // call it an existing session. `already-authenticated` is therefore a
+  // defensive branch here, pinned by unit arms rather than by a live run.
   const configFingerprint = FingerprintSchema.parse(
-    randomUUID().replaceAll("-", "").padEnd(64, "0").slice(0, 64),
+    process.argv.includes("--reuse")
+      ? "5eed".repeat(16)
+      : randomUUID().replaceAll("-", "").padEnd(64, "0").slice(0, 64),
   );
 
   if (process.argv.includes("--cold")) {
@@ -118,6 +139,7 @@ async function main(): Promise<void> {
   }
 
   const evidence: AuthenticatedApplicationEvidence[] = [];
+  const hops: string[] = [];
   const factory = new PlaywrightWorkerSessionFactory({
     config: { ...config, browser: { ...config.browser, headless: !headed } },
     isolation: rebuildRuntimeIsolation,
@@ -129,6 +151,12 @@ async function main(): Promise<void> {
       write(`[evidence] ${observed.system} @ ${observed.url}`);
       write(`[evidence]   positive: ${observed.positive}`);
       write(`[evidence]   negative: ${observed.negative}`);
+    },
+    onNavigation: (url) => {
+      hops.push(url);
+      // Host only: a Shibboleth/Duo hop URL carries execution ids and SAML
+      // payloads that have no business in a log.
+      write(`[hop] ${String(hops.length).padStart(2, "0")} ${hostOf(url)}`);
     },
   });
 
@@ -161,6 +189,7 @@ async function main(): Promise<void> {
       `${system} smoke observed ${String(evidence.length)} authentication proof(s); a login and its neutral reset must each produce one`,
     );
   }
+  write(`[smoke] hop chain (hosts, in order): ${[...new Set(hops.map(hostOf))].join(" → ")}`);
   write(`[smoke] ${system} login + neutral reset verified in ${elapsed(started)}`);
   await sessions.closeAll("worker-stop");
   write("[smoke] every session closed with proof");
