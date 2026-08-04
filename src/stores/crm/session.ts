@@ -54,6 +54,19 @@ const CRM_APP_HOST = "act-crm.my.site.com";
 /** legacy src/infra/auth/login.ts:264 — the login-type option label. */
 const ACTIVE_DIRECTORY_OPTION = "Active Directory";
 /**
+ * The login-type picker's own identity and the Active Directory option's VALUE,
+ * live-verified 2026-08-03 on `a5.ucsd.edu/tritON`:
+ * `select#authtype[name="authtype"]`, options
+ * `_eventId_authn/PasswordRACF` (Business Systems — the DEFAULT),
+ * `_eventId_authn/PasswordAD` (Active Directory), and
+ * `_eventId_authn/PasswordKrb` (Student SSO).
+ *
+ * The value is what `inputValue()` returns, so comparing it to the LABEL — as
+ * this recipe did — can never match and never could have detected the realm.
+ */
+const LOGIN_TYPE_SELECTOR = 'select#authtype, select[name="authtype"]';
+const ACTIVE_DIRECTORY_VALUE = "_eventId_authn/PasswordAD";
+/**
  * The POSITIVE fact. Salesforce issues `sid` — the Communities session id —
  * only after a completed authentication; the Communities login page, which
  * lives on the SAME host, has no `sid`. The value is never read.
@@ -95,32 +108,60 @@ export const verifyCrmAuthenticatedApplication: AuthenticatedApplicationVerifier
 });
 
 /**
- * legacy src/infra/auth/login.ts:256-273 — the login-type picker. Active
- * Directory is normally pre-selected and the control is often absent
- * entirely; selecting it is only meaningful when the control exists AND
- * currently holds something else. Absence is a genuinely valid expected state
- * here (the legacy comment records both renderings), so it is not a failure —
- * but a present control that cannot be set IS, because submitting the form
- * under the wrong login type authenticates against the wrong realm.
+ * legacy src/infra/auth/login.ts:256-273 — the login-type picker.
+ *
+ * ## 2026-08-03: this ran before the form existed, and against the wrong string
+ *
+ * Live forensics on a cold CRM login: TritON defaults to **Business Systems**,
+ * the credentials went in under that realm, and Shibboleth answered "The
+ * username you entered cannot be identified" — then the recipe waited out the
+ * whole Duo window and blamed Duo. Two bugs met:
+ *
+ * 1. the picker was probed straight after `goto`, while the browser was still
+ *    redirecting into `a5.ucsd.edu`, so `count()` was 0 and "absent" — a real
+ *    rendering the legacy comment records — swallowed the actual page; and
+ * 2. `inputValue()` returns the option VALUE (`_eventId_authn/PasswordAD`),
+ *    which never `includes("Active Directory")`, so even a present picker could
+ *    not be seen as already correct.
+ *
+ * It now runs only once the SSO form has rendered, matches on the verified
+ * value, re-waits for the form the reload rebuilds, and CONFIRMS the realm
+ * afterwards. Absence is still tolerated — the picker genuinely is not rendered
+ * on every TritON entry — but a present control that cannot be proven to hold
+ * Active Directory is fatal, because submitting under the wrong login type
+ * sends this user's real credentials to the wrong realm.
  */
 async function ensureActiveDirectorySelected(context: SystemLoginContext): Promise<void> {
-  const picker = context.page.locator("select").first();
-  const present = await picker.count();
-  if (present === 0) return;
+  const { page, config } = context;
+  const picker = page.locator(LOGIN_TYPE_SELECTOR).first();
+  if (await picker.count() === 0) return;
   try {
-    const current = await picker.inputValue({ timeout: context.config.timeouts.navigationMs });
-    if (current.includes(ACTIVE_DIRECTORY_OPTION)) return;
+    if (await picker.inputValue({ timeout: config.timeouts.navigationMs }) === ACTIVE_DIRECTORY_VALUE) return;
     await picker.selectOption(
       { label: ACTIVE_DIRECTORY_OPTION },
-      { timeout: context.config.timeouts.navigationMs },
+      { timeout: config.timeouts.navigationMs },
     );
   } catch (error) {
     throw new BrowserLoginError(
       SYSTEM,
       "sso-form",
       "the CRM login-type control is present but Active Directory could not be selected",
-      context.page.url(),
+      page.url(),
       { cause: error },
+    );
+  }
+  // Selecting fires the picker's onchange, which re-posts and rebuilds the form
+  // under the new realm. The credentials must go into THAT form, not the one
+  // that is being torn down.
+  await waitForSsoForm(SYSTEM, context);
+  const settled = await page.locator(LOGIN_TYPE_SELECTOR).first()
+    .inputValue({ timeout: config.timeouts.navigationMs });
+  if (settled !== ACTIVE_DIRECTORY_VALUE) {
+    throw new BrowserLoginError(
+      SYSTEM,
+      "sso-form",
+      `the CRM login type is ${settled}, not Active Directory; refusing to submit credentials against the wrong realm`,
+      page.url(),
     );
   }
 }
@@ -156,8 +197,10 @@ export const crmLoginRecipe = defineVerifiedLoginRecipe({
     // two-fact probe may say so; the Communities login page shares the host.
     if ((await probe()).authenticated) return "already-authenticated";
 
-    await ensureActiveDirectorySelected(context);
+    // The form must exist BEFORE its login type can be read: the entry route is
+    // still redirecting into `a5.ucsd.edu` when `goto` resolves.
     await waitForSsoForm(SYSTEM, context);
+    await ensureActiveDirectorySelected(context);
     await fillSsoCredentials(SYSTEM, context);
     await submitSsoForm(SYSTEM, context);
     await waitForAuthenticatedLanding(

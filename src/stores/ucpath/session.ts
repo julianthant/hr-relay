@@ -52,11 +52,11 @@ import type {
   SystemLoginContext,
 } from "../../infra/browser/login-contract.js";
 import {
-  UCSD_SSO_HOST,
   abortIfCancelled,
   fillSsoCredentials,
   isSsoFormPresent,
   raceCancellation,
+  ssoSubmitButton,
   submitSsoForm,
   verifyUcsdAuthenticatedApplication,
   waitForAuthenticatedLanding,
@@ -65,9 +65,18 @@ import {
 export { ucpathSession } from "./session-provider.js";
 
 const SYSTEM = "ucpath" as const;
-/** legacy src/infra/auth/login.ts:194 — the campus-discovery landing. */
+/**
+ * legacy src/infra/auth/login.ts:194 — the campus-discovery landing PATH.
+ *
+ * Live-verified 2026-08-03: UC no longer serves campus discovery there. The
+ * "Select your UC location to log in" page is now served from the PeopleSoft
+ * host ROOT (`https://ucphrprdpub.universityofcalifornia.edu/`), which carries
+ * no distinguishing path at all. The marker is kept because a URL that DOES
+ * carry it is still discovery and still must not read as a landing — but it can
+ * no longer be how discovery is detected. Detection is the campus link itself.
+ */
 const CAMPUS_DISCOVERY_MARKER = "ucpathdiscovery/disco";
-/** legacy src/infra/auth/login.ts:42 — the campus link text. */
+/** legacy src/infra/auth/login.ts:42 — the campus link text. Live-verified 2026-08-03. */
 const CAMPUS_LINK_NAME = "University of California, San Diego";
 /** legacy src/infra/auth/login.ts:116 — the portal's login control. */
 const LOGIN_CONTROL_NAME = /log in to ucpath/i;
@@ -145,10 +154,14 @@ export const verifyUcpathAuthenticatedApplication: AuthenticatedApplicationVerif
   ],
 });
 
+function campusLink(page: SystemLoginContext["page"]): ReturnType<SystemLoginContext["page"]["getByRole"]> {
+  return page.getByRole("link", { name: CAMPUS_LINK_NAME });
+}
+
 async function selectUcSanDiego(context: SystemLoginContext): Promise<void> {
   try {
     await raceCancellation(
-      context.page.getByRole("link", { name: CAMPUS_LINK_NAME })
+      campusLink(context.page)
         .first()
         .click({ timeout: context.config.timeouts.navigationMs }),
       SYSTEM,
@@ -191,11 +204,46 @@ async function clickPortalLoginControl(context: SystemLoginContext): Promise<voi
   }
 }
 
-async function isSsoCeremonyPending(context: SystemLoginContext): Promise<boolean> {
-  const url = context.page.url().toLowerCase();
-  if (isAuthenticatedUcpathAppUrl(url)) return false;
-  if (url.includes(UCSD_SSO_HOST)) return true;
-  return isSsoFormPresent(context.page);
+/**
+ * What the portal's log-in control actually led to.
+ *
+ * The click resolves BEFORE the hop chain finishes, so reading `page.url()`
+ * straight after it observes the page the login is leaving, not the one it
+ * reached — that race is how the 2026-08-03 run skipped the whole SSO ceremony
+ * and still called itself done. This waits for the chain to present one of the
+ * things it can present, and reports WHICH, so no step is inferred from a URL.
+ */
+async function awaitLoginGate(
+  context: SystemLoginContext,
+): Promise<"campus-discovery" | "sso-form" | "application"> {
+  const { page, config } = context;
+  const campus = campusLink(page);
+  try {
+    await raceCancellation(
+      campus.or(ssoSubmitButton(page))
+        .first()
+        .waitFor({ state: "visible", timeout: config.timeouts.navigationMs }),
+      SYSTEM,
+      "navigate-login-entry",
+      context,
+    );
+  } catch (error) {
+    if (error instanceof BrowserLoginError) throw error;
+    // A live IdP session can carry the chain straight into PeopleSoft. That is
+    // a real state, and it is NOT accepted here — it still has to survive the
+    // verification below like every other path.
+    if (isAuthenticatedUcpathAppUrl(page.url()) || await isSsoFormPresent(page)) {
+      return isAuthenticatedUcpathAppUrl(page.url()) ? "application" : "sso-form";
+    }
+    throw new BrowserLoginError(
+      SYSTEM,
+      "navigate-login-entry",
+      "the portal presented neither campus discovery, nor the SSO form, nor the authenticated application",
+      page.url(),
+      { cause: error },
+    );
+  }
+  return await campus.count() > 0 ? "campus-discovery" : "sso-form";
 }
 
 /**
@@ -265,13 +313,10 @@ export const ucpathLoginRecipe = defineVerifiedLoginRecipe({
 
     // Campus discovery only appears when the IdP has no live session; when it
     // does, selecting UC San Diego is what produces the SSO form.
-    if (page.url().includes(CAMPUS_DISCOVERY_MARKER)) await selectUcSanDiego(context);
+    const gate = await awaitLoginGate(context);
+    if (gate === "campus-discovery") await selectUcSanDiego(context);
 
-    // Whether the Shibboleth ceremony still has to run is an OBSERVATION, not a
-    // URL guess: a warm IdP session comes straight back, and the public portal
-    // is reachable with no session at all — so "which UC host am I on" cannot
-    // answer it. The SSO host, or the form itself being on the page, can.
-    if (await isSsoCeremonyPending(context)) {
+    if (gate !== "application") {
       await waitForSsoForm(SYSTEM, context);
       await fillSsoCredentials(SYSTEM, context);
       await submitSsoForm(SYSTEM, context);
@@ -284,9 +329,10 @@ export const ucpathLoginRecipe = defineVerifiedLoginRecipe({
     }
 
     // legacy src/infra/auth/login.ts:193-203 — the post-Duo redirect chain can
-    // drop back onto campus discovery; re-select and settle, bounded.
+    // drop back onto campus discovery; re-select and settle, bounded. Detected
+    // by the link, not the path: see CAMPUS_DISCOVERY_MARKER.
     for (let attempt = 0; attempt < CAMPUS_RESELECT_ATTEMPTS; attempt += 1) {
-      if (!page.url().includes(CAMPUS_DISCOVERY_MARKER)) break;
+      if (await campusLink(page).count() === 0) break;
       await selectUcSanDiego(context);
       await waitForAuthenticatedLanding(
         SYSTEM,
