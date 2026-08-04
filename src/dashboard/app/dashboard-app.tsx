@@ -21,7 +21,7 @@ import {
 } from "../../domain/dashboard/bootstrap.js";
 import { InputRunSurfaceSchema } from "../../domain/workflow/ingress.js";
 import { WORKFLOW_DESCRIPTORS } from "../../workflows/descriptor-registry.js";
-import { ToastProvider, useDemoTheme } from "../ds/ui.js";
+import { ToastProvider, TooltipProvider, useDemoTheme } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
@@ -83,7 +83,12 @@ export function DashboardApp() {
   const today = boot === undefined ? undefined : serverLocalDay(boot.serverClock);
   const day = route.day ?? today;
 
+  // Radix tooltips need their provider ABOVE every surface that draws one, and
+  // the panel draws several. Mounting it here rather than per-surface is also
+  // what gives the whole app one shared open/close delay instead of each
+  // tooltip negotiating its own.
   return (
+    <TooltipProvider delayDuration={200}>
     <ToastProvider>
       {day === undefined || boot === undefined ? (
         <BootGate bootstrap={bootstrap} />
@@ -106,6 +111,7 @@ export function DashboardApp() {
         />
       )}
     </ToastProvider>
+    </TooltipProvider>
   );
 }
 
