@@ -235,6 +235,20 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-03: No test may rewrite a tracked artifact in place — parallel forks share ONE working
+  tree.** `ui-catalog-cli.test.ts` regenerated `generated/ui-catalog.json` and both `UI-CATALOG.md`
+  files in the checkout, and one case deliberately wrote a stale catalog over the tracked one before
+  restoring it in `afterAll`. `ui-registry.test.ts` and the `semantic-ui-registry` guard read those
+  same files from a concurrent fork. Under `test:coverage` the child `tsx` spawns are slow enough to
+  hold the stale file on disk for ~9s, so the freshness assertion failed there and passed under
+  `npm run test` — a mode-dependent verdict from a shared-file race, NOT from instrumentation
+  perturbing a fingerprint (`assertSafeUiCatalogFresh` compares parsed semantic content and is
+  instrumentation-blind). The in-place regenerate was the more dangerous half: it silently healed a
+  genuinely stale checkout mid-run, so a guard could go green over a stale committed artifact.
+  Fixtures now generate into a `mkdtemp` root through `ui:catalog -- --out-root` and
+  `selector:search -- --catalog`, the generator publishes via atomic rename (plain `writeFile`
+  truncates first — a poller caught six zero-length windows a reader could `JSON.parse("")` on), and
+  a final case pins every tracked projection byte-identical from import to teardown.
 - **2026-08-03: D116 binding belongs to whoever owns the run context, and a precondition failure
   never parks.** The sequencer never binds/releases the run config fingerprint itself: during a
   claimed run its leases run under the worker loop's `withBoundRunConfigFingerprint` window (the one

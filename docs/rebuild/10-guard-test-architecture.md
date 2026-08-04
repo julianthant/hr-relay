@@ -211,7 +211,13 @@ factory remains a later Phase-1f integration step.
 
 `npm run ui:catalog` generates a **35-entry** `generated/ui-catalog.json` plus per-system UCPath and
 CRM `UI-CATALOG.md` files; `npm run selector:search -- "<intent>"` searches only that safe
-projection. The outputs omit locator/state/read recipes and captured values. Checked-in fixture and
+projection. The outputs omit locator/state/read recipes and captured values. Both CLIs take an
+explicit path — `ui:catalog -- --out-root <path>` and `selector:search -- --catalog <path>` — and
+`ui:catalog` publishes through an atomic rename, because **no test may rewrite a tracked projection
+in place.** Test files run in parallel forks over ONE working tree, so an in-place regenerate is
+visible to every concurrent reader (`ui-registry`, `semantic-ui-registry`) and, worse, silently
+heals a genuinely stale checkout mid-run. The behavioural CLI fixtures therefore generate into a
+temp root and pin the checkout's bytes as unchanged from first import to last case. Checked-in fixture and
 sanitized live/read-only manifests bind every published fact to exact port rows, record
 `externalWriteAttempted:false`, and retain no captured HR values. UCPath additionally records the
 two zero-match legacy accessible-name recipes and the fail-loud View All pagination proofs; CRM
