@@ -1665,7 +1665,7 @@ with review-as-status and eight statuses; D2: a PDF upload is always a Group; D3
 are typed Rejected Member Rows, delete-only; D4: a delegated OCR run keeps its own Run Row in the
 OCR panel plus a link from the parent; D5: groups default collapsed, auto-expand on a member
 `Waiting on you` or `Failed`). **This series is not the reconciliation memo's D-numbers**
-(`04-reconciliation.md` D1–D143) — cite these as *row-model D6…D24*, prefix mandatory. The
+(`04-reconciliation.md` D1–D144) — cite these as *row-model D6…D24*, prefix mandatory. The
 collision is real: this section's **row-model D22** shortens the status vocabulary, while the memo's
 bare **D22** is an unrelated contract-shape/guards ownership split. `04-reconciliation.md` carries
 the matching warning at its top; keep both in step.

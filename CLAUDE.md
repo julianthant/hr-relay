@@ -34,9 +34,9 @@ active-view `KNOWLEDGE.md`.
 (never minted at settlement) with declared per-field redaction and declared cross-source
 obligations, the run-detail `receipt` and `failure` sections serve real content instead of
 pointers, and `npm run rebuild:cli explain run <traceId|runId>` reads the same derivation. The
-`evidence-receipt` guard is active. One gap is recorded rather than papered over: a transaction
-node cannot yet be a terminal dependency, so `kuali-timekeeper-annotation` cannot reach terminal
-`done` — see doc 12 §Phase-2g as-built.
+`evidence-receipt` guard is active. **D144 then closed the gap they recorded**: a transaction node
+is terminal evidence, so `kuali-timekeeper-annotation` reaches terminal `done` over its real stored
+outcome and the controlled commit has a receipt in authority (doc 09 §3.1).
 
 Seeded 2026-07-31 from `hr-automation@5879004` (branch `feature/rebuild-phase1b`, which stays in the
 legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01.
@@ -68,7 +68,7 @@ on uncertain outcomes; production provider pools and consumers remain Phase 2h.
 **`docs/rebuild/` is the plan SSOT — read it, do not re-derive it.**
 
 - `docs/rebuild/07-master-plan.md` — phases, work items, exit criteria. §4 owns the two-repo model.
-- `docs/rebuild/04-reconciliation.md` — the decision changelog (D1–D143). A **pointer index**, not a
+- `docs/rebuild/04-reconciliation.md` — the decision changelog (D1–D144). A **pointer index**, not a
   spec: it tells you which doc owns a contract. Never implement from it.
 - `00-charter` · `01-task-contract` · `02-workflow-model` · `03-tracker-dashboard` ·
   `05-execution-parallelism` · `06-data-intake` · `08-foundation-gap-audit` · `09-write-safety` ·
@@ -281,6 +281,23 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-04: A durable row's schema hash describes the BYTES IT HOLDS, so the reader moves, not
+  the writer (D144).** A transaction node could not be a terminal dependency because beat ⑦ stores
+  the whole `TransactionOutcome` envelope while terminal `build` demanded the commit contract's bare
+  output hash — and the interpreter never registered the row at all. The tempting fix (make the
+  sequencer stamp the commit-output hash) would have made the row lie about its own contents and
+  would have demanded a checkpoint nothing wrote, which is exactly D110/D114's "exact stored
+  dependencies". The commit contract's identity was never missing: it sits one level down as
+  `outcome.output.schemaHash` beside `outcome.proof.schemaHash`, and checking the envelope PLUS both
+  nested hashes is strictly stronger than either alone — the composite already existed. The second
+  half is shape, not hashing: a transaction node's scope value is `TypedTransactionOutcome<C>`
+  (`{disposition, proofSource, output, proof}`), which is what descriptors author against, so the
+  terminal factory projects the envelope before `derive` runs. "Which schema owns this node's FIELD
+  PATHS" (a detail's `fieldPath`) is a different question with a different answer — one helper
+  answering both is what hid the bug. The interpreter now reads beat ⑦'s exact row back and refuses
+  if it is absent or does not project to the settlement just reported; it never mints one.
+  `TransactionOutcomeSchema` moved into `write-safety-primitives.ts` because `write-safety.ts`
+  imports `node:crypto` and a descriptor closure may not reach a Node built-in.
 - **2026-08-04: A parked write must outlive an unrelated refactor (D136).** Resolvability binds to
   the SEMANTIC surface a resolution consumes — `workflow-identity`, `descriptor-version`,
   `transaction-node`, `canonical-input`, `permanent-key-identity`, `binding-proof-identity` — not to

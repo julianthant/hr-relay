@@ -822,6 +822,39 @@ fence rather than deleting history. If an externally reversed transaction must l
 filed again, its input carries a distinct audited correction/revision identity that derives a new
 natural key; "void the fence and click again" is not an operation.
 
+### 3.1 Beat ⑦'s checkpoint IS terminal evidence, and it is bound to the envelope (D144, 2026-08-04)
+
+A transaction node may be named in a descriptor's `flow.result.dependsOn` exactly like a task node.
+Two things had to be true for that, and neither weakens D110/D114.
+
+**The checkpoint row carries the DURABLE `TransactionOutcome`'s schema hash, and that is the only
+truthful choice.** Beat ⑦ stores the whole outcome envelope as `run_checkpoints.output.value`, so
+`output.schemaHash` must be the hash of the schema those bytes were parsed with. Stamping the commit
+contract's bare output hash there would describe a value no row holds — and would have required the
+sequencer to store something it does not, which D110/D114 forbid outright ("exact stored
+dependencies", never a fabricated one). The commit contract's identity is not lost by this: it lives
+one level down as `outcome.output.schemaHash`, beside `outcome.proof.schemaHash`, and BOTH are
+verified before the stored value is parsed. That nesting is why no composite hash is minted — the
+composite already exists, and checking the envelope plus both nested hashes is strictly stronger
+than checking either alone. A commit contract whose output or proof schema moves therefore still
+fails loud, at the terminal boundary, naming the contract and both hashes.
+
+**A transaction node's terminal scope value is `TypedTransactionOutcome<C>`, not the bare commit
+output.** Doc 02 §1.1 already says the node output IS the outcome wrapper, and every descriptor is
+authored that way (`outputs[node].disposition`, `outputs[node].output.<field>`). The terminal factory
+therefore *projects* the durable envelope onto that shape through
+`projectTransactionOutcome` (`src/domain/workflow/graph.ts`) before the authored `derive` runs, so
+`derive` and a downstream `bind` see the same shape for the same node. "Which schema owns this
+node's FIELD PATHS" (a detail's `fieldPath`) stays the commit contract's output and is a different
+question; conflating the two is what produced the gap.
+
+**The interpreter registers the row it did not write.** `src/core/run-executor.ts` reads back the
+exact `run_checkpoints` row beat ⑦ committed and refuses if it is absent, or if it does not project
+to the very settlement the sequencer just reported. It never mints a checkpoint from the value it was
+handed. `tests/unit/transaction-terminal-dependency.test.ts` drives a queued
+`kuali-timekeeper-annotation` run through the real interpreter, real sequencer and real authority to
+terminal `done`, and derives its evidence receipt from the result.
+
 ---
 
 ## 4. Crash-window recovery (positive proof or stabilized negative proof)
@@ -1194,7 +1227,8 @@ collapse #1/#3/#8 into "false ⇒ proceed"; the `ProbeVerdict` type makes that c
   `TransactionOutcome`
   and retain the validated proof on the permanent intent; a transaction
   whose committed/satisfied key exists reuses its validated proof+output. Beat ⑦'s transaction-output checkpoint and
-  the `write_intents` row share the `(workflow,item_id,step_id,attempt)` key. §5.6 #2 is upgraded per
+  the `write_intents` row share the `(workflow,item_id,step_id,attempt)` key, and that checkpoint is
+  terminal evidence in its own right — see §3.1 (D144). §5.6 #2 is upgraded per
   §4. The freshness walk (D8) is orthogonal and upstream: it keeps *stale read data* out of the fill;
   write-safety keeps duplicate writes out of commit — two different holes, two different guards.
 - **Doc 02 gates (D5).** `PARKED(needs-operator)` is doc 02's park state; write-safety is one of the

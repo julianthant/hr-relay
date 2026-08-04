@@ -307,15 +307,16 @@ as "nothing happened" says why instead. `--bundle` **refuses**: exporting a diag
 missing the capture evidence its manifest claims is worse than refusing, because the recipient
 cannot tell.
 
-### Named gap: a transaction node cannot yet be a terminal dependency
+### Named gap: a transaction node cannot yet be a terminal dependency — CLOSED by D144
 
-The write sequencer stores a transaction checkpoint under the durable `TransactionOutcome` schema
-hash while the descriptor factory's terminal `build` requires the COMMIT CONTRACT's output schema
-hash, and the interpreter never registers a transaction checkpoint as terminal evidence at all. So
-`kuali-timekeeper-annotation` cannot reach terminal `done` today, and the controlled commit has no
-receipt in authority. `tests/unit/evidence-receipt-d82.test.ts` pins that gap as a fact rather than
-papering over it, and its Kuali receipt is assembled from the real durable rows with the result
-VALUE computed by the descriptor's own sealed derive. Closing it belongs to the write lane.
+**Closed 2026-08-04 (D144, doc 09 §3.1).** The gap was real: the sequencer stored a transaction
+checkpoint under the durable `TransactionOutcome` schema hash while the descriptor factory's
+terminal `build` demanded the COMMIT CONTRACT's output schema hash, and the interpreter never
+registered a transaction checkpoint as terminal evidence at all — so `kuali-timekeeper-annotation`
+could not reach terminal `done` and the controlled commit had no receipt in authority. The stored
+hash was the correct one; the terminal side moved. `kualiReceiptEvidence`'s terminal record now
+comes from the real `buildRunResult`, and `tests/unit/transaction-terminal-dependency.test.ts`
+drives a queued Kuali run through the real interpreter to `done` and derives its receipt.
 
 ---
 

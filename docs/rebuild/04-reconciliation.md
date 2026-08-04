@@ -16,8 +16,8 @@ the verification lanes those exposed (`D131` was never issued — see the D-seri
 the 2g event/trust work in the same session. Rounds 31–34 are tail 2g, authored in three concurrent
 lanes that each minted overlapping numbers and were renumbered on merge by the earliest-committed
 rule (§Numbering rule below): **D136** is the parked-write resolvability fix, **D137–D139** are
-diagnostic bundles / notification inbox / knowledge records, and **D140–D143** are the D82 evidence
-receipt.
+diagnostic bundles / notification inbox / knowledge records, **D140–D143** are the D82 evidence
+receipt, and **D144** closes the transaction-node terminal-dependency gap D140–D143 recorded.
 
 > **What this doc is, as of Round 10: a decision CHANGELOG, not a specification.** Its job is to
 > record *what was decided, when, and which doc owns it* — so a reader can reconstruct why a
@@ -35,7 +35,7 @@ Amendment agents rewrite each doc to comply; a doc may reference another doc's o
 must never redefine it.
 
 > **Implementation rule:** don't implement from this file. D1–D25 are historical rationale, not
-> copyable current API/DDL; D26–D72 amend each other in round order (later wins); D73–D143 are
+> copyable current API/DDL; D26–D72 amend each other in round order (later wins); D73–D144 are
 > pointers only. **Read the owning doc.** If an owning doc contradicts a decision here, the doc is
 > either correct (it was folded) or stale (it wasn't) — check the doc's amendment date against the
 > round date and fix the doc, never work from this memo. Current contract shapes live in owning
@@ -825,3 +825,9 @@ changing those bytes, and later schema work must append v10.
 | **D141** | **THE RECEIPT IS A PURE FUNCTION OF AUTHORITY, DERIVED ON DEMAND AND PINNED ON FIRST DERIVATION — NOT MINTED INSIDE THE TERMINAL TRANSACTION.** AUTHORITY MUST NEVER DEPEND ON A PROJECTION TO TERMINALIZE, AND THE TWO RUNS THIS PROGRAM ALREADY PRODUCED WOULD OTHERWISE BE PERMANENTLY RECEIPT-LESS. EVERY IDENTITY FOLDS FROM THE RUN IDENTITY AND `generatedAt` IS THE TERMINAL SETTLEMENT INSTANT, SO RE-DERIVING ONE RUN YIELDS THE SAME BYTES AND THE IMMUTABLE INSERT REFUSES A DIVERGENT REBUILD BY NAME. A CONDITIONAL NODE THAT DID NOT RUN CARRIES ITS CLOSED REASON AND AN `absent`, NON-MANDATORY OBLIGATION: AN ABSENCE THE DESCRIPTOR AUTHORED AND D114 CLOSED IS A CORRECT OUTCOME, NOT AN UNRESOLVED ONE. | doc 12 §Phase-2g as-built (primary); doc 12 §2.3; `src/core/evidence-receipt.ts`; `tests/unit/evidence-receipt-d82.test.ts` |
 | **D142** | **THE RUN-DETAIL FAILURE AND RECEIPT SECTIONS SERVE CONTENT, AND THE FAILURE WIRE IS A WHITELIST SCHEMA.** NAMING EVERY PROJECTED FIELD MAKES "UNCLASSIFIED FIELDS DROP" STRUCTURAL: A FIELD ADDED TO THE DURABLE `FailureRecord` LATER REACHES NO SURFACE UNTIL SOMEONE CLASSIFIES IT. THE RECEIPT SECTION SERVES THE WHOLE `RunEvidenceReceipt`, BECAUSE §2.2 PUTS REDACTION AT CAPTURE TIME AND A SECOND PROJECTION COULD ONLY LOSE THE CLASSIFICATIONS THAT MAKE A VALUE READABLE. `src/domain/redaction.ts` CONSEQUENTLY BECOMES BROWSER-REACHABLE AND DROPS ITS NODE BUILT-INS. | doc 12 §Phase-2g as-built (primary); doc 03 §D18/§D19; `src/domain/dashboard/run-detail.ts`; `src/server/dashboard/queries/run-detail.ts` |
 | **D143** | **`explain run` AND THE DASHBOARD RECEIPT ARE ONE DERIVATION, AND EVERY SECTION WITHOUT A BACKING SERVICE SAYS SO.** A TERMINAL EXPLANATION READS THE SAME RECEIPT THE PANEL SERVES, SO THE TWO CANNOT DISAGREE. A SECTION AN OPERATOR COULD MISREAD AS "NOTHING HAPPENED" NAMES ITS REASON INSTEAD, AND `--bundle` REFUSES RATHER THAN EXPORTING A PACKAGE MISSING THE CAPTURE EVIDENCE ITS MANIFEST WOULD CLAIM. | doc 12 §2.5 (primary); `src/server/explain/`; `tests/unit/explain-run.test.ts` |
+
+## Reconciliation round 34 (2026-08-04) — a transaction node is terminal evidence
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D144** | **A TRANSACTION NODE'S CHECKPOINT IS BOUND TO THE DURABLE `TransactionOutcome`'s SCHEMA HASH, AND THAT IS THE ONLY TRUTHFUL BINDING — SO THE TERMINAL SIDE MOVES, NOT THE SEQUENCER.** BEAT ⑦ STORES THE WHOLE OUTCOME ENVELOPE AS THE ROW'S `output.value`, SO `output.schemaHash` MUST BE THE HASH OF THE SCHEMA THOSE BYTES WERE PARSED WITH; STAMPING THE COMMIT CONTRACT'S BARE OUTPUT HASH THERE WOULD DESCRIBE A VALUE NO ROW HOLDS AND WOULD DEMAND A CHECKPOINT THE SEQUENCER NEVER WROTE, WHICH D110/D114's "EXACT STORED DEPENDENCIES" FORBIDS. THE COMMIT CONTRACT'S IDENTITY IS NOT LOST — IT LIVES ONE LEVEL DOWN AS `outcome.output.schemaHash` BESIDE `outcome.proof.schemaHash`, AND **BOTH ARE VERIFIED BEFORE THE STORED VALUE IS PARSED**, WHICH IS STRICTLY STRONGER THAN EITHER HASH ALONE AND IS WHY NO COMPOSITE IS MINTED. TERMINAL `build` THEN **PROJECTS** THE ENVELOPE ONTO `TypedTransactionOutcome<C>` — THE SHAPE DOC 02 §1.1 ALREADY SAYS A TRANSACTION NODE YIELDS AND EVERY DESCRIPTOR IS AUTHORED AGAINST — SO `derive` AND A DOWNSTREAM `bind` SEE THE SAME SHAPE; "WHICH SCHEMA OWNS THIS NODE'S FIELD PATHS" STAYS THE COMMIT OUTPUT AND IS A DIFFERENT QUESTION. THE INTERPRETER REGISTERS THE ROW IT DID NOT WRITE: IT READS BEAT ⑦'s EXACT `run_checkpoints` ROW BACK AND REFUSES IF IT IS ABSENT OR DOES NOT PROJECT TO THE SETTLEMENT JUST REPORTED, NEVER MINTING ONE FROM THE VALUE IT WAS HANDED. NO IDENTITY CHECK AND NO SEALED-DERIVE PATH IS RELAXED. `kuali-timekeeper-annotation` CONSEQUENTLY REACHES TERMINAL `done` AND ITS CONTROLLED COMMIT HAS AN EVIDENCE RECEIPT. | doc 09 §3.1 (primary); doc 02 §5.7 checkpoint identity rules; doc 12 §Named gap (closed); `src/domain/workflow/graph.ts`; `tests/unit/transaction-terminal-dependency.test.ts` |

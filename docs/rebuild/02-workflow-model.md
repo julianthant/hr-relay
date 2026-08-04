@@ -1296,6 +1296,13 @@ CREATE TABLE run_checkpoints (
   refuses resume unless a checked-in, version-to-version checkpoint migration parses and records
   the transformed payload. Output-schema equality alone is insufficient: changed selection/bind
   semantics invalidate an otherwise identical schema.
+- **A transaction node's checkpoint is bound to the durable `TransactionOutcome`, not to the commit
+  contract's bare output (D144; doc 09 §3.1 owns the normative text).** The row stores the whole
+  envelope, so its `output.schemaHash` is the envelope's; the commit contract's output and proof
+  hashes are checked one level down before the value is parsed. Terminal `build` accepts that hash
+  and projects the envelope onto `TypedTransactionOutcome<C>` — the shape §1.1 already says a
+  transaction node yields — so a transaction node can be named in `flow.result.dependsOn` and the
+  authored `derive` sees exactly what a downstream `bind` sees.
 - The loader returns a discriminated `{ found: true, output, provenance } | { found: false,
   reason }` — no default parameter, no `?? {}` possible; the engine must branch.
 - Span events carry checkpoint summaries (node, fingerprints, byte size, provenance digest), never payloads.
