@@ -324,6 +324,16 @@ function collectLeafPaths(value: unknown, prefix = ""): string[] {
   return Object.entries(value).flatMap(([key, child]) => collectLeafPaths(child, prefix ? `${prefix}.${key}` : key));
 }
 
+/**
+ * Every POPULATED leaf path of a config value, in exactly the form a provenance
+ * key takes. This is the set a durable snapshot row actually contains, so it is
+ * also the set `./snapshot-generations.ts` versions: a leaf that is absent here
+ * is absent from the stored bytes.
+ */
+export function configLeafPaths(config: unknown): readonly string[] {
+  return Object.freeze(collectLeafPaths(config));
+}
+
 function environmentValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
   const raw = env[key];
   if (raw === undefined || raw.trim() === "") return undefined;

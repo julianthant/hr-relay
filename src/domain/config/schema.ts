@@ -295,8 +295,14 @@ export const ConfigSchema = z.strictObject({
   providers: ProviderBudgetConfigSchema,
 });
 
+/**
+ * Takes only the `providers` group, not the whole `Config`: a DURABLE snapshot
+ * read forward (`./snapshot-generations.ts`) is legitimately narrower than
+ * today's `Config`, and a budget lookup has no business demanding leaves the
+ * captured run never carried.
+ */
 export function providerBudget(
-  config: z.output<typeof ConfigSchema>,
+  config: { readonly providers: z.output<typeof ProviderBudgetConfigSchema> },
   capability: ProviderCapabilityId,
 ): z.output<typeof ProviderBudgetSchema> {
   const key = PROVIDER_CAPABILITY_CONFIG_KEYS[capability];

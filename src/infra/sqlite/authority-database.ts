@@ -22,7 +22,11 @@ import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/commands.js";
 import { providerBudget, type ProviderBudget } from "../../domain/config/schema.js";
-import { ConfigSnapshotRecordSchema, type ConfigSnapshotRecord } from "../../domain/config/snapshot.js";
+import {
+  ConfigSnapshotRecordSchema,
+  ConfigSnapshotWriteSchema,
+  type ConfigSnapshotRecord,
+} from "../../domain/config/snapshot.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
 import {
@@ -1864,7 +1868,9 @@ export class AuthorityDatabase implements Disposable {
       }),
       configSnapshots: Object.freeze({
         insert: (input: unknown) => {
-          const record = ConfigSnapshotRecordSchema.parse(input);
+          // The WRITE schema, not the read schema: an older generation is read
+          // forward, never minted (`src/domain/config/snapshot-generations.ts`).
+          const record = ConfigSnapshotWriteSchema.parse(input);
           return this.#insertSimpleRecord("config_snapshots", record.configSnapshotId, record, ConfigSnapshotRecordSchema, record.capturedAt);
         },
         get: (snapshotId: string) => this.#readRecord("config_snapshots", snapshotId, ConfigSnapshotRecordSchema),
