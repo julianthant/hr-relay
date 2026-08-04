@@ -476,9 +476,18 @@ early `absent`, repeated but not-yet-aged absence, conflicting observations, sta
 positive proof, malformed proof, and unavailable target; only the policy-qualified stabilized arm
 may create a new intent generation, while every indeterminate arm parks. If no safe independently
 verifiable target exists, Phase 2 is blocked; write-heavy workflow migration may not begin.
-**Target status (§3.8):** Kuali is settled — docs 4444–4453 are operator-authorized and the
-2026-07-23 probe proved a save round-trip is verifiable (D78). UCPath and ServiceNow targets are
-being named by the operator; OnBase is gated on the next real upload.
+**Target status (§3.8) — REVISED 2026-08-04 by the controlled commit (D128).** The dry-run half is
+MET live and the crash/recovery/dedupe matrix is MET in fixtures, but **the controlled-commit half is
+BLOCKED.** The operator named docs **4489/4490**; both are genuine RRSS Separation Request Forms and
+both sit at workflow step `Task 1 - Kristina & TES`, which does **not own** the `Timekeeper Name:*`
+field. Kuali's `Save` serializes only its own step's section, so the write fenced, clicked, answered
+`200` + `Form saved`, persisted nothing, read `absent`, and parked — correctly. The 2026-07-23 probe
+(D78) succeeded on doc 4444 because that document was at a step that owned the field, so "Kuali is
+settled" was a statement about a DOCUMENT when it needed to be one about a STEP. **What Phase 2 now
+needs is a target at a step that owns the field it writes**, named by the operator; substituting one
+is outside the authorization. UCPath and ServiceNow targets are still being named; OnBase is gated on
+the next real upload. Full evidence, measured numbers and durable row ids: doc 09 §Phase-2
+controlled-commit as-built.
 
 **Then: the deferred base tails.** Each was a Phase-1 work item that D74 moved behind the first
 live proof. They land in this order, because each is a consumer of the one before:
@@ -506,13 +515,22 @@ explicit operator architecture decision; a migration questionnaire cannot enable
   Phase 1's exit—see D74. The historical D13 live-lift parity gate remains rejected: D88 isolates
   the runtimes. New surfaces are validated by strict fixtures + isolated live proof, per §4.)*
 - Docs updated: doc 02 §8 marked as-built; any contract flaw found is fixed in the owning doc first.
-- Transaction dry-run shows prepare preview and zero commit span/intent. Controlled write proof
-  records a fresh matching subject proof; the forced mismatch/unknown variants produce no intent or
-  click. The controlled match yields one external transaction, one committed intent, one typed transaction-output checkpoint
-  plus validated proof, one ledger entry,
-  one terminal span; a later fresh same-key run performs no second click.
-- Crash/outbox/projector fixtures and context-exclusive UCPath/OnBase lease tests remain green under
-  multiple workers. Recovery demonstrates that one `absent` observation cannot retry, durable
+- Transaction dry-run shows prepare preview and zero commit span/intent. **MET live 2026-08-04.**
+  Controlled write proof records a fresh matching subject proof; the forced mismatch/unknown variants
+  produce no intent or click. **MET live** — the mismatch refused at prepare, zero durable rows. The
+  controlled match yields one external transaction, one committed intent, one typed
+  transaction-output checkpoint plus validated proof, one ledger entry, one terminal span; a later
+  fresh same-key run performs no second click. **NOT MET (D128):** one external transaction did
+  occur, it produced no landing proof, and the kernel therefore produced none of the five rows —
+  blocked on a writable target, not on the kernel. The later-run criterion is met in its parked form
+  (a fresh run on the parked key refused in 1ms with zero browser sessions).
+- Crash/outbox fixtures and context-exclusive lease tests remain green under
+  multiple workers. **MET 2026-08-04** over the REAL Kuali store and a real authority database:
+  crash injection at every inner four-row-primitive seam and every outer beat-⑦ seam, the present /
+  absent recovery arms, browser-context cleanup on a post-fence park, and two workers on one
+  database admitting exactly one fence. **The ordered LEDGER PROJECTOR fixtures are not buildable
+  yet** — beat ⑦ writes the ledger outbox row, but the serialized JSONL projector is a 2g tail and
+  does not exist, so its concurrency/tail-loss arms move to 2g with it. Recovery demonstrates that one `absent` observation cannot retry, durable
   `not_before` scheduling occupies no worker, and only contract-qualified negative
   settlement may increment the generation.
 - Read-only explorer accurately renders the as-built person-lookup graph/task/UI/scenario/result

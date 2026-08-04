@@ -734,3 +734,10 @@ changing those bytes, and later schema work must append v10.
 reconciliation decisions. Doc 03 §9 carries a **row-model series** (`row-model D1–D24`: three row
 types, eight statuses, containment, delegation shapes) ratified 2026-07-24/25. Doc 03 states the
 distinction at its §9 header; always cite the row-model series with the `row-model` prefix.
+
+## Reconciliation round 26 (2026-08-04) — the controlled commit, and what the target taught
+
+| # | Decision | Owner (normative text) |
+|---|---|---|
+| **D128** | **A FIELD BEING RENDERED AND EDITABLE IS NOT EVIDENCE THAT THE CURRENT WORKFLOW STEP CAN WRITE IT: KUALI'S SAVE SERIALIZES ONLY ITS OWN STEP'S SECTION, ANSWERS `200` WITH A `Form saved` STATUS NODE, AND PERSISTS NOTHING OF A FOREIGN-STEP FIELD. THE 2026-08-04 CONTROLLED COMMIT ON DOCS 4489/4490 THEREFORE FENCED, CLICKED, READ `absent`, AND PARKED — CORRECTLY. PHASE 2's WRITE HALF IS BLOCKED ON A TARGET AT A STEP THAT OWNS THE FIELD; `recoveryAbsence` STAYS `operator-only` BECAUSE A WRITE THAT NEVER LANDS MEASURES NO PROPAGATION WINDOW.** | doc 09 §Phase-2 controlled-commit as-built (primary); doc 07 §Phase 2 hard exit criteria; `src/stores/kuali/CLAUDE.md` |
+| **D129** | **A REAL EXTERNAL WRITE IS REFUSED ON THE RUN'S OWN IMMUTABLE `envelope.dryRun`, NOT ON THE CALLER'S CLAIM ABOUT IT, AND NO NODE `dryRun` POLICY MAKES ONE LEGAL. A CLIENT-RENDERED PAGE FACT IS PROVED BY A BOUNDED WAIT FOR THAT SAME FACT, NEVER BY ONE SAMPLE AND NEVER BY WIDENING THE LOCATOR — KUALI'S DOCUMENT RECIPE IS INSTEAD NARROWED TO EXACTLY ONE LEVEL-1 HEADING WHOSE ACCESSIBLE NAME IS A DOCUMENT NUMBER.** | doc 09 §Phase-2 controlled-commit as-built (primary); doc 10 §guard arms; `src/stores/kuali/CLAUDE.md` |

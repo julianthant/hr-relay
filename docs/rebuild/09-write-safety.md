@@ -206,6 +206,143 @@ guessed.
 
 ---
 
+## Phase 2 controlled-commit as-built — the WRITE half is BLOCKED (2026-08-04, D128)
+
+The operator authorized ONE controlled real commit on named sacrificial Kuali
+RRSS documents **4489** and **4490**. It was attempted. **It fenced, it clicked
+Save, and it could not land** — and the reason is a property of the target, not
+of this kernel.
+
+### What the documents are (confirmed read-only before any write)
+
+| | 4489 | 4490 |
+|---|---|---|
+| action id | `6a712bf32ff7fb799788a79e` | `6a712d29ca464caf7bd9e633` |
+| title | `Form - RRSS Separation Request Form - Kuali` | same |
+| H1 / displayed EID | `4489` / `10001828` | `4490` / `10631689` |
+| workflow step | `Task 1 - Kristina & TES` | same |
+| `Timekeeper Name:*` BEFORE | `""` | `""` |
+| `Save` / `Send Back` / `Mark Complete` | exactly 1 each | exactly 1 each |
+
+### The finding: a FIELD's writability is a property of the workflow STEP
+
+The commit clicked `Save`. Kuali answered `200` on its `submitDocumentV2`
+mutation and rendered a **`Form saved`** status node. The reload read-back read
+`absent`, and an independent read minutes later confirmed the field was still
+empty. Capturing the mutation body settled why:
+
+```
+{"operationName":"submitDocumentV2","variables":{"documentId":"…","data":{
+   "-QcO_b5Pil":{…},"9nJKKhG2wT":{…},"ER1WhBzjcm":…,"NYHPLZtn0g":{…},
+   "cEPl6poKIz":"…EID…","fRD9muFvzN":"…name…","oEcp1xtQkj":…,
+   "uEYp9lpmFg":{…},"zxtLoFSehG":"ECEC"},
+ "actionId":"…","status":"saved","timeZone":"America/Los_Angeles"}}
+```
+
+The timekeeper control is DOM id `BWmkKqx40`. **It is absent from `data`.** The
+save carries only the fields belonging to the CURRENT workflow step's section.
+This was verified not to be a staging artefact: the control is neither
+`disabled` nor `readOnly`, and React's own `memoizedProps.value` held
+`PROBE-DELETE-ME` under BOTH `fill()` and real key events
+(`clear()` + `pressSequentially`) — the value was in application state and was
+still not submitted.
+
+This generalizes the store's existing "an `actionId` names a workflow STEP, not
+a document" lesson one level deeper: **a field being rendered and editable is
+not evidence that the current step can write it.** The 2026-07-23 probe (D78)
+succeeded on doc 4444 because that document was at a step that owned the field.
+Docs 4489/4490 are not, so they are not a valid target for this write, and the
+authorization forbids substituting a different document.
+
+### Measured numbers (the propagation window, as far as it can be measured)
+
+Doc 4490, raw-driver instrument, two save cycles:
+
+| Observation | Cycle 1 (write) | Cycle 2 (restore) |
+|---|---|---|
+| first non-GET `kualibuild` POST after click | +241 ms | +254 ms |
+| last save-related POST | +3 655 ms | +3 455 ms |
+| `networkidle` | +4 157 ms | +3 957 ms |
+| `Form saved` status node | present | present |
+| reload read-backs | 6 reads, +6 857 → +18 759 ms, ALL `absent` | value (empty) observed at +6 519 ms |
+| full document open (cold / warm) | ~6 s / ~2.1 s | |
+| dry run, whole beat ② + ③, warm session | 8.3 s | |
+| TritON SSO + Duo Autopilot, cold profile | ~90 s to the Kuali space | |
+
+**`recoveryAbsence` therefore STAYS `operator-only`.** The controlled commit was
+supposed to be what earned `stabilized`; it could not, because a write that
+never lands measures no propagation window at all. Writing a `minSinceFenceMs`
+from these numbers would be the plausible-but-unverified constant this program
+bans. The contract field is unchanged and the reason text still holds.
+
+### What the kernel did, and the durable rows it left
+
+Exactly right, and they are still in `.tracker-rebuild/state.db`:
+
+- `write_intents` — ONE row, key
+  `kuali:4489|6a712bf32ff7fb799788a79e|timekeeper-name|10001828|PROBE-DELETE-ME`,
+  intent `9545fdf9-ae3a-4d9a-b2dd-109e07e5a575`, generation 1, `fencedAt`
+  `2026-08-04T15:13:25.191Z`, **status `parked`, code `unknown`**, carrying the
+  full `subject-match` binding proof (EID suffix `5513`, digest
+  `d77e42b6…`, page state `kuali.rrss-document.timekeeper-staged`).
+- `write_attempts` — ONE row, generation 1, outcome `{state:"parked"}`.
+- `run_checkpoints`, `durable_outbox` — **ZERO rows.** No transaction-output
+  checkpoint, no ledger entry, no terminal span: an unverified save is never
+  done, so none of the beat-⑦ bundle was written.
+- the run is `parked-write` on that intent.
+
+**The intent is deliberately LEFT PARKED.** A human decision is genuinely
+required (the target is not writable at this step), so `confirmed-absent` — which
+would mint retry authority — would be the wrong answer, and `confirmed-present`
+would be a lie. A later fresh run on the same permanent key was executed live and
+refused in **1 ms, with zero browser sessions**: *"…is parked (unknown: …); only
+the typed operator resolutions may release it."* That is the honest live form of
+the permanent-key dedupe criterion.
+
+### Exit-criteria status
+
+| Doc 07 Phase-2 write criterion | Status |
+|---|---|
+| dry run: staged preview + subject observation, zero intent/fence/commit/click | **MET live** on doc 4489 (`prepare` returned `previousTimekeeperName:""`, `stagedTimekeeperName:"PROBE-DELETE-ME"`; subject `match` on EID suffix `5513`; zero durable rows) |
+| forced mismatch: no intent, no click | **MET live** — refused at beat ② with `subject-mismatch`, *"refusing to leave a staged value on another person's document"*, zero durable rows |
+| ONE external transaction → committed intent + typed checkpoint + validated proof + ledger entry + terminal span | **NOT MET.** One external transaction occurred; it produced no landing proof, so the kernel produced none of the five rows. Blocked on a writable target, not on the kernel |
+| permanent-key dedupe: a later fresh run performs no second click | **MET live in its parked form** (see above); the committed-key form stays fixture-proven |
+| measured propagation window → `stabilized` | **NOT MET** — unmeasurable without a landing write; `operator-only` stands |
+| restore the original value | **N/A and verified** — the original value was `""` on both documents and still is. Doc 4489's whole form was re-dumped and is semantically identical field-for-field (only Kuali's per-render element ids differ) |
+| crash matrix, recovery arms, context cleanup, multi-worker exclusive lease | **MET in repeatable fixtures** over the real Kuali store + a real authority database (`tests/unit/kuali-transaction-proof.test.ts`) |
+| ledger projector concurrency / tail-loss | **NOT BUILDABLE YET** — beat ⑦ writes the ledger `durable_outbox` row (schema and atomicity landed in 1c), but the serialized ordered JSONL projector is a 2g tail and does not exist. There is nothing to test concurrency or tail-loss against, and no fixture may pretend otherwise |
+
+### Two defects this lane found outside the write path
+
+1. **Kuali Build is client-rendered, and two probes sampled it once.** The login
+   recipe's positive fact and `openDocument`'s heading read both counted a node
+   the instant the URL settled. Measured: the space paints zero `[role]` nodes at
+   `domcontentloaded` and its menubar ~1 s later; the document route shows
+   `["", "Action", "Action List"]` at ~1.5 s and `["4489", …]` at ~3.0 s. Both are
+   fixed as BOUNDED WAITS FOR THE SAME FACT — the heading recipe additionally
+   NARROWED to a level-1 heading whose accessible name is a bare document number,
+   requiring exactly one.
+2. **A required config leaf bricked every pre-existing authority database.**
+   `timeouts.sessionAcquireMs` (D125) was added to the config schema with a
+   default for FRESH configs but no path for already-durable `config_snapshots`
+   rows, and those parse strictly at database OPEN. Every rebuild runtime command
+   on a pre-D125 `state.db` now fails to start. The Phase-1 exit database was
+   preserved unmodified at `.tracker-rebuild/phase1-exit-state.db*` and this lane
+   ran on a fresh one. **Open, doc 11's to own:** back-filling the default would
+   fabricate a bound the old runs never had (the D109 precedent invalidates such
+   rows rather than inventing values), and failing at OPEN denies access to every
+   unrelated row including the ledger. Neither half is decided here.
+
+### What is required before this criterion can be met
+
+A target document at a workflow step that OWNS the field being written, named by
+the operator. The kernel, the contract, the store, the driver, the fence, the
+binding proof and the fail-closed completion arm are all proven; what is missing
+is a write that can land. Until then Phase 2's write half is **BLOCKED**, and
+doc 07's rule stands: write-heavy workflow migration may not begin.
+
+---
+
 ## 0. Grounding — what exists today (the port inventory, real code)
 
 Every row below is live-verified leaf knowledge the charter forbids re-deriving. It ports, wrapped.
