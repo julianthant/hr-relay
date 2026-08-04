@@ -59,6 +59,15 @@ import { readEventStreamLines } from "../../../infra/events/jsonl-streams.js";
 /* ── the persisted fold shape (internal, versioned by its own schema hash) ─ */
 
 const TaskSpanFoldSchema = z.strictObject({
+  /**
+   * Span identity is `(runId, attempt, spanPath)` (doc 03 §1.1), and the
+   * attempt is load-bearing HERE: `<trace>/<node>#<taskAttempt>` repeats
+   * verbatim when a later RUN attempt re-runs the same node, so folding on
+   * the path alone made attempt 2's start collide with attempt 1's entry —
+   * the earlier chip took the later outcome and the current one never
+   * received an end, leaving a terminal run rendering a step as `active`.
+   */
+  attempt: z.number().int().positive(),
   spanPath: z.string().min(1),
   name: z.string().min(1),
   startedAt: z.iso.datetime({ offset: true }).optional(),
@@ -393,7 +402,12 @@ export class RunQueueProjection {
     if (event.t === "span.started") {
       if (event.kind === "task") {
         const row = this.#row(event.runId, event.t);
-        row.taskSpans.push({ spanPath: event.spanPath, name: event.name, startedAt: event.ts });
+        row.taskSpans.push({
+          attempt: event.attempt,
+          spanPath: event.spanPath,
+          name: event.name,
+          startedAt: event.ts,
+        });
         row.lastEventAt = event.ts;
         row.eventCount += 1;
         return { runIds: [event.runId], workerChanged: false };
@@ -413,11 +427,16 @@ export class RunQueueProjection {
     // span.ended
     if (event.kind === "task") {
       const row = this.#row(event.runId, event.t);
-      let span = row.taskSpans.find((candidate) => candidate.spanPath === event.spanPath);
+      let span = row.taskSpans.find((candidate) =>
+        candidate.attempt === event.attempt && candidate.spanPath === event.spanPath);
       if (span === undefined) {
         // A restart may close a span an earlier process opened; the open time
         // is genuinely unknown and stays absent rather than being invented.
-        span = { spanPath: event.spanPath, name: nodeIdOfTaskSpanPath(event.spanPath) ?? event.spanPath };
+        span = {
+          attempt: event.attempt,
+          spanPath: event.spanPath,
+          name: nodeIdOfTaskSpanPath(event.spanPath) ?? event.spanPath,
+        };
         row.taskSpans.push(span);
       }
       span.endedAt = event.ts;
@@ -562,12 +581,15 @@ export class RunQueueProjection {
     };
     if (descriptor === undefined) {
       // No registered descriptor (e.g. a replayed historical workflow): the
-      // pipeline shows exactly the observed spans, never an invented step list.
-      return row.taskSpans.map((span) => ({
-        id: nodeIdOfTaskSpanPath(span.spanPath) ?? span.name,
-        label: span.name,
-        state: stepState(span),
-      }));
+      // pipeline shows exactly the observed nodes, never an invented step
+      // list. One node still renders ONE chip — a node re-run under a later
+      // run attempt repeats its span path, and two chips for one step would
+      // show the same node in two states at once.
+      const observed = new Map<string, { label: string; span: z.infer<typeof TaskSpanFoldSchema> }>();
+      for (const span of row.taskSpans) {
+        observed.set(nodeIdOfTaskSpanPath(span.spanPath) ?? span.name, { label: span.name, span });
+      }
+      return [...observed].map(([id, { label, span }]) => ({ id, label, state: stepState(span) }));
     }
     return descriptorRuntimeNodes(descriptor)
       .filter((node) => node.kind === "task" || node.kind === "transaction" || node.kind === "child-run")

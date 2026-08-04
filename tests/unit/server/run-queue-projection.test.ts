@@ -172,6 +172,35 @@ describe("THE run/queue projection (D81)", () => {
     assert.deepEqual(card.currentRun, { state: "present", runId: uuidOf(1), traceId: traceOf(1) });
   });
 
+  it("keeps a re-run node's chip on the CURRENT run attempt when the span path repeats", () => {
+    // A node re-run under a LATER run attempt emits the identical
+    // `<trace>/<node>#<taskAttempt>` path (the suffix is the task attempt, not
+    // the run attempt). Folding on the path alone let attempt 2's start
+    // collide with attempt 1's entry, so a terminal run rendered its last step
+    // as `active` forever. Observed live on the Phase-1 exit run.
+    const w = world();
+    queuedEventOf(w, { seed: 1 });
+    claimEventOf(w, 1);
+    const base = {
+      workflow: "person-lookup" as const,
+      runId: uuidOf(1),
+      traceId: traceOf(1),
+      spanPath: `${traceOf(1)}/cross-verify#1`,
+      parentSpanPath: traceOf(1),
+    };
+    const ts = (): string => w.clock.now().toISOString();
+    w.writer.emit({ ...base, t: "span.started", kind: "task", attempt: 1, ts: ts(), name: "cross-verify" });
+    w.writer.emit({ ...base, t: "span.ended", kind: "task", attempt: 1, ts: ts(), outcome: "cancelled" });
+    w.writer.emit({ ...base, t: "span.started", kind: "task", attempt: 2, ts: ts(), name: "cross-verify" });
+    w.writer.emit({ ...base, t: "span.ended", kind: "task", attempt: 2, ts: ts(), outcome: "done" });
+
+    const row = w.projection.buildDashboardDayWire(DAY).queueSurfaces
+      .find((surface) => surface.runId === uuidOf(1));
+    assert.ok(row);
+    const step = row.pipeline.find((entry) => entry.id === "cross-verify");
+    assert.equal(step?.state, "done");
+  });
+
   it("persists every folded row to the rebuildable runs_view table", () => {
     const w = world();
     seedWorld(w);
