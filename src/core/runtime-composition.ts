@@ -1,16 +1,19 @@
 /**
  * The rebuild CLI's command surface. The `dashboard` command is real as of
  * 1g-spine: it starts the in-process typed BFF (projection + SSE + command
- * route) through the injected `dashboard` seam.
+ * route) through the injected `dashboard` seam. The `worker` command is real
+ * as of 1f: it runs one workflow-scoped doc 05 §3 worker through the injected
+ * `worker` seam (`src/server/worker/compose.ts`).
  *
- * The seam exists because of the layer matrix, not taste: the composition
- * that imports workflow modules and the server tree sits ABOVE `core`
- * (`src/server/dashboard/compose.ts`, the same move `workflow-registry.ts`
- * documents), so `src/cli.ts` — outside the layer map — hands it in. A
- * `dashboard` invocation without the seam fails loud; it never pretends a
- * server started.
+ * The seams exist because of the layer matrix, not taste: the compositions
+ * that import workflow modules and the server tree sit ABOVE `core`
+ * (`src/server/dashboard/compose.ts` and `src/server/worker/compose.ts`, the
+ * same move `workflow-registry.ts` documents), so `src/cli.ts` — outside the
+ * layer map — hands them in. An invocation without its seam fails loud; it
+ * never pretends a runtime started.
  */
 import type { RuntimeIsolation } from "../config/define-runtime-isolation.js";
+import type { WorkerLoopReport } from "./worker-loop.js";
 
 export interface RunningDashboard {
   readonly port: number;
@@ -23,9 +26,16 @@ export interface RebuildRuntimeStart {
   readonly write?: (message: string) => void;
   /** Explicit seam override for tests; production registers via `registerDashboardComposer`. */
   readonly dashboard?: DashboardComposer;
+  /** Explicit seam override for tests; production registers via `registerWorkerComposer`. */
+  readonly worker?: WorkerComposer;
 }
 
 type DashboardComposer = (isolation: RuntimeIsolation) => Promise<RunningDashboard>;
+/** The worker seam speaks the loop's exact schema-backed report (doc 05 §3). */
+type WorkerComposer = (
+  isolation: RuntimeIsolation,
+  args: readonly string[],
+) => Promise<WorkerLoopReport>;
 
 /**
  * The production injection door. The operational-isolation audit pins
@@ -42,6 +52,15 @@ export function registerDashboardComposer(composer: DashboardComposer): void {
   registeredDashboardComposer = composer;
 }
 
+let registeredWorkerComposer: WorkerComposer | undefined;
+
+export function registerWorkerComposer(composer: WorkerComposer): void {
+  if (registeredWorkerComposer !== undefined) {
+    throw new Error("a worker composer is already registered; two compositions cannot own one runtime");
+  }
+  registeredWorkerComposer = composer;
+}
+
 export function runtimeHelp(isolation: RuntimeIsolation): string {
   return [
     "HR Automation rebuild foundation (completed through 1e; active 1f)",
@@ -49,6 +68,9 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  help       show this contract surface",
     "  phase      print the active isolated runtime resources",
     `  dashboard  start the in-process typed dashboard BFF (1g-spine, port ${String(isolation.backendPort)})`,
+    // Doc 05 names no CLI subcommand for its worker (§3 names only the
+    // `runWorker` loop), so `worker` is the recorded choice here.
+    "  worker <workflow-id> [--drain]  run one workflow-scoped browser worker (doc 05 §3)",
   ].join("\n");
 }
 
@@ -88,6 +110,28 @@ export function startRebuildRuntime(input: RebuildRuntimeStart): void {
       .catch((error: unknown) => {
         // Re-throwing out of the promise chain crashes the process loudly —
         // a dashboard that failed to bind must never look started.
+        throw error instanceof Error ? error : new Error(String(error));
+      });
+    return;
+  }
+  if (command === "worker") {
+    const compose = input.worker ?? registeredWorkerComposer;
+    if (compose === undefined) {
+      throw new Error(
+        "the worker command needs its composition seam; start it through src/cli.ts, which registers composeWorkerRuntime",
+      );
+    }
+    compose(input.isolation, args.slice(1))
+      .then((finished) => {
+        write(JSON.stringify({
+          workerId: finished.workerId,
+          workflowId: finished.workflowId,
+          stopped: finished.stopped,
+          outcomes: finished.outcomes.map(({ state }) => state),
+        }));
+      })
+      .catch((error: unknown) => {
+        // A worker that failed to run must never look finished.
         throw error instanceof Error ? error : new Error(String(error));
       });
     return;

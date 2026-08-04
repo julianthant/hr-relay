@@ -11,12 +11,22 @@
  * inversion. `startRebuildRuntime` receives this function as its injected
  * `dashboard` seam.
  *
+ * Wired as of the 1f production composition:
+ * - the write-resolution executor is `createWriteResolutionExecutor` over the
+ *   SAME `AuthorityDatabase` instance the kernel's transactions run on (its
+ *   documented requirement — the resolution executes INSIDE the kernel's
+ *   authority transaction and `commitWriteAttempt` nests on that connection).
+ *
  * Deliberately typed-but-unwired in this process (each fails loud by name):
- * - the worker process supervisor (`spawn-worker` refuses: the 1g dashboard
- *   process does not launch browser workers; doc 05's live worker lane and
- *   the refresh/reopen browser seams are 1i/live work);
- * - the write-resolution executor (the doc 09 write sequencer is a parallel
- *   1f deliverable; `resolve-write-*` commands unwind loudly until it wires).
+ * - the worker process supervisor's `spawn-worker`: doc 03's Phase-1f
+ *   ratification activates the command ARM (validation, journal, refusal
+ *   semantics), but the dashboard process launching browser-worker OS
+ *   processes is doc 05's live worker lane (doc 07 assigns the operator
+ *   worker-control surface to 2i / the 1i live slice). The refusal names the
+ *   real Phase-1 path: `npm run rebuild:cli worker <workflow-id>`;
+ * - `refresh-browser` / `reopen-browser`: reaching a live worker's session set
+ *   from this process is the same live-lane work; acknowledging an effect
+ *   that did not happen is exactly what the executor refuses to do.
  */
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -24,7 +34,8 @@ import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import { DESCRIPTORS, SERVER_REGISTRY } from "../../control/workflow-registry.js";
 import { createCommandKernel, type WorkerRuntimeExecutor, type WriteResolutionExecutor } from "../../core/command-kernel.js";
-import { createPhase1WorkerRuntimeExecutor } from "../../core/worker-loop.js";
+import { createPhase1WorkerRuntimeExecutor, type WorkerProcessSupervisor } from "../../core/worker-loop.js";
+import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { SettingsOverrideSchema } from "../../domain/config/schema.js";
@@ -67,6 +78,28 @@ export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint 
   return FingerprintSchema.parse(
     sha256Hex(`hrauto:descriptor-set:v1\0${[...fingerprints].sort().join("\n")}`),
   );
+}
+
+/**
+ * The dashboard process's `WorkerProcessSupervisor`: doc 03 §Phase-1f
+ * activates the worker-browser command ARMS (schema, authority validation,
+ * journal, typed refusals), while the process effects behind spawn and
+ * refresh/reopen belong to doc 05's live worker lane (doc 07: the operator
+ * worker-control surface is 2i / the 1i live slice). Until that lane lands,
+ * each effect refuses BY NAME — a thrown supervisor error unwinds the whole
+ * command, so no acknowledgement can claim an effect that did not happen.
+ * `refreshBrowser`/`reopenBrowser` stay undefined on purpose: the Phase-1
+ * executor's own "requires the 1g browser supervisor" refusal is the arm.
+ */
+export function createDashboardWorkerSupervisor(): WorkerProcessSupervisor {
+  return Object.freeze({
+    spawnWorker: (input: Readonly<{ workflowId: string; workerId: string }>): never => {
+      throw new Error(
+        `the dashboard process does not launch browser workers (doc 05 live lane); start `
+        + `worker ${input.workerId} with: npm run rebuild:cli worker ${input.workflowId}`,
+      );
+    },
+  });
 }
 
 export async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
@@ -137,21 +170,16 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     throw new Error(`dashboard refused to start over a degraded projection: ${initialHealth.lastError ?? "unknown"}`);
   }
 
-  const workerRuntime: WorkerRuntimeExecutor = createPhase1WorkerRuntimeExecutor({
-    spawnWorker: () => {
-      throw new Error(
-        "the 1g dashboard process does not launch browser workers; the worker lane arrives with the 1i live slice",
-      );
-    },
+  const workerRuntime: WorkerRuntimeExecutor = createPhase1WorkerRuntimeExecutor(
+    createDashboardWorkerSupervisor(),
+  );
+  // Doc 09 §4.1's typed operator resolutions, over the SAME AuthorityDatabase
+  // instance as the kernel transaction (the executor's documented requirement).
+  const writeResolution: WriteResolutionExecutor = createWriteResolutionExecutor({
+    descriptors,
+    authority: database,
+    ids,
   });
-  const writeResolution: WriteResolutionExecutor = {
-    resolvePresent: () => {
-      throw new Error("resolve-write-present requires the doc 09 write sequencer, which is not wired in this process");
-    },
-    resolveAbsent: () => {
-      throw new Error("resolve-write-absent requires the doc 09 write sequencer, which is not wired in this process");
-    },
-  };
   const kernel = createCommandKernel({
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,

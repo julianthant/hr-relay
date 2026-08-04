@@ -24,7 +24,10 @@
  * the `child-run` arm to a `ChildRunExecutor` (doc 02 §3.2's enqueue/join
  * authority). Invoked without an implementation, each fails loud in the
  * `capability-unavailable` style — a structured terminal failure naming the
- * missing seam — and never skips the node.
+ * missing seam — and never skips the node. A sequencer post-fence park
+ * (`WriteParkedError`, durable state already `parked-write`) surfaces as the
+ * first-class `parked-write` outcome arm: the interpreter observes the
+ * settled park, verifies it against authority, and settles NOTHING else.
  */
 import { z } from "zod";
 import { TaskError, wrapUnhandledTaskError } from "../base/errors.js";
@@ -83,6 +86,10 @@ import type {
   FailureTerminalizationReport,
   SuccessTerminalizationReport,
 } from "../infra/sqlite/run-terminal-contracts.js";
+import {
+  WriteIntentParkCodeSchema,
+  type WriteIntentParkCode,
+} from "../infra/sqlite/write-commit-contracts.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import {
   buildEntryValidationFailureRecord,
@@ -132,6 +139,34 @@ export interface WriteSequencer {
   executeTransaction(context: WriteSequencerContext): Promise<unknown>;
 }
 
+/**
+ * Raised by the write sequencer AFTER the intent and the run are durably
+ * parked (`parked-write`, intent-first ordering — doc 09 §3's fail-closed
+ * post-fence exit). It lives HERE, with the `WriteSequencer` seam it is part
+ * of: the sequencer owns the durable settlement, and the interpreter's
+ * `parked-write` outcome arm only OBSERVES it — no second settlement, no
+ * failure terminalization. The doc 09 §4.1 typed operator resolutions are the
+ * only release paths.
+ */
+export class WriteParkedError extends Error {
+  readonly writeIntentId: string;
+  readonly intentGeneration: number;
+  readonly parkCode: WriteIntentParkCode;
+
+  constructor(input: Readonly<{
+    writeIntentId: string;
+    intentGeneration: number;
+    parkCode: WriteIntentParkCode;
+    message: string;
+  }>) {
+    super(input.message);
+    this.name = "WriteParkedError";
+    this.writeIntentId = input.writeIntentId;
+    this.intentGeneration = input.intentGeneration;
+    this.parkCode = input.parkCode;
+  }
+}
+
 /** Doc 02 §3.2's delegation seam: atomic fan-out enqueue, park, and typed join. */
 export interface ChildRunContext {
   readonly descriptor: AnyWorkflowDescriptor;
@@ -174,6 +209,18 @@ export const RunExecutionOutcomeSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("done"), runId: z.string().min(1) }),
   z.strictObject({ state: z.literal("failed"), runId: z.string().min(1), failureId: z.string().min(1) }),
   z.strictObject({ state: z.literal("parked-gate"), runId: z.string().min(1), gateId: z.string().min(1) }),
+  /**
+   * A post-fence park the sequencer already settled durably (intent parked,
+   * run `parked-write`). First-class so a park never masquerades as a failure
+   * or an escaping error; released only by doc 09 §4.1's typed resolutions.
+   */
+  z.strictObject({
+    state: z.literal("parked-write"),
+    runId: z.string().min(1),
+    writeIntentId: z.string().min(1),
+    intentGeneration: z.number().int().positive(),
+    code: WriteIntentParkCodeSchema,
+  }),
   z.strictObject({ state: z.literal("abandoned"), runId: z.string().min(1), reason: z.string().min(1) }),
 ]);
 export type RunExecutionOutcome = z.infer<typeof RunExecutionOutcomeSchema>;
@@ -886,6 +933,30 @@ export async function executeClaimedRun(
             outputs[String(node.id)] = JsonValueSchema.parse(OutcomeSchema.parse(raw));
           } catch (error) {
             if (error instanceof RunAbandonedError) throw error;
+            if (error instanceof WriteParkedError) {
+              // The sequencer already parked the intent AND the run durably
+              // (intent-first). This arm only observes that settled state —
+              // and it refuses to trust the error object alone: the durable
+              // row must actually be the park the signal claims.
+              const parked = getRun();
+              if (parked.lifecycle.state !== "parked-write"
+                || parked.lifecycle.writeIntentId !== error.writeIntentId
+                || parked.lifecycle.intentGeneration !== error.intentGeneration) {
+                throw new Error(
+                  `transaction node "${node.id}" raised WriteParkedError for intent ${error.writeIntentId} `
+                  + `generation ${String(error.intentGeneration)}, but run ${runId} is `
+                  + `"${parked.lifecycle.state}" in authority; the park signal does not match durable state`,
+                  { cause: error },
+                );
+              }
+              return RunExecutionOutcomeSchema.parse({
+                state: "parked-write",
+                runId,
+                writeIntentId: error.writeIntentId,
+                intentGeneration: error.intentGeneration,
+                code: error.parkCode,
+              });
+            }
             return failNode(node, node.commit.uses.id, error);
           }
           continue;

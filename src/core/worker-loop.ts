@@ -22,6 +22,7 @@ import type { Clock } from "../domain/clock.js";
 import type { IdFactory } from "../domain/identifiers.js";
 import { WorkerIdSchema, WorkflowIdSchema } from "../domain/ids.js";
 import type { WorkerId, WorkflowId } from "../domain/ids.js";
+import { WorkerDirectiveSchema, type WorkerDirective } from "../domain/run/worker.js";
 import type {
   CanonicalInputSnapshotMigration,
   CheckpointMigration,
@@ -80,14 +81,31 @@ export interface WorkerLoopDependencies {
   readonly checkpointMigrations?: readonly CheckpointMigration[];
   readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
   readonly writeSequencer?: WriteSequencer;
+  /**
+   * Builds the doc-09 write sequencer over the loop-OWNED `WorkerSessionManager`
+   * (D116: the sequencer's driver leases must come from the exact manager whose
+   * run-config-fingerprint window this loop binds). Production composition uses
+   * this seam; `writeSequencer` stays for tests that pre-build one. Passing
+   * both is a wiring error and fails loud.
+   */
+  readonly writeSequencerFor?: (sessions: WorkerSessionManager) => WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
+  /**
+   * Doc 03 §2.4's durable worker directives, observed BETWEEN items: the loop
+   * polls before each claim, so `stop` ends the loop only after the active run
+   * settled and `pause` stops claiming without ending the worker. `stopSignal`
+   * remains the mid-run abort channel (SIGINT / claim loss). A poll that
+   * throws aborts the loop loudly — an unreadable directive is never "run".
+   */
+  readonly controlPoll?: () => WorkerDirective;
 }
 
 export const WorkerLoopReportSchema = z.strictObject({
   workerId: z.string().min(1),
   workflowId: z.string().min(1),
   outcomes: z.array(RunExecutionOutcomeSchema),
-  stopped: z.enum(["idle", "stop-signal"]),
+  /** `stop-directive` = the durable lease directive said stop, between items. */
+  stopped: z.enum(["idle", "stop-signal", "stop-directive"]),
 });
 export type WorkerLoopReport = z.infer<typeof WorkerLoopReportSchema>;
 
@@ -185,12 +203,33 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     },
   });
 
+  if (deps.writeSequencer !== undefined && deps.writeSequencerFor !== undefined) {
+    throw new Error(
+      `worker ${workerId} received both writeSequencer and writeSequencerFor; exactly one seam may own the sequencer`,
+    );
+  }
+  const writeSequencer = deps.writeSequencer ?? deps.writeSequencerFor?.(sessions);
+
   emit({ t: "span.started", kind: "worker", workerId, spanPath: workerPath, name: workflowId });
 
   const outcomes: RunExecutionOutcome[] = [];
-  let stopped: "idle" | "stop-signal" = "stop-signal";
+  let stopped: "idle" | "stop-signal" | "stop-directive" = "stop-signal";
   try {
     while (!deps.stopSignal.aborted) {
+      // Between items only: the active run always settles before the next poll.
+      const directive = deps.controlPoll === undefined
+        ? "run"
+        : WorkerDirectiveSchema.parse(deps.controlPoll());
+      if (directive === "stop") {
+        stopped = "stop-directive";
+        break;
+      }
+      if (directive === "pause") {
+        // Paused: claim nothing, keep the worker alive, re-poll on the bounded
+        // idle cadence (doc 05 §3 — a worker never sleeps unboundedly).
+        await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
+        continue;
+      }
       const claimed = deps.authority.authority.runs.claimNext({
         workflow: workflowId,
         workerId,
@@ -266,7 +305,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             ...(deps.canonicalInputMigrations === undefined
               ? {}
               : { canonicalInputMigrations: deps.canonicalInputMigrations }),
-            ...(deps.writeSequencer === undefined ? {} : { writeSequencer: deps.writeSequencer }),
+            ...(writeSequencer === undefined ? {} : { writeSequencer }),
             ...(deps.childRuns === undefined ? {} : { childRuns: deps.childRuns }),
           }, { run, claim, signal: runController.signal }),
         );
