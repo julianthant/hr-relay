@@ -1,17 +1,32 @@
 import { z } from "zod";
 import {
   ActorIdSchema,
-  EvidenceReceiptIdSchema,
+  DiagnosticBundleIdSchema,
+  ElementIdSchema,
+  ErrorCodeSchema,
   EvidenceRefSchema,
+  FailureFingerprintSchema,
   FailureIdSchema,
   IsoInstantSchema,
+  NodeIdSchema,
   NoteIdSchema,
+  PageStateIdSchema,
   ProjectionCursorSchema,
   ReviewRecordIdSchema,
   RunIdSchema,
+  ScreenIdSchema,
+  TaskIdSchema,
   TraceIdSchema,
   WorkflowIdSchema,
+  WriteBindingProofIdSchema,
 } from "../ids.js";
+import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
+import {
+  FailureCauseSchema,
+  RemediationActionSchema,
+  SubjectEvidenceWireSchema,
+  WriteStateSchema,
+} from "../trust/failure.js";
 import { ArtifactResourceWireSchema } from "./artifacts.js";
 import {
   PanelKindSchema,
@@ -188,21 +203,104 @@ const ContextSectionSchema = z.strictObject({
   runId: RunIdSchema,
   entries: z.array(z.strictObject({ label: z.string().min(1), valueRedacted: z.string().min(1) })),
 });
-const ReceiptPointerSchema = z.strictObject({ runId: RunIdSchema, receiptId: EvidenceReceiptIdSchema });
-const FailurePointerSchema = z.strictObject({ runId: RunIdSchema, failureId: FailureIdSchema });
+
+/**
+ * The receipt section serves the WHOLE `RunEvidenceReceipt` (D136), not a
+ * pointer to it. Doc 12 §2.2 puts redaction at capture time — "Redaction is
+ * not deferred to the UI" — and the receipt's every value is already a
+ * `RedactedField` carrying its own classification and transform, so there is
+ * nothing left for a wire projection to strip and nothing a second projection
+ * could do except lose the classification that makes the value readable.
+ */
+const ReceiptSectionSchema = RunEvidenceReceiptSchema;
+
+/**
+ * The failure section serves CONTENT, not `{ runId, failureId }` (D138).
+ *
+ * Every field below is one the schema itself made display-safe: subject
+ * identity travels as a digest plus an already-redacted display suffix, the
+ * page as `urlRedacted`/`titleRedacted`, the input as a fingerprint. The
+ * projection copies exactly those and NOTHING else off the `FailureRecord` —
+ * an unclassified field is dropped by omission from this strict schema rather
+ * than passed through, which is the doc-11 rule applied structurally instead
+ * of by a filter someone has to remember to update.
+ *
+ * `sameFingerprintSeen` is doc 12 §2.1's "same failure seen before" as a
+ * COUNT rather than a list: the count is what the operator acts on, and it is
+ * answerable without projecting other runs' subjects onto this one's panel.
+ * `diagnosticBundle` is an explicit absence union — the capture trigger is a
+ * separate 2g slice, so an absent bundle says why instead of rendering empty.
+ */
+export const FailureDetailWireSchema = z.strictObject({
+  runId: RunIdSchema,
+  failureId: FailureIdSchema,
+  traceId: TraceIdSchema,
+  attempt: z.number().int().positive(),
+  workflowId: WorkflowIdSchema,
+  nodeId: NodeIdSchema.optional(),
+  taskId: TaskIdSchema.optional(),
+  fingerprint: FailureFingerprintSchema,
+  code: ErrorCodeSchema,
+  summary: z.string().min(1),
+  transient: z.boolean(),
+  /**
+   * Doc 03 D18's write-state sentence renders UNCONDITIONALLY in the stream —
+   * "what this run left behind" is the difference between a safe retry and a
+   * duplicate termination, so it can never sit behind a disclosure.
+   */
+  writeState: WriteStateSchema,
+  subject: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+    z.strictObject({
+      state: z.literal("present"),
+      expected: SubjectEvidenceWireSchema.optional(),
+      observed: SubjectEvidenceWireSchema.optional(),
+      proofRef: WriteBindingProofIdSchema.optional(),
+    }),
+  ]),
+  page: z.strictObject({
+    screen: ScreenIdSchema.optional(),
+    state: PageStateIdSchema.optional(),
+    urlRedacted: z.string().min(1).optional(),
+    titleRedacted: z.string().min(1).optional(),
+  }).optional(),
+  action: z.strictObject({
+    elementId: ElementIdSchema.optional(),
+    operation: z.enum(["goto", "wait", "read", "fill", "click", "choose", "commit"]).optional(),
+    sequence: z.number().int().positive().optional(),
+  }).optional(),
+  causeChain: z.array(FailureCauseSchema).min(1),
+  remediation: z.array(RemediationActionSchema).min(1),
+  sameFingerprintSeen: z.number().int().positive(),
+  diagnosticBundle: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+    z.strictObject({ state: z.literal("present"), bundleId: DiagnosticBundleIdSchema }),
+  ]),
+  occurredAt: IsoInstantSchema,
+}).superRefine((failure, context) => {
+  if (failure.sameFingerprintSeen < 1) {
+    context.addIssue({
+      code: "custom",
+      path: ["sameFingerprintSeen"],
+      message: "the failure being projected is itself one occurrence; the count cannot be zero",
+    });
+  }
+});
+
 const CaptureListSchema = z.strictObject({ runId: RunIdSchema, artifacts: z.array(ArtifactResourceWireSchema) });
 
 export const RunDetailSectionResponseSchema = z.discriminatedUnion("section", [
   z.strictObject({ section: z.literal("logs"), payload: NotePageSchema }),
-  z.strictObject({ section: z.literal("receipt"), payload: wireResourceSchema(ReceiptPointerSchema) }),
+  z.strictObject({ section: z.literal("receipt"), payload: wireResourceSchema(ReceiptSectionSchema) }),
   z.strictObject({ section: z.literal("review"), payload: ReviewPageSchema }),
   z.strictObject({ section: z.literal("people"), payload: PeoplePageSchema }),
   z.strictObject({ section: z.literal("context-data"), payload: ContextSectionSchema }),
   z.strictObject({ section: z.literal("context-evidence"), payload: ContextSectionSchema }),
   z.strictObject({ section: z.literal("context-attempts"), payload: ContextSectionSchema }),
-  z.strictObject({ section: z.literal("failure"), payload: wireResourceSchema(FailurePointerSchema) }),
+  z.strictObject({ section: z.literal("failure"), payload: wireResourceSchema(FailureDetailWireSchema) }),
   z.strictObject({ section: z.literal("captures"), payload: CaptureListSchema }),
 ]);
 
+export type FailureDetailWire = z.infer<typeof FailureDetailWireSchema>;
 export type RunDetailWire = z.infer<typeof RunDetailWireSchema>;
 export type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;

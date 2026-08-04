@@ -531,10 +531,58 @@ function notePageOf(seed: number, notes: readonly NoteSeed[]): z.infer<typeof No
   });
 }
 
+/**
+ * Adapter #1 authors payloads; it derives nothing. A receipt is DERIVED from
+ * authority rows this adapter has none of (D137), so it truthfully serves an
+ * absence with the reason — adapter #2, the seeded BFF over the real database,
+ * is where a real receipt is exercised.
+ */
 const RECEIPT_MISSING = {
   state: "missing",
-  reason: "evidence receipts land with the 2g trust surfaces",
+  reason: "this fixture adapter holds no authority rows to derive a receipt from",
 } as const;
+
+/** The failed run's record, in the strict already-redacted wire shape (D138). */
+function failureDetail(runId: string, failureId: string, seed: number) {
+  const summary = "cross-verify failed: subject mismatch between CRM and UCPath";
+  return {
+    runId,
+    failureId,
+    traceId: traceOf(seed),
+    attempt: 1,
+    workflowId: "person-lookup",
+    nodeId: "cross-verify",
+    taskId: "crm/read-onboarding-record",
+    fingerprint: "e".repeat(64),
+    code: "SUBJECT_MISMATCH",
+    summary,
+    transient: false,
+    writeState: "not-attempted",
+    subject: {
+      state: "present",
+      expected: { kind: "eid", digest: "1".repeat(64), displayRedacted: "\u2022\u2022\u2022\u20225001" },
+      observed: { kind: "eid", digest: "2".repeat(64), displayRedacted: "\u2022\u2022\u2022\u20224136" },
+    },
+    page: {
+      screen: "crm.onboarding",
+      state: "crm.onboarding.record-ready",
+      urlRedacted: "https://crm.example/onboarding/[redacted]",
+      titleRedacted: "Onboarding record",
+    },
+    action: { operation: "read", sequence: 3 },
+    causeChain: [{ code: "SUBJECT_MISMATCH", summary, role: "primary", transient: false }],
+    remediation: [{
+      kind: "operator-action",
+      message: "Confirm which EID is correct at the source before re-running; nothing was written.",
+    }],
+    sameFingerprintSeen: 1,
+    diagnosticBundle: {
+      state: "absent",
+      reason: "no diagnostic bundle was captured; automatic capture is a separate 2g slice",
+    },
+    occurredAt: at(35),
+  };
+}
 
 function sectionsOf(
   seed: number,
@@ -556,7 +604,10 @@ function sectionsOf(
     },
   };
   if (failureId !== undefined) {
-    sections.failure = { section: "failure", payload: { state: "available", value: { runId, failureId } } };
+    sections.failure = {
+      section: "failure",
+      payload: { state: "available", value: failureDetail(runId, failureId, seed) },
+    };
   }
   return Object.freeze(Object.fromEntries(
     Object.entries(sections).map(([name, value]) => [name, RunDetailSectionResponseSchema.parse(value)]),

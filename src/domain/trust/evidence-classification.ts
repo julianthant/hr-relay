@@ -55,6 +55,7 @@
  * anybody who was not selected.
  */
 import { z } from "zod";
+import { JsonValueSchema } from "../canonical-json.js";
 import { TaskIdSchema, WorkflowIdSchema } from "../ids.js";
 import {
   DataClassificationSchema,
@@ -192,13 +193,15 @@ for (const entry of EVIDENCE_FIELD_CLASSIFICATIONS) {
   BY_SCOPE_AND_PATH.set(key, entry);
 }
 
-export interface EvidenceLeaf {
+export const EvidenceLeafSchema = z.strictObject({
   /** The dotted path, in the same vocabulary `FactProvenance.path` uses. */
-  readonly path: string;
+  path: EvidenceLeafPathSchema,
   /** The leaf's own camelCase name, which is what `EvidenceFact.field` accepts. */
-  readonly field: string;
-  readonly value: unknown;
-}
+  field: z.string().regex(/^[a-z][A-Za-z0-9]*$/),
+  /** Strictly JSON: a value that cannot serialize cannot be evidence. */
+  value: JsonValueSchema,
+});
+export type EvidenceLeaf = z.infer<typeof EvidenceLeafSchema>;
 
 /**
  * Every leaf of a JSON value, by the provenance collector's rule: an array is
@@ -231,7 +234,7 @@ function leafOf(path: string, value: unknown): EvidenceLeaf {
   if (field === undefined || !/^[a-z][A-Za-z0-9]*$/.test(field)) {
     throw new Error(`evidence leaf "${path}" has no camelCase field name`);
   }
-  return Object.freeze({ path, field, value });
+  return Object.freeze(EvidenceLeafSchema.parse({ path, field, value }));
 }
 
 /** The declared classification, or a loud refusal naming the exact gap. */

@@ -27,11 +27,14 @@
 import { z } from "zod";
 import { localDatePart } from "../../../domain/clock.js";
 import {
+  FailureDetailWireSchema,
   RunDetailSectionResponseSchema,
   RunDetailWireSchema,
   type RunDetailSectionResponse,
   type RunDetailWire,
 } from "../../../domain/dashboard/run-detail.js";
+import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
+import type { FailureRecord } from "../../../domain/trust/failure.js";
 import type { RunRecord } from "../../../domain/run/record.js";
 import {
   readEventStreamLines,
@@ -41,10 +44,25 @@ import { NoteWireSchema as NoteAtRestSchema } from "../../../events/types.js";
 import type { RunFoldRecord, RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { deterministicUuid } from "../support.js";
 
+/**
+ * The trust reads the receipt and failure sections need (D136/D138). They are
+ * separate from `getRun` on purpose: the query never opens a database, and a
+ * composition that cannot serve trust content must say so by omission rather
+ * than by handing in a stub that returns nothing.
+ */
+export interface RunDetailTrustDeps {
+  /** Derive-and-persist the run's receipt; see `ensureRunEvidenceReceipt`. */
+  ensureReceipt(runId: string): RunEvidenceReceipt;
+  getFailure(failureId: string): FailureRecord | undefined;
+  countFailuresByFingerprint(fingerprint: string): number;
+}
+
 export interface RunDetailQueryDeps {
   readonly stateRoot: string;
   readonly projection: RunQueueProjection;
   readonly authority: { getRun(runId: string): RunRecord | undefined };
+  /** Absent until a composition wires the 2g trust services. */
+  readonly trust?: RunDetailTrustDeps;
 }
 
 const LOGS_PAGE_SIZE = 200;
@@ -79,12 +97,26 @@ function requireRun(deps: RunDetailQueryDeps, runId: string): { row: RunFoldReco
   return { row, authority };
 }
 
-export function availableSections(_row: RunFoldRecord, authority: RunRecord): readonly ("logs" | "context-data" | "context-attempts" | "failure")[] {
+/**
+ * A section is advertised only when this composition can genuinely serve it.
+ * `receipt` needs BOTH a terminal run (a receipt states a settled verdict) and
+ * the trust seam; `failure` needs a terminal failure and the same seam, since
+ * without it the panel could only serve the pointer it used to.
+ */
+export function availableSections(
+  _row: RunFoldRecord,
+  authority: RunRecord,
+  trust?: RunDetailTrustDeps,
+): readonly ("logs" | "receipt" | "context-data" | "context-attempts" | "failure")[] {
+  const { lifecycle } = authority;
+  const terminal = lifecycle.state === "terminal";
+  const settled = terminal && lifecycle.outcome !== "interrupted";
   return [
     "logs",
+    ...(settled && trust !== undefined ? (["receipt"] as const) : []),
     "context-data",
     "context-attempts",
-    ...(authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "failed"
+    ...(terminal && lifecycle.outcome === "failed" && trust !== undefined
       ? (["failure"] as const)
       : []),
   ];
@@ -199,7 +231,7 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
       evidenceFacts: 0,
       attempts: row.attempt,
     },
-    availableSections: availableSections(row, authority),
+    availableSections: availableSections(row, authority, deps.trust),
   });
 }
 
@@ -229,21 +261,40 @@ export function buildRunSection(
 ): RunDetailSectionResponse {
   const section = SectionNameSchema.parse(sectionInput);
   const { row, authority } = requireRun(deps, runId);
-  const served = availableSections(row, authority);
+  const served = availableSections(row, authority, deps.trust);
   if (!served.includes(section as (typeof served)[number])) {
     if (section === "receipt") {
       return RunDetailSectionResponseSchema.parse({
         section,
-        payload: { state: "missing", reason: "evidence receipts land with the 2g trust surfaces" },
+        payload: { state: "missing", reason: receiptAbsenceReason(authority, deps.trust) },
       });
     }
     if (section === "failure") {
       return RunDetailSectionResponseSchema.parse({
         section,
-        payload: { state: "missing", reason: "this run holds no structured failure record" },
+        payload: {
+          state: "missing",
+          reason: deps.trust === undefined
+            ? "this composition wires no trust service, so the structured failure record cannot be read"
+            : "this run holds no structured failure record",
+        },
       });
     }
     throw new Error(`section ${section} is not available for run ${runId}; served sections are ${served.join(", ")}`);
+  }
+  /** Only the two trust sections need the seam; logs and context never did. */
+  const requireTrust = (): RunDetailTrustDeps => {
+    if (deps.trust === undefined) {
+      throw new Error(`section ${section} was advertised for run ${runId} without a trust service`);
+    }
+    return deps.trust;
+  };
+
+  if (section === "receipt") {
+    return RunDetailSectionResponseSchema.parse({
+      section,
+      payload: { state: "available", value: requireTrust().ensureReceipt(runId) },
+    });
   }
 
   if (section === "logs") {
@@ -305,8 +356,75 @@ export function buildRunSection(
     || authority.lifecycle.failureId === undefined) {
     throw new Error(`run ${runId} advertises a failure section without a terminal failure record`);
   }
+  const { failureId } = authority.lifecycle;
+  const trust = requireTrust();
+  const failure = trust.getFailure(failureId);
+  if (failure === undefined) {
+    // The run's terminal transition NAMES this record; its absence is a
+    // storage fault, not an empty panel. Failing loud is the only honest arm.
+    throw new Error(
+      `run ${runId} terminalized failed against failure ${failureId}, which authority does not hold`,
+    );
+  }
   return RunDetailSectionResponseSchema.parse({
     section: "failure",
-    payload: { state: "available", value: { runId, failureId: authority.lifecycle.failureId } },
+    payload: { state: "available", value: failureDetailWire(runId, failure, trust) },
+  });
+}
+
+function receiptAbsenceReason(authority: RunRecord, trust?: RunDetailTrustDeps): string {
+  if (trust === undefined) {
+    return "this composition wires no trust service, so no receipt can be derived";
+  }
+  const { lifecycle } = authority;
+  if (lifecycle.state !== "terminal") {
+    return `run is ${lifecycle.state}; a receipt states a settled verdict and this run has none yet`;
+  }
+  return "run was interrupted; doc-09 recovery will requeue or settle it before a receipt can name a verdict";
+}
+
+/**
+ * Project the durable `FailureRecord` onto the strict wire. The projection is
+ * a whitelist BY CONSTRUCTION — every field is named here — so a field added
+ * to the durable record later reaches no surface until someone decides how it
+ * is classified. `sameFingerprintSeen` counts occurrences of the failure
+ * CLASS, which is doc 12 §2.1's "same failure seen before" link.
+ */
+function failureDetailWire(
+  runId: string,
+  failure: FailureRecord,
+  trust: RunDetailTrustDeps,
+): z.infer<typeof FailureDetailWireSchema> {
+  const seen = trust.countFailuresByFingerprint(failure.fingerprint);
+  return FailureDetailWireSchema.parse({
+    runId,
+    failureId: failure.failureId,
+    traceId: failure.traceId,
+    attempt: failure.attempt,
+    workflowId: failure.workflowId,
+    ...(failure.nodeId === undefined ? {} : { nodeId: failure.nodeId }),
+    ...(failure.taskId === undefined ? {} : { taskId: failure.taskId }),
+    fingerprint: failure.fingerprint,
+    code: failure.code,
+    summary: failure.summary,
+    transient: failure.transient,
+    writeState: failure.writeState,
+    subject: failure.subject === undefined
+      ? { state: "absent", reason: "this failure bound no transaction subject" }
+      : { state: "present", ...failure.subject },
+    ...(failure.page === undefined ? {} : { page: failure.page }),
+    ...(failure.action === undefined ? {} : { action: failure.action }),
+    causeChain: failure.causeChain,
+    remediation: failure.remediation,
+    // The record being projected is itself one occurrence, so a count that
+    // came back short of 1 means the index disagrees with the row.
+    sameFingerprintSeen: Math.max(1, seen),
+    diagnosticBundle: failure.diagnosticBundleId === undefined
+      ? {
+        state: "absent",
+        reason: "no diagnostic bundle was captured; automatic capture is a separate 2g slice",
+      }
+      : { state: "present", bundleId: failure.diagnosticBundleId },
+    occurredAt: failure.occurredAt,
   });
 }
