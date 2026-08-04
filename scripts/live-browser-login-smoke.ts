@@ -4,6 +4,7 @@
  *   npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath
  *   npx tsx --env-file=.env scripts/live-browser-login-smoke.ts crm
  *   npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath --headed
+ *   npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath --cold
  *
  * It drives the REAL factory, the REAL store login recipe, and the REAL
  * `WorkerSessionManager` lease against production SSO — the only pieces that
@@ -12,6 +13,23 @@
  *
  * It performs a login and a neutral reset. It never runs a workflow node and
  * never commits anything, so there is no UCPath transaction to guard.
+ *
+ * ## What it must REPORT, not just do (2026-08-03)
+ *
+ * This smoke once "passed" in ~3 seconds against a page that was never logged
+ * in. Two things let that read as success: the recipes concluded authentication
+ * from a URL, and this script threw the `LoginResult` away, so
+ * `already-authenticated` and `logged-in` printed identically. Both halves are
+ * fixed; the reporting half is here. Every run now prints:
+ *
+ *   - which of `logged-in` / `already-authenticated` happened, per session; and
+ *   - the EVIDENCE that proved the authenticated application — the positive
+ *     content-level artifact and the sign-in-form absences, never a value.
+ *
+ * A run that cannot prove a real authenticated application throws and exits
+ * non-zero. A suspiciously fast `already-authenticated` on a profile you
+ * believed was cold is a finding to investigate, not a pass — `--cold` removes
+ * this smoke's OWN profile directory first so the question does not arise.
  *
  * Preconditions (all fail loud, individually, before a browser opens):
  *   - `.env` with `UCPATH_USER_ID` / `UCPATH_PASSWORD`;
@@ -29,18 +47,24 @@
  * which is the registered reader, so `--env-file=.env` is still required.
  */
 import { randomUUID } from "node:crypto";
+import { rmSync } from "node:fs";
 import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";
 import { WorkerSessionManager } from "../src/core/worker-sessions.js";
 import { systemClock } from "../src/domain/clock.js";
 import { resolveConfig } from "../src/domain/config/resolve.js";
+import { RuntimeInstanceSchema } from "../src/domain/config/instance.js";
 import {
   BrowserSystemIdSchema,
   FingerprintSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
 } from "../src/domain/ids.js";
-import { PlaywrightWorkerSessionFactory } from "../src/infra/browser/browser-session-factory.js";
+import {
+  PlaywrightWorkerSessionFactory,
+  workerProfileDirectory,
+} from "../src/infra/browser/browser-session-factory.js";
 import type { BrowserDeadlineScheduler } from "../src/infra/browser/browser-session-factory.js";
+import type { AuthenticatedApplicationEvidence } from "../src/infra/browser/login-contract.js";
 import { taskStoreRegistry } from "../src/stores/index.js";
 
 const SUPPORTED = new Set(["ucpath", "crm"]);
@@ -56,29 +80,59 @@ function write(line: string): void {
   process.stdout.write(`${line}\n`);
 }
 
+function elapsed(since: number): string {
+  return `${((systemClock.monotonicMs() - since) / 1_000).toFixed(1)}s`;
+}
+
 async function main(): Promise<void> {
   const requested = process.argv[2];
   if (requested === undefined || !SUPPORTED.has(requested)) {
-    throw new Error(`usage: live-browser-login-smoke <${[...SUPPORTED].join("|")}>`);
+    throw new Error(`usage: live-browser-login-smoke <${[...SUPPORTED].join("|")}> [--headed] [--cold]`);
   }
   const system = BrowserSystemIdSchema.parse(requested);
   const config = resolveConfig({}, {}, systemClock);
   const headed = process.argv.includes("--headed");
   const workerId = WorkerIdSchema.parse("live-smoke-worker-1");
   const workflowId = WorkflowIdSchema.parse("person-lookup");
+  const instance = RuntimeInstanceSchema.parse("prod");
   // A synthetic but well-formed reuse identity: the smoke is one "run".
   const configFingerprint = FingerprintSchema.parse(
     randomUUID().replaceAll("-", "").padEnd(64, "0").slice(0, 64),
   );
 
+  if (process.argv.includes("--cold")) {
+    // Exactly THIS smoke's profile directory, derived by the same production
+    // function the factory uses. It is several levels below the credential
+    // home, so the enrolled Duo WebAuthn key is never in scope.
+    const profileDirectory = workerProfileDirectory({
+      profileRoot: config.paths.browserProfileRoot,
+      isolation: rebuildRuntimeIsolation,
+      workerId, system, instance, configFingerprint,
+    });
+    const workerRoot = profileDirectory.slice(0, profileDirectory.lastIndexOf("/"));
+    if (!workerRoot.includes(rebuildRuntimeIsolation.browserSessionNamespace) || !workerRoot.endsWith(workerId)) {
+      throw new Error(`refusing to clear ${workerRoot}: it is not this smoke's worker profile home`);
+    }
+    rmSync(workerRoot, { recursive: true, force: true });
+    write(`[smoke] cold start: cleared ${workerRoot}`);
+  }
+
+  const evidence: AuthenticatedApplicationEvidence[] = [];
   const factory = new PlaywrightWorkerSessionFactory({
     config: { ...config, browser: { ...config.browser, headless: !headed } },
     isolation: rebuildRuntimeIsolation,
     clock: systemClock,
     scheduler: realScheduler,
     newSessionId: () => randomUUID(),
+    onAuthenticationEvidence: (observed) => {
+      evidence.push(observed);
+      write(`[evidence] ${observed.system} @ ${observed.url}`);
+      write(`[evidence]   positive: ${observed.positive}`);
+      write(`[evidence]   negative: ${observed.negative}`);
+    },
   });
 
+  const started = systemClock.monotonicMs();
   const sessions = new WorkerSessionManager({
     workerId,
     workflowId,
@@ -86,21 +140,28 @@ async function main(): Promise<void> {
     factory,
     clock: systemClock,
     onEvent: (event) => {
-      write(`[session] ${event.type} ${event.system} ${event.sessionId}`);
+      const detail = event.type === "browser-session:start" ? ` login=${event.login}` : "";
+      write(`[session] ${event.type} ${event.system} ${event.sessionId}${detail} (+${elapsed(started)})`);
     },
   });
   sessions.bindRunConfigFingerprint(configFingerprint);
 
-  const started = systemClock.monotonicMs();
   await sessions.withDriver(
     { system, access: "read", session: "reuse-worker" },
-    "prod",
+    instance,
     new AbortController().signal,
     async (driver) => {
-      write(`[smoke] authenticated ${driver.system}; the lease callback holds a live driver`);
+      write(`[smoke] authenticated ${driver.system}; the lease callback holds a live driver (+${elapsed(started)})`);
     },
   );
-  write(`[smoke] ${system} login + neutral reset verified in ${String(Math.round(systemClock.monotonicMs() - started))}ms`);
+  // The lease releases through the neutral reset, which re-runs the SAME proof.
+  // Two evidence records — login and reset — is what a real session produces.
+  if (evidence.length < 2) {
+    throw new Error(
+      `${system} smoke observed ${String(evidence.length)} authentication proof(s); a login and its neutral reset must each produce one`,
+    );
+  }
+  write(`[smoke] ${system} login + neutral reset verified in ${elapsed(started)}`);
   await sessions.closeAll("worker-stop");
   write("[smoke] every session closed with proof");
 }
