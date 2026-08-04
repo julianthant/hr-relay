@@ -1,0 +1,43 @@
+# start-run--graphite-warm--narrow-1024x768
+# adapter: fixture
+# fixture: start-run
+# descriptorHash: dd70583334bf64d4d593f7cba2f87db04895d7a550f9364b5e280339dbc4ccb2
+# appVersion: 0.1.0
+# viewport: narrow-1024x768  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Start a run":
+  - banner:
+    - heading "Start a run" [level=2]
+    - paragraph: It declares what it takes, and the plan says exactly what will exist before anything is enqueued.
+    - button "Close"
+  - navigation "Start stages — step 1 of 3":
+    - button "1 Input"
+    - button "2 Plan" [disabled]
+    - button "3 Result" [disabled]
+  - text: Workflow
+  - heading "Person Lookup" [level=3]
+  - text: Entries — separated by “;” or a new line 0 parsed
+  - textbox "Entries — separated by “;” or a new line":
+    - /placeholder: Enter EIDs or names, semicolon-separated (e.g. 10873698; Battistessa, Johnnie)
+  - text: How this run is shaped keepNonHdh no includeCrmDates no
+  - complementary "Run controls":
+    - text: Priority
+    - combobox "Priority":
+      - option "Interactive" [selected]
+      - option "Bulk"
+    - paragraph: Bulk work yields whenever interactive work needs the browser.
+    - checkbox "Dry run not declared by this workflow" [disabled]
+    - text: Dry run not declared by this workflow Destination UCPATH
+    - combobox "UCPATH":
+      - option "Production" [selected]
+      - option "Test instance"
+    - text: CRM
+    - combobox "CRM" [disabled]:
+      - option "Production" [selected]
+      - option "Test instance — not wired" [disabled]
+    - paragraph: no CRM test instance is configured
+  - contentinfo:
+    - text: Person LookupType at least one entry.
+    - button "Cancel"
+    - button "Plan the run" [disabled]

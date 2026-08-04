@@ -64,16 +64,21 @@ const ROLE_PAIRS: readonly { id: string; fixtureRun?: string; seededRun?: string
   { id: "open-gate-run", fixtureRun: FIXTURE_IDS.openGateRun, seededRun: "openGateRun" },
   { id: "running-run", fixtureRun: FIXTURE_IDS.runningRun, seededRun: "runningRun" },
   { id: "done-run", fixtureRun: FIXTURE_IDS.doneRun, seededRun: "doneRun" },
-  { id: "group-run", fixtureRun: FIXTURE_IDS.groupOf3, seededRun: "groupRun" },
+  { id: "group-run", fixtureRun: FIXTURE_IDS.groupOf13, seededRun: "groupRun" },
 ];
 
 for (const pair of ROLE_PAIRS) {
   test(`both adapters render the same structure: ${pair.id}`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
 
+    // The tab is PINNED. Left to their defaults the two adapters can legitimately
+    // open different tabs — a done run opens on Receipt, but the seeded backend
+    // advertises no receipt section for its done run, so it opens on Logs. That
+    // is a difference in what the two backends serve, not in how the components
+    // behave, and comparing it would be comparing two different screens.
     await gotoAppState(page, fixture.baseUrl, {
       day: FIXTURE_DAY,
-      ...(pair.fixtureRun === undefined ? {} : { run: pair.fixtureRun }),
+      ...(pair.fixtureRun === undefined ? {} : { run: pair.fixtureRun, section: "logs" }),
     });
     const fixtureTree = await readA11yTree(page);
 
@@ -83,7 +88,7 @@ for (const pair of ROLE_PAIRS) {
     }
     await gotoAppState(page, seeded.baseUrl, {
       day: SEEDED_DAY,
-      ...(seededRunId === undefined ? {} : { run: seededRunId }),
+      ...(seededRunId === undefined ? {} : { run: seededRunId, section: "logs" }),
     });
     const seededTree = await readA11yTree(page);
 

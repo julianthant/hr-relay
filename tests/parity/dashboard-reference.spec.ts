@@ -38,7 +38,9 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   { id: "run-running", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.runningRun } },
   { id: "run-done", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.doneRun } },
   { id: "run-queued", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.queuedRun } },
-  { id: "run-group", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.groupOf3 } },
+  // groupOf13 is the group the corpus gives a `group` panel detail to; the
+  // smaller groups exist to exercise the QUEUE's well sizing, not the panel.
+  { id: "run-group", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.groupOf13 } },
   { id: "run-member", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.memberRun } },
   { id: "run-receipt", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.doneRun, section: "receipt" } },
   { id: "start-run", route: { day: FIXTURE_DAY, start: true } },

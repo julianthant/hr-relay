@@ -1,0 +1,152 @@
+# run-running--graphite-warm--1280x720
+# adapter: fixture
+# fixture: run-running
+# descriptorHash: dd70583334bf64d4d593f7cba2f87db04895d7a550f9364b5e280339dbc4ccb2
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "This is the newest day served" [disabled]
+  - button "Keyboard shortcuts"
+  - button "Switch to Paper Ink"
+- main:
+  - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
+  - button "Start a run"
+  - group "Filter the queue by status":
+    - group "Scope the queue":
+      - button "All 14" [pressed]
+      - button "Needs you 3"
+    - button "Queued — 2": Queued 2
+    - button "Running — 3": Running 3
+    - button "Review — 2": Review 2
+    - button "Write parked — 1": Write parked 1
+    - button "Done — 2": Done 2
+    - button "Done — 2": Done 2
+    - button "Failed — 1": Failed 1
+    - button "Cancelled — 1": Cancelled 1
+  - region "Queue":
+    - heading "Person Lookup" [level=2]
+    - text: Needs you 3
+    - button "Blirea, Glaundi — review": Blirea, Glaundi Review Waiting on identity review 9:47 AM pl-090505-0005 person lookup 18m 0s Right-click or press m for every command on Blirea, Glaundi
+    - button "EID 10777012 — write parked":
+      - text: EID 10777012
+      - button "What this run did not report — EID 10777012"
+      - text: Write parked A write to UCPath is parked pending proof 9:44 AM pl-090606-0006 21m 0s Right-click or press m for every command on EID 10777012
+    - button "Rehire eligibility sweep — review":
+      - text: Rehire eligibility sweep Review 1 member is waiting on you 3/4 1 Name Detail
+      - button "Tran, Bao person lookup"
+      - button "Blirea, Glaundi person lookup"
+      - button "EID 10120933 person lookup"
+      - button "EID 10577410 person lookup"
+      - text: 9:20 AM pl-094040-0040 person lookup 45m 0s Right-click or press m for every command on Rehire eligibility sweep
+    - text: Active 3
+    - button "Battistessa, Johnnie — running" [pressed]: Battistessa, Johnnie Running Searching UCPath for Battistessa, Johnnie 9:52 AM pl-090202-0002 person lookup 13m 0s Right-click or press m for every command on Battistessa, Johnnie
+    - button "Weekly HDH roster check (1) — running":
+      - text: Weekly HDH roster check (1) Running 1 member running 0/1 0 Name Detail
+      - button "EID 10611004 person lookup"
+      - text: 9:30 AM pl-092020-0020 person lookup 35m 0s Right-click or press m for every command on Weekly HDH roster check (1)
+    - button "New-hire lookups — batch 3 — running":
+      - text: New-hire lookups — batch 3 Running 2 of 3 members remaining 1/3 0 Name Detail
+      - button "EID 10480021 person lookup"
+      - button "Okafor, Chinedu person lookup"
+      - button "Alvarez, Maria person lookup"
+      - text: 9:28 AM pl-093030-0030 person lookup 37m 0s Right-click or press m for every command on New-hire lookups — batch 3
+    - text: Queued 2
+    - button "EID 10873698 — queued":
+      - text: EID 10873698
+      - button "What this run did not report — EID 10873698"
+      - text: Queued 9:55 AM pl-090101-0001 person lookup Right-click or press m for every command on EID 10873698
+    - button "EID 10873698 — queued":
+      - text: EID 10873698
+      - button "What this run did not report — EID 10873698"
+      - text: Queued 9:57 AM pl-090909-0009 preview Right-click or press m for every command on EID 10873698
+    - text: Finished 6
+    - button "EID 10001573 — done":
+      - text: EID 10001573
+      - button "What this run did not report — EID 10001573"
+      - text: Done 9:35 AM pl-090303-0003 with CRM dates 30m 0s Right-click or press m for every command on EID 10001573
+    - button "EID 10555001 — failed":
+      - text: EID 10555001
+      - button "What this run did not report — EID 10555001"
+      - text: Failed 9:33 AM pl-090404-0004 person lookup 32m 0s Right-click or press m for every command on EID 10555001
+    - button "EID 10222009 — cancelled":
+      - text: EID 10222009
+      - button "What this run did not report — EID 10222009"
+      - text: Cancelled 9:26 AM pl-090707-0007 person lookup 39m 0s Right-click or press m for every command on EID 10222009
+    - button "EID 10333015 — done":
+      - text: EID 10333015
+      - button "What this run did not report — EID 10333015"
+      - text: Done 9:24 AM pl-090808-0008 with CRM dates 41m 0s Right-click or press m for every command on EID 10333015
+    - button "Onboarding cohort — July stragglers — done":
+      - text: Onboarding cohort — July stragglers
+      - button "What this run did not report — Onboarding cohort — July stragglers"
+      - text: Done 12/12 0 Name Detail
+      - button "EID 10300100 person lookup"
+      - button "EID 10300101 person lookup"
+      - button "EID 10300102 person lookup"
+      - button "EID 10300103 person lookup"
+      - button "EID 10300104 person lookup"
+      - button "EID 10300105 person lookup"
+      - button "EID 10300106 person lookup"
+      - button "EID 10300107 person lookup"
+      - button "EID 10300108 person lookup"
+      - button "EID 10300109 person lookup"
+      - button "EID 10300110 person lookup"
+      - button "EID 10300111 person lookup"
+      - button "Expand"
+      - text: 9:05 AM pl-095050-0050 person lookup 1h 0m Right-click or press m for every command on Onboarding cohort — July stragglers
+    - button "Separation audit — August — done":
+      - text: Separation audit — August Done 2 members failed 12/13 2 Name Detail
+      - button "Castillo, Ren person lookup"
+      - button "EID 10990031 person lookup"
+      - button "Haddad, Lina person lookup"
+      - button "EID 10410200 person lookup"
+      - button "EID 10410201 person lookup"
+      - button "EID 10410202 person lookup"
+      - button "EID 10410203 person lookup"
+      - button "EID 10410204 person lookup"
+      - button "EID 10410205 person lookup"
+      - button "EID 10410206 person lookup"
+      - button "EID 10410207 person lookup"
+      - button "EID 10410208 person lookup"
+      - button "EID 10990032 person lookup"
+      - button "Expand"
+      - text: 9:10 AM pl-091010-0070 person lookup 55m 0s Right-click or press m for every command on Separation audit — August
+  - region "Run shape": searching 9:52 AM 9:52 AM 0s elapsed
+  - region "Run detail":
+    - text: Battistessa, Johnnie Running pl-090202-0002
+    - img "Running"
+    - text: run is still executing
+    - tablist "Run detail sections":
+      - tab "Logs" [selected]
+      - tab "Receipt"
+    - text: 9:52 AM Searching UCPath directory for Battistessa, Johnnie 9:53 AM 2 candidates returned from person search 9:54 AM Selecting the exact name match
+    - searchbox "Search logs"
+    - text: wf dd705833
+    - button "Run provenance"
+  - complementary "Run data":
+    - text: Run data
+    - button "Hide run data"
+    - region "Data": Data Selection exact-match Active status pending
+    - separator
+    - region "Attempts": Attempts Attempt 1 2026-08-03T09:30:00.000-07:00 · this attempt
+    - separator
+    - text: 2 fields · 1 attempt
+- dialog "Workflow Panel":
+  - text: Workflow Panel
+  - button "Dock the Workflow Panel as a sidebar"
+  - button "Minimise the Workflow Panel to an icon"
+  - text: rows Search
+  - list:
+    - listitem:
+      - button "Person Lookup 14 in Person Lookup": Person Lookup 14
+- region "Session Panel":
+  - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
+  - text: v0.1.0
+  - status: Live
