@@ -420,6 +420,34 @@ Autopilot answers the WebAuthn ceremony in-page, so there is no OS dialog to wat
 joins them: the deep PeopleSoft routes are not reachable unauthenticated, so UCPath's login entry is
 its own route under this section's unchanged prod/test rule.
 
+**Every runtime path leaf is absolute, including the profile root and the Duo credential
+(2026-08-03).** `paths.browserProfileRoot` is a config leaf like its siblings, and
+`paths.duoCredential` is an `AbsolutePathSchema` leaf beneath it — neither is a relative literal
+pinned by `z.literal`. Two reasons, both load-bearing:
+
+- **cwd-independence.** The runtime-isolation contract states its roots as repo-relative literals
+  because that is the text the operational-isolation audit compares on both sides. A *runtime* path
+  may not be that literal: `.auth-rebuild/duo-webauthn.json` resolves against `process.cwd()`, so a
+  worker or daemon started anywhere but the repo root silently looks for the Duo credential in a
+  directory that does not have it, and `requireSecretFile` then reports a missing credential that is
+  in fact present. `src/domain/config/schema.ts` resolves the isolation root exactly once and both
+  leaves derive from that single absolute value, so no consumer re-derives it.
+- **The real credential home must be redirectable.** The profile directory is created by
+  `factory.open()` (a real `mkdirSync`) and the credential is a real file read, so any caller that
+  must NOT touch the operator's `.auth-rebuild/` — every unit test — has to be able to say so.
+  Before this, `tests/unit/browser-session-factory.test.ts` both created directories in the real
+  root and then `rmSync(..., { recursive: true, force: true })`'d it, deleting the Duo WebAuthn
+  credential on every `npm run test`; fresh enrollment is the one Duo ceremony Autopilot cannot
+  perform unattended, so that was silent destruction of an operator asset behind a green gate.
+
+The isolation contract is not weakened by this. The default still comes from
+`rebuildRuntimeIsolation.browserProfileRoot`, `define-runtime-isolation.ts` still pins the literal,
+and `workerProfileDirectory` still takes the `browserSessionNamespace` segment from the contract —
+that namespace, not the root, is what makes a rebuild profile unreachable from the legacy runtime.
+A relative `profileRoot` is refused loudly rather than resolved. `test-runtime-root-isolation.test.ts`
+(doc 10) is the ratchet: no test may pass a real-root-derived path into a filesystem mutator, and a
+test that constructs the real session factory must bind its own profile root.
+
 ---
 
 ## 5. Fiscal-year dates — fail-loud, not silently stale

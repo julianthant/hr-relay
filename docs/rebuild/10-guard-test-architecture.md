@@ -720,6 +720,21 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   hidden in an uninvoked function is not proof. A shared port, lock, state root, or browser profile
   is a real collision that no repository boundary prevents, so this arm stays hard.
 
+  **`test-runtime-root-isolation.test.ts` (2026-08-03 — doc 11 §4) covers the other direction: the
+  TEST suite mutating a real runtime root.** `operational-isolation` proves the two runtimes bind
+  distinct roots; it says nothing about who writes to them. A unit test did — the browser-session
+  factory suite created profile directories under the real `.auth-rebuild` (because `open()` really
+  `mkdirSync`s) and then `rmSync(rebuildRuntimeIsolation.browserProfileRoot, { recursive: true,
+  force: true })`'d the lot, destroying the Duo WebAuthn credential on every `npm run test` while the
+  gate stayed green. Fresh Duo enrollment is the one ceremony Autopilot cannot do unattended, so this
+  is asset destruction, not untidiness. The guard scans `tests/**` only (production code writing to
+  the real roots is the point of production code) and holds two arms: no real-root-derived path — an
+  isolation-binding root property, a `.auth*`/`.tracker*` literal, or a local binding carrying either
+  — may reach a `node:fs` mutator; and a test that constructs `PlaywrightWorkerSessionFactory` must
+  bind its own non-real `paths.browserProfileRoot`. Taint is positional (only a path joiner's FIRST
+  argument roots the result), so `join(temporaryWorkspace, ".tracker-rebuild/artifacts")` fixtures
+  stay legal and the guard does not cry wolf.
+
   **`legacy-change-accounting` survives and becomes the program's only drift detector (D94).** The
   guard lane resolves `HRAUTO_LEGACY_REPO`, defaulting to sibling `../hr-automation`, and fails loud
   if it is absent or not a Git checkout (ratified F1). Mixed-root inventories qualify legacy paths
