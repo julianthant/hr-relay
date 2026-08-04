@@ -5,8 +5,17 @@ legacy repository at `/Users/julianhein/Projects/hr-automation` runs every real 
 stays the sole production authority until a single all-at-once cutover (D89/D93).
 
 Seeded 2026-07-31 from `hr-automation@5879004` (branch `feature/rebuild-phase1b`, which stays in the
-legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01. Phase 1f is in progress;
-its registry/task-binding corrections, worker-owned browser-session lifecycle, and mandatory task
+legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01.
+
+**Phase 1 is COMPLETE as of 2026-08-04** — 1f, 1g-spine and 1i-spine landed, and D74's live exit
+test passed: run `4ebf7275-0158-49af-a78f-1f37948efb27` (trace `pl-000619-4ebf`) ran person-lookup
+against real UCPath + CRM on the new executor, recovered a dead CRM session mid-run, terminalized
+`done` at attempt 2 with a correct result, and rendered all four parity surfaces from the ONE
+projection. The program is now at **Phase 2's controlled transaction proof**; the runtime reports
+`completedThrough:"1i-spine"` / `active:"2-transaction-proof"`. Three presentation defects are
+recorded and deferred to 2i — see doc 03's *Phase 1g/1i-spine as-built presentation deltas* and doc
+07 §Phase 1's exit-criteria block. What Phase 1f itself landed, for context on the contracts below:
+registry/task-binding corrections, worker-owned browser-session lifecycle, and mandatory task
 provenance collection landed 2026-08-02. D109's start-plan ingress authority now retains exact raw
 JSON beside canonical snapshots for accepted and refused entries, binds both schema hashes and
 canonical digests, invalidates pre-D109 short-lived plan rows rather than fabricating raw values,
@@ -235,6 +244,29 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-04: the live exit test found three classes of defect no fixture could — and each one was
+  green on every gate.** D74's whole argument is that a real run falsifies contracts a fixture
+  cannot; here is what it actually caught, so the next live gate is read as a *test*, not a demo.
+  **(1) Identity must carry the WHOLE span identity, because only a real failure re-runs a node.**
+  `cross-verify` died on a poisoned CRM session, the run re-attempted, and the node ran again at the
+  same `spanPath` — so the projector's `spanPath` fold key and the timeline's
+  `<trace>/<node>#<taskAttempt>` React seed each collapsed two genuinely distinct executions (262.9s
+  cancelled, 12.8s done) into one. Every fixture had one attempt, so `(runId, attempt, spanPath)`
+  looked satisfied by using two thirds of it. Fold and seed by `(attempt, spanPath)`; a folded span
+  is a fact about ONE execution, never a per-node latest-wins slot.
+  **(2) A browser-reachable module that statically imports a Node built-in is a latent prod bug that
+  dev reports as a crash and prod reports as a warning.** `typecheck`, `lint` and the whole unit
+  suite passed with `node:path` six modules deep under `src/dashboard`'s reach. Dev threw at module
+  evaluation (a blank page before any component rendered); the prod build only warned and shipped a
+  bundle that would fail later, if at all — so the two environments fail *differently* and neither
+  is trustworthy alone. Never resolve it with an alias, polyfill, or browser stub: a stubbed
+  `resolve()` returns a plausible-but-wrong absolute path. See the entry below for the structural
+  fix and its guard.
+  **(3) A login is proven by CONTENT, never by a URL** — and the live lane is what exposed it (a
+  smoke "passed" in 3s having authenticated nothing). D120, entry below.
+  The corollary for the next live gate: budget for the failure path, not the happy path. Discovering
+  the dead CRM session cost **262.9s** of the run's ~14.5 minutes, and that latency — not
+  correctness — is the honest open item this test leaves behind.
 - **2026-08-04: "Browser code" is not a directory — the dashboard bundle's reach is.**
   `src/domain/config/schema.ts` statically imported `node:path` for its filesystem `paths` default,
   and `src/domain/commands.ts` → `src/dashboard/client/commands.ts` put it in the browser bundle six
