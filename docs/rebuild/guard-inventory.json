@@ -266,7 +266,7 @@
       "file": "tests/unit/architecture/descriptor-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/02-workflow-model.md",
-      "invariant": "Doc 02 \u00a71.4: one table-driven sweep over DESCRIPTORS \u2014 unique ids/codes/icons, the module tuple agreeing with every derived registry in both directions, contract placement and examples, the derived browser-system union, concretely typed child-run targets, the bundle-safe value-import closure of every descriptor module, a current build manifest, and descriptor-to-impl pairing tracked explicitly rather than implicitly.",
+      "invariant": "Doc 02 \u00a71.4: one table-driven sweep over DESCRIPTORS \u2014 unique ids/codes/icons, the module tuple agreeing with every derived registry in both directions, contract placement and examples, the derived browser-system union, concretely typed child-run targets, the bundle-safe value-import closure of every descriptor module, a current build manifest, and descriptor-to-impl pairing tracked explicitly rather than implicitly. The manifest is current in BOTH senses: the parsed manifest equals a fresh recomputation, and the checked-in module text equals the generator's exact bytes \u2014 formatting/ordering drift that deepEqual is structurally blind to fails the gate, proven by a negative control that reformats the module and shows the parsed arm stays green. The byte arm is one shared function used by the guard and by `npm run build:manifest:check`, whose presence in package.json is pinned so the `--check` CLI can never again ship wired to nothing.",
       "replacementRequired": true
     },
     {
@@ -466,7 +466,7 @@
       "file": "tests/unit/architecture/semantic-ui-registry.test.ts",
       "status": "active",
       "owner": "docs/rebuild/12-operator-trust-and-authoring.md; docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "Every server-private semantic UI definition has a globally unique classified id, collision-free search intent, resolved same-system/same-screen acyclic dependencies, non-vacuous globally unique verification scenarios, exact dual sanitized evidence-to-screen/scenario/date/port-row bindings, and byte-fresh recipe-free generated catalogs; disjoint legacy candidate ids cannot enter any runtime catalog kind.",
+      "invariant": "Every server-private semantic UI definition has a globally unique classified id, collision-free search intent, resolved same-system/same-screen acyclic dependencies, non-vacuous globally unique verification scenarios, exact dual sanitized evidence-to-screen/scenario/date/port-row bindings, and byte-fresh recipe-free generated catalogs; disjoint legacy candidate ids cannot enter any runtime catalog kind. The guarded projection set is DERIVED, never enumerated: it equals the set of stores shipping a `driver/ui-registry.ts` in both directions (no unguarded publisher, no orphan UI-CATALOG.md), so a newly added store's markdown cannot escape freshness enforcement the way `src/stores/kuali/UI-CATALOG.md` did. Every derived projection — the JSON and each per-system markdown — carries stale and missing negative controls through an injected reader.",
       "replacementRequired": true
     },
     {

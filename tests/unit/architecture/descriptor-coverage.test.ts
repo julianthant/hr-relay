@@ -31,13 +31,15 @@ import { flow } from "../../../src/base/flow.js";
 import { defineWorkflowDescriptor, workflowProjections } from "../../../src/base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { BrowserSystemIdSchema, FingerprintSchema, TaskIdSchema } from "../../../src/domain/ids.js";
-import { BUILD_MANIFEST } from "../../../src/domain/workflow/build-manifest.js";
+import { BUILD_MANIFEST, BUILD_MANIFEST_PATH } from "../../../src/domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
 import { ICON_NAMES, STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
 import {
+  auditBuildManifestBytes,
   collectSourceClosure,
   computeBuildManifest,
   fingerprintSourceSet,
+  renderBuildManifestModule,
 } from "../../../src/infra/build/workflow-build-manifest.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
 import { FixtureReadReceipt, fixtureDescriptor } from "./helpers/descriptor-fixtures.js";
@@ -188,6 +190,38 @@ describe("descriptor coverage", () => {
         .sort(),
       "every bound task must have exactly one implementation fingerprint",
     );
+  });
+
+  it("fails on manifest BYTE drift the parsed comparison structurally cannot see", () => {
+    const manifest = computeBuildManifest(REPO_ROOT);
+    const onDisk = readFileSync(join(REPO_ROOT, BUILD_MANIFEST_PATH), "utf8");
+    assert.deepEqual(auditBuildManifestBytes(onDisk, manifest), [], BUILD_MANIFEST_PATH);
+
+    // Negative control. The arm above this one compares OBJECTS, so it is green
+    // for every rendering of the same manifest — proven here by asserting it
+    // against a manifest whose module text has been reformatted. Only the byte
+    // arm separates "the checked-in file is what the generator writes" from
+    // "the checked-in file happens to parse to the right thing".
+    const reformatted = renderBuildManifestModule(manifest)
+      .replace("export const GENERATED_BUILD_MANIFEST = {", "export const GENERATED_BUILD_MANIFEST =  {")
+      .replace(" * GENERATED — run `npm run build:manifest`. Do not edit by hand.", " * GENERATED.");
+    assert.notEqual(reformatted, renderBuildManifestModule(manifest));
+    assert.deepEqual(manifest, BUILD_MANIFEST, "the parsed arm cannot observe the reformatting");
+    assert.match(auditBuildManifestBytes(reformatted, manifest).join("\n"), /is stale on disk/);
+
+    // A truncated file is byte drift too — the failure must name the artifact
+    // and the command, not just report inequality.
+    assert.match(
+      auditBuildManifestBytes("", manifest).join("\n"),
+      /generated-build-manifest\.ts is stale on disk.*npm run build:manifest/su,
+    );
+
+    // The same arm must stay reachable from the CLI. It shipped behind a
+    // `--check` flag no npm script invoked, which is how the byte comparison
+    // came to exist without ever running.
+    const pkg = z.object({ scripts: z.record(z.string(), z.string()) })
+      .parse(JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")));
+    assert.match(pkg.scripts["build:manifest:check"] ?? "", /generate-build-manifest\.ts --check/);
   });
 
   it("changes a browser-task fingerprint when its driver interpreter closure changes", () => {

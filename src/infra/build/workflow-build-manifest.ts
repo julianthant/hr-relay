@@ -227,3 +227,29 @@ export function renderBuildManifestModule(manifest: BuildManifest): string {
     "",
   ].join("\n");
 }
+
+/**
+ * The BYTE arm behind the manifest gate.
+ *
+ * `descriptor-coverage` also compares the PARSED manifest against a fresh
+ * recomputation, and that comparison is structurally blind to how the module was
+ * rendered: indentation, key spacing, and the doc comment can all drift while
+ * `deepEqual` stays green. A stale-on-disk file that still parses to the right
+ * object is exactly the "silent drift" the root CLAUDE.md says must be a red
+ * gate, so the checked-in text is compared to the generator's exact output.
+ *
+ * One arm, two callers — `scripts/generate-build-manifest.ts --check` and the
+ * guard — so the CLI check and the gate can never disagree about what "current"
+ * means.
+ */
+export function auditBuildManifestBytes(
+  current: string,
+  manifest: BuildManifest,
+): readonly string[] {
+  const rendered = renderBuildManifestModule(manifest);
+  if (current === rendered) return [];
+  return [
+    `${BUILD_MANIFEST_PATH} is stale on disk (${String(current.length)} bytes checked in, `
+    + `${String(rendered.length)} bytes generated) — run \`npm run build:manifest\` and commit the result`,
+  ];
+}
