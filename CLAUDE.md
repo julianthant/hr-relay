@@ -235,6 +235,22 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-04: "Browser code" is not a directory — the dashboard bundle's reach is.**
+  `src/domain/config/schema.ts` statically imported `node:path` for its filesystem `paths` default,
+  and `src/domain/commands.ts` → `src/dashboard/client/commands.ts` put it in the browser bundle six
+  hops from the entry. Vite's dev server replaces an externalized built-in with a proxy that THROWS
+  on the first property read, so the named-import BINDING killed the app at module evaluation — shell
+  and title rendered, React rendered nothing. Making the default lazy (an earlier fix) could never be
+  enough; only removing the import is. Dev and prod fail DIFFERENTLY here: the production build only
+  warns and ships a bundle that fails later, if at all, so a green prod build is not evidence. The
+  structural fix is that a browser-reachable module keeps the pure contract while anything needing a
+  filesystem, a process, or a working directory moves to a server-only module — `paths` is now
+  REQUIRED in `ConfigSchema` and supplied by `src/domain/config/runtime-paths.ts` through the one
+  `env > settings.json > default` resolver, so a caller without it gets a loud zod error naming the
+  leaf. An alias, polyfill, or browser stub for `node:path` would be strictly worse: a stubbed
+  `resolve()` invents a plausible-but-wrong absolute path, which is the exact silent-wrong-value
+  failure this program forbids. `dashboard-wire-boundary.test.ts` (doc 13 §8.13) now walks the entry
+  declared in `index.html` and fails on any reachable Node built-in, printing the whole import chain.
 - **2026-08-03: authentication is a CONTENT-level observation; a URL is never a proof.** A live
   UCPath login smoke passed in ~3 seconds having never authenticated: the recipe matched a host
   SUBSTRING, so the PUBLIC UCPath portal read as the application, and that early
