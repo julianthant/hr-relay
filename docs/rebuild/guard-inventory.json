@@ -298,11 +298,10 @@
     {
       "name": "evidence-receipt",
       "file": "tests/unit/architecture/evidence-receipt.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: evidence-receipt.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/12-operator-trust-and-authoring.md",
+      "invariant": "A terminal run's receipt is strict at every level and carries the graph/config/input fingerprints, a source and observation instant for every fact, a filed binding proof for every verified write, and one explicit confidence; `verified-done` is refused for non-verified confidence, an unresolved mandatory fact or obligation, any warning, or a failure id, each proven by a violating fixture. Redaction is DECLARED: every leaf of every registered canonical-input sample and every used contract's sealed example carries a classification whose transform its classification permits, an undeclared leaf fails loud rather than dropping, a declaration that disagrees with domain/secrets.ts fails, and no env key, cookie, storage-state, or raw-SSN canary reaches a built receipt. The diagnostic-bundle half of doc 10 \u00a73.10 activates with the bundle capture slice.",
+      "replacementRequired": true
     },
     {
       "name": "fresh-session-boundary",

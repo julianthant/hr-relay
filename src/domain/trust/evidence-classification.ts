@@ -61,6 +61,7 @@ import {
   DataClassificationSchema,
   EvidenceTransformSchema,
   RedactedFieldSchema,
+  evidenceTransformAllowed,
   redactDiagnosticFields,
 } from "../redaction.js";
 
@@ -83,6 +84,18 @@ export const EvidenceFieldClassificationSchema = z.strictObject({
   path: EvidenceLeafPathSchema,
   classification: DataClassificationSchema,
   transform: EvidenceTransformSchema,
+}).superRefine((entry, context) => {
+  // The pairing is refused HERE, at declaration time — not only when a value
+  // is eventually pushed through the transform. A `secret`/`allow` line in the
+  // table below would otherwise sit in the tree looking reviewed until the
+  // first run that happened to carry that field.
+  if (!evidenceTransformAllowed(entry.classification, entry.transform)) {
+    context.addIssue({
+      code: "custom",
+      path: ["transform"],
+      message: `${entry.transform} is forbidden for ${entry.classification}`,
+    });
+  }
 });
 export type EvidenceFieldClassification = z.infer<typeof EvidenceFieldClassificationSchema>;
 

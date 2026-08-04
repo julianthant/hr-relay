@@ -20,13 +20,26 @@ const ALLOWED_TRANSFORMS = {
   "safe-diagnostic": new Set(["allow", "count", "basename"]),
 } satisfies Record<z.infer<typeof DataClassificationSchema>, ReadonlySet<string>>;
 
+/**
+ * Whether a classification permits a transform. Exported because a
+ * DECLARATION of (classification, transform) — doc 12 §2.3's receipt field
+ * classifications — must be refused at declaration time, not only when a value
+ * is finally pushed through `redactDiagnosticFields`. One table, two callers.
+ */
+export function evidenceTransformAllowed(
+  classification: z.infer<typeof DataClassificationSchema>,
+  transform: z.infer<typeof EvidenceTransformSchema>,
+): boolean {
+  return ALLOWED_TRANSFORMS[classification].has(transform);
+}
+
 export const ClassifiedDiagnosticValueSchema = z.strictObject({
   key: z.string().regex(/^[a-z][A-Za-z0-9]*$/),
   classification: DataClassificationSchema,
   transform: EvidenceTransformSchema,
   value: JsonValueSchema,
 }).superRefine((field, context) => {
-  if (!ALLOWED_TRANSFORMS[field.classification].has(field.transform)) {
+  if (!evidenceTransformAllowed(field.classification, field.transform)) {
     context.addIssue({ code: "custom", path: ["transform"], message: `${field.transform} is forbidden for ${field.classification}` });
   }
 });
