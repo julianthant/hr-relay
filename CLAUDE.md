@@ -5,12 +5,20 @@ legacy repository at `/Users/julianhein/Projects/hr-automation` runs every real 
 stays the sole production authority until a single all-at-once cutover (D89/D93).
 
 Phase 1 closed 2026-08-04 (`completedThrough: "1i-spine"`); **Phase 2 — the transaction proof** is
-active. Its DRY-RUN half landed 2026-08-04: the Kuali RRSS timekeeper annotation is the authorized
-sacrificial target, `kuali-timekeeper-annotation` is the one-transaction-node workflow that carries
-it, and the whole fail-closed spine — staged preview with zero durable footprint, beat-③ subject
-binding, UI-silent-save read-back, permanent-key dedupe, post-fence parking — is proved over a real
-authority database with no external HR write. **No controlled commit has been performed; it needs
-explicit operator sign-off.**
+active and **half landed**. `kuali-timekeeper-annotation` is the one-transaction-node workflow that
+carries it, and the whole fail-closed spine — staged preview with zero durable footprint, beat-③
+subject binding, reload read-back, permanent-key dedupe, post-fence parking — is proved: the
+dry-run half **live** on real doc 4489, the crash/recovery/dedupe/lease matrix in fixtures over a
+real authority database.
+
+**The ONE authorized controlled commit was performed on 2026-08-04 and could not land (D128).**
+Operator-named docs 4489/4490 sit at a workflow step that does not own the `Timekeeper Name:*`
+field, and Kuali's `Save` serializes only its own step's section — so the write fenced, clicked,
+answered `200` with a rendered `Form saved`, persisted nothing, read `absent`, and parked. The
+kernel did exactly the right thing; the target was wrong. Phase 2's write half is **BLOCKED** on a
+target at a step that owns the field, and write-heavy workflow migration may not begin. Evidence,
+measured numbers and durable row ids: `docs/rebuild/09-write-safety.md` §Phase-2 controlled-commit
+as-built.
 
 Seeded 2026-07-31 from `hr-automation@5879004` (branch `feature/rebuild-phase1b`, which stays in the
 legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01.
@@ -252,6 +260,22 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-04: the controlled commit proved the kernel and disqualified the target (D128/D129).**
+  Phase 2's ONE authorized real write fenced, clicked `Save`, got HTTP `200` and a rendered
+  `Form saved`, and still persisted nothing — Kuali serializes only the CURRENT workflow step's
+  section, and `Timekeeper Name:*` belongs to a later step. Both staging techniques put the value
+  into React's own state, so no driver change reaches it. **A field being rendered and editable is
+  not evidence the step can write it, and a positive save signal is worth nothing.** The kernel
+  behaved as designed: fence durable before the click, read-back `absent`, intent parked `unknown`,
+  ZERO checkpoint / ledger / terminal-span rows, and a later run on the same key refused in 1ms with
+  no browser. The parked row is LEFT parked — a human decision is genuinely required.
+  `recoveryAbsence` stays `operator-only`: a write that never lands measures no propagation window,
+  and inventing `minSinceFenceMs` is the banned constant. Two side defects fell out — a real write
+  was refusable only on the caller's `dryRun` claim rather than the run's own envelope (now both),
+  and Kuali Build paints client-side (menubar ~1s, document heading ~3s after `domcontentloaded`,
+  with an EMPTY heading beside "Action"/"Action List" decoys at ~1.5s), so two probes that sampled
+  once now bound-wait for the same fact and the heading recipe is NARROWED to exactly one level-1
+  heading whose accessible name is a document number.
 - **2026-08-04: a live run found three defects fixtures could not — two surfaces that misled, and a
   bound that was the wrong instrument (D123/D124/D125).** `skipped` had no timeline arm, so a node
   the descriptor's own `when` excluded rendered as **Cancelled** — a word that names an act somebody
