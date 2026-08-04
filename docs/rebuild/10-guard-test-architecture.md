@@ -926,6 +926,16 @@ set. The test asserts:
    and the emitted output digest. Both arms run against violating fixtures AND through the lane's
    own entry points, because a check that cannot fail reads as coverage — the same failure mode as a
    scan that resolves an empty file set (item 4).
+   **D145 adds the third arm: a guard's THRESHOLD is part of what it claims.** The pixel half's
+   allowance is `maxDiffPixels: 0`, so one moved pixel fails; its per-pixel colour tolerance is
+   pinned explicitly and calibrated against a recorded measurement (doc 13 §7.1). The prior
+   `maxDiffPixelRatio: 0.001` was chosen, not measured, and it hid a visible content change — and
+   because `updateSnapshots: "changed"` decides what to rewrite with the same comparison, a
+   too-wide allowance also disables the deliberate refresh, shipping pairs whose semantic half was
+   current and whose pixel half was stale. The guard asserts the config's *resolved* comparison, not
+   its text, and refuses any per-call override under `tests/parity`. Generalize it: a guard whose
+   stated guarantee is stronger than the number it enforces is the same defect as a guard that
+   cannot fail, and the number needs evidence in its owning doc.
 10. **The durable config leaf set is pinned per generation, the same way released migration bytes
     are (D133).** `config-snapshot-generations.test.ts` (doc 11 §4.1, owner) is
     `migration-history-immutability.test.ts`'s sibling for the OTHER durable contract: a required

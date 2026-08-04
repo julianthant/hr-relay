@@ -669,6 +669,39 @@ pixel and semantic halves can never be refreshed independently. `updateSnapshots
 otherwise, and `"changed"` under the switch, so an intentional refresh produces a reviewable diff of
 exactly what moved.
 
+**The pixel half allows ZERO moved pixels, and that number is measured, not chosen (D145).** The
+comparison is `maxDiffPixels: 0` with the per-pixel colour tolerance `threshold` pinned explicitly
+at `0.2`. Read the two settings as a division of labour: **the per-pixel tolerance is the lane's
+only nondeterminism budget, and the count of pixels permitted to move is zero.** The tolerance is
+calibrated against a measurement, recorded here so a future reviewer can re-run it: 46 references
+captured twice through two independent full lane runs (each rebuilding the bundle and launching
+fresh servers and a fresh Chromium), 2026-08-04 on darwin/arm64 — **counted differing pixels: 0/46,
+both times**. Raw byte-level wobble reached 24 px of 786,432 (3.1e-5) and the worst per-pixel YIQ
+delta from nondeterminism was 0.0682 normalized, so `0.2` carries 2.9× headroom over the observed
+floor while the count allowance needs none at all.
+
+What this replaced was `maxDiffPixelRatio: 0.001` — 786 px at 1024×768 — which was calibrated
+against nothing and whose stated intent ("antialiasing nondeterminism only, never content drift")
+was therefore a claim the config did not enforce. It failed in both directions at once. A visible
+content change (a stale `wf <descriptorHash>` stamp, 112 counted px) sat under it and the pixel half
+stayed green; and because `updateSnapshots: "changed"` decides what to rewrite using **the same
+comparison**, a deliberate `npm run test:parity:update` could not repair what it could not fail.
+Commit `6a8d467` is the artifact: it refreshed eight `.a11y.yml` files to `wf a3ea62a0` and left
+their `.png` siblings showing `wf dd705833`, so eight reference **pairs** shipped self-contradictory
+— the exact "the two halves can never be refreshed independently" property D132 ratified, broken by
+an allowance sitting underneath it.
+
+**What the pixel half now catches, stated exactly, so nothing is believed of it that is not true.**
+Any pixel whose colour moves beyond the per-pixel tolerance fails the lane — one pixel is enough.
+That covers layout, geometry, glyph and text drift at any size, down to a single character. The one
+thing it does **not** see is a colour change that stays under the per-pixel tolerance on *every*
+pixel it touches (for a neutral shift, roughly 53/255 levels); a per-pixel tolerance cannot be
+driven to zero without making the lane flaky, and a flaky lane is worse than a calibrated one. That
+residual is covered elsewhere, not by hope: palette tokens are enforced by the
+`frontend-tailwind-compliance` ratchet arm, and text and structure by the `.a11y.yml` half of every
+pair. No parity spec or helper may pass its own `maxDiffPixels` / `maxDiffPixelRatio` / `threshold`
+— the comparison is config-wide, and the guard scans for per-call overrides in both directions.
+
 **The lane serves the working tree, never whatever is on disk.** `tests/parity/helpers/bundle.ts`
 builds `dist/dashboard` through the repo's own `rebuild:dashboard:web:build` before anything serves
 it, and writes a stamp binding two digests: every build input (all of `src/**`, the Vite config,
@@ -678,13 +711,15 @@ server asserts that stamp **before it binds a port** and declares what it serves
 for an API-only route probe that never renders. A stale, unstamped, or post-build-edited bundle is
 refused with a legible error; it is never served.
 
-Both properties are proven by negative control in `tests/unit/architecture/parity-reference-authority.test.ts`,
+All three properties are proven by negative control in `tests/unit/architecture/parity-reference-authority.test.ts`,
 which executes the real arms — including the lane's own `captureA11yReference` and
-`startFixtureServer` entry points — against violating fixtures, in the same style as the ratchet
-arms. Rationale: an accessibility-only change once rewrote 56 `.a11y.yml` references, changed zero
-screenshots, and left the lane green; a run against a stale bundle likewise passed while testing
-code that was not in the working tree. A verification lane that cannot fail is worse than none,
-because it reads as coverage.
+`startFixtureServer` entry points, and the parity config's own resolved comparison — against
+violating fixtures, in the same style as the ratchet arms. Rationale: an accessibility-only change
+once rewrote 56 `.a11y.yml` references, changed zero screenshots, and left the lane green; a run
+against a stale bundle likewise passed while testing code that was not in the working tree; and an
+uncalibrated pixel allowance let a visible content change through while blocking its own repair. A
+verification lane that cannot fail is worse than none, because it reads as coverage — and so is one
+whose stated guarantee is stronger than the number it enforces.
 
 ### 7.2 Dual-adapter parity harness during construction
 
