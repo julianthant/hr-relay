@@ -543,6 +543,14 @@
       "owner": "docs/rebuild/09-write-safety.md",
       "invariant": "Every effect:commit contract declares complete write safety with no escape hatch: nontrivial proofSchema, normal-output/present-probe extractors, outputFromProof reconstruction, and a same-store read probe; the completion union admits receipt AND save-verify/upload-verify without a confirmation number; and doc 09 SS4 recovery routes probe-first with present proof schema-validated before backfill, single early absence yielding zero retry authority, only D64/D69 stabilized evidence settling retryable, indeterminate arms parking, and the permanent key blocking every second fence.",
       "replacementRequired": true
+    },
+    {
+      "name": "authentication-proof-not-url",
+      "file": "tests/unit/architecture/authentication-proof-not-url.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/05-execution-parallelism.md",
+      "invariant": "Doc 05 \u00a74: a browser session's authentication is never concluded from a URL. Every store login recipe is built by defineVerifiedLoginRecipe so its content-level proof runs on EVERY return path, no recipe produces a LoginResult outside that wrapper, every landed BrowserSystemBinding supplies a verifier rather than an isAuthenticatedUrl predicate, and the factory's neutral reset asserts through assertAuthenticatedApplication.",
+      "replacementRequired": true
     }
   ],
   "rebuildRatchetActivation": {
