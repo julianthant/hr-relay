@@ -24,15 +24,21 @@
  * appears within the Duo window, or this login fails loud".
  */
 import type { Locator, Page } from "playwright";
+import { probeAbsentControl } from "./authenticated-application.js";
+import type { ObservedFact } from "./authenticated-application.js";
 import { BrowserLoginError } from "./login-contract.js";
-import type { BrowserLoginStep, SystemLoginContext } from "./login-contract.js";
+import type {
+  AuthenticationProbe,
+  BrowserLoginStep,
+  SystemLoginContext,
+} from "./login-contract.js";
 import type { BrowserSystemId } from "../../domain/ids.js";
 
 /** legacy src/infra/auth/login.ts — the TritON SSO host every UCSD flow hops through. */
 export const UCSD_SSO_HOST = "a5.ucsd.edu";
 /** legacy src/infra/auth/login.ts / duo-poll.ts — the Duo Universal Prompt host. */
 export const DUO_HOST = "duosecurity.com";
-/** legacy src/infra/auth/sso-fields.ts:34 — SSO_SUBMIT_SELECTOR. */
+/** legacy src/infra/auth/sso-fields.ts:34 — SSO_SUBMIT_SELECTOR. Live-verified 2026-08-03. */
 const SSO_SUBMIT_SELECTOR = 'button[name="_eventId_proceed"]';
 /** legacy src/infra/auth/duo-poll.ts — the Shibboleth expired-execution page. */
 const STALE_REQUEST_TEXT = "Web Login Service - Stale Request";
@@ -73,19 +79,44 @@ export async function raceCancellation<Result>(
   }
 }
 
-/** legacy src/infra/auth/sso-fields.ts:19-22 — 3-level username chain. */
+/**
+ * The TritON username field, RE-PORTED 2026-08-03 after a live CRM login failed
+ * loud at `credential-fill`.
+ *
+ * The legacy chain (hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * `src/infra/auth/sso-fields.ts:19-22`:
+ * `getByLabel("User name (or email address)")` → `getByLabel("Username")` →
+ * `input[name="j_username"]`) matches NOTHING on today's page — the field was
+ * relabelled and it was never a `j_username` Tomcat form.
+ *
+ * Live-verified 2026-08-03 against `a5.ucsd.edu`: label
+ * "Account ID or email address", `id="ssousername"`,
+ * `name="urn:mace:ucsd.edu:sso:username"`.
+ *
+ * Order is deliberate: the two structural anchors (id, then the Shibboleth
+ * attribute name) come first because they survive copy changes; the visible
+ * label is the last resort because it is the thing that just moved. The legacy
+ * candidates are NOT kept — a chain that can only match a page shape that no
+ * longer exists is dead weight that hides which anchor actually matched.
+ */
+const SSO_USERNAME_SELECTOR = '#ssousername, input[name="urn:mace:ucsd.edu:sso:username"]';
+const SSO_USERNAME_LABEL = "Account ID or email address";
+/**
+ * legacy src/infra/auth/sso-fields.ts:25-28 — password chain. Live-verified
+ * still current 2026-08-03: label "Password:", `id="ssopassword"`.
+ */
+const SSO_PASSWORD_SELECTOR = '#ssopassword, input[name="urn:mace:ucsd.edu:sso:password"]';
+const SSO_PASSWORD_LABEL = "Password:";
+
 function usernameField(page: Page): Locator {
-  return page.getByLabel("User name (or email address)")
-    .or(page.getByLabel("Username"))
-    .or(page.locator('input[name="j_username"]'))
+  return page.locator(SSO_USERNAME_SELECTOR)
+    .or(page.getByLabel(SSO_USERNAME_LABEL))
     .first();
 }
 
-/** legacy src/infra/auth/sso-fields.ts:25-28 — 3-level password chain. */
 function passwordField(page: Page): Locator {
-  return page.getByLabel("Password:")
-    .or(page.getByLabel("Password"))
-    .or(page.locator('input[name="j_password"]'))
+  return page.locator(SSO_PASSWORD_SELECTOR)
+    .or(page.getByLabel(SSO_PASSWORD_LABEL))
     .first();
 }
 
@@ -96,6 +127,18 @@ export function ssoSubmitButton(page: Page): Locator {
 /** True when the SSO submit control is present — legacy `isSsoFormReady`. */
 export async function isSsoFormPresent(page: Page): Promise<boolean> {
   return await ssoSubmitButton(page).count() > 0;
+}
+
+/**
+ * The NEGATIVE half of every UCSD system's authentication proof: the Shibboleth
+ * SSO form is not on the page. Shared, because every UCSD system in scope hops
+ * through the same `a5.ucsd.edu` form.
+ */
+export async function probeSsoFormAbsent(page: Page): Promise<ObservedFact> {
+  return probeAbsentControl(page, {
+    selector: `${SSO_SUBMIT_SELECTOR}, ${SSO_USERNAME_SELECTOR}`,
+    description: "the UCSD TritON SSO form",
+  });
 }
 
 /**
@@ -135,6 +178,12 @@ export async function fillSsoCredentials(
   context: SystemLoginContext,
 ): Promise<void> {
   const timeout = context.config.timeouts.navigationMs;
+  // A chain that matches nothing must say SO, and say which chain, rather than
+  // burning a navigation timeout on an ambiguous "could not be filled". This is
+  // how the 2026-08-03 CRM failure was diagnosed down to the relabelled TritON
+  // username field; the refusal itself stays loud either way.
+  await requireMatchedField(system, context, usernameField(context.page), "username", SSO_USERNAME_SELECTOR);
+  await requireMatchedField(system, context, passwordField(context.page), "password", SSO_PASSWORD_SELECTOR);
   try {
     await usernameField(context.page).fill(context.credentials.userId, { timeout });
     await passwordField(context.page).fill(context.credentials.password, { timeout });
@@ -145,6 +194,35 @@ export async function fillSsoCredentials(
       "the SSO username/password fields could not be filled",
       context.page.url(),
       { cause: error },
+    );
+  }
+}
+
+async function requireMatchedField(
+  system: BrowserSystemId,
+  context: SystemLoginContext,
+  field: Locator,
+  role: "username" | "password",
+  anchors: string,
+): Promise<void> {
+  let matches: number;
+  try {
+    matches = await field.count();
+  } catch (error) {
+    throw new BrowserLoginError(
+      system,
+      "credential-fill",
+      `the SSO ${role} field could not be counted, so its presence is unproven`,
+      context.page.url(),
+      { cause: error },
+    );
+  }
+  if (matches === 0) {
+    throw new BrowserLoginError(
+      system,
+      "credential-fill",
+      `the SSO ${role} field matched no element; the ported locator chain (${anchors}, then its visible label) is stale and must be re-verified against the live page`,
+      context.page.url(),
     );
   }
 }
@@ -228,30 +306,47 @@ async function describeStalledLanding(
 }
 
 /**
- * The final verification. `landed` must hold AND the SSO form must be gone —
- * two independent facts, so a cached-looking URL on a page that is still
- * showing the login form cannot pass.
+ * Composes one UCSD system's authentication proof from the facts every such
+ * system shares plus the ones only it can supply.
+ *
+ * The order is cheapest-first and is a REFUSAL ladder, not a scoring function:
+ * the URL is a necessary precondition, the positive artifact is what actually
+ * proves a session exists, and the sign-in-form absences close the case. Any
+ * one of them failing means "not authenticated", with the reason preserved
+ * verbatim — `assertAuthenticatedApplication` turns that into the loud error.
+ *
+ * `assertVerifiedLanding` (URL predicate + SSO-form absence) was the previous
+ * shape. It is gone on purpose: its URL half could be satisfied by a public
+ * portal, and a recipe could return before ever reaching it.
  */
-export async function assertVerifiedLanding(
+export async function verifyUcsdAuthenticatedApplication(
   system: BrowserSystemId,
-  context: SystemLoginContext,
-  landed: (url: string) => boolean,
-): Promise<void> {
-  const observed = context.page.url();
-  if (!landed(observed)) {
-    throw new BrowserLoginError(
+  page: Page,
+  input: Readonly<{
+    urlIsApplication: (url: string) => boolean;
+    urlRefusal: string;
+    positive: () => Promise<ObservedFact>;
+    additionalAbsences?: readonly (() => Promise<ObservedFact>)[];
+  }>,
+): Promise<AuthenticationProbe> {
+  const url = page.url();
+  if (!input.urlIsApplication(url)) return { authenticated: false, reason: input.urlRefusal };
+
+  const positive = await input.positive();
+  if (!positive.holds) return { authenticated: false, reason: positive.detail };
+
+  const absences = [await probeSsoFormAbsent(page)];
+  for (const absence of input.additionalAbsences ?? []) absences.push(await absence());
+  const present = absences.find((fact) => !fact.holds);
+  if (present !== undefined) return { authenticated: false, reason: present.detail };
+
+  return {
+    authenticated: true,
+    evidence: {
       system,
-      "verify-landing",
-      "the post-login URL is not the authenticated application",
-      observed,
-    );
-  }
-  if (await isSsoFormPresent(context.page)) {
-    throw new BrowserLoginError(
-      system,
-      "verify-landing",
-      "the SSO form is still present on the landed page",
-      observed,
-    );
-  }
+      url,
+      positive: positive.detail,
+      negative: absences.map((fact) => fact.detail).join("; "),
+    },
+  };
 }

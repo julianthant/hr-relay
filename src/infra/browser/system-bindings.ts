@@ -9,11 +9,11 @@
  */
 import type { BrowserDriver } from "../../base/task.js";
 import type { BrowserSystemId } from "../../domain/ids.js";
-import type { SystemLoginRecipe } from "./login-contract.js";
+import type { AuthenticatedApplicationVerifier, SystemLoginRecipe } from "./login-contract.js";
 import { createCrmOnboardingDriver } from "../../stores/crm/driver/interpreter.js";
-import { crmLoginRecipe, isAuthenticatedCrmUrl } from "../../stores/crm/session.js";
+import { crmLoginRecipe, verifyCrmAuthenticatedApplication } from "../../stores/crm/session.js";
 import { createUcpathPersonOrgDriver } from "../../stores/ucpath/driver/interpreter.js";
-import { isAuthenticatedUcpathAppUrl, ucpathLoginRecipe } from "../../stores/ucpath/session.js";
+import { ucpathLoginRecipe, verifyUcpathAuthenticatedApplication } from "../../stores/ucpath/session.js";
 import type { Page } from "playwright";
 
 export interface BrowserSystemBinding {
@@ -21,11 +21,17 @@ export interface BrowserSystemBinding {
   readonly createDriver: (page: Page) => BrowserDriver;
   readonly login: SystemLoginRecipe;
   /**
-   * The authenticated-landing predicate. A clean release re-navigates to the
-   * system's neutral entry route and re-checks this; a page that no longer
-   * satisfies it is NOT reusable (doc 05 §4).
+   * The authenticated-application PROOF — the same one the login recipe must
+   * pass. A clean release re-navigates to the system's neutral entry route and
+   * re-runs it; a page that cannot prove a live session is NOT reusable
+   * (doc 05 §4).
+   *
+   * This was a `(url: string) => boolean` predicate until 2026-08-03, when a
+   * PeopleSoft signon page — same host, same route shape as the application —
+   * passed the reset check and left a session that would have scraped a
+   * sign-in page as authenticated data.
    */
-  readonly isAuthenticatedUrl: (url: string) => boolean;
+  readonly verifyAuthenticated: AuthenticatedApplicationVerifier;
 }
 
 export type BrowserSystemBindings = Readonly<Partial<Record<BrowserSystemId, BrowserSystemBinding>>>;
@@ -39,12 +45,12 @@ export const BROWSER_SYSTEM_BINDINGS: BrowserSystemBindings = Object.freeze({
     system: "ucpath",
     createDriver: (page: Page): BrowserDriver => createUcpathPersonOrgDriver(page),
     login: ucpathLoginRecipe,
-    isAuthenticatedUrl: isAuthenticatedUcpathAppUrl,
+    verifyAuthenticated: verifyUcpathAuthenticatedApplication,
   }),
   crm: Object.freeze({
     system: "crm",
     createDriver: (page: Page): BrowserDriver => createCrmOnboardingDriver(page),
     login: crmLoginRecipe,
-    isAuthenticatedUrl: isAuthenticatedCrmUrl,
+    verifyAuthenticated: verifyCrmAuthenticatedApplication,
   }),
 } as const satisfies BrowserSystemBindings);

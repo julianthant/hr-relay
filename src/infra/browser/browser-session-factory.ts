@@ -50,7 +50,8 @@ import {
 } from "../../domain/ids.js";
 import type { BrowserSystemId, Fingerprint, WorkerId, WorkflowId } from "../../domain/ids.js";
 import { requireSecret, requireSecretFile } from "../../domain/secrets.js";
-import { BrowserLoginError } from "./login-contract.js";
+import { assertAuthenticatedApplication } from "./authenticated-application.js";
+import type { AuthenticatedApplicationEvidence } from "./login-contract.js";
 import type { SystemLoginContext } from "./login-contract.js";
 import { BROWSER_SYSTEM_BINDINGS } from "./system-bindings.js";
 import type { BrowserSystemBinding, BrowserSystemBindings } from "./system-bindings.js";
@@ -84,6 +85,13 @@ export interface BrowserSessionFactoryOptions {
   readonly newSessionId: () => string;
   readonly bindings?: BrowserSystemBindings;
   readonly launcher?: PersistentContextLauncher;
+  /**
+   * A diagnostic sink for the marker that PROVED a session — what the login or
+   * the neutral reset actually observed, never a value. Operator surfaces and
+   * the live smoke read it; production composition may omit it. It carries no
+   * data the runtime branches on, so an absent observer changes nothing.
+   */
+  readonly onAuthenticationEvidence?: (evidence: AuthenticatedApplicationEvidence) => void;
 }
 
 /** Resolved once per authentication; never logged, never interpolated. */
@@ -269,6 +277,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
               label,
               signal: options.signal ?? input.signal,
               credentials: readSsoCredentials(),
+              recordEvidence: this.#recordEvidence,
             };
             return binding.login(loginContext);
           },
@@ -298,12 +307,22 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     }
   }
 
+  readonly #recordEvidence = (evidence: AuthenticatedApplicationEvidence): void => {
+    this.#options.onAuthenticationEvidence?.(evidence);
+  };
+
   /**
    * doc 05 §4: a clean release returns to the system's verified neutral state
-   * before reuse. Re-navigating to the entry route and re-checking the
-   * authenticated marker is what makes "reusable" an observation instead of an
-   * assumption — a session that silently dropped to SSO fails here, and the
-   * manager poison-closes it.
+   * before reuse. Re-navigating to the entry route and re-running the system's
+   * FULL authentication proof is what makes "reusable" an observation instead
+   * of an assumption — a session that silently dropped to SSO fails here, and
+   * the manager poison-closes it.
+   *
+   * Until 2026-08-03 this checked a URL predicate alone, so PeopleSoft's signon
+   * page (same host, same route shape, titled "Oracle PeopleSoft Sign-in")
+   * passed as the authenticated application and left a "reusable" session that
+   * would have scraped a sign-in page as HR data. It now runs exactly what the
+   * login recipe must pass — there is ONE definition of authenticated, not two.
    */
   async #resetToNeutralState(
     binding: BrowserSystemBinding,
@@ -321,15 +340,12 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       waitUntil: "domcontentloaded",
       timeout: config.timeouts.navigationMs,
     });
-    const observed = page.url();
-    if (!binding.isAuthenticatedUrl(observed)) {
-      throw new BrowserLoginError(
-        binding.system,
-        "verify-landing",
-        "the neutral reset did not land on the authenticated application; the session is no longer reusable",
-        observed,
-      );
-    }
+    await assertAuthenticatedApplication(
+      binding.system,
+      { page, config, recordEvidence: this.#recordEvidence },
+      binding.verifyAuthenticated,
+      "the neutral reset did not land on the authenticated application; the session is no longer reusable",
+    );
   }
 
   /**
