@@ -387,6 +387,54 @@ export const ParseCsv = defineTaskContract({
   explicit row selection or rejects it; novel headings never abort before the mapping grid.
 - The task is pure/deterministic; its output feeds §5's mapping+fan-out, never a write directly.
 
+### 3.1 Phase-2h as-built — `extraction/extract-spreadsheet` (D149)
+
+**The id is `extraction/extract-spreadsheet`, not `parse-csv`.** Doc 01 owns the id grammar and its
+read verbs are `read|search|list|extract|match|verify`; `parse-` is not among them, and doc 01 §3.4's
+own example already writes `extraction/extract-pdf-fields`. The illustrative id above is corrected
+here rather than the grammar being widened. One task covers `.csv` and `.xlsx` for the same reason:
+a caller must not branch on a file extension it should not be inspecting. Fielded-PDF extraction is
+NOT built — it needs its own library and its own decision.
+
+**Parsers, chosen as a safety decision (2026-08-05).** `read-excel-file@9.3.5` for `.xlsx` (MIT,
+four small modern dependencies, actively maintained, returns natively typed cells) and
+`csv-parse@7.0.2` for `.csv` (MIT, **zero** dependencies, and strict by default — a row whose field
+count disagrees with its neighbours throws rather than being padded). Rejected: **`xlsx` (SheetJS
+CE)**, abandoned on npm at 0.18.5 with two unfixed high-severity advisories including prototype
+pollution when reading a crafted file (CVE-2023-30533) — this process parses operator-supplied files
+and drives real UCPath and Kuali writes; **`node-xlsx`**, which resolves SheetJS through a
+`cdn.sheetjs.com` tarball URL in its own `package.json`, invisible to `npm audit`; **`exceljs`**,
+what legacy uses and unmaintained since 2023, nine runtime dependencies; **`@office-kit/xlsx`**,
+technically the nicest but pre-1.0 alpha with an API its authors say will shift — revisit at 1.0.
+
+**A cell is canonicalized to text at this edge, and only here.** A date-FORMATTED `.xlsx` cell
+becomes ISO `YYYY-MM-DD` (UTC components, matching how the reader builds it — local components would
+shift the day west of Greenwich); a number becomes its decimal text; a blank becomes `""`. This is
+the only place that knows a cell was marked as a date, so it is the only place allowed to say so —
+and `parseUsOrIsoDate` then REFUSES a bare Excel serial, so a date nobody marked is a loud rejection
+naming the cell rather than a 1900-epoch guess. A cell type neither parser documents throws;
+`String(value)` would put `[object Object]` into a cell an operator could bind a column to.
+
+**Header discovery is alias-independent and returns a choice when it has one.**
+`src/domain/intake/header-discovery.ts` ranks the first 20 rows on structure alone — density, how
+text-shaped the row is, distinctness, width agreement with the data beneath, and whether there IS
+data beneath — with known aliases adding a capped bonus of at most 0.15. Preselection needs both a
+confidence floor (0.7) AND a clear margin over the runner-up (0.1); two indistinguishable rows
+return `headerRowIndex: null` with candidates, because picking wrong shifts every column by one and
+the coercers would then report it as forty unrelated bad cells instead of one wrong header. An
+explicit operator selection is honoured exactly or refused — never clamped.
+
+Writing the tests found a real defect in that ranking: `MM/DD/YYYY` was not recognized as
+data-shaped, so an ordinary work-study export scored its first DATA row within 0.085 of its header
+and every such file landed in "ambiguous". Dates in both wire forms now count as data, which is
+correct on its own terms — a header cell is essentially never a date.
+
+**One honest limit.** `read-excel-file` prioritizes usability over throughput (~3 s for 2000 rows ×
+20 columns; very large files can overflow the stack). Operator HR exports are dozens to low
+hundreds of rows, so this is fine today and is recorded rather than hidden. A second honest limit:
+the `.xlsx` fixture is produced by `write-excel-file`, which proves a real OOXML round-trip but is
+**not** proof against Excel's own output — that is a live check against a real operator export.
+
 ---
 
 ## 4. Roster store tasks (service store — D4)

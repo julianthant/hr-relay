@@ -4,6 +4,7 @@ import {
 import type { RegisteredTaskStore } from "../base/store.js";
 import { EXECUTABLE_SCENARIO_IDS } from "../domain/workflow/scenario-execution.js";
 import { crmStore } from "./crm/index.js";
+import { extractionStore } from "./extraction/index.js";
 import { i9Store } from "./i9/index.js";
 import { kualiStore } from "./kuali/index.js";
 import { newKronosStore } from "./new-kronos/index.js";
@@ -28,6 +29,7 @@ export const BROWSER_STORES = Object.freeze([
 
 export const TASK_STORES: readonly RegisteredTaskStore[] = Object.freeze([
   ...BROWSER_STORES,
+  extractionStore,
   personLookupStore,
 ]);
 

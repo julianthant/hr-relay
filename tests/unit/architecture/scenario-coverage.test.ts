@@ -31,6 +31,7 @@ import {
   EXECUTABLE_SCENARIO_MANIFEST,
   auditExecutableScenarioParity,
 } from "../../../src/domain/workflow/scenario-execution.js";
+import { taskStoreRegistry } from "../../../src/stores/index.js";
 import { fixtureDescriptor } from "./helpers/descriptor-fixtures.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 import { SCENARIO_COVERAGE_CLAIMS } from "../../scenario/coverage-claims.js";
@@ -47,12 +48,29 @@ function fullClaims(pointIds: readonly string[]): readonly ScenarioCoverageClaim
   }));
 }
 
+/**
+ * Every scenario production code references.
+ *
+ * Descriptors are one source; the composition root's TASK STORE REGISTRY is the
+ * other, and it has to be, because a store contract can legitimately land
+ * before the descriptor that will consume it — the extraction store is exactly
+ * that case, and D107's `pending-impl-bindings.json` is the mirror image of it
+ * (a descriptor contract with no impl yet).
+ *
+ * A registered store contract is production surface either way: it is in the
+ * one `TASK_STORES` tuple the runtime resolves against. The orphan rule keeps
+ * its teeth — a scenario referenced by NEITHER source is still dead weight.
+ */
 function productionScenarioReferences(): readonly string[] {
-  return [...new Set(DESCRIPTORS.flatMap((descriptor) => [
-    ...descriptor.scenarios.map(String),
-    ...workflowProjections(descriptor).contracts.flatMap((contract) =>
-      contract.scenarios.map(String)),
-  ]))];
+  return [...new Set([
+    ...DESCRIPTORS.flatMap((descriptor) => [
+      ...descriptor.scenarios.map(String),
+      ...workflowProjections(descriptor).contracts.flatMap((contract) =>
+        contract.scenarios.map(String)),
+    ]),
+    ...taskStoreRegistry.stores.flatMap((store) =>
+      Object.values(store.tasks).flatMap((task) => task.contract.scenarios.map(String))),
+  ])];
 }
 
 /**

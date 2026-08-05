@@ -137,6 +137,8 @@ describe("Phase 1f Person Lookup task implementations", () => {
       [
         "crm/read-onboarding-dates",
         "crm/read-onboarding-record",
+        // The extraction service store lands before any descriptor consumes it.
+        "extraction/extract-spreadsheet",
         // Phase 2's Kuali transaction pair and its two reads share the one
         // runtime index; a second workflow does not get a second registry.
         "kuali/fill-timekeeper-annotation",

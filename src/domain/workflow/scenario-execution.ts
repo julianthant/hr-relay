@@ -21,6 +21,13 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
   { scenarioId: "person-lookup/not-found", file: "tests/scenario/person-lookup.scenario.test.ts" },
   { scenarioId: "person-lookup/crm-failure-retry", file: "tests/scenario/person-lookup.scenario.test.ts" },
   { scenarioId: "person-lookup/crm-subject-mismatch", file: "tests/scenario/person-lookup-runtime.scenario.test.ts" },
+  { scenarioId: "intake/spreadsheet/happy", file: "tests/scenario/intake-extraction.scenario.test.ts" },
+  { scenarioId: "intake/spreadsheet/no-header", file: "tests/scenario/intake-extraction.scenario.test.ts" },
+  {
+    scenarioId: "intake/spreadsheet/duplicate-headers",
+    file: "tests/scenario/intake-extraction.scenario.test.ts",
+  },
+  { scenarioId: "intake/spreadsheet/unreadable", file: "tests/scenario/intake-extraction.scenario.test.ts" },
   {
     scenarioId: "kuali-timekeeper-annotation/dry-run-preview",
     file: "tests/scenario/kuali-timekeeper-annotation.scenario.test.ts",
