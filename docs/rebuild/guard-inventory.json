@@ -571,6 +571,14 @@
       "owner": "docs/rebuild/06-data-intake-and-edit-data.md",
       "invariant": "Doc 06 \u00a71's canonical field vocabulary is frozen against the recorded D58/D68 scan in config/canonical-field-inventory.json, and the coverage is checked in BOTH directions: a canonical field no scanned source evidences is unevidenced vocabulary, and a scanned legacy field with no disposition is the silent omission doc 06 \u00a71 forbids. Every scanned field must still appear in the legacy file the scan names, so the frozen legacy tree doubles as a drift detector. Each registry entry must hold together: its declared (classification, redactTransform) pair is one doc 11 permits, a deferred shape carries an auditNote and a resolved one does not, and no normalized header alias claims two fields \u2014 an ambiguous alias would make the \u00a72.5 scorer's top hit arbitrary. The definition factory additionally refuses any example its own coerce+parse rejects. Every arm runs against a violating fixture.",
       "replacementRequired": true
+    },
+    {
+      "name": "intake-mapping-boundary",
+      "file": "tests/unit/architecture/intake-mapping-boundary.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/06-data-intake-and-edit-data.md",
+      "invariant": "Doc 06 \u00a77 vectors #1/#3/#6/#13. The \u00a72.5 suggestion scorer proposes and structurally cannot bind: `suggestions.ts` may not name `confirmedAt` nor reach the binding schemas, and `ColumnBindingSchema.parse` appears in exactly one file \u2014 `confirmBinding` in src/domain/intake/mapping.ts, which additionally refuses a target the projection does not declare and a column not present in the file. A saved binding re-resolves by normalized header plus occurrence ONLY: a bound column that is absent reverts to unbound and loud, and the stored index \u2014 kept solely to report that a column moved \u2014 never rescues it. `defineIntakeProjection` requires each target path to resolve to the canonical field's exact schema OBJECT (a structurally identical copy is refused) while keeping two targets that share one canonical concept independently bindable. The whole src/domain/intake tree stays free of Node built-ins because the mapping grid is a browser surface (doc 13 \u00a78.13). Every static arm runs against a violating fixture, plus a comment-only fixture that must NOT fire.",
+      "replacementRequired": true
     }
   ],
   "rebuildRatchetActivation": {

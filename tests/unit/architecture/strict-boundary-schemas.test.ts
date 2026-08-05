@@ -1472,6 +1472,11 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // IntakePlanManifestSchema carry the same facts and are catalogued.
   "src/domain/fields/registry.ts:CanonicalField",
   "src/domain/fields/cell-coercion.ts:CellLocation",
+  // An intake projection holds the workflow's own zod schema and a lookup
+  // FUNCTION, so like the graph nodes above it cannot be schema-described. Its
+  // durable half is `IntakeTargetSchema`, and the fingerprint it derives is
+  // what a saved `ColumnMapping` actually stores.
+  "src/domain/intake/projection.ts:IntakeProjection",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {

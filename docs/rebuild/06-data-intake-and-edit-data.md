@@ -302,6 +302,48 @@ is exactly the silent-substitution class we ban. Mechanically enforced: the mapp
 `bindings`-populated by an operator action (accept-suggestion or manual pick); a guard (§7 #1)
 asserts no code path writes `bindings` from the suggestion scorer directly.
 
+### 2.6 Phase-2h as-built — projection, mapping and suggestions (D147)
+
+`src/domain/intake/` holds the three pieces, deliberately separate because that separation is what
+makes reuse fail closed. The whole tree is bundle-safe (no Node built-in) since the mapping grid is a
+browser surface — doc 13 §8.13's lesson applies to every new domain module, not only the ones that
+already burned.
+
+**`projection.ts` — `defineIntakeProjection`.** It proves §1's invariant by **object identity**, not
+by structural equivalence: the schema found at a target path must BE the canonical field's schema
+object. A byte-identical copy is refused, because two identical schemas can drift apart in one commit
+and the drift is invisible — the mapper keeps coercing to the canonical shape while the workflow
+validates against the copy. That is §7 vector #6, and the legacy tree already shipped it (`/^\d{5,}$/`
+against a canonical `/^10\d{6}$/`). Wrappers are unwrapped so `fields.eid.schema.optional()` still
+counts, and `optional`/`default`/`catch` — but **not** `nullable` — make a target non-required.
+`intakeProjectionFingerprint` folds each target's `(id, canonicalId, required, schemaHash)`, so a
+saved mapping built against a looser canonical schema cannot be reused after it tightens.
+
+**`mapping.ts` — identity and reuse.** `SourceColumnId` is `base64url(canonicalJson({
+normalizedHeader, occurrence }))`; canonical JSON rather than delimiter concatenation because a
+header can contain the delimiter, and two columns sharing one id is the same failure as binding by
+position. Reuse has three gates and then a per-binding resolution. `workflow-mismatch`,
+`projection-changed` and `layout-mismatch` refuse outright — §2.3's "a near-miss layout can never
+partially reuse a stale mapping". Past them, each binding re-resolves by header + occurrence into
+`held`, `confirmation-required` (`duplicate-header` or `column-moved`, with the indices it moved
+between) or `unbound` with a message naming the saved header. **The stored index never binds**; it
+exists only to report that a column moved. The column-absent arm is reachable only when a mapping
+file disagrees with itself — it is operator-greppable configuration — and is kept because a
+defence-in-depth gate that is never the first to fire is still the one that holds when the first is
+edited away.
+
+**`suggestions.ts` — proposes, structurally cannot bind.** A `ColumnBinding` requires `confirmedAt`;
+a `Suggestion` has no such field and no way to acquire one, and `confirmBinding` is the single mint.
+So there is no code path from the scorer to a populated `bindings` array — §7 vector #1 becomes a
+type fact rather than a convention. Scoring adds one signal legacy's regexes never had: the column's
+real sample values are tried through the canonical field's own `coerce` + `schema`, and a header that
+matches while NONE of the data parses scores **zero** rather than being merely discounted, because
+that combination is a mis-map. A `CellCoercionError` there is the measurement, not a failure;
+anything else propagates. Candidates within 0.05 of each other are marked `ambiguous` and are
+excluded from preselection — choosing between two indistinguishable columns for the operator is the
+silent guess in miniature, and `intake-canonical-field-registry` separately forbids one alias
+claiming two fields so the scorer cannot be made arbitrary from the registry side either.
+
 ---
 
 ## 3. Extraction store tasks (service store — D4)
