@@ -9,9 +9,29 @@
  *
  * Ranking therefore uses generic structure only — cell density, how
  * text-shaped the row is, how distinct its values are, whether the row's width
- * matches the data beneath it, and whether there IS data beneath it. Known
- * aliases contribute a bounded BONUS on top, so recognizing `UCPath ID` still
- * helps and never becomes a precondition.
+ * matches the data beneath it, whether there IS data beneath it, and how many
+ * of its values occur nowhere else in the sheet. Known aliases contribute a
+ * bounded BONUS on top, so recognizing `UCPath ID` still helps and never
+ * becomes a precondition.
+ *
+ * ## `soleUse` is the strongest signal, and it is a principle rather than a fit
+ *
+ * A header cell is a LABEL, so it does not appear among the DATA. A data cell
+ * shares vocabulary with its column — the same department, status or campus
+ * repeats down every row. Measured on a real UCSD onboarding roster
+ * (2026-08-05, three cohort sheets): header rows scored 0.97–1.00, every data
+ * row scored 0.27–0.52. Without it the same file ranked its header top but
+ * only 0.09 clear of a data row, which put every real roster into "ambiguous"
+ * and made the operator hand-pick a header the ranking had already found.
+ *
+ * The count deliberately excludes the candidate row itself. A sheet may
+ * legitimately carry two columns both headed `Name` (doc 06 §2.1 exists to keep
+ * them distinct); counting the duplicate against the row would penalize exactly
+ * the layout the design supports, and it is not what the principle says.
+ *
+ * It degrades the right way. A sheet whose data rows are all unique gives
+ * everyone a high `soleUse`, the remaining signals decide, and a genuine tie
+ * still returns a choice rather than a guess.
  *
  * ## Preselection follows the same anti-ambiguity rule as the scorer
  *
@@ -43,6 +63,8 @@ export const HeaderCandidateSchema = z.strictObject({
     textShaped: z.number().min(0).max(1),
     distinct: z.number().min(0).max(1),
     widthMatch: z.number().min(0).max(1),
+    /** Fraction of this row's values that appear in NO other row of the sheet. */
+    soleUse: z.number().min(0).max(1),
     aliasHits: z.number().int().nonnegative(),
   }),
 });
@@ -107,6 +129,21 @@ function modalWidth(rows: readonly (readonly string[])[]): number {
   return best;
 }
 
+/** How many ROWS contain each normalized non-blank value. */
+function rowsContainingValue(rows: readonly (readonly string[])[]): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const seen = new Set<string>();
+    for (const cell of row) {
+      const key = normalizeHeader(cell);
+      if (key.length === 0 || seen.has(key)) continue;
+      seen.add(key);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
 /**
  * Rank the leading rows of one sheet as header candidates.
  *
@@ -122,6 +159,7 @@ export function rankHeaderRows(
 
   const candidates: HeaderCandidate[] = [];
   const depth = Math.min(HEADER_SCAN_DEPTH, rows.length);
+  const rowsWithValue = rowsContainingValue(rows);
 
   for (let rowIndex = 0; rowIndex < depth; rowIndex += 1) {
     const cells = rows[rowIndex];
@@ -136,23 +174,36 @@ export function rankHeaderRows(
     const density = filled.length / width;
     const textShaped = filled.filter((cell) => !looksLikeData(cell)).length / filled.length;
     const distinct = new Set(filled.map((cell) => normalizeHeader(cell))).size / filled.length;
+    // ASYMMETRIC on purpose. A header that spans MORE columns than a typical
+    // data row is normal — optional fields are simply unfilled — so it takes no
+    // penalty. A header that spans FEWER is the suspicious case: that is what a
+    // merged title row looks like. The symmetric version scored a real UCSD
+    // roster sheet's header 0.00 here (30 headings over 12 filled data cells)
+    // and lost the sheet entirely.
     const beneathWidth = modalWidth(dataBelow);
     const widthMatch = beneathWidth === 0
       ? 0
-      : 1 - Math.min(1, Math.abs(filled.length - beneathWidth) / beneathWidth);
+      : filled.length >= beneathWidth
+        ? 1
+        : filled.length / beneathWidth;
+    // Excluding this row: a value seen in exactly one row, and that row is this
+    // one, appears in no OTHER row.
+    const soleUse = filled.filter((cell) => rowsWithValue.get(normalizeHeader(cell)) === 1).length
+      / filled.length;
     const aliasHits = knownAliases.size === 0
       ? 0
       : filled.filter((cell) => knownAliases.has(normalizeHeader(cell))).length;
 
     // Structure carries the whole decision; aliases add at most 0.15 on top and
     // are capped so a file with zero known headings still competes.
-    const structural = density * 0.2 + textShaped * 0.3 + distinct * 0.25 + widthMatch * 0.25;
+    const structural = density * 0.15 + textShaped * 0.2 + distinct * 0.15
+      + widthMatch * 0.2 + soleUse * 0.3;
     const aliasBonus = Math.min(0.15, (aliasHits / filled.length) * 0.15);
     candidates.push({
       rowIndex,
       cells: [...cells],
       confidence: Math.min(1, Math.round((structural * 0.85 + aliasBonus) * 1000) / 1000),
-      signals: { density, textShaped, distinct, widthMatch, aliasHits },
+      signals: { density, textShaped, distinct, widthMatch, soleUse, aliasHits },
     });
   }
 

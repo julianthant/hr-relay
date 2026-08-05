@@ -581,7 +581,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "c3d594ae149140278ac23e447d120ffcdc569ff88ab9eea6b34723ca7c68ff42",
+      "fingerprint": "5074bdf9dbc8ac235ea29b12d8a0a0355da6220b46b95a3cacf798b256e9c63c",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -641,7 +641,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/intake/header-discovery.ts",
-          "sha256": "b69c7468953ddaf100a3cac218483448b5a25f81fd3f2d4f815a905935259ef3"
+          "sha256": "f4a0d4802efd722b27379ecfaf3f0af10e14d6ce3330d41f9284337541c57517"
         },
         {
           "path": "src/domain/intake/mapping.ts",

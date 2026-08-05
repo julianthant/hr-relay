@@ -50,3 +50,9 @@ tests/parity/.output/
 # OS
 .DS_Store
 Thumbs.db
+
+# Operator data files dropped into the repo root for a one-off parse.
+# Real HR records — never committed.
+OnboardingRoster-*.xlsx
+*.xlsx
+!tests/**/fixtures/**/*.xlsx
