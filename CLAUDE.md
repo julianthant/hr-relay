@@ -175,14 +175,15 @@ enforcement.
 - **Porting = copy with provenance.** When you bring verified knowledge across (a selector, a
   parsing rule, a page-state fact), copy it and record **the legacy commit hash and source path** in
   the ported code. Never link it at runtime — which is impossible anyway.
-- **Every legacy maintenance change must be recorded HERE**, in
-  `config/legacy-change-accounting.json`. Commit the legacy `src/`/`tests/` change first, then record
-  every path under that exact commit with its first-parent/commit blob hashes, affected capability
-  ids, impact rationale, and closed rebuild recheck evidence. The legacy `src/`/`tests/` worktree
-  must be clean; staged, unstaged, and untracked changes intentionally make the rebuild guards red
-  until the named legacy commit exists and is accounted. Doc 10 §3.13 makes this the program's
-  *only* drift detector now that the same-tree scan is retired — it is load-bearing, not
-  corroborating.
+- **Legacy change accounting is RETIRED (D150, 2026-08-05).** The two repositories no longer touch
+  each other in either direction: nothing here reads legacy's working tree, and legacy work never
+  blocks a rebuild gate. `config/legacy-change-accounting.json` is a frozen historical record of
+  what was reconciled through the split — do not extend it. **What replaced it:** the risk was a
+  ported selector or page-state fact going stale after legacy fixed it, and that is now covered by
+  **live re-verification at each workflow's migration**, which the charter already makes mandatory
+  and pre-authorized. A selector checked against the live system beats one diffed against legacy's
+  copy of it. `legacy-selector-port-provenance` is unaffected: it pins all 406 keys to a FIXED
+  legacy commit's blobs, so legacy moving on cannot invalidate it.
 - **Nothing in the legacy repo may be deleted** during the rebuild or the initial cutover. The whole
   repository is the D89 rollback asset.
 - The guard lane finds the legacy repo at `../hr-automation`, overridable with

@@ -90,15 +90,18 @@ function writeFixture(root: string, path: string, content: string): void {
 
 describe("reviewed architecture guard manifest", () => {
   it("records every retirement as an explicit replacement rather than a silent shrink", () => {
-    // Doc 10 §3.13: D93 retired the cross-tree scan and the preservation
-    // manifest. That is only legitimate BECAUSE the inventory still carries the
-    // entry, its retiring decision, and where the invariant went. A guard that
-    // simply vanished from this file would be indistinguishable from an
-    // accident.
+    // Doc 10 §3.13: a retirement is only legitimate BECAUSE the inventory still
+    // carries the entry, its retiring DECISION, and where the invariant went. A
+    // guard that simply vanished from this file would be indistinguishable from
+    // an accident.
+    //
+    // The rule is "names a decision", not "names D93". Pinning the literal was
+    // an assertion that could only hold until the second retirement — exactly
+    // the shape of check this program keeps finding and replacing.
     const retired = inventory.guards.filter(({ status }) => status === "retired");
-    assert.ok(retired.length > 0, "the D93 retirements must stay recorded");
+    assert.ok(retired.length > 0, "retirements must stay recorded");
     for (const entry of retired) {
-      assert.equal(entry.retiredBy, "D93", `${entry.name} must name the deciding round`);
+      assert.match(entry.retiredBy ?? "", /^D\d+$/, `${entry.name} must name the deciding decision`);
       assert.ok(entry.invariant.trim().length > 40, `${entry.name} must explain where its invariant went`);
       assert.equal(entry.replacementRequired, true, entry.name);
     }

@@ -754,7 +754,16 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   argument roots the result), so `join(temporaryWorkspace, ".tracker-rebuild/artifacts")` fixtures
   stay legal and the guard does not cry wolf.
 
-  **`legacy-change-accounting` survives and becomes the program's only drift detector (D94).** The
+  **`legacy-change-accounting` is RETIRED (D150, 2026-08-05) — the paragraph below is history.**
+  The operator's decision is that the two repositories touch each other in neither direction: every
+  workflow is rebuilt here anyway, so there is no ongoing ledger to reconcile, and an unrelated
+  in-flight edit in the production repo must not be a red gate in the rebuild. The invariant it
+  carried — a ported selector or page-state fact going stale after legacy fixed it — moves to **live
+  re-verification at each workflow's migration**, which §3 already requires and which is strictly
+  stronger than a diff against legacy's copy. `legacy-selector-port-provenance` is untouched: it
+  reads a FIXED commit's blobs. What follows records what the retired guard did.
+
+  **`legacy-change-accounting` survived D93 and became the program's only drift detector (D94).** The
   guard lane resolves `HRAUTO_LEGACY_REPO`, defaulting to sibling `../hr-automation`, and fails loud
   if it is absent or not a Git checkout (ratified F1). Mixed-root inventories qualify legacy paths
   with `legacy:` while single-root legacy manifests remain unprefixed (F2; doc 11 §6). The explicit

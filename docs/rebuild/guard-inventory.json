@@ -59,10 +59,11 @@
     {
       "name": "legacy-change-accounting",
       "file": "tests/unit/architecture/legacy-change-accounting.test.ts",
-      "status": "active",
+      "status": "retired",
       "owner": "docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "Every ordered legacy src/tests commit and path since the Phase-0 baseline is commit-blob hash-bound, maps to reviewed affected-capability floors plus closed rebuild evidence, and is audited only from a clean deletion-free legacy worktree.",
-      "replacementRequired": true
+      "invariant": "RETIRED by D150 (operator decision, 2026-08-05): the two repositories no longer touch each other in either direction, so there is nothing for an ongoing change-accounting ledger to reconcile. The guard required legacy's src/tests worktree to be CLEAN and every legacy commit since the Phase-0 baseline to be recorded here, which made an unrelated in-flight edit in the production repo a red gate in the rebuild. WHERE THE INVARIANT WENT: the risk it covered was a ported selector or page-state fact going stale after legacy fixed it. That is now covered by LIVE RE-VERIFICATION at each workflow's migration, which the charter already makes mandatory and pre-authorized, and which is strictly stronger \u2014 a selector checked against the live system beats one diffed against legacy's copy of it. `legacy-selector-port-provenance` still pins all 406 keys to a FIXED legacy commit's blobs, so it is unaffected by legacy moving on. config/legacy-change-accounting.json is kept as the frozen historical record of what was reconciled through the split; nothing reads it.",
+      "replacementRequired": true,
+      "retiredBy": "D150"
     },
     {
       "name": "legacy-selector-port-provenance",
