@@ -82,6 +82,37 @@ const UCPATH_CAPABILITY_IDS = [
 ] as const;
 
 /**
+ * Every legacy capability that authenticates through `src/infra/auth/**`.
+ * Derived by reading the legacy import graph
+ * (`grep -rl "infra/auth" src/ | grep -v "^src/infra/auth/"`): fourteen
+ * workflows reach it plus the Duo enrollment tool.
+ *
+ * The blast radius is deliberately wide because this module is the ONE SSO +
+ * Duo path shared by every browser workflow — the 2026-08-05 ADFS regression
+ * is the case in point: arming was fixed for Shibboleth in `clickSsoSubmit`
+ * and the second front-end silently kept the broken behaviour, so a change
+ * that looks scoped to one system can hold (or break) hands-off Duo for all
+ * of them.
+ */
+const AUTH_CAPABILITY_IDS = [
+  "legacy-tool-ops-duo-webauthn-enroll",
+  "legacy-workflow-crm-doc-download",
+  "legacy-workflow-emergency-contact",
+  "legacy-workflow-i9-check",
+  "legacy-workflow-i9-lookup",
+  "legacy-workflow-kronos-pay-rule",
+  "legacy-workflow-oath-signature",
+  "legacy-workflow-oath-upload",
+  "legacy-workflow-old-kronos-reports",
+  "legacy-workflow-onbase",
+  "legacy-workflow-onboarding",
+  "legacy-workflow-person-lookup",
+  "legacy-workflow-separations",
+  "legacy-workflow-sharepoint-download",
+  "legacy-workflow-work-study",
+] as const;
+
+/**
  * Reviewed D94 affected-capability floor.
  *
  * Rules are intentionally independent of the accounting JSON: a manifest edit
@@ -128,6 +159,23 @@ const REVIEWED_IMPACT_RULES: readonly ReviewedImpactRule[] = [
     kind: "prefix",
     path: "tests/unit/workflows/onboarding/",
     capabilityIds: ["legacy-workflow-onboarding"],
+  },
+  {
+    kind: "prefix",
+    path: "src/workflows/emergency-contact/",
+    capabilityIds: ["legacy-workflow-emergency-contact"],
+  },
+  {
+    kind: "prefix",
+    path: "tests/unit/workflows/emergency-contact/",
+    capabilityIds: ["legacy-workflow-emergency-contact"],
+  },
+  { kind: "prefix", path: "src/infra/auth/", capabilityIds: AUTH_CAPABILITY_IDS },
+  { kind: "prefix", path: "tests/unit/infra/auth/", capabilityIds: AUTH_CAPABILITY_IDS },
+  {
+    kind: "prefix",
+    path: "src/workflows/sharepoint-download/",
+    capabilityIds: ["legacy-workflow-sharepoint-download"],
   },
 ];
 

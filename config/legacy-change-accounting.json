@@ -31,6 +31,21 @@
         "npm run test:parity",
         "docs/rebuild/04-reconciliation.md D130 — the (transactionNumber, approvalStatus) receipt pair is already ratified in the rebuild"
       ]
+    },
+    {
+      "id": "d94-full-gates-2026-08-05",
+      "closedAt": "2026-08-05",
+      "evidence": [
+        "npm run typecheck",
+        "npm run lint",
+        "npm run test",
+        "npm run test:architecture",
+        "legacy: npx tsc --noEmit (clean)",
+        "legacy: npx eslint src scripts/rebuild --max-warnings 0 (clean)",
+        "legacy: npx vitest run --project unit tests/unit/infra/auth tests/unit/workflows/sharepoint-download (111 passed)",
+        "legacy: npx vitest run tests/unit/infra/auth/duo-arm-before-sso-navigation.test.ts (4 passed)",
+        "Live: SharePoint ADFS login now logs 'Duo WebAuthn armed' BEFORE 'ADFS submit clicked' and settles 'Duo approved via WebAuthn (auto)' with no phone push"
+      ]
     }
   ],
   "commits": [
@@ -1043,6 +1058,250 @@
           "impactRationale": "Documentation only — edits the same LESSONS.md entry to correct the blast radius it claimed: Workforce Job Summary, not PayPath Actions, is the search form production drives, and it is structurally immune because its only textbox arm is written non-exact; payPathActions keeps the fragile exact: true shape but is left unedited rather than changed unverified. Adds the carry-forward rule that a Find-an-Existing-Value search textbox must never be pinned exact on the bare label. No legacy executable path changes in this commit, so no legacy behavior moved. It is recorded against every UCPath consumer for the same reason as its predecessor — LESSONS.md is the shared ported page-state record — and because it narrows which ported selector shapes the rebuild must avoid. No rebuild source change is implied and the recheck is closed by a green rebuild gate run.",
           "rebuildRecheckIds": [
             "d94-full-gates-2026-08-04"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "c65e6d7b64d3c1cf81463e7cbcff4712fd77ff76",
+      "parentCommit": "2c2d31ffb3e13c7ddeb47ff552644daa675f2ab8",
+      "changes": [
+        {
+          "path": "src/systems/ucpath/LESSONS.md",
+          "changeKind": "modified",
+          "beforeSha256": "d2a518410d2d5e6056860de22685c1a17da88aeb571d55f4df4d96c91b676721",
+          "afterSha256": "bf09ba794840b2173fe8c622959f48e6ccf8eedd7ef4db98a597e93ea95bd9d2",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Documentation only — adds the 2026-08-04 UCPath lesson that a name-search \"Not found\" is usually a misread first name (Merav/Dogen/Piña resolved at 450 DPI) and that an EID-mode \"Not found\" can be a plain false negative. No executable legacy path changes; the rebuild has no person-lookup name-search surface of its own yet, so the impact is on how a future rebuild port interprets a negative verdict, not on any shipped code.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-05"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "71b373a5cc0ca4c2d88511f13dd0261f3af55d35",
+      "parentCommit": "fd6f56148b5eda3f350571a54693e9a5539612fa",
+      "changes": [
+        {
+          "path": "src/systems/ucpath/LESSONS.md",
+          "changeKind": "modified",
+          "beforeSha256": "bf09ba794840b2173fe8c622959f48e6ccf8eedd7ef4db98a597e93ea95bd9d2",
+          "afterSha256": "6ffae0874d9cc3454e63c751631aebfa41f3107cfb5de12db152bd3ee032994a",
+          "capabilityIds": [
+            "legacy-service-ocr",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-ocr",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Documentation only — corrects the SAME entry's corroboration claim: a handwritten email on a form is NOT independent confirmation of a handwritten name (one hand, one letterform ambiguity), so the lone claimed no-record case was a transcription error (Flocko Crisoa, EID 10001422). Final tally 216 forms / 210 filed / zero genuine no-record cases. No executable legacy path changes.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-05"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "0d959720b0eb2c4631d8aa24a00ce2cb8e13f42a",
+      "parentCommit": "71b373a5cc0ca4c2d88511f13dd0261f3af55d35",
+      "changes": [
+        {
+          "path": "src/infra/auth/duo-webauthn.ts",
+          "changeKind": "modified",
+          "beforeSha256": "9381e3e148087bbffe807ac7ba5a705224bf87d8153b40369d1f10376d6e5a1f",
+          "afterSha256": "3f4005940b7ffdf31704838fa91c266a0ad85cb470d45d14db743cbc5b99bfeb",
+          "capabilityIds": [
+            "legacy-tool-ops-duo-webauthn-enroll",
+            "legacy-workflow-crm-doc-download",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-i9-lookup",
+            "legacy-workflow-kronos-pay-rule",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-oath-upload",
+            "legacy-workflow-ocr",
+            "legacy-workflow-old-kronos-reports",
+            "legacy-workflow-onbase",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-sharepoint-download",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Executable auth-path change in shared SSO infrastructure. Extracts the Duo WebAuthn arming block from clickSsoSubmit into armDuoBeforeSsoNavigation and calls it from BOTH SSO submit paths. The Shibboleth path (UCPath / CRM / Kuali / Kronos) is behaviourally unchanged — same call, same warning strings, label parameterised — so every capability that authenticates through it is touched but not altered. The UCSD ADFS path (SharePoint / OneDrive) is the behaviour change: it previously armed nothing before its submit click, so the Duo prompt's auto-fired passkey request raised Chrome's native security-key dialog, which page-level Escape cannot dismiss and which swallows the DOM click path; the late arm inside pollDuoApproval could not answer an already-pending request, and all three attempts burned a manual-Duo timeout no phone push can satisfy. The rebuild has no SSO/Duo surface of its own yet (Phase 2 browser work reaches live systems through the legacy driver lane), so there is no rebuild code to re-port; the carry-forward is the invariant that arming binds to the submit CLICK, not to one front-end.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-05"
+          ]
+        },
+        {
+          "path": "src/infra/auth/sso-fields.ts",
+          "changeKind": "modified",
+          "beforeSha256": "05bee039de70ef53d98fb09ea15932fa122f20ab886140bbe473891ace56a705",
+          "afterSha256": "a3b0155715c8e864233c489406ceecd518471636cf90f867e63a30c0438d25ac",
+          "capabilityIds": [
+            "legacy-tool-ops-duo-webauthn-enroll",
+            "legacy-workflow-crm-doc-download",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-i9-lookup",
+            "legacy-workflow-kronos-pay-rule",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-oath-upload",
+            "legacy-workflow-ocr",
+            "legacy-workflow-old-kronos-reports",
+            "legacy-workflow-onbase",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-sharepoint-download",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Executable auth-path change in shared SSO infrastructure. Extracts the Duo WebAuthn arming block from clickSsoSubmit into armDuoBeforeSsoNavigation and calls it from BOTH SSO submit paths. The Shibboleth path (UCPath / CRM / Kuali / Kronos) is behaviourally unchanged — same call, same warning strings, label parameterised — so every capability that authenticates through it is touched but not altered. The UCSD ADFS path (SharePoint / OneDrive) is the behaviour change: it previously armed nothing before its submit click, so the Duo prompt's auto-fired passkey request raised Chrome's native security-key dialog, which page-level Escape cannot dismiss and which swallows the DOM click path; the late arm inside pollDuoApproval could not answer an already-pending request, and all three attempts burned a manual-Duo timeout no phone push can satisfy. The rebuild has no SSO/Duo surface of its own yet (Phase 2 browser work reaches live systems through the legacy driver lane), so there is no rebuild code to re-port; the carry-forward is the invariant that arming binds to the submit CLICK, not to one front-end.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-05"
+          ]
+        },
+        {
+          "path": "src/workflows/sharepoint-download/download.ts",
+          "changeKind": "modified",
+          "beforeSha256": "9a9ff39fc6e5a6b548d5de23fb7a306eb94924a9d7a32fa93ba9ef04af203693",
+          "afterSha256": "679a461e3a2c497a66856e35a04c2f4f37b1f054ca743aa4697d33e0f83384c5",
+          "capabilityIds": [
+            "legacy-workflow-sharepoint-download",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-ocr"
+          ],
+          "impactRationale": "Executable auth-path change in shared SSO infrastructure. Extracts the Duo WebAuthn arming block from clickSsoSubmit into armDuoBeforeSsoNavigation and calls it from BOTH SSO submit paths. The Shibboleth path (UCPath / CRM / Kuali / Kronos) is behaviourally unchanged — same call, same warning strings, label parameterised — so every capability that authenticates through it is touched but not altered. The UCSD ADFS path (SharePoint / OneDrive) is the behaviour change: it previously armed nothing before its submit click, so the Duo prompt's auto-fired passkey request raised Chrome's native security-key dialog, which page-level Escape cannot dismiss and which swallows the DOM click path; the late arm inside pollDuoApproval could not answer an already-pending request, and all three attempts burned a manual-Duo timeout no phone push can satisfy. The rebuild has no SSO/Duo surface of its own yet (Phase 2 browser work reaches live systems through the legacy driver lane), so there is no rebuild code to re-port; the carry-forward is the invariant that arming binds to the submit CLICK, not to one front-end.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-05"
+          ]
+        },
+        {
+          "path": "tests/unit/infra/auth/duo-arm-before-sso-navigation.test.ts",
+          "changeKind": "added",
+          "beforeSha256": null,
+          "afterSha256": "8eb41cee34895bb9059f9e04ebf58cd9f03c5d377004ffe0c716e68361363681",
+          "capabilityIds": [
+            "legacy-tool-ops-duo-webauthn-enroll",
+            "legacy-workflow-crm-doc-download",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-i9-lookup",
+            "legacy-workflow-kronos-pay-rule",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-oath-upload",
+            "legacy-workflow-ocr",
+            "legacy-workflow-old-kronos-reports",
+            "legacy-workflow-onbase",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-sharepoint-download",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "New unit test pinning the ordering invariant (arm index < click index) in both SSO submit paths, plus that neither call site regresses to calling armDuoWebAuthn directly. Ordering is the invariant — \"calls it somewhere\" would have passed against the broken code. Test-only; no runtime behaviour.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-05"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "8913647fdf8391a0c44c519ee97db33276a77549",
+      "parentCommit": "0d959720b0eb2c4631d8aa24a00ce2cb8e13f42a",
+      "changes": [
+        {
+          "path": "src/infra/auth/CLAUDE.md",
+          "changeKind": "modified",
+          "beforeSha256": "4be112bffe41b4df16b72476be624af45faf29d82a9fcdfc82c5b5dc84a9fecd",
+          "afterSha256": "1029563a18f05065e052ae7d07467aa32c1c5cd0d0192199374b387c7d792539",
+          "capabilityIds": [
+            "legacy-tool-ops-duo-webauthn-enroll",
+            "legacy-workflow-crm-doc-download",
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-i9-check",
+            "legacy-workflow-i9-lookup",
+            "legacy-workflow-kronos-pay-rule",
+            "legacy-workflow-oath-signature",
+            "legacy-workflow-oath-upload",
+            "legacy-workflow-ocr",
+            "legacy-workflow-old-kronos-reports",
+            "legacy-workflow-onbase",
+            "legacy-workflow-onboarding",
+            "legacy-workflow-person-lookup",
+            "legacy-workflow-separations",
+            "legacy-workflow-sharepoint-download",
+            "legacy-workflow-work-study"
+          ],
+          "impactRationale": "Documentation only — records two 2026-08-05 lessons in src/infra/auth/CLAUDE.md: (1) arming Duo WebAuthn is a property of the SSO submit click rather than of one front-end, including how to read the misleading \"method list open\" diagnostic (revealedList means \"we attempted to reveal\", so read onMethodList); (2) the onboarding roster no longer parses because exceljs rejects a <colorFilter> element and its cohorts live on date-named sheets, with rosterMode=none as the unblock. No executable legacy path changes.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-05"
+          ]
+        }
+      ]
+    },
+    {
+      "commit": "4deabc5afc4f97b33959a0802ce2090cb3b30a07",
+      "parentCommit": "8913647fdf8391a0c44c519ee97db33276a77549",
+      "changes": [
+        {
+          "path": "src/workflows/emergency-contact/enter.ts",
+          "changeKind": "modified",
+          "beforeSha256": "035387d58cbf46c875afa01b62cc590b272a7ac0c80ec36d558a32269305811a",
+          "afterSha256": "4c5d7df9a216500e5f9203334aaca2b8376f96aaae5c8587baa7746d4869be34",
+          "capabilityIds": [
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-ocr",
+            "legacy-service-ocr"
+          ],
+          "impactRationale": "Executable fix to the emergency-contact pre-fill identity gate, found by a live batch. assertDisplayedIdentity was invoked with no pollMs, so it sampled the 'Person ID <emplId>' header exactly once; PeopleSoft paints that header after the editor's own loaded signal, so a correctly-loaded page read as a hard identity MISMATCH and 13/13 records failed. Now bound-waits 15s. readEmergencyContactPersonIdRow additionally collapsed 'header absent', 'count() threw', and 'still rendering' into one empty-string verdict (including a .catch(() => 0) that swallowed a real read failure); it now returns null for the retryable not-yet-rendered state and propagates a throw. The gate's REFUSAL semantics are unchanged - it still fails loud rather than writing to a page whose identity it cannot confirm, and zero UCPath writes occurred in the failed batch. The rebuild has no emergency-contact surface of its own yet, so nothing is re-ported; the carry-forward is the rule that an identity gate must bound-wait the fact and must never let 'could not read' look like 'not there'.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-05"
+          ]
+        },
+        {
+          "path": "src/workflows/emergency-contact/workflow.ts",
+          "changeKind": "modified",
+          "beforeSha256": "0c1de5bce1a94a09fac33191ffba45ec21facde6ada1b5ab3edb1133771181af",
+          "afterSha256": "66c802f72c04da34f17f6d372d81183b24bbcd2e26fe918f836c169b0680715b",
+          "capabilityIds": [
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-ocr",
+            "legacy-service-ocr"
+          ],
+          "impactRationale": "Executable fix to the emergency-contact pre-fill identity gate, found by a live batch. assertDisplayedIdentity was invoked with no pollMs, so it sampled the 'Person ID <emplId>' header exactly once; PeopleSoft paints that header after the editor's own loaded signal, so a correctly-loaded page read as a hard identity MISMATCH and 13/13 records failed. Now bound-waits 15s. readEmergencyContactPersonIdRow additionally collapsed 'header absent', 'count() threw', and 'still rendering' into one empty-string verdict (including a .catch(() => 0) that swallowed a real read failure); it now returns null for the retryable not-yet-rendered state and propagates a throw. The gate's REFUSAL semantics are unchanged - it still fails loud rather than writing to a page whose identity it cannot confirm, and zero UCPath writes occurred in the failed batch. The rebuild has no emergency-contact surface of its own yet, so nothing is re-ported; the carry-forward is the rule that an identity gate must bound-wait the fact and must never let 'could not read' look like 'not there'.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-05"
+          ]
+        },
+        {
+          "path": "tests/unit/workflows/emergency-contact/enter.test.ts",
+          "changeKind": "modified",
+          "beforeSha256": "859ae34a020174b333ea095fd8f124aff220533c40b25508ef746feb28de6d9d",
+          "afterSha256": "73143325866bceec57068679c45967e6f13580c2fc5215d32fab9c0e5d4ad2b5",
+          "capabilityIds": [
+            "legacy-workflow-emergency-contact",
+            "legacy-workflow-ocr",
+            "legacy-service-ocr"
+          ],
+          "impactRationale": "Updates the pin for readEmergencyContactPersonIdRow's changed contract (null for not-yet-rendered rather than empty string) and ADDS a case proving a thrown count() propagates instead of being reported as an absent header. Test-only.",
+          "rebuildRecheckIds": [
+            "d94-full-gates-2026-08-05"
           ]
         }
       ]
