@@ -636,6 +636,47 @@ the workflow input schema then rejects. The coordinator evidence receipt display
 excluded/enqueued counts plus rejection-event and correction history and links to the manifest; `done` can never imply every source row
 ran when exclusions exist.
 
+### 5.0 Phase-2h as-built — validation, rejection and the manifest (D148)
+
+`src/domain/intake/validate.ts` is **format-agnostic**: it takes an already-parsed cell matrix plus
+the detected columns, the confirmed bindings and the projection, and returns exactly one disposition
+per source row. The extraction store owns turning a `.csv`/`.xlsx`/PDF into that matrix, so the
+pipeline's invariants can be proved without a file on disk.
+
+**A `CellCoercionError` is converted; nothing else is.** `attemptCoercion` returns a discriminated
+value — the `catch` classifies and returns, it sets no flag and supplies no default — so a refused
+cell becomes a durable, located `cell-coercion` rejection while a fault in a coercer still reaches
+the top. That shape is what keeps the `fail-loud-catch-default` ratchet meaningful here rather than
+waived.
+
+**Rejection variants, and the one judgement call.** `unmapped-required` fires per row when a required
+target has neither a binding nor a run constant, so the manifest's coverage stays total even when
+nothing can validate. A blank cell for an OPTIONAL target is genuine absence, not a rejection; for a
+required one it is `cell-coercion` ("is blank"). A whole-input parse failure with a non-empty issue
+path is `workflow-schema`. A **root-level** issue is a refinement over the combination and becomes
+`cross-field` naming every bound target — truthful ("one of these together is wrong") where
+inventing the specific pair zod never reported would be a guess dressed as a diagnosis.
+`duplicate-identity` rejects **both** colliding rows: choosing a winner would silently drop a person
+the operator listed.
+
+**The manifest stores current disposition and derives every total from it.** `rejectedRows` is
+immutable history, so a corrected row keeps its rejection event and loses only its CURRENT reject
+ids; totals therefore cannot be accumulated alongside the truth, they are computed from it and the
+schema refuses any manifest where the two disagree. That is §7 vector #12 made mechanical. A reject
+id is DERIVED from `(source digest, row, kind, subject)`, so re-validating a corrected file is
+idempotent instead of growing a duplicate event per pass. `buildIntakeManifest` throws rather than
+emitting a manifest in which some row is neither valid, rejected nor excluded.
+
+**Two refinements on §5's text.** The manifest pins `canonicalInputSchemaHash` once, so a reader
+re-parsing `parsedInput` proves it is using the schema the value was produced by rather than
+inferring it from `workflowContractFingerprint` alone (D62/D110's binding, applied here). And
+`enqueueReadiness` separates `unresolved-rejections` from `no-valid-rows`: a valid zero-row intake
+stays blocked and inspectable rather than reporting a no-op success.
+
+`rerunDiff` compares an immutable manifest against current reality across five axes — source
+artifact, mapping snapshot, intake projection, workflow contract and canonical-input schema — and a
+"rerun with existing data" must show the diff before creating a run (§7 vector #11).
+
 ### 5.1 Mobile photo capture is a recoverable artifact-intake source
 
 > **Scope trim (D79d, operator 2026-07-24) — read before implementing.** Phone capture is

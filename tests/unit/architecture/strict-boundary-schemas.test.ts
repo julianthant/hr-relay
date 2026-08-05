@@ -1477,6 +1477,14 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // durable half is `IntakeTargetSchema`, and the fingerprint it derives is
   // what a saved `ColumnMapping` actually stores.
   "src/domain/intake/projection.ts:IntakeProjection",
+  // The validation pass is an in-process call: its input carries the workflow's
+  // own `deriveItemId` FUNCTION and a live `IntakeProjection`, and its result is
+  // consumed by `buildIntakeManifest` in the same call stack. Nothing here is
+  // stored or served. The DURABLE halves all have schemas: IntakePlanManifest,
+  // RowReject, ValidRow, SourceRowDisposition and IntakeCorrection.
+  "src/domain/intake/validate.ts:IntakeValidationInput",
+  "src/domain/intake/validate.ts:ValidatedRow",
+  "src/domain/intake/validate.ts:IntakeValidationResult",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {
