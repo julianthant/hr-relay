@@ -1,0 +1,409 @@
+{
+  "schemaVersion": 1,
+  "scannedAt": "2026-08-05",
+  "legacyCommit": "4deabc5a",
+  "purpose": "Doc 06 §1's D58/D68 scan, recorded so the canonical field registry can freeze. Every legacy workflow input schema, roster header rule, OCR form field, and Edit-Data editable field is listed with exactly one disposition: a canonical field id, or workflow-local WITH a reason. `intake-canonical-field-registry.test.ts` fails in BOTH directions — a registry field with no source here is unevidenced vocabulary, and a source field with no disposition is a field that was silently omitted.",
+  "localReasons": {
+    "execution-option": "an operator-chosen execution knob, not business data — it selects how a run behaves and never becomes a cell in a spreadsheet",
+    "file-or-artifact-ref": "a file, page, or artifact reference; doc 06 §1 keeps file refs, selectors, options, and discriminants out of the mappable vocabulary and doc 04 §4.1 routes them through the content-addressed artifact boundary instead",
+    "correlation-id": "a run/session/group correlation id assigned by the kernel or the dashboard, never by the operator and never by a source file",
+    "run-produced": "produced by the run itself (a match verdict, a warning, an operator selection, a captured screenshot); it is contract output, not intake input, and its shape is owned by the producing contract",
+    "computed-from-canonical": "derived arithmetically from canonical fields the same input already carries; mapping it separately would let a stale copy disagree with its own inputs",
+    "composite-of-canonical": "an object whose leaves are already canonical fields; the mapping binds the leaves, so binding the wrapper too would let one binding overwrite the other",
+    "constant": "a fixed system constant supplied by the descriptor, not by the source file",
+    "report-parameter": "a report window the operator types once per run; it bounds a query rather than describing a person",
+    "needs-reviewed-type": "the legacy shape conflates values that need a reviewed domain type before any column may be bound to them; the consuming migration owns that decision",
+    "crm-verification-flag": "a cross-system verification verdict the run reads from CRM; an operator edit records a correction to what was read, not an intake binding"
+  },
+  "sources": [
+    {
+      "ref": "legacy:src/workflows/work-study/schema.ts",
+      "kind": "workflow-input",
+      "canonical": { "emplId": "eid", "effectiveDate": "effectiveDate" },
+      "local": {}
+    },
+    {
+      "ref": "legacy:src/workflows/oath-signature/schema.ts",
+      "kind": "workflow-input",
+      "canonical": { "emplId": "eid", "name": "fullName", "date": "signatureDate" },
+      "local": { "dryRun": "execution-option" }
+    },
+    {
+      "ref": "legacy:src/workflows/kronos-pay-rule/schema.ts",
+      "kind": "workflow-input",
+      "canonical": { "emplId": "eid" },
+      "local": {}
+    },
+    {
+      "ref": "legacy:src/workflows/crm-doc-download/schema.ts",
+      "kind": "workflow-input",
+      "canonical": {
+        "email": "email",
+        "emplId": "eid",
+        "firstName": "firstName",
+        "lastName": "lastName",
+        "middleName": "middleName",
+        "livedName": "livedName"
+      },
+      "local": {
+        "folderPath": "file-or-artifact-ref",
+        "docIndices": "file-or-artifact-ref"
+      }
+    },
+    {
+      "ref": "legacy:src/domain/delegation-input-fragments.ts",
+      "kind": "workflow-input",
+      "canonical": {},
+      "local": {
+        "parentSubject": "correlation-id",
+        "parentRunId": "correlation-id",
+        "taskGroupId": "correlation-id"
+      },
+      "note": "Declared once and spread into crm-doc-download, i9-lookup, oath-signature and person-lookup. Scanned here rather than at each consumer, because that is the file whose change would move them."
+    },
+    {
+      "ref": "legacy:src/workflows/i9-lookup/schema.ts",
+      "kind": "workflow-input",
+      "canonical": { "lastName": "lastName", "firstName": "firstName", "ssn": "ssn" },
+      "local": {}
+    },
+    {
+      "ref": "legacy:src/workflows/i9-check/schema.ts",
+      "kind": "workflow-input",
+      "canonical": {
+        "name": "fullName",
+        "lastName": "lastName",
+        "firstName": "firstName",
+        "middleInitial": "middleInitial",
+        "ssn": "ssn",
+        "dob": "dob",
+        "hireDate": "hireDate",
+        "ppsEid": "ppsEid",
+        "ppsEidPadded": "ppsEid",
+        "separationDate": "separationDate"
+      },
+      "local": {
+        "mode": "execution-option",
+        "sourcePage": "file-or-artifact-ref",
+        "section2Page": "file-or-artifact-ref",
+        "orphanSection2": "run-produced",
+        "ocrSessionId": "correlation-id",
+        "ocrRunId": "correlation-id",
+        "recordIndex": "correlation-id"
+      },
+      "note": "`emplId` inside the roster seed is the same concept as the top-level EID and is recorded once under `legacy:src/services/matching/roster-loader.ts`; `ppsEidPadded` is the zero-padded spelling of `ppsEid`, which is a genuinely different identifier from `Eid` and therefore has its own canonical field and its own brand (doc 06 §1)."
+    },
+    {
+      "ref": "legacy:src/workflows/onboarding/schema.ts",
+      "kind": "workflow-input",
+      "canonical": {
+        "positionNumber": "positionNumber",
+        "firstName": "firstName",
+        "lastName": "lastName",
+        "middleName": "middleName",
+        "ssn": "ssn",
+        "address": "address1",
+        "city": "city",
+        "state": "state",
+        "postalCode": "postalCode",
+        "dob": "dob",
+        "email": "email",
+        "departmentNumber": "deptId",
+        "recruitmentNumber": "recruitmentNumber",
+        "appointment": "appointment",
+        "effectiveDate": "effectiveDate"
+      },
+      "local": {
+        "wage": "needs-reviewed-type",
+        "phone": "needs-reviewed-type",
+        "dryRun": "execution-option"
+      },
+      "note": "`wage` is a currency amount whose legacy string (`$17.75 per hour`) fuses a rate with a frequency; `phone` does not say which line it is. Both need a reviewed domain type before a column may bind to them."
+    },
+    {
+      "ref": "legacy:src/workflows/onbase/schema.ts",
+      "kind": "workflow-input",
+      "canonical": {
+        "ucpathId": "eid",
+        "employeeName": "fullName",
+        "lastName": "lastName",
+        "firstName": "firstName",
+        "middleName": "middleName",
+        "suffix": "suffix",
+        "departmentName": "department",
+        "departmentCode": "departmentCode",
+        "viceChancellor": "viceChancellor",
+        "viceChancellorCode": "viceChancellorCode"
+      },
+      "local": {
+        "sourcePage": "file-or-artifact-ref",
+        "pdfFileId": "file-or-artifact-ref",
+        "pdfOriginalName": "file-or-artifact-ref",
+        "documentType": "constant",
+        "documentName": "constant",
+        "sessionId": "correlation-id",
+        "dryRun": "execution-option"
+      }
+    },
+    {
+      "ref": "legacy:src/workflows/separations/schema.ts",
+      "kind": "workflow-input",
+      "canonical": {
+        "docId": "kualiDocId",
+        "employeeName": "fullName",
+        "eid": "eid",
+        "lastDayWorked": "lastDayWorked",
+        "separationDate": "separationDate",
+        "terminationType": "terminationType",
+        "location": "workLocation",
+        "deptId": "deptId",
+        "departmentDescription": "department",
+        "jobCode": "jobCode",
+        "jobDescription": "jobDescription",
+        "transactionNumber": "transactionNumber"
+      },
+      "local": {
+        "isVoluntary": "run-produced",
+        "terminationEffDate": "computed-from-canonical",
+        "separationComment": "run-produced",
+        "foundInNewKronos": "run-produced"
+      }
+    },
+    {
+      "ref": "legacy:src/workflows/person-lookup/schema.ts",
+      "kind": "workflow-input",
+      "canonical": {
+        "name": "fullName",
+        "emplId": "eid",
+        "lastName": "lastName",
+        "firstName": "firstName",
+        "ssn": "ssn",
+        "dob": "dob"
+      },
+      "local": {
+        "keepNonHdh": "execution-option",
+        "mode": "execution-option",
+        "crmCheck": "execution-option",
+        "includeCrmDates": "execution-option"
+      }
+    },
+    {
+      "ref": "legacy:src/workflows/emergency-contact/schema.ts",
+      "kind": "workflow-input",
+      "canonical": {
+        "street": "address1",
+        "city": "city",
+        "state": "state",
+        "zip": "postalCode",
+        "country": "country",
+        "name": "fullName",
+        "employeeId": "eid",
+        "pid": "pid",
+        "jobTitle": "jobTitle",
+        "workLocation": "workLocation",
+        "supervisor": "supervisor",
+        "workEmail": "workEmail",
+        "personalEmail": "personalEmail",
+        "homePhone": "homePhone",
+        "cellPhone": "cellPhone",
+        "relationship": "relationship",
+        "workPhone": "workPhone"
+      },
+      "local": {
+        "homeAddress": "composite-of-canonical",
+        "address": "composite-of-canonical",
+        "primary": "run-produced",
+        "sameAddressAsEmployee": "run-produced",
+        "sourcePage": "file-or-artifact-ref",
+        "dryRun": "execution-option",
+        "notes": "run-produced",
+        "pdfPath": "file-or-artifact-ref",
+        "batchName": "correlation-id"
+      }
+    },
+    {
+      "ref": "legacy:src/workflows/ocr/schema.ts",
+      "kind": "workflow-input",
+      "canonical": {},
+      "local": {
+        "pdfPath": "file-or-artifact-ref",
+        "pdfOriginalName": "file-or-artifact-ref",
+        "pdfFileId": "file-or-artifact-ref",
+        "formType": "correlation-id",
+        "sessionId": "correlation-id",
+        "rosterPath": "file-or-artifact-ref",
+        "rosterMode": "execution-option",
+        "parentRunId": "correlation-id",
+        "parentSubject": "correlation-id",
+        "operationWorkflow": "correlation-id",
+        "previousRunId": "correlation-id",
+        "forceResearchAll": "execution-option",
+        "dryRun": "execution-option",
+        "runOptions": "execution-option"
+      },
+      "note": "The OCR workflow input carries no person data at all — it names a document and how to process it. Its extracted PERSON fields are scanned separately under the OCR form specs below."
+    },
+    {
+      "ref": "legacy:src/workflows/oath-upload/schema.ts",
+      "kind": "workflow-input",
+      "canonical": {},
+      "local": {
+        "pdfPath": "file-or-artifact-ref",
+        "pdfOriginalName": "file-or-artifact-ref",
+        "pdfFileId": "file-or-artifact-ref",
+        "pdfHash": "file-or-artifact-ref",
+        "sessionId": "correlation-id",
+        "mode": "execution-option",
+        "signerItemIds": "correlation-id",
+        "dryRun": "execution-option"
+      }
+    },
+    {
+      "ref": "legacy:src/workflows/old-kronos-reports/schema.ts",
+      "kind": "workflow-input",
+      "canonical": { "employeeIds": "eid" },
+      "local": {
+        "startDate": "report-parameter",
+        "endDate": "report-parameter",
+        "workers": "execution-option"
+      }
+    },
+    {
+      "ref": "legacy:src/workflows/sharepoint-download/schema.ts",
+      "kind": "workflow-input",
+      "canonical": {},
+      "local": {
+        "id": "correlation-id",
+        "label": "correlation-id",
+        "url": "file-or-artifact-ref",
+        "outDir": "file-or-artifact-ref",
+        "parentRunId": "correlation-id",
+        "filenameBase": "file-or-artifact-ref"
+      }
+    },
+    {
+      "ref": "legacy:src/services/matching/roster-loader.ts",
+      "kind": "roster-header-rule",
+      "canonical": {
+        "eid": "eid",
+        "first": "firstName",
+        "last": "lastName",
+        "name": "fullName",
+        "street": "address1",
+        "city": "city",
+        "state": "state",
+        "zip": "postalCode"
+      },
+      "local": {},
+      "note": "These eight `COLUMN_PATTERNS` regexes are exactly what operator column mapping replaces. Their recognized header spellings are carried forward as `aliases` on the matching canonical fields, where they can only ever SUGGEST a binding (doc 06 §2.5)."
+    },
+    {
+      "ref": "legacy:src/services/ocr/forms/oath.ts",
+      "kind": "ocr-form-field",
+      "canonical": {
+        "printedName": "fullName",
+        "firstName": "firstName",
+        "lastName": "lastName",
+        "employeeId": "eid"
+      },
+      "local": {
+        "sourcePage": "file-or-artifact-ref",
+        "rowIndex": "correlation-id",
+        "confidence": "run-produced",
+        "employeeSigned": "run-produced",
+        "officerSigned": "run-produced",
+        "notes": "run-produced",
+        "originallyMissing": "run-produced",
+        "matchState": "run-produced",
+        "matchSource": "run-produced",
+        "matchConfidence": "run-produced",
+        "candidates": "run-produced",
+        "selected": "run-produced",
+        "warnings": "run-produced",
+        "forceResearch": "run-produced"
+      }
+    },
+    {
+      "ref": "legacy:src/services/ocr/forms/emergency-contact.ts",
+      "kind": "ocr-form-field",
+      "canonical": {
+        "street": "address1",
+        "city": "city",
+        "state": "state",
+        "zip": "postalCode",
+        "country": "country",
+        "name": "fullName",
+        "firstName": "firstName",
+        "lastName": "lastName",
+        "pid": "pid",
+        "jobTitle": "jobTitle",
+        "workLocation": "workLocation",
+        "supervisor": "supervisor",
+        "workEmail": "workEmail",
+        "personalEmail": "personalEmail",
+        "homePhone": "homePhone",
+        "cellPhone": "cellPhone",
+        "workPhone": "workPhone",
+        "relationship": "relationship"
+      },
+      "local": {
+        "primary": "run-produced",
+        "sameAddressAsEmployee": "run-produced",
+        "sourcePage": "file-or-artifact-ref",
+        "notes": "run-produced",
+        "originallyMissing": "run-produced",
+        "matchSource": "run-produced",
+        "matchConfidence": "run-produced",
+        "addressMatch": "run-produced",
+        "rosterNameTrust": "run-produced",
+        "selected": "run-produced",
+        "warnings": "run-produced",
+        "forceResearch": "run-produced"
+      }
+    },
+    {
+      "ref": "legacy:src/services/ocr/forms/shared.ts",
+      "kind": "ocr-form-field",
+      "canonical": { "hrStatus": "employeeStatus", "department": "department" },
+      "local": { "screenshotFilename": "file-or-artifact-ref", "checkedAt": "run-produced" }
+    },
+    {
+      "ref": "legacy:src/workflows/oath-signature/workflow.ts",
+      "kind": "edit-data-field",
+      "canonical": { "emplId": "eid", "date": "signatureDate" },
+      "local": { "crmOnboarding": "crm-verification-flag" }
+    },
+    {
+      "ref": "legacy:src/workflows/emergency-contact/workflow.ts",
+      "kind": "edit-data-field",
+      "canonical": {
+        "employeeName": "fullName",
+        "emplId": "eid",
+        "contactName": "fullName",
+        "relationship": "relationship",
+        "contactPhone": "cellPhone"
+      },
+      "local": {},
+      "note": "`employeeName` and `contactName` are two target paths sharing ONE canonical concept — exactly the D66 case doc 06 §2.1 keys bindings on the target field id to keep separate."
+    },
+    {
+      "ref": "legacy:src/workflows/separations/workflow.ts",
+      "kind": "edit-data-field",
+      "canonical": {
+        "name": "fullName",
+        "eid": "eid",
+        "lastDayWorked": "lastDayWorked",
+        "separationDate": "separationDate",
+        "transactionNumber": "transactionNumber"
+      },
+      "local": { "comments": "run-produced" }
+    },
+    {
+      "ref": "doc:docs/rebuild/06-data-intake-and-edit-data.md",
+      "kind": "owning-doc",
+      "canonical": { "address2": "address2" },
+      "local": {},
+      "note": "`address2` has no legacy source: legacy captured one street line and silently dropped apartment/unit detail. Doc 06 §4.2's `ContactFieldIdSchema` names it explicitly as part of the normalization contract, so the owning doc — not intuition — is what evidences it."
+    }
+  ]
+}

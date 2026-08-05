@@ -563,6 +563,14 @@
       "owner": "docs/rebuild/05-execution-parallelism.md",
       "invariant": "Doc 05 \u00a74: a browser session's authentication is never concluded from a URL. Every store login recipe is built by defineVerifiedLoginRecipe so its content-level proof runs on EVERY return path, no recipe produces a LoginResult outside that wrapper, every landed BrowserSystemBinding supplies a verifier rather than an isAuthenticatedUrl predicate, and the factory's neutral reset asserts through assertAuthenticatedApplication.",
       "replacementRequired": true
+    },
+    {
+      "name": "intake-canonical-field-registry",
+      "file": "tests/unit/architecture/intake-canonical-field-registry.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/06-data-intake-and-edit-data.md",
+      "invariant": "Doc 06 \u00a71's canonical field vocabulary is frozen against the recorded D58/D68 scan in config/canonical-field-inventory.json, and the coverage is checked in BOTH directions: a canonical field no scanned source evidences is unevidenced vocabulary, and a scanned legacy field with no disposition is the silent omission doc 06 \u00a71 forbids. Every scanned field must still appear in the legacy file the scan names, so the frozen legacy tree doubles as a drift detector. Each registry entry must hold together: its declared (classification, redactTransform) pair is one doc 11 permits, a deferred shape carries an auditNote and a resolved one does not, and no normalized header alias claims two fields \u2014 an ambiguous alias would make the \u00a72.5 scorer's top hit arbitrary. The definition factory additionally refuses any example its own coerce+parse rejects. Every arm runs against a violating fixture.",
+      "replacementRequired": true
     }
   ],
   "rebuildRatchetActivation": {

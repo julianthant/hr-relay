@@ -129,6 +129,54 @@ may still have non-intake fields such as file refs, selectors, options, and disc
 > and brand plus an explicit, verified conversion to `Eid`; never add a vague `legacyEid` or widen
 > `Eid` globally.
 
+### 1.1 Phase-2h as-built — the registry is frozen against a recorded scan (D146)
+
+`src/domain/fields/registry.ts` holds the closed `CanonicalFieldId` union (47 ids) and
+`src/domain/fields/cell-coercion.ts` holds the pure per-cell core. The D58/D68 scan this section
+required is **recorded**, not implied: `config/canonical-field-inventory.json` lists every legacy
+workflow input schema, the roster header rules, the OCR form fields and the Edit-Data editable
+fields at legacy commit `4deabc5a`, and gives each scanned field exactly one disposition — a
+canonical id, or workflow-local **with a reason id drawn from a declared, fully-used set**.
+
+`intake-canonical-field-registry.test.ts` checks the coverage in **both directions**, so neither
+artifact can drift alone: a canonical field no scanned source evidences is unevidenced vocabulary,
+and a scanned field with no disposition is exactly the silent omission this section forbids. It also
+re-reads each named legacy file and fails when a scanned field no longer appears there — the frozen
+legacy tree is what makes that a real drift detector. Writing this scan found four fields recorded
+against the wrong file (`parentSubject`/`parentRunId`/`taskGroupId` are spread from
+`legacy:src/domain/delegation-input-fragments.ts`, not declared in the consuming schemas), which is
+the class of error the both-directions check exists to catch.
+
+Three rules the as-built adds, each because the alternative hides something:
+
+- **A tight schema needs evidence.** `eid` is `/^10\d{6}$/` because §9.1 resolved it; dates are ISO
+  `DateOnly` because the domain owns the value and the driver owns the `MM/DD/YYYY` wire form;
+  `ssn`, `postalCode`, `state` and the phone fields are pinned from verified legacy validators.
+  Everything else carries a conservative non-empty-text schema plus `evidence:"audit-at-migration"`
+  and a required `auditNote`. Inventing `/^\d{4,6}$/` for `deptId` from three disagreeing call sites
+  would be the unverified constant this tree bans, and a schema wrong in the TIGHT direction rejects
+  real operator data at the moment the operator is least able to argue with it.
+- **`ppsEid` is a separate field with its own brand.** It is the resolved-base-decision case in this
+  section made concrete: legacy's `i9-check` keeps `ppsEid` beside `emplId` precisely because UCPath
+  may not know the person. No conversion between the two is declared, so nothing can silently treat
+  one as the other.
+- **Redaction is declared per field, because a reject row is durable.** Each field carries a
+  `(classification, redactTransform)` pair refused at definition time by the same table
+  `redactDiagnosticFields` uses. The immutable manifest therefore stores a redacted cell while the
+  live grid — reading the content-addressed source artifact — shows the operator the real value to
+  fix. `ssn` and `dob` use `digest` rather than `last4`: the last four of an SSN is itself a widely
+  used identifier.
+
+Two further checks are structural rather than documentary. `defineCanonicalField` refuses any
+`example` its own `coerce` + `schema` reject, so a registry whose declared sample values are fiction
+cannot load. And no normalized header alias may claim two fields: an ambiguous alias would make the
+§2.5 scorer's top hit arbitrary, and an arbitrary suggestion accepted with one click is §7 vector #1
+wearing a disguise.
+
+**Naming reconciliation.** `src/domain/ids.ts` already owned `IntakeManifestId`, and doc 03's D67
+command union already binds `enqueue-intake-manifest` to it. That id is THE manifest identity;
+§5's `IntakePlanIdSchema` is the same thing under an earlier name and no second id is minted.
+
 ---
 
 ## 2. Operator-defined column mapping

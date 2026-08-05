@@ -1464,6 +1464,14 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/workflow/checkpoint.ts:CanonicalInputSnapshotMigration",
   "src/domain/workflow/checkpoint.ts:ReplayedCheckpoint",
   "src/domain/workflow/checkpoint.ts:FreshnessWalkInput",
+  // A canonical field carries a `coerce` FUNCTION and is generic over the exact
+  // zod schema it owns, so no schema can describe it — describing it would mean
+  // describing a validator, like `CanonicalJsonSchema` above. `CellLocation` is
+  // the in-process address of one cell during validation; it is never stored
+  // and never served. What DOES become durable has schemas: RowRejectSchema and
+  // IntakePlanManifestSchema carry the same facts and are catalogued.
+  "src/domain/fields/registry.ts:CanonicalField",
+  "src/domain/fields/cell-coercion.ts:CellLocation",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {

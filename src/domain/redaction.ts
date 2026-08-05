@@ -44,27 +44,45 @@ export const ClassifiedDiagnosticValueSchema = z.strictObject({
   }
 });
 
+const RedactedDropArm = z.strictObject({
+  state: z.literal("redacted"),
+  classification: DataClassificationSchema,
+  transform: z.literal("drop"),
+});
+const RedactedTransformedArm = z.strictObject({
+  state: z.literal("transformed"),
+  classification: DataClassificationSchema,
+  transform: z.enum(["digest", "last4", "basename", "count"]),
+  value: z.union([FingerprintSchema, z.string(), z.number().int().nonnegative()]),
+});
+const RedactedAllowedArm = z.strictObject({
+  state: z.literal("allowed"),
+  classification: z.literal("safe-diagnostic"),
+  transform: z.literal("allow"),
+  value: JsonValueSchema,
+});
+
+/**
+ * A redacted value with no key of its own — the form a durable record uses
+ * when the surrounding row already names what the value is (doc 06 §5's
+ * `RowReject.raw` names its source column and target field).
+ *
+ * It shares `RedactedFieldSchema`'s exact arms and `redactValue`'s exact
+ * transform implementation on purpose: a second redaction path is a second
+ * thing to drift, and a reject row that leaked a value the receipt would have
+ * dropped is the same defect from a different surface.
+ */
+export const RedactedValueSchema = z.discriminatedUnion("state", [
+  RedactedDropArm,
+  RedactedTransformedArm,
+  RedactedAllowedArm,
+]);
+
+const KEYED = { key: z.string() } as const;
 export const RedactedFieldSchema = z.discriminatedUnion("state", [
-  z.strictObject({
-    state: z.literal("redacted"),
-    key: z.string(),
-    classification: DataClassificationSchema,
-    transform: z.literal("drop"),
-  }),
-  z.strictObject({
-    state: z.literal("transformed"),
-    key: z.string(),
-    classification: DataClassificationSchema,
-    transform: z.enum(["digest", "last4", "basename", "count"]),
-    value: z.union([FingerprintSchema, z.string(), z.number().int().nonnegative()]),
-  }),
-  z.strictObject({
-    state: z.literal("allowed"),
-    key: z.string(),
-    classification: z.literal("safe-diagnostic"),
-    transform: z.literal("allow"),
-    value: JsonValueSchema,
-  }),
+  RedactedDropArm.extend(KEYED),
+  RedactedTransformedArm.extend(KEYED),
+  RedactedAllowedArm.extend(KEYED),
 ]);
 
 export const RedactionResultSchema = z.strictObject({
@@ -108,45 +126,39 @@ function count(value: z.infer<typeof JsonValueSchema>): number {
   return 1;
 }
 
-function redact(field: z.infer<typeof ClassifiedDiagnosticValueSchema>): z.infer<typeof RedactedFieldSchema> {
-  switch (field.transform) {
-    case "drop": return { state: "redacted", key: field.key, classification: field.classification, transform: "drop" };
-    case "digest": return {
-      state: "transformed",
-      key: field.key,
-      classification: field.classification,
-      transform: "digest",
-      value: redactionDigest(field.value),
-    };
-    case "last4": return {
-      state: "transformed",
-      key: field.key,
-      classification: field.classification,
-      transform: "last4",
-      value: safeText(field.value).slice(-4),
-    };
+/**
+ * Apply one declared (classification, transform) pair to one value.
+ *
+ * The pair is REFUSED here as well as at declaration time: a caller that
+ * assembled it dynamically would otherwise be able to widen a classification's
+ * permitted transform by passing the wider one, and this function is the last
+ * place before the value becomes durable.
+ */
+export function redactValue(
+  classification: z.infer<typeof DataClassificationSchema>,
+  transform: z.infer<typeof EvidenceTransformSchema>,
+  value: z.infer<typeof JsonValueSchema>,
+): z.infer<typeof RedactedValueSchema> {
+  if (!evidenceTransformAllowed(classification, transform)) {
+    throw new Error(`redaction transform ${transform} is forbidden for ${classification}`);
+  }
+  switch (transform) {
+    case "drop": return { state: "redacted", classification, transform: "drop" };
+    case "digest": return { state: "transformed", classification, transform: "digest", value: redactionDigest(value) };
+    case "last4": return { state: "transformed", classification, transform: "last4", value: safeText(value).slice(-4) };
     case "basename": return {
       state: "transformed",
-      key: field.key,
-      classification: field.classification,
+      classification,
       transform: "basename",
-      value: pathBasename(safeText(field.value)),
+      value: pathBasename(safeText(value)),
     };
-    case "count": return {
-      state: "transformed",
-      key: field.key,
-      classification: field.classification,
-      transform: "count",
-      value: count(field.value),
-    };
-    case "allow": return {
-      state: "allowed",
-      key: field.key,
-      classification: "safe-diagnostic",
-      transform: "allow",
-      value: field.value,
-    };
+    case "count": return { state: "transformed", classification, transform: "count", value: count(value) };
+    case "allow": return { state: "allowed", classification: "safe-diagnostic", transform: "allow", value };
   }
+}
+
+function redact(field: z.infer<typeof ClassifiedDiagnosticValueSchema>): z.infer<typeof RedactedFieldSchema> {
+  return { key: field.key, ...redactValue(field.classification, field.transform, field.value) };
 }
 
 export function redactDiagnosticFields(input: unknown): z.infer<typeof RedactionResultSchema> {

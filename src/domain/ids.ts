@@ -81,6 +81,38 @@ export const ProviderAdmissionIdSchema = brandedText<"ProviderAdmissionId">(
   UUID_PATTERN,
   "provider admission id must be a UUID",
 );
+export const RowRejectIdSchema = brandedText<"RowRejectId">(UUID_PATTERN, "row reject id must be a UUID");
+
+/**
+ * A detected source column's identity — doc 06 §2.1's
+ * `base64url(canonicalJson({ normalizedHeader, occurrence }))`.
+ *
+ * It is deliberately NOT the header text and NOT the column position. A raw
+ * header cannot distinguish two `Name` columns; a position silently rebinds to
+ * whatever column slid into that slot when the operator inserted one. Encoding
+ * the pair keeps duplicates distinct and keeps the id stable across a
+ * reordered export, which is the whole point of doc 06 §2.3's reuse scheme.
+ *
+ * `src/domain/intake/mapping.ts` owns the derivation; this schema owns the
+ * shape so a hand-written string cannot be passed where a derived id belongs.
+ */
+export const SourceColumnIdSchema = brandedText<"SourceColumnId">(
+  /^[A-Za-z0-9_-]{8,}$/,
+  "source column id must be base64url text derived from the header and its occurrence",
+);
+
+/**
+ * A stable target-field path inside a workflow's intake projection — the key
+ * an operator binds a column TO (`emplId`, `emergencyContact.city`).
+ *
+ * Dotted camelCase, because it addresses a path in a zod object rather than a
+ * kebab-case registry id. Array indices are refused: a binding must name a
+ * field the projection declares, never a positional slot inside one.
+ */
+export const IntakeTargetFieldIdSchema = brandedText<"IntakeTargetFieldId">(
+  /^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)*$/,
+  "intake target field id must be a dotted camelCase path",
+);
 
 /**
  * A record's identity inside an extracted document — derived at admission from
@@ -205,6 +237,9 @@ export type OutboxId = z.infer<typeof OutboxIdSchema>;
 export type WriteIntentId = z.infer<typeof WriteIntentIdSchema>;
 export type WriteAttemptId = z.infer<typeof WriteAttemptIdSchema>;
 export type ProviderAdmissionId = z.infer<typeof ProviderAdmissionIdSchema>;
+export type RowRejectId = z.infer<typeof RowRejectIdSchema>;
+export type SourceColumnId = z.infer<typeof SourceColumnIdSchema>;
+export type IntakeTargetFieldId = z.infer<typeof IntakeTargetFieldIdSchema>;
 export type StableRecordId = z.infer<typeof StableRecordIdSchema>;
 export type PredicateId = z.infer<typeof PredicateIdSchema>;
 export type WorkflowId = z.infer<typeof WorkflowIdSchema>;
