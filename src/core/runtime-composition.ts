@@ -30,6 +30,8 @@ export interface RebuildRuntimeStart {
   readonly worker?: WorkerComposer;
   /** Explicit seam override for tests; production registers via `registerExplainComposer`. */
   readonly explain?: ExplainComposer;
+  /** Explicit seam override for tests; production registers via `registerOcrComposer`. */
+  readonly ocr?: OcrComposer;
 }
 
 type DashboardComposer = (isolation: RuntimeIsolation) => Promise<RunningDashboard>;
@@ -39,6 +41,13 @@ type DashboardComposer = (isolation: RuntimeIsolation) => Promise<RunningDashboa
  * exit before the database closed.
  */
 type ExplainComposer = (isolation: RuntimeIsolation, args: readonly string[]) => string;
+/**
+ * The `ocr` seam (D151). It takes no isolation because admission is PURE: the
+ * gate reads a submission and applies the form registry, touching no authority
+ * and no runtime state. Its exit code distinguishes refusal from success so a
+ * terminal agent's tooling need not parse prose.
+ */
+type OcrComposer = (args: readonly string[]) => { readonly output: string; readonly exitCode: number };
 /** The worker seam speaks the loop's exact schema-backed report (doc 05 §3). */
 type WorkerComposer = (
   isolation: RuntimeIsolation,
@@ -58,6 +67,15 @@ export function registerDashboardComposer(composer: DashboardComposer): void {
     throw new Error("a dashboard composer is already registered; two compositions cannot own one runtime");
   }
   registeredDashboardComposer = composer;
+}
+
+let registeredOcrComposer: OcrComposer | undefined;
+
+export function registerOcrComposer(composer: OcrComposer): void {
+  if (registeredOcrComposer !== undefined) {
+    throw new Error("an ocr composer is already registered; two compositions cannot own one runtime");
+  }
+  registeredOcrComposer = composer;
 }
 
 let registeredWorkerComposer: WorkerComposer | undefined;
@@ -101,6 +119,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     // `runWorker` loop), so `worker` is the recorded choice here.
     "  worker <workflow-id> [--drain]  run one workflow-scoped browser worker (doc 05 §3)",
     "  explain run <traceId|runId> [--json]  explain one run from authority (doc 12 §2.5)",
+    "  ocr forms | instruction <form> | admit <file.json>  the one extraction gate, whoever read the page (D151)",
   ].join("\n");
 }
 
@@ -152,6 +171,20 @@ export function startRebuildRuntime(input: RebuildRuntimeStart): void {
       );
     }
     write(compose(input.isolation, args.slice(1)));
+    return;
+  }
+  if (command === "ocr") {
+    const compose = input.ocr ?? registeredOcrComposer;
+    if (compose === undefined) {
+      throw new Error(
+        "the ocr command needs its composition seam; start it through src/cli.ts, which registers composeOcrCommand",
+      );
+    }
+    const outcome = compose(args.slice(1));
+    write(outcome.output);
+    // A refused submission must not look accepted to a caller that only checks
+    // the exit status — which is exactly how another agent's tooling checks.
+    if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
     return;
   }
   if (command === "worker") {

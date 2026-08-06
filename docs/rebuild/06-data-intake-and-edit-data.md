@@ -601,9 +601,28 @@ never approved. `answersFingerprint` digests what was read while excluding who r
 so "two routes agree" is checkable rather than asserted, and confidence is excluded because it is
 the producer's opinion of itself rather than a fact about the page.
 
+**Routes 2 and 3 are usable now**, through `rebuild:cli ocr`:
+
+```
+rebuild:cli ocr forms                      which forms exist, and how many fields each demands
+rebuild:cli ocr instruction <form-type>    the exact brief EVERY route receives
+rebuild:cli ocr admit <submission.json>    run the gate; print the record or the problems
+```
+
+An AI the operator runs in their own terminal reads `instruction`, writes the JSON it describes, and
+hands it to `admit`; so does the operator; so, later, does the provider adapter. `admit` **exits
+non-zero on refusal**, because a terminal agent's own tooling checks the exit status rather than
+reading prose, and a refused submission that exited zero would look accepted. An unreadable file is
+named as such rather than reaching the gate as `undefined`, where a JSON typo would come back as a
+complaint about `formType`.
+
+The command adds no rule of its own — it reads, calls the gate, and reports — and
+`ocr-producer-parity` enforces that: only the gate may parse an `AdmittedExtraction`, the gate may
+not branch on `source`, and the answer shape may carry no `.optional()`.
+
 **Not built yet:** the provider adapter that carries route 1's actual model call (2h's provider
-pools), and the CLI that hands routes 2 and 3 the generated instruction and takes their JSON back.
-Both are transports over this gate; neither may add a rule of its own.
+pools), and durable storage of admitted extractions. Both sit over this gate; neither may add a rule
+of its own.
 
 ## 5. Intake pipeline: mapped dataset → N inputs, with a pre-run rejection review
 
