@@ -76,8 +76,7 @@ export const ExtractFormPage = defineTaskContract({
     sourceSha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
     sourcePage: 1,
     pageKind: "oath",
-    records: [{
-      rowIndex: 0,
+    record: {
       answers: [
         { state: "read", path: "employeeId", raw: "10873698", value: "10873698", confidence: 0.93 },
         { state: "read", path: "employeeSigned", raw: "yes", value: true, confidence: 0.99 },
@@ -87,7 +86,7 @@ export const ExtractFormPage = defineTaskContract({
       ],
       blockingPaths: ["officerSigned"],
       answersFingerprint: "933d327efcaa17cab1a137969fac76a6379f8eb3cabab2ebecd6240518b2746e",
-    }],
-    pageFingerprint: "ac6610d9f04e249baf36dfbca17695bfc9431d6e3b24575cf20be9622a5a2b43",
+    },
+    pageFingerprint: "48632e1a2505e1b77b9f5aa1f2d0f78237ac8fc04ff2bcd935a52366d74e4947",
   },
 });

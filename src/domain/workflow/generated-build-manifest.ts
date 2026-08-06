@@ -1501,7 +1501,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-timekeeper-annotation"
     },
     {
-      "fingerprint": "f260259d8682f9339bdc0e142a3f642cf56ab7dbfb7d23a7030dcb35a26ae9ad",
+      "fingerprint": "a4b50ef64ee8297317f296851b124fed6cabb5cda5647a348448914cb8cab5a4",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1537,7 +1537,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ocr/extract-form-page.ts",
-          "sha256": "08c62501b0d24560a1c4b5ae323878c0e5f31ab1c350e54d7c89199a14c5f3cf"
+          "sha256": "b3fc3f7dff2b5721d3318558ba97d3f289d5fa52248f73234ccfde0730f15c74"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
@@ -1561,15 +1561,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ocr/extraction.ts",
-          "sha256": "ad8007244d84684a3c46f0b6c297a5e351aa5e9d9482413ce0e7adddc8abc721"
+          "sha256": "d007a380513492817e5f46ca9d200047b6412036946453e0a90377a4229432ca"
         },
         {
           "path": "src/domain/ocr/form-registry.ts",
-          "sha256": "b14ae577e45e5619b99cb686316f4ffcbe64c6cfddfa2bdc898159b65013cee9"
+          "sha256": "acb8ecbba31dca071ae243c8e6df4f1c9eb0aaa8b8614730abee35c671e6491a"
         },
         {
           "path": "src/domain/ocr/instruction.ts",
-          "sha256": "32c28b9d587dfabec31e2f02b6a9c1cfe951817bf959f4e2eb5863646c760440"
+          "sha256": "639dbc6d5b5507b876249ee117f41e9dd0752afff0c7461323ca0b0dab54f7a7"
         },
         {
           "path": "src/domain/provider-admission.ts",
@@ -1629,7 +1629,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ocr/tasks/extract-form-page.ts",
-          "sha256": "5f22107f6fb00e599f757a3f239cecb862930e290e25d8482854dc2a7c65d6ec"
+          "sha256": "aac2d3cf141dc69025cfd54bf10c81c27a1a1c5569b0892470ed9dae59b03593"
         },
         {
           "path": "src/validation/contract-boundary.ts",

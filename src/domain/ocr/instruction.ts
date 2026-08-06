@@ -20,7 +20,7 @@
  */
 import { canonicalJsonStringify } from "../canonical-json.js";
 import { CANONICAL_FIELDS } from "../fields/registry.js";
-import { ocrForm, type OcrFormType } from "./form-registry.js";
+import { OcrPageKindSchema, ocrForm, type OcrFormType } from "./form-registry.js";
 
 function expectationFor(spec: ReturnType<typeof ocrForm>["fields"][number]): string {
   if (spec.canonicalFieldId === null) {
@@ -46,17 +46,19 @@ export function buildExtractionInstruction(formType: OcrFormType): string {
     "",
     "## Rules",
     "",
-    "0. CLASSIFY the page first, as `pageKind`: `oath`, `emergency-contact`, or",
-    "   `unknown`. A scanned stack is mixed. If this page is not",
+    "0. CLASSIFY the page first, as `pageKind`. A scanned stack is loose paper,",
+    "   so name what you actually see:",
+    ...OcrPageKindSchema.options.map((kind) => `   - \`${kind}\``),
+    "   `boilerplate` is a printed page of a real form that carries no data —",
+    "   the I-9 instructions and Lists of Acceptable Documents are seven of every",
+    "   nine pages in a packet. `unrelated` is a document that is not one of",
+    "   these forms at all. `blank` is an empty scan or a separator. If this page",
+    "   is not",
     `   \`${form.formType}\`, report the kind you saw and send an EMPTY \`records\``,
     "   array — that is a correct answer, not a failure. Never invent fields for",
     "   a form the page is not.",
-    form.recordsPerPage === "many"
-      ? "1. This form can hold SEVERAL people on one page. Emit one record per"
-        + " filled row, in the order they appear, numbering `rowIndex` from 0."
-        + " A page with twelve rows and one record has skipped eleven people."
-      : "1. This form holds ONE person per page. Emit exactly one record, with"
-        + " `rowIndex` 0.",
+    "1. This form holds ONE person per page. Send that person as `record`,",
+    "   or `null` when the page is not this form.",
     "2. Answer EVERY field listed below, for every record. There are no optional fields.",
     "3. If you cannot give a value, say which kind of nothing you saw:",
     "   - `not-on-form` — this form has no such box at all.",
@@ -124,7 +126,7 @@ export function buildAnswerSkeleton(formType: OcrFormType): unknown {
     sourceSha256: "<sha256 of the page image or PDF you read>",
     sourcePage: 1,
     pageKind: formType,
-    records: [{ rowIndex: 0, answers }],
+    record: { answers },
   };
 }
 

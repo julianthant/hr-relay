@@ -90,19 +90,18 @@ describe("D151 OCR producer parity", () => {
       // longer exists or omit one that does.
       const skeleton = buildAnswerSkeleton(formType) as {
         pageKind: string;
-        records: { rowIndex: number; answers: Record<string, unknown> }[];
+        record: { answers: Record<string, unknown> };
       };
       assert.equal(skeleton.pageKind, formType, "the skeleton must show the expected classification");
-      assert.equal(skeleton.records.length, 1);
       assert.deepEqual(
-        Object.keys(skeleton.records[0].answers).toSorted((left, right) => left.localeCompare(right)),
+        Object.keys(skeleton.record.answers).toSorted((left, right) => left.localeCompare(right)),
         [...declared],
       );
       // Classification and record count reach every route, or a producer could
       // silently answer a page that is not this form, or one row of twelve.
       assert.equal(instruction.includes("CLASSIFY the page first"), true, `${formType}: no classification rule`);
       assert.equal(
-        instruction.includes(ocrForm(formType).recordsPerPage === "many" ? "one record per filled row" : "ONE person per page"),
+        instruction.includes("ONE person per page"),
         true,
         `${formType}: the brief does not say how many records a page yields`,
       );

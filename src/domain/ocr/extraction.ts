@@ -105,12 +105,6 @@ export const SubmittedAnswerSchema = z.discriminatedUnion("state", [
 export type SubmittedAnswer = z.infer<typeof SubmittedAnswerSchema>;
 
 export const SubmittedRecordSchema = z.strictObject({
-  /**
-   * 0-based position on the page. A single-record form always reports 0; a
-   * sign-in sheet reports the row order it read, so a reviewer can find the row
-   * on the paper.
-   */
-  rowIndex: z.number().int().nonnegative(),
   /** `path -> answer`. Checked against the form's declared set, both ways. */
   answers: z.record(OcrFieldPathSchema, SubmittedAnswerSchema),
 });
@@ -132,11 +126,15 @@ export const SubmittedExtractionSchema = z.strictObject({
    */
   pageKind: OcrPageKindSchema,
   /**
-   * One entry per person on the page. A sign-in sheet is a table; a form that
-   * can hold twelve rows and reports one is skipping eleven people, which no
-   * per-field check would ever notice.
+   * The one person on this page, or `null` when the page is not this form.
+   *
+   * Every form the operator actually scans is one person per page — the
+   * multi-row sign-in sheet legacy supported is used by no workflow. A page is
+   * therefore this form or it is not, and an array would be generality with no
+   * user. An I-9 subject DOES span two pages, but that is a grouping problem
+   * above this gate rather than several records inside one page.
    */
-  records: z.array(SubmittedRecordSchema),
+  record: SubmittedRecordSchema.nullable(),
 });
 export type SubmittedExtraction = z.infer<typeof SubmittedExtractionSchema>;
 
@@ -167,7 +165,6 @@ export const AdmittedAnswerSchema = z.discriminatedUnion("state", [
 export type AdmittedAnswer = z.infer<typeof AdmittedAnswerSchema>;
 
 export const AdmittedRecordSchema = z.strictObject({
-  rowIndex: z.number().int().nonnegative(),
   /** Sorted by path, so two agreeing readings are byte-identical. */
   answers: z.array(AdmittedAnswerSchema).min(1),
   /**
@@ -188,20 +185,18 @@ export const AdmittedExtractionSchema = z.strictObject({
   sourceSha256: FingerprintSchema,
   sourcePage: z.number().int().positive(),
   pageKind: OcrPageKindSchema,
-  /** Empty exactly when the page is not the expected form. */
-  records: z.array(AdmittedRecordSchema),
-  /** Digest of the whole page's reading, for cross-producer comparison. */
+  /** Null exactly when the page is not the expected form. */
+  record: AdmittedRecordSchema.nullable(),
+  /** Digest of the page's reading, for cross-producer comparison. */
   pageFingerprint: FingerprintSchema,
 }).superRefine((extraction, context) => {
   const issue = (message: string): void => { context.addIssue({ code: "custom", message }); };
-  if (extraction.pageKind === extraction.formType && extraction.records.length === 0) {
-    issue(`a page classified as ${extraction.formType} must carry at least one record`);
+  if (extraction.pageKind === extraction.formType && extraction.record === null) {
+    issue(`a page classified as ${extraction.formType} must carry its record`);
   }
-  if (extraction.pageKind !== extraction.formType && extraction.records.length > 0) {
-    issue(`a page classified as ${extraction.pageKind} cannot carry ${extraction.formType} records`);
+  if (extraction.pageKind !== extraction.formType && extraction.record !== null) {
+    issue(`a page classified as ${extraction.pageKind} cannot carry a ${extraction.formType} record`);
   }
-  const rows = extraction.records.map((record) => record.rowIndex);
-  if (new Set(rows).size !== rows.length) issue("two records claim the same row on one page");
 });
 export type AdmittedExtraction = z.infer<typeof AdmittedExtractionSchema>;
 
@@ -261,55 +256,44 @@ export function admitOcrExtraction(candidate: unknown): OcrAdmission {
   const form = ocrForm(submission.formType);
   const problems: string[] = [];
 
-  // A page that is not this form carries no records, and that is a correct
-  // outcome: a scanned stack is mixed, and demanding oath answers from an
+  // A page that is not this form carries no record, and that is a correct
+  // outcome: a scanned stack is loose paper, and demanding oath answers from an
   // emergency-contact page would force a producer to invent them.
   if (submission.pageKind !== submission.formType) {
-    if (submission.records.length > 0) {
+    if (submission.record !== null) {
       problems.push(
         `pageKind ${submission.pageKind} does not match this ${submission.formType} run, `
-        + "so the page cannot also carry records",
+        + "so the page cannot also carry a record",
       );
       return { admitted: false, problems };
     }
-    return { admitted: true, extraction: buildAdmitted(submission, []) };
+    return { admitted: true, extraction: buildAdmitted(submission, null) };
   }
 
-  if (submission.records.length === 0) {
-    problems.push(`a page classified as ${submission.formType} must carry at least one record`);
-    return { admitted: false, problems };
-  }
-  if (form.recordsPerPage === "one" && submission.records.length > 1) {
-    problems.push(
-      `the ${submission.formType} form holds one person per page, `
-      + `but ${String(submission.records.length)} records were reported`,
-    );
+  if (submission.record === null) {
+    problems.push(`a page classified as ${submission.formType} must carry its record`);
     return { admitted: false, problems };
   }
 
   const declared = new Map(form.fields.map((spec) => [spec.path, spec]));
-  const seenRows = new Set<number>();
-  for (const record of submission.records) {
-    const where = `record ${String(record.rowIndex)}`;
-    if (seenRows.has(record.rowIndex)) problems.push(`${where}: two records claim this row`);
-    seenRows.add(record.rowIndex);
-    const submitted = new Set(Object.keys(record.answers));
-    for (const path of declared.keys()) {
-      if (!submitted.has(path)) {
-        problems.push(
-          `${where}: ${path} not answered — every declared field needs a value or one of `
-          + "not-on-form / blank / illegible",
-        );
-      }
+  const submitted = new Set(Object.keys(submission.record.answers));
+  for (const path of declared.keys()) {
+    if (!submitted.has(path)) {
+      problems.push(
+        `${path} not answered — every declared field needs a value or one of `
+        + "not-on-form / blank / illegible",
+      );
     }
-    for (const path of submitted) {
-      if (!declared.has(path)) problems.push(`${where}: ${path} is not a field of the ${submission.formType} form`);
-    }
+  }
+  for (const path of submitted) {
+    if (!declared.has(path)) problems.push(`${path} is not a field of the ${submission.formType} form`);
   }
   if (problems.length > 0) return { admitted: false, problems };
 
-  const records = submission.records.map((record) => admitRecord(submission, form.fields, record));
-  return { admitted: true, extraction: buildAdmitted(submission, records) };
+  return {
+    admitted: true,
+    extraction: buildAdmitted(submission, admitRecord(submission, form.fields, submission.record)),
+  };
 }
 
 function admitRecord(
@@ -359,7 +343,6 @@ function admitRecord(
 
   answers.sort((left, right) => left.path.localeCompare(right.path));
   return AdmittedRecordSchema.parse({
-    rowIndex: record.rowIndex,
     answers,
     blockingPaths: blockingPaths.toSorted((left, right) => left.localeCompare(right)),
     answersFingerprint: answersFingerprint(answers),
@@ -368,9 +351,8 @@ function admitRecord(
 
 function buildAdmitted(
   submission: SubmittedExtraction,
-  records: readonly z.infer<typeof AdmittedRecordSchema>[],
+  record: z.infer<typeof AdmittedRecordSchema> | null,
 ): AdmittedExtraction {
-  const ordered = [...records].sort((left, right) => left.rowIndex - right.rowIndex);
   return AdmittedExtractionSchema.parse({
     formType: submission.formType,
     source: submission.source,
@@ -378,14 +360,13 @@ function buildAdmitted(
     sourceSha256: submission.sourceSha256,
     sourcePage: submission.sourcePage,
     pageKind: submission.pageKind,
-    records: ordered,
+    record,
+    // Folds the CLASSIFICATION as well as the answers: two producers that read
+    // the same values but disagree about what the page IS have not agreed.
     pageFingerprint: FingerprintSchema.parse(sha256Hex(
       `hrauto:ocr-page:v1\0${canonicalJsonStringify({
         pageKind: submission.pageKind,
-        records: ordered.map((record) => ({
-          rowIndex: record.rowIndex,
-          answers: record.answersFingerprint,
-        })),
+        answers: record === null ? null : record.answersFingerprint,
       })}`,
     )),
   });

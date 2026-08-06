@@ -39,14 +39,14 @@ function oathSubmission(source: ExtractionSource, overrides: Record<string, unkn
     sourceSha256: PAGE_SHA,
     sourcePage: 1,
     pageKind: "oath",
-    records: [{ rowIndex: 0, answers: {
+    record: { answers: {
       printedName: { state: "read", raw: "Battistessa, Johnnie", confidence: 0.97 },
       employeeId: { state: "read", raw: "10873698", confidence: 0.93 },
       signatureDate: { state: "read", raw: "07/21/2026", confidence: 0.95 },
       employeeSigned: { state: "read", raw: "yes", confidence: 0.99 },
       officerSigned: { state: "absent", reason: "blank" },
       ...overrides,
-    } }],
+    } },
   };
 }
 
@@ -87,7 +87,7 @@ describe("one gate, whoever read the page", () => {
       }));
       assert.equal(admission.admitted, true);
       if (!admission.admitted) throw new Error("unreachable");
-      const answer = admission.extraction.records[0].answers.find((entry) => entry.path === "employeeId");
+      const answer = admission.extraction.record!.answers.find((entry) => entry.path === "employeeId");
       assert.equal(answer?.state, "unreadable");
       assert.equal(answer?.state === "unreadable" && answer.reason.includes("not a UCPath EID"), true);
       // Kept with its raw text so a reviewer sees what the producer saw.
@@ -99,7 +99,7 @@ describe("one gate, whoever read the page", () => {
 describe("nobody skips anything", () => {
   it("refuses a submission that omits a declared field", () => {
     const submission = oathSubmission(PROVIDER);
-    delete (submission.records[0].answers as Record<string, unknown>).signatureDate;
+    delete (submission.record.answers as Record<string, unknown>).signatureDate;
     const admission = admitOcrExtraction(submission);
     assert.equal(admission.admitted, false);
     if (admission.admitted) throw new Error("unreachable");
@@ -138,7 +138,7 @@ describe("nobody skips anything", () => {
     }));
     assert.equal(admission.admitted, true);
     if (!admission.admitted) throw new Error("unreachable");
-    const reasons = Object.fromEntries(admission.extraction.records[0].answers
+    const reasons = Object.fromEntries(admission.extraction.record!.answers
       .filter((answer) => answer.state === "absent")
       .map((answer) => [answer.path, answer.state === "absent" ? answer.reason : ""]));
     assert.deepEqual(reasons, {
@@ -150,8 +150,8 @@ describe("nobody skips anything", () => {
     // them apart, so two producers disagreeing about WHICH nothing they saw is
     // a visible disagreement rather than a silent match.
     assert.notEqual(
-      answersFingerprint(admission.extraction.records[0].answers),
-      answersFingerprint(admission.extraction.records[0].answers.map((answer) =>
+      answersFingerprint(admission.extraction.record!.answers),
+      answersFingerprint(admission.extraction.record!.answers.map((answer) =>
         answer.path === "signatureDate" && answer.state === "absent"
           ? { ...answer, reason: "blank" as const }
           : answer)),
@@ -165,22 +165,22 @@ describe("nobody skips anything", () => {
     }));
     assert.equal(optionalMissing.admitted, true);
     if (!optionalMissing.admitted) throw new Error("unreachable");
-    assert.deepEqual(optionalMissing.extraction.records[0].blockingPaths, []);
+    assert.deepEqual(optionalMissing.extraction.record!.blockingPaths, []);
 
     const mandatoryMissing = admitOcrExtraction(oathSubmission(PROVIDER, {
       printedName: { state: "absent", reason: "illegible" },
     }));
     assert.equal(mandatoryMissing.admitted, true);
     if (!mandatoryMissing.admitted) throw new Error("unreachable");
-    assert.deepEqual(mandatoryMissing.extraction.records[0].blockingPaths, ["officerSigned", "printedName"]);
+    assert.deepEqual(mandatoryMissing.extraction.record!.blockingPaths, ["officerSigned", "printedName"]);
   });
 });
 
-describe("a mixed stack, and a page that holds several people", () => {
-  it("accepts a page that is a DIFFERENT form, with no records and no invention", () => {
-    // A scanned oath stack routinely contains emergency-contact pages. Demanding
-    // oath answers from one would force a producer to invent them; failing the
-    // page would lose it. Classifying it is the true answer.
+describe("a scanned stack is loose paper", () => {
+  it("accepts a page that is a DIFFERENT form, with no record and no invention", () => {
+    // Real corpus: `detect-test.pdf` interleaves emergency-contact and oath
+    // pages. Demanding oath answers from an EC page would force a producer to
+    // invent them; failing the page would lose it. Classifying it is the truth.
     const admission = admitOcrExtraction({
       formType: "oath",
       source: PROVIDER,
@@ -188,88 +188,74 @@ describe("a mixed stack, and a page that holds several people", () => {
       sourceSha256: PAGE_SHA,
       sourcePage: 7,
       pageKind: "emergency-contact",
-      records: [],
+      record: null,
     });
     assert.equal(admission.admitted, true, JSON.stringify(admission));
     if (!admission.admitted) throw new Error("unreachable");
-    assert.deepEqual(admission.extraction.records, []);
+    assert.equal(admission.extraction.record, null);
     assert.equal(admission.extraction.pageKind, "emergency-contact");
   });
 
-  it("refuses a page that claims another form AND carries records", () => {
-    const admission = admitOcrExtraction({
-      ...oathSubmission(PROVIDER),
-      pageKind: "unknown",
-    });
-    assert.equal(admission.admitted, false);
-    if (admission.admitted) throw new Error("unreachable");
-    assert.equal(admission.problems.some((problem) => problem.includes("cannot also carry records")), true);
+  it("distinguishes boilerplate, unrelated and blank, which are not the same fact", () => {
+    // Seven of every nine pages in an I-9 packet are instructions and Lists of
+    // Acceptable Documents. `unrelated` means the operator put something in the
+    // stack that does not belong; `blank` may mean the scanner double-fed. All
+    // three carry no data, and only one of them is nobody's mistake.
+    for (const pageKind of ["boilerplate", "unrelated", "blank"] as const) {
+      const admission = admitOcrExtraction({
+        formType: "oath",
+        source: PROVIDER,
+        readAt: READ_AT,
+        sourceSha256: PAGE_SHA,
+        sourcePage: 2,
+        pageKind,
+        record: null,
+      });
+      assert.equal(admission.admitted, true, `${pageKind}: ${JSON.stringify(admission)}`);
+      if (!admission.admitted) throw new Error("unreachable");
+      assert.equal(admission.extraction.pageKind, pageKind);
+    }
   });
 
-  it("refuses an oath page classified as oath that reports no rows at all", () => {
-    const admission = admitOcrExtraction({ ...oathSubmission(PROVIDER), records: [] });
-    assert.equal(admission.admitted, false);
-    if (admission.admitted) throw new Error("unreachable");
-    assert.equal(admission.problems.some((problem) => problem.includes("at least one record")), true);
-  });
-
-  it("admits a multi-row sign-in sheet, fingerprinting each row separately", () => {
-    const base = oathSubmission(PROVIDER);
-    const rowFor = (rowIndex: number, eid: string) => ({
-      rowIndex,
-      answers: { ...base.records[0].answers, employeeId: { state: "read", raw: eid, confidence: 0.9 } },
-    });
-    const admission = admitOcrExtraction({
-      ...base,
-      records: [rowFor(2, "10998801"), rowFor(0, "10873698"), rowFor(1, "10456712")],
-    });
-    assert.equal(admission.admitted, true, JSON.stringify(admission));
-    if (!admission.admitted) throw new Error("unreachable");
-    // Ordered by row, whatever order they were reported in.
-    assert.deepEqual(admission.extraction.records.map((record) => record.rowIndex), [0, 1, 2]);
-    // Three DIFFERENT people — one fingerprint each.
-    assert.equal(
-      new Set(admission.extraction.records.map((record) => record.answersFingerprint)).size,
-      3,
-    );
-  });
-
-  it("checks completeness per RECORD, naming the row", () => {
-    const base = oathSubmission(PROVIDER);
-    const short = { rowIndex: 1, answers: { ...base.records[0].answers } };
-    delete (short.answers as Record<string, unknown>).printedName;
-    const admission = admitOcrExtraction({ ...base, records: [base.records[0], short] });
-    assert.equal(admission.admitted, false);
-    if (admission.admitted) throw new Error("unreachable");
-    assert.equal(
-      admission.problems.some((problem) => problem.includes("record 1: printedName not answered")),
-      true,
-      admission.problems.join("\n"),
-    );
-  });
-
-  it("refuses several records on a form that holds one person per page", () => {
-    const one = {
-      rowIndex: 0,
-      answers: Object.fromEntries(declaredPaths("emergency-contact")
-        .map((path) => [path, { state: "absent", reason: "blank" }])),
-    };
-    const admission = admitOcrExtraction({
-      formType: "emergency-contact",
+  it("folds the classification into the fingerprint, so disagreeing about WHAT a page is shows", () => {
+    const asBlank = admitOcrExtraction({
+      formType: "oath",
       source: PROVIDER,
       readAt: READ_AT,
       sourceSha256: PAGE_SHA,
-      sourcePage: 1,
-      pageKind: "emergency-contact",
-      records: [one, { ...one, rowIndex: 1 }],
+      sourcePage: 2,
+      pageKind: "blank",
+      record: null,
     });
+    const asBoilerplate = admitOcrExtraction({
+      formType: "oath",
+      source: OPERATOR,
+      readAt: READ_AT,
+      sourceSha256: PAGE_SHA,
+      sourcePage: 2,
+      pageKind: "boilerplate",
+      record: null,
+    });
+    assert.equal(asBlank.admitted && asBoilerplate.admitted, true);
+    if (!asBlank.admitted || !asBoilerplate.admitted) throw new Error("unreachable");
+    // Two producers that both read "no data" but disagree about WHY have not
+    // agreed, and the fingerprint has to say so.
+    assert.notEqual(asBlank.extraction.pageFingerprint, asBoilerplate.extraction.pageFingerprint);
+    assert.equal(extractionsAgree(asBlank.extraction, asBoilerplate.extraction), false);
+  });
+
+  it("refuses a page that claims another form AND carries a record", () => {
+    const admission = admitOcrExtraction({ ...oathSubmission(PROVIDER), pageKind: "i9-section1" });
     assert.equal(admission.admitted, false);
     if (admission.admitted) throw new Error("unreachable");
-    assert.equal(
-      admission.problems.some((problem) => problem.includes("holds one person per page")),
-      true,
-      admission.problems.join("\n"),
-    );
+    assert.equal(admission.problems.some((problem) => problem.includes("cannot also carry a record")), true);
+  });
+
+  it("refuses an oath page classified as oath that carries no record", () => {
+    const admission = admitOcrExtraction({ ...oathSubmission(PROVIDER), record: null });
+    assert.equal(admission.admitted, false);
+    if (admission.admitted) throw new Error("unreachable");
+    assert.equal(admission.problems.some((problem) => problem.includes("must carry its record")), true);
   });
 });
 
@@ -289,10 +275,10 @@ describe("every route is told the same thing", () => {
 
   it("emits a skeleton whose shape the gate accepts once filled in", () => {
     for (const formType of OCR_FORM_TYPES) {
-      const skeleton = buildAnswerSkeleton(formType) as { records: { answers: Record<string, unknown> }[] };
+      const skeleton = buildAnswerSkeleton(formType) as { record: { answers: Record<string, unknown> } };
       // Same keys as the form declares — both directions.
       assert.deepEqual(
-        Object.keys(skeleton.records[0].answers).toSorted((left, right) => left.localeCompare(right)),
+        Object.keys(skeleton.record.answers).toSorted((left, right) => left.localeCompare(right)),
         [...declaredPaths(formType)],
       );
     }
@@ -310,12 +296,16 @@ describe("every route is told the same thing", () => {
     assert.equal(contact.includes("NEVER skip the contact's address"), true);
   });
 
-  it("tells a multi-record form to emit one record per row", () => {
-    assert.equal(buildExtractionInstruction("oath").includes("one record per filled row"), true);
-    assert.equal(buildExtractionInstruction("emergency-contact").includes("ONE person per page"), true);
-    // And every route is told to classify before extracting.
+  it("tells every route the page holds one person, and to classify before extracting", () => {
     for (const formType of OCR_FORM_TYPES) {
-      assert.equal(buildExtractionInstruction(formType).includes("CLASSIFY the page first"), true);
+      const instruction = buildExtractionInstruction(formType);
+      assert.equal(instruction.includes("ONE person per page"), true);
+      assert.equal(instruction.includes("CLASSIFY the page first"), true);
+      // The full page vocabulary reaches the brief, so a producer can name what
+      // it actually saw rather than forcing it into the expected form.
+      for (const kind of ["i9-section1", "boilerplate", "unrelated", "blank"]) {
+        assert.equal(instruction.includes(kind), true, `${formType}: ${kind} never offered`);
+      }
     }
   });
 

@@ -87,7 +87,7 @@ export const extractFormPageTask = defineTask(ExtractFormPage, {
       { direction: "read", field: "sourcePage", value: extraction.sourcePage },
       { direction: "read", field: "pageKind", value: extraction.pageKind },
       { direction: "read", field: "pageFingerprint", value: extraction.pageFingerprint },
-      { direction: "read", field: "recordCount", value: extraction.records.length },
+      { direction: "read", field: "hasRecord", value: extraction.record !== null },
     ]);
     return extraction;
   },

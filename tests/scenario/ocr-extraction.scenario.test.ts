@@ -44,8 +44,7 @@ function completeAnswers(overrides: Record<string, unknown> = {}) {
     sourceSha256: PAGE_SHA,
     sourcePage: 1,
     pageKind: "oath",
-    records: [{
-      rowIndex: 0,
+    record: {
       answers: {
         printedName: { state: "read", raw: "Battistessa, Johnnie", confidence: 0.97 },
         employeeId: { state: "read", raw: "10873698", confidence: 0.93 },
@@ -54,7 +53,7 @@ function completeAnswers(overrides: Record<string, unknown> = {}) {
         officerSigned: { state: "read", raw: "yes", confidence: 0.98 },
         ...overrides,
       },
-    }],
+    },
   };
 }
 
@@ -106,9 +105,8 @@ describe("ocr/extract-form-page scenarios", () => {
     assert.equal(request.instruction, buildExtractionInstruction("oath"));
     assert.equal(request.pageSha256, PAGE_SHA);
 
-    const output = result.output as { pageFingerprint: string; records: { blockingPaths: string[] }[] };
-    assert.equal(output.records.length, 1);
-    assert.deepEqual(output.records[0].blockingPaths, []);
+    const output = result.output as { pageFingerprint: string; record: { blockingPaths: string[] } };
+    assert.deepEqual(output.record.blockingPaths, []);
 
     // And an operator submitting the identical reading by hand lands on the
     // same fingerprint — the routes are interchangeable, not merely similar.
@@ -130,14 +128,14 @@ describe("ocr/extract-form-page scenarios", () => {
       },
     }));
     assert.equal(result.failure, undefined);
-    const output = result.output as { records: { blockingPaths: string[] }[] };
+    const output = result.output as { record: { blockingPaths: string[] } };
     // A human resolves it downstream; the read itself succeeded.
-    assert.deepEqual(output.records[0].blockingPaths, ["officerSigned"]);
+    assert.deepEqual(output.record.blockingPaths, ["officerSigned"]);
   });
 
   it("ocr/extract/skipped-field-refused — a model that skips a field fails the task", async () => {
     const partial = completeAnswers();
-    delete (partial.records[0].answers as Record<string, unknown>).signatureDate;
+    delete (partial.record.answers as Record<string, unknown>).signatureDate;
     const result = await runTask(() => ({
       state: "produced",
       value: { schemaHash: RESPONSE_HASH, value: partial },

@@ -38,14 +38,41 @@ export type OcrFormType = z.infer<typeof OcrFormTypeSchema>;
 /**
  * What a page turned out to BE, decided before any field is read.
  *
- * A scanned stack is mixed — legacy's own oath prompt classifies every page as
- * oath / emergency-contact / unknown precisely because operators feed it piles
- * of paper. Without this, a producer handed an emergency-contact page during an
- * oath run has two bad options: invent oath answers, or fail the page. Neither
- * is true. `unknown` covers blank separator sheets and the Lists of Acceptable
- * Documents pages that ride along in every I-9 packet.
+ * A scanned stack is mixed — operators feed it loose paper — so without this a
+ * producer handed an emergency-contact page during an oath run has two bad
+ * options: invent oath answers, or fail the page. Neither is true.
+ *
+ * The vocabulary is derived from the real corpus at
+ * `hr-automation/data/documents`, not guessed:
+ *
+ * - `oath` — a UC State Oath of Allegiance, UPAY 585 or 586. One person.
+ * - `emergency-contact` — a UCSD HDH Emergency Contact form. One person.
+ * - `i9-section1` / `i9-section2` — the only two data-bearing pages of a
+ *   NINE-page I-9 packet, and they are separated here because a scanned stack
+ *   carries them loose: in the corpus, page 1 of `i9.pdf` is a Section 2 for one
+ *   person and page 2 is a Section 1 for a DIFFERENT one. Pairing them is a
+ *   grouping problem above this gate, not something a page can answer.
+ * - `boilerplate` — a printed page of a real form that carries no data: the
+ *   I-9 instructions and Lists of Acceptable Documents (seven of every nine
+ *   pages in a packet), an oath's pre-printed legal text overflow.
+ * - `unrelated` — a real document that is not one of these forms at all; the
+ *   corpus has a Kronos sick-hours report sitting in the same folder.
+ * - `blank` — a separator or an empty scan.
+ *
+ * `boilerplate`, `unrelated` and `blank` are kept apart on purpose. All three
+ * mean "no data here", but only `unrelated` means the operator put something in
+ * the stack that does not belong, and only `blank` might mean the scanner
+ * double-fed.
  */
-export const OcrPageKindSchema = z.enum(["oath", "emergency-contact", "unknown"]);
+export const OcrPageKindSchema = z.enum([
+  "oath",
+  "emergency-contact",
+  "i9-section1",
+  "i9-section2",
+  "boilerplate",
+  "unrelated",
+  "blank",
+]);
 export type OcrPageKind = z.infer<typeof OcrPageKindSchema>;
 
 /** A dotted path inside one extracted record. Same grammar as an intake target. */
@@ -81,13 +108,6 @@ export const OcrFormSpecSchema = z.strictObject({
   /** One paragraph of orientation, prepended to every generated instruction. */
   description: z.string().min(1),
   /**
-   * Whether one page can carry SEVERAL records. An oath sign-in sheet is a
-   * table of people; an emergency-contact form is one person. A page that can
-   * hold twelve rows and yields one is skipping eleven people, which no
-   * per-field check would notice.
-   */
-  recordsPerPage: z.enum(["one", "many"]),
-  /**
    * Cross-field rules that reach every route verbatim — digit-accuracy
    * warnings, address handling, what NOT to infer. These are the parts of
    * legacy's prompts that were learned from real misreads, and they belong with
@@ -117,27 +137,28 @@ const OATH: z.input<typeof OcrFormSpecSchema> = {
   formType: "oath",
   title: "Oath / Patent Policy signature roster",
   description:
-    "UC loyalty oath / patent acknowledgment paper: a multi-row sign-in sheet, or a single-person "
-    + "UPAY585 or UPAY586. A sign-in sheet is a TABLE — emit one record per filled row, in the order "
-    + "they appear. A UPAY585/586 page emits exactly one record.",
-  recordsPerPage: "many",
+    "A UC State Oath of Allegiance / Patent Policy form (UPAY 585 or UPAY 586) — ONE person per "
+    + "page. The employee's name is written at the top; the oath itself is pre-printed boilerplate "
+    + "and carries no data. The lower block records who administered the oath and when.",
   extractionNotes: [
-    "Employee ID digits are read one at a time. UCPath ids are exactly eight digits beginning `10`. "
-      + "Copy every digit — do NOT drop the leading `10`.",
-    "Scan the WHOLE page for the employee id before reporting it absent: the top margin, the white "
-      + "space above the form header, and handwritten notes outside the printed box all carry it. On "
-      + "UPAY585 scans the printed box is often faint or clipped, and a standalone handwritten "
-      + "eight-digit number above the header is usually the real id.",
+    "The EMPLOYEE ID box is very often BLANK on a real oath — that is `blank`, and it is normal, "
+      + "not a reading failure. Do not fill it from the DEPARTMENT number printed beside it.",
+    "When an employee id IS present it is exactly eight digits beginning `10`. Copy every digit and "
+      + "do NOT drop the leading `10`. Check the top margin and any handwritten note outside the "
+      + "printed box before reporting it absent.",
+    "A signed-but-unwitnessed oath is a real and common state: the employee has signed, while the "
+      + "date, the authorized official's signature, the title and the county are all still blank. "
+      + "Report each of those as `blank`. Do NOT infer that the oath was administered.",
     "Transcribe a handwritten name letter by letter; read it aloud to yourself. Faint or awkward "
       + "writing is still `read` — `illegible` means you genuinely cannot make it out, and `blank` "
       + "means there is no writing at all.",
   ],
   fields: [
-    field("printedName", "The printed or handwritten name on the row, exactly as written, including any comma form.", "fullName", { mandatory: true }),
-    field("employeeId", "The employee id for this row — eight digits beginning 10.", "eid"),
-    field("signatureDate", "The date written beside this row's signature (MM/DD/YYYY, M/D/YY and M-D-YY all occur).", "signatureDate"),
-    field("employeeSigned", "Whether this row's employee signature box holds any writing or scribble. An empty box is `no`, not absent.", null, { localKind: "boolean", mandatory: true }),
-    field("officerSigned", "Whether the authorized-officer / witness signature is filled. A sign-in sheet with a single signature column has no such box — report `not-on-form`.", null, { localKind: "boolean", mandatory: true }),
+    field("printedName", "The employee's name from the EMPLOYEE'S NAME box at the top, exactly as written (usually `Last, First, Middle`).", "fullName", { mandatory: true }),
+    field("employeeId", "The EMPLOYEE ID box under the name. Frequently blank on a real form.", "eid"),
+    field("signatureDate", "The date beside `Taken and subscribed before me on`. Blank when the oath has not been administered yet.", "signatureDate"),
+    field("employeeSigned", "Whether the `Signature of Officer or Employee` line holds any writing or scribble. An empty line is `no`, not absent.", null, { localKind: "boolean", mandatory: true }),
+    field("officerSigned", "Whether the `Signature of Authorized Official` line is filled. Commonly empty on a form the employee signed but nobody has witnessed.", null, { localKind: "boolean", mandatory: true }),
   ],
 };
 
@@ -148,7 +169,6 @@ const EMERGENCY_CONTACT: z.input<typeof OcrFormSpecSchema> = {
     "A UCSD R&R Emergency Contact Information form — ONE person per page, in two halves: the "
     + "EMPLOYEE's own details, and the EMERGENCY CONTACT they named. Keep the halves separate: a "
     + "phone number in the contact half is the contact's, never the employee's.",
-  recordsPerPage: "one",
   extractionNotes: [
     "Employee ID digits are read one at a time. Eight digits beginning `10`. Do NOT transpose "
       + "adjacent digits — 8↔9 and 3↔8 are the observed misreads (`10843962` reported when the paper "

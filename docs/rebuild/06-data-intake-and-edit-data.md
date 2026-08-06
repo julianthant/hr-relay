@@ -677,17 +677,14 @@ Operator confirmation (2026-08-06): the rebuild handles the same forms legacy do
 sets are ported rather than redesigned. Porting them exposed **two structural gaps in D151's first
 shape**, both of which are forms of the skipping the operator asked to make impossible:
 
-- **A page can carry several people.** An oath sign-in sheet is a TABLE; legacy emits one record per
-  row with a `rowIndex`. A gate that accepts one record per page would silently drop eleven people
-  from a twelve-row sheet, and no per-field check would notice. A submission therefore carries
-  `records: [{ rowIndex, answers }]`, `recordsPerPage` declares whether a form is `one` or `many`,
-  each record gets its own `answersFingerprint`, and the page gets a `pageFingerprint` over all of
-  them.
-- **A scanned stack is mixed.** Legacy's own prompts classify every page as oath /
-  emergency-contact / unknown, because operators feed it piles of paper. Without that a producer
-  handed an emergency-contact page during an oath run must either invent oath answers or fail the
-  page, and neither is true. A submission now declares `pageKind` BEFORE any field is read; a page
-  that is not the expected form carries no records and is **admitted**, not refused.
+- **A scanned stack is loose paper.** Legacy's own prompts classify every page, because operators
+  feed it piles of it. Without that, a producer handed an emergency-contact page during an oath run
+  must either invent oath answers or fail the page, and neither is true. A submission now declares
+  `pageKind` BEFORE any field is read; a page that is not the expected form carries no record and is
+  **admitted**, not refused.
+- **A page is ONE person** (corrected 2026-08-06 against the real corpus — see §4.5). The multi-row
+  sign-in sheet legacy supported is used by no workflow, so `record` is a single nullable value
+  rather than an array.
 
 **Legacy's prompt knowledge moved onto the form, not into a route.** `extractionNotes` carries the
 rules that were learned from real misreads — "do NOT drop the leading `10`"; "scan the top margin and
@@ -700,6 +697,40 @@ brief verbatim, so this knowledge cannot end up in one route's prompt string and
 Legacy's `originallyMissing` — an array of fields the model judged blank, reconstructed afterwards by
 diffing snapshots — is **superseded** by the typed absences: `blank` and `illegible` are recorded per
 field at the moment of reading, by the producer that read it.
+
+### 4.5 Phase-2h as-built — measured against the real document corpus (D154)
+
+`hr-automation/data/documents` holds the operator's real scans, and reading them corrected the form
+model twice.
+
+**The oath is one person per page, and its Employee ID box is usually blank.** Every oath in the
+corpus is a UPAY 586 with one name at the top; the multi-row sign-in sheet legacy supported is used
+by **no workflow** (operator, 2026-08-06). So `recordsPerPage` is gone and `record` is a single
+nullable value — an array of at most one is generality with no user. The corpus also shows two
+states a naive reading would get wrong: the EMPLOYEE ID box is frequently **blank** on a real oath
+(that is normal, and the DEPARTMENT number printed beside it must not be substituted), and a
+**signed-but-unwitnessed** oath — employee signature present, date and authorized-official signature
+and title and county all empty — is common and meaningful, not an OCR failure. Both are now
+`extractionNotes`.
+
+**The page-kind vocabulary comes from the corpus, not from intuition.** `i9.pdf` is decisive: its
+page 1 is a Section 2 for one person and page 2 is a Section 1 for a **different** person — loose
+sections, out of order — and both are numbered "page 7/8 of 9", so **seven of every nine pages in an
+I-9 packet carry no data at all**. The vocabulary is therefore `oath` · `emergency-contact` ·
+`i9-section1` · `i9-section2` · `boilerplate` · `unrelated` · `blank`. The last three are kept apart
+deliberately: all mean "no data here", but only `unrelated` means something is in the stack that does
+not belong (the corpus has a Kronos sick-hours report in the same folder), and only `blank` might
+mean the scanner double-fed. `pageFingerprint` folds the CLASSIFICATION as well as the answers, so
+two producers that both read "no data" while disagreeing about why have not agreed.
+
+**What this does NOT yet solve — the recommended next slice.** Pairing an I-9 Section 1 with its
+Section 2 is a **grouping** problem that sits ABOVE this gate, and the corpus proves it cannot be
+positional. The recommendation is three stages rather than one: **classify** every page in the stack
+(cheap, and the operator's first checkpoint — "44 pages → 12 oath, 3 EC, 2 §1, 3 §2, 24
+boilerplate"), then **group** classified pages into subjects by the name read off each page with an
+explicit `orphan-section2` outcome (legacy's `orphanSection2` was this problem), then **extract** per
+subject. `ocr/extract-form-page` is stage 3 and already assumes its caller knows the form type;
+stages 1 and 2 are what let a caller know it.
 
 **Not built yet:** the `i9` form, whose multi-section structure is its own slice; the production
 `ocr.extract` adapter behind the client seam (the contract and store are wired, so it is a real model

@@ -18,8 +18,7 @@ const SUBMISSION = {
   sourceSha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
   sourcePage: 1,
   pageKind: "oath",
-  records: [{
-    rowIndex: 0,
+  record: {
     answers: {
       printedName: { state: "read", raw: "Battistessa, Johnnie", confidence: 0.97 },
       employeeId: { state: "read", raw: "10873698", confidence: 0.93 },
@@ -27,7 +26,7 @@ const SUBMISSION = {
       employeeSigned: { state: "read", raw: "yes", confidence: 0.99 },
       officerSigned: { state: "absent", reason: "illegible" },
     },
-  }],
+  },
 };
 
 function run(args: readonly string[], file: unknown = SUBMISSION) {
@@ -55,7 +54,7 @@ describe("rebuild:cli ocr", () => {
   it("admits a complete submission and reports what still needs a human", () => {
     const { output, exitCode } = run(["admit", "page1.json"]);
     assert.equal(exitCode, 0);
-    assert.equal(output.startsWith("ADMITTED — oath page 1, 1 record(s)"), true);
+    assert.equal(output.startsWith("ADMITTED — oath page 1"), true);
     // The canonical field normalized the date; the transport did not.
     assert.equal(output.includes('signatureDate = "2026-07-21"'), true);
     assert.equal(output.includes("officerSigned — absent (illegible)"), true);
@@ -63,7 +62,7 @@ describe("rebuild:cli ocr", () => {
   });
 
   it("reports a page that is a different form as admitted with no records", () => {
-    const other = { ...SUBMISSION, pageKind: "emergency-contact", records: [] };
+    const other = { ...SUBMISSION, pageKind: "emergency-contact", record: null };
     const { output, exitCode } = run(["admit", "page7.json"], other);
     assert.equal(exitCode, 0);
     assert.equal(output.includes("is a emergency-contact page, not oath"), true);
@@ -71,9 +70,9 @@ describe("rebuild:cli ocr", () => {
   });
 
   it("EXITS NON-ZERO on refusal, so a caller need not parse prose", () => {
-    const answers = { ...SUBMISSION.records[0].answers };
+    const answers = { ...SUBMISSION.record.answers };
     delete (answers as Record<string, unknown>).signatureDate;
-    const skipped = { ...SUBMISSION, records: [{ rowIndex: 0, answers }] };
+    const skipped = { ...SUBMISSION, record: { answers } };
     const { output, exitCode } = run(["admit", "page1.json"], skipped);
     assert.equal(exitCode, 1, "a refused submission that exits 0 would look accepted to tooling");
     assert.equal(output.startsWith("REFUSED"), true);
