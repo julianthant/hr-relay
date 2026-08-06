@@ -429,6 +429,42 @@ data-shaped, so an ordinary work-study export scored its first DATA row within 0
 and every such file landed in "ambiguous". Dates in both wire forms now count as data, which is
 correct on its own terms — a header cell is essentially never a date.
 
+### 3.2 Phase-2h as-built — `extraction/extract-pdf-pages`, and a correction (D152)
+
+**§3's `parse-pdf-fields` described a capability that does not exist.** It says "same shape for a
+fielded PDF (onboarding's extraction step ports here)". Reading legacy at `4deabc5a`: onboarding's
+`extract.ts` is Playwright scraping labelled fields off a CRM page, and **no legacy code reads an
+AcroForm anywhere**. What legacy actually does with PDFs is rasterize pages for OCR (`pdf-to-img`),
+split a page out for OnBase (`pdf-lib`), and text-extract Kronos reports (`pdf-parse`). Building an
+AcroForm reader for a form nobody submits would be implementing a misremembered requirement, so the
+real intake need — **rasterization** — is what landed.
+
+`extraction/extract-pdf-pages` turns one content-addressed PDF into one content-addressed PNG per
+page, which is exactly what `ocr/extract-form-page` consumes. A page window is **refused, never
+clamped**, when it runs past the end: an operator asking for pages 40–50 of a 44-page scan has
+miscounted, and quietly returning five would hide it and misnumber every downstream `sourcePage`.
+`pageCount` reports the DOCUMENT's page count rather than the window's, so a reviewer can tell a
+two-page scan from pages 2–3 of a longer one.
+
+**`pdf-to-img` chosen (2026-08-06).** It wraps Mozilla's `pdfjs-dist` — the reference implementation,
+and the one legacy already renders with — behind a Node API; MIT, actively maintained (6.2.0,
+2026-06-12), one runtime dependency. Rejected: **`pdf-lib`**, legacy's page splitter, last published
+2022-05-12 and unable to rasterize at all — the rebuild needs no PDF *writer* on this path and should
+not adopt an unmaintained one speculatively; **`pdfjs-dist` directly**, same engine but the Node
+canvas and worker plumbing would be hand-wired; **`mupdf`**, AGPL-3.0, not a licence to take on
+casually for a university system; **`pdf-parse`/`unpdf`**, text extractors, and a scanned form has no
+text layer.
+
+**Two findings from a real 44-page operator scan, both load-bearing.** Xerox scanners emit JBIG2 for
+bilevel pages, and without `wasmUrl` pdfjs announces "Falling back to JS JBIG2 decoder" and takes
+~60% longer (736 ms vs 462 ms for five pages) — so the wasm URL is resolved from the INSTALLED
+`pdfjs-dist` and cannot drift from the version actually loaded. And pdfjs **transfers** its input
+buffer, so a second render over the same `Uint8Array` throws `DataCloneError` on a detached buffer;
+every call gets its own copy, which is also what makes a retry safe.
+
+The scenario fixture is a PDF built by hand from literal PDF objects rather than by a library: a
+fixture produced by a PDF *writer* would only prove the reader agrees with that writer.
+
 **One honest limit.** `read-excel-file` prioritizes usability over throughput (~3 s for 2000 rows ×
 20 columns; very large files can overflow the stack). Operator HR exports are dozens to low
 hundreds of rows, so this is fine today and is recorded rather than hidden. A second honest limit:

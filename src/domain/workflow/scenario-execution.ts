@@ -34,6 +34,13 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
     scenarioId: "ocr/extract/provider-unavailable",
     file: "tests/scenario/ocr-extraction.scenario.test.ts",
   },
+  { scenarioId: "intake/pdf/every-page", file: "tests/scenario/intake-pdf-pages.scenario.test.ts" },
+  { scenarioId: "intake/pdf/page-window", file: "tests/scenario/intake-pdf-pages.scenario.test.ts" },
+  {
+    scenarioId: "intake/pdf/page-out-of-range",
+    file: "tests/scenario/intake-pdf-pages.scenario.test.ts",
+  },
+  { scenarioId: "intake/pdf/unreadable", file: "tests/scenario/intake-pdf-pages.scenario.test.ts" },
   { scenarioId: "intake/spreadsheet/happy", file: "tests/scenario/intake-extraction.scenario.test.ts" },
   { scenarioId: "intake/spreadsheet/no-header", file: "tests/scenario/intake-extraction.scenario.test.ts" },
   {
