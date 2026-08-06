@@ -145,6 +145,9 @@ describe("Phase 1f Person Lookup task implementations", () => {
         "kuali/read-timekeeper-annotation",
         "kuali/save-timekeeper-annotation",
         "kuali/verify-timekeeper-annotation",
+        // Route 1 of D151; a peer of the `rebuild:cli ocr` routes, not a
+        // privileged path.
+        "ocr/extract-form-page",
         "ucpath/search-person-org",
         "workflow:person-lookup/read-active-status",
       ],

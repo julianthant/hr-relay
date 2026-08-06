@@ -21,6 +21,19 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
   { scenarioId: "person-lookup/not-found", file: "tests/scenario/person-lookup.scenario.test.ts" },
   { scenarioId: "person-lookup/crm-failure-retry", file: "tests/scenario/person-lookup.scenario.test.ts" },
   { scenarioId: "person-lookup/crm-subject-mismatch", file: "tests/scenario/person-lookup-runtime.scenario.test.ts" },
+  { scenarioId: "ocr/extract/complete", file: "tests/scenario/ocr-extraction.scenario.test.ts" },
+  {
+    scenarioId: "ocr/extract/illegible-mandatory",
+    file: "tests/scenario/ocr-extraction.scenario.test.ts",
+  },
+  {
+    scenarioId: "ocr/extract/skipped-field-refused",
+    file: "tests/scenario/ocr-extraction.scenario.test.ts",
+  },
+  {
+    scenarioId: "ocr/extract/provider-unavailable",
+    file: "tests/scenario/ocr-extraction.scenario.test.ts",
+  },
   { scenarioId: "intake/spreadsheet/happy", file: "tests/scenario/intake-extraction.scenario.test.ts" },
   { scenarioId: "intake/spreadsheet/no-header", file: "tests/scenario/intake-extraction.scenario.test.ts" },
   {

@@ -620,9 +620,24 @@ The command adds no rule of its own — it reads, calls the gate, and reports �
 `ocr-producer-parity` enforces that: only the gate may parse an `AdmittedExtraction`, the gate may
 not branch on `source`, and the answer shape may carry no `.optional()`.
 
-**Not built yet:** the provider adapter that carries route 1's actual model call (2h's provider
-pools), and durable storage of admitted extractions. Both sit over this gate; neither may add a rule
-of its own.
+**Route 1 is the `ocr` service store**, `ocr/extract-form-page`. Its implementation is three lines
+of intent: build the SAME instruction the CLI prints, send it to the admitted `ocr.extract` client,
+run the answer through the SAME gate. Its output type is the ordinary `AdmittedExtraction` — there is
+deliberately no "provider result" shape, because a second shape is how two routes start meaning
+different things. Nothing in it interprets, repairs or supplements what the model returned: a model
+that answers a different field set than the form declares fails as `incomplete-extraction` carrying
+**the gate's own problem list**, so the operator reads the same correction text a terminal agent
+would have. A structured `unavailable` reason keeps its closed code and `retryAt` rather than being
+flattened to prose — those are the parts an operator can act on. A page the model could only
+partly read is still a success with `blockingPaths` set; that is what a human resolves.
+
+The scenario corpus pins the property that matters: an operator submitting the identical reading by
+hand produces the **same `answersFingerprint`** as the provider route. The routes are
+interchangeable, not merely similar.
+
+**Not built yet:** the production `ocr.extract` adapter behind the client seam (2h's provider pools
+— the contract and the store are wired, so this is a real model call away), and durable storage of
+admitted extractions. Both sit over this gate; neither may add a rule of its own.
 
 ## 5. Intake pipeline: mapped dataset → N inputs, with a pre-run rejection review
 
