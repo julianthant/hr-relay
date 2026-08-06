@@ -561,6 +561,50 @@ rate-limit/failure, malformed-model-output, ambiguous, and approval/rejection sc
 
 ---
 
+### 4.3 Phase-2h as-built — OCR extraction admits three producers identically (D151)
+
+**Operator requirement (2026-08-05):** a page may be read by the automated provider pipeline, by an
+AI the operator runs in their own terminal, or by the operator — and *"all should result in the same
+result consistently… the output should be in the same format no matter who does it and nobody skips
+anything."*
+
+Two mechanisms carry that, and neither is a convention:
+
+**One gate, no branch on the source.** `admitOcrExtraction` (`src/domain/ocr/extraction.ts`) is the
+only way any submission becomes a record. `ExtractionSource` is a closed union —
+`provider{providerId,modelId}` · `local-agent{agentId,invocation}` · `operator{actorId}` — recorded
+as PROVENANCE and never consulted for permission. There is deliberately no `if` on it anywhere in
+the function, so a route cannot acquire a weaker rule by being more convenient. A value bound to a
+canonical field runs the SAME `coerce` + `schema` an intake column runs, so a model that returns
+`10-4567` for an EID is refused for exactly the reason and with exactly the message a spreadsheet
+cell would be: the producer's confidence in its own output buys it nothing.
+
+**One instruction, generated from the registry.** `src/domain/ocr/form-registry.ts` declares what
+each form HAS; `buildExtractionInstruction` derives the field list, per-field prompt, expected shape
+and answer skeleton FROM it. A hand-maintained prompt is the failure this avoids — add a field and
+every route asks for it on its next run, where a prompt living in a string constant would let one
+route silently stop looking.
+
+**"Nobody skips anything" is the completeness rule.** Every declared path must appear, and each
+answer is a value or a TYPED absence. A submission that omits a path is refused; so is one carrying
+a path the form does not declare. There is no `.optional()` anywhere in the answer shape, because an
+optional field is precisely a field a producer can skip in silence. The three absences are not
+interchangeable and that is the point: `not-on-form` (no such box), `blank` (box present, empty — a
+fact about the employee), `illegible` (something there, unreadable — a fact about the SCAN, and the
+only one a re-read can fix). Legacy collapsed all three into `null` and reconstructed the difference
+afterwards by diffing snapshots.
+
+A value the producer read but that its field refuses is `unreadable`, kept WITH its raw text — not a
+rejection of the whole record, because a human resolves it and needs to see what the producer saw.
+`blockingPaths` names the mandatory fields left unanswered; an empty list means ready for review,
+never approved. `answersFingerprint` digests what was read while excluding who read it and when —
+so "two routes agree" is checkable rather than asserted, and confidence is excluded because it is
+the producer's opinion of itself rather than a fact about the page.
+
+**Not built yet:** the provider adapter that carries route 1's actual model call (2h's provider
+pools), and the CLI that hands routes 2 and 3 the generated instruction and takes their JSON back.
+Both are transports over this gate; neither may add a rule of its own.
+
 ## 5. Intake pipeline: mapped dataset → N inputs, with a pre-run rejection review
 
 The mapping (§2) + the parsed rows (§3) + any roster match (§4) compose into **N workflow inputs,
