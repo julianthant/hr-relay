@@ -671,9 +671,40 @@ The scenario corpus pins the property that matters: an operator submitting the i
 hand produces the **same `answersFingerprint`** as the provider route. The routes are
 interchangeable, not merely similar.
 
-**Not built yet:** the production `ocr.extract` adapter behind the client seam (2h's provider pools
-— the contract and the store are wired, so this is a real model call away), and durable storage of
-admitted extractions. Both sit over this gate; neither may add a rule of its own.
+### 4.4 Phase-2h as-built — the forms are legacy's, and reading them found two gaps (D153)
+
+Operator confirmation (2026-08-06): the rebuild handles the same forms legacy does, so the field
+sets are ported rather than redesigned. Porting them exposed **two structural gaps in D151's first
+shape**, both of which are forms of the skipping the operator asked to make impossible:
+
+- **A page can carry several people.** An oath sign-in sheet is a TABLE; legacy emits one record per
+  row with a `rowIndex`. A gate that accepts one record per page would silently drop eleven people
+  from a twelve-row sheet, and no per-field check would notice. A submission therefore carries
+  `records: [{ rowIndex, answers }]`, `recordsPerPage` declares whether a form is `one` or `many`,
+  each record gets its own `answersFingerprint`, and the page gets a `pageFingerprint` over all of
+  them.
+- **A scanned stack is mixed.** Legacy's own prompts classify every page as oath /
+  emergency-contact / unknown, because operators feed it piles of paper. Without that a producer
+  handed an emergency-contact page during an oath run must either invent oath answers or fail the
+  page, and neither is true. A submission now declares `pageKind` BEFORE any field is read; a page
+  that is not the expected form carries no records and is **admitted**, not refused.
+
+**Legacy's prompt knowledge moved onto the form, not into a route.** `extractionNotes` carries the
+rules that were learned from real misreads — "do NOT drop the leading `10`"; "scan the top margin and
+handwritten notes outside the printed box, because on UPAY585 scans a standalone eight-digit number
+above the header is usually the real id"; the observed digit transpositions (`10843962` reported when
+the paper said `10002337`) and letter drops (`Sharaf`, not `Shaaf`); "NEVER skip the contact's
+address because it resembles the employee's". The guard asserts every note reaches the generated
+brief verbatim, so this knowledge cannot end up in one route's prompt string and miss the others.
+
+Legacy's `originallyMissing` — an array of fields the model judged blank, reconstructed afterwards by
+diffing snapshots — is **superseded** by the typed absences: `blank` and `illegible` are recorded per
+field at the moment of reading, by the producer that read it.
+
+**Not built yet:** the `i9` form, whose multi-section structure is its own slice; the production
+`ocr.extract` adapter behind the client seam (the contract and store are wired, so it is a real model
+call away); and durable storage of admitted extractions. All sit over this gate; none may add a rule
+of its own.
 
 ## 5. Intake pipeline: mapped dataset → N inputs, with a pre-run rejection review
 

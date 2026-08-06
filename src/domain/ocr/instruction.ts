@@ -46,25 +46,42 @@ export function buildExtractionInstruction(formType: OcrFormType): string {
     "",
     "## Rules",
     "",
-    "1. Answer EVERY field listed below. There are no optional fields.",
-    "2. If you cannot give a value, say which kind of nothing you saw:",
+    "0. CLASSIFY the page first, as `pageKind`: `oath`, `emergency-contact`, or",
+    "   `unknown`. A scanned stack is mixed. If this page is not",
+    `   \`${form.formType}\`, report the kind you saw and send an EMPTY \`records\``,
+    "   array — that is a correct answer, not a failure. Never invent fields for",
+    "   a form the page is not.",
+    form.recordsPerPage === "many"
+      ? "1. This form can hold SEVERAL people on one page. Emit one record per"
+        + " filled row, in the order they appear, numbering `rowIndex` from 0."
+        + " A page with twelve rows and one record has skipped eleven people."
+      : "1. This form holds ONE person per page. Emit exactly one record, with"
+        + " `rowIndex` 0.",
+    "2. Answer EVERY field listed below, for every record. There are no optional fields.",
+    "3. If you cannot give a value, say which kind of nothing you saw:",
     "   - `not-on-form` — this form has no such box at all.",
     "   - `blank` — the box exists and is empty.",
     "   - `illegible` — the box has something in it that you cannot read.",
     "   These are not interchangeable. Only `illegible` tells a human that a",
     "   better scan or a second look would help.",
-    "3. Report `raw` EXACTLY as it appears on the page. Do not tidy, expand,",
+    "4. Report `raw` EXACTLY as it appears on the page. Do not tidy, expand,",
     "   reformat or correct it — validation happens after you, against the same",
     "   schema every other route uses, and it needs to see what you saw.",
-    "4. Never infer a value from another field, from a different row, or from",
+    "5. Never infer a value from another field, from a different row, or from",
     "   what would be plausible. A guess that looks right is the one failure",
     "   this process exists to prevent.",
-    "5. `confidence` is your own 0–1 opinion of your reading. It gates nothing;",
+    "6. `confidence` is your own 0–1 opinion of your reading. It gates nothing;",
     "   report it honestly rather than defensively.",
     "",
     "## Fields",
     "",
   ];
+
+  if (form.extractionNotes.length > 0) {
+    lines.splice(lines.length - 2, 0, "## What this form gets wrong", "");
+    for (const note of form.extractionNotes) lines.splice(lines.length - 2, 0, `- ${note}`);
+    lines.splice(lines.length - 2, 0, "");
+  }
 
   for (const spec of form.fields) {
     lines.push(`- \`${spec.path}\`${spec.mandatory ? " (mandatory)" : ""} — ${spec.prompt}`);
@@ -106,6 +123,12 @@ export function buildAnswerSkeleton(formType: OcrFormType): unknown {
     readAt: "<ISO-8601 instant with offset>",
     sourceSha256: "<sha256 of the page image or PDF you read>",
     sourcePage: 1,
-    answers,
+    pageKind: formType,
+    records: [{ rowIndex: 0, answers }],
   };
+}
+
+/** The answer keys one record must carry — what the completeness rule checks. */
+export function skeletonAnswerPaths(formType: OcrFormType): readonly string[] {
+  return ocrForm(formType).fields.map((spec) => spec.path);
 }

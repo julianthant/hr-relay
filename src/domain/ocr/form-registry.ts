@@ -35,6 +35,19 @@ import { CANONICAL_FIELDS, CanonicalFieldIdSchema, type CanonicalFieldId } from 
 export const OcrFormTypeSchema = z.enum(["oath", "emergency-contact"]);
 export type OcrFormType = z.infer<typeof OcrFormTypeSchema>;
 
+/**
+ * What a page turned out to BE, decided before any field is read.
+ *
+ * A scanned stack is mixed — legacy's own oath prompt classifies every page as
+ * oath / emergency-contact / unknown precisely because operators feed it piles
+ * of paper. Without this, a producer handed an emergency-contact page during an
+ * oath run has two bad options: invent oath answers, or fail the page. Neither
+ * is true. `unknown` covers blank separator sheets and the Lists of Acceptable
+ * Documents pages that ride along in every I-9 packet.
+ */
+export const OcrPageKindSchema = z.enum(["oath", "emergency-contact", "unknown"]);
+export type OcrPageKind = z.infer<typeof OcrPageKindSchema>;
+
 /** A dotted path inside one extracted record. Same grammar as an intake target. */
 export const OcrFieldPathSchema = z.string().regex(
   /^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)*$/,
@@ -67,6 +80,20 @@ export const OcrFormSpecSchema = z.strictObject({
   title: z.string().min(1),
   /** One paragraph of orientation, prepended to every generated instruction. */
   description: z.string().min(1),
+  /**
+   * Whether one page can carry SEVERAL records. An oath sign-in sheet is a
+   * table of people; an emergency-contact form is one person. A page that can
+   * hold twelve rows and yields one is skipping eleven people, which no
+   * per-field check would notice.
+   */
+  recordsPerPage: z.enum(["one", "many"]),
+  /**
+   * Cross-field rules that reach every route verbatim — digit-accuracy
+   * warnings, address handling, what NOT to infer. These are the parts of
+   * legacy's prompts that were learned from real misreads, and they belong with
+   * the form rather than in one route's prompt string.
+   */
+  extractionNotes: z.array(z.string().min(1)),
   fields: z.array(OcrFieldSpecSchema).min(1),
 });
 export type OcrFormSpec = z.infer<typeof OcrFormSpecSchema>;
@@ -90,14 +117,27 @@ const OATH: z.input<typeof OcrFormSpecSchema> = {
   formType: "oath",
   title: "Oath / Patent Policy signature roster",
   description:
-    "A printed roster page. Each ROW is one employee who signed the oath. Read one row at a time and "
-    + "report every declared field for that row, even when the cell is empty.",
+    "UC loyalty oath / patent acknowledgment paper: a multi-row sign-in sheet, or a single-person "
+    + "UPAY585 or UPAY586. A sign-in sheet is a TABLE — emit one record per filled row, in the order "
+    + "they appear. A UPAY585/586 page emits exactly one record.",
+  recordsPerPage: "many",
+  extractionNotes: [
+    "Employee ID digits are read one at a time. UCPath ids are exactly eight digits beginning `10`. "
+      + "Copy every digit — do NOT drop the leading `10`.",
+    "Scan the WHOLE page for the employee id before reporting it absent: the top margin, the white "
+      + "space above the form header, and handwritten notes outside the printed box all carry it. On "
+      + "UPAY585 scans the printed box is often faint or clipped, and a standalone handwritten "
+      + "eight-digit number above the header is usually the real id.",
+    "Transcribe a handwritten name letter by letter; read it aloud to yourself. Faint or awkward "
+      + "writing is still `read` — `illegible` means you genuinely cannot make it out, and `blank` "
+      + "means there is no writing at all.",
+  ],
   fields: [
-    field("printedName", "The employee's printed name exactly as written, including any comma form.", "fullName", { mandatory: true }),
-    field("employeeId", "The UCPath employee ID beside the name — eight digits beginning 10.", "eid"),
-    field("signatureDate", "The date written beside the signature.", "signatureDate"),
-    field("employeeSigned", "Whether the employee's signature box contains a signature.", null, { localKind: "boolean", mandatory: true }),
-    field("officerSigned", "Whether the officer/witness signature box contains a signature.", null, { localKind: "boolean", mandatory: true }),
+    field("printedName", "The printed or handwritten name on the row, exactly as written, including any comma form.", "fullName", { mandatory: true }),
+    field("employeeId", "The employee id for this row — eight digits beginning 10.", "eid"),
+    field("signatureDate", "The date written beside this row's signature (MM/DD/YYYY, M/D/YY and M-D-YY all occur).", "signatureDate"),
+    field("employeeSigned", "Whether this row's employee signature box holds any writing or scribble. An empty box is `no`, not absent.", null, { localKind: "boolean", mandatory: true }),
+    field("officerSigned", "Whether the authorized-officer / witness signature is filled. A sign-in sheet with a single signature column has no such box — report `not-on-form`.", null, { localKind: "boolean", mandatory: true }),
   ],
 };
 
@@ -105,9 +145,25 @@ const EMERGENCY_CONTACT: z.input<typeof OcrFormSpecSchema> = {
   formType: "emergency-contact",
   title: "Emergency contact form",
   description:
-    "A single-employee form in two halves: the EMPLOYEE's own details, and the EMERGENCY CONTACT they "
-    + "named. Keep the two halves separate — a phone number in the contact half is the contact's, never "
-    + "the employee's. Report every declared field for both halves.",
+    "A UCSD R&R Emergency Contact Information form — ONE person per page, in two halves: the "
+    + "EMPLOYEE's own details, and the EMERGENCY CONTACT they named. Keep the halves separate: a "
+    + "phone number in the contact half is the contact's, never the employee's.",
+  recordsPerPage: "one",
+  extractionNotes: [
+    "Employee ID digits are read one at a time. Eight digits beginning `10`. Do NOT transpose "
+      + "adjacent digits — 8↔9 and 3↔8 are the observed misreads (`10843962` reported when the paper "
+      + "said `10002337`; `10983978` for `10002339`). Ignore stray marks and crossed-out characters; "
+      + "read the final intended digits.",
+    "Transcribe names letter by letter — do not drop or swap letters (`Sharaf`, not `Shaaf`; "
+      + "`Cecillia`, not `Cecilia`). If only a first name is written for the contact, report exactly "
+      + "that; never invent a surname.",
+    "NEVER skip the contact's address because it resembles the employee's — report what is written in "
+      + "the Emergency Contact address field. A blank contact address is `blank`; it does NOT mean "
+      + "`same as the employee`, which is computed later from what you report.",
+    "Include unit and mailstop prefixes in the street line (`0918, 3939 Miramar Street`, `Apt 5328`, "
+      + "`H309`). A contact address may be foreign; report the parts that separate and leave the rest "
+      + "`not-on-form` rather than forcing them into US fields.",
+  ],
   fields: [
     field("employee.name", "The employee's printed name.", "fullName", { mandatory: true }),
     field("employee.employeeId", "The employee's UCPath ID — eight digits beginning 10.", "eid"),

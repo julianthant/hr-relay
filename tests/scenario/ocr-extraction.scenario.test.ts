@@ -43,14 +43,18 @@ function completeAnswers(overrides: Record<string, unknown> = {}) {
     readAt: "2026-08-06T09:00:00.000Z",
     sourceSha256: PAGE_SHA,
     sourcePage: 1,
-    answers: {
-      printedName: { state: "read", raw: "Battistessa, Johnnie", confidence: 0.97 },
-      employeeId: { state: "read", raw: "10873698", confidence: 0.93 },
-      signatureDate: { state: "read", raw: "07/21/2026", confidence: 0.95 },
-      employeeSigned: { state: "read", raw: "yes", confidence: 0.99 },
-      officerSigned: { state: "read", raw: "yes", confidence: 0.98 },
-      ...overrides,
-    },
+    pageKind: "oath",
+    records: [{
+      rowIndex: 0,
+      answers: {
+        printedName: { state: "read", raw: "Battistessa, Johnnie", confidence: 0.97 },
+        employeeId: { state: "read", raw: "10873698", confidence: 0.93 },
+        signatureDate: { state: "read", raw: "07/21/2026", confidence: 0.95 },
+        employeeSigned: { state: "read", raw: "yes", confidence: 0.99 },
+        officerSigned: { state: "read", raw: "yes", confidence: 0.98 },
+        ...overrides,
+      },
+    }],
   };
 }
 
@@ -102,8 +106,9 @@ describe("ocr/extract-form-page scenarios", () => {
     assert.equal(request.instruction, buildExtractionInstruction("oath"));
     assert.equal(request.pageSha256, PAGE_SHA);
 
-    const output = result.output as { answersFingerprint: string; blockingPaths: string[] };
-    assert.deepEqual(output.blockingPaths, []);
+    const output = result.output as { pageFingerprint: string; records: { blockingPaths: string[] }[] };
+    assert.equal(output.records.length, 1);
+    assert.deepEqual(output.records[0].blockingPaths, []);
 
     // And an operator submitting the identical reading by hand lands on the
     // same fingerprint — the routes are interchangeable, not merely similar.
@@ -113,7 +118,7 @@ describe("ocr/extract-form-page scenarios", () => {
     });
     assert.equal(byHand.admitted, true);
     if (!byHand.admitted) throw new Error("unreachable");
-    assert.equal(byHand.extraction.answersFingerprint, output.answersFingerprint);
+    assert.equal(byHand.extraction.pageFingerprint, output.pageFingerprint);
   });
 
   it("ocr/extract/illegible-mandatory — an unreadable mandatory box is a record, not a failure", async () => {
@@ -125,14 +130,14 @@ describe("ocr/extract-form-page scenarios", () => {
       },
     }));
     assert.equal(result.failure, undefined);
-    const output = result.output as { blockingPaths: string[] };
+    const output = result.output as { records: { blockingPaths: string[] }[] };
     // A human resolves it downstream; the read itself succeeded.
-    assert.deepEqual(output.blockingPaths, ["officerSigned"]);
+    assert.deepEqual(output.records[0].blockingPaths, ["officerSigned"]);
   });
 
   it("ocr/extract/skipped-field-refused — a model that skips a field fails the task", async () => {
     const partial = completeAnswers();
-    delete (partial.answers as Record<string, unknown>).signatureDate;
+    delete (partial.records[0].answers as Record<string, unknown>).signatureDate;
     const result = await runTask(() => ({
       state: "produced",
       value: { schemaHash: RESPONSE_HASH, value: partial },
@@ -140,7 +145,7 @@ describe("ocr/extract-form-page scenarios", () => {
 
     assert.equal(result.failure?.code, "incomplete-extraction");
     // The operator sees the SAME correction text a terminal agent would have.
-    assert.equal(result.failure?.message.includes("signatureDate: not answered"), true);
+    assert.equal(result.failure?.message.includes("signatureDate not answered"), true);
     assert.equal(result.output, undefined, "a partial answer must not be patched up into a record");
   });
 

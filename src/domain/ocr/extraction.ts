@@ -52,6 +52,7 @@ import { isCellCoercionError, type CellLocation } from "../fields/cell-coercion.
 import {
   OcrFieldPathSchema,
   OcrFormTypeSchema,
+  OcrPageKindSchema,
   ocrForm,
   type OcrFieldSpec,
 } from "./form-registry.js";
@@ -103,16 +104,39 @@ export const SubmittedAnswerSchema = z.discriminatedUnion("state", [
 ]);
 export type SubmittedAnswer = z.infer<typeof SubmittedAnswerSchema>;
 
+export const SubmittedRecordSchema = z.strictObject({
+  /**
+   * 0-based position on the page. A single-record form always reports 0; a
+   * sign-in sheet reports the row order it read, so a reviewer can find the row
+   * on the paper.
+   */
+  rowIndex: z.number().int().nonnegative(),
+  /** `path -> answer`. Checked against the form's declared set, both ways. */
+  answers: z.record(OcrFieldPathSchema, SubmittedAnswerSchema),
+});
+export type SubmittedRecord = z.infer<typeof SubmittedRecordSchema>;
+
 export const SubmittedExtractionSchema = z.strictObject({
   formType: OcrFormTypeSchema,
   source: ExtractionSourceSchema,
   readAt: IsoInstantSchema,
   /** Content identity of the page image or PDF that was read. */
   sourceSha256: FingerprintSchema,
-  /** 1-based page of the source document this record came from. */
+  /** 1-based page of the source document these records came from. */
   sourcePage: z.number().int().positive(),
-  /** `path -> answer`. Checked against the form's declared set, both ways. */
-  answers: z.record(OcrFieldPathSchema, SubmittedAnswerSchema),
+  /**
+   * What the page turned out to BE, decided before any field was read. A
+   * scanned stack is mixed, so this is not a formality: a page that is not the
+   * expected form carries NO records, and that is a correct outcome rather than
+   * a failed one.
+   */
+  pageKind: OcrPageKindSchema,
+  /**
+   * One entry per person on the page. A sign-in sheet is a table; a form that
+   * can hold twelve rows and reports one is skipping eleven people, which no
+   * per-field check would ever notice.
+   */
+  records: z.array(SubmittedRecordSchema),
 });
 export type SubmittedExtraction = z.infer<typeof SubmittedExtractionSchema>;
 
@@ -142,13 +166,9 @@ export const AdmittedAnswerSchema = z.discriminatedUnion("state", [
 ]);
 export type AdmittedAnswer = z.infer<typeof AdmittedAnswerSchema>;
 
-export const AdmittedExtractionSchema = z.strictObject({
-  formType: OcrFormTypeSchema,
-  source: ExtractionSourceSchema,
-  readAt: IsoInstantSchema,
-  sourceSha256: FingerprintSchema,
-  sourcePage: z.number().int().positive(),
-  /** Sorted by path, so two agreeing extractions are byte-identical. */
+export const AdmittedRecordSchema = z.strictObject({
+  rowIndex: z.number().int().nonnegative(),
+  /** Sorted by path, so two agreeing readings are byte-identical. */
   answers: z.array(AdmittedAnswerSchema).min(1),
   /**
    * Paths a human must resolve before this record may be used: a MANDATORY
@@ -158,6 +178,30 @@ export const AdmittedExtractionSchema = z.strictObject({
   blockingPaths: z.array(OcrFieldPathSchema),
   /** Digest of the admitted answers, for cross-producer comparison. */
   answersFingerprint: FingerprintSchema,
+});
+export type AdmittedRecord = z.infer<typeof AdmittedRecordSchema>;
+
+export const AdmittedExtractionSchema = z.strictObject({
+  formType: OcrFormTypeSchema,
+  source: ExtractionSourceSchema,
+  readAt: IsoInstantSchema,
+  sourceSha256: FingerprintSchema,
+  sourcePage: z.number().int().positive(),
+  pageKind: OcrPageKindSchema,
+  /** Empty exactly when the page is not the expected form. */
+  records: z.array(AdmittedRecordSchema),
+  /** Digest of the whole page's reading, for cross-producer comparison. */
+  pageFingerprint: FingerprintSchema,
+}).superRefine((extraction, context) => {
+  const issue = (message: string): void => { context.addIssue({ code: "custom", message }); };
+  if (extraction.pageKind === extraction.formType && extraction.records.length === 0) {
+    issue(`a page classified as ${extraction.formType} must carry at least one record`);
+  }
+  if (extraction.pageKind !== extraction.formType && extraction.records.length > 0) {
+    issue(`a page classified as ${extraction.pageKind} cannot carry ${extraction.formType} records`);
+  }
+  const rows = extraction.records.map((record) => record.rowIndex);
+  if (new Set(rows).size !== rows.length) issue("two records claim the same row on one page");
 });
 export type AdmittedExtraction = z.infer<typeof AdmittedExtractionSchema>;
 
@@ -217,21 +261,62 @@ export function admitOcrExtraction(candidate: unknown): OcrAdmission {
   const form = ocrForm(submission.formType);
   const problems: string[] = [];
 
-  const declared = new Map(form.fields.map((spec) => [spec.path, spec]));
-  const submitted = new Set(Object.keys(submission.answers));
-  for (const path of declared.keys()) {
-    if (!submitted.has(path)) {
+  // A page that is not this form carries no records, and that is a correct
+  // outcome: a scanned stack is mixed, and demanding oath answers from an
+  // emergency-contact page would force a producer to invent them.
+  if (submission.pageKind !== submission.formType) {
+    if (submission.records.length > 0) {
       problems.push(
-        `${path}: not answered — every declared field needs a value or one of `
-        + `not-on-form / blank / illegible`,
+        `pageKind ${submission.pageKind} does not match this ${submission.formType} run, `
+        + "so the page cannot also carry records",
       );
+      return { admitted: false, problems };
     }
+    return { admitted: true, extraction: buildAdmitted(submission, []) };
   }
-  for (const path of submitted) {
-    if (!declared.has(path)) problems.push(`${path}: is not a field of the ${submission.formType} form`);
+
+  if (submission.records.length === 0) {
+    problems.push(`a page classified as ${submission.formType} must carry at least one record`);
+    return { admitted: false, problems };
+  }
+  if (form.recordsPerPage === "one" && submission.records.length > 1) {
+    problems.push(
+      `the ${submission.formType} form holds one person per page, `
+      + `but ${String(submission.records.length)} records were reported`,
+    );
+    return { admitted: false, problems };
+  }
+
+  const declared = new Map(form.fields.map((spec) => [spec.path, spec]));
+  const seenRows = new Set<number>();
+  for (const record of submission.records) {
+    const where = `record ${String(record.rowIndex)}`;
+    if (seenRows.has(record.rowIndex)) problems.push(`${where}: two records claim this row`);
+    seenRows.add(record.rowIndex);
+    const submitted = new Set(Object.keys(record.answers));
+    for (const path of declared.keys()) {
+      if (!submitted.has(path)) {
+        problems.push(
+          `${where}: ${path} not answered — every declared field needs a value or one of `
+          + "not-on-form / blank / illegible",
+        );
+      }
+    }
+    for (const path of submitted) {
+      if (!declared.has(path)) problems.push(`${where}: ${path} is not a field of the ${submission.formType} form`);
+    }
   }
   if (problems.length > 0) return { admitted: false, problems };
 
+  const records = submission.records.map((record) => admitRecord(submission, form.fields, record));
+  return { admitted: true, extraction: buildAdmitted(submission, records) };
+}
+
+function admitRecord(
+  submission: SubmittedExtraction,
+  fields: readonly OcrFieldSpec[],
+  record: SubmittedRecord,
+): z.infer<typeof AdmittedRecordSchema> {
   const location: CellLocation = {
     workflow: WorkflowIdSchema.parse(`ocr-${submission.formType}`),
     sourceRow: submission.sourcePage,
@@ -241,8 +326,8 @@ export function admitOcrExtraction(candidate: unknown): OcrAdmission {
 
   const answers: AdmittedAnswer[] = [];
   const blockingPaths: string[] = [];
-  for (const spec of form.fields) {
-    const answer = submission.answers[spec.path];
+  for (const spec of fields) {
+    const answer = record.answers[spec.path];
     if (answer.state === "absent") {
       answers.push(AdmittedAnswerSchema.parse({ state: "absent", path: spec.path, reason: answer.reason }));
       if (spec.mandatory) blockingPaths.push(spec.path);
@@ -273,17 +358,37 @@ export function admitOcrExtraction(candidate: unknown): OcrAdmission {
   }
 
   answers.sort((left, right) => left.path.localeCompare(right.path));
-  const extraction = AdmittedExtractionSchema.parse({
+  return AdmittedRecordSchema.parse({
+    rowIndex: record.rowIndex,
+    answers,
+    blockingPaths: blockingPaths.toSorted((left, right) => left.localeCompare(right)),
+    answersFingerprint: answersFingerprint(answers),
+  });
+}
+
+function buildAdmitted(
+  submission: SubmittedExtraction,
+  records: readonly z.infer<typeof AdmittedRecordSchema>[],
+): AdmittedExtraction {
+  const ordered = [...records].sort((left, right) => left.rowIndex - right.rowIndex);
+  return AdmittedExtractionSchema.parse({
     formType: submission.formType,
     source: submission.source,
     readAt: submission.readAt,
     sourceSha256: submission.sourceSha256,
     sourcePage: submission.sourcePage,
-    answers,
-    blockingPaths: blockingPaths.toSorted((left, right) => left.localeCompare(right)),
-    answersFingerprint: answersFingerprint(answers),
+    pageKind: submission.pageKind,
+    records: ordered,
+    pageFingerprint: FingerprintSchema.parse(sha256Hex(
+      `hrauto:ocr-page:v1\0${canonicalJsonStringify({
+        pageKind: submission.pageKind,
+        records: ordered.map((record) => ({
+          rowIndex: record.rowIndex,
+          answers: record.answersFingerprint,
+        })),
+      })}`,
+    )),
   });
-  return { admitted: true, extraction };
 }
 
 /**
@@ -311,5 +416,5 @@ export function extractionsAgree(left: AdmittedExtraction, right: AdmittedExtrac
   return left.formType === right.formType
     && left.sourceSha256 === right.sourceSha256
     && left.sourcePage === right.sourcePage
-    && left.answersFingerprint === right.answersFingerprint;
+    && left.pageFingerprint === right.pageFingerprint;
 }

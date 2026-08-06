@@ -38,14 +38,15 @@ function oathSubmission(source: ExtractionSource, overrides: Record<string, unkn
     readAt: READ_AT,
     sourceSha256: PAGE_SHA,
     sourcePage: 1,
-    answers: {
+    pageKind: "oath",
+    records: [{ rowIndex: 0, answers: {
       printedName: { state: "read", raw: "Battistessa, Johnnie", confidence: 0.97 },
       employeeId: { state: "read", raw: "10873698", confidence: 0.93 },
       signatureDate: { state: "read", raw: "07/21/2026", confidence: 0.95 },
       employeeSigned: { state: "read", raw: "yes", confidence: 0.99 },
       officerSigned: { state: "absent", reason: "blank" },
       ...overrides,
-    },
+    } }],
   };
 }
 
@@ -59,8 +60,8 @@ describe("one gate, whoever read the page", () => {
     });
 
     const [byProvider, byAgent, byOperator] = results;
-    assert.equal(byProvider.answersFingerprint, byAgent.answersFingerprint);
-    assert.equal(byAgent.answersFingerprint, byOperator.answersFingerprint);
+    assert.equal(byProvider.pageFingerprint, byAgent.pageFingerprint);
+    assert.equal(byAgent.pageFingerprint, byOperator.pageFingerprint);
     assert.equal(extractionsAgree(byProvider, byAgent), true);
     assert.equal(extractionsAgree(byAgent, byOperator), true);
 
@@ -86,7 +87,7 @@ describe("one gate, whoever read the page", () => {
       }));
       assert.equal(admission.admitted, true);
       if (!admission.admitted) throw new Error("unreachable");
-      const answer = admission.extraction.answers.find((entry) => entry.path === "employeeId");
+      const answer = admission.extraction.records[0].answers.find((entry) => entry.path === "employeeId");
       assert.equal(answer?.state, "unreadable");
       assert.equal(answer?.state === "unreadable" && answer.reason.includes("not a UCPath EID"), true);
       // Kept with its raw text so a reviewer sees what the producer saw.
@@ -98,12 +99,12 @@ describe("one gate, whoever read the page", () => {
 describe("nobody skips anything", () => {
   it("refuses a submission that omits a declared field", () => {
     const submission = oathSubmission(PROVIDER);
-    delete (submission.answers as Record<string, unknown>).signatureDate;
+    delete (submission.records[0].answers as Record<string, unknown>).signatureDate;
     const admission = admitOcrExtraction(submission);
     assert.equal(admission.admitted, false);
     if (admission.admitted) throw new Error("unreachable");
     assert.equal(
-      admission.problems.some((problem) => problem.startsWith("signatureDate: not answered")),
+      admission.problems.some((problem) => problem.includes("signatureDate not answered")),
       true,
       admission.problems.join("\n"),
     );
@@ -137,7 +138,7 @@ describe("nobody skips anything", () => {
     }));
     assert.equal(admission.admitted, true);
     if (!admission.admitted) throw new Error("unreachable");
-    const reasons = Object.fromEntries(admission.extraction.answers
+    const reasons = Object.fromEntries(admission.extraction.records[0].answers
       .filter((answer) => answer.state === "absent")
       .map((answer) => [answer.path, answer.state === "absent" ? answer.reason : ""]));
     assert.deepEqual(reasons, {
@@ -149,8 +150,8 @@ describe("nobody skips anything", () => {
     // them apart, so two producers disagreeing about WHICH nothing they saw is
     // a visible disagreement rather than a silent match.
     assert.notEqual(
-      answersFingerprint(admission.extraction.answers),
-      answersFingerprint(admission.extraction.answers.map((answer) =>
+      answersFingerprint(admission.extraction.records[0].answers),
+      answersFingerprint(admission.extraction.records[0].answers.map((answer) =>
         answer.path === "signatureDate" && answer.state === "absent"
           ? { ...answer, reason: "blank" as const }
           : answer)),
@@ -164,14 +165,111 @@ describe("nobody skips anything", () => {
     }));
     assert.equal(optionalMissing.admitted, true);
     if (!optionalMissing.admitted) throw new Error("unreachable");
-    assert.deepEqual(optionalMissing.extraction.blockingPaths, []);
+    assert.deepEqual(optionalMissing.extraction.records[0].blockingPaths, []);
 
     const mandatoryMissing = admitOcrExtraction(oathSubmission(PROVIDER, {
       printedName: { state: "absent", reason: "illegible" },
     }));
     assert.equal(mandatoryMissing.admitted, true);
     if (!mandatoryMissing.admitted) throw new Error("unreachable");
-    assert.deepEqual(mandatoryMissing.extraction.blockingPaths, ["officerSigned", "printedName"]);
+    assert.deepEqual(mandatoryMissing.extraction.records[0].blockingPaths, ["officerSigned", "printedName"]);
+  });
+});
+
+describe("a mixed stack, and a page that holds several people", () => {
+  it("accepts a page that is a DIFFERENT form, with no records and no invention", () => {
+    // A scanned oath stack routinely contains emergency-contact pages. Demanding
+    // oath answers from one would force a producer to invent them; failing the
+    // page would lose it. Classifying it is the true answer.
+    const admission = admitOcrExtraction({
+      formType: "oath",
+      source: PROVIDER,
+      readAt: READ_AT,
+      sourceSha256: PAGE_SHA,
+      sourcePage: 7,
+      pageKind: "emergency-contact",
+      records: [],
+    });
+    assert.equal(admission.admitted, true, JSON.stringify(admission));
+    if (!admission.admitted) throw new Error("unreachable");
+    assert.deepEqual(admission.extraction.records, []);
+    assert.equal(admission.extraction.pageKind, "emergency-contact");
+  });
+
+  it("refuses a page that claims another form AND carries records", () => {
+    const admission = admitOcrExtraction({
+      ...oathSubmission(PROVIDER),
+      pageKind: "unknown",
+    });
+    assert.equal(admission.admitted, false);
+    if (admission.admitted) throw new Error("unreachable");
+    assert.equal(admission.problems.some((problem) => problem.includes("cannot also carry records")), true);
+  });
+
+  it("refuses an oath page classified as oath that reports no rows at all", () => {
+    const admission = admitOcrExtraction({ ...oathSubmission(PROVIDER), records: [] });
+    assert.equal(admission.admitted, false);
+    if (admission.admitted) throw new Error("unreachable");
+    assert.equal(admission.problems.some((problem) => problem.includes("at least one record")), true);
+  });
+
+  it("admits a multi-row sign-in sheet, fingerprinting each row separately", () => {
+    const base = oathSubmission(PROVIDER);
+    const rowFor = (rowIndex: number, eid: string) => ({
+      rowIndex,
+      answers: { ...base.records[0].answers, employeeId: { state: "read", raw: eid, confidence: 0.9 } },
+    });
+    const admission = admitOcrExtraction({
+      ...base,
+      records: [rowFor(2, "10998801"), rowFor(0, "10873698"), rowFor(1, "10456712")],
+    });
+    assert.equal(admission.admitted, true, JSON.stringify(admission));
+    if (!admission.admitted) throw new Error("unreachable");
+    // Ordered by row, whatever order they were reported in.
+    assert.deepEqual(admission.extraction.records.map((record) => record.rowIndex), [0, 1, 2]);
+    // Three DIFFERENT people — one fingerprint each.
+    assert.equal(
+      new Set(admission.extraction.records.map((record) => record.answersFingerprint)).size,
+      3,
+    );
+  });
+
+  it("checks completeness per RECORD, naming the row", () => {
+    const base = oathSubmission(PROVIDER);
+    const short = { rowIndex: 1, answers: { ...base.records[0].answers } };
+    delete (short.answers as Record<string, unknown>).printedName;
+    const admission = admitOcrExtraction({ ...base, records: [base.records[0], short] });
+    assert.equal(admission.admitted, false);
+    if (admission.admitted) throw new Error("unreachable");
+    assert.equal(
+      admission.problems.some((problem) => problem.includes("record 1: printedName not answered")),
+      true,
+      admission.problems.join("\n"),
+    );
+  });
+
+  it("refuses several records on a form that holds one person per page", () => {
+    const one = {
+      rowIndex: 0,
+      answers: Object.fromEntries(declaredPaths("emergency-contact")
+        .map((path) => [path, { state: "absent", reason: "blank" }])),
+    };
+    const admission = admitOcrExtraction({
+      formType: "emergency-contact",
+      source: PROVIDER,
+      readAt: READ_AT,
+      sourceSha256: PAGE_SHA,
+      sourcePage: 1,
+      pageKind: "emergency-contact",
+      records: [one, { ...one, rowIndex: 1 }],
+    });
+    assert.equal(admission.admitted, false);
+    if (admission.admitted) throw new Error("unreachable");
+    assert.equal(
+      admission.problems.some((problem) => problem.includes("holds one person per page")),
+      true,
+      admission.problems.join("\n"),
+    );
   });
 });
 
@@ -191,12 +289,33 @@ describe("every route is told the same thing", () => {
 
   it("emits a skeleton whose shape the gate accepts once filled in", () => {
     for (const formType of OCR_FORM_TYPES) {
-      const skeleton = buildAnswerSkeleton(formType) as { answers: Record<string, unknown> };
+      const skeleton = buildAnswerSkeleton(formType) as { records: { answers: Record<string, unknown> }[] };
       // Same keys as the form declares — both directions.
       assert.deepEqual(
-        Object.keys(skeleton.answers).toSorted((left, right) => left.localeCompare(right)),
+        Object.keys(skeleton.records[0].answers).toSorted((left, right) => left.localeCompare(right)),
         [...declaredPaths(formType)],
       );
+    }
+  });
+
+  it("carries the form's hard-won extraction notes to every route", () => {
+    // These are legacy's real prompt knowledge — recorded misreads, address
+    // handling — and they belong with the form, not in one route's string.
+    const oath = buildExtractionInstruction("oath");
+    assert.equal(oath.includes("do NOT drop the leading `10`"), true);
+    assert.equal(oath.includes("top margin"), true);
+    const contact = buildExtractionInstruction("emergency-contact");
+    assert.equal(contact.includes("10843962"), true, "the observed digit transposition is named");
+    assert.equal(contact.includes("Sharaf"), true, "the observed letter drop is named");
+    assert.equal(contact.includes("NEVER skip the contact's address"), true);
+  });
+
+  it("tells a multi-record form to emit one record per row", () => {
+    assert.equal(buildExtractionInstruction("oath").includes("one record per filled row"), true);
+    assert.equal(buildExtractionInstruction("emergency-contact").includes("ONE person per page"), true);
+    // And every route is told to classify before extracting.
+    for (const formType of OCR_FORM_TYPES) {
+      assert.equal(buildExtractionInstruction(formType).includes("CLASSIFY the page first"), true);
     }
   });
 

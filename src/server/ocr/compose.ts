@@ -119,25 +119,35 @@ export function composeOcrCommand(input: OcrComposeInput): OcrCommandOutcome {
       };
     }
     const { extraction } = admission;
-    const lines = [
-      `ADMITTED — ${extraction.formType} page ${String(extraction.sourcePage)}`,
-      `  source: ${extraction.source.kind}`,
-      `  answers fingerprint: ${extraction.answersFingerprint}`,
-      "",
-    ];
-    for (const answer of extraction.answers) {
-      lines.push(answer.state === "read"
-        ? `  ${answer.path} = ${JSON.stringify(answer.value)}`
-        : answer.state === "absent"
-          ? `  ${answer.path} — absent (${answer.reason})`
-          : `  ${answer.path} — UNREADABLE ${JSON.stringify(answer.raw)}: ${answer.reason}`);
+    if (extraction.pageKind !== extraction.formType) {
+      // A correct answer, not a failure: a scanned stack is mixed.
+      return {
+        output: `ADMITTED — page ${String(extraction.sourcePage)} is a ${extraction.pageKind} page, `
+          + `not ${extraction.formType}. No records; nothing was skipped.`,
+        exitCode: 0,
+      };
     }
-    if (extraction.blockingPaths.length > 0) {
-      lines.push(
-        "",
-        `  ${String(extraction.blockingPaths.length)} mandatory field(s) need a human before this record can be used:`,
-        ...extraction.blockingPaths.map((path) => `    - ${path}`),
-      );
+    const lines = [
+      `ADMITTED — ${extraction.formType} page ${String(extraction.sourcePage)}, `
+        + `${String(extraction.records.length)} record(s)`,
+      `  source: ${extraction.source.kind}`,
+      `  page fingerprint: ${extraction.pageFingerprint}`,
+    ];
+    for (const record of extraction.records) {
+      lines.push("", `  record ${String(record.rowIndex)} (${record.answersFingerprint.slice(0, 12)})`);
+      for (const answer of record.answers) {
+        lines.push(answer.state === "read"
+          ? `    ${answer.path} = ${JSON.stringify(answer.value)}`
+          : answer.state === "absent"
+            ? `    ${answer.path} — absent (${answer.reason})`
+            : `    ${answer.path} — UNREADABLE ${JSON.stringify(answer.raw)}: ${answer.reason}`);
+      }
+      if (record.blockingPaths.length > 0) {
+        lines.push(
+          `    ${String(record.blockingPaths.length)} mandatory field(s) need a human: `
+            + record.blockingPaths.join(", "),
+        );
+      }
     }
     return { output: lines.join("\n"), exitCode: 0 };
   }

@@ -88,11 +88,29 @@ describe("D151 OCR producer parity", () => {
       // The other direction: the skeleton a producer copies must name exactly
       // the declared set, so it cannot teach a producer about a field that no
       // longer exists or omit one that does.
-      const skeleton = buildAnswerSkeleton(formType) as { answers: Record<string, unknown> };
+      const skeleton = buildAnswerSkeleton(formType) as {
+        pageKind: string;
+        records: { rowIndex: number; answers: Record<string, unknown> }[];
+      };
+      assert.equal(skeleton.pageKind, formType, "the skeleton must show the expected classification");
+      assert.equal(skeleton.records.length, 1);
       assert.deepEqual(
-        Object.keys(skeleton.answers).toSorted((left, right) => left.localeCompare(right)),
+        Object.keys(skeleton.records[0].answers).toSorted((left, right) => left.localeCompare(right)),
         [...declared],
       );
+      // Classification and record count reach every route, or a producer could
+      // silently answer a page that is not this form, or one row of twelve.
+      assert.equal(instruction.includes("CLASSIFY the page first"), true, `${formType}: no classification rule`);
+      assert.equal(
+        instruction.includes(ocrForm(formType).recordsPerPage === "many" ? "one record per filled row" : "ONE person per page"),
+        true,
+        `${formType}: the brief does not say how many records a page yields`,
+      );
+      // Every extraction note reaches the brief verbatim — that knowledge was
+      // learned from real misreads and must not live in one route's string.
+      for (const note of ocrForm(formType).extractionNotes) {
+        assert.equal(instruction.includes(note), true, `${formType}: an extraction note never reaches the brief`);
+      }
       // Every mandatory field is marked as such in the brief.
       for (const spec of ocrForm(formType).fields) {
         if (!spec.mandatory) continue;

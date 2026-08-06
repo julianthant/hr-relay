@@ -17,13 +17,17 @@ const SUBMISSION = {
   readAt: "2026-08-06T09:00:00.000Z",
   sourceSha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
   sourcePage: 1,
-  answers: {
-    printedName: { state: "read", raw: "Battistessa, Johnnie", confidence: 0.97 },
-    employeeId: { state: "read", raw: "10873698", confidence: 0.93 },
-    signatureDate: { state: "read", raw: "07/21/2026", confidence: 0.95 },
-    employeeSigned: { state: "read", raw: "yes", confidence: 0.99 },
-    officerSigned: { state: "absent", reason: "illegible" },
-  },
+  pageKind: "oath",
+  records: [{
+    rowIndex: 0,
+    answers: {
+      printedName: { state: "read", raw: "Battistessa, Johnnie", confidence: 0.97 },
+      employeeId: { state: "read", raw: "10873698", confidence: 0.93 },
+      signatureDate: { state: "read", raw: "07/21/2026", confidence: 0.95 },
+      employeeSigned: { state: "read", raw: "yes", confidence: 0.99 },
+      officerSigned: { state: "absent", reason: "illegible" },
+    },
+  }],
 };
 
 function run(args: readonly string[], file: unknown = SUBMISSION) {
@@ -51,21 +55,30 @@ describe("rebuild:cli ocr", () => {
   it("admits a complete submission and reports what still needs a human", () => {
     const { output, exitCode } = run(["admit", "page1.json"]);
     assert.equal(exitCode, 0);
-    assert.equal(output.startsWith("ADMITTED — oath page 1"), true);
+    assert.equal(output.startsWith("ADMITTED — oath page 1, 1 record(s)"), true);
     // The canonical field normalized the date; the transport did not.
     assert.equal(output.includes('signatureDate = "2026-07-21"'), true);
     assert.equal(output.includes("officerSigned — absent (illegible)"), true);
     assert.equal(output.includes("1 mandatory field(s) need a human"), true);
   });
 
+  it("reports a page that is a different form as admitted with no records", () => {
+    const other = { ...SUBMISSION, pageKind: "emergency-contact", records: [] };
+    const { output, exitCode } = run(["admit", "page7.json"], other);
+    assert.equal(exitCode, 0);
+    assert.equal(output.includes("is a emergency-contact page, not oath"), true);
+    assert.equal(output.includes("nothing was skipped"), true);
+  });
+
   it("EXITS NON-ZERO on refusal, so a caller need not parse prose", () => {
-    const skipped = { ...SUBMISSION, answers: { ...SUBMISSION.answers } };
-    delete (skipped.answers as Record<string, unknown>).signatureDate;
+    const answers = { ...SUBMISSION.records[0].answers };
+    delete (answers as Record<string, unknown>).signatureDate;
+    const skipped = { ...SUBMISSION, records: [{ rowIndex: 0, answers }] };
     const { output, exitCode } = run(["admit", "page1.json"], skipped);
     assert.equal(exitCode, 1, "a refused submission that exits 0 would look accepted to tooling");
     assert.equal(output.startsWith("REFUSED"), true);
     assert.equal(output.includes("Nothing was recorded"), true);
-    assert.equal(output.includes("signatureDate: not answered"), true);
+    assert.equal(output.includes("signatureDate not answered"), true);
   });
 
   it("names an unreadable file as such rather than passing undefined to the gate", () => {
