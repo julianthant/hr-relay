@@ -1768,6 +1768,27 @@
      ]
     }
    ]
+  },
+  {
+   "commit": "0cdae60f2935f98f61cbb2e94dd22af0af855a70",
+   "parentCommit": "e3edcbd3aa1bfd7c83bffe58159faac3291fe118",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "e0ea4051add6ee802b42d2a640ddf8fa354a289589495c7bc97735f991da8fae",
+     "afterSha256": "b8e98d2cf929a93523648e7acb093eba9bc1a72ef315d644f63ba460707eb317",
+     "capabilityIds": [
+      "legacy-workflow-i9-check",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup"
+     ],
+     "impactRationale": "Lesson: HR-Tasks Search/Match is DOB-keyed with fuzzy first names and ignores the last name (three live wrong-person hits 2026-08-06); every searchPerson caller must surname-verify hits. i9-check runPersonMatch flagged as still-unguarded \u2014 the rebuild must inherit the surname gate.",
+     "rebuildRecheckIds": [
+      "ucpath-person-search-sidebar-2026-08-05"
+     ]
+    }
+   ]
   }
  ]
 }
