@@ -698,6 +698,39 @@ Legacy's `originallyMissing` — an array of fields the model judged blank, reco
 diffing snapshots — is **superseded** by the typed absences: `blank` and `illegible` are recorded per
 field at the moment of reading, by the producer that read it.
 
+### 4.7 Grouping cannot assume adjacency — measured on raw scanner output (D157)
+
+The open question was whether a person's pages arrive together in a real scan. Two genuine scans
+answer it, and they answer it **differently** — which is itself the finding.
+
+Provenance first, because it decides what counts as evidence. `detect-test.pdf` carries
+`/Creator (VersaLink B7035)` and `Xerox Scan_08052026141856.pdf` carries `/Creator (VersaLink C7020)`
+— both raw Xerox MFP output, unbroken. `multiple-oath.pdf` carries `/Producer (macOS Version 26.1)`
+and is the assembled one. So the two scans are the ground truth and the tidy file is not.
+
+- **`detect-test.pdf` (7 pages, EC + oath).** A person's pages ARE adjacent: page 1 is an
+  emergency-contact form with no partner, then three EC→oath pairs (Tran, Goiset, Provenzano), each
+  person's two forms together.
+- **`Xerox Scan_08052026141856.pdf` (44 pages, I-9).** A person's pages are NOT adjacent. The first
+  four pages are four DIFFERENT people with alternating section types — §2 Casey · §1 Cho · §2
+  Cisneros · §1 Chan — not alphabetical, not paired, and no two consecutive pages belonging to one
+  person.
+
+**So adjacency is a property of how a particular pile was assembled, not of scanning.** Grouping
+must therefore match by the NAME read off each page, across the whole stack, and may use adjacency
+only as a tiebreaker between equally good name matches — never as the rule. A design that paired
+neighbours would have produced Casey's Section 1 from Cho's page: a real I-9 verification attached
+to the wrong person, which is the worst failure this program can produce.
+
+Two properties make the name match workable, both visible in the corpus. An I-9 Section 2 carries
+*"Employee Last Name, First Name and Middle Initial from Section 1"* at the top, so both pages of a
+pair name the same person independently. And a page whose own name is unreadable — `detect-test.pdf`
+page 2 has a sticky note over it — can still be grouped from its partner, which is grouping earning
+its keep rather than merely tidying.
+
+An unmatched Section 2 is **flagged, not blocked** (operator, 2026-08-06); legacy's `orphanSection2`
+was the same decision, and it backed the row with the roster PPS EID.
+
 ### 4.6 Phase-2h as-built — a two-digit year is resolved, not refused (D155)
 
 The first live run of the OCR gate over real paper — `detect-test.pdf`, read page by page through
