@@ -31,12 +31,14 @@ import {
   type OcrFormType,
 } from "../../domain/ocr/form-registry.js";
 import { buildExtractionInstruction } from "../../domain/ocr/instruction.js";
+import { ClassifiedStackSchema, groupStack, reportStack } from "../../domain/ocr/stack.js";
 
 const USAGE = [
   "usage:",
   "  rebuild:cli ocr forms",
   "  rebuild:cli ocr instruction <form-type>",
   "  rebuild:cli ocr admit <submission.json> [--json]",
+  "  rebuild:cli ocr stack <classified.json> <form-type> [--json]",
 ].join("\n");
 
 export interface OcrCommandOutcome {
@@ -84,6 +86,55 @@ export function composeOcrCommand(input: OcrComposeInput): OcrCommandOutcome {
 
   if (subject === "instruction") {
     return { output: buildExtractionInstruction(parseFormType(rest[0])), exitCode: 0 };
+  }
+
+  if (subject === "stack") {
+    const path = rest[0];
+    if (path === undefined) throw new Error(USAGE);
+    const formType = parseFormType(rest[1]);
+    const absolute = resolve(input.cwd ?? process.cwd(), path);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(read(absolute));
+    } catch (error) {
+      throw new Error(
+        `${absolute} is not readable JSON: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+    const stack = ClassifiedStackSchema.parse(parsed);
+    if (rest.includes("--json")) {
+      return { output: JSON.stringify(groupStack(stack, formType), null, 2), exitCode: 0 };
+    }
+    const report = reportStack(stack, formType);
+    const grouping = groupStack(stack, formType);
+    const lines = [
+      `${String(report.pagesClassified)} pages classified for a ${formType} run`
+        + ` (${String(report.pagesAccounted)} accounted for)`,
+      "",
+    ];
+    for (const kind of report.byKind) {
+      lines.push(`  ${kind.pageKind.padEnd(20)} ${String(kind.pages).padStart(3)}`
+        + (kind.belongsToThisRun ? "" : "   ← NOT THIS WORKFLOW"));
+    }
+    lines.push(
+      "",
+      `  ${String(report.subjects.complete)} subject(s) ready`
+        + (report.subjects.duplicate > 0 ? `, ${String(report.subjects.duplicate)} duplicated` : ""),
+    );
+    for (const subject of grouping.subjects) {
+      if (subject.completeness === "complete") continue;
+      lines.push(`    DUPLICATE ${subject.displayName} — pages `
+        + subject.pages.map((page) => String(page.sourcePage)).join(", "));
+    }
+    if (report.unidentifiedPages.length > 0) {
+      lines.push(
+        "",
+        `  ${String(report.unidentifiedPages.length)} page(s) name nobody readable: `
+          + report.unidentifiedPages.join(", "),
+      );
+    }
+    return { output: lines.join("\n"), exitCode: 0 };
   }
 
   if (subject === "admit") {

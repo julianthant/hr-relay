@@ -698,6 +698,31 @@ Legacy's `originallyMissing` — an array of fields the model judged blank, reco
 diffing snapshots — is **superseded** by the typed absences: `blank` and `illegible` are recorded per
 field at the moment of reading, by the producer that read it.
 
+### 4.8 Phase-2h as-built — stages 1 and 2 of the scanner pipeline (D158)
+
+`src/domain/ocr/stack.ts` lands classification-consumption and grouping;
+`rebuild:cli ocr stack <classified.json> <form-type>` is the operator surface.
+
+**Every page lands in exactly one bucket** — a subject, `unidentified`, `otherForms` or `dataless` —
+and `pagesAccounted` must equal `pagesClassified`. That total coverage is the whole point of looking
+before extracting: a page belonging to no bucket is a page nobody knows was skipped.
+
+**`personMatchKey` is exact, and deliberately narrow.** Lowercased alphabetic tokens, sorted, with
+single letters dropped. Sorted because `Clauldia, Drona A.` (an I-9 §2 header) and `Drona Clauldia` (a §1's
+separate boxes) are one person. Initials dropped because a middle initial is written inconsistently
+and its absence must not split one person in two. Below two tokens it returns **null** — a surname
+alone would group siblings — and such a page is `unidentified` rather than guessed at. There is no
+fuzzy scoring: that is exactly where this would start inventing people.
+
+Verified on both real stacks. The 44-page I-9 scan's first four pages group as four separate people;
+`detect-test.pdf` reports 3 subjects ready and 4 wrong-type pages for an oath run, and the mirror for
+an emergency-contact run, with page 2's sticky-note-covered name surfaced as unidentified rather than
+dropped.
+
+**Not built:** the sectioned-subject case (an I-9 §1 + §2 as one subject) and its orphan outcome.
+Every form that exists today is one page per person, so that arm would be unreachable and untested —
+it lands with the `i9` form, where D157's flag-never-block decision applies.
+
 ### 4.7 Grouping cannot assume adjacency — measured on raw scanner output (D157)
 
 The open question was whether a person's pages arrive together in a real scan. Two genuine scans

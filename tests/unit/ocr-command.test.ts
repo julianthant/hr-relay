@@ -92,6 +92,29 @@ describe("rebuild:cli ocr", () => {
     assert.equal((parsed as { admitted: boolean }).admitted, true);
   });
 
+  it("reports a stack for one workflow, naming what does not belong", () => {
+    const classified = {
+      sourceSha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
+      classifiedAt: "2026-08-07T09:00:00.000Z",
+      pages: [
+        { sourcePage: 1, pageKind: "emergency-contact", subjectName: "Yuwen Jiang", confidence: 0.96 },
+        { sourcePage: 2, pageKind: "emergency-contact", subjectName: null, confidence: 0.9 },
+        { sourcePage: 3, pageKind: "oath", subjectName: "Tran, Mia, V", confidence: 0.95 },
+      ],
+    };
+    const { output, exitCode } = run(["stack", "classified.json", "oath"], classified);
+    assert.equal(exitCode, 0);
+    assert.equal(output.includes("3 pages classified for a oath run (3 accounted for)"), true);
+    assert.equal(output.includes("emergency-contact      2   ← NOT THIS WORKFLOW"), true);
+    assert.equal(output.includes("1 subject(s) ready"), true);
+
+    // The same stack read for the other workflow swaps which pages belong, and
+    // surfaces the page whose name is under a sticky note.
+    const contact = run(["stack", "classified.json", "emergency-contact"], classified);
+    assert.equal(contact.output.includes("oath                   1   ← NOT THIS WORKFLOW"), true);
+    assert.equal(contact.output.includes("name nobody readable: 2"), true);
+  });
+
   it("shows usage for no subcommand and refuses an unknown one", () => {
     assert.equal(run([]).output.startsWith("usage:"), true);
     assert.throws(() => run(["extract"]), /unknown ocr subcommand "extract"/);
