@@ -18,7 +18,7 @@ import {
 } from "./helpers/environment-read-audit.js";
 import {
   gitVisibleFiles,
-  legacyGitVisibleFiles,
+  isLegacyPath,
   resolveScopedPath,
 } from "./helpers/guard-files.js";
 
@@ -28,19 +28,24 @@ interface ExampleEnvironmentInventory {
 }
 
 /**
- * Every environment access in BOTH repositories (D93).
+ * Every environment access in THIS repository.
  *
- * The inventory this guard defends spans two roots: the rebuild's own runtime
- * and the legacy runtime it will replace. Scanning only this repo would leave
- * every legacy reader registration unverifiable, which is precisely the drift
- * D93 warns the split makes invisible (doc 10 §3.13). Legacy paths carry the
- * `legacy:` scheme so a file that exists in both repos — `src/cli.ts` does —
- * cannot be confused for the other side's.
+ * It scanned the legacy repo too until D150 (2026-08-06). That coupling had to
+ * go for the same reason change accounting did: a new environment key added to
+ * the PRODUCTION repo — `SHRED_AUDIT_WORKERS`, while this session was running —
+ * turned a rebuild gate red for work that has nothing to do with the rebuild.
+ * The two repositories touch each other in neither direction.
+ *
+ * The claim narrows honestly with the scan: this guard now says "every
+ * environment read in the REBUILD is registered, owned and classified", which
+ * is the part that governs what this runtime does. The `legacy:`-scheme entries
+ * that remain in the inventory are a historical record of what legacy reads;
+ * nothing verifies them, and nothing should extend them.
  */
 function repositoryOccurrences(): readonly EnvironmentAccessOccurrence[] {
   const scannable = (path: string): boolean =>
     ENVIRONMENT_SOURCE_EXTENSIONS.some((extension) => path.endsWith(extension));
-  return [...gitVisibleFiles(["."]), ...legacyGitVisibleFiles(["."])]
+  return gitVisibleFiles(["."])
     .filter(scannable)
     .flatMap((path) => inventoryEnvironmentAccesses(path, readFileSync(resolveScopedPath(path), "utf8")));
 }
@@ -134,8 +139,13 @@ function auditOccurrences(occurrences: readonly EnvironmentAccessOccurrence[]): 
     actualExactReaders.set(occurrence.key, paths);
   }
   for (const expected of EXACT_ENVIRONMENT_READER_OWNERS) {
+    // Only this repo is scanned (D150), so only this repo's owners can be
+    // checked. A `legacy:` owner is a historical record; comparing it against a
+    // scan that never looks there would report drift on every one of them and
+    // say nothing true about either repository.
+    const expectedPaths = expected.paths.filter((path) => !isLegacyPath(path)).toSorted();
+    if (expectedPaths.length === 0) continue;
     const actualPaths = [...(actualExactReaders.get(expected.key) ?? [])].sort();
-    const expectedPaths = [...expected.paths].sort();
     if (JSON.stringify(actualPaths) !== JSON.stringify(expectedPaths)) {
       violations.push(`${expected.key} exact reader ownership drifted: expected ${expectedPaths.join(", ")}; actual ${actualPaths.join(", ")}`);
     }
@@ -150,9 +160,11 @@ function auditOccurrences(occurrences: readonly EnvironmentAccessOccurrence[]): 
     occurrence.accessKind !== "exact" && occurrence.operation === "read" && !isTestPath(occurrence.path)
   );
   const actualComputed = aggregateComputed(productionComputed);
-  const expectedComputed = new Map(COMPUTED_ENVIRONMENT_READERS.map((reader) => [
-    computedIdentity(reader), reader.occurrenceCount,
-  ]));
+  // Legacy computed readers are historical too (D150): only this repo is
+  // scanned, so only this repo's registrations can be checked against it.
+  const expectedComputed = new Map(COMPUTED_ENVIRONMENT_READERS
+    .filter((reader) => !isLegacyPath(reader.path))
+    .map((reader) => [computedIdentity(reader), reader.occurrenceCount]));
   for (const [identity, count] of actualComputed) {
     if (expectedComputed.get(identity) !== count) violations.push(`unregistered or changed computed reader ${identity} (${count})`);
   }

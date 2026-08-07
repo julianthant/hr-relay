@@ -303,6 +303,9 @@ function admitRecord(
 ): z.infer<typeof AdmittedRecordSchema> {
   const location: CellLocation = {
     workflow: WorkflowIdSchema.parse(`ocr-${submission.formType}`),
+    // The submission's OWN read instant, so re-admitting a stored submission
+    // resolves its two-digit years exactly as the first admission did.
+    readAt: submission.readAt,
     sourceRow: submission.sourcePage,
     header: submission.formType,
     targetFieldId: IntakeTargetFieldIdSchema.parse("ocrField"),

@@ -195,6 +195,9 @@ export function defineCanonicalField<S extends z.ZodType>(spec: {
     // a cast here would let a self-check run against an id shape the intake
     // pipeline would refuse.
     workflow: WorkflowIdSchema.parse("registry-self-check"),
+    // A FIXED instant: the self-check must not change answer with the calendar,
+    // or a declared example could start failing on New Year's Day.
+    readAt: "2026-01-01T00:00:00.000Z",
     sourceRow: 1,
     header: spec.label,
     targetFieldId: IntakeTargetFieldIdSchema.parse("selfCheck"),
@@ -259,9 +262,11 @@ function nameCoercer(id: CanonicalFieldId) {
 
 function dateCoercer(id: CanonicalFieldId) {
   return (raw: string, location: CellLocation): unknown => {
-    const value = parseUsOrIsoDate(raw);
+    // The observation instant resolves a two-digit year, so a replayed read
+    // resolves its dates exactly as the original read did.
+    const value = parseUsOrIsoDate(raw, location.readAt);
     if (value === null) {
-      refuse(location, id, raw, "is not a calendar date (expected MM/DD/YYYY with a four-digit year)");
+      refuse(location, id, raw, "is not a calendar date (expected M/D/YY, M-D-YY, MM/DD/YYYY or YYYY-MM-DD)");
     }
     return value;
   };

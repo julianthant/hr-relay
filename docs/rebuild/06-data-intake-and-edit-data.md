@@ -698,6 +698,31 @@ Legacy's `originallyMissing` — an array of fields the model judged blank, reco
 diffing snapshots — is **superseded** by the typed absences: `blank` and `illegible` are recorded per
 field at the moment of reading, by the producer that read it.
 
+### 4.6 Phase-2h as-built — a two-digit year is resolved, not refused (D155)
+
+The first live run of the OCR gate over real paper — `detect-test.pdf`, read page by page through
+route 2 — reported the stack correctly (4 emergency-contact pages flagged as *not this workflow*, 3
+oath pages extracted, 0 refused) and exposed one defect.
+
+Page 5's oath is dated **`11/3/21`**, and `single-oath.pdf` is dated **`4-23-26`**. Two-digit years,
+one dash-separated, and both are the normal way these forms are filled in. The coercer refused both
+— while the generated brief was simultaneously telling every producer that `M/D/YY` and `M-D-YY` are
+expected. **The instruction and the validator contradicted each other**, and on a real batch every
+oath date would have landed `unreadable` and gone to a human.
+
+`parseUsOrIsoDate` now accepts `-` as well as `/`, and resolves a two-digit year against **when the
+value was observed**: the 2000s reading unless that lands more than a year ahead of the observation,
+otherwise the 1900s. So `21`→2021, `26`→2026, `98`→1998. This is a documented rule rather than a
+guess, and it is sound for what this system reads — a signature date, hire date, date of birth or
+separation date is in the past or at most an appointment starting within the year, never seventy
+years early.
+
+The reference is the **observation instant, not `now`**, and it is carried on `CellLocation.readAt`
+rather than read from a clock inside the coercer. The intake pipeline passes the run's instant and
+the OCR gate passes the submission's own `readAt`, so re-admitting a stored submission years later
+resolves its dates exactly as the first admission did. A century that moved under a replay would be
+the silent wrong value this rule exists to avoid.
+
 ### 4.5 Phase-2h as-built — measured against the real document corpus (D154)
 
 `hr-automation/data/documents` holds the operator's real scans, and reading them corrected the form

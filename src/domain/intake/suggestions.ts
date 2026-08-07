@@ -129,6 +129,8 @@ export function suggestBindings(args: {
   workflow: string;
   detected: readonly DetectedColumn[];
   projection: IntakeProjection;
+  /** The observation instant; resolves a two-digit year in a sample value. */
+  readAt: string;
 }): Suggestion[] {
   const workflow = WorkflowIdSchema.parse(args.workflow);
   const out: Suggestion[] = [];
@@ -140,6 +142,7 @@ export function suggestBindings(args: {
       const header = headerScore(canonicalFieldId, column);
       const agreement = sampleAgreement(canonicalFieldId, column, {
         workflow,
+        readAt: args.readAt,
         sourceRow: 1,
         header: column.header,
         targetFieldId: target.targetFieldId,

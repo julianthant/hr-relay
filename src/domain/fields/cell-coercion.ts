@@ -41,6 +41,14 @@ import type { IntakeTargetFieldId, WorkflowId } from "../ids.js";
 /** Where a cell sits, so a failure names the thing the operator must fix. */
 export interface CellLocation {
   readonly workflow: WorkflowId;
+  /**
+   * When this value was OBSERVED, as an ISO instant. It is what resolves a
+   * two-digit year (see `parseUsOrIsoDate`), so it is supplied by the caller
+   * rather than read from a clock here: the intake pipeline passes the run's
+   * instant, and the OCR gate passes the submission's own `readAt`, so a
+   * replayed read resolves its dates exactly as the original did.
+   */
+  readonly readAt: string;
   /** 1-based row number in the SOURCE file, not an index into the valid set. */
   readonly sourceRow: number;
   /** The source column's header text exactly as the file spells it. */
@@ -136,8 +144,35 @@ export function displayPersonName(raw: string): string {
 }
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const US_DATE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
-const TWO_DIGIT_YEAR_DATE = /^\d{1,2}\/\d{1,2}\/\d{2}$/;
+/** `/` and `-` both occur on real paper: `4/23/26` and `4-23-26` alike. */
+const US_DATE = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/;
+
+/**
+ * A two-digit year, resolved against when the value was read (D155).
+ *
+ * `21` becomes 2021, `26` becomes 2026, `98` becomes 1998. The rule: take the
+ * 2000s reading unless that lands more than a year AHEAD of the observation,
+ * in which case it is the 1900s.
+ *
+ * This is a documented rule rather than a guess, and it is sound for the values
+ * this system reads. An oath signature date, a hire date, a date of birth and a
+ * separation date are all in the past or, at most, an appointment starting
+ * within the year — none can be seventy years early. The window is bound to the
+ * OBSERVATION instant rather than to `now`, so re-reading a stored value years
+ * later resolves it the same way it was resolved originally.
+ *
+ * Real paper forced this: `detect-test.pdf` page 5 is dated `11/3/21` and
+ * `single-oath.pdf` is dated `4-23-26`. Refusing both made every real oath date
+ * an operator's problem, while the extraction brief was simultaneously telling
+ * producers that `M/D/YY` and `M-D-YY` are expected — the instruction and the
+ * validator contradicting each other.
+ */
+const FORWARD_ALLOWANCE_YEARS = 1;
+
+function resolveTwoDigitYear(twoDigits: number, referenceYear: number): number {
+  const thisCentury = Math.floor(referenceYear / 100) * 100 + twoDigits;
+  return thisCentury <= referenceYear + FORWARD_ALLOWANCE_YEARS ? thisCentury : thisCentury - 100;
+}
 
 function isRealCalendarDate(year: number, month: number, day: number): boolean {
   if (month < 1 || month > 12 || day < 1 || day > 31) return false;
@@ -150,36 +185,39 @@ function isRealCalendarDate(year: number, month: number, day: number): boolean {
 }
 
 /**
- * `MM/DD/YYYY` (the legacy wire format, and what every operator spreadsheet
- * carries) or an already-ISO `YYYY-MM-DD` → ISO `YYYY-MM-DD`.
+ * `M/D/YY`, `M-D-YY`, `MM/DD/YYYY` (the legacy wire format) or an already-ISO
+ * `YYYY-MM-DD` → ISO `YYYY-MM-DD`.
  *
  * Returns `null` rather than throwing so the caller can name the field in its
- * own error. Two refusals are deliberate:
+ * own error. What is still refused:
  *
- * - **A two-digit year.** `1/2/26` could be 1926 or 2026; a century this code
- *   picked would be an invented value on a live transaction.
  * - **A date that is not a real calendar day.** `02/30/2026` parses as digits
  *   and would otherwise roll forward into March, which is the silent
  *   wrong-value class this program bans.
+ * - **A bare number.** An unconverted Excel serial such as `45678` matches no
+ *   pattern: the extraction parser converts genuinely date-typed cells before
+ *   mapping ever sees them, so a serial arriving here means the column is not
+ *   what the operator thinks it is.
  *
- * A bare number (an unconverted Excel serial such as `45678`) matches neither
- * pattern and is refused: the extraction parser converts genuinely date-typed
- * cells before mapping ever sees them, so a serial arriving here means the
- * column is not what the operator thinks it is.
+ * A two-digit year is resolved by `resolveTwoDigitYear` against `readAt`.
  */
-export function parseUsOrIsoDate(raw: string): string | null {
+export function parseUsOrIsoDate(raw: string, readAt: string): string | null {
+  const referenceYear = Number(readAt.slice(0, 4));
+  if (!Number.isInteger(referenceYear) || referenceYear < 1000) return null;
   const trimmed = collapseWhitespace(raw);
   const iso = ISO_DATE.exec(trimmed);
   if (iso) {
     const [, year, month, day] = iso;
     return isRealCalendarDate(Number(year), Number(month), Number(day)) ? trimmed : null;
   }
-  if (TWO_DIGIT_YEAR_DATE.test(trimmed)) return null;
   const us = US_DATE.exec(trimmed);
   if (!us) return null;
-  const [, month, day, year] = us;
-  if (!isRealCalendarDate(Number(year), Number(month), Number(day))) return null;
-  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  const [, month, day, rawYear] = us;
+  const year = rawYear.length === 2
+    ? resolveTwoDigitYear(Number(rawYear), referenceYear)
+    : Number(rawYear);
+  if (!isRealCalendarDate(year, Number(month), Number(day))) return null;
+  return `${String(year).padStart(4, "0")}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
 /**

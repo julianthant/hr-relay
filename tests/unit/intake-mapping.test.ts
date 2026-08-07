@@ -328,7 +328,7 @@ describe("doc 06 §2.5 suggestions propose and cannot bind", () => {
       [["10456712", "10873698"], ["07/01/2026"], ["Housing Dining Hospitality"]],
     );
     const top = unambiguousTopSuggestions(
-      suggestBindings({ workflow: "work-study", detected, projection: workStudyIntake }),
+      suggestBindings({ workflow: "work-study", detected, projection: workStudyIntake, readAt: CONFIRMED_AT }),
     );
     assert.equal(top.get(IntakeTargetFieldIdSchema.parse("emplId"))?.sourceColumnId, detected[0].sourceColumnId);
     assert.equal(top.get(IntakeTargetFieldIdSchema.parse("effectiveDate"))?.sourceColumnId, detected[1].sourceColumnId);
@@ -337,7 +337,7 @@ describe("doc 06 §2.5 suggestions propose and cannot bind", () => {
 
   it("carries no field that could make it a binding", () => {
     const detected = detectColumns(["Employee ID#"], [["10456712"]]);
-    const [suggestion] = suggestBindings({ workflow: "work-study", detected, projection: workStudyIntake });
+    const [suggestion] = suggestBindings({ workflow: "work-study", detected, projection: workStudyIntake, readAt: CONFIRMED_AT });
     assert.equal("confirmedAt" in suggestion, false);
     // And the parse that mints a binding refuses the suggestion's own shape.
     assert.throws(() => ColumnMappingSchema.shape.bindings.element.parse(suggestion));
@@ -349,7 +349,7 @@ describe("doc 06 §2.5 suggestions propose and cannot bind", () => {
     const EidOnly = z.strictObject({ emplId: CANONICAL_FIELDS.eid.schema });
     const projection = defineIntakeProjection(EidOnly, { emplId: CANONICAL_FIELDS.eid });
     const wrongData = detectColumns(["Employee ID"], [["not-an-eid", "also-not"]]);
-    assert.deepEqual(suggestBindings({ workflow: "work-study", detected: wrongData, projection }), []);
+    assert.deepEqual(suggestBindings({ workflow: "work-study", detected: wrongData, projection, readAt: CONFIRMED_AT }), []);
   });
 
   it("cannot disconfirm a field whose schema accepts any text — and does not pretend to", () => {
@@ -359,7 +359,7 @@ describe("doc 06 §2.5 suggestions propose and cannot bind", () => {
     const misleading = detectColumns(["Dept"], [["07/01/2026", "08/01/2026"]]);
     const DeptOnly = z.strictObject({ department: CANONICAL_FIELDS.department.schema });
     const projection = defineIntakeProjection(DeptOnly, { department: CANONICAL_FIELDS.department });
-    const [suggestion] = suggestBindings({ workflow: "work-study", detected: misleading, projection });
+    const [suggestion] = suggestBindings({ workflow: "work-study", detected: misleading, projection, readAt: CONFIRMED_AT });
     assert.equal(suggestion.why.includes("samples-parse"), true);
     assert.equal(CANONICAL_FIELDS.department.evidence, "audit-at-migration");
   });
@@ -368,7 +368,7 @@ describe("doc 06 §2.5 suggestions propose and cannot bind", () => {
     const twins = detectColumns(["Name", "Name"], [["Cleckoa, Crithe"], ["Doe, John"]]);
     const NameOnly = z.strictObject({ employeeName: CANONICAL_FIELDS.fullName.schema });
     const projection = defineIntakeProjection(NameOnly, { employeeName: CANONICAL_FIELDS.fullName });
-    const suggestions = suggestBindings({ workflow: "emergency-contact", detected: twins, projection });
+    const suggestions = suggestBindings({ workflow: "emergency-contact", detected: twins, projection, readAt: CONFIRMED_AT });
     assert.equal(suggestions.length, 2);
     assert.equal(suggestions.every((entry) => entry.ambiguous), true);
     assert.equal(unambiguousTopSuggestions(suggestions).size, 0);

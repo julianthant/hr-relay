@@ -24,8 +24,11 @@ import {
 } from "../../src/domain/fields/cell-coercion.js";
 import { IntakeTargetFieldIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 
+const REF = "2026-08-06T00:00:00.000Z";
+
 const location = {
   workflow: WorkflowIdSchema.parse("work-study"),
+  readAt: "2026-08-06T00:00:00.000Z",
   sourceRow: 12,
   header: "Employee ID#",
   targetFieldId: IntakeTargetFieldIdSchema.parse("emplId"),
@@ -67,20 +70,44 @@ describe("doc 06 §2.4 per-cell coercion", () => {
     assert.equal(coercionFailure("eid", "20456712").reason.includes("not a UCPath EID"), true);
   });
 
-  it("refuses a two-digit year rather than choosing a century", () => {
-    assert.equal(parseUsOrIsoDate("1/2/26"), null);
-    assert.equal(coercionFailure("effectiveDate", "1/2/26").reason.includes("four-digit year"), true);
+  it("resolves a two-digit year against WHEN the value was read (D155)", () => {
+    // Real paper: detect-test.pdf page 5 is dated `11/3/21`, single-oath.pdf
+    // `4-23-26`. Both are the normal way these forms are filled in, and both
+    // were being refused while the extraction brief told producers to expect
+    // them.
+    assert.equal(parseUsOrIsoDate("11/3/21", REF), "2021-11-03");
+    assert.equal(parseUsOrIsoDate("4-23-26", REF), "2026-04-23");
+    assert.equal(coerceAndParse("signatureDate", "11/3/21"), "2021-11-03");
+    assert.equal(coerceAndParse("signatureDate", "4-23-26"), "2026-04-23");
+
+    // The window: the 2000s reading unless it lands more than a year ahead of
+    // the observation. Read in 2026, `27` is next year's appointment; `28` is
+    // seventy years ago.
+    assert.equal(parseUsOrIsoDate("1/2/27", REF), "2027-01-02");
+    assert.equal(parseUsOrIsoDate("1/2/28", REF), "1928-01-02");
+    assert.equal(parseUsOrIsoDate("1/2/98", REF), "1998-01-02");
+  });
+
+  it("resolves the same value the same way whenever it is re-read", () => {
+    // Bound to the OBSERVATION instant, not to `now`, so re-admitting a stored
+    // submission years later cannot silently reinterpret its dates.
+    const readIn2026 = parseUsOrIsoDate("1/2/27", "2026-08-06T00:00:00.000Z");
+    const rereadIn2040 = parseUsOrIsoDate("1/2/27", "2026-08-06T00:00:00.000Z");
+    assert.equal(readIn2026, rereadIn2040);
+    // …and a value genuinely read in a different year may resolve differently,
+    // which is correct: the century depends on when somebody looked at it.
+    assert.equal(parseUsOrIsoDate("1/2/28", "2029-01-01T00:00:00.000Z"), "2028-01-02");
   });
 
   it("refuses a date that is not a real calendar day", () => {
-    assert.equal(parseUsOrIsoDate("02/30/2026"), null);
-    assert.equal(parseUsOrIsoDate("2026-02-29"), null);
-    assert.equal(parseUsOrIsoDate("2024-02-29"), "2024-02-29");
-    assert.equal(parseUsOrIsoDate("13/01/2026"), null);
+    assert.equal(parseUsOrIsoDate("02/30/2026", REF), null);
+    assert.equal(parseUsOrIsoDate("2026-02-29", REF), null);
+    assert.equal(parseUsOrIsoDate("2024-02-29", REF), "2024-02-29");
+    assert.equal(parseUsOrIsoDate("13/01/2026", REF), null);
   });
 
   it("refuses an unconverted Excel serial rather than reading it as a day", () => {
-    assert.equal(parseUsOrIsoDate("45678"), null);
+    assert.equal(parseUsOrIsoDate("45678", REF), null);
     assert.equal(coercionFailure("effectiveDate", "45678").raw, "45678");
   });
 

@@ -695,7 +695,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-pdf-pages"
     },
     {
-      "fingerprint": "5074bdf9dbc8ac235ea29b12d8a0a0355da6220b46b95a3cacf798b256e9c63c",
+      "fingerprint": "2249029dfc5933fd5a17e3eaf00c1bad578c06d2e91259ee270fdbcb6023ed58",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -739,11 +739,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/fields/cell-coercion.ts",
-          "sha256": "67b5fcb55e162da7c188609ec45642c58b792410d45fd79d02294e9fd02d0276"
+          "sha256": "bdf71a7a45c41815cf442c10a6b525b222ad198596feb1e504b7b1b787c0e057"
         },
         {
           "path": "src/domain/fields/registry.ts",
-          "sha256": "7bd21df1d039269f8d927f32339d4162666128394e204268cd4225b069186536"
+          "sha256": "f04671bcc5ed1450618c1052ee5ce1c9afcfa386618df343e1fbc22aa0dea296"
         },
         {
           "path": "src/domain/ids.ts",
@@ -1501,7 +1501,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-timekeeper-annotation"
     },
     {
-      "fingerprint": "a4b50ef64ee8297317f296851b124fed6cabb5cda5647a348448914cb8cab5a4",
+      "fingerprint": "1419bd03bce1f3cb02daa20494d96770eb2b8a02bd6433532c4ff5b6dc116bc8",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1545,11 +1545,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/fields/cell-coercion.ts",
-          "sha256": "67b5fcb55e162da7c188609ec45642c58b792410d45fd79d02294e9fd02d0276"
+          "sha256": "bdf71a7a45c41815cf442c10a6b525b222ad198596feb1e504b7b1b787c0e057"
         },
         {
           "path": "src/domain/fields/registry.ts",
-          "sha256": "7bd21df1d039269f8d927f32339d4162666128394e204268cd4225b069186536"
+          "sha256": "f04671bcc5ed1450618c1052ee5ce1c9afcfa386618df343e1fbc22aa0dea296"
         },
         {
           "path": "src/domain/ids.ts",
@@ -1561,11 +1561,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ocr/extraction.ts",
-          "sha256": "d007a380513492817e5f46ca9d200047b6412036946453e0a90377a4229432ca"
+          "sha256": "2ee8d305f362195265e91584bc9930085d4313e220872fed3e57f5203a8a043a"
         },
         {
           "path": "src/domain/ocr/form-registry.ts",
-          "sha256": "acb8ecbba31dca071ae243c8e6df4f1c9eb0aaa8b8614730abee35c671e6491a"
+          "sha256": "019c181c0486787a089e9193ebf163865f26a274e010980abce9729dded75efb"
         },
         {
           "path": "src/domain/ocr/instruction.ts",

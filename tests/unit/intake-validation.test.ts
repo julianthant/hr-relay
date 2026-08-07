@@ -71,6 +71,7 @@ function validate(rows: readonly (readonly string[])[], overrides: Partial<Param
     bindings: bindings([["emplId", 0], ["department", 2]]),
     rows,
     constants: [{ targetFieldId: IntakeTargetFieldIdSchema.parse("effectiveDate"), value: "2026-07-01" }],
+    readAt: AT,
     deriveItemId,
     ...overrides,
   });
@@ -191,7 +192,8 @@ describe("doc 06 §5 intake validation", () => {
       detected,
       bindings: bindings([["emplId", 0]]),
       rows: [["10456712", "Cleckoa, Crithe", "HDH"], ["10998801", "Roe, Rick", "HDH"]],
-      deriveItemId,
+      readAt: AT,
+    deriveItemId,
     });
     assert.equal(result.valid.length, 0);
     assert.equal(result.rejected.length, 2);
@@ -237,6 +239,7 @@ describe("doc 06 §5 intake validation", () => {
         detected: detectColumns(["Student Name"]),
         bindings: bindings([["emplId", 0]]),
         rows: [["Cleckoa, Crithe"]],
+        readAt: AT,
         constants: [{ targetFieldId: IntakeTargetFieldIdSchema.parse("effectiveDate"), value: "2026-07-01" }],
         deriveItemId,
       }),

@@ -156,7 +156,7 @@ const OATH: z.input<typeof OcrFormSpecSchema> = {
   fields: [
     field("printedName", "The employee's name from the EMPLOYEE'S NAME box at the top, exactly as written (usually `Last, First, Middle`).", "fullName", { mandatory: true }),
     field("employeeId", "The EMPLOYEE ID box under the name. Frequently blank on a real form.", "eid"),
-    field("signatureDate", "The date beside `Taken and subscribed before me on`. Blank when the oath has not been administered yet.", "signatureDate"),
+    field("signatureDate", "The date beside `Taken and subscribed before me on`, exactly as written — `11/3/21` and `4-23-26` are both normal. Blank when the oath has not been administered yet.", "signatureDate"),
     field("employeeSigned", "Whether the `Signature of Officer or Employee` line holds any writing or scribble. An empty line is `no`, not absent.", null, { localKind: "boolean", mandatory: true }),
     field("officerSigned", "Whether the `Signature of Authorized Official` line is filled. Commonly empty on a form the employee signed but nobody has witnessed.", null, { localKind: "boolean", mandatory: true }),
   ],

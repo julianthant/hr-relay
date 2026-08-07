@@ -74,6 +74,12 @@ export interface IntakeValidationInput {
   readonly corrections?: readonly { sourceRow: number; field: IntakeTargetFieldId; correctedValue: string }[];
   /** Source rows the operator has explicitly excluded. */
   readonly excludedRows?: readonly number[];
+  /**
+   * When these rows were read, as an ISO instant. Supplied by the caller from
+   * the clock rather than read here, so a replayed validation resolves its
+   * two-digit years exactly as the original did.
+   */
+  readonly readAt: string;
   /** The workflow's own identity function over a parsed input (doc 02 §5.7). */
   readonly deriveItemId: (parsedInput: JsonValue) => ItemId;
 }
@@ -224,6 +230,7 @@ export function validateIntakeRows(input: IntakeValidationInput): IntakeValidati
       const raw = corrected ?? cells[column.currentIndex] ?? "";
       const location: CellLocation = {
         workflow,
+        readAt: input.readAt,
         sourceRow,
         header: column.header,
         targetFieldId: target.targetFieldId,
