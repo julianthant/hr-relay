@@ -33,6 +33,29 @@ function isProviderConsumer(path: string): boolean {
   return path.startsWith("src/stores/") || path.startsWith("src/workflows/");
 }
 
+/**
+ * D162 (doc 06 §4.11): the admission kernel's ONE production consumer is the
+ * run executor — it mints admitted clients per task invocation — and the
+ * worker composition root supplies the kernel's ingredients. These allowlists
+ * are the deliberate relaxation of the "consumers remain absent until Phase
+ * 2h" arms; everything else (stores, workflows, services, dashboard) still
+ * may not import the admission module, call the mint, or type a client.
+ */
+const PROVIDER_CLIENT_TYPE_OWNERS: ReadonlySet<string> = new Set([
+  "src/base/providers.ts",
+  "src/core/provider-admission.ts",
+  "src/core/run-executor.ts",
+]);
+const ADMITTED_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
+  "src/core/provider-admission.ts",
+  "src/core/run-executor.ts",
+]);
+const ADMISSION_MODULE_IMPORTERS: ReadonlySet<string> = new Set([
+  "src/core/provider-admission.ts",
+  "src/core/run-executor.ts",
+  "src/server/worker/compose.ts",
+]);
+
 export function auditProviderCapabilityBoundary(root: string): readonly string[] {
   const issues: string[] = [];
   const files = walkFiles(resolve(root, "src"), { missing: "planned-empty" });
@@ -73,12 +96,12 @@ export function auditProviderCapabilityBoundary(root: string): readonly string[]
         issues.push(`${path}: ProviderAdapter implementations are confined to infra/providers`);
       }
       if (ts.isTypeReferenceNode(node) && node.typeName.getText(source) === "ProviderClient"
-        && path !== "src/base/providers.ts" && path !== "src/core/provider-admission.ts") {
-        issues.push(`${path}: only the admission kernel constructs ProviderClient`);
+        && !PROVIDER_CLIENT_TYPE_OWNERS.has(path)) {
+        issues.push(`${path}: only the admission kernel and the run executor's D162 wiring type ProviderClient`);
       }
       if (ts.isCallExpression(node) && node.expression.getText(source) === "createAdmittedProviderClient"
-        && path !== "src/core/provider-admission.ts") {
-        issues.push(`${path}: production provider consumers remain absent until Phase 2h`);
+        && !ADMITTED_CLIENT_MINT_CALLERS.has(path)) {
+        issues.push(`${path}: admitted provider clients are minted only by the kernel and the run executor (D162)`);
       }
       ts.forEachChild(node, visit);
     }
@@ -97,8 +120,8 @@ export function auditProviderCapabilityBoundary(root: string): readonly string[]
   for (const [path, specifiers] of imports) {
     for (const specifier of specifiers) {
       if (resolveLocal(path, specifier) === "src/core/provider-admission.ts"
-        && path !== "src/core/provider-admission.ts") {
-        issues.push(`${path}: production provider consumers remain absent until Phase 2h; admission client imports are forbidden`);
+        && !ADMISSION_MODULE_IMPORTERS.has(path)) {
+        issues.push(`${path}: admission client imports are confined to the run executor and the worker composition root (D162)`);
       }
     }
   }
@@ -186,7 +209,7 @@ describe("provider capability boundary", () => {
       writeFileSync(adapterPath, 'export const adapter = { capability: "ocr.extract" };\n');
       const issues = auditProviderCapabilityBoundary(root).join("\n");
       assert.match(issues, /task import graph reaches infra provider adapter/);
-      assert.match(issues, /only the admission kernel constructs ProviderClient/);
+      assert.match(issues, /only the admission kernel and the run executor's D162 wiring type ProviderClient/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -206,7 +229,7 @@ describe("provider capability boundary", () => {
       );
       assert.match(
         auditProviderCapabilityBoundary(root).join("\n"),
-        /admission client imports are forbidden/,
+        /admission client imports are confined to the run executor and the worker composition root/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });

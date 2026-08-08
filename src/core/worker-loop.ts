@@ -33,6 +33,7 @@ import type {
   WorkerRuntimeContext,
   WorkerRuntimeExecutor,
 } from "./command-kernel.js";
+import type { ContentAddressedArtifactWriter } from "../base/artifacts.js";
 import type { RunDiagnosticCapture } from "../base/diagnostics.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import {
@@ -41,6 +42,7 @@ import {
   type ChildRunExecutor,
   type RunExecutionAuthority,
   type RunExecutionOutcome,
+  type RunProviderWiring,
   type WriteSequencer,
 } from "./run-executor.js";
 import {
@@ -100,6 +102,14 @@ export interface WorkerLoopDependencies {
   readonly childRuns?: ChildRunExecutor;
   /** Doc 12 §2.2's automatic bundle capture; absent means no bundle is minted. */
   readonly diagnostics?: RunDiagnosticCapture;
+  /**
+   * Doc 06 §4.11: the admitted-provider wiring and the kernel artifact writer,
+   * forwarded verbatim to the executor. Absent, a contract declaring either
+   * capability terminalizes with a structured failure naming the missing
+   * wiring — the loop never substitutes a client or a writer.
+   */
+  readonly providers?: RunProviderWiring;
+  readonly artifacts?: ContentAddressedArtifactWriter;
   /**
    * Doc 03 §2.4's durable worker directives, observed BETWEEN items: the loop
    * polls before each claim, so `stop` ends the loop only after the active run
@@ -320,6 +330,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             ...(writeSequencer === undefined ? {} : { writeSequencer }),
             ...(deps.childRuns === undefined ? {} : { childRuns: deps.childRuns }),
             ...(deps.diagnostics === undefined ? {} : { diagnostics: deps.diagnostics }),
+            ...(deps.providers === undefined ? {} : { providers: deps.providers }),
+            ...(deps.artifacts === undefined ? {} : { artifacts: deps.artifacts }),
           }, { run, claim, signal: runController.signal }),
         );
         outcomes.push(outcome);

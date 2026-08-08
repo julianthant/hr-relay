@@ -69,11 +69,13 @@ has found a defect every single time it has been run.
       `not-on-form`, anything else refused), the sectioned-subject grouping arm (`incomplete` +
       `missingKinds`, flag-never-block). Live-proved on the whole real 44-page scan: 44/44
       accounted, 19 pairs found, 6 honest flags (2 paper orphans, 2 name-read splits).
-- [~] **2h-B — the production `ocr.extract` provider adapter. FIRST HALF DONE 2026-08-08 (D161)**
-      — `src/infra/providers/gemini-ocr-extract.ts`, transport+provenance only, live-proved
-      byte-identical to a route-2 human reading of the same real page. **← resume at the second
-      half:** executor `ctx.providers`/`ctx.artifacts` construction, worker composition, and the
-      matching `provider-capability-boundary` guard relaxation (see "Paused at" above).
+- [x] **2h-B — the production `ocr.extract` provider adapter. DONE 2026-08-08 (D161 + D162).**
+      First half: `src/infra/providers/gemini-ocr-extract.ts`, transport+provenance only,
+      live-proved byte-identical to a route-2 human reading of the same real page. Second half:
+      executor `ctx.providers`/`ctx.artifacts` wiring (per-invocation admitted clients over the
+      run's retained config snapshot), worker composition in `compose.ts`, and the
+      `provider-capability-boundary` arms relaxed to explicit allowlists — doc 06 §4.11 "Wired",
+      `tests/unit/run-executor-capability-wiring.test.ts`.
 - [ ] **2h-C — roster store** (`roster/match-spreadsheet`, doc 06 §4) + the verbatim
       `match-confidence` tier port + the stable-keyed local artifact projector (§4.1).
 - [ ] **2h-D — normalization store** (doc 06 §4.2) + production provider pools over 1f's admission core.

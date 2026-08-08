@@ -419,7 +419,7 @@
       "file": "tests/unit/architecture/provider-capability-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/01-task-contract.md; docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "Every capability maps exactly once to a strict immutable provider budget and reaches remote I/O only through the single durable admission kernel; whole-src and transitive task import scans confine raw network/vendor modules and adapters to infra/providers, forbid hidden ProviderClient construction, prove exhaustion makes zero adapter calls/non-sleep requeue, and keep the adapter surface deliberate: infra/providers holds the deterministic harness plus the reviewed production adapters (D161's gemini ocr.extract first), with production pools/consumers still absent until their 2h slices.",
+      "invariant": "Every capability maps exactly once to a strict immutable provider budget and reaches remote I/O only through the single durable admission kernel; whole-src and transitive task import scans confine raw network/vendor modules and adapters to infra/providers, forbid hidden ProviderClient construction, prove exhaustion makes zero adapter calls/non-sleep requeue, and keep the adapter surface deliberate: infra/providers holds the deterministic harness plus the reviewed production adapters (D161's gemini ocr.extract first), the run executor is the ONE production consumer (D162: per-invocation admitted clients over the run's retained config snapshot, ingredients composed by the worker root), and production pools stay absent until 2h-D.",
       "replacementRequired": true
     },
     {

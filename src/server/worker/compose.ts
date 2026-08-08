@@ -23,15 +23,21 @@
  * - the durable worker lease: started before the first claim (a second process
  *   on the same worker id refuses), heartbeated with the TRUE busy/idle state
  *   read from run authority, directive-polled between items, and settled
- *   `stopped` with the honest reason.
+ *   `stopped` with the honest reason;
+ * - the D162 capability wiring (doc 06 §4.11): the content-addressed artifact
+ *   writer under the isolation-pinned artifact root, and the admitted-provider
+ *   wiring — adapter registry, `providerAdmissions` authority repository, the
+ *   `configSnapshots` repository the executor reads each run's RETAINED
+ *   snapshot from, and the admission id factory. The executor mints admitted
+ *   clients per invocation; this root only supplies the kernel's ingredients.
  *
  * Deliberately NOT composed here (each fails loud at its own seam):
  * - the `ChildRunExecutor` delegation seam has no Phase-1 implementation — a
  *   child-run node terminalizes `capability-unavailable` in the interpreter;
- * - provider admission (D112) is durable authority, but the Phase-1
- *   interpreter has no provider-client seam: a contract declaring provider
- *   capabilities terminalizes with a structured failure naming the missing
- *   wiring rather than reaching an adapter around admission;
+ * - the provider POOL (key rotation, model fallback chain) is 2h-D: this root
+ *   composes ONE gemini `ocr.extract` adapter over one key and one model, and
+ *   an environment with no key composes an EMPTY registry — admission then
+ *   denies `adapter-unavailable`, loudly, instead of a hidden default;
  * - automated doc-09 recovery PROBES: the D118 sweep below routes an expired
  *   claim with an unfinished `attempting` intent to the parked/unclaimable
  *   state and reports it; the typed §4.1 operator resolutions (command kernel)
@@ -46,6 +52,8 @@ import type {
   MonotonicDeadlineHandle,
   MonotonicDeadlineScheduler,
 } from "../../core/deadline-scheduler.js";
+import type { ProviderAdapterRegistry } from "../../core/provider-admission.js";
+import type { RunProviderWiring } from "../../core/run-executor.js";
 import {
   phase1WorkerId,
   runWorkerLoop,
@@ -56,12 +64,22 @@ import { createWriteSequencer } from "../../core/write-sequencer.js";
 import { systemClock, type Clock } from "../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
-import { LOCAL_OPERATOR_ACTOR_ID, WorkflowIdSchema } from "../../domain/ids.js";
+import {
+  LOCAL_OPERATOR_ACTOR_ID,
+  ProviderAdmissionIdSchema,
+  WorkflowIdSchema,
+} from "../../domain/ids.js";
 import type { WorkerId, WorkflowId } from "../../domain/ids.js";
 import type { WorkerDirective, WorkerLeaseRecord } from "../../domain/run/worker.js";
-import { configResolutionEnvironment } from "../../domain/secrets.js";
+import {
+  configResolutionEnvironment,
+  optionalSecretFamily,
+  providerModelChain,
+} from "../../domain/secrets.js";
+import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
 import { PlaywrightWorkerSessionFactory } from "../../infra/browser/browser-session-factory.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
+import { createGeminiOcrExtractAdapter } from "../../infra/providers/gemini-ocr-extract.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import { taskStoreRegistry } from "../../stores/index.js";
 
@@ -77,6 +95,15 @@ import { taskStoreRegistry } from "../../stores/index.js";
 export const WORKER_HEARTBEAT_INTERVAL_MS = 5_000;
 export const WORKER_CLAIM_STALE_AFTER_MS = 60_000;
 export const WORKER_SWEEP_INTERVAL_MS = 30_000;
+
+/**
+ * Doc 06 §4.11 (D161): neither repo's `.env` names an OCR model chain, so the
+ * composition root names the model EXPLICITLY with provenance — legacy
+ * `provider-limits.ts` priority-1 tier-1 — rather than minting a default
+ * inside the secrets reader. An operator `OCR_GEMINI_MODELS` chain, when
+ * present, takes precedence below.
+ */
+export const OCR_GEMINI_MODEL_ID = "gemini-3-flash-preview";
 
 /** The one real timer implementation behind the kernel's scheduler port. */
 export function createTimeoutDeadlineScheduler(clock: Clock): MonotonicDeadlineScheduler {
@@ -309,7 +336,8 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const descriptor = module.descriptor;
   const workerId = phase1WorkerId(workflowId);
 
-  const resolved = resolveConfigWithProvenance(input.env ?? configResolutionEnvironment(), {}, clock);
+  const env = input.env ?? configResolutionEnvironment();
+  const resolved = resolveConfigWithProvenance(env, {}, clock);
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
   const database = AuthorityDatabase.open(
@@ -333,6 +361,46 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       if (known === undefined) return undefined;
       return new Set(known.details.map((detail) => detail.key));
     },
+  });
+
+  // D162 (doc 06 §4.11): ctx.artifacts' writer, shared with the OCR adapter's
+  // page reads. The artifact root is the isolation-pinned literal.
+  const artifacts = createContentAddressedArtifactWriter({
+    workspaceRoot: repoRoot,
+    artifactRoot: input.isolation.artifactRoot,
+  });
+
+  // One adapter, one key, one model — the pool (rotation, fallback chain) is
+  // 2h-D. No key composes an EMPTY registry: admission answers a declaring
+  // run `adapter-unavailable` loudly instead of this root guessing.
+  const [geminiApiKey] = optionalSecretFamily("geminiApiKeys", env);
+  const [chainModelId] = providerModelChain("geminiApiKeys", env);
+  const ocrModelId = chainModelId === undefined ? OCR_GEMINI_MODEL_ID : chainModelId;
+  const adapters: ProviderAdapterRegistry = Object.freeze(
+    geminiApiKey === undefined
+      ? {}
+      : {
+        "ocr.extract": createGeminiOcrExtractAdapter({
+          apiKey: geminiApiKey,
+          modelId: ocrModelId,
+          artifacts,
+          clock,
+        }),
+      },
+  );
+  if (geminiApiKey === undefined) {
+    log.warn(
+      "no GEMINI_API_KEY in the environment: the ocr.extract adapter is not composed, and a run "
+      + "declaring that capability is denied adapter-unavailable by admission",
+    );
+  }
+  const providers: RunProviderWiring = Object.freeze({
+    adapters,
+    repository: database.authority.providerAdmissions,
+    configSnapshots: database.authority.configSnapshots,
+    idFactory: Object.freeze({
+      next: () => ProviderAdmissionIdSchema.parse(ids.uuid()),
+    }),
   });
 
   const stopController = new AbortController();
@@ -442,6 +510,8 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
         controlPoll,
+        providers,
+        artifacts,
         writeSequencerFor: (sessions) => createWriteSequencer({
           stores: taskStoreRegistry,
           authority: database,

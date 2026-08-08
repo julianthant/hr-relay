@@ -810,10 +810,28 @@ blocking paths, and its `answersFingerprint` came out **byte-identical** to the 
 human produced independently earlier the same day (`2ec1504e…`). §4.3's interchangeability claim
 held between a person and a production model on real paper.
 
-**Not yet wired:** the run executor still refuses contracts declaring provider capabilities or
-content-addressed artifacts — `ctx.providers`/`ctx.artifacts` construction and the worker
-composition root are the next 2h-B half, and the guard arms confining
-`createAdmittedProviderClient` to the kernel relax only when that consumer lands.
+**Wired (D162, 2026-08-08):** the run executor now builds both capability contexts, and the
+worker composition root supplies the ingredients. `RunExecutorDependencies` gained two optional
+seams — `providers` (`RunProviderWiring`: adapter registry, `providerAdmissions` repository,
+`configSnapshots` repository, admission id factory) and `artifacts` (the kernel writer) — and
+`executeTaskNode` refuses a declaring contract with a structured node failure when its seam is
+absent, or when the run's RETAINED `configSnapshotId` resolves to no stored snapshot row: the
+snapshot is read from authority by the envelope's own id, never re-resolved from current config
+(D116's identity, applied to admission). `invokeTask` then mints ONE admitted client per declared
+capability per invocation through `createAdmittedProviderClient`, bound to that exact snapshot and
+to the invocation's deadline-bounded abort signal, and attaches `ctx.artifacts` only when the
+contract declares it. The worker loop forwards both seams verbatim. `composeWorkerRuntime`
+composes the writer under the isolation-pinned artifact root and ONE gemini `ocr.extract` adapter
+over one key and one model (`OCR_GEMINI_MODEL_ID = "gemini-3-flash-preview"` with provenance,
+front-runnable by an operator `OCR_GEMINI_MODELS` chain); an environment with no `GEMINI_API_KEY`
+composes an EMPTY registry with a logged warning, so a declaring run is denied
+`adapter-unavailable` by admission — loud, durable, never a guessed client. The
+`provider-capability-boundary` arms relaxed to explicit allowlists in the same commit: the
+executor may mint and type clients, the executor and the composition root may import the
+admission module, and every other module stays confined exactly as before. The executor proof is
+`tests/unit/run-executor-capability-wiring.test.ts`: all three refusal arms plus the wired arm,
+whose task observes the real writer round-trip and whose admission row settles in authority under
+the minted id with the run's snapshot identity.
 
 ### 4.9 Phase-2h as-built — authority schema v11, the durability floor (D159)
 

@@ -30,8 +30,10 @@
  * settled park, verifies it against authority, and settles NOTHING else.
  */
 import { z } from "zod";
+import type { ContentAddressedArtifactWriter } from "../base/artifacts.js";
 import type { RunDiagnosticCapture } from "../base/diagnostics.js";
 import { TaskError, wrapUnhandledTaskError } from "../base/errors.js";
+import type { ProviderAdmissionRepository, ProviderClient } from "../base/providers.js";
 import type { AnyTask, TaskLogger } from "../base/task.js";
 import type { TaskStoreRegistry } from "../base/store.js";
 import {
@@ -49,9 +51,10 @@ import {
   GateIdSchema,
   IsoInstantSchema,
   OutboxIdSchema,
+  ProviderCapabilityIdSchema,
   TaskIdSchema,
 } from "../domain/ids.js";
-import type { NodeId } from "../domain/ids.js";
+import type { NodeId, ProviderCapabilityId } from "../domain/ids.js";
 import {
   RunLifecycleSchema,
   RunRecordSchema,
@@ -93,6 +96,12 @@ import {
   type WriteIntentParkCode,
 } from "../infra/sqlite/write-commit-contracts.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
+import {
+  createAdmittedProviderClient,
+  type ProviderAdapterRegistry,
+  type ProviderAdmissionClientDependencies,
+  type ProviderAdmissionIdFactory,
+} from "./provider-admission.js";
 import {
   buildEntryValidationFailureRecord,
   buildNodeFailureRecord,
@@ -189,6 +198,52 @@ export interface ChildRunExecutor {
   executeChildRun(context: ChildRunContext): Promise<unknown>;
 }
 
+/**
+ * Doc 01 §3.4 / D112's admitted-provider wiring for contracts that declare
+ * `providers`. The executor mints one admitted client PER declared capability
+ * PER task invocation, bound to the run's RETAINED config snapshot (read from
+ * authority by the envelope's `configSnapshotId` — never re-resolved from
+ * current config, D116) and to the invocation's own deadline-bounded abort
+ * signal. Provider I/O is never ambient: the admission kernel stays the only
+ * path to an adapter, and this seam only carries the kernel's ingredients.
+ */
+export interface RunProviderWiring {
+  readonly adapters: ProviderAdapterRegistry;
+  readonly repository: ProviderAdmissionRepository;
+  /** `AuthorityRepositories["configSnapshots"]` satisfies this. */
+  readonly configSnapshots: Readonly<{ get(snapshotId: string): unknown }>;
+  readonly idFactory: ProviderAdmissionIdFactory;
+}
+
+/** The per-node slice of `RunProviderWiring` plus the run's exact stored snapshot. */
+type ProviderInvocationContext = Readonly<{
+  wiring: RunProviderWiring;
+  storedSnapshot: unknown;
+}>;
+
+/** What `executeTaskNode` proved present before invocation may attach it to ctx. */
+type TaskCapabilityWiring = Readonly<{
+  providers?: ProviderInvocationContext;
+  artifacts?: ContentAddressedArtifactWriter;
+}>;
+
+/**
+ * `createAdmittedProviderClient`'s public surface is per-capability overloads,
+ * which a union-typed capability cannot call — so the executor dispatches
+ * through the same closed switch the kernel's own registry lookup uses.
+ */
+function admittedClientFor(
+  capability: ProviderCapabilityId,
+  dependencies: ProviderAdmissionClientDependencies,
+): ProviderClient<ProviderCapabilityId> {
+  switch (capability) {
+    case "ocr.extract": return createAdmittedProviderClient(capability, dependencies);
+    case "geocode.census": return createAdmittedProviderClient(capability, dependencies);
+    case "geocode.nominatim": return createAdmittedProviderClient(capability, dependencies);
+    case "ai.advisory": return createAdmittedProviderClient(capability, dependencies);
+  }
+}
+
 export interface RunExecutorDependencies {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly stores: TaskStoreRegistry;
@@ -207,6 +262,18 @@ export interface RunExecutorDependencies {
   readonly childRuns?: ChildRunExecutor;
   /** Doc 12 §2.2. Absent means no automatic bundle, never a silent empty one. */
   readonly diagnostics?: RunDiagnosticCapture;
+  /**
+   * Absent means a contract declaring provider capabilities terminalizes with
+   * a structured failure naming the missing wiring — never a bypass around
+   * admission (doc 06 §4.11).
+   */
+  readonly providers?: RunProviderWiring;
+  /**
+   * Doc 01 §2.1's kernel content-addressed writer. Absent means a contract
+   * declaring `artifacts: "content-addressed"` terminalizes with a structured
+   * failure naming the missing wiring.
+   */
+  readonly artifacts?: ContentAddressedArtifactWriter;
 }
 
 export interface ClaimedRunInput {
@@ -666,6 +733,7 @@ export async function executeClaimedRun(
       task: AnyTask,
       scope: RuntimeScope,
       need: SessionNeed | undefined,
+      capabilityWiring: TaskCapabilityWiring,
     ): Promise<RunCheckpointRecord> => {
       const contract: AnyReadTaskContract = node.uses;
       const bound: unknown = node.bind(scope);
@@ -724,11 +792,52 @@ export async function executeClaimedRun(
         recordData: collector.recordData,
       } as const;
 
+      const declaredProviders = contract.providers ?? [];
+      let providerClients: Readonly<Record<string, ProviderClient<ProviderCapabilityId>>> | undefined;
+      if (declaredProviders.length > 0) {
+        const provider = capabilityWiring.providers;
+        if (provider === undefined) {
+          throw new Error(
+            `${contract.id} requires provider capabilities but reached invocation without wiring; `
+            + "executeTaskNode must refuse before invoking",
+          );
+        }
+        // One admitted client per declared capability, minted fresh for THIS
+        // invocation: the client binds the run's retained config snapshot and
+        // this attempt's deadline-bounded signal, so nothing outlives the call.
+        const clients: Record<string, ProviderClient<ProviderCapabilityId>> = {};
+        for (const declared of declaredProviders) {
+          const capability = ProviderCapabilityIdSchema.parse(declared);
+          clients[capability] = admittedClientFor(capability, {
+            execution: {
+              runId,
+              attempt: envelope.attempt,
+              nodeId: String(node.id),
+              taskId: contract.id,
+            },
+            configSnapshotId: envelope.configSnapshotId,
+            configFingerprint: envelope.configFingerprint,
+            configSnapshot: provider.storedSnapshot,
+            runSignal: controller.signal,
+            adapters: provider.wiring.adapters,
+            repository: provider.wiring.repository,
+            clock,
+            idFactory: provider.wiring.idFactory,
+            deadlineScheduler: deps.scheduler,
+          });
+        }
+        providerClients = Object.freeze(clients);
+      }
+      const ctxExtras = {
+        ...(providerClients === undefined ? {} : { providers: providerClients }),
+        ...(capabilityWiring.artifacts === undefined ? {} : { artifacts: capabilityWiring.artifacts }),
+      } as const;
+
       let raw: unknown;
       try {
         if (need === undefined) {
           raw = await raceAbortable(
-            Promise.resolve().then(() => run({ input: parsedInput, ctx: ctxCommon })),
+            Promise.resolve().then(() => run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras } })),
             controller.signal,
             contract.id,
           );
@@ -741,7 +850,7 @@ export async function executeClaimedRun(
           }
           raw = await raceAbortable(
             deps.sessions.withDriver(need, instanceSelection, controller.signal, (driver) =>
-              run({ input: parsedInput, ctx: { ...ctxCommon, driver } })),
+              run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver } })),
             controller.signal,
             contract.id,
           );
@@ -787,16 +896,37 @@ export async function executeClaimedRun(
           `store task ${contract.id} binds a different contract object than the descriptor imports`,
         ));
       }
-      if (contract.artifacts !== undefined) {
+      if (contract.artifacts !== undefined && deps.artifacts === undefined) {
         return await failNode(node, contract.id, new Error(
-          `${contract.id} declares content-addressed artifacts; the artifact writer lands with its owning slice`,
+          `${contract.id} declares content-addressed artifacts, and this composition wires no artifact writer`,
         ));
       }
+      let providerInvocation: ProviderInvocationContext | undefined;
       if (contract.providers !== undefined && contract.providers.length > 0) {
-        return await failNode(node, contract.id, new Error(
-          `${contract.id} requires provider capabilities; the admitted provider client is not wired into this executor`,
-        ));
+        const wiring = deps.providers;
+        if (wiring === undefined) {
+          return await failNode(node, contract.id, new Error(
+            `${contract.id} requires provider capabilities, and this composition wires no admitted provider client`,
+          ));
+        }
+        // The run's RETAINED snapshot, read by the envelope's own id — a
+        // missing row refuses the node rather than re-resolving current
+        // config, which would admit against a budget this run never carried.
+        const storedSnapshot = wiring.configSnapshots.get(envelope.configSnapshotId);
+        if (storedSnapshot === undefined) {
+          return await failNode(node, contract.id, new Error(
+            `run ${runId} retained config snapshot ${envelope.configSnapshotId} is absent from authority; `
+            + `refusing to admit ${contract.id} provider calls without the exact stored snapshot`,
+          ));
+        }
+        providerInvocation = Object.freeze({ wiring, storedSnapshot });
       }
+      const capabilityWiring: TaskCapabilityWiring = Object.freeze({
+        ...(providerInvocation === undefined ? {} : { providers: providerInvocation }),
+        ...(contract.artifacts === undefined || deps.artifacts === undefined
+          ? {}
+          : { artifacts: deps.artifacts }),
+      });
 
       const attempts = task.impl.retry?.attempts ?? 1;
       const backoffMs = task.impl.retry?.backoffMs ?? 0;
@@ -811,7 +941,7 @@ export async function executeClaimedRun(
           ...(need === undefined ? {} : { system: need.system }),
         });
         try {
-          const record = await invokeTask(node, task, scope, need);
+          const record = await invokeTask(node, task, scope, need, capabilityWiring);
           deps.authority.authority.runCheckpoints.insert(record);
           checkpointRecords.set(String(node.id), record);
           outputs[String(node.id)] = JsonValueSchema.parse(record.output.value);
