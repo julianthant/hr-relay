@@ -1501,7 +1501,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-timekeeper-annotation"
     },
     {
-      "fingerprint": "0ada970ecb82fc2ac0a029bee43aaf433465356eed2b9e1de777ee561ac08b3a",
+      "fingerprint": "228976dc1e0e946b92409769b454008f300edd1f82b16634418bb075253184d3",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1629,7 +1629,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ocr/tasks/extract-form-page.ts",
-          "sha256": "aac2d3cf141dc69025cfd54bf10c81c27a1a1c5569b0892470ed9dae59b03593"
+          "sha256": "91f0af761b3ff45a40997de0d1329218000f9047e47492a9469c3f9e449f6f55"
         },
         {
           "path": "src/validation/contract-boundary.ts",

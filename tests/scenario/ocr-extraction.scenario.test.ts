@@ -30,8 +30,7 @@ const PAGE = ArtifactRefSchema.parse({
 const RequestSchema = z.strictObject({
   formType: z.string().min(1),
   instruction: z.string().min(1),
-  pageArtifactId: z.string().min(1),
-  pageSha256: z.string().min(1),
+  page: ArtifactRefSchema,
   sourcePage: z.number().int().positive(),
 });
 const RESPONSE_HASH = deriveSchemaHash(z.unknown(), "output");
@@ -103,7 +102,7 @@ describe("ocr/extract-form-page scenarios", () => {
     // Route 1 receives the SAME brief the CLI prints for routes 2 and 3.
     const request = RequestSchema.parse(result.sent[0]);
     assert.equal(request.instruction, buildExtractionInstruction("oath"));
-    assert.equal(request.pageSha256, PAGE_SHA);
+    assert.equal(request.page.sha256, PAGE_SHA);
 
     const output = result.output as { pageFingerprint: string; record: { blockingPaths: string[] } };
     assert.deepEqual(output.record.blockingPaths, []);

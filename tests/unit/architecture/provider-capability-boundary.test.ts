@@ -145,8 +145,12 @@ describe("provider capability boundary", () => {
     }
     assert.deepEqual(
       gitVisibleFiles(["src/infra/providers"]).map((path) => relative(REPO_ROOT, path).replaceAll("\\", "/")),
-      ["src/infra/providers/deterministic-provider.ts"],
-      "Phase 1f has only the deterministic adapter/observation harness; production modules remain Phase 2h",
+      [
+        "src/infra/providers/deterministic-provider.ts",
+        "src/infra/providers/gemini-ocr-extract.ts",
+      ],
+      "the deterministic harness plus the D161 gemini ocr.extract adapter; a new production"
+        + " adapter joins this list deliberately, in the same commit that reviews it",
     );
   });
 

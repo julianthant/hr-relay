@@ -19,18 +19,24 @@
  */
 import { z } from "zod";
 import { defineTask } from "../../../base/task.js";
+import { ArtifactRefSchema } from "../../../domain/artifacts.js";
 import { ExtractFormPage } from "../../../domain/contracts/ocr/extract-form-page.js";
 import { admitOcrExtraction } from "../../../domain/ocr/extraction.js";
+import { OcrFormTypeSchema } from "../../../domain/ocr/form-registry.js";
 import { buildExtractionInstruction } from "../../../domain/ocr/instruction.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { JsonValueSchema } from "../../../domain/canonical-json.js";
 
-/** What the adapter is asked for. Its identity travels with the payload. */
+/**
+ * What the adapter is asked for. The page travels as the WHOLE `ArtifactRef` —
+ * the content-addressed store's `open()` demands the full ref and refuses a
+ * mismatched id/sha/size, so an id+sha pair alone could name bytes nobody can
+ * actually resolve (D161).
+ */
 const ExtractionRequestSchema = z.strictObject({
-  formType: z.string().min(1),
+  formType: OcrFormTypeSchema,
   instruction: z.string().min(1),
-  pageArtifactId: z.string().min(1),
-  pageSha256: z.string().min(1),
+  page: ArtifactRefSchema,
   sourcePage: z.number().int().positive(),
 });
 
@@ -45,8 +51,7 @@ export const extractFormPageTask = defineTask(ExtractFormPage, {
       value: {
         formType: input.formType,
         instruction,
-        pageArtifactId: input.page.id,
-        pageSha256: input.page.sha256,
+        page: input.page,
         sourcePage: input.sourcePage,
       },
     });

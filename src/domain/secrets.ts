@@ -287,6 +287,29 @@ export function requireSecretFamily(name: SecretFamilyName, env: NodeJS.ProcessE
   return [first, ...values.slice(1)];
 }
 
+/**
+ * The model chain a provider family is configured to use, in priority order.
+ *
+ * Model ids are NOT secrets, but their env variables were registered on the
+ * family specs at D96 and this module is the only one permitted to read the
+ * environment — so the reader lives here. `modelsEnv` is the comma-separated
+ * chain; the single-model `legacyModelEnv` spelling is honored when the chain
+ * is absent, because the operator's `.env` predates the plural form. An empty
+ * result is a fact the composition root judges (a feature that needs the
+ * family fails loud there), never a default minted here.
+ */
+export function providerModelChain(name: SecretFamilyName, env: NodeJS.ProcessEnv = process.env): readonly string[] {
+  const spec = familySpec(name);
+  const chain = env[spec.modelsEnv]?.trim();
+  if (chain !== undefined && chain !== "") {
+    const models = chain.split(",").map((model) => model.trim()).filter((model) => model !== "");
+    if (models.length > 0) return models;
+  }
+  const legacy = env[spec.legacyModelEnv]?.trim();
+  if (legacy !== undefined && legacy !== "") return [legacy];
+  return [];
+}
+
 function unresolvedDiagnostics(availabilities: readonly SecretAvailability[]): readonly string[] {
   return availabilities
     .filter((availability) => availability.state !== "present")

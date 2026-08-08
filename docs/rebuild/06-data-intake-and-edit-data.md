@@ -768,6 +768,55 @@ date of birth written as `05/14/2015`, the same date as the signature — and th
 schema has no plausibility bound, so it admits. Whether `dob` should range-check is a reviewed
 schema decision (the shape is shared by every consumer), left open rather than guessed here.
 
+### 4.11 Phase-2h as-built — route 1's production adapter is transport plus provenance (D161)
+
+The first production `ocr.extract` adapter exists: `src/infra/providers/gemini-ocr-extract.ts`,
+Gemini, legacy's priority-1 OCR provider. The design constraint is §4.3's, made concrete: the
+adapter ADDS NO RULE. It sends the instruction the store task built from the registry, inline with
+the page bytes as base64 (the shape legacy proved on this corpus), and what comes back goes through
+the one gate. What the adapter owns is exactly two things:
+
+- **Transport.** The API key travels in the `x-goog-api-key` HEADER, never the URL, so no error or
+  evidence line can carry it by accident. A remote refusal maps onto the CLOSED reason codes:
+  429 → retryable `rate-exhausted` with the provider's own `Retry-After` when named, else the next
+  fixed UTC minute boundary (D112's own window semantics, not a guess); 401/403 →
+  `adapter-unavailable` (a human fixes keys; retrying cannot); anything else THROWS so admission
+  records a durable interruption instead of a verdict. A non-JSON answer is `invalid-response`
+  reporting SHAPE only — the body could contain page contents, so no excerpt is ever quoted. One
+  invocation is ONE model call; key rotation and the provider fallback chain are the 2h-D pool's
+  job, above this adapter.
+- **Provenance.** `formType`/`source`/`readAt`/`sourceSha256`/`sourcePage` are STAMPED from the
+  request and the injected clock — facts the adapter knows — because the generated skeleton shows
+  `local-agent` placeholders a model echoes back. `pageKind` and `record` pass through VERBATIM,
+  and a key the model omitted stays omitted so the gate names the gap; the adapter never fills it.
+
+Three supporting changes landed with it. The request envelope carries the WHOLE `ArtifactRef` —
+the content-addressed store's `open()` demands the full ref and refuses a mismatched id/sha/size,
+so the previous id+sha pair named bytes nobody could actually resolve. `providerModelChain` joined
+`src/domain/secrets.ts` (the sole permitted env reader): it resolves the family's `modelsEnv`
+chain with the single-model legacy spelling honored, and an empty result is a fact the composition
+root judges, never a default. Neither repo's `.env` actually names a chain — legacy's models are
+registry knowledge, so a composition root passes the model id explicitly with provenance
+(`gemini-3-flash-preview`, legacy `provider-limits.ts` priority-1 tier-1). Usage cost is 0 by
+declaration: the keys are the free-tier family and `ocrExtract`'s budget pins
+`costLimitUsdMicros: 0`, under which any nonzero measured cost is a breach — a paid deployment
+raises the config leaf first. The `provider-capability-boundary` guard's pinned file list now
+names the adapter; a new production adapter joins that list deliberately, in the commit that
+reviews it.
+
+**Measured live, 2026-08-08:** the real model on the real scan's page 13 (Casey's Section 1),
+through the real adapter and the real gate — produced in 14.2 s, classified `i9-section1`, zero
+blocking paths, and its `answersFingerprint` came out **byte-identical** to the route-2 reading a
+human produced independently earlier the same day (`2ec1504e…`). §4.3's interchangeability claim
+held between a person and a production model on real paper.
+
+**Not yet wired:** the run executor still refuses contracts declaring provider capabilities or
+content-addressed artifacts — `ctx.providers`/`ctx.artifacts` construction and the worker
+composition root are the next 2h-B half, and the guard arms confining
+`createAdmittedProviderClient` to the kernel relax only when that consumer lands.
+
+### 4.9 Phase-2h as-built — authority schema v11, the durability floor (D159)
+
 Everything the intake and OCR pipelines produced was in-memory until here: a manifest and an
 admitted extraction survived exactly as long as the process did. Schema **v11** adds
 `intake_manifests` and `ocr_extractions`.
