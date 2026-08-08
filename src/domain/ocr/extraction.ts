@@ -53,6 +53,7 @@ import {
   OcrFieldPathSchema,
   OcrFormTypeSchema,
   OcrPageKindSchema,
+  fieldOnPageKind,
   ocrForm,
   type OcrFieldSpec,
 } from "./form-registry.js";
@@ -191,10 +192,14 @@ export const AdmittedExtractionSchema = z.strictObject({
   pageFingerprint: FingerprintSchema,
 }).superRefine((extraction, context) => {
   const issue = (message: string): void => { context.addIssue({ code: "custom", message }); };
-  if (extraction.pageKind === extraction.formType && extraction.record === null) {
-    issue(`a page classified as ${extraction.formType} must carry its record`);
+  // Data-bearing is a property of the FORM's declared page kinds, not of
+  // `pageKind === formType`: the I-9's two sections both carry records while
+  // neither kind spells "i9".
+  const dataBearing = ocrForm(extraction.formType).pageKinds.includes(extraction.pageKind);
+  if (dataBearing && extraction.record === null) {
+    issue(`a page classified as ${extraction.pageKind} must carry its record`);
   }
-  if (extraction.pageKind !== extraction.formType && extraction.record !== null) {
+  if (!dataBearing && extraction.record !== null) {
     issue(`a page classified as ${extraction.pageKind} cannot carry a ${extraction.formType} record`);
   }
 });
@@ -256,10 +261,12 @@ export function admitOcrExtraction(candidate: unknown): OcrAdmission {
   const form = ocrForm(submission.formType);
   const problems: string[] = [];
 
-  // A page that is not this form carries no record, and that is a correct
-  // outcome: a scanned stack is loose paper, and demanding oath answers from an
-  // emergency-contact page would force a producer to invent them.
-  if (submission.pageKind !== submission.formType) {
+  // A page that is not a data page of this form carries no record, and that is
+  // a correct outcome: a scanned stack is loose paper, and demanding oath
+  // answers from an emergency-contact page would force a producer to invent
+  // them. Data-bearing means one of the FORM's declared page kinds — the I-9's
+  // two sections both qualify.
+  if (!form.pageKinds.includes(submission.pageKind)) {
     if (submission.record !== null) {
       problems.push(
         `pageKind ${submission.pageKind} does not match this ${submission.formType} run, `
@@ -271,7 +278,7 @@ export function admitOcrExtraction(candidate: unknown): OcrAdmission {
   }
 
   if (submission.record === null) {
-    problems.push(`a page classified as ${submission.formType} must carry its record`);
+    problems.push(`a page classified as ${submission.pageKind} must carry its record`);
     return { admitted: false, problems };
   }
 
@@ -287,6 +294,20 @@ export function admitOcrExtraction(candidate: unknown): OcrAdmission {
   }
   for (const path of submitted) {
     if (!declared.has(path)) problems.push(`${path} is not a field of the ${submission.formType} form`);
+  }
+  // A sectioned form's field exists on SOME of its pages. On a page whose kind
+  // does not carry the box, the only truthful answer is `not-on-form`: a value
+  // "read" from a box the page does not have is a value from nowhere, and
+  // `blank`/`illegible` both claim the box exists.
+  for (const [path, spec] of declared) {
+    if (fieldOnPageKind(spec, submission.pageKind)) continue;
+    const answer = submission.record.answers[path];
+    if (answer === undefined) continue;
+    if (answer.state !== "absent" || answer.reason !== "not-on-form") {
+      problems.push(
+        `${path} is not on a ${submission.pageKind} page — the only truthful answer there is not-on-form`,
+      );
+    }
   }
   if (problems.length > 0) return { admitted: false, problems };
 
@@ -315,9 +336,14 @@ function admitRecord(
   const blockingPaths: string[] = [];
   for (const spec of fields) {
     const answer = record.answers[spec.path];
+    // A mandatory field blocks only on pages that CARRY it: an I-9 Section 2's
+    // `not-on-form` date of birth is the correct answer, not a gap a human must
+    // resolve. Off-kind fields reach here as `not-on-form` only — the gate has
+    // already refused anything else.
+    const onThisKind = fieldOnPageKind(spec, submission.pageKind);
     if (answer.state === "absent") {
       answers.push(AdmittedAnswerSchema.parse({ state: "absent", path: spec.path, reason: answer.reason }));
-      if (spec.mandatory) blockingPaths.push(spec.path);
+      if (spec.mandatory && onThisKind) blockingPaths.push(spec.path);
       continue;
     }
     const admitted = admitValue(spec, answer.raw, { ...location, header: spec.path });

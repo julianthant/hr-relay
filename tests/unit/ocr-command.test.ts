@@ -115,6 +115,27 @@ describe("rebuild:cli ocr", () => {
     assert.equal(contact.output.includes("name nobody readable: 2"), true);
   });
 
+  it("claims both i9 sections for an i9 run and names each half-person's missing page", () => {
+    // The real Xerox scan's shape: loose sections, no two adjacent pages one
+    // person's. Casey's §2 sits on page 1; her §1 on page 9.
+    const classified = {
+      sourceSha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
+      classifiedAt: "2026-08-07T09:00:00.000Z",
+      pages: [
+        { sourcePage: 1, pageKind: "i9-section2", subjectName: "Clauldia, Drona A.", confidence: 0.95 },
+        { sourcePage: 2, pageKind: "i9-section1", subjectName: "Brethea, Brauso J.", confidence: 0.95 },
+        { sourcePage: 9, pageKind: "i9-section1", subjectName: "Drona Clauldia", confidence: 0.94 },
+      ],
+    };
+    const { output, exitCode } = run(["stack", "classified.json", "i9"], classified);
+    assert.equal(exitCode, 0);
+    assert.equal(output.includes("1 subject(s) ready, 1 incomplete"), true, output);
+    assert.equal(output.includes("INCOMPLETE"), true);
+    assert.equal(output.includes("missing i9-section2"), true);
+    // Neither section kind is "NOT THIS WORKFLOW" on an i9 run.
+    assert.equal(output.includes("NOT THIS WORKFLOW"), false);
+  });
+
   it("shows usage for no subcommand and refuses an unknown one", () => {
     assert.equal(run([]).output.startsWith("usage:"), true);
     assert.throws(() => run(["extract"]), /unknown ocr subcommand "extract"/);

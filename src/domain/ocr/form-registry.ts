@@ -32,7 +32,7 @@
 import { z } from "zod";
 import { CANONICAL_FIELDS, CanonicalFieldIdSchema, type CanonicalFieldId } from "../fields/registry.js";
 
-export const OcrFormTypeSchema = z.enum(["oath", "emergency-contact"]);
+export const OcrFormTypeSchema = z.enum(["oath", "emergency-contact", "i9"]);
 export type OcrFormType = z.infer<typeof OcrFormTypeSchema>;
 
 /**
@@ -97,14 +97,30 @@ export const OcrFieldSpecSchema = z.strictObject({
    * Whether a HUMAN must resolve an unanswered field before the record may be
    * used. A mandatory field that came back `illegible` blocks approval; an
    * advisory one is surfaced and may be accepted (doc 12's evidence rule).
+   * Blocking applies only on the page kinds that carry the field.
    */
   mandatory: z.boolean(),
+  /**
+   * The page kinds this field's box exists on, or `null` for every data page
+   * of the form. Non-null only on a sectioned form: an I-9's date of birth is
+   * a Section 1 box, so on a Section 2 page the only truthful answer is
+   * `not-on-form` — and the gate can REFUSE a value claimed to be read from a
+   * box the page does not have, which is a value from nowhere.
+   */
+  onPageKinds: z.array(OcrPageKindSchema).min(1).nullable(),
 });
 export type OcrFieldSpec = z.infer<typeof OcrFieldSpecSchema>;
 
 export const OcrFormSpecSchema = z.strictObject({
   formType: OcrFormTypeSchema,
   title: z.string().min(1),
+  /**
+   * The data-bearing page kinds of this form. One kind for a one-page form;
+   * the I-9 spans two, because a scanned stack carries its Section 1 and
+   * Section 2 loose and each is classified — and extracted — on its own.
+   * Pairing them into one subject is grouping's job, above the gate.
+   */
+  pageKinds: z.array(OcrPageKindSchema).min(1),
   /** One paragraph of orientation, prepended to every generated instruction. */
   description: z.string().min(1),
   /**
@@ -122,7 +138,7 @@ function field(
   path: string,
   prompt: string,
   canonicalFieldId: CanonicalFieldId | null,
-  options: { localKind?: "boolean" | "text"; mandatory?: boolean } = {},
+  options: { localKind?: "boolean" | "text"; mandatory?: boolean; on?: readonly OcrPageKind[] } = {},
 ): z.input<typeof OcrFieldSpecSchema> {
   return {
     path,
@@ -130,11 +146,13 @@ function field(
     canonicalFieldId,
     localKind: canonicalFieldId === null ? options.localKind ?? "text" : null,
     mandatory: options.mandatory ?? false,
+    onPageKinds: options.on === undefined ? null : [...options.on],
   };
 }
 
 const OATH: z.input<typeof OcrFormSpecSchema> = {
   formType: "oath",
+  pageKinds: ["oath"],
   title: "Oath / Patent Policy signature roster",
   description:
     "A UC State Oath of Allegiance / Patent Policy form (UPAY 585 or UPAY 586) — ONE person per "
@@ -164,6 +182,7 @@ const OATH: z.input<typeof OcrFormSpecSchema> = {
 
 const EMERGENCY_CONTACT: z.input<typeof OcrFormSpecSchema> = {
   formType: "emergency-contact",
+  pageKinds: ["emergency-contact"],
   title: "Emergency contact form",
   description:
     "A UCSD R&R Emergency Contact Information form — ONE person per page, in two halves: the "
@@ -207,6 +226,65 @@ const EMERGENCY_CONTACT: z.input<typeof OcrFormSpecSchema> = {
 };
 
 /**
+ * Ported from `legacy:src/services/ocr/forms/i9.ts` at `4deabc5a` (D160). One
+ * UNIFORM record across both sections, as legacy's prompt demanded ("Every
+ * record has the SAME fields; which ones are filled depends on the page kind")
+ * — here the section-absent fields are typed `not-on-form` instead of a `null`
+ * that also meant blank and illegible. The extraction notes are legacy's
+ * accuracy rule, learned from real misreads: live 2026-07-13 a degraded scan
+ * produced a confident-looking fabricated SSN and DOB (page 51 read
+ * `02/28/1972` + `950-75-2168` off illegible paper), searched UCPath, and
+ * returned a false "not found" — which is indistinguishable from "this person
+ * does not work here". Legacy's "never round a 2-digit year" note is
+ * deliberately NOT ported: `raw` is reported verbatim here and D155 resolves
+ * the century against the observation instant, by documented rule.
+ *
+ * Legacy's `"i9 ssn"` supplemental sheet (a UCRS 419 statement) has no page
+ * kind here on purpose: D154 derives the vocabulary from the real corpus, and
+ * the corpus has none. Such a sheet classifies as `unrelated` today — surfaced
+ * to the operator by name rather than silently folded into a record.
+ */
+const I9: z.input<typeof OcrFormSpecSchema> = {
+  formType: "i9",
+  pageKinds: ["i9-section1", "i9-section2"],
+  title: "Form I-9 employment eligibility verification",
+  description:
+    "A USCIS Form I-9. Only two of a packet's nine pages carry data, and a scanned stack carries "
+    + "them LOOSE: a Section 1 (Employee Information and Attestation — the employee's own name, "
+    + "date of birth and U.S. Social Security Number) or a Section 2 (Employer Review and "
+    + "Verification — the employee's name re-written at the top, the documents examined under "
+    + "Lists A/B/C, and the first day of employment). ONE person per page; the two sections of one "
+    + "person are usually NOT adjacent. Classify which section this page is, then read it.",
+  extractionNotes: [
+    "These values search a real HR system, and a single wrong DIGIT does not produce a wrong "
+      + "answer — it produces NO answer, which is indistinguishable from `this person does not work "
+      + "here`. A guess is therefore WORSE than an admission. For the SSN and the date of birth: "
+      + "transcribe ONLY digits you can actually SEE; if ANY digit is smudged, cut off, overwritten "
+      + "or ambiguous, report the WHOLE field `illegible`. An `illegible` costs the operator one "
+      + "manual check; a wrong digit silently reports a real employee as a stranger.",
+    "Handwritten digits in boxed fields are commonly confused: 0/6, 9/4, 8/9, 1/7, 3/5. If you are "
+      + "choosing between two digits, you are NOT confident — that field is `illegible`.",
+    "Transcribe the WHOLE name: do not drop a trailing letter (`Kimi` is not `Kim`) and do not drop "
+      + "a compound surname (`Torres Perez` is not `Perez`). On a Section 2 page the employee's name "
+      + "is the `Employee Last Name, First Name and Middle Initial from Section 1` line at the TOP — "
+      + "NEVER the employer or authorized representative's own name from the Certification block.",
+    "On a Section 2 page the Document Number under LIST C is the employee's SSN ONLY when the List "
+      + "C document's title mentions Social Security. Any other List C document (a birth "
+      + "certificate, for example) is NOT an SSN — report `ssn` as `not-on-form` on such a page.",
+    "Do NOT confuse the date of birth with the employee's signature date or with the first day of "
+      + "employment — they sit near each other and all three are handwritten dates.",
+  ],
+  fields: [
+    field("lastName", "The employee's LAST name (family name) as THIS page writes it. Section 1: the `Last Name (Family Name)` box. Section 2: the employee-name line at the top of the sheet.", "lastName", { mandatory: true }),
+    field("firstName", "The employee's FIRST name (given name), from the same per-section source as the last name.", "firstName", { mandatory: true }),
+    field("middleInitial", "The employee's middle initial, from the same per-section source as the last name. A single letter; very often blank.", "middleInitial"),
+    field("dateOfBirth", "Section 1's `Date of Birth (mm/dd/yyyy)` box, exactly as printed.", "dob", { on: ["i9-section1"] }),
+    field("ssn", "The SSN THIS page carries. Section 1: the `U.S. Social Security Number` box; blank or masked is `blank`, never a partial number. Section 2: the List C Document Number, only when List C is a Social Security card.", "ssn"),
+    field("hireDate", "Section 2's `The employee's first day of employment (mm/dd/yyyy)`, from the Certification block.", "hireDate", { on: ["i9-section2"] }),
+  ],
+};
+
+/**
  * Frozen at runtime while keeping the schema-derived static type: a second
  * hand-written interface for "the same thing but readonly" would be a boundary
  * shape with no schema, which is exactly what this tree refuses.
@@ -215,6 +293,16 @@ function sealForm(input: z.input<typeof OcrFormSpecSchema>): OcrFormSpec {
   const spec = OcrFormSpecSchema.parse(input);
   const paths = spec.fields.map(({ path }) => path);
   if (new Set(paths).size !== paths.length) throw new Error(`${spec.formType} declares a field path twice`);
+  if (new Set(spec.pageKinds).size !== spec.pageKinds.length) {
+    throw new Error(`${spec.formType} declares a page kind twice`);
+  }
+  for (const kind of spec.pageKinds) {
+    // A data-bearing kind must be able to carry a record; the three no-data
+    // kinds are shared vocabulary no form may claim.
+    if (kind === "boilerplate" || kind === "unrelated" || kind === "blank") {
+      throw new Error(`${spec.formType} claims the no-data page kind ${kind}`);
+    }
+  }
   for (const entry of spec.fields) {
     if (entry.canonicalFieldId !== null && entry.localKind !== null) {
       throw new Error(`${spec.formType}.${entry.path} cannot be both canonical and form-local`);
@@ -225,6 +313,18 @@ function sealForm(input: z.input<typeof OcrFormSpecSchema>): OcrFormSpec {
     if (entry.canonicalFieldId !== null && CANONICAL_FIELDS[entry.canonicalFieldId] === undefined) {
       throw new Error(`${spec.formType}.${entry.path} names unknown canonical field ${entry.canonicalFieldId}`);
     }
+    if (entry.onPageKinds !== null) {
+      for (const kind of entry.onPageKinds) {
+        if (!spec.pageKinds.includes(kind)) {
+          throw new Error(`${spec.formType}.${entry.path} claims page kind ${kind}, which the form does not declare`);
+        }
+      }
+      if (entry.onPageKinds.length === spec.pageKinds.length) {
+        // Two spellings of "on every page" would make the generated brief
+        // annotate one and not the other.
+        throw new Error(`${spec.formType}.${entry.path} lists every page kind; declare null instead`);
+      }
+    }
   }
   for (const entry of spec.fields) Object.freeze(entry);
   Object.freeze(spec.fields);
@@ -234,12 +334,34 @@ function sealForm(input: z.input<typeof OcrFormSpecSchema>): OcrFormSpec {
 export const OCR_FORMS: Readonly<Record<OcrFormType, OcrFormSpec>> = Object.freeze({
   oath: sealForm(OATH),
   "emergency-contact": sealForm(EMERGENCY_CONTACT),
+  i9: sealForm(I9),
 });
 
 export const OCR_FORM_TYPES: readonly OcrFormType[] = Object.freeze(OcrFormTypeSchema.options);
 
+// A page kind names exactly one form's page, or grouping could put one page in
+// two runs. Checked over the sealed registry so a new form cannot land claiming
+// an owned kind.
+{
+  const owners = new Map<OcrPageKind, OcrFormType>();
+  for (const formType of OCR_FORM_TYPES) {
+    for (const kind of OCR_FORMS[formType].pageKinds) {
+      const owner = owners.get(kind);
+      if (owner !== undefined) {
+        throw new Error(`page kind ${kind} is claimed by both ${owner} and ${formType}`);
+      }
+      owners.set(kind, formType);
+    }
+  }
+}
+
 export function ocrForm(formType: OcrFormType): OcrFormSpec {
   return OCR_FORMS[formType];
+}
+
+/** Whether this field's box exists on a page of the given kind. */
+export function fieldOnPageKind(field: OcrFieldSpec, pageKind: OcrPageKind): boolean {
+  return field.onPageKinds === null || field.onPageKinds.includes(pageKind);
 }
 
 /** Every declared path for a form, sorted — the completeness rule's input. */

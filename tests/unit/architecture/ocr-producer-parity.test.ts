@@ -92,7 +92,14 @@ describe("D151 OCR producer parity", () => {
         pageKind: string;
         record: { answers: Record<string, unknown> };
       };
-      assert.equal(skeleton.pageKind, formType, "the skeleton must show the expected classification");
+      // A one-page form's kind spells its form type; a sectioned form's
+      // skeleton shows one of its DATA kinds — never the bare form type, which
+      // is not a page kind at all for the I-9.
+      assert.equal(
+        (ocrForm(formType).pageKinds as readonly string[]).includes(skeleton.pageKind),
+        true,
+        "the skeleton must show a data-bearing classification of this form",
+      );
       assert.deepEqual(
         Object.keys(skeleton.record.answers).toSorted((left, right) => left.localeCompare(right)),
         [...declared],
@@ -118,6 +125,26 @@ describe("D151 OCR producer parity", () => {
           true,
           `${formType}: ${spec.path} is mandatory but the brief does not say so`,
         );
+      }
+      // A sectioned field's page kinds reach the brief, and the skeleton is
+      // consistent with its own example classification: a field not on the
+      // example page is shown `not-on-form`, exactly as the gate demands. A
+      // skeleton demonstrating a value read from a box its page does not have
+      // would teach every producer the violation.
+      for (const spec of ocrForm(formType).fields) {
+        if (spec.onPageKinds === null) continue;
+        assert.equal(
+          instruction.includes(`Only on ${spec.onPageKinds.map((kind) => `\`${kind}\``).join(" / ")} pages`),
+          true,
+          `${formType}: ${spec.path}'s section never reaches the brief`,
+        );
+        if (!(spec.onPageKinds as readonly string[]).includes(skeleton.pageKind)) {
+          assert.deepEqual(
+            skeleton.record.answers[spec.path],
+            { state: "absent", reason: "not-on-form" },
+            `${formType}: the skeleton answers ${spec.path} on a page that has no such box`,
+          );
+        }
       }
     }
   });

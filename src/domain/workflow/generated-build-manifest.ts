@@ -1501,7 +1501,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-timekeeper-annotation"
     },
     {
-      "fingerprint": "1419bd03bce1f3cb02daa20494d96770eb2b8a02bd6433532c4ff5b6dc116bc8",
+      "fingerprint": "e0a5c848648a2d3587239f9df4c182952159fdbab2ea129397787f794062b7b2",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1561,15 +1561,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ocr/extraction.ts",
-          "sha256": "2ee8d305f362195265e91584bc9930085d4313e220872fed3e57f5203a8a043a"
+          "sha256": "8717c07a1e8885e1927420461614a4e5bd20b7835f3b93f31a73574a2948c43c"
         },
         {
           "path": "src/domain/ocr/form-registry.ts",
-          "sha256": "019c181c0486787a089e9193ebf163865f26a274e010980abce9729dded75efb"
+          "sha256": "d61484de940bf3307dd7b4caf2ab8db0fc75c81499b76c47abd4631080e3d875"
         },
         {
           "path": "src/domain/ocr/instruction.ts",
-          "sha256": "639dbc6d5b5507b876249ee117f41e9dd0752afff0c7461323ca0b0dab54f7a7"
+          "sha256": "22c6857bbc0d56bccbd5185aa1eb00a6991580ec4dee74e590a5cbc6a5255f8e"
         },
         {
           "path": "src/domain/provider-admission.ts",

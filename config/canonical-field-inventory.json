@@ -368,6 +368,33 @@
       "local": { "screenshotFilename": "file-or-artifact-ref", "checkedAt": "run-produced" }
     },
     {
+      "ref": "legacy:src/services/ocr/forms/i9.ts",
+      "kind": "ocr-form-field",
+      "canonical": {
+        "lastName": "lastName",
+        "firstName": "firstName",
+        "middleInitial": "middleInitial",
+        "dateOfBirth": "dob",
+        "ssn": "ssn",
+        "hireDate": "hireDate"
+      },
+      "local": {
+        "formKind": "run-produced",
+        "sourcePage": "file-or-artifact-ref",
+        "documentType": "run-produced",
+        "originallyMissing": "run-produced",
+        "illegible": "run-produced",
+        "notes": "run-produced",
+        "corroboration": "run-produced",
+        "disputedFields": "run-produced",
+        "orphanSection2": "run-produced",
+        "section1Page": "file-or-artifact-ref",
+        "section2Page": "file-or-artifact-ref",
+        "ssnPage": "file-or-artifact-ref"
+      },
+      "note": "Scanned at the D160 port. Legacy's `\"i9 ssn\"` supplemental sheet (a UCRS 419 statement) has no rebuild page kind on purpose: D154 derives the vocabulary from the real corpus, which has none, and such a sheet classifies `unrelated` — surfaced by name, never folded into a record. The corroboration/pairing outputs (`corroboration`, `disputedFields`, `orphanSection2`, the page back-links) are run-produced trust facts whose rebuild home is the grouping layer (doc 06 §4.8/§4.10) and doc 12's evidence surface, not intake mappings."
+    },
+    {
       "ref": "legacy:src/workflows/oath-signature/workflow.ts",
       "kind": "edit-data-field",
       "canonical": { "emplId": "eid", "date": "signatureDate" },

@@ -120,12 +120,20 @@ export function composeOcrCommand(input: OcrComposeInput): OcrCommandOutcome {
     lines.push(
       "",
       `  ${String(report.subjects.complete)} subject(s) ready`
-        + (report.subjects.duplicate > 0 ? `, ${String(report.subjects.duplicate)} duplicated` : ""),
+        + (report.subjects.duplicate > 0 ? `, ${String(report.subjects.duplicate)} duplicated` : "")
+        + (report.subjects.incomplete > 0 ? `, ${String(report.subjects.incomplete)} incomplete` : ""),
     );
     for (const subject of grouping.subjects) {
-      if (subject.completeness === "complete") continue;
-      lines.push(`    DUPLICATE ${subject.displayName} — pages `
-        + subject.pages.map((page) => String(page.sourcePage)).join(", "));
+      if (subject.completeness === "duplicate") {
+        lines.push(`    DUPLICATE ${subject.displayName} — pages `
+          + subject.pages.map((page) => String(page.sourcePage)).join(", "));
+      } else if (subject.completeness === "incomplete") {
+        // D157: flagged, never blocked. The person IS in the stack; a page of
+        // theirs is not, and the operator is told which one to go find.
+        lines.push(`    INCOMPLETE ${subject.displayName} — has `
+          + subject.pages.map((page) => `${page.pageKind} page ${String(page.sourcePage)}`).join(", ")
+          + `; missing ${subject.missingKinds.join(", ")}`);
+      }
     }
     if (report.unidentifiedPages.length > 0) {
       lines.push(
@@ -170,7 +178,7 @@ export function composeOcrCommand(input: OcrComposeInput): OcrCommandOutcome {
       };
     }
     const { extraction } = admission;
-    if (extraction.pageKind !== extraction.formType) {
+    if (!ocrForm(extraction.formType).pageKinds.includes(extraction.pageKind)) {
       // A correct answer, not a failure: a scanned stack is mixed.
       return {
         output: `ADMITTED — page ${String(extraction.sourcePage)} is a ${extraction.pageKind} page, `
@@ -180,8 +188,13 @@ export function composeOcrCommand(input: OcrComposeInput): OcrCommandOutcome {
     }
     const record = extraction.record;
     if (record === null) throw new Error("an admitted page of this form must carry its record");
+    // A sectioned form's page names its section, so the operator knows which
+    // half of the person this record is.
+    const pageLabel = extraction.pageKind === extraction.formType
+      ? extraction.formType
+      : `${extraction.formType} (${extraction.pageKind})`;
     const lines = [
-      `ADMITTED — ${extraction.formType} page ${String(extraction.sourcePage)}`,
+      `ADMITTED — ${pageLabel} page ${String(extraction.sourcePage)}`,
       `  source: ${extraction.source.kind}`,
       `  page fingerprint: ${extraction.pageFingerprint}`,
       "",

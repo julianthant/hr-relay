@@ -30,17 +30,9 @@
 import { z } from "zod";
 import { IsoInstantSchema } from "../ids.js";
 import { displayPersonName } from "../fields/cell-coercion.js";
-import { OcrFormTypeSchema, OcrPageKindSchema, type OcrFormType, type OcrPageKind } from "./form-registry.js";
+import { OcrFormTypeSchema, OcrPageKindSchema, ocrForm, type OcrFormType, type OcrPageKind } from "./form-registry.js";
 
-/**
- * Page kinds that carry no data and are never grouped.
- *
- * Every form that exists today is one page per person, so a subject is one
- * page. When the `i9` form lands it introduces the SECTIONED case — a subject
- * spanning a Section 1 and a Section 2 — and with it the orphan outcome D157
- * settled (flag, never block). That arm is deliberately not written here in
- * advance: unreachable code with no test is exactly what this tree removes.
- */
+/** Page kinds that carry no data and are never grouped. */
 const DATALESS: ReadonlySet<OcrPageKind> = new Set(["boilerplate", "unrelated", "blank"]);
 
 export const ClassifiedPageSchema = z.strictObject({
@@ -95,10 +87,18 @@ export function personMatchKey(name: string): string | null {
 }
 
 export const SubjectCompletenessSchema = z.enum([
-  /** Every page this form needs is present. */
+  /** Exactly one page of every kind this form needs is present. */
   "complete",
-  /** Two pages name one person; a human decides which is theirs. */
+  /** Two pages of one KIND name one person; a human decides which is theirs. */
   "duplicate",
+  /**
+   * The sectioned case D158 deferred until a form needed it: a person whose
+   * pages cover only part of the form — an I-9 Section 2 whose Section 1 is
+   * nowhere in the stack, or the reverse. FLAGGED, never blocked (D157, and
+   * legacy's `orphanSection2` before it): the missing page is a fact about the
+   * paper the operator fed in, not a reason to hide the person who IS there.
+   */
+  "incomplete",
 ]);
 
 export const StackSubjectSchema = z.strictObject({
@@ -110,6 +110,12 @@ export const StackSubjectSchema = z.strictObject({
     pageKind: OcrPageKindSchema,
   })).min(1),
   completeness: SubjectCompletenessSchema,
+  /**
+   * The expected page kinds this subject has NO page of, in the form's own
+   * order. Non-empty on `incomplete` — and on a `duplicate` that is also
+   * missing a section, because one enum arm must not hide the other fact.
+   */
+  missingKinds: z.array(OcrPageKindSchema),
 });
 export type StackSubject = z.infer<typeof StackSubjectSchema>;
 
@@ -134,9 +140,12 @@ export const StackGroupingSchema = z.strictObject({
 });
 export type StackGrouping = z.infer<typeof StackGroupingSchema>;
 
-/** The page kinds this run is processing. One per form, today. */
+/**
+ * The page kinds this run is processing — the form's own declared data pages.
+ * One kind for a one-page form; the I-9's two sections for an `i9` run.
+ */
 function expectedKinds(formType: OcrFormType): readonly OcrPageKind[] {
-  return [formType];
+  return ocrForm(formType).pageKinds;
 }
 
 /**
@@ -173,12 +182,22 @@ export function groupStack(stack: ClassifiedStack, formType: OcrFormType): Stack
     subjects.set(key, held);
   }
 
-  const grouped = [...subjects].map(([matchKey, held]) => StackSubjectSchema.parse({
-    matchKey,
-    displayName: held.displayName,
-    pages: held.pages.map((page) => ({ sourcePage: page.sourcePage, pageKind: page.pageKind })),
-    completeness: held.pages.length > 1 ? "duplicate" : "complete",
-  })).sort((left, right) => left.pages[0].sourcePage - right.pages[0].sourcePage);
+  const expected = expectedKinds(formType);
+  const grouped = [...subjects].map(([matchKey, held]) => {
+    const kindCounts = new Map<OcrPageKind, number>();
+    for (const page of held.pages) kindCounts.set(page.pageKind, (kindCounts.get(page.pageKind) ?? 0) + 1);
+    const missingKinds = expected.filter((kind) => !kindCounts.has(kind));
+    // Duplicate outranks incomplete: two Section 1s for one name is the fact a
+    // human must settle FIRST, and `missingKinds` still carries the other half.
+    const duplicated = [...kindCounts.values()].some((count) => count > 1);
+    return StackSubjectSchema.parse({
+      matchKey,
+      displayName: held.displayName,
+      pages: held.pages.map((page) => ({ sourcePage: page.sourcePage, pageKind: page.pageKind })),
+      completeness: duplicated ? "duplicate" : missingKinds.length > 0 ? "incomplete" : "complete",
+      missingKinds,
+    });
+  }).sort((left, right) => left.pages[0].sourcePage - right.pages[0].sourcePage);
 
   return StackGroupingSchema.parse({
     formType,
@@ -209,6 +228,8 @@ export const StackReportSchema = z.strictObject({
   subjects: z.strictObject({
     complete: z.number().int().nonnegative(),
     duplicate: z.number().int().nonnegative(),
+    /** Sectioned subjects missing a page — flagged, never blocked (D157). */
+    incomplete: z.number().int().nonnegative(),
   }),
   unidentifiedPages: z.array(z.number().int().positive()),
 });
@@ -233,6 +254,7 @@ export function reportStack(stack: ClassifiedStack, formType: OcrFormType): Stac
     subjects: {
       complete: grouping.subjects.filter((subject) => subject.completeness === "complete").length,
       duplicate: grouping.subjects.filter((subject) => subject.completeness === "duplicate").length,
+      incomplete: grouping.subjects.filter((subject) => subject.completeness === "incomplete").length,
     },
     unidentifiedPages: grouping.unidentified,
   });

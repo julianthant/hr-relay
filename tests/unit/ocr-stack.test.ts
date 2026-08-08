@@ -139,3 +139,78 @@ describe("D157 grouping does not assume adjacency", () => {
     assert.throws(() => stack([[1, "oath", "A B"], [1, "oath", "C D"]]), /page 1 is classified twice/);
   });
 });
+
+describe("D160 the sectioned subject — an i9 spans two loose pages", () => {
+  it("claims BOTH section kinds for an i9 run, and flags each half-person rather than pairing neighbours", () => {
+    // The real first four pages of Xerox Scan_08052026141856.pdf: four
+    // DIFFERENT people, alternating sections. Neighbour-pairing would have
+    // attached Casey's Section 1 from Cho's page.
+    const report = reportStack(stack([
+      [1, "i9-section2", "Clauldia, Drona A."],
+      [2, "i9-section1", "Brethea, Brauso J."],
+      [3, "i9-section2", "Cisneros, Metzli"],
+      [4, "i9-section1", "BLAUCKEA, GRERA GRERE GRERI"],
+    ]), "i9");
+    assert.deepEqual(report.subjects, { complete: 0, duplicate: 0, incomplete: 4 });
+    assert.equal(report.pagesAccounted, 4);
+    assert.deepEqual(
+      report.byKind.map((kind) => [kind.pageKind, kind.belongsToThisRun]),
+      [["i9-section1", true], ["i9-section2", true]],
+    );
+
+    const grouping = groupStack(stack([
+      [1, "i9-section2", "Clauldia, Drona A."],
+      [2, "i9-section1", "Brethea, Brauso J."],
+    ]), "i9");
+    // The orphan §2 is FLAGGED, never blocked (D157): the subject is listed
+    // with exactly which page to go find.
+    assert.deepEqual(grouping.subjects.map((subject) => [subject.pages[0].sourcePage, subject.missingKinds]), [
+      [1, ["i9-section1"]],
+      [2, ["i9-section2"]],
+    ]);
+  });
+
+  it("completes a person from a §2 and a §1 however far apart, whatever the name order", () => {
+    // An I-9 §2 header reads `Clauldia, Drona A.`; her §1 spells the same person
+    // across separate boxes. Both pages name her independently — that is what
+    // makes the pair matchable at all (D157).
+    const grouping = groupStack(stack([
+      [1, "i9-section2", "Clauldia, Drona A."],
+      [2, "i9-section1", "Brethea, Brauso J."],
+      [9, "i9-section1", "Drona Clauldia"],
+    ]), "i9");
+    const casey = grouping.subjects.find((subject) => subject.displayName.includes("Clauldia"));
+    assert.deepEqual(casey?.pages, [
+      { sourcePage: 1, pageKind: "i9-section2" },
+      { sourcePage: 9, pageKind: "i9-section1" },
+    ]);
+    assert.equal(casey?.completeness, "complete");
+    assert.deepEqual(casey?.missingKinds, []);
+  });
+
+  it("reports a duplicated section AND the still-missing one — one arm does not hide the other", () => {
+    const grouping = groupStack(stack([
+      [1, "i9-section1", "Clauldia, Drona A."],
+      [2, "i9-section1", "Drona Clauldia"],
+    ]), "i9");
+    assert.equal(grouping.subjects.length, 1);
+    assert.equal(grouping.subjects[0].completeness, "duplicate");
+    assert.deepEqual(grouping.subjects[0].missingKinds, ["i9-section2"]);
+  });
+
+  it("keeps a one-page form's grouping exactly as it was", () => {
+    const grouping = groupStack(stack([[1, "oath", "Tran, Mia, V"]]), "oath");
+    assert.deepEqual(grouping.subjects.map((subject) => [subject.completeness, subject.missingKinds]), [
+      ["complete", []],
+    ]);
+  });
+
+  it("sends an unreadable-name section to unidentified rather than guessing its person", () => {
+    const grouping = groupStack(stack([
+      [1, "i9-section2", null],
+      [2, "i9-section1", "Brethea, Brauso J."],
+    ]), "i9");
+    assert.deepEqual(grouping.unidentified, [1]);
+    assert.equal(grouping.subjects.length, 1);
+  });
+});

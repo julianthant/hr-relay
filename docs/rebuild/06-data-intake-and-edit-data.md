@@ -698,7 +698,55 @@ Legacy's `originallyMissing` — an array of fields the model judged blank, reco
 diffing snapshots — is **superseded** by the typed absences: `blank` and `illegible` are recorded per
 field at the moment of reading, by the producer that read it.
 
-### 4.9 Phase-2h as-built — authority schema v11, the durability floor (D159)
+### 4.10 Phase-2h as-built — the i9 is ONE form across two loose sections (D160)
+
+The last form lands, and with it the two arms D158 deliberately left unwritten because no form
+needed them: a form whose data pages are SECTIONS, and the sectioned subject in grouping.
+
+**A form declares its data-bearing page kinds; `formType === pageKind` was a coincidence of the
+one-page forms.** `OcrFormSpec.pageKinds` names them — `["oath"]` for the oath,
+`["i9-section1", "i9-section2"]` for the i9 — and the gate's "is this page this form" test runs
+against that set, not against string equality with the form type. `i9` itself is deliberately NOT a
+page kind: a physical page is a Section 1 or a Section 2, never "an I-9", and a submission claiming
+`pageKind: "i9"` fails at the schema. A registry-level seal refuses a page kind claimed by two
+forms, because grouping puts each page in exactly one run's buckets.
+
+**The record is UNIFORM across both sections, and the section-absent fields are typed.** Legacy's
+prompt already demanded one record shape ("Every record has the SAME fields; which ones are filled
+depends on the page kind"); here that is structural. Every submission answers all six fields —
+`lastName` · `firstName` · `middleInitial` · `dateOfBirth` · `ssn` · `hireDate` — and a field whose
+box lives on the OTHER section (`OcrFieldSpec.onPageKinds`) is answered `not-on-form`, the absence
+reason built for exactly this. The gate REFUSES anything else there: a `dateOfBirth` "read" off a
+Section 2 page is a value from nowhere (Section 2 has no such box), and `blank`/`illegible` both
+claim the box exists. Uniformity also means a misclassified section is held to the same demanded
+field set, so classification errors surface as wrong answers rather than as a different rulebook.
+Mandatory blocking is per-section for the same reason: a Section 2's `not-on-form` date of birth is
+the correct answer, not a gap a human must resolve — while its `illegible` employee name still
+blocks.
+
+**The field set and the prompt knowledge are legacy's, with provenance** (`legacy:src/services/ocr/
+forms/i9.ts` at `4deabc5a`): the accuracy rule — a single wrong SSN/DOB digit produces NO answer
+downstream, indistinguishable from "this person does not work here", so a guess is WORSE than an
+admission (live 2026-07-13: a degraded page yielded a confident fabricated `02/28/1972` +
+`950-75-2168` and a false "not found"); the observed digit confusions (0/6, 9/4, 8/9, 1/7, 3/5);
+whole-name transcription (`Kimi` is not `Kim`, `Torres Perez` is not `Perez`); the §2 name line is
+the employee, NEVER the employer's Certification-block name; and List C's Document Number is the
+SSN only when the List C document is a Social Security card. Three legacy pieces are deliberately
+NOT ported: the `"i9 ssn"` supplemental sheet (no corpus evidence — D154's vocabulary rule; a UCRS
+419 classifies `unrelated` and is surfaced by name), the "never round a 2-digit year" note (raw is
+verbatim here and D155 resolves the century by documented rule), and the fuzzy Levenshtein pairing
+(D158: exact match or a human, because fuzzy scoring is where grouping starts inventing people).
+
+**Grouping gains the sectioned subject: `incomplete`, flagged and never blocked (D157).** An i9
+run's expected kinds are the form's two sections; a subject with exactly one page of each is
+`complete`, a person with only one section is `incomplete` with `missingKinds` naming the page to
+go find — the orphan Section 2 is this arm with `missingKinds: ["i9-section1"]`, legacy's
+`orphanSection2` made general. `duplicate` now means a duplicated KIND, and a duplicated section
+does not hide a still-missing one: `missingKinds` is carried orthogonally to the enum. The
+one-page forms are unchanged by construction (a subject that exists has its only expected kind).
+Legacy's §1↔§2 field corroboration — the employer's Section 2 as an independent transcription that
+catches confidently-wrong Section 1 reads — needs both extractions in hand and is doc 12 evidence
+work above this layer; the grouping arm this section lands is what makes those pairs findable.
 
 Everything the intake and OCR pipelines produced was in-memory until here: a manifest and an
 admitted extraction survived exactly as long as the process did. Schema **v11** adds

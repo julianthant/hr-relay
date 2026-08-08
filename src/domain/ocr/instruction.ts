@@ -20,7 +20,7 @@
  */
 import { canonicalJsonStringify } from "../canonical-json.js";
 import { CANONICAL_FIELDS } from "../fields/registry.js";
-import { OcrPageKindSchema, ocrForm, type OcrFormType } from "./form-registry.js";
+import { OcrPageKindSchema, fieldOnPageKind, ocrForm, type OcrFormType } from "./form-registry.js";
 
 function expectationFor(spec: ReturnType<typeof ocrForm>["fields"][number]): string {
   if (spec.canonicalFieldId === null) {
@@ -39,6 +39,7 @@ function expectationFor(spec: ReturnType<typeof ocrForm>["fields"][number]): str
  */
 export function buildExtractionInstruction(formType: OcrFormType): string {
   const form = ocrForm(formType);
+  const expectedKinds = form.pageKinds.map((kind) => `\`${kind}\``).join(" / ");
   const lines: string[] = [
     `# Extract: ${form.title}`,
     "",
@@ -54,8 +55,8 @@ export function buildExtractionInstruction(formType: OcrFormType): string {
     "   nine pages in a packet. `unrelated` is a document that is not one of",
     "   these forms at all. `blank` is an empty scan or a separator. If this page",
     "   is not",
-    `   \`${form.formType}\`, report the kind you saw and send an EMPTY \`records\``,
-    "   array — that is a correct answer, not a failure. Never invent fields for",
+    `   ${expectedKinds}, report the kind you saw and set \`record\` to`,
+    "   `null` — that is a correct answer, not a failure. Never invent fields for",
     "   a form the page is not.",
     "1. This form holds ONE person per page. Send that person as `record`,",
     "   or `null` when the page is not this form.",
@@ -74,10 +75,18 @@ export function buildExtractionInstruction(formType: OcrFormType): string {
     "   this process exists to prevent.",
     "6. `confidence` is your own 0–1 opinion of your reading. It gates nothing;",
     "   report it honestly rather than defensively.",
-    "",
-    "## Fields",
-    "",
   ];
+
+  if (form.pageKinds.length > 1) {
+    lines.push(
+      `7. This form's data pages come in SECTIONS: a page is exactly one of ${expectedKinds}.`,
+      "   Classify which section the page is, then read it. A field marked as living",
+      "   on another section has no box on this page — answer it `not-on-form`, and",
+      "   never carry a value over from a different page.",
+    );
+  }
+
+  lines.push("", "## Fields", "");
 
   if (form.extractionNotes.length > 0) {
     lines.splice(lines.length - 2, 0, "## What this form gets wrong", "");
@@ -88,6 +97,10 @@ export function buildExtractionInstruction(formType: OcrFormType): string {
   for (const spec of form.fields) {
     lines.push(`- \`${spec.path}\`${spec.mandatory ? " (mandatory)" : ""} — ${spec.prompt}`);
     lines.push(`  Expected: ${expectationFor(spec)}`);
+    if (spec.onPageKinds !== null) {
+      const on = spec.onPageKinds.map((kind) => `\`${kind}\``).join(" / ");
+      lines.push(`  Only on ${on} pages — on any other page of this form, answer \`not-on-form\`.`);
+    }
   }
 
   lines.push(
@@ -107,17 +120,25 @@ export function buildExtractionInstruction(formType: OcrFormType): string {
 
 /**
  * A filled-in-shape example the producer copies. Deliberately shows one of each
- * answer arm so neither looks like the exceptional case.
+ * answer arm so neither looks like the exceptional case. The example page is
+ * the form's FIRST data kind, and the skeleton is consistent with that
+ * classification: a field living on another section is shown as `not-on-form`,
+ * exactly as the gate will demand.
  */
 export function buildAnswerSkeleton(formType: OcrFormType): unknown {
   const form = ocrForm(formType);
+  const exampleKind = form.pageKinds[0];
+  const onKind = form.fields.filter((spec) => fieldOnPageKind(spec, exampleKind));
+  const blankExample = onKind[onKind.length - 1];
   // An index-signature literal rather than an open `Record`: this is a JSON
   // object under construction, not a decision-bearing map crossing a boundary.
   const answers: { [path: string]: unknown } = {};
-  for (const [index, spec] of form.fields.entries()) {
-    answers[spec.path] = index === form.fields.length - 1
-      ? { state: "absent", reason: "blank" }
-      : { state: "read", raw: "<exactly as written>", confidence: 0.95 };
+  for (const spec of form.fields) {
+    answers[spec.path] = !fieldOnPageKind(spec, exampleKind)
+      ? { state: "absent", reason: "not-on-form" }
+      : spec === blankExample
+        ? { state: "absent", reason: "blank" }
+        : { state: "read", raw: "<exactly as written>", confidence: 0.95 };
   }
   return {
     formType,
@@ -125,7 +146,7 @@ export function buildAnswerSkeleton(formType: OcrFormType): unknown {
     readAt: "<ISO-8601 instant with offset>",
     sourceSha256: "<sha256 of the page image or PDF you read>",
     sourcePage: 1,
-    pageKind: formType,
+    pageKind: exampleKind,
     record: { answers },
   };
 }
