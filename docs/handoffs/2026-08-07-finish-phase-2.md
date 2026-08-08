@@ -82,7 +82,10 @@ has found a defect every single time it has been run.
       failure, cross-run resume by re-derived stable key, xlsx-retention sink over
       `write-excel-file`. The projector is not composed into the worker until a descriptor
       declares a projection (the workbook path is the consuming migration's fact).
-- [ ] **2h-D — normalization store** (doc 06 §4.2) + production provider pools over 1f's admission core.
+- [x] **2h-D — normalization store + production pools. DONE 2026-08-08 (D165).**
+      `normalization/read-contact-advice` (typed advice; rules ported, ai arm waits for 2i),
+      census/nominatim transport adapters, and the rotation pool — one invocation is one model
+      call, rotation across invocations; compose wires the gemini pool + keyless geocoders.
 - [ ] **2h-E — Edit Data core** (doc 06 §6) — the CAS-against-resume-fence save.
 - [ ] **2h-F — durable capture** sessions / photo artifacts / finalize outbox (doc 06 §5.1, D79d trim).
 

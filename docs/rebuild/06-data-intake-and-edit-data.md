@@ -651,6 +651,36 @@ rate-limit/failure, malformed-model-output, ambiguous, and approval/rejection sc
 
 ---
 
+**As-built (D165, 2026-08-08) — this section landed, with the pool.** The store is
+`normalization/read-contact-advice` — the sketched `normalize-contact` id violated doc 01's
+read-verb grammar, the same defect D149 fixed. Deterministic rules ported with provenance
+(`legacy:src/services/llm/normalize-contact.ts` and `address/format.ts`): phone → canonical
+DIGITS (this tree's canonical phone; display formatting is the consuming workflow's), state/ZIP
+tables, country aliases, and the relationship table with the in-law-before-substring order — the
+LLM fallback did not port (the `ai` source arm lands with 2i's advisory producer, so the schema
+carries no arm nothing can produce). A rule that cannot decide is `ambiguous`; provider
+exhaustion is `advisory-unavailable` carrying each capability's closed reason; `before` values
+are redacted under each canonical field's own classification/transform through the ONE
+`redactValue` implementation, narrowed at the contract boundary to the string-valued arms a
+contact can produce. The census-before-nominatim policy lives in the task under the caller's
+`geocode` flag, each observation recorded with instant + confidence; street-LINE advice is
+deliberately NOT offered (the 2026-07-13 incident surface — `isSafeStreetReplacement` and the
+house-number primitives ported into `src/domain/normalization/street-safety.ts` for the
+confidence rules and the EC migration, which owns the live re-verify); city/state/ZIP advice
+comes only from a `resolved` outcome above `unverified`. The geocode adapters
+(`src/infra/providers/geocode-adapters.ts`) are transport+provenance like D161's — Census
+builds the street NAME from components, never TIGER ranges; Nominatim carries the policy
+User-Agent; legacy's 1.1s sleep did not port because the kernel's `geocodeNominatim` budget
+(`requestsPerMinute: 1`) is the durable form of the same policy. **The pool**
+(`src/infra/providers/provider-pool.ts`) is ONE adapter per capability selecting which
+key/model child answers each invocation: "one invocation is ONE model call" holds exactly —
+rotation advances ACROSS invocations on the exhaustion code family, never a second remote
+attempt under one admission; model tiers order the children and keys rotate within a tier;
+evidence names the child. `composeWorkerRuntime` now composes the gemini pool (keys × models)
+and both keyless geocoders. Proof: `tests/unit/normalization-rules.test.ts`,
+`tests/unit/provider-pool.test.ts`, and five executable scenarios in
+`tests/scenario/normalization-contact.scenario.test.ts`.
+
 ### 4.3 Phase-2h as-built — OCR extraction admits three producers identically (D151)
 
 **Operator requirement (2026-08-05):** a page may be read by the automated provider pipeline, by an

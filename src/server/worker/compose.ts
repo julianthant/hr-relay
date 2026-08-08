@@ -34,10 +34,8 @@
  * Deliberately NOT composed here (each fails loud at its own seam):
  * - the `ChildRunExecutor` delegation seam has no Phase-1 implementation — a
  *   child-run node terminalizes `capability-unavailable` in the interpreter;
- * - the provider POOL (key rotation, model fallback chain) is 2h-D: this root
- *   composes ONE gemini `ocr.extract` adapter over one key and one model, and
- *   an environment with no key composes an EMPTY registry — admission then
- *   denies `adapter-unavailable`, loudly, instead of a hidden default;
+ * - the artifact sink projector (D164): no production descriptor declares a
+ *   projection yet, and the workbook path is the consuming migration's fact;
  * - automated doc-09 recovery PROBES: the D118 sweep below routes an expired
  *   claim with an unfinished `attempting` intent to the parked/unclaimable
  *   state and reports it; the typed §4.1 operator resolutions (command kernel)
@@ -79,7 +77,12 @@ import {
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
 import { PlaywrightWorkerSessionFactory } from "../../infra/browser/browser-session-factory.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
+import {
+  createCensusGeocodeAdapter,
+  createNominatimGeocodeAdapter,
+} from "../../infra/providers/geocode-adapters.js";
 import { createGeminiOcrExtractAdapter } from "../../infra/providers/gemini-ocr-extract.js";
+import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import { taskStoreRegistry } from "../../stores/index.js";
 
@@ -370,27 +373,28 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     artifactRoot: input.isolation.artifactRoot,
   });
 
-  // One adapter, one key, one model — the pool (rotation, fallback chain) is
-  // 2h-D. No key composes an EMPTY registry: admission answers a declaring
-  // run `adapter-unavailable` loudly instead of this root guessing.
-  const [geminiApiKey] = optionalSecretFamily("geminiApiKeys", env);
-  const [chainModelId] = providerModelChain("geminiApiKeys", env);
-  const ocrModelId = chainModelId === undefined ? OCR_GEMINI_MODEL_ID : chainModelId;
-  const adapters: ProviderAdapterRegistry = Object.freeze(
-    geminiApiKey === undefined
-      ? {}
-      : {
-        "ocr.extract": createGeminiOcrExtractAdapter({
-          apiKey: geminiApiKey,
-          modelId: ocrModelId,
-          artifacts,
-          clock,
-        }),
-      },
-  );
-  if (geminiApiKey === undefined) {
+  // D165: the production pool. Model tiers are the OUTER order (legacy
+  // provider-limits' priority tiers) and keys rotate WITHIN a tier, so an
+  // exhaustion answer advances to the next key before falling down a model
+  // tier. No key still composes an EMPTY ocr.extract slot: admission answers
+  // a declaring run `adapter-unavailable` loudly instead of this root
+  // guessing. The keyless public geocoders always compose.
+  const geminiKeys = optionalSecretFamily("geminiApiKeys", env);
+  const chain = providerModelChain("geminiApiKeys", env);
+  const ocrModels = chain.length > 0 ? chain : [OCR_GEMINI_MODEL_ID];
+  const ocrChildren = ocrModels.flatMap((modelId) =>
+    geminiKeys.map((apiKey, keyIndex) => ({
+      label: `gemini-key${String(keyIndex + 1)}/${modelId}`,
+      adapter: createGeminiOcrExtractAdapter({ apiKey, modelId, artifacts, clock }),
+    })));
+  const adapters: ProviderAdapterRegistry = Object.freeze({
+    ...(ocrChildren.length === 0 ? {} : { "ocr.extract": createProviderPool("ocr.extract", ocrChildren) }),
+    "geocode.census": createCensusGeocodeAdapter({ clock }),
+    "geocode.nominatim": createNominatimGeocodeAdapter({ clock }),
+  });
+  if (ocrChildren.length === 0) {
     log.warn(
-      "no GEMINI_API_KEY in the environment: the ocr.extract adapter is not composed, and a run "
+      "no GEMINI_API_KEY in the environment: the ocr.extract pool is not composed, and a run "
       + "declaring that capability is denied adapter-unavailable by admission",
     );
   }

@@ -146,6 +146,9 @@ describe("Phase 1f Person Lookup task implementations", () => {
         "kuali/read-timekeeper-annotation",
         "kuali/save-timekeeper-annotation",
         "kuali/verify-timekeeper-annotation",
+        // The normalization service store (D165) lands before any descriptor
+        // consumes it.
+        "normalization/read-contact-advice",
         // Route 1 of D151; a peer of the `rebuild:cli ocr` routes, not a
         // privileged path.
         "ocr/extract-form-page",

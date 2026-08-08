@@ -41,6 +41,26 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
     file: "tests/scenario/intake-pdf-pages.scenario.test.ts",
   },
   { scenarioId: "intake/pdf/unreadable", file: "tests/scenario/intake-pdf-pages.scenario.test.ts" },
+  {
+    scenarioId: "normalization/contact/rule-only",
+    file: "tests/scenario/normalization-contact.scenario.test.ts",
+  },
+  {
+    scenarioId: "normalization/contact/census-advice",
+    file: "tests/scenario/normalization-contact.scenario.test.ts",
+  },
+  {
+    scenarioId: "normalization/contact/nominatim-fallback",
+    file: "tests/scenario/normalization-contact.scenario.test.ts",
+  },
+  {
+    scenarioId: "normalization/contact/advisory-unavailable",
+    file: "tests/scenario/normalization-contact.scenario.test.ts",
+  },
+  {
+    scenarioId: "normalization/contact/ambiguous",
+    file: "tests/scenario/normalization-contact.scenario.test.ts",
+  },
   { scenarioId: "roster/match/exact-eid", file: "tests/scenario/roster-match.scenario.test.ts" },
   { scenarioId: "roster/match/name-only", file: "tests/scenario/roster-match.scenario.test.ts" },
   { scenarioId: "roster/match/ambiguous", file: "tests/scenario/roster-match.scenario.test.ts" },

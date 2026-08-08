@@ -171,9 +171,12 @@ describe("provider capability boundary", () => {
       [
         "src/infra/providers/deterministic-provider.ts",
         "src/infra/providers/gemini-ocr-extract.ts",
-      ],
-      "the deterministic harness plus the D161 gemini ocr.extract adapter; a new production"
-        + " adapter joins this list deliberately, in the same commit that reviews it",
+        "src/infra/providers/geocode-adapters.ts",
+        "src/infra/providers/provider-pool.ts",
+      ].sort(),
+      "the deterministic harness, the D161 gemini ocr.extract adapter, the D165 census/nominatim"
+        + " geocode adapters, and the D165 rotation pool; a new production adapter joins this list"
+        + " deliberately, in the same commit that reviews it",
     );
   });
 
