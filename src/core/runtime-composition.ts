@@ -99,18 +99,19 @@ export function registerExplainComposer(composer: ExplainComposer): void {
 /**
  * The runtime's own phase status, in doc 07's identifiers.
  *
- * `completedThrough` is the LAST completed work item of §3's ordered table, not
- * the phase letter — `1i-spine` is the final Phase-1 item, and Phase 1's exit
- * test (D74, live person-lookup) passed on 2026-08-04. `active` names Phase 2's
- * first work item, the controlled transaction proof (§Phase 2, mermaid node
- * `TX`), which precedes the 2g/2h/2i/2j tails.
+ * `completedThrough` is the LAST completed work item of doc 07's ordered
+ * sequence, not the phase letter. Phase 1 closed with `1i-spine` (D74, live
+ * person-lookup, 2026-08-04); Phase 2's controlled transaction proof was met
+ * live the same day (D135, doc 4489), and tail `2g` — the event/trust layer —
+ * completed 2026-08-04 (D134–D145). `active` is tail `2h`, the data-service /
+ * intake foundation (doc 07 §Phase 2's deferred-base-tails table).
  */
-const COMPLETED_THROUGH = "1i-spine";
-const ACTIVE_ITEM = "2-transaction-proof";
+const COMPLETED_THROUGH = "2g";
+const ACTIVE_ITEM = "2h";
 
 export function runtimeHelp(isolation: RuntimeIsolation): string {
   return [
-    `HR Automation rebuild foundation (Phase 1 COMPLETE through ${COMPLETED_THROUGH}; active ${ACTIVE_ITEM})`,
+    `HR Automation rebuild foundation (complete through ${COMPLETED_THROUGH}; active ${ACTIVE_ITEM})`,
     "Commands:",
     "  help       show this contract surface",
     "  phase      print the active isolated runtime resources",
@@ -119,7 +120,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     // `runWorker` loop), so `worker` is the recorded choice here.
     "  worker <workflow-id> [--drain]  run one workflow-scoped browser worker (doc 05 §3)",
     "  explain run <traceId|runId> [--json]  explain one run from authority (doc 12 §2.5)",
-    "  ocr forms | instruction <form> | admit <file.json>  the one extraction gate, whoever read the page (D151)",
+    "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page (D151/D158)",
   ].join("\n");
 }
 

@@ -15,15 +15,17 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
       browserSessionNamespace: "hrauto-rebuild",
     });
     assert.match(runtimeHelp(rebuildRuntimeIsolation), /1g-spine/);
-    assert.match(runtimeHelp(rebuildRuntimeIsolation), /Phase 1 COMPLETE through 1i-spine; active 2-transaction-proof/);
+    // The transaction proof (D135) and tail 2g (D134–D145) completed
+    // 2026-08-04; the marker advanced with the first 2h-A slice (D160).
+    assert.match(runtimeHelp(rebuildRuntimeIsolation), /complete through 2g; active 2h/);
   });
 
   it("executes only the currently owned CLI surface and fails loud for future runtime work", () => {
     const output: string[] = [];
     startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["phase"], write: (value) => output.push(value) });
     assert.deepEqual(JSON.parse(output[0] ?? ""), {
-      completedThrough: "1i-spine",
-      active: "2-transaction-proof",
+      completedThrough: "2g",
+      active: "2h",
       stateRoot: ".tracker-rebuild",
       artifactRoot: ".tracker-rebuild/artifacts",
       backendPort: 3938,
@@ -112,8 +114,8 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     assert.equal(written.length, 1);
     assert.equal(written[0]?.endsWith("\n"), true);
     assert.deepEqual(JSON.parse(written[0] ?? ""), {
-      completedThrough: "1i-spine",
-      active: "2-transaction-proof",
+      completedThrough: "2g",
+      active: "2h",
       stateRoot: ".tracker-rebuild",
       artifactRoot: ".tracker-rebuild/artifacts",
       backendPort: 3938,
