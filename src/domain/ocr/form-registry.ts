@@ -270,7 +270,9 @@ const I9: z.input<typeof OcrFormSpecSchema> = {
       + "NEVER the employer or authorized representative's own name from the Certification block.",
     "On a Section 2 page the Document Number under LIST C is the employee's SSN ONLY when the List "
       + "C document's title mentions Social Security. Any other List C document (a birth "
-      + "certificate, for example) is NOT an SSN — report `ssn` as `not-on-form` on such a page.",
+      + "certificate, for example) is NOT an SSN — report `ssn` as `not-on-form` on such a page. "
+      + "When the employer used a LIST A document and the List C column is entirely empty — the "
+      + "common case on the real scans — report `ssn` as `blank`: the box exists and holds nothing.",
     "Do NOT confuse the date of birth with the employee's signature date or with the first day of "
       + "employment — they sit near each other and all three are handwritten dates.",
   ],

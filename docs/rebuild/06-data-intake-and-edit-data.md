@@ -748,6 +748,26 @@ Legacy's §1↔§2 field corroboration — the employer's Section 2 as an indepe
 catches confidently-wrong Section 1 reads — needs both extractions in hand and is doc 12 evidence
 work above this layer; the grouping arm this section lands is what makes those pairs findable.
 
+**Measured live, 2026-08-08, on the whole real 44-page Xerox scan** (route 2: the stack classified
+page by page, the grouping and gate run through `rebuild:cli ocr`). All 44 pages accounted; **19
+subjects complete** — every findable §1+§2 pair paired, including one whose halves sit 21 pages
+apart (Castillo, §1 p19 + §2 p40) — and **6 incomplete flags** that decompose exactly into the
+honest cases: two genuine paper orphans (a §2 with no §1 anywhere; a §1 with no §2), and two people
+split by divergent NAME READS — a §2 line the employer abbreviated (`BLAUCKEA, GRENO` for the §1's
+`Blauckea, Grera Grere Greri`) and a hard first name two readers spelled one letter apart
+(`Metztli`/`Metzti`). The splits are the exact-match design behaving as D158 ratified: both halves
+are flagged for a human instead of a fuzzy score inventing the pair. The gate half ran on a real
+pair (Casey, §2 p1 + §1 p13): both sections admitted with correct canonicalization (`10/27/2015` →
+`2015-10-27`; `919-72-4902` → nine bare digits; `A.` → `A`), each section's off-fields truthfully
+`not-on-form`, zero blocking paths, and the off-section probe (a DOB claimed "read" off the §2)
+refused by name. **The pass found one prompt gap, fixed in the same slice:** the real §2s mostly
+use a LIST A document, leaving List C entirely empty — a case the notes did not pin, so two
+producers could split between `blank` and `not-on-form`; the note now says empty List C is
+`blank`. **One open observation:** a real §1 (p20) carries a form-filling error on the PAPER — a
+date of birth written as `05/14/2015`, the same date as the signature — and the canonical `dob`
+schema has no plausibility bound, so it admits. Whether `dob` should range-check is a reviewed
+schema decision (the shape is shared by every consumer), left open rather than guessed here.
+
 Everything the intake and OCR pipelines produced was in-memory until here: a manifest and an
 admitted extraction survived exactly as long as the process did. Schema **v11** adds
 `intake_manifests` and `ocr_extractions`.
