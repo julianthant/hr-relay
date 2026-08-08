@@ -698,6 +698,26 @@ Legacy's `originallyMissing` — an array of fields the model judged blank, reco
 diffing snapshots — is **superseded** by the typed absences: `blank` and `illegible` are recorded per
 field at the moment of reading, by the producer that read it.
 
+### 4.9 Phase-2h as-built — authority schema v11, the durability floor (D159)
+
+Everything the intake and OCR pipelines produced was in-memory until here: a manifest and an
+admitted extraction survived exactly as long as the process did. Schema **v11** adds
+`intake_manifests` and `ocr_extractions`.
+
+Both carry their identifying facts as **columns** beside the record JSON, for the reason v10 gave
+`failures` a searchable fingerprint: *"has this file been run before"* and *"has this page already
+been read"* are questions an operator asks constantly, and a scan over parsed JSON is not an answer.
+
+`intake_manifests` is **immutable and undeletable** by trigger. A manifest is the rerun authority —
+it proves which file and mapping produced which items — and a run has already fanned out against it,
+so a rewrite would rewrite history somebody acted on. A rerun creates a new manifest; §5's
+`rerunDiff` is what shows the operator the difference.
+
+`ocr_extractions` is UNIQUE on `(source_sha256, source_page, form_type)`: **one page, read once, for
+one form.** A second producer reading the same page with a different result is refused by name — a
+replacement is a decision a human makes, not a second row that silently doubles a person in the
+fan-out. A byte-identical re-read is idempotent, so replaying a submission is safe.
+
 ### 4.8 Phase-2h as-built — stages 1 and 2 of the scanner pipeline (D158)
 
 `src/domain/ocr/stack.ts` lands classification-consumption and grouping;

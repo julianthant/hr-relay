@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { AuthorityTableName } from "../../domain/authority.js";
+import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
+import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/commands.js";
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
@@ -126,6 +128,10 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   durable_outbox: AtomicOutboxRecordSchema,
   artifact_outbox: ArtifactOutboxStorageRecordSchema,
   artifact_sink_heads: OpaqueAuthorityRecordSchema,
+  /** Doc 06 §5's immutable plan manifest (D159). */
+  intake_manifests: IntakePlanManifestSchema,
+  /** Doc 06 §4.3's admitted page extraction (D159). */
+  ocr_extractions: AdmittedExtractionSchema,
 } satisfies Record<AuthorityRecordTableName, z.ZodType>);
 
 export type DiagnosticAttachmentStorageRecord = z.infer<typeof DiagnosticAttachmentStorageRecordSchema>;

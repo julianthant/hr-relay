@@ -73,6 +73,8 @@ import {
   RunTerminalOutboxRecordSchema,
   type RunTerminalOutboxRecord,
 } from "../../domain/run/terminal-outbox.js";
+import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
+import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
 import { FailureRecordSchema, type FailureRecord } from "../../domain/trust/failure.js";
 import {
   LIVE_WORKER_STATES,
@@ -520,6 +522,21 @@ type OpaqueAuthorityRepositories = Readonly<{
   artifactSinkHeads: ImmutableRepository<OpaqueAuthorityRecord>;
 }>;
 
+/** Doc 06 §5 — insert-only; a rerun creates a new manifest (D159). */
+type IntakeManifestRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<z.infer<typeof IntakePlanManifestSchema>>;
+  get(manifestId: string): z.infer<typeof IntakePlanManifestSchema> | undefined;
+  findBySource(sourceSha256: string): readonly z.infer<typeof IntakePlanManifestSchema>[];
+}>;
+
+/** Doc 06 §4.3 — one page, read once, for one form (D159). */
+type OcrExtractionRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<z.infer<typeof AdmittedExtractionSchema>>;
+  get(sourceSha256: string, sourcePage: number, formType: string):
+    z.infer<typeof AdmittedExtractionSchema> | undefined;
+  findByDocument(sourceSha256: string): readonly z.infer<typeof AdmittedExtractionSchema>[];
+}>;
+
 export type AuthorityRepositories = Readonly<{
   runs: RunRepository;
   terminalAuthorizations: TerminalAuthorizationRepository;
@@ -528,6 +545,8 @@ export type AuthorityRepositories = Readonly<{
   runTerminalOutbox: RunTerminalOutboxRepository;
   diagnosticBundles: DiagnosticBundleRepository;
   evidenceReceipts: EvidenceReceiptRepository;
+  intakeManifests: IntakeManifestRepository;
+  ocrExtractions: OcrExtractionRepository;
   knowledgeRecords: KnowledgeRepository;
   fixRecords: FixRecordRepository;
   ledgerProjection: LedgerProjectionRepository;
@@ -2504,6 +2523,81 @@ export class AuthorityDatabase implements Disposable {
         `).get(FailureFingerprintSchema.parse(fingerprint))).count,
       }),
       diagnosticBundles: this.#buildDiagnosticBundleRepository(),
+      /**
+       * Doc 06 §5's plan manifest (D159). Insert-only and byte-exact on replay:
+       * a manifest proves which file and mapping produced which items, and a
+       * run has already fanned out against it, so a differing rebuild is a
+       * refusal rather than an overwrite.
+       */
+      intakeManifests: Object.freeze({
+        insert: (input: unknown) => {
+          const record = IntakePlanManifestSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("intake_manifests", () => {
+            const existing = this.#readRecord("intake_manifests", record.manifestId, IntakePlanManifestSchema);
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`intake manifest ${record.manifestId} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO intake_manifests
+                (record_key, workflow, source_sha256, workflow_contract_fingerprint, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `).run(
+              record.manifestId, record.workflow, record.source.sha256,
+              record.workflowContractFingerprint, json, record.createdAt,
+            );
+            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
+          });
+        },
+        get: (manifestId: string) => this.#readRecord("intake_manifests", manifestId, IntakePlanManifestSchema),
+        /** "Has this exact file been run before" — a lookup, not a scan. */
+        findBySource: (sourceSha256: string) => this.#database.prepare(`
+          SELECT record_json FROM intake_manifests WHERE source_sha256 = ? ORDER BY created_at
+        `).all(sourceSha256).map((row) =>
+          parseJsonRecord(IntakePlanManifestSchema, JsonRowSchema.parse(row).record_json)),
+      }),
+      /**
+       * Doc 06 §4.3's admitted page extraction (D159). One page, read once, for
+       * one form: a second producer reading the same page is a REPLACEMENT a
+       * human decides on, not a second row that silently doubles a person.
+       */
+      ocrExtractions: Object.freeze({
+        insert: (input: unknown) => {
+          const record = AdmittedExtractionSchema.parse(input);
+          const key = `${record.sourceSha256}#${String(record.sourcePage)}#${record.formType}`;
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("ocr_extractions", () => {
+            const existing = this.#readRecord("ocr_extractions", key, AdmittedExtractionSchema);
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(
+                  `page ${String(record.sourcePage)} of ${record.sourceSha256} was already read for `
+                  + `${record.formType} with a different result; replacing it is an explicit decision`,
+                );
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO ocr_extractions
+                (record_key, form_type, source_sha256, source_page, page_kind, page_fingerprint, source_kind, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              key, record.formType, record.sourceSha256, record.sourcePage,
+              record.pageKind, record.pageFingerprint, record.source.kind, json, record.readAt,
+            );
+            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
+          });
+        },
+        get: (sourceSha256: string, sourcePage: number, formType: string) =>
+          this.#readRecord("ocr_extractions", `${sourceSha256}#${String(sourcePage)}#${formType}`, AdmittedExtractionSchema),
+        findByDocument: (sourceSha256: string) => this.#database.prepare(`
+          SELECT record_json FROM ocr_extractions WHERE source_sha256 = ? ORDER BY source_page
+        `).all(sourceSha256).map((row) =>
+          parseJsonRecord(AdmittedExtractionSchema, JsonRowSchema.parse(row).record_json)),
+      }),
       evidenceReceipts: Object.freeze({
         insert: (input: unknown) => {
           const record = RunEvidenceReceiptSchema.parse(input);

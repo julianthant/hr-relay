@@ -37,6 +37,8 @@ export const AuthorityTableNameSchema = z.enum([
   "durable_outbox",
   "artifact_outbox",
   "artifact_sink_heads",
+  "intake_manifests",
+  "ocr_extractions",
 ]);
 
 export const ProjectionTableNameSchema = z.enum([

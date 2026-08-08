@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 10;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 11;
 
 /** The run lifecycle states in which exactly one worker owns the row (doc 02 §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -322,6 +322,42 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   `,
   artifact_outbox: jsonRecordTable("artifact_outbox"),
   artifact_sink_heads: jsonRecordTable("artifact_sink_heads"),
+  /**
+   * Doc 06 §5's immutable plan manifest. `record_key` is the manifest id; the
+   * source digest is a column so "has this exact file been run before" is a
+   * lookup rather than a scan over parsed JSON.
+   */
+  intake_manifests: `
+    CREATE TABLE intake_manifests (
+      record_key TEXT PRIMARY KEY,
+      workflow TEXT NOT NULL,
+      source_sha256 TEXT NOT NULL,
+      workflow_contract_fingerprint TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  /**
+   * Doc 06 §4.3's admitted extraction, one row per PAGE.
+   *
+   * `(source_sha256, source_page, form_type)` is UNIQUE: one page read once for
+   * one form. A second producer reading the same page is a REPLACEMENT decision
+   * a human makes, not a second row that silently doubles a person.
+   */
+  ocr_extractions: `
+    CREATE TABLE ocr_extractions (
+      record_key TEXT PRIMARY KEY,
+      form_type TEXT NOT NULL,
+      source_sha256 TEXT NOT NULL,
+      source_page INTEGER NOT NULL CHECK (source_page >= 1),
+      page_kind TEXT NOT NULL,
+      page_fingerprint TEXT NOT NULL,
+      source_kind TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      UNIQUE (source_sha256, source_page, form_type)
+    ) STRICT
+  `,
   spans: jsonRecordTable("spans"),
   gates: jsonRecordTable("gates"),
   notes: jsonRecordTable("notes"),
@@ -373,6 +409,8 @@ const POST_V1_TABLE_ORDER = [
   "fix_records",
   "ledger_partitions",
   "ledger_projections",
+  "intake_manifests",
+  "ocr_extractions",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -724,6 +762,53 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         WHEN NEW.version <> OLD.version + 1 OR NEW.seen_count < OLD.seen_count
         BEGIN
           SELECT RAISE(ABORT, 'notification version advances exactly once and seen_count never rewinds');
+        END`,
+    ],
+  },
+  {
+    /*
+     * Phase-2h durability. Everything the intake and OCR pipelines produce was
+     * in-memory until here: a manifest and an admitted extraction survived
+     * exactly as long as the process did.
+     *
+     * Both tables carry their identifying facts as COLUMNS beside the record
+     * JSON, for the same reason v10 gave `failures` a searchable fingerprint:
+     * "has this file been run before" and "has this page already been read"
+     * are lookups an operator makes constantly, and a scan over parsed JSON is
+     * not an answer.
+     *
+     * `ocr_extractions` is UNIQUE on `(source_sha256, source_page, form_type)`.
+     * One page, read once, for one form. A second producer reading the same
+     * page is a REPLACEMENT a human decides on — not a second row that silently
+     * doubles a person in the fan-out.
+     */
+    version: 11,
+    statements: [
+      SQLITE_TABLE_DDL.intake_manifests,
+      SQLITE_TABLE_DDL.ocr_extractions,
+      "CREATE INDEX intake_manifests_source_idx ON intake_manifests(source_sha256, created_at)",
+      "CREATE INDEX intake_manifests_workflow_idx ON intake_manifests(workflow, created_at)",
+      "CREATE INDEX ocr_extractions_source_idx ON ocr_extractions(source_sha256, source_page)",
+      "CREATE INDEX ocr_extractions_form_idx ON ocr_extractions(form_type, created_at)",
+      // An intake manifest is the rerun authority (doc 06 §5): it proves which
+      // file and mapping produced which items. Rewriting one would rewrite
+      // history that a run already fanned out against.
+      `CREATE TRIGGER intake_manifests_immutable_update
+        BEFORE UPDATE ON intake_manifests
+        BEGIN
+          SELECT RAISE(ABORT, 'an intake manifest is immutable; a rerun creates a new one');
+        END`,
+      `CREATE TRIGGER intake_manifests_never_deleted
+        BEFORE DELETE ON intake_manifests
+        BEGIN
+          SELECT RAISE(ABORT, 'intake manifests are never deleted');
+        END`,
+      // An admitted extraction is what a human reviewed. Replacing one is a
+      // decision with its own audit; silently updating it is not.
+      `CREATE TRIGGER ocr_extractions_immutable_update
+        BEFORE UPDATE ON ocr_extractions
+        BEGIN
+          SELECT RAISE(ABORT, 'an admitted extraction is immutable; a re-read is a new row after an explicit replacement');
         END`,
     ],
   },

@@ -715,6 +715,50 @@ describe("native SQLite authority schema", () => {
   });
 });
 
+const INTAKE_MANIFEST = {
+  version: 1,
+  manifestId: "9f8a1c2d-4b5e-4a6f-9c8d-0e1f2a3b4c5d",
+  workflow: "work-study",
+  source: {
+    artifactId: "11111111-2222-4333-8444-555555555555",
+    sha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
+    originalName: "WorkStudy_July.xlsx",
+  },
+  mappingFingerprint: "a".repeat(64),
+  mappingSnapshotHash: "b".repeat(64),
+  intakeProjectionFingerprint: "c".repeat(64),
+  workflowContractFingerprint: "d".repeat(64),
+  canonicalInputSchemaHash: "e".repeat(64),
+  createdAt: "2026-08-07T09:00:00.000Z",
+  totals: { sourceRows: 1, valid: 1, rejected: 0, rejectionEvents: 0, excluded: 0, corrected: 0 },
+  sourceRowDispositions: [{
+    sourceRow: 1,
+    disposition: "valid",
+    itemId: "22222222-3333-4444-8555-666666666666",
+    currentRejectIds: [],
+  }],
+  validRows: [{
+    sourceRow: 1,
+    itemId: "22222222-3333-4444-8555-666666666666",
+    inputHash: "f".repeat(64),
+    parsedInput: { emplId: "10456712" },
+  }],
+  rejectedRows: [],
+  corrections: [],
+  exclusions: [],
+};
+
+const OCR_EXTRACTION = {
+  formType: "oath",
+  source: { kind: "local-agent", agentId: "claude-code", invocation: "read page1.png" },
+  readAt: "2026-08-07T09:00:00.000Z",
+  sourceSha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
+  sourcePage: 1,
+  pageKind: "emergency-contact",
+  record: null,
+  pageFingerprint: "1".repeat(64),
+};
+
 describe("authority generation accounting", () => {
   type MutationCase = Readonly<{
     table: Exclude<AuthorityTableName, "authority_meta">;
@@ -783,6 +827,8 @@ describe("authority generation accounting", () => {
       prepare: (db) => { terminalizeForTrust(db); },
       mutate: (db) => { db.authority.evidenceReceipts.insert(EVIDENCE_RECEIPT); },
     },
+    { table: "intake_manifests", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
+    { table: "ocr_extractions", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },
     { table: "knowledge_records", mutate: (db) => { db.authority.knowledgeRecords.insert(KNOWLEDGE_RECORD); } },
     { table: "fix_records", mutate: (db) => { db.authority.fixRecords.insert(FIX_RECORD); } },
     { table: "ledger_partitions", mutate: (db) => { acquireLedgerLease(db); } },
