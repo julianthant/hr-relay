@@ -1,7 +1,17 @@
 # Handoff — finish Phase 2 (rest of 2h, then 2i and 2j)
 
-**Date:** 2026-08-07
-**Paused at:** 2h roughly 40% complete and green. Nothing in flight, tree clean. Resume at **2h-A: the `i9` OCR form**.
+**Date:** 2026-08-07, extended 2026-08-08
+**Paused at:** 2h-A is DONE (D160, live-proved on the whole real 44-page scan) and 2h-B's first half
+is DONE (D161 — the production gemini adapter, live-proved byte-identical to a human route-2
+reading). Tree clean at `bf39d5f`; gates all green (test 1180 · architecture 327 · parity 70).
+Resume at **2h-B second half: executor/worker wiring** — `src/core/run-executor.ts` still refuses
+contracts declaring provider capabilities or content-addressed artifacts; build `ctx.providers`
+(via `createAdmittedProviderClient` with the run's retained config snapshot + `providerAdmissions`
+repo + adapter registry) and `ctx.artifacts` (the content-addressed writer), compose in
+`src/server/worker/compose.ts`, and RELAX the `provider-capability-boundary` arms that confine
+`createAdmittedProviderClient` to the kernel (call-site + import restrictions) in the same commit.
+Doc 06 §4.10/§4.11 record both as-builts; the runtime phase marker now reports
+`completedThrough: "2g"` / `active: "2h"`.
 
 **Supersedes** `2026-08-05-phase2-tail-2h.md` for scope — that brief covers only 2h. Read it for the
 D146–D159 detail; read this one for what remains of the whole phase.
@@ -54,16 +64,16 @@ has found a defect every single time it has been run.
 
 ### Remaining — 2h (finish this first)
 
-- [ ] **2h-A — the `i9` OCR form ← resume here.** The last piece of the OCR story and the
-      best-specified: D157 settled its grouping (match by name across the WHOLE stack; an orphan
-      Section 2 **flags, never blocks**) and D158 deliberately left the sectioned-subject arm
-      unwritten because no form needed it. Legacy's spec is
-      `legacy:src/services/ocr/forms/i9.ts` (~800 lines) — port its field set and prompt knowledge
-      the way `oath`/`emergency-contact` were ported (D153). Adding a form is a data edit in
-      `src/domain/ocr/form-registry.ts`; the brief and the gate both derive from it.
-- [ ] **2h-B — the production `ocr.extract` provider adapter.** Contract, store and gate are wired;
-      this is a real model call away. It is a peer of the CLI routes, not a privileged path — it may
-      add no rule of its own, and `ocr-producer-parity` enforces that.
+- [x] **2h-A — the `i9` OCR form. DONE 2026-08-08 (D160).** One form, two data-bearing page kinds
+      (`OcrFormSpec.pageKinds`), uniform record with per-field `onPageKinds` (off-section fields are
+      `not-on-form`, anything else refused), the sectioned-subject grouping arm (`incomplete` +
+      `missingKinds`, flag-never-block). Live-proved on the whole real 44-page scan: 44/44
+      accounted, 19 pairs found, 6 honest flags (2 paper orphans, 2 name-read splits).
+- [~] **2h-B — the production `ocr.extract` provider adapter. FIRST HALF DONE 2026-08-08 (D161)**
+      — `src/infra/providers/gemini-ocr-extract.ts`, transport+provenance only, live-proved
+      byte-identical to a route-2 human reading of the same real page. **← resume at the second
+      half:** executor `ctx.providers`/`ctx.artifacts` construction, worker composition, and the
+      matching `provider-capability-boundary` guard relaxation (see "Paused at" above).
 - [ ] **2h-C — roster store** (`roster/match-spreadsheet`, doc 06 §4) + the verbatim
       `match-confidence` tier port + the stable-keyed local artifact projector (§4.1).
 - [ ] **2h-D — normalization store** (doc 06 §4.2) + production provider pools over 1f's admission core.
