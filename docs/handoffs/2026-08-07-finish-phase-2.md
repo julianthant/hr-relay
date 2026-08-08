@@ -76,8 +76,12 @@ has found a defect every single time it has been run.
       run's retained config snapshot), worker composition in `compose.ts`, and the
       `provider-capability-boundary` arms relaxed to explicit allowlists — doc 06 §4.11 "Wired",
       `tests/unit/run-executor-capability-wiring.test.ts`.
-- [ ] **2h-C — roster store** (`roster/match-spreadsheet`, doc 06 §4) + the verbatim
-      `match-confidence` tier port + the stable-keyed local artifact projector (§4.1).
+- [x] **2h-C — roster store + artifact projector. DONE 2026-08-08 (D163 + D164).** The roster
+      store with the verbatim tier port and redesigned scoring (doc 06 §4 as-built), and the §4.1
+      stable-keyed projector: checkpoint+outbox atomic in the executor, blocking-by-structured-
+      failure, cross-run resume by re-derived stable key, xlsx-retention sink over
+      `write-excel-file`. The projector is not composed into the worker until a descriptor
+      declares a projection (the workbook path is the consuming migration's fact).
 - [ ] **2h-D — normalization store** (doc 06 §4.2) + production provider pools over 1f's admission core.
 - [ ] **2h-E — Edit Data core** (doc 06 §6) — the CAS-against-resume-fence save.
 - [ ] **2h-F — durable capture** sessions / photo artifacts / finalize outbox (doc 06 §5.1, D79d trim).

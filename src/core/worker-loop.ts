@@ -40,6 +40,7 @@ import {
   executeClaimedRun,
   RunExecutionOutcomeSchema,
   type ChildRunExecutor,
+  type RunArtifactProjector,
   type RunExecutionAuthority,
   type RunExecutionOutcome,
   type RunProviderWiring,
@@ -110,6 +111,8 @@ export interface WorkerLoopDependencies {
    */
   readonly providers?: RunProviderWiring;
   readonly artifacts?: ContentAddressedArtifactWriter;
+  /** Doc 06 §4.1's blocking sink projector; absent, a declaring node fails loud. */
+  readonly artifactProjector?: RunArtifactProjector;
   /**
    * Doc 03 §2.4's durable worker directives, observed BETWEEN items: the loop
    * polls before each claim, so `stop` ends the loop only after the active run
@@ -332,6 +335,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             ...(deps.diagnostics === undefined ? {} : { diagnostics: deps.diagnostics }),
             ...(deps.providers === undefined ? {} : { providers: deps.providers }),
             ...(deps.artifacts === undefined ? {} : { artifacts: deps.artifacts }),
+            ...(deps.artifactProjector === undefined ? {} : { artifactProjector: deps.artifactProjector }),
           }, { run, claim, signal: runController.signal }),
         );
         outcomes.push(outcome);

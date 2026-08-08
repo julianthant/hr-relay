@@ -79,6 +79,7 @@ import {
   type ReplayedCheckpoint,
   type RunCheckpointRecord,
 } from "../domain/workflow/checkpoint.js";
+import { deriveArtifactProjectionRows } from "../domain/workflow/artifact-projection.js";
 import {
   childRunOutcomeSchema,
   DelegationManifestRefSchema,
@@ -121,7 +122,7 @@ import type { WorkerSessionManager } from "./worker-sessions.js";
 
 /** The authority surface a run execution needs; `AuthorityDatabase` satisfies it. */
 export interface RunExecutionAuthority {
-  readonly authority: Pick<AuthorityRepositories, "runs" | "runCheckpoints" | "gateResults">;
+  readonly authority: Pick<AuthorityRepositories, "runs" | "runCheckpoints" | "gateResults" | "artifactOutbox">;
   terminalizeFailure(descriptor: AnyWorkflowDescriptor, input: unknown): FailureTerminalizationReport;
   terminalizeSuccess(input: unknown, factoryAuthorization?: object): SuccessTerminalizationReport;
   /**
@@ -196,6 +197,19 @@ export interface ChildRunContext {
 
 export interface ChildRunExecutor {
   executeChildRun(context: ChildRunContext): Promise<unknown>;
+}
+
+/**
+ * Doc 03 §2.1 (D45) / doc 06 §4.1: the sink projector behind a descriptor's
+ * `artifactProjections`. The executor commits the checkpoint and the
+ * stable-keyed `artifact_outbox` rows in ONE authority transaction, then
+ * calls this seam BEFORE the node may report done — a projection that cannot
+ * be acknowledged fails the node loudly, never a silently dropped workbook
+ * update. The durable rows survive the failure, so a relaunch resumes the
+ * projection from the replayed checkpoint.
+ */
+export interface RunArtifactProjector {
+  projectOutbox(outboxIds: readonly string[]): Promise<Readonly<{ projected: number }>>;
 }
 
 /**
@@ -274,6 +288,12 @@ export interface RunExecutorDependencies {
    * failure naming the missing wiring.
    */
   readonly artifacts?: ContentAddressedArtifactWriter;
+  /**
+   * Absent means a node with a declared durable artifact projection
+   * terminalizes with a structured failure naming the missing wiring — a
+   * blocking projection is never silently skipped (doc 06 §4.1).
+   */
+  readonly artifactProjector?: RunArtifactProjector;
 }
 
 export interface ClaimedRunInput {
@@ -882,6 +902,49 @@ export async function executeClaimedRun(
       });
     };
 
+    const projectionsFor = (nodeId: string) =>
+      (descriptor.artifactProjections ?? []).filter((spec) => String(spec.source.nodeId) === nodeId);
+
+    /**
+     * A replayed checkpoint may still owe its blocking projection: the
+     * checkpoint and its outbox rows committed atomically, but a crash (or a
+     * parked projection failure) can leave rows `pending` — possibly from an
+     * EARLIER run of the same item. The stable keys re-derive from the
+     * replayed checkpoint (a pure function of its exact output), so the rows
+     * are found by the identity that actually matters — projection id plus
+     * stable key — never by which run happened to insert them. The node
+     * cannot pass as replayed until every one of its rows is acknowledged.
+     */
+    const resumePendingProjections = async (
+      node: TaskRuntimeNode,
+      record: RunCheckpointRecord,
+    ): Promise<RunExecutionOutcome | undefined> => {
+      const specs = projectionsFor(String(node.id));
+      if (specs.length === 0) return undefined;
+      try {
+        const derived = deriveArtifactProjectionRows({
+          specs,
+          nodeId: String(node.id),
+          outputValue: record.output.value,
+        });
+        const expected = new Set(derived.map((row) => `${row.projectionId}\0${row.stableKeyFingerprint}`));
+        const pending = deps.authority.authority.artifactOutbox.listPending()
+          .filter((row) => expected.has(`${row.projectionId}\0${row.stableKeyFingerprint}`));
+        if (pending.length === 0) return undefined;
+        const projector = deps.artifactProjector;
+        if (projector === undefined) {
+          return await failNode(node, node.uses.id, new Error(
+            `node "${node.id}" replays a checkpoint with ${String(pending.length)} unacknowledged artifact `
+            + "outbox rows, and this composition wires no artifact sink projector",
+          ));
+        }
+        await projector.projectOutbox(pending.map((row) => row.outboxId));
+      } catch (error) {
+        return await failNode(node, node.uses.id, error);
+      }
+      return undefined;
+    };
+
     const executeTaskNode = async (
       node: TaskRuntimeNode,
       scope: RuntimeScope,
@@ -928,6 +991,20 @@ export async function executeClaimedRun(
           : { artifacts: deps.artifacts }),
       });
 
+      const declaredProjections = projectionsFor(String(node.id));
+      if (declaredProjections.length > 0 && deps.artifactProjector === undefined) {
+        return await failNode(node, contract.id, new Error(
+          `node "${node.id}" declares a durable artifact projection, and this composition wires no `
+          + "artifact sink projector",
+        ));
+      }
+      if (declaredProjections.length > 0 && deps.authority.withAuthorityTransaction === undefined) {
+        return await failNode(node, contract.id, new Error(
+          `node "${node.id}" declares a durable artifact projection, whose checkpoint and outbox rows `
+          + "must commit atomically — and this authority exposes no transaction",
+        ));
+      }
+
       const attempts = task.impl.retry?.attempts ?? 1;
       const backoffMs = task.impl.retry?.backoffMs ?? 0;
       const need = task.impl.sessions[0];
@@ -942,7 +1019,46 @@ export async function executeClaimedRun(
         });
         try {
           const record = await invokeTask(node, task, scope, need, capabilityWiring);
-          deps.authority.authority.runCheckpoints.insert(record);
+          if (declaredProjections.length === 0) {
+            deps.authority.authority.runCheckpoints.insert(record);
+          } else {
+            // Bound, not extracted: `withAuthorityTransaction` is a class
+            // method whose `this` is the authority — a detached call dies on
+            // its own private state.
+            const withTransaction = deps.authority.withAuthorityTransaction?.bind(deps.authority);
+            const projector = deps.artifactProjector;
+            if (withTransaction === undefined || projector === undefined) {
+              throw new Error(`node "${node.id}" projection wiring disappeared between refusal check and commit`);
+            }
+            const derived = deriveArtifactProjectionRows({
+              specs: declaredProjections,
+              nodeId: String(node.id),
+              outputValue: record.output.value,
+            });
+            const outboxRows = derived.map((row) => ({
+              outboxId: deps.ids.uuid(),
+              artifactId: deps.ids.uuid(),
+              projectionId: row.projectionId,
+              stableKeyFingerprint: row.stableKeyFingerprint,
+              keyValues: row.keyValues,
+              sinkId: row.sinkId,
+              sourceRunId: runId,
+              sourceNodeId: String(node.id),
+              state: "pending",
+              payload: { schemaHash: record.output.schemaHash, value: row.value },
+              createdAt: instant(),
+            }));
+            // Doc 03 §2.1 (D45): the checkpoint and its stable-keyed outbox
+            // rows are ONE durable fact — neither may exist without the other.
+            withTransaction((repositories) => {
+              repositories.runCheckpoints.insert(record);
+              for (const row of outboxRows) repositories.artifactOutbox.insert(row);
+            });
+            // Blocking: the node may not report done until every row is
+            // acknowledged. A throw here fails the node; the durable rows
+            // survive, and a relaunch resumes projection from the replay arm.
+            await projector.projectOutbox(outboxRows.map((row) => String(row.outboxId)));
+          }
           checkpointRecords.set(String(node.id), record);
           outputs[String(node.id)] = JsonValueSchema.parse(record.output.value);
           emit({
@@ -980,7 +1096,13 @@ export async function executeClaimedRun(
       if (input.signal.aborted) throw abortReason(`run ${runId} execution was aborted`);
       const entry = plan.get(String(node.id));
       if (entry === undefined) throw new Error(`node "${node.id}" has no execution plan entry`);
-      if (entry.mode === "replay") continue;
+      if (entry.mode === "replay") {
+        if (node.kind === "task") {
+          const owed = await resumePendingProjections(node, entry.record);
+          if (owed !== undefined) return owed;
+        }
+        continue;
+      }
       if (entry.mode === "skipped-condition") {
         skippedReasons.set(String(node.id), "condition-false");
         continue;

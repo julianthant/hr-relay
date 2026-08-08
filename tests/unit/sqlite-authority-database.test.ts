@@ -67,11 +67,21 @@ const VERSION_PLAN = {
 const ARTIFACT_OUTBOX = {
   outboxId: UUID_7,
   artifactId: UUID_8,
+  projectionId: "retention-record",
   stableKeyFingerprint: HASH_B,
-  sinkId: "evidence-ledger",
+  keyValues: [{ field: "subject.eid", value: "10456712" }],
+  sinkId: "xlsx-retention",
+  sourceRunId: UUID_2,
+  sourceNodeId: "extract",
   state: "pending",
   payload: SCHEMA_BOUND_VALUE,
   createdAt: NOW,
+};
+const ARTIFACT_SINK_HEAD_REQUEST = {
+  sinkId: "xlsx-retention",
+  contentSha256: HASH_C,
+  lastOutboxId: UUID_7,
+  projectedAt: NOW,
 };
 const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
 const ACTIVE_STATUS = {
@@ -877,7 +887,7 @@ describe("authority generation accounting", () => {
       mutate: (db) => { db.commitWriteAttempt(ATOMIC_WRITE_COMMIT); },
     },
     { table: "artifact_outbox", mutate: (db) => { db.authority.artifactOutbox.insert(ARTIFACT_OUTBOX); } },
-    { table: "artifact_sink_heads", mutate: (db) => { db.authority.opaque.artifactSinkHeads.insert(OPAQUE_RECORD); } },
+    { table: "artifact_sink_heads", mutate: (db) => { db.authority.artifactSinkHeads.record(ARTIFACT_SINK_HEAD_REQUEST); } },
   ];
 
   it("covers every classified authority table mutator and increments once per outer mutation", () => {

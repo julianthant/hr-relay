@@ -11,10 +11,13 @@ import {
   DiagnosticBundleIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
+  NodeIdSchema,
   OutboxIdSchema,
   PositiveIntSchema,
+  RunIdSchema,
   VersionPlanIdSchema,
 } from "../../domain/ids.js";
+import { ArtifactProjectionKeyValueSchema } from "../../domain/workflow/artifact-projection.js";
 import {
   LedgerPartitionRecordSchema,
   LedgerProjectionRecordSchema,
@@ -59,14 +62,57 @@ export const VersionPlanStorageRecordSchema = z.strictObject({
   createdAt: IsoInstantSchema,
 });
 
+/**
+ * Doc 03 §2.1 (D45) / doc 06 §4.1: one stable-keyed durable projection row,
+ * committed atomically with the producing node's checkpoint. `projectionId`,
+ * `keyValues`, and the source identity joined the record at D164, when the
+ * first producer landed — the released v1 shell had zero production rows, so
+ * this is the first real shape, not a migration of one. `projectedAt` exists
+ * exactly when `state` is `"projected"` (enforced by the repository's ack).
+ */
 export const ArtifactOutboxStorageRecordSchema = z.strictObject({
   outboxId: OutboxIdSchema,
   artifactId: ArtifactIdSchema,
+  projectionId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   stableKeyFingerprint: FingerprintSchema,
+  /** Ordered declared-key pairs, never an open map (doc 06 §2's own rule). */
+  keyValues: ArtifactProjectionKeyValueSchema.array().min(1),
   sinkId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  sourceRunId: RunIdSchema,
+  sourceNodeId: NodeIdSchema,
   state: z.enum(["pending", "projected"]),
   payload: SchemaBoundCanonicalValueSchema,
   createdAt: IsoInstantSchema,
+  projectedAt: IsoInstantSchema.optional(),
+});
+
+/**
+ * Doc 06 §4.1's sink head: the last content hash this projector recorded for
+ * a sink's workbook. One row per sink, updated with `generation + 1` under a
+ * CAS — the same one-row-updated discipline notifications follow (v10's
+ * lesson). A workbook whose bytes do not hash to `contentSha256` was changed
+ * by someone else, and the projector parks rather than overwriting them.
+ */
+export const ArtifactSinkHeadRecordSchema = z.strictObject({
+  sinkId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  contentSha256: FingerprintSchema,
+  generation: PositiveIntSchema,
+  lastOutboxId: OutboxIdSchema,
+  projectedAt: IsoInstantSchema,
+});
+
+/** The repository ack: CAS `pending → projected`, stamping the instant. */
+export const ArtifactOutboxAckRequestSchema = z.strictObject({
+  outboxId: OutboxIdSchema,
+  projectedAt: IsoInstantSchema,
+});
+
+/** The repository head upsert; `generation` is assigned by the repository. */
+export const ArtifactSinkHeadRecordRequestSchema = z.strictObject({
+  sinkId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  contentSha256: FingerprintSchema,
+  lastOutboxId: OutboxIdSchema,
+  projectedAt: IsoInstantSchema,
 });
 
 /**
@@ -127,7 +173,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   write_attempts: WriteAttemptRecordSchema,
   durable_outbox: AtomicOutboxRecordSchema,
   artifact_outbox: ArtifactOutboxStorageRecordSchema,
-  artifact_sink_heads: OpaqueAuthorityRecordSchema,
+  /** Typed at D164, when the first sink projector landed. */
+  artifact_sink_heads: ArtifactSinkHeadRecordSchema,
   /** Doc 06 §5's immutable plan manifest (D159). */
   intake_manifests: IntakePlanManifestSchema,
   /** Doc 06 §4.3's admitted page extraction (D159). */
@@ -138,4 +185,5 @@ export type DiagnosticAttachmentStorageRecord = z.infer<typeof DiagnosticAttachm
 export type OpaqueAuthorityRecord = z.infer<typeof OpaqueAuthorityRecordSchema>;
 export type VersionPlanStorageRecord = z.infer<typeof VersionPlanStorageRecordSchema>;
 export type ArtifactOutboxStorageRecord = z.infer<typeof ArtifactOutboxStorageRecordSchema>;
+export type ArtifactSinkHeadRecord = z.infer<typeof ArtifactSinkHeadRecordSchema>;
 export type ProjectionStorageRecord = z.infer<typeof ProjectionStorageRecordSchema>;

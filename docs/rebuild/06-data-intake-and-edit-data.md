@@ -574,6 +574,35 @@ registry; descriptor coverage validates every source/key path and sink id.
 Input/download `FileRef` values are likewise content-addressed artifact references created through
 doc 01's atomic writer, not arbitrary mutable paths.
 
+**As-built (D164, 2026-08-08) — this section landed.** The v1 `artifact_outbox`/
+`artifact_sink_heads` shells (JSON tables with zero production rows) grew their REAL semantics at
+the repository layer — no migration, because no released bytes existed to migrate: the outbox
+record gained `projectionId`/`keyValues`/source identity, `markProjected` is a `pending →
+projected` CAS that is idempotent on an already-projected row, and the typed sink head updates one
+row per sink under a generation CAS (the notifications discipline). The executor consumes
+`descriptor.artifactProjections` at runtime: the checkpoint and its derived stable-keyed rows
+commit in ONE authority transaction, the node then BLOCKS on `RunArtifactProjector.projectOutbox`,
+and a projection failure is a STRUCTURED NODE FAILURE — doc 02's state machine has no
+waiting-on-projection arm (a real gap between this section's "parks" language and doc 02 §4), and
+the as-built resolution is fail-loud node failure with the durable rows surviving: a relaunch
+replays the checkpoint, RE-DERIVES the stable keys (a pure function of the exact output), finds
+its pending rows by `projectionId + stableKeyFingerprint` — never by run id — and resumes the
+projection to done. The projector's ordering mirrors the ledger lesson: file replace first, then
+head + acknowledgement in one transaction; the crash window between them re-reads as a conflict
+and parks fail-closed, indistinguishable from and treated like an operator edit (both hashes
+named, the operator's bytes untouched, the intended update preserved beside them as
+`.pending-<outboxId>.xlsx`). The `xlsx-retention` sink writes a four-column durability layout
+(`stableKey`/`keyValues`/`record`/`projectedAt`, canonical JSON text) — the operator-facing
+retention columns belong to i9-check's migration, which knows the real fields — through
+`write-excel-file` (the maintained sibling of the trusted reader; `@office-kit/xlsx` re-checked
+2026-08-08, still 0.9.0, stays refused per §3's reasons). The exclusive lease is a per-sink
+`O_EXCL` lock file — the LOCAL scope this section names; multi-worker contention is 2j's soak.
+`composeWorkerRuntime` deliberately does NOT wire the projector yet: no production descriptor
+declares a projection, and the workbook path is the consuming migration's fact to supply — a
+declaring descriptor without the seam fails loud by name. Proof:
+`tests/unit/artifact-projection.test.ts` (13 arms: derivation purity, fresh/no-op/update/conflict/
+lock, and the executor's atomic-commit, blocking-failure, and cross-run resume arms).
+
 ### 4.2 Contact/address normalization is typed advice, not a silent fallback
 
 The old path mixes deterministic phone/state/ZIP cleanup, Census→Nominatim fallback, and optional

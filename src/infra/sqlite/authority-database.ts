@@ -200,13 +200,17 @@ import {
   type AuthorityCopyInspection,
 } from "./recovery-contracts.js";
 import {
+  ArtifactOutboxAckRequestSchema,
   ArtifactOutboxStorageRecordSchema,
+  ArtifactSinkHeadRecordRequestSchema,
+  ArtifactSinkHeadRecordSchema,
   AUTHORITY_RECORD_SCHEMA_REGISTRY,
   DiagnosticAttachmentStorageRecordSchema,
   OpaqueAuthorityRecordSchema,
   ProjectionStorageRecordSchema,
   VersionPlanStorageRecordSchema,
   type ArtifactOutboxStorageRecord,
+  type ArtifactSinkHeadRecord,
   type DiagnosticAttachmentStorageRecord,
   type OpaqueAuthorityRecord,
   type ProjectionStorageRecord,
@@ -519,7 +523,35 @@ type OpaqueAuthorityRepositories = Readonly<{
   captureSessions: ImmutableRepository<OpaqueAuthorityRecord>;
   capturePhotoOrder: ImmutableRepository<OpaqueAuthorityRecord>;
   captureFinalizationOutboxes: ImmutableRepository<OpaqueAuthorityRecord>;
-  artifactSinkHeads: ImmutableRepository<OpaqueAuthorityRecord>;
+}>;
+
+/**
+ * Doc 03 §2.1 (D45) / doc 06 §4.1: the stable-keyed local artifact outbox.
+ * Insert commits atomically with the producing node's checkpoint (the caller
+ * wraps both in one authority transaction); `markProjected` is the sink
+ * projector's acknowledgement — a CAS from `pending`, idempotent on an
+ * already-projected row so an at-least-once projector can re-acknowledge
+ * after a crash without erroring.
+ */
+type ArtifactOutboxRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<ArtifactOutboxStorageRecord>;
+  get(outboxId: string): ArtifactOutboxStorageRecord | undefined;
+  listPending(): readonly ArtifactOutboxStorageRecord[];
+  markProjected(input: unknown): Readonly<{
+    state: "acknowledged" | "already-projected";
+    record: ArtifactOutboxStorageRecord;
+  }>;
+}>;
+
+/**
+ * One row per sink, updated under a generation CAS — the notifications
+ * discipline (v10's lesson) applied to the projector's recorded workbook
+ * hash. The head is what makes a concurrent operator edit DETECTABLE: bytes
+ * that do not hash to `contentSha256` were changed by someone else.
+ */
+type ArtifactSinkHeadRepository = Readonly<{
+  get(sinkId: string): ArtifactSinkHeadRecord | undefined;
+  record(input: unknown): ArtifactSinkHeadRecord;
 }>;
 
 /** Doc 06 §5 — insert-only; a rerun creates a new manifest (D159). */
@@ -567,7 +599,8 @@ export type AuthorityRepositories = Readonly<{
     listByIntent(writeIntentId: string): readonly z.infer<typeof WriteAttemptRecordSchema>[];
   }>;
   durableOutbox: ReadRepository<z.infer<typeof AtomicOutboxRecordSchema>>;
-  artifactOutbox: ImmutableRepository<ArtifactOutboxStorageRecord>;
+  artifactOutbox: ArtifactOutboxRepository;
+  artifactSinkHeads: ArtifactSinkHeadRepository;
   opaque: OpaqueAuthorityRepositories;
 }>;
 
@@ -589,7 +622,6 @@ const OpaqueAuthorityTableSchema = z.enum([
   "capture_sessions",
   "capture_photo_order",
   "capture_finalization_outboxes",
-  "artifact_sink_heads",
 ]);
 
 const JsonRowSchema = z.strictObject({ record_json: z.string() });
@@ -3080,13 +3112,85 @@ export class AuthorityDatabase implements Disposable {
           return this.#insertSimpleRecord("artifact_outbox", record.outboxId, record, ArtifactOutboxStorageRecordSchema, record.createdAt);
         },
         get: (outboxId: string) => this.#readRecord("artifact_outbox", outboxId, ArtifactOutboxStorageRecordSchema),
+        listPending: () => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM artifact_outbox
+            WHERE json_extract(record_json, '$.state') = 'pending'
+            ORDER BY created_at, record_key
+          `).all();
+          return Object.freeze(rows.map((row) =>
+            parseJsonRecord(ArtifactOutboxStorageRecordSchema, JsonRowSchema.parse(row).record_json)));
+        },
+        markProjected: (input: unknown) => {
+          const request = ArtifactOutboxAckRequestSchema.parse(input);
+          return this.#authorityWrite("artifact_outbox", () => {
+            const existing = this.#readRecord("artifact_outbox", request.outboxId, ArtifactOutboxStorageRecordSchema);
+            if (existing === undefined) {
+              throw new Error(`artifact outbox row ${request.outboxId} does not exist; nothing to acknowledge`);
+            }
+            if (existing.state === "projected") {
+              return {
+                result: Object.freeze({ state: "already-projected" as const, record: existing }),
+                changes: 0,
+              };
+            }
+            const projected = ArtifactOutboxStorageRecordSchema.parse({
+              ...existing,
+              state: "projected",
+              projectedAt: request.projectedAt,
+            });
+            const outcome = this.#database.prepare(`
+              UPDATE artifact_outbox SET record_json = ?
+              WHERE record_key = ? AND json_extract(record_json, '$.state') = 'pending'
+            `).run(canonicalJsonStringify(projected), request.outboxId);
+            const changes = sqliteChanges(outcome.changes);
+            if (changes !== 1) {
+              throw new Error(`artifact outbox ${request.outboxId} acknowledgement affected ${String(changes)} rows`);
+            }
+            return {
+              result: Object.freeze({ state: "acknowledged" as const, record: projected }),
+              changes: 1,
+            };
+          });
+        },
+      }),
+      artifactSinkHeads: Object.freeze({
+        get: (sinkId: string) => this.#readRecord("artifact_sink_heads", sinkId, ArtifactSinkHeadRecordSchema),
+        record: (input: unknown) => {
+          const request = ArtifactSinkHeadRecordRequestSchema.parse(input);
+          return this.#authorityWrite("artifact_sink_heads", () => {
+            const existing = this.#readRecord("artifact_sink_heads", request.sinkId, ArtifactSinkHeadRecordSchema);
+            if (existing === undefined) {
+              const head = ArtifactSinkHeadRecordSchema.parse({ ...request, generation: 1 });
+              this.#database.prepare(`
+                INSERT INTO artifact_sink_heads (record_key, record_json, created_at) VALUES (?, ?, ?)
+              `).run(head.sinkId, canonicalJsonStringify(head), head.projectedAt);
+              return { result: head, changes: 1 };
+            }
+            const head = ArtifactSinkHeadRecordSchema.parse({
+              ...request,
+              generation: existing.generation + 1,
+            });
+            const outcome = this.#database.prepare(`
+              UPDATE artifact_sink_heads SET record_json = ?
+              WHERE record_key = ? AND json_extract(record_json, '$.generation') = ?
+            `).run(canonicalJsonStringify(head), head.sinkId, existing.generation);
+            const changes = sqliteChanges(outcome.changes);
+            if (changes !== 1) {
+              throw new Error(
+                `artifact sink head ${head.sinkId} update raced past generation ${String(existing.generation)}; `
+                + `${String(changes)} rows changed`,
+              );
+            }
+            return { result: head, changes: 1 };
+          });
+        },
       }),
       opaque: Object.freeze({
         ocrApprovals: opaque("ocr_approvals"),
         captureSessions: opaque("capture_sessions"),
         capturePhotoOrder: opaque("capture_photo_order"),
         captureFinalizationOutboxes: opaque("capture_finalization_outboxes"),
-        artifactSinkHeads: opaque("artifact_sink_heads"),
       }),
     });
   }

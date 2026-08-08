@@ -690,8 +690,12 @@ const SQLITE_VERSION_PLAN = {
 const SQLITE_ARTIFACT_OUTBOX = {
   outboxId: UUID_1,
   artifactId: UUID_2,
+  projectionId: "retention-record",
   stableKeyFingerprint: HASH_B,
-  sinkId: "evidence-ledger",
+  keyValues: [{ field: "subject", value: "10456712" }],
+  sinkId: "xlsx-retention",
+  sourceRunId: UUID_1,
+  sourceNodeId: "extract",
   state: "pending",
   payload: { schemaHash: HASH_A, value: { artifact: UUID_2 } },
   createdAt: NOW,
