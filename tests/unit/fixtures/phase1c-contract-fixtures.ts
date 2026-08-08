@@ -55,7 +55,7 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "version-archive", type: "relaunch-archived-run", target: { archivedRunId: UUID_2, archiveFingerprint: HASH_A } },
   ...["retry", "cancel", "bump", "hide", "unhide"].map((type) => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
   { ...BASE_COMMAND, family: "run", type: "rename", target: RUN_TARGET, payload: { displayName: "Summer onboarding" } },
-  { ...BASE_COMMAND, family: "run", type: "edit-checkpoint", target: RUN_TARGET, payload: { checkpoint: { schemaHash: HASH_A, value: "corrected" }, checkpointFingerprint: HASH_B } },
+  { ...BASE_COMMAND, family: "run", type: "edit-checkpoint", target: RUN_TARGET, payload: { patches: [{ nodeId: "probe", fieldPath: "eid", value: "10999999", correctedAt: NOW, reason: "operator verified against the paper form" }] } },
   { ...BASE_COMMAND, family: "run", type: "resolve-write-present", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1 }, payload: { proof: { schemaHash: HASH_A, value: "receipt-123" }, evidenceNote: "Confirmed in the target system" } },
   { ...BASE_COMMAND, family: "run", type: "resolve-write-absent", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1 }, payload: { evidenceNote: "Confirmed absent in the target system" } },
   { ...BASE_COMMAND, family: "gate", type: "resolve-gate", target: { runId: UUID_2, gateId: "identity-approval", expectedVersion: 1 }, payload: { result: { schemaHash: HASH_A, value: "approved" } } },

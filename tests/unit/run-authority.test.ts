@@ -135,7 +135,7 @@ describe("RunEnvelope", () => {
     );
   });
 
-  it("refuses injected patches without an entry node, on the entry node, or duplicated", () => {
+  it("accepts injected patches without an entry node, refusing entry-node and duplicate patches", () => {
     const patch = {
       nodeId: "searching",
       fieldPath: "selection.status",
@@ -143,9 +143,11 @@ describe("RunEnvelope", () => {
       correctedAt: NOW,
       reason: "operator corrected the selection",
     };
-    assert.throws(
-      () => RunEnvelopeSchema.parse({ ...RUN_ENVELOPE, injected: [patch] }),
-      /require an explicit startAt/,
+    // D166: a live Edit-Data save needs no startAt — the executor refuses,
+    // loudly, any patch naming a node it will execute rather than replay.
+    assert.equal(
+      RunEnvelopeSchema.parse({ ...RUN_ENVELOPE, injected: [patch] }).injected?.length,
+      1,
     );
     assert.throws(
       () => RunEnvelopeSchema.parse({ ...RUN_ENVELOPE, startAt: "searching", injected: [patch] }),

@@ -39,7 +39,9 @@ import {
 import { deriveTraceId, type IdFactory } from "../domain/identifiers.js";
 import { FingerprintSchema, IsoInstantSchema, WorkerIdSchema } from "../domain/ids.js";
 import { deepFreeze } from "../domain/immutability.js";
-import { isTerminalRunState, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
+import { isTerminalRunState, runClaim, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
+import { RunCheckpointRecordSchema } from "../domain/workflow/checkpoint.js";
+import { applyCheckpointPatches } from "./checkpoint-patch.js";
 import { isLiveWorker } from "../domain/run/worker.js";
 import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../domain/schema-bound-value.js";
 import type { WriteIntentRecord } from "../domain/write-safety.js";
@@ -67,6 +69,7 @@ const PHASE1_ACTIVE = {
     "unhide",
     "resolve-write-present",
     "resolve-write-absent",
+    "edit-checkpoint",
   ],
   gate: ["resolve-gate"],
 } as const;
@@ -82,7 +85,7 @@ const PHASE1_DEFERRED = {
   ],
   settings: ["apply-settings"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
-  run: ["edit-checkpoint"],
+  run: [],
   notification: ["notification-read", "notification-unread", "notification-snooze"],
   capture: [
     "capture-upload",
@@ -143,6 +146,7 @@ export interface WorkflowDescriptorResolver {
  */
 type RunCommand = Extract<CommandRequest, { family: "run" }>;
 type RunBasicCommand = Extract<RunCommand, { type: "retry" | "cancel" | "bump" | "hide" | "unhide" }>;
+type RunEditCheckpointCommand = Extract<RunCommand, { type: "edit-checkpoint" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
 
@@ -665,6 +669,127 @@ function executeBump(
   }]);
 }
 
+/**
+ * Doc 06 §6 (D166): the Edit-Data save. Fail-closed by construction — an
+ * unknown or raced state rejects; the resume claim is the fence and the
+ * resume WINS; every patch path must be descriptor-allowlisted; and the
+ * whole post-patch output must re-parse through the producing contract's
+ * full output schema BEFORE anything durable moves. The accepted patches
+ * ride `envelope.injected` and become authority only when a resume replays
+ * the checkpoint through the same applier.
+ */
+function executeEditCheckpoint(
+  dependencies: CommandKernelDependencies,
+  repositories: AuthorityRepositories,
+  request: RunEditCheckpointCommand,
+  now: string,
+): CommandApplication {
+  const current = requireRun(repositories, request, request.target.runId);
+  if (current.version !== request.target.expectedVersion) {
+    reject(
+      request,
+      "invalid-state",
+      `run ${request.target.runId} moved to version ${String(current.version)} while you were editing `
+      + `(you loaded ${String(request.target.expectedVersion)}); your edit was not applied — reload the current state`,
+    );
+  }
+  if (runClaim(current) !== undefined) {
+    reject(
+      request,
+      "invalid-state",
+      `run ${request.target.runId} resumed while you were editing — your edit was not applied; `
+      + "reload the current state",
+    );
+  }
+  if (current.lifecycle.state !== "queued" && current.lifecycle.state !== "parked-gate") {
+    reject(
+      request,
+      "invalid-state",
+      `run ${request.target.runId} is ${current.lifecycle.state}; checkpoint corrections apply only to a `
+      + "non-executing resumable run — a running task's checkpoints are being written, and a done run is history",
+    );
+  }
+  const descriptor = resolveDescriptorOrReject(dependencies, request, current.envelope.workflow);
+  requireDescriptorMatchesEnvelope(request, descriptor, current);
+
+  const editData = descriptor.capabilities?.editData;
+  if (editData === undefined || typeof editData === "boolean") {
+    reject(
+      request,
+      "policy-refused",
+      `workflow ${current.envelope.workflow} declares no editable checkpoint fields; the default is `
+      + "read-only, never all checkpoint JSON",
+    );
+  }
+  const declared = new Set(editData.fields.map((field) => `${String(field.nodeId)}\0${field.fieldPath}`));
+  for (const patch of request.payload.patches) {
+    if (!declared.has(`${String(patch.nodeId)}\0${patch.fieldPath}`)) {
+      reject(
+        request,
+        "policy-refused",
+        `field ${String(patch.nodeId)}.${patch.fieldPath} is not descriptor-allowlisted for correction`,
+      );
+    }
+  }
+
+  // Prove every patched output re-parses BEFORE anything durable moves.
+  const nodes = descriptorRuntimeNodes(descriptor);
+  const byNode = new Map<string, typeof request.payload.patches[number][]>();
+  for (const patch of request.payload.patches) {
+    const existing = byNode.get(String(patch.nodeId));
+    if (existing === undefined) byNode.set(String(patch.nodeId), [patch]);
+    else existing.push(patch);
+  }
+  for (const [nodeId, nodePatches] of byNode) {
+    const node = nodes.find((candidate) => String(candidate.id) === nodeId);
+    if (node === undefined || node.kind !== "task") {
+      reject(request, "policy-refused", `node "${nodeId}" is not a correctable task node`);
+    }
+    const stored = repositories.runCheckpoints.latest(
+      current.envelope.workflow,
+      current.envelope.itemId,
+      nodeId,
+    );
+    if (stored === undefined) {
+      reject(
+        request,
+        "invalid-state",
+        `node "${nodeId}" has no stored checkpoint to correct; a correction supersedes a recorded fact`,
+      );
+    }
+    try {
+      applyCheckpointPatches({
+        replayed: RunCheckpointRecordSchema.parse(stored),
+        patches: nodePatches,
+        outputSchema: node.uses.output,
+        attempt: current.envelope.attempt,
+        runId: current.envelope.runId,
+        writtenAt: now,
+      });
+    } catch (error) {
+      reject(
+        request,
+        "schema-mismatch",
+        `the corrected output for node "${nodeId}" does not satisfy the producing contract's schema: `
+        + (error instanceof Error ? error.message : String(error)),
+      );
+    }
+  }
+
+  const outcome = repositories.runs.injectCheckpointPatches({
+    runId: request.target.runId,
+    expectedVersion: current.version,
+    patches: request.payload.patches,
+    now,
+  });
+  requireApplied(outcome, `injecting checkpoint corrections into run ${request.target.runId}`);
+  return applied(request, [runTarget(request.target.runId)], [{
+    target: runTarget(request.target.runId),
+    before: current.version,
+    after: current.version + 1,
+  }]);
+}
+
 function executePresentation(
   repositories: AuthorityRepositories,
   request: RunBasicCommand | RunRenameCommand,
@@ -978,7 +1103,7 @@ function dispatchActive(
         case "resolve-write-absent":
           return executeWriteResolution(dependencies, repositories, request, now);
         case "edit-checkpoint":
-          throw new Error("run/edit-checkpoint is deferred and must have been rejected before dispatch");
+          return executeEditCheckpoint(dependencies, repositories, request, now);
       }
       break;
     }

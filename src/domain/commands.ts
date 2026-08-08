@@ -27,6 +27,7 @@ import {
   WriteIntentIdSchema,
 } from "./ids.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
+import { CheckpointPatchSchema } from "./workflow/checkpoint.js";
 
 export const CommandFamilySchema = z.enum([
   "start",
@@ -214,7 +215,9 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "cancel", "bump", "hide", "unhide"]), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("edit-checkpoint"), target: RunVersionTargetSchema, payload: z.strictObject({ checkpoint: SchemaBoundCanonicalValueSchema, checkpointFingerprint: FingerprintSchema }) }),
+  // D166: doc 06 §6.3's field-level patch model. The earlier whole-checkpoint
+  // blob payload was a deferred-arm placeholder no producer ever sent.
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("edit-checkpoint"), target: RunVersionTargetSchema, payload: z.strictObject({ patches: z.array(CheckpointPatchSchema).min(1) }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-present"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema }), payload: z.strictObject({ proof: SchemaBoundCanonicalValueSchema, evidenceNote: OperatorReasonSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-absent"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema }), payload: z.strictObject({ evidenceNote: OperatorReasonSchema }) }),
 ]);

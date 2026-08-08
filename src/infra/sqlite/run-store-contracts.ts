@@ -28,6 +28,7 @@ import {
   WorkerLifecycleSchema,
 } from "../../domain/run/worker.js";
 import { RunDisplayNameSchema } from "../../domain/commands.js";
+import { CheckpointPatchSchema } from "../../domain/workflow/checkpoint.js";
 import {
   RequeueCauseSchema,
   RunLifecycleSchema,
@@ -111,6 +112,20 @@ export const RunResumeRequestSchema = z.strictObject({
 export const RunPriorityBumpRequestSchema = z.strictObject({
   runId: RunIdSchema,
   expectedVersion: PositiveIntSchema,
+  now: IsoInstantSchema,
+});
+
+/**
+ * Doc 06 §6.4 (D166): the Edit-Data save. The version CAS is the whole race
+ * protocol — a resume claim bumps the row version, so a save loaded at
+ * generation G cannot land on a run that has moved. Patches merge by
+ * (nodeId, fieldPath), later wins; they become authority only when a resume
+ * re-parses the patched output through the producing contract's schema.
+ */
+export const RunInjectPatchesRequestSchema = z.strictObject({
+  runId: RunIdSchema,
+  expectedVersion: PositiveIntSchema,
+  patches: z.array(CheckpointPatchSchema).min(1),
   now: IsoInstantSchema,
 });
 

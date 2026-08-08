@@ -65,6 +65,8 @@ const EXPECTED_ACTIVE = {
   run: [
     "retry", "cancel", "bump", "rename", "hide", "unhide",
     "resolve-write-present", "resolve-write-absent",
+    // D166: the Edit-Data save activated with its CAS-against-resume-fence arm.
+    "edit-checkpoint",
   ],
   gate: ["resolve-gate"],
 } as const;
@@ -76,7 +78,7 @@ const EXPECTED_DEFERRED = {
   ],
   settings: ["apply-settings"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
-  run: ["edit-checkpoint"],
+  run: [],
   notification: ["notification-read", "notification-unread", "notification-snooze"],
   capture: [
     "capture-upload", "capture-replace", "capture-reorder", "capture-delete",

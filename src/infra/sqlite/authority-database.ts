@@ -92,6 +92,7 @@ import {
   RunHeartbeatRequestSchema,
   RunItemQuerySchema,
   RunPresentationRequestSchema,
+  RunInjectPatchesRequestSchema,
   RunPriorityBumpRequestSchema,
   RunRequeueRequestSchema,
   RunResumeRequestSchema,
@@ -382,6 +383,8 @@ type RunRepository = Readonly<{
   updatePresentation(input: unknown): RunUpdateOutcome;
   /** D95 run-priority `bump`: elevate one QUEUED row's claim class; never a requeue. */
   bumpPriority(input: unknown): RunUpdateOutcome;
+  /** Doc 06 §6.4 (D166): the Edit-Data save — CAS against the resume fence. */
+  injectCheckpointPatches(input: unknown): RunUpdateOutcome;
   /** D118: an `attempting` write intent routes to recovery, never to requeue. */
   sweepExpiredClaims(input: unknown): readonly z.infer<typeof RunClaimSweepOutcomeSchema>[];
 }>;
@@ -3503,6 +3506,43 @@ export class AuthorityDatabase implements Disposable {
             return RunRecordSchema.parse({
               ...current,
               envelope: { ...current.envelope, priority: "interactive" },
+            });
+          },
+        );
+      },
+      injectCheckpointPatches: (input: unknown) => {
+        const request = RunInjectPatchesRequestSchema.parse(input);
+        return this.#mutateRun(
+          request.runId,
+          request.expectedVersion,
+          request.now,
+          undefined,
+          (current) => {
+            // §6.4: the resume claim is the fence, and the resume wins. The
+            // version CAS already catches the race (a claim bumps the
+            // version); these arms make a stale-but-lucky caller loud too.
+            if (runClaim(current) !== undefined) {
+              throw new Error(
+                `run ${request.runId} resumed while you were editing — your edit was not applied; `
+                + "reload the current state",
+              );
+            }
+            if (current.lifecycle.state !== "queued" && current.lifecycle.state !== "parked-gate") {
+              throw new Error(
+                `run ${request.runId} is ${current.lifecycle.state}; checkpoint corrections apply only `
+                + "to a non-executing resumable run",
+              );
+            }
+            const merged = new Map(
+              (current.envelope.injected ?? []).map((patch) =>
+                [`${String(patch.nodeId)}\0${patch.fieldPath}`, patch] as const),
+            );
+            for (const patch of request.patches) {
+              merged.set(`${String(patch.nodeId)}\0${patch.fieldPath}`, patch);
+            }
+            return RunRecordSchema.parse({
+              ...current,
+              envelope: { ...current.envelope, injected: [...merged.values()] },
             });
           },
         );

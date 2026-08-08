@@ -15,7 +15,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "72cbbf703f53bcf826c831e76bd41257f5edb4d36b4af63edc242b08c53f3688",
+      "fingerprint": "ae8e5de88173ce90f7163cd23aecc4d563c85a07378f5b92e8218f99ac95c177",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -23,7 +23,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/workflow.ts",
-          "sha256": "19619e5cfe38e0d3e1582429975feb244bb73ece228e21738a7c1904944b31a1"
+          "sha256": "b88ad1e36ec33c3955575a5b65aadc821e26934fbfabb2ed497c0b07f117ccc3"
         },
         {
           "path": "src/domain/canonical-json.ts",
@@ -119,7 +119,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/presentation.ts",
-          "sha256": "f3cf4293c2f415ca0407b828fa331119d1a9ffa997e44a463aee096f02146563"
+          "sha256": "edeaeb5b8bb31d09e9d08971dd56b5752a53ca44dc53beb7c4727137a81310e4"
         },
         {
           "path": "src/domain/workflow/scenario-coverage.ts",
@@ -145,7 +145,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali-timekeeper-annotation"
     },
     {
-      "fingerprint": "30e07801b020913495a00aca78c995f56e32361690eaad1a805f9c29d9056e50",
+      "fingerprint": "ae9aaa32b1f780a29ea0f227581d60685a398372cbf18f8e5fa776940858bbcb",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -153,7 +153,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/workflow.ts",
-          "sha256": "19619e5cfe38e0d3e1582429975feb244bb73ece228e21738a7c1904944b31a1"
+          "sha256": "b88ad1e36ec33c3955575a5b65aadc821e26934fbfabb2ed497c0b07f117ccc3"
         },
         {
           "path": "src/domain/canonical-json.ts",
@@ -245,7 +245,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/presentation.ts",
-          "sha256": "f3cf4293c2f415ca0407b828fa331119d1a9ffa997e44a463aee096f02146563"
+          "sha256": "edeaeb5b8bb31d09e9d08971dd56b5752a53ca44dc53beb7c4727137a81310e4"
         },
         {
           "path": "src/domain/workflow/scenario-coverage.ts",

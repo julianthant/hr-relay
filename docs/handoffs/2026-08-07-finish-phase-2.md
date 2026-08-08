@@ -86,7 +86,12 @@ has found a defect every single time it has been run.
       `normalization/read-contact-advice` (typed advice; rules ported, ai arm waits for 2i),
       census/nominatim transport adapters, and the rotation pool — one invocation is one model
       call, rotation across invocations; compose wires the gemini pool + keyless geocoders.
-- [ ] **2h-E — Edit Data core** (doc 06 §6) — the CAS-against-resume-fence save.
+- [x] **2h-E — Edit Data core. DONE 2026-08-08 (D166).** The CAS-against-resume-fence save
+      (`run/edit-checkpoint` activated, field-level patches, allowlist + full re-parse before
+      anything durable moves), `envelope.injected` merge, executor consume at replay with
+      operator provenance, and the activated `edit-data-field-policy` guard. Bounds recorded in
+      doc 06 §6 as-built: retry-then-edit-queued for terminal runs; attempt-1 collision refuses
+      loudly. The rail UI is 2i.
 - [ ] **2h-F — durable capture** sessions / photo artifacts / finalize outbox (doc 06 §5.1, D79d trim).
 
 ### Remaining — 2i (operator surface)

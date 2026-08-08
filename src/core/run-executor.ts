@@ -76,9 +76,11 @@ import {
   RunCheckpointRecordSchema,
   type CanonicalInputSnapshotMigration,
   type CheckpointMigration,
+  type CheckpointPatch,
   type ReplayedCheckpoint,
   type RunCheckpointRecord,
 } from "../domain/workflow/checkpoint.js";
+import { applyCheckpointPatches } from "./checkpoint-patch.js";
 import { deriveArtifactProjectionRows } from "../domain/workflow/artifact-projection.js";
 import {
   childRunOutcomeSchema,
@@ -528,12 +530,18 @@ export async function executeClaimedRun(
     } catch (error) {
       problems.push(error instanceof Error ? error.message : "canonical input snapshot failed to parse");
     }
-    if (envelope.injected !== undefined) {
-      problems.push(
-        "injected checkpoint patches (Edit Data) are a Phase 2h capability; "
-        + "this run must be re-planned without corrections or started from the producing step",
-      );
+    // Doc 02 §5.6 #3 / doc 06 §6 (D166): injected corrections apply to
+    // REPLAYED checkpoints during planning. Each group is consumed by its
+    // node's replay arm below; anything left over names a node this run will
+    // execute (or does not know), and a fresh read supersedes any correction
+    // — so leftovers refuse loudly rather than riding along ignored.
+    const injectedByNode = new Map<string, CheckpointPatch[]>();
+    for (const patch of envelope.injected ?? []) {
+      const existing = injectedByNode.get(String(patch.nodeId));
+      if (existing === undefined) injectedByNode.set(String(patch.nodeId), [patch]);
+      else existing.push(patch);
     }
+    const patchedInserts: RunCheckpointRecord[] = [];
 
     const taskIndex = taskIndexOf(deps.stores);
     const plan = new Map<string, PlanEntry>();
@@ -620,14 +628,37 @@ export async function executeClaimedRun(
         );
         if (load.found) {
           const record = RunCheckpointRecordSchema.parse(stored);
-          plan.set(String(node.id), { mode: "replay", record });
-          outputs[String(node.id)] = JsonValueSchema.parse(load.output);
-          checkpointRecords.set(String(node.id), record);
+          const nodePatches = injectedByNode.get(String(node.id));
+          let effective = record;
+          if (nodePatches !== undefined) {
+            injectedByNode.delete(String(node.id));
+            try {
+              const patched = applyCheckpointPatches({
+                replayed: record,
+                patches: nodePatches,
+                outputSchema: node.uses.output,
+                attempt: envelope.attempt,
+                runId,
+                writtenAt: instant(),
+              });
+              effective = patched.record;
+              patchedInserts.push(patched.record);
+            } catch (error) {
+              problems.push(
+                `injected correction for node "${node.id}" was refused: `
+                + (error instanceof Error ? error.message : String(error)),
+              );
+              continue;
+            }
+          }
+          plan.set(String(node.id), { mode: "replay", record: effective });
+          outputs[String(node.id)] = JsonValueSchema.parse(effective.output.value);
+          checkpointRecords.set(String(node.id), effective);
           replayedForFreshness.push({
             nodeId: node.id,
             taskId: node.uses.id,
             freshness: node.uses.freshness,
-            provenance: load.provenance,
+            provenance: effective.provenance,
           });
           continue;
         }
@@ -672,6 +703,13 @@ export async function executeClaimedRun(
       plan.set(String(node.id), { mode: "execute" });
     }
 
+    for (const nodeId of injectedByNode.keys()) {
+      problems.push(
+        `injected correction names node "${nodeId}", which this run does not replay from a checkpoint; `
+        + "a fresh read supersedes any correction, so the patch is refused rather than silently ignored",
+      );
+    }
+
     // D8 freshness walk — run generically even when no commit sink exists.
     if (canonicalInput !== undefined) {
       const scheduled = nodes
@@ -704,6 +742,13 @@ export async function executeClaimedRun(
 
     /* ── running: walk the plan in declaration order ─────────────────────── */
     transitionTo(runningLifecycle());
+
+    // The corrected checkpoints become durable AT THIS ATTEMPT only after
+    // validation accepted the whole plan. Replay of the same attempt derives
+    // byte-identical rows (the applier is pure), so re-insert is idempotent.
+    for (const record of patchedInserts) {
+      deps.authority.authority.runCheckpoints.insert(record);
+    }
 
     const excludedByBranch = (node: RuntimeFlowNode): boolean => {
       if (branchExcluded.has(String(node.id))) return true;

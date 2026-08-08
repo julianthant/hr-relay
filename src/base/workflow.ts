@@ -710,6 +710,25 @@ export function defineWorkflowDescriptor<
   }
   assertUnique(id, "detail keys", spec.details.map((detail) => detail.key));
 
+  const editData = spec.capabilities?.editData;
+  if (typeof editData === "object") {
+    // Doc 06 §6.2/§6.3 (D166): every declared editable path must resolve
+    // through the producing node's own output schema — a path the schema does
+    // not own could never re-parse — and only a READ task node's output is
+    // correctable: a transaction node's output is a write proof, and proof
+    // fields are structurally non-editable.
+    for (const field of editData.fields) {
+      const owner = nodeByIdOrThrow(id, nodes, field.nodeId, "editData field");
+      if (owner.kind !== "task") {
+        throw new Error(
+          `${id}: editData field "${field.fieldPath}" names node "${String(field.nodeId)}" of kind `
+          + `"${owner.kind}"; only a read task node's output is correctable — write proofs never are`,
+        );
+      }
+      assertNodeFieldPath(id, nodes, field.nodeId, field.fieldPath, "editData field");
+    }
+  }
+
   for (const projection of spec.artifactProjections ?? []) {
     DurableArtifactProjectionSpecRuntimeSchema.parse(projection);
     ArtifactSinkIdSchema.parse(projection.sink);

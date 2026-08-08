@@ -1,7 +1,7 @@
 # run-failed--graphite-warm--1440x900
 # adapter: fixture
 # fixture: run-failed
-# descriptorHash: e8237575886d7fed70ce9ea7b408995e7a55838b39efbc966d6b3951d32f97e0
+# descriptorHash: a1c05d4e411f95dcd51ebb8b57780f20a41bbc0caa9ce20d21a9623db4da48bd
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -128,7 +128,7 @@
       - tab "Receipt"
     - text: "9:33 AM Searching UCPath directory for EID 10555001 9:34 AM CRM record name disagrees with the UCPath name 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath This run failed record 00000000-0904-4000-8000-000000000904 failed 9:36 AMthe full record lands with the trust surfaces What the run said 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath 9:36 AM Run failed at cross-verify; nothing was written 9:36 AM Run failed at cross-verify; nothing was written"
     - searchbox "Search logs"
-    - text: wf e8237575
+    - text: wf a1c05d4e
     - button "Run provenance"
   - complementary "Run data":
     - text: Run data

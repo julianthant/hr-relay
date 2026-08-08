@@ -109,11 +109,25 @@ export const STANDARD_WORKFLOW_ACTIONS: WorkflowActionPolicy = Object.freeze(
   }),
 );
 
+/**
+ * Doc 06 §6.2 (D166): the descriptor names EXACTLY which node+field paths an
+ * operator may correct. The default is read-only — `true` keeps the Data
+ * section visible with ZERO editable fields, never "all checkpoint JSON".
+ */
+export const EditDataFieldSchema = z.strictObject({
+  nodeId: NodeIdSchema,
+  fieldPath: ContractFieldPathSchema,
+});
+export const EditDataPolicySchema = z.union([
+  z.boolean(),
+  z.strictObject({ fields: z.array(EditDataFieldSchema).min(1) }),
+]);
+
 export const WorkflowCapabilitiesSchema = z.strictObject({
   /** A Review panel exists for this workflow's rows. */
   review: z.boolean(),
-  /** Checkpoint fields may be corrected from the Context rail (doc 06). */
-  editData: z.boolean(),
+  /** Checkpoint fields may be corrected from the Context rail (doc 06 §6). */
+  editData: EditDataPolicySchema,
   /** How this workflow's children render when it delegates. */
   delegationDisplay: z.enum(["inline", "linked", "hidden-unless-failed"]).optional(),
 });

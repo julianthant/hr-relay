@@ -290,11 +290,10 @@
     {
       "name": "edit-data-field-policy",
       "file": "tests/unit/architecture/edit-data-field-policy.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: edit-data-field-policy.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/06-data-intake-and-edit-data.md \u00a76; docs/rebuild/02-workflow-model.md \u00a75.6",
+      "invariant": "Edit Data's default is read-only: a descriptor must declare every correctable node+field path, a declared path must resolve through the producing READ task node's own output schema (a transaction node's output is a write proof and never correctable), the negative controls run through the real descriptor factory, every registered descriptor's policy parses the closed schema, and the edit-checkpoint save command stays in the ACTIVE partition so a declared policy can never outrun the kernel arm whose CAS-against-resume-fence honours it (D166).",
+      "replacementRequired": true
     },
     {
       "name": "evidence-receipt",

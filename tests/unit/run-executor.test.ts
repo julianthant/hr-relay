@@ -479,7 +479,10 @@ describe("failure, retry, and resume", () => {
     assert.deepEqual(harness.sessions.closeReasons(), ["poisoned"]);
   });
 
-  it("rejects injected checkpoint patches as a Phase 2h capability", async () => {
+  // D166: injected patches now APPLY to replayed checkpoints; a patch naming
+  // a node with no checkpoint to replay is refused loudly — a fresh read
+  // supersedes any correction, so the patch must never be silently ignored.
+  it("rejects injected patches naming a node this run does not replay", async () => {
     const harness = executorHarness();
     const { database, clock } = harness.authority;
     const run = personLookupQueuedRun({ startAt: "cross-verify" });
@@ -500,7 +503,7 @@ describe("failure, retry, and resume", () => {
     assert.ok(failureId);
     const failure = database.authority.failures.get(failureId);
     assert.ok(failure);
-    assert.match(failure.summary, /Phase 2h capability/);
+    assert.match(failure.summary, /does not replay from a checkpoint/);
     assert.equal(harness.sessions.opens(), 0);
   });
 

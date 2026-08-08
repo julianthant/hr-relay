@@ -1421,6 +1421,28 @@ So: **intake grid** = correct cells before N inputs fan out (§5); **Context Dat
 correct a parked/stopped run's checkpoints before resume (§6.1–6.4). One validation core, two
 surfaces, two endpoints. There is no separate Data/Edit Data tab or dialog.
 
+**As-built (D166, 2026-08-08) — the core landed; the rail UI is 2i.** The save is the activated
+`run/edit-checkpoint` command: version CAS first (`the resume claim is the fence` — a claim bumps
+the row version, so a save loaded at generation G cannot land on a run that moved), then
+refuse-if-claimed, then state ∈ {queued, parked-gate} only, then the descriptor's field
+allowlist (`capabilities.editData` grew the object form `{ fields: [{nodeId, fieldPath}] }`;
+boolean stays legal as view-only, and the factory refuses a declared path the producing READ
+task's output schema does not own — a transaction node's output is a write proof and never
+correctable), and finally the WHOLE post-patch output re-parses through the producing contract's
+schema BEFORE anything durable moves. Accepted patches merge by `(nodeId, fieldPath)` into
+`envelope.injected`; the pre-D166 rule tying `injected` to `startAt` was removed because its
+fear — a re-running node silently discarding the correction — is now a structural refusal: the
+executor consumes patches at REPLAY only, re-derives the corrected row through the same pure
+applier (`src/core/checkpoint-patch.ts`), lands it at the resuming attempt with
+`source:"operator"` provenance (`correctedAt`, `supersedes`, `originalObservedAt` NEVER
+refreshed), and a patch naming a node the run will execute — or whose value fails the schema —
+fails validation loudly. Two recorded bounds: an edit on a terminal-failed run is expressed as
+retry-then-edit-the-queued-attempt (terminal rows are never mutated), and a retry-minted run
+whose corrected node shares attempt 1 with an existing row refuses loudly at the byte-differ
+insert — fail-closed pending the archive/attempt-model work. §6.5's new-input path remains the
+start-plan flow. Proof: `tests/unit/edit-data.test.ts` (applier, all five save arms, and the
+three consume arms) plus the activated `edit-data-field-policy` guard.
+
 ---
 
 ## 7. Adversarial self-review — silent-fallback vectors and their guards
