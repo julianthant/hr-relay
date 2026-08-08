@@ -41,6 +41,14 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
     file: "tests/scenario/intake-pdf-pages.scenario.test.ts",
   },
   { scenarioId: "intake/pdf/unreadable", file: "tests/scenario/intake-pdf-pages.scenario.test.ts" },
+  { scenarioId: "roster/match/exact-eid", file: "tests/scenario/roster-match.scenario.test.ts" },
+  { scenarioId: "roster/match/name-only", file: "tests/scenario/roster-match.scenario.test.ts" },
+  { scenarioId: "roster/match/ambiguous", file: "tests/scenario/roster-match.scenario.test.ts" },
+  {
+    scenarioId: "roster/match/name-eid-conflict",
+    file: "tests/scenario/roster-match.scenario.test.ts",
+  },
+  { scenarioId: "roster/match/no-match", file: "tests/scenario/roster-match.scenario.test.ts" },
   { scenarioId: "intake/spreadsheet/happy", file: "tests/scenario/intake-extraction.scenario.test.ts" },
   { scenarioId: "intake/spreadsheet/no-header", file: "tests/scenario/intake-extraction.scenario.test.ts" },
   {

@@ -1,0 +1,145 @@
+/**
+ * The one "artifact bytes → canonical string grid" edge, shared by the
+ * extraction and roster stores.
+ *
+ * Lifted verbatim from `extract-spreadsheet.ts` (2h-C): the roster matcher
+ * needs the SAME parse — same parsers, same cell canonicalization, same
+ * xlsx-vs-csv sniffing — and duplicating the date-cell rule would eventually
+ * fork it. The parser choices and their reasons stay documented at the
+ * original site (`src/stores/extraction/tasks/extract-spreadsheet.ts`).
+ *
+ * Refusals come back as DATA (`state: "refused"` with the exact message the
+ * extraction task always produced), because each caller owns its contract's
+ * error-code vocabulary: extraction maps them onto `unreadable-file`/
+ * `unknown-sheet`/`empty-sheet`, roster maps them onto `roster-unreadable`.
+ */
+import { Buffer } from "node:buffer";
+import { parse as parseCsvSync } from "csv-parse/sync";
+import readXlsxFile from "read-excel-file/node";
+
+export const CSV_SHEET_NAME = "default";
+
+const XLSX_MEDIA_TYPES = new Set([
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+]);
+
+/**
+ * One typed cell → its canonical text.
+ *
+ * A `Date` is emitted as ISO calendar text in UTC. `read-excel-file` builds a
+ * date cell at UTC midnight, so taking the UTC components is reading back what
+ * it wrote; using local components would shift the day west of Greenwich and
+ * silently move an effective date by one.
+ */
+function cellText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) {
+    return `${String(value.getUTCFullYear()).padStart(4, "0")}-`
+      + `${String(value.getUTCMonth() + 1).padStart(2, "0")}-`
+      + `${String(value.getUTCDate()).padStart(2, "0")}`;
+  }
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "string") return value;
+  // Both parsers' documented cell domains are exhausted above
+  // (string | number | boolean | Date | null). Anything else means a parser
+  // changed under us, and `String(value)` would put "[object Object]" into a
+  // cell an operator could then bind a column to.
+  throw new Error(`spreadsheet cell has an unexpected ${typeof value} value the parser did not document`);
+}
+
+export async function readArtifactBytes(open: () => Promise<NodeJS.ReadableStream>): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of await open()) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+function padToWidth(rows: readonly (readonly string[])[]): string[][] {
+  const width = rows.reduce((widest, row) => Math.max(widest, row.length), 0);
+  return rows.map((row) => {
+    const padded = [...row];
+    while (padded.length < width) padded.push("");
+    return padded;
+  });
+}
+
+export type SpreadsheetGridResult =
+  | Readonly<{ state: "parsed"; sheets: readonly string[]; sheet: string; grid: readonly (readonly string[])[] }>
+  | Readonly<{ state: "refused"; code: "unreadable-file" | "unknown-sheet" | "empty-sheet"; message: string }>;
+
+/**
+ * Parse spreadsheet bytes to the canonical string grid. `artifactId` and
+ * `mediaType` come from the content-addressed ref; the zip magic overrides a
+ * lying media type exactly as before.
+ */
+export async function parseSpreadsheetGrid(input: Readonly<{
+  bytes: Buffer;
+  artifactId: string;
+  mediaType: string;
+  sheet?: string | undefined;
+}>): Promise<SpreadsheetGridResult> {
+  const { bytes } = input;
+  if (bytes.byteLength === 0) {
+    return { state: "refused", code: "unreadable-file", message: `artifact ${input.artifactId} is empty` };
+  }
+
+  const isXlsx = XLSX_MEDIA_TYPES.has(input.mediaType)
+    // The zip local-file-header magic. A media type is a claim; the bytes are
+    // the fact, and an .xlsx renamed to .csv must not be parsed as text.
+    || (bytes[0] === 0x50 && bytes[1] === 0x4b);
+
+  let sheets: string[];
+  let sheet: string;
+  let grid: string[][];
+
+  if (isXlsx) {
+    // v9 returns every worksheet from one parse, so choosing a sheet costs no
+    // second read of the same immutable bytes.
+    const workbook = await readXlsxFile(bytes);
+    sheets = workbook.map((entry) => entry.sheet);
+    if (sheets.length === 0) {
+      return { state: "refused", code: "unreadable-file", message: "workbook declares no worksheets" };
+    }
+    const requested = input.sheet;
+    const selected = requested === undefined
+      ? workbook[0]
+      : workbook.find((entry) => entry.sheet === requested);
+    if (selected === undefined) {
+      return {
+        state: "refused",
+        code: "unknown-sheet",
+        message: `worksheet ${JSON.stringify(requested)} is not in this workbook (${sheets.join(", ")})`,
+      };
+    }
+    sheet = selected.sheet;
+    grid = padToWidth(selected.data.map((row) => row.map((cell) => cellText(cell))));
+  } else {
+    sheets = [CSV_SHEET_NAME];
+    if (input.sheet !== undefined && input.sheet !== CSV_SHEET_NAME) {
+      return { state: "refused", code: "unknown-sheet", message: `a CSV has one sheet, named ${CSV_SHEET_NAME}` };
+    }
+    sheet = CSV_SHEET_NAME;
+    // `relax_column_count` stays OFF: a row whose field count disagrees with
+    // its neighbours is a real defect, and padding it would invent blank
+    // cells that the mapping grid would then bind columns to.
+    const parsed: unknown = parseCsvSync(bytes, {
+      bom: true,
+      relax_quotes: false,
+      skip_empty_lines: false,
+      columns: false,
+    });
+    if (!Array.isArray(parsed)) {
+      return { state: "refused", code: "unreadable-file", message: "CSV did not parse to rows" };
+    }
+    grid = padToWidth(parsed.map((row) => (Array.isArray(row) ? row.map((cell) => cellText(cell)) : [])));
+  }
+
+  if (grid.length === 0 || grid.every((row) => row.every((cell) => cell.trim().length === 0))) {
+    return { state: "refused", code: "empty-sheet", message: `worksheet ${JSON.stringify(sheet)} has no rows` };
+  }
+
+  return { state: "parsed", sheets, sheet, grid };
+}

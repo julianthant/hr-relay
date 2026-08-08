@@ -12,6 +12,7 @@ import { ocrStore } from "./ocr/index.js";
 import { oldKronosStore } from "./old-kronos/index.js";
 import { onbaseStore } from "./onbase/index.js";
 import { personLookupStore } from "./person-lookup/index.js";
+import { rosterStore } from "./roster/index.js";
 import { servicenowStore } from "./servicenow/index.js";
 import { sharepointStore } from "./sharepoint/index.js";
 import { ucpathStore } from "./ucpath/index.js";
@@ -33,6 +34,7 @@ export const TASK_STORES: readonly RegisteredTaskStore[] = Object.freeze([
   extractionStore,
   ocrStore,
   personLookupStore,
+  rosterStore,
 ]);
 
 function corpusFor(stores: readonly RegisteredTaskStore[]) {

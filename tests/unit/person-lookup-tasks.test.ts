@@ -149,6 +149,8 @@ describe("Phase 1f Person Lookup task implementations", () => {
         // Route 1 of D151; a peer of the `rebuild:cli ocr` routes, not a
         // privileged path.
         "ocr/extract-form-page",
+        // The roster service store (D163) lands before any descriptor consumes it.
+        "roster/match-spreadsheet",
         "ucpath/search-person-org",
         "workflow:person-lookup/read-active-status",
       ],

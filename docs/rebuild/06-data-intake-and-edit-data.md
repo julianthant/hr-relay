@@ -527,6 +527,31 @@ export const MatchSpreadsheet = defineTaskContract({
   `maxAgeMs`; the resume freshness walk (doc 02 §5.5) refuses a stale replayed match feeding a
   commit transaction, naming the roster + age + limit.
 
+**As-built (D163, 2026-08-08).** The store landed as sketched, with the port split exactly as
+above: `src/domain/matching/match-confidence.ts` carries the tier bucketing VERBATIM (legacy
+`match-confidence.ts` at `0fd181c2`), `name-match.ts`/`levenshtein.ts` carry the five-tier scorer
+and the same/similar/different classifier (legacy `match.ts` at `ab9ab5ab`, `levenshtein.ts` at
+`c5caad80`), and `roster-match.ts` is the REDESIGNED composition — every verdict arm pinned in
+`tests/unit/roster-match.test.ts` and awaiting its real-roster re-verify at the roster migration.
+The composition's fail-closed choices: a `name-eid-conflict` reports **confidence 0** (a number
+implying partial trust on a conflicted identity is how a wrong person gets paid); a subject's
+CLAIMED EID is never overridden by a name-matched different one (that is a conflict too); a
+top-score tie between distinct EIDs is `ambiguous`; a sub-floor best reports its honest near-miss
+score under `no-match`. Legacy's LLM disambiguation arm did NOT port (a provider concern with no
+tier in this contract), nor did `correctNameSpelling` (a Kuali write-path concern). Deviations
+from the sketch, each deliberate: `subjectId` is the union of the two real caller identities
+(`ItemId` | `StableRecordId`) — the sketch's `StableItemIdSchema` was never built; the output is
+wrapped (`{ matches }`) so the one array leaf has a named provenance path; `readAt` joins the
+input (canonical coercers demand the observation instant — the intake-validation rule) beside an
+optional `sheet`; and `mapping-mismatch` + `no-eid-column` join the error codes — a mapping that
+does not fit these exact bytes (proved by re-detecting columns and comparing the mapping's own
+header fingerprint) and a mapping with no EID binding are refusals worth naming. The task parses
+through the ONE shared grid edge (`src/stores/common/spreadsheet-grid.ts`, lifted verbatim from
+`extract-spreadsheet` so the date-cell canonicalization cannot fork), and a cell that fails its
+canonical coercion nulls THAT fact on THAT row through the sanctioned discriminated wrapper —
+counted, logged, never an erased row and never a swallowed error. Five executable scenarios
+(`tests/scenario/roster-match.scenario.test.ts`) pin the contract's arms end to end.
+
 ### 4.1 Mutable retention workbooks are serialized projections, not read-task side effects
 
 `i9-check` currently appends to a master retention workbook. Calling that append part of the

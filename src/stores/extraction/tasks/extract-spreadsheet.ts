@@ -38,9 +38,6 @@
  * never marked as one is a loud rejection naming the cell, not a silent
  * 1900-epoch guess.
  */
-import { Buffer } from "node:buffer";
-import { parse as parseCsvSync } from "csv-parse/sync";
-import readXlsxFile from "read-excel-file/node";
 import { defineTask } from "../../../base/task.js";
 import {
   ExtractSpreadsheet,
@@ -52,14 +49,13 @@ import {
   rankHeaderRows,
 } from "../../../domain/intake/header-discovery.js";
 import { detectColumns } from "../../../domain/intake/mapping.js";
+import {
+  parseSpreadsheetGrid,
+  readArtifactBytes,
+} from "../../common/spreadsheet-grid.js";
 
 /** How many values per column the mapping grid previews. */
 const SAMPLE_LIMIT = 3;
-const CSV_SHEET_NAME = "default";
-const XLSX_MEDIA_TYPES = new Set([
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-excel",
-]);
 
 const ALIAS_INDEX = canonicalAliasIndex(CANONICAL_FIELD_IDS.map((id) => CANONICAL_FIELDS[id]));
 
@@ -71,97 +67,22 @@ const ALIAS_INDEX = canonicalAliasIndex(CANONICAL_FIELD_IDS.map((id) => CANONICA
  * it wrote; using local components would shift the day west of Greenwich and
  * silently move an effective date by one.
  */
-function cellText(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  if (value instanceof Date) {
-    return `${String(value.getUTCFullYear()).padStart(4, "0")}-`
-      + `${String(value.getUTCMonth() + 1).padStart(2, "0")}-`
-      + `${String(value.getUTCDate()).padStart(2, "0")}`;
-  }
-  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  if (typeof value === "string") return value;
-  // Both parsers' documented cell domains are exhausted above
-  // (string | number | boolean | Date | null). Anything else means a parser
-  // changed under us, and `String(value)` would put "[object Object]" into a
-  // cell an operator could then bind a column to.
-  throw new Error(`spreadsheet cell has an unexpected ${typeof value} value the parser did not document`);
-}
-
-async function readArtifactBytes(open: () => Promise<NodeJS.ReadableStream>): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of await open()) {
-    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks);
-}
-
-function padToWidth(rows: readonly (readonly string[])[]): string[][] {
-  const width = rows.reduce((widest, row) => Math.max(widest, row.length), 0);
-  return rows.map((row) => {
-    const padded = [...row];
-    while (padded.length < width) padded.push("");
-    return padded;
-  });
-}
-
 export const extractSpreadsheetTask = defineTask(ExtractSpreadsheet, {
   sessions: [],
   async run({ input, ctx }) {
     const bytes = await readArtifactBytes(() => ctx.artifacts.open(input.artifact));
-    if (bytes.byteLength === 0) {
-      return ctx.fail("unreadable-file", `artifact ${input.artifact.id} is empty`);
-    }
-
-    const isXlsx = XLSX_MEDIA_TYPES.has(input.artifact.mediaType)
-      // The zip local-file-header magic. A media type is a claim; the bytes are
-      // the fact, and an .xlsx renamed to .csv must not be parsed as text.
-      || (bytes[0] === 0x50 && bytes[1] === 0x4b);
-
-    let sheets: string[];
-    let sheet: string;
-    let grid: string[][];
-
-    if (isXlsx) {
-      // v9 returns every worksheet from one parse, so choosing a sheet costs no
-      // second read of the same immutable bytes.
-      const workbook = await readXlsxFile(bytes);
-      sheets = workbook.map((entry) => entry.sheet);
-      if (sheets.length === 0) return ctx.fail("unreadable-file", "workbook declares no worksheets");
-      const requested = input.sheet;
-      const selected = requested === undefined
-        ? workbook[0]
-        : workbook.find((entry) => entry.sheet === requested);
-      if (selected === undefined) {
-        return ctx.fail(
-          "unknown-sheet",
-          `worksheet ${JSON.stringify(requested)} is not in this workbook (${sheets.join(", ")})`,
-        );
-      }
-      sheet = selected.sheet;
-      grid = padToWidth(selected.data.map((row) => row.map((cell) => cellText(cell))));
-    } else {
-      sheets = [CSV_SHEET_NAME];
-      if (input.sheet !== undefined && input.sheet !== CSV_SHEET_NAME) {
-        return ctx.fail("unknown-sheet", `a CSV has one sheet, named ${CSV_SHEET_NAME}`);
-      }
-      sheet = CSV_SHEET_NAME;
-      // `relax_column_count` stays OFF: a row whose field count disagrees with
-      // its neighbours is a real defect, and padding it would invent blank
-      // cells that the mapping grid would then bind columns to.
-      const parsed: unknown = parseCsvSync(bytes, {
-        bom: true,
-        relax_quotes: false,
-        skip_empty_lines: false,
-        columns: false,
-      });
-      if (!Array.isArray(parsed)) return ctx.fail("unreadable-file", "CSV did not parse to rows");
-      grid = padToWidth(parsed.map((row) => (Array.isArray(row) ? row.map((cell) => cellText(cell)) : [])));
-    }
-
-    if (grid.length === 0 || grid.every((row) => row.every((cell) => cell.trim().length === 0))) {
-      return ctx.fail("empty-sheet", `worksheet ${JSON.stringify(sheet)} has no rows`);
-    }
+    const parsed = await parseSpreadsheetGrid({
+      bytes,
+      artifactId: input.artifact.id,
+      mediaType: input.artifact.mediaType,
+      sheet: input.sheet,
+    });
+    // The shared edge reports refusals as data; this contract's codes map
+    // one-to-one and the messages are the ones this task always produced.
+    if (parsed.state === "refused") return ctx.fail(parsed.code, parsed.message);
+    const sheets = [...parsed.sheets];
+    const sheet = parsed.sheet;
+    const grid = parsed.grid.map((row) => [...row]);
 
     const discovery = rankHeaderRows(grid, ALIAS_INDEX);
     const chosen = input.headerRowIndex ?? discovery.headerRowIndex;
