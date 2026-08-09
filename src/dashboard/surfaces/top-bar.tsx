@@ -41,6 +41,11 @@ import { systemClock } from "../../domain/clock.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DemoShortcutsLegend } from "./shortcuts.js";
 import { fmtClock, plural } from "./format.js";
+import {
+  SettingsControl,
+  type SettingsSection,
+  type StorageHealthSummary,
+} from "./settings.js";
 
 export type DayCountWire = z.infer<typeof DayCountWireSchema>;
 export type ServerClockWire = z.infer<typeof ServerClockWireSchema>;
@@ -639,6 +644,8 @@ export function ShortcutsPopover({ onOpenHelp }: { onOpenHelp?: () => void }) {
 export function TopBar({
   notifications,
   actorId,
+  storage,
+  settingsSections,
   day,
   today,
   monthCounts,
@@ -650,6 +657,9 @@ export function TopBar({
 }: {
   notifications: readonly NotificationWire[];
   actorId: string;
+  /** the bootstrap's storage health summary — the gear's attention dot (2i-D) */
+  storage: StorageHealthSummary;
+  settingsSections: readonly SettingsSection[];
   /** the day partition the whole app is reading */
   day: string;
   today: string;
@@ -688,6 +698,7 @@ export function TopBar({
 
       <span className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-hair)]">
         <NotificationBell notifications={notifications} actorId={actorId} />
+        <SettingsControl storage={storage} sections={settingsSections} />
         <ShortcutsPopover onOpenHelp={onOpenHelp} />
         {/* The theme pair. One control, and its LABEL names the destination
             ("Switch to Paper Ink"), because a lone sun/moon glyph never says

@@ -62,7 +62,7 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-function parseManifestFile(manifestPath: string): AuthorityBackupManifest {
+export function parseBackupManifestFile(manifestPath: string): AuthorityBackupManifest {
   const text = readFileSync(manifestPath, "utf8");
   return AuthorityBackupManifestSchema.parse(JSON.parse(text));
 }
@@ -73,7 +73,7 @@ export async function verifyBackupManifestAtPath(
 ): Promise<VerifiedBackup> {
   const manifestPath = resolve(z.string().min(1).parse(manifestPathInput));
   if (!existsSync(manifestPath)) throw new Error(`backup manifest ${manifestPath} does not exist`);
-  const manifest = parseManifestFile(manifestPath);
+  const manifest = parseBackupManifestFile(manifestPath);
   if (expectedSourceDatabaseIdentity !== undefined
     && manifest.sourceDatabaseIdentity !== expectedSourceDatabaseIdentity) {
     throw new Error(`backup manifest ${basename(manifestPath)} belongs to a different authority database`);

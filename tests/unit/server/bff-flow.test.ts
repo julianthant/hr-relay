@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { manualClock } from "../../../src/domain/clock.js";
+import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
@@ -139,6 +140,8 @@ function harness(): Harness {
       settingsSchemaHash: descriptorSetHash(["settings-schema"]),
       projection,
       authorityMeta: () => database.getMeta(),
+      // The harness runs no backup lane; "missing" is its true state.
+      backupSummary: () => "missing",
     },
     projection,
     runDetail: {
@@ -157,6 +160,20 @@ function harness(): Harness {
     commands,
     startPlans,
     hub,
+    storage: {
+      doctorOptions: {
+        // The harness database lives at the temp ROOT, not under stateRoot.
+        authorityPath: join(root, "state.db"),
+        backupDirectory: join(stateRoot, "backups", "authority"),
+        maxBackupAgeMs: 45 * 60 * 1000,
+        busyTimeoutMs: 1000,
+      },
+      clock,
+      serviceState: () => ({
+        state: "never-run",
+        reason: "the test harness runs no backup lane",
+      }),
+    },
   });
   return { app, database, stateRoot, clock, noteWriter, hub };
 }
@@ -321,6 +338,35 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const badTopics = await h.app.request("/events/v1?topics=everything");
     assert.equal(badTopics.status, 400);
+  });
+
+  it("serves the read-only storage doctor on demand (2i-D)", async () => {
+    const h = harness();
+    const response = await h.app.request("/api/v1/storage/doctor");
+    assert.equal(response.status, 200);
+    const report = StorageDoctorWireSchema.parse(await response.json());
+    assert.equal(report.mode, "read-only");
+    assert.equal(report.authority.state, "healthy");
+    if (report.authority.state === "healthy") {
+      assert.equal(report.authority.authorityGeneration, h.database.getMeta().authorityGeneration);
+    }
+    assert.equal(report.counts.state, "available");
+    // The harness runs no backup lane: the on-disk truth is missing, and the
+    // service arm says why in its own words rather than an inferred blank.
+    assert.equal(report.backup.state, "missing");
+    assert.deepEqual(report.restoreCandidates, []);
+    assert.deepEqual(report.service, {
+      state: "never-run",
+      reason: "the test harness runs no backup lane",
+    });
+
+    // The same summary reaches bootstrap: authority probed, backup indicator real.
+    const boot = await json(await h.app.request("/api/v1/bootstrap"));
+    const storage = boot.storage as { authority: string; backup: string };
+    assert.equal(storage.authority, "healthy");
+    assert.equal(storage.backup, "missing");
+    const sections = boot.settingsSections as { id: string; label: string }[];
+    assert.deepEqual(sections.map(({ id }) => id), ["storage"]);
   });
 
   it("refuses an unavailable run-detail section by name and serves failure only when real", async () => {

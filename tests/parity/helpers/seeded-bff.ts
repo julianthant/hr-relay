@@ -663,6 +663,8 @@ export async function startSeededServer(
       settingsSchemaHash: descriptorSetHash(["settings-schema"]),
       projection,
       authorityMeta: () => database.getMeta(),
+      // The seeded adapter runs no backup lane; "missing" is its true state.
+      backupSummary: () => "missing",
     },
     projection,
     runDetail: {
@@ -682,6 +684,20 @@ export async function startSeededServer(
     commands,
     startPlans,
     hub,
+    storage: {
+      doctorOptions: {
+        // The seeded database lives at the temp ROOT, not under stateRoot.
+        authorityPath: join(root, "authority.sqlite"),
+        backupDirectory: join(stateRoot, "backups", "authority"),
+        maxBackupAgeMs: 45 * 60 * 1000,
+        busyTimeoutMs: 1000,
+      },
+      clock,
+      serviceState: () => ({
+        state: "never-run",
+        reason: "the seeded adapter runs no backup lane",
+      }),
+    },
   });
 
   const server: Server = createServer((req, res) => {

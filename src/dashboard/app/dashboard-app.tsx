@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { actionsAt, type ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import {
+  SettingsSectionPrimitiveSchema,
   SystemInstancePrimitiveSchema,
   type FrontendBootstrapWire,
 } from "../../domain/dashboard/bootstrap.js";
@@ -278,6 +279,11 @@ function LoadedApp({
       <TopBar
         notifications={dayWire?.notifications ?? []}
         actorId={boot.actor.id}
+        storage={boot.storage}
+        // Same story as `systemInstances` below: the boot document composes
+        // this array from zod parts so it infers as `unknown[]`; re-parsing is
+        // the check bootstrap's own refinement makes, not a cast past one.
+        settingsSections={SettingsSectionPrimitiveSchema.array().parse(boot.settingsSections)}
         day={day}
         today={today}
         monthCounts={dayWire?.monthCounts ?? []}

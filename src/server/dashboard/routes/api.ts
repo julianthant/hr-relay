@@ -16,6 +16,7 @@ import type { DashboardStreamEnvelope } from "../../../domain/dashboard/subscrip
 import type { DashboardCommandService } from "../commands/command-service.js";
 import type { StartPlanService } from "../commands/start-plan-service.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../queries/bootstrap.js";
+import { buildStorageDoctor, type StorageQueryDeps } from "../queries/storage.js";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
@@ -28,6 +29,7 @@ export interface DashboardAppDeps {
   readonly commands: DashboardCommandService;
   readonly startPlans: StartPlanService;
   readonly hub: DashboardStreamHub;
+  readonly storage: StorageQueryDeps;
 }
 
 const NOT_FOUND_MARKERS = [
@@ -75,6 +77,9 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   });
 
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
+
+  // Doc 03 §2.5's read-only doctor, on demand from the Settings surface.
+  app.get("/api/v1/storage/doctor", async (c) => c.json(await buildStorageDoctor(deps.storage)));
 
   app.get("/api/v1/dashboard", (c) => {
     const day = DayQuerySchema.parse(c.req.query("day"));

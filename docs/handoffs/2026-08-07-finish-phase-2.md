@@ -8,11 +8,12 @@ projector with the xlsx-retention sink, the normalization advice store + geocode
 rotation pool, the Edit Data core (CAS-against-resume-fence save + replay consume), and durable
 capture (sessions as rows, the stable-keyed finalize outbox, restart/duplicate fixtures). The
 runtime phase marker reports `completedThrough: "2h"` / `active: "2i"`. **2i is underway: 2i-A
-(trust surfaces), 2i-B (notification bell + inbox), and 2i-C (the Edit Data rail, D168) are DONE
-2026-08-08.** Resume at **2i-D, Settings + storage health/doctor** — docs 03 + 12 are primary; the
-checklist below names the remaining 2i slices, and the 2h as-builts in doc 06 name every seam 2i
-must still wire (the ai advisory arm, the capture phone surface + PDF bundler + intake enqueue,
-the capture-durability-and-scope guard).
+(trust surfaces), 2i-B (notification bell + inbox), 2i-C (the Edit Data rail, D168), and 2i-D
+(Settings + storage health/doctor + the live backup cadence, D169) are DONE 2026-08-08.** Resume
+at **2i-E, the intake UI** — docs 03 + 06 are primary; the checklist below names the remaining 2i
+slices, and the 2h as-builts in doc 06 name every seam 2i must still wire (the ai advisory arm,
+the capture phone surface + PDF bundler + intake enqueue, the capture-durability-and-scope
+guard).
 
 **Supersedes** `2026-08-05-phase2-tail-2h.md` for scope — that brief covers only 2h. Read it for the
 D146–D159 detail; read this one for what remains of the whole phase.
@@ -146,9 +147,25 @@ The BFF serves 7 endpoints today; each slice names what it adds.
       empty). Tests: `context-data-edit.test.ts` (6), `edit-policy.test.ts` (7), two new
       field-policy guard arms; parity refrozen once (queued run hosts the editable showcase —
       the seeded open-gate twin is CLAIMED, so both adapters render it locked).
-- [ ] **2i-D — Settings + storage health/doctor.** The doctor/backup wire + Settings section
-      (doc 03 §2.5); `StorageHealthSummaryWireSchema` carries only a summary today. Feeds the
-      `preflight-coverage` planned guard.
+- [x] **2i-D — Settings + storage health/doctor. DONE 2026-08-08 (D169).** The recon found the
+      real gap: `AuthorityBackupService` had NO composer — no backup had ever been taken by the
+      running system. The dashboard composition now owns the cadence (start backup, dirty-only
+      15-min ticks, graceful-drain at stop with a post-cleanup throw on failure) and retains the
+      service's last outcome for the doctor wire's `service` arm. Bootstrap `storage.backup` is
+      real (`summarizeBackupHealth` — manifest age + generation gap, write-time verification
+      trusted; unparseable → `missing`, the closed enum's fail-safe); the byte-re-verifying
+      doctor serves through `GET /api/v1/storage/doctor` (`StorageDoctorWireSchema`), the
+      Settings gear's Storage section (server-served `settingsSections`, today exactly
+      `storage`; `apply-settings` STAYS the deferred bff-flow probe), and
+      `rebuild:cli storage doctor [--json]` (exit 0 = healthy AND current; live-proved — it
+      correctly reported the standing local authority DEGRADED at schema v10 vs the v11 build).
+      Remainders on their owners: `cli storage restore` + one-time proof → 2j's drill (wire
+      `offline-restore.ts`); the 14/8/5 retention sweep; `preflight-coverage` stays planned (its
+      subject is the preflight framework's coverage, not this slice). Found+fixed:
+      compose-real-port's cleanup ran `rmSync` before `stop()` (benign until stop wrote files);
+      summary newest-manifest ties now break by generation. Tests: `storage-summary.test.ts`
+      (4, real service round-trip), bff-flow doctor arm, runtime-composition storage seam arm;
+      parity refrozen once (the top-bar gear).
 - [ ] **2i-E — intake UI.** Upload → mapping grid (suggestions never pre-applied) → validation
       review (rows split, per-cell errors) → manifest + rerunDiff → run (doc 06 §2.2/§5.0);
       backend as-built through D148/D159. New BFF intake routes.

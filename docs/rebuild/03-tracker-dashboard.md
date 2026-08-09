@@ -1001,6 +1001,31 @@ commands/delegations/write intents and capture handoffs remain consistent. Backu
 recovery state, so they
 are excluded from ordinary tracker cleanup and covered by disk-space warnings.
 
+**As-built (2i-D, 2026-08-08, D169) — the doctor/backup wire is live; restore and retention are
+the recorded remainders.** The dashboard composition is the backup cadence's owner: one verified
+backup at process start, a coalesced verified backup on each 15-minute tick **only when the store
+is dirty** (`authorityGeneration` moved past the last verified backup), and a graceful-drain
+backup inside `stop()` whose failure throws to the stopper AFTER cleanup. A failed run leaves no
+manifest for the on-disk doctor to see, so the composition RETAINS its backup service's last
+outcome and serves it on the doctor wire's `service` arm. Two health readings exist on purpose
+and say which they are: the bootstrap summary (`storage.backup`) is CHEAP — the newest manifest
+judged by created-at age (bound 45 min = three intervals) and live generation gap, trusting the
+byte verification every manifest received when it was written — while the doctor
+(`GET /api/v1/storage/doctor`, the Settings section's button, and `rebuild:cli storage doctor
+[--json]`, exit 0 only when authority is healthy AND a verified current backup exists)
+re-verifies backup BYTES on demand; an unparseable manifest reads `missing` on the summary (its
+closed enum's fail-safe arm) and `invalid`, named, on the doctor. Settings itself
+(`src/dashboard/surfaces/settings.tsx`, the top-bar gear with an attention dot) renders the
+sections the SERVER serves (`settingsSections`, today exactly `storage`) — §5's mandate "expose
+age/health in Settings" is met read-only; `apply-settings` stays a deferred command family.
+NOT built here, each on its owning milestone: `cli storage restore` and the one-time
+rebuild-runtime proof (the 2j corruption→restore→rebuild drill owns wiring
+`offline-restore.ts`), and the retention sweep (14/8/5) — until it lands, dirty-only ticks bound
+growth to real generations. First real run of the doctor (2026-08-08) correctly reported the
+standing local authority DEGRADED at schema v10 against the v11 build — the migration applies at
+the next read-write open, and a summary that had guessed "healthy" would have hidden exactly
+this.
+
 ### 2.6 Durable single-operator notifications
 
 Desktop notifications are delivery conveniences, not the record. A `notifications` authority

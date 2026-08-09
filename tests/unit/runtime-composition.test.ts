@@ -69,6 +69,32 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     );
   });
 
+  it("routes `storage doctor` through its injected seam and refuses without one", async () => {
+    const output: string[] = [];
+    const seen: string[][] = [];
+    startRebuildRuntime({
+      isolation: rebuildRuntimeIsolation,
+      args: ["storage", "doctor", "--json"],
+      write: (value) => output.push(value),
+      storage: (isolation, args) => {
+        assert.equal(isolation.stateRoot, ".tracker-rebuild");
+        seen.push([...args]);
+        return Promise.resolve({ output: "the doctor report", exitCode: 0 });
+      },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(seen, [["doctor", "--json"]]);
+    assert.deepEqual(output, ["the doctor report"]);
+    assert.throws(
+      () => startRebuildRuntime({
+        isolation: rebuildRuntimeIsolation,
+        args: ["storage", "doctor"],
+        write: () => undefined,
+      }),
+      /needs its composition seam/,
+    );
+  });
+
   it("starts the dashboard through the injected 1g-spine composition seam", async () => {
     const output: string[] = [];
     const seen: number[] = [];

@@ -14,6 +14,7 @@
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "This is the newest day served" [disabled]
   - button "Notifications — 1 unread item": "1"
+  - button "Settings"
   - button "Keyboard shortcuts"
   - button "Switch to Paper Ink"
 - main:

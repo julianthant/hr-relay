@@ -32,6 +32,8 @@ export interface RebuildRuntimeStart {
   readonly explain?: ExplainComposer;
   /** Explicit seam override for tests; production registers via `registerOcrComposer`. */
   readonly ocr?: OcrComposer;
+  /** Explicit seam override for tests; production registers via `registerStorageComposer`. */
+  readonly storage?: StorageComposer;
 }
 
 type DashboardComposer = (isolation: RuntimeIsolation) => Promise<RunningDashboard>;
@@ -53,6 +55,16 @@ type WorkerComposer = (
   isolation: RuntimeIsolation,
   args: readonly string[],
 ) => Promise<WorkerLoopReport>;
+/**
+ * The `storage` seam (doc 03 §2.5, 2i-D). Read-only by contract — the doctor
+ * inspects the authority copy and re-verifies backups without opening
+ * anything read-write — and its exit code is scriptable: 0 only when
+ * authority is healthy AND a verified current backup exists.
+ */
+type StorageComposer = (
+  isolation: RuntimeIsolation,
+  args: readonly string[],
+) => Promise<{ readonly output: string; readonly exitCode: number }>;
 
 /**
  * The production injection door. The operational-isolation audit pins
@@ -96,6 +108,15 @@ export function registerExplainComposer(composer: ExplainComposer): void {
   registeredExplainComposer = composer;
 }
 
+let registeredStorageComposer: StorageComposer | undefined;
+
+export function registerStorageComposer(composer: StorageComposer): void {
+  if (registeredStorageComposer !== undefined) {
+    throw new Error("a storage composer is already registered; two compositions cannot own one runtime");
+  }
+  registeredStorageComposer = composer;
+}
+
 /**
  * The runtime's own phase status, in doc 07's identifiers.
  *
@@ -122,6 +143,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  worker <workflow-id> [--drain]  run one workflow-scoped browser worker (doc 05 §3)",
     "  explain run <traceId|runId> [--json]  explain one run from authority (doc 12 §2.5)",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page (D151/D158)",
+    "  storage doctor [--json]  read-only authority + backup health report (doc 03 §2.5; exit 0 = healthy AND current backup)",
   ].join("\n");
 }
 
@@ -187,6 +209,25 @@ export function startRebuildRuntime(input: RebuildRuntimeStart): void {
     // A refused submission must not look accepted to a caller that only checks
     // the exit status — which is exactly how another agent's tooling checks.
     if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
+    return;
+  }
+  if (command === "storage") {
+    const compose = input.storage ?? registeredStorageComposer;
+    if (compose === undefined) {
+      throw new Error(
+        "the storage command needs its composition seam; start it through src/cli.ts, which registers composeStorageCommand",
+      );
+    }
+    compose(input.isolation, args.slice(1))
+      .then((outcome) => {
+        write(outcome.output);
+        // A degraded store must not look healthy to a caller that only
+        // checks the exit status.
+        if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
+      })
+      .catch((error: unknown) => {
+        throw error instanceof Error ? error : new Error(String(error));
+      });
     return;
   }
   if (command === "worker") {

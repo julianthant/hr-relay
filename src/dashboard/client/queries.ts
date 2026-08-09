@@ -12,6 +12,7 @@ import {
   type RunDetailSectionResponse,
   type RunDetailWire,
 } from "../../domain/dashboard/run-detail.js";
+import { StorageDoctorWireSchema, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
 import { schemaError } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
 
@@ -28,6 +29,8 @@ export interface DashboardQueries {
   dashboardDay(day: string): Promise<DashboardDayWire>;
   runDetail(runId: string): Promise<RunDetailWire>;
   runSection(runId: string, section: string, cursor?: string): Promise<RunDetailSectionResponse>;
+  /** Doc 03 §2.5's read-only doctor, run on demand from Settings (2i-D). */
+  storageDoctor(): Promise<StorageDoctorWire>;
 }
 
 export function createDashboardQueries(transport: DashboardTransport): DashboardQueries {
@@ -56,6 +59,13 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         RunDetailSectionResponseSchema,
         `GET /api/v1/runs/${runId}/${section}`,
         await transport.requestJson(`/api/v1/runs/${encodeURIComponent(runId)}/${encodeURIComponent(section)}${query}`),
+      );
+    },
+    async storageDoctor(): Promise<StorageDoctorWire> {
+      return parseOrThrow(
+        StorageDoctorWireSchema,
+        "GET /api/v1/storage/doctor",
+        await transport.requestJson("/api/v1/storage/doctor"),
       );
     },
   });

@@ -18,7 +18,10 @@ import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/ser
 const cleanups: (() => Promise<void> | void)[] = [];
 
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0)) await cleanup();
+  // LIFO, like any resource teardown: the subscription closes before the
+  // runtime stops, and the runtime stops — including its graceful-drain
+  // backup write — before the temp root it writes into is removed.
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
 describe("composed dashboard runtime on the isolation port", () => {

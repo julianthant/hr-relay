@@ -24,6 +24,12 @@ export interface BootstrapQueryDeps {
   readonly projection: RunQueueProjection;
   /** Probes the authority store; throws when it cannot be reached. */
   readonly authorityMeta: () => { schemaVersion: number; authorityGeneration: number };
+  /**
+   * The cheap backup indicator (2i-D): newest write-time-verified manifest
+   * judged by age + generation gap. Full byte re-verification is the doctor
+   * route. Must not throw when authority itself is unavailable.
+   */
+  readonly backupSummary: () => "current" | "stale" | "missing";
 }
 
 const DEFERRED_FEATURES = [
@@ -61,7 +67,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     serverClock: { now: deps.clock.now().toISOString(), zone: "America/Los_Angeles" },
     storage: {
       authority: storageAuthority,
-      backup: "missing",
+      backup: deps.backupSummary(),
       checkedAt: deps.clock.now().toISOString(),
     },
     workflows: deps.descriptors.map((descriptor) => ({
@@ -85,7 +91,9 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         reason: "test-instance selection lands with the settings surface (2i)",
       },
     })),
-    settingsSections: [],
+    // 2i-D: the one real section. Editable settings (`apply-settings`) stay a
+    // deferred command family; Storage is read-only health + the doctor.
+    settingsSections: [{ id: "storage", label: "Storage", revision: 1 }],
     featureAvailability: DEFERRED_FEATURES.map(([feature, reason]) => ({
       feature,
       availability: { state: "unavailable", code: "deferred", reason },

@@ -72,6 +72,8 @@ export {
 } from "./recovery-contracts.js";
 export {
   doctorAuthorityStorage,
+  summarizeBackupHealth,
+  BackupSummaryOptionsSchema,
   StorageDoctorOptionsSchema,
 } from "./storage-doctor.js";
 export {

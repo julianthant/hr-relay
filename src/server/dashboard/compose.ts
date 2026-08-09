@@ -45,7 +45,15 @@ import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "..
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import { configResolutionEnvironment } from "../../domain/secrets.js";
 import { sha256Hex } from "../../domain/sha256.js";
-import { AuthorityDatabase } from "../../infra/sqlite/index.js";
+import {
+  BackupServiceStateWireSchema,
+  type BackupServiceStateWire,
+} from "../../domain/dashboard/storage.js";
+import {
+  AuthorityBackupService,
+  AuthorityDatabase,
+  summarizeBackupHealth,
+} from "../../infra/sqlite/index.js";
 import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
@@ -74,6 +82,16 @@ export interface DashboardComposeInput {
 }
 
 const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();
+
+/** Doc 03 §2.5: a dirty store gets a coalesced verified backup at least every 15 minutes. */
+export const AUTHORITY_BACKUP_INTERVAL_MS = 15 * 60 * 1000;
+/**
+ * Three intervals — one slow or missed cycle must not flap the Settings
+ * indicator, while a genuinely stalled backup lane still reads stale well
+ * inside an operator session. Any authority-generation gap reads stale
+ * regardless of age.
+ */
+export const AUTHORITY_BACKUP_MAX_AGE_MS = 45 * 60 * 1000;
 
 export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint {
   return FingerprintSchema.parse(
@@ -130,6 +148,64 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     config: resolved.config,
     provenance: resolved.provenance,
   }));
+
+  /**
+   * Doc 03 §2.5 (2i-D): this process owns the authority backup cadence — one
+   * verified backup at start, a coalesced verified backup whenever the store
+   * is DIRTY on the interval tick, and a graceful-drain backup at stop.
+   * Retention sweeping (14 daily + 8 coalesced + 5 pre-migration) is a
+   * recorded remainder; until it lands, only dirty ticks write, so the
+   * directory grows with real generations only.
+   */
+  const backupDirectory = join(stateRoot, "backups", "authority");
+  const backups = new AuthorityBackupService(database, { directory: backupDirectory }, clock);
+  let backupServiceState: BackupServiceStateWire = BackupServiceStateWireSchema.parse({
+    state: "never-run",
+    reason: "no backup has completed since this dashboard process started",
+  });
+  let lastBackedUpGeneration = -1;
+  const requestBackup = async (
+    trigger: "interval" | "graceful-drain" | "operator",
+  ): Promise<void> => {
+    try {
+      const report = await backups.request({
+        trigger,
+        requiredGeneration: database.getMeta().authorityGeneration,
+      });
+      lastBackedUpGeneration = report.finalGeneration;
+      backupServiceState = BackupServiceStateWireSchema.parse({
+        state: "ok",
+        finishedAt: clock.now().toISOString(),
+        finalGeneration: report.finalGeneration,
+      });
+    } catch (error) {
+      // The on-disk doctor cannot see a failed run — it leaves no manifest —
+      // so the failure is RETAINED and served on the doctor wire's `service`
+      // arm; it must never crash the serving process, and it must never read
+      // as an unchanged "ok".
+      backupServiceState = BackupServiceStateWireSchema.parse({
+        state: "failed",
+        failedAt: clock.now().toISOString(),
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+  void requestBackup("interval");
+  const backupTimer = setInterval(() => {
+    let authorityGeneration: number;
+    try {
+      authorityGeneration = database.getMeta().authorityGeneration;
+    } catch (error) {
+      backupServiceState = BackupServiceStateWireSchema.parse({
+        state: "failed",
+        failedAt: clock.now().toISOString(),
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    if (authorityGeneration > lastBackedUpGeneration) void requestBackup("interval");
+  }, AUTHORITY_BACKUP_INTERVAL_MS);
+  backupTimer.unref();
 
   const descriptors = {
     resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,
@@ -227,6 +303,23 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
       projection,
       authorityMeta: () => database.getMeta(),
+      backupSummary: () => {
+        let liveGeneration: { state: "known"; value: number } | { state: "unavailable" };
+        try {
+          liveGeneration = { state: "known", value: database.getMeta().authorityGeneration };
+        } catch {
+          // A DISTINGUISHABLE unknown, not a default: authority
+          // unavailability is already the summary's own `authority` arm, and
+          // the backup indicator then judges by manifest age alone — the
+          // degraded contract `summarizeBackupHealth` documents.
+          liveGeneration = { state: "unavailable" };
+        }
+        return summarizeBackupHealth(
+          { backupDirectory, maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS },
+          liveGeneration.state === "known" ? liveGeneration.value : undefined,
+          clock,
+        );
+      },
     },
     projection,
     runDetail: {
@@ -248,6 +341,16 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     commands,
     startPlans,
     hub,
+    storage: {
+      doctorOptions: {
+        authorityPath: join(stateRoot, "state.db"),
+        backupDirectory,
+        maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
+        busyTimeoutMs: 5000,
+      },
+      clock,
+      serviceState: () => backupServiceState,
+    },
   });
 
   const server = await startDashboardHttpServer({ app, port: input.isolation.backendPort });
@@ -258,7 +361,15 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     stop: async (): Promise<void> => {
       await server.close();
       hub.close();
+      clearInterval(backupTimer);
+      // Doc 03 §2.5's graceful-drain trigger: one final verified backup while
+      // the database is still open. A failure surfaces AFTER cleanup — loud
+      // to the stopper, never a half-closed process.
+      await requestBackup("graceful-drain");
       database.close();
+      if (backupServiceState.state === "failed") {
+        throw new Error(`graceful-drain authority backup failed: ${backupServiceState.message}`);
+      }
     },
   });
 }
