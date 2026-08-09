@@ -166,9 +166,35 @@ The BFF serves 7 endpoints today; each slice names what it adds.
       summary newest-manifest ties now break by generation. Tests: `storage-summary.test.ts`
       (4, real service round-trip), bff-flow doctor arm, runtime-composition storage seam arm;
       parity refrozen once (the top-bar gear).
-- [ ] **2i-E — intake UI.** Upload → mapping grid (suggestions never pre-applied) → validation
-      review (rows split, per-cell errors) → manifest + rerunDiff → run (doc 06 §2.2/§5.0);
-      backend as-built through D148/D159. New BFF intake routes.
+- [ ] **2i-E — intake surface.** Upload → mapping grid (suggestions never pre-applied) →
+      validation review (rows split, per-cell errors) → manifest + rerunDiff → run (doc 06
+      §2.2/§5.0). The 2026-08-08 recon sized it: the PURE pipeline is complete and tested
+      (`src/domain/intake/` — header-discovery, mapping with `confirmBinding` as sole mint,
+      validate, manifest + rerunDiff + enqueueReadiness) and `extraction/extract-spreadsheet`
+      parses csv/xlsx with header candidates; but there is NO durable intake session (the six
+      deferred arms target `{intakeSessionId, expectedVersion}` and only the terminal manifest
+      is durable via D159), NO byte-ingest route (the BFF has no route accepting raw bytes →
+      `ArtifactRef`; capture assumes a pre-minted ref), NO dropzone/grid-edit primitives, and
+      NO workflow declares an intake projection (work-study, doc 06 §8's example, does not
+      exist — person-lookup is the sensible first target: a spreadsheet of people fanning out
+      N lookups). Sub-slices, each its own commit:
+      - **E1 — server sessions + non-enqueue arms.** `POST /api/v1/intake/files` (raw bytes →
+        content-addressed writer → `ArtifactRef`, size-capped); authority schema v12
+        `intake_sessions` (version-CAS row: artifact ref + sheet/header selection + confirmed
+        bindings + corrections/exclusions + state; rows/columns RE-DERIVED from the immutable
+        artifact, never stored); activate `inspect-intake` / `confirm-intake-mapping` /
+        `correct-intake-row` / `exclude-intake-row` / `validate-intake` as thin executors over
+        the pure pipeline (amend the placeholder payloads to carry whole `ArtifactRef`s per
+        D161/D167's rule); intake session/parse wire + GET routes; partition-pin +
+        COMMAND_FIXTURES updates.
+      - **E2 — enqueue.** `enqueue-intake-manifest`: `enqueueReadiness` gate → insert the
+        immutable manifest (D159 repo) → fan out N runs mirroring `executeStart`'s envelope
+        construction (config snapshot, fingerprints, run.queued spans); `rerunDiff` served on
+        re-inspect of an already-manifested source.
+      - **E3 — the grid UI.** Dropzone (new primitive), header-candidate picker, mapping grid
+        (suggestions as hints, accept = the ONE `confirmBinding` mint), validation review
+        (rows split, per-cell errors, fix/exclude), manifest + rerunDiff view, Run; a
+        person-lookup intake projection so the surface has a real consumer; parity refreeze.
 - [ ] **2i-F — capture surface.** The token-scoped phone routes (fail-closed enumeration), QR
       start, the real PDF bundler + intake-enqueue wiring into D167's seams, `capture.ingress`
       dependency handling, and ACTIVATE `capture-durability-and-scope`.
