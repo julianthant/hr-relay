@@ -1572,6 +1572,105 @@ duplicate photos, and a failed handoff retries into generation 2 with exactly on
 The `capture-durability-and-scope` guard STAYS PLANNED until the phone-origin route enumeration
 exists — half a guard would claim an invariant nothing enforces.
 
+**As-built (D174, 2026-08-09) — the phone surface, the bundler, and the handoff.** 2i-F closes both
+of D167's seams and adds the scope half the guard was waiting for.
+
+**The token is a credential, so it never appears in a URL the server sees.** `CaptureTokenSchema` is
+32 CSPRNG bytes as base64url (not a UUID — six fixed version/variant bits are the wrong shape for a
+bearer secret). It rides the QR payload's **URL FRAGMENT** (`/capture.html#t=<token>`), which no
+browser transmits and no proxy or access log can record, and reaches the API in the
+`X-Capture-Token` **header** — never a path segment, never a query value (doc 11 bans secret-bearing
+URLs). Only `sha256("hrauto:capture-token:v1\0" + token)` is durable, and `captureSessions.
+findByTokenDigest` is how a token becomes a session. Because the phone asset URL carries no token,
+the ingress allowlist is a fixed set of paths with nothing interpolated into it.
+
+**Enumeration is fail-closed and has exactly one answer.** `resolveToken` produces the SAME
+`unknown-session` refusal — same status, same sentence — for a malformed token, an unknown digest,
+an expired session, and a discarded one. A phone on a public origin that could tell "no such
+session" from "not yours" is an existence oracle. Every OTHER refusal names itself
+(`unsupported-media-type`, `empty-upload`, `upload-too-large`, `invalid-state`, `unknown-photo`),
+because by then the caller has PROVEN it holds the session's token and a named reason is what tells
+it what to do next.
+
+**The closed route union is declared once and derived twice.** `src/domain/capture-surface.ts`'s
+`CAPTURE_PHONE_ROUTES` is doc 12 §7's exception written down: session read, upload, photo read-back,
+replace, delete, reorder, finalize, retry-finalize, discard. The BFF's registration and the
+ingress allowlist both derive from it, and a request arriving on the configured ingress **Host** is
+refused with a status and body **byte-identical to an unrouted path** — so the ingress cannot be
+used to enumerate what the operator's dashboard serves. A `:param` matches exactly one segment, so
+no path walks out of the prefix. The phone's own page is a SEPARATE Vite entry whose asset closure
+comes from the build manifest; the operator SPA is never served over the ingress.
+
+**Ingress resolution is a named configuration result, never a fallback.** `disabled` refuses
+`ingress-disabled`; `forwarded` resolves to its explicit HTTPS URL; `on-demand-ngrok` refuses
+`ingress-credential-missing` without a credential and **`ingress-not-built` with one** — the
+on-demand tunnel launcher does not exist in this repository, and quietly serving a loopback QR
+would scan perfectly and then fail on the phone with a network error that explains nothing. The
+session stamps `{mode, originDigest}` — routing config never becomes authority — through an
+**optional** leaf, so every row written before D174 still parses (D133: read forward, never
+back-filled).
+
+**Expiry is a durable transition and the active budget is set once.** A session past `expiresAt` is
+written to `expired` before it is refused, so a restart cannot re-open a window the clock closed;
+only `open` sessions expire, because a `finalizing` one is mid-flight and its outbox outlives any
+clock. `preConnectTtlMs` runs from creation and `activeIdleTtlMs` from the phone's FIRST touch,
+which is also the only moment `connectedAt` is stamped — a sliding budget would make every status
+poll a write, which is a mutation wearing a read's clothes.
+
+**The bundler is a deterministic, dependency-free PDF writer.** `src/infra/capture/pdf-bundler.ts`
+reads each ordered photograph through the content-addressed writer, **re-verifies its digest and
+length against the ref**, and embeds the bytes with no re-encode: JPEG through `/DCTDecode`, PNG
+through `/FlateDecode` with `/Predictor 15` (PNG's own row filtering IS PDF predictor 15). It
+refuses BY NAME what `DCTDecode` cannot decode or what would need real decoding — progressive JPEG,
+12-bit precision, palette / alpha / 16-bit / interlaced PNG, a `tRNS` chunk — rather than shipping a
+page that renders blank or loses transparency. An Adobe APP14 CMYK JPEG gets `/Decode [1 0 1 0 1 0
+1 0]`, without which the page renders as its own photo-negative (verified visually, 2026-08-09).
+There is no `/CreationDate`, no versioned `/Producer`, and `/ID` is folded from the ordered photo
+digests, so the same ordered set produces byte-identical output forever — which is exactly what
+makes D167's restart-mid-finalize convergence-by-digest true rather than hoped for.
+
+**The handoff's identities are DERIVED, because the seam promised they would be.** D167 wrote that
+the enqueue is "idempotent by the outbox's stable key — a replay returns the SAME identities". That
+is unachievable with `ids.uuid()`, which returns something different on every call, so the manifest
+id and the run id are `deriveStableUuid`d from `outbox.stableKey`. Same bundle, same generation,
+same ids, on the first attempt and the fifth.
+
+**The bundle's manifest is a real `IntakePlanManifest`, extended rather than imitated.** A capture
+handoff produces one row in `intake_manifests`: `source` is the bundle (artifact id, digest, and a
+name that states its ORIGIN — `capture-<sessionId>-g<generation>.pdf` — rather than pretending to be
+a filename somebody typed), `sourceRows` is 1, and the three fingerprints are honest for a document
+source: `intakeProjectionFingerprint` is the capture binding's declared identity,
+`mappingSnapshotHash` folds the only two decisions a capture operator makes (workflow, form type)
+plus that binding, and `mappingFingerprint` is the SOURCE's identity — the bundle digest and the
+ordered photo digests. §5.1's capture-only facts (session id, ordered photo digests, generation)
+live in a new **optional** `capture` block, which is also what makes "this manifest came from a
+photograph" a fact rather than an inference; a manifest carrying it is refined to exactly one source
+row with no corrections and no exclusions, because a bundle has no cells to correct and no rows to
+exclude. `fanOutQueuedRuns` moved to `src/core/run-fan-out.ts` with its one command-shaped
+dependency — how to refuse — as a callback, so capture is a THIRD caller of D171's one fan-out
+rather than a copy of it, and the run it inserts is `single`/`interactive` (the operator is standing
+there holding the phone) and never `dryRun`.
+
+**No workflow can receive a handoff yet, and that is the honest state.** The bundle →
+canonical-input step is a DECLARED, fingerprinted property of a workflow
+(`defineCaptureIntakeBinding`, registered off the server module exactly as an intake projection is),
+and `captureIntakeRegistry` refuses a hand-built binding or one over a COPY of the descriptor's
+input schema. `person-lookup` is identified by an employee id or a name and
+`kuali-timekeeper-annotation` by a document number; neither is derivable from a photograph without
+an OCR-backed workflow that does not exist. So `CAPTURE_INTAKE_BINDINGS` is empty and the handoff
+**refuses by name** — the same shape `INTAKE_PROJECTIONS` had between D170 and D172, and for the
+same reason: an invented binding would put a plausible-but-wrong canonical input into a real run.
+The refusal is not a dead end but the designed failure path: it throws inside the settlement
+transaction, so session and outbox land durable `failed` together and the phone shows Retry Finalize
+beside the reason. Fixtures prove the whole success path over a test workflow that declares one.
+
+**`capture-durability-and-scope` is ACTIVE.** It enforces the closed union in both directions, the
+`:param` segment bound, the byte-identical ingress refusal (driven through a real Hono app with a
+no-ingress negative control), the token never becoming durable or wire state, the allowlist of who
+may write `capture_sessions`, and that ONLY the finalize projector may declare a session
+`finalized` — so nothing can report "Sent" without the outbox having settled. Every arm runs against
+a violating fixture.
+
 ---
 
 ## 6. The Edit-Data surface (charter §12)

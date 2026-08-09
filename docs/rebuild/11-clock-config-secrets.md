@@ -738,6 +738,21 @@ stamps the resolved ingress mode/origin digest so troubleshooting can explain wh
 `ConfigSchema.superRefine` requires `forwardedUrl` exactly for `ingress:"forwarded"` and rejects it
 for the other modes, so a stale forwarded origin cannot be silently reused.
 
+**As-built (D174, 2026-08-09 — normative text in doc 06 §5.1).** All three modes resolve to an
+origin or to a NAMED configuration result, and none of them falls back. `disabled` refuses
+`ingress-disabled`; `forwarded` resolves to its explicit HTTPS URL; `on-demand-ngrok` refuses
+`ingress-credential-missing` without its credential and **`ingress-not-built` with one**, because
+the on-demand tunnel launcher does not exist in this repository yet and a QR pointing at
+`127.0.0.1` scans perfectly and then fails on the phone with a network error that explains nothing
+— the plausible-but-wrong outcome the charter forbids. The allowlist is generated from
+`CAPTURE_PHONE_ROUTES` as this section requires, and the deny test is stronger than "refuses":
+a request arriving on the ingress **Host** gets a status and body **byte-identical** to an unrouted
+path, so the ingress cannot be used to enumerate what the operator's dashboard serves. The session's
+`{mode, originDigest}` stamp is an OPTIONAL leaf (D133), so rows written before D174 still parse.
+The token that gates every one of those routes never appears in a URL the server sees: it rides the
+QR payload's URL FRAGMENT and the `X-Capture-Token` header, which is how "no secret-bearing URLs"
+above stays true of a surface whose entire purpose is to be opened from a scanned link.
+
 Local-only does **not** waive correctness or privacy hygiene. The tool still controls live HR
 systems and stores sensitive evidence, so strict schemas, output redaction, least-retained capture,
 file permissions (`0700` directories / `0600` authority, backup, evidence, and secret files),

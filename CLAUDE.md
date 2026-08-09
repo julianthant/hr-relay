@@ -282,6 +282,33 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-09: A credential that must survive a QR belongs in the FRAGMENT, and a refusal that
+  varies is an oracle (D174).** The capture token has to reach a phone through a scanned link, which
+  looks like it forces a secret into a URL and breaks doc 11's "no secret-bearing URLs". It does
+  not: a URL fragment is never transmitted to any server, so `/capture.html#t=<token>` puts the
+  credential in the one part of a link that no proxy, access log, or `Referer` header can see, and
+  the phone then presents it in a header. A side benefit decided the ingress design — because the
+  asset URL carries no token, the allowlist is a fixed path set with nothing interpolated. The
+  second half is that **every way a token can fail to name a live session must answer identically**:
+  unknown, malformed, expired, discarded. Naming them is friendlier and is an existence oracle on a
+  public origin. Refusals AFTER the token resolves are named in full, because by then the caller has
+  proven it holds the secret. The deny test is stronger than "operator routes 404": the phone's 404
+  is byte-identical to an unrouted path, so the ingress cannot enumerate the dashboard. And an
+  ingress that cannot be built refuses BY NAME (`ingress-not-built`) rather than serving a loopback
+  QR — it would scan perfectly and fail on the phone with a network error explaining nothing.
+- **2026-08-09: "Idempotent by stable key" is a lie if the identities are minted (D174).** D167's
+  handoff seam documented that a replay "returns the SAME identities, never a second run", and the
+  only way to keep that is to DERIVE them: `deriveStableUuid(namespace, outbox.stableKey)` for both
+  the manifest id and the run id. `ids.uuid()` would satisfy the type and break the sentence. The
+  companion lesson is about honesty of shape: a capture bundle's manifest is a real
+  `IntakePlanManifest`, but §5.1's capture-only facts (session id, ordered photo digests) have
+  nowhere truthful to live in a spreadsheet-shaped record, so they went into a new **optional**
+  `capture` block — optional so every pre-D174 row still parses (D133), and its presence is what
+  makes "this came from a photograph" a fact rather than an inference. Reusing `mappingFingerprint`
+  for the source identity and `mappingSnapshotHash` for the two decisions a capture operator makes
+  is honest; inventing a fourth fingerprint field, or a second manifest table, would not have been.
+  Where a workflow genuinely cannot consume the artefact — none can turn a photograph into an
+  employee id — the answer is a NAMED refusal into durable `failed`, not a fabricated binding.
 - **2026-08-04: A durable row's schema hash describes the BYTES IT HOLDS, so the reader moves, not
   the writer (D144).** A transaction node could not be a terminal dependency because beat ⑦ stores
   the whole `TransactionOutcome` envelope while terminal `build` demanded the commit contract's bare
