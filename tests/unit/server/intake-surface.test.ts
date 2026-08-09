@@ -25,14 +25,18 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
+import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import {
   INTAKE_UPLOAD_MAX_BYTES,
   createIntakeService,
   type IntakeService,
 } from "../../../src/server/dashboard/commands/intake-service.js";
 import { createIntakeParser } from "../../../src/server/intake/intake-parser.js";
-import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   INTAKE_FIXTURE_WORKFLOW_ID,
@@ -65,6 +69,7 @@ function commandId(): string {
 interface Surface {
   readonly intake: IntakeService;
   readonly database: AuthorityDatabase;
+  readonly projection: ReturnType<typeof createRunQueueProjection>;
   readonly send: (
     intakeSessionId: string,
     expectedVersion: number,
@@ -82,6 +87,7 @@ function surface(): Surface {
     clock,
   );
   openDatabases.push(database);
+  database.withAuthorityTransaction((repositories) => repositories.configSnapshots.insert(CONFIG_SNAPSHOT));
 
   const artifacts = createContentAddressedArtifactWriter({
     workspaceRoot: root,
@@ -101,6 +107,8 @@ function surface(): Surface {
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: {
       getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
+      findIntakeManifestsBySource: (sourceSha256) =>
+        database.authority.intakeManifests.findBySource(sourceSha256),
     },
     artifacts,
     parser,
@@ -115,6 +123,7 @@ function surface(): Surface {
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids: sequentialIdFactory("d"),
+    configIdentity: { configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: UUID_1 },
     descriptors,
     writeResolution: {
       resolvePresent: () => { throw new Error("unused"); },
@@ -130,9 +139,49 @@ function surface(): Surface {
     intakeProjections: projections,
   });
 
+  // The real span writer and the real queue projection, so an enqueued row is
+  // proved to reach the surface an operator actually reads (D171).
+  const stateRoot = join(root, ".tracker-rebuild");
+  const projection = createRunQueueProjection({
+    stateRoot,
+    clock,
+    appVersion: "0.1.0",
+    descriptorSetHash: descriptorSetHash([intakeFixtureDescriptor.contractFingerprint]),
+    authority: {
+      getRun: (runId) => database.authority.runs.get(runId),
+      listNotifications: () => [],
+    },
+    descriptors,
+    projectionStore: database,
+  });
+  const spans = createSpanJsonlWriter({
+    stateRoot,
+    clock,
+    pid: 4242,
+    declaredDetails: (workflow) => {
+      const descriptor = descriptors.resolve(workflow);
+      return descriptor === undefined ? undefined : new Set(descriptor.details.map(({ key }) => key));
+    },
+    onEvent: (event) => projection.apply(event),
+  });
+  const commands = createDashboardCommandService({
+    kernel,
+    clock,
+    spans,
+    projection,
+    descriptors,
+    authorityRead: {
+      getRun: (runId) => database.authority.runs.get(runId),
+      getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
+      getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
+      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
+    },
+  });
+
   return {
     intake,
     database,
+    projection,
     send: async (intakeSessionId, expectedVersion, type, payload) => {
       const command = {
         commandId: commandId(),
@@ -146,7 +195,7 @@ function surface(): Surface {
       };
       // Exactly what the `/api/v1/commands` route does before dispatching.
       await intake.prepare(command);
-      return kernel.execute(command);
+      return commands.execute(command);
     },
   };
 }
@@ -155,6 +204,7 @@ async function uploadRoster(intake: IntakeService) {
   const outcome = await intake.upload({
     workflow: INTAKE_FIXTURE_WORKFLOW_ID,
     mediaType: "text/csv; charset=utf-8",
+    fileName: "cohort-a.csv",
     bytes: new TextEncoder().encode(ROSTER_CSV),
   });
   if (outcome.state === "refused") throw new Error(`the fixture roster was refused: ${outcome.message}`);
@@ -216,6 +266,7 @@ describe("D170 intake upload route", () => {
     const outcome = await intake.upload({
       workflow: INTAKE_FIXTURE_WORKFLOW_ID,
       mediaType: "text/csv",
+      fileName: "blank.csv",
       bytes: new TextEncoder().encode(blank),
     });
     assert.equal(outcome.state, "refused");
@@ -230,16 +281,19 @@ describe("D170 intake upload route", () => {
     await assert.rejects(() => intake.upload({
       workflow: INTAKE_FIXTURE_WORKFLOW_ID,
       mediaType: "application/pdf",
+      fileName: "roster.pdf",
       bytes: new TextEncoder().encode(ROSTER_CSV),
     }));
     await assert.rejects(() => intake.upload({
       workflow: INTAKE_FIXTURE_WORKFLOW_ID,
       mediaType: "text/csv",
+      fileName: "empty.csv",
       bytes: new Uint8Array(0),
     }));
     await assert.rejects(() => intake.upload({
       workflow: INTAKE_FIXTURE_WORKFLOW_ID,
       mediaType: "text/csv",
+      fileName: "huge.csv",
       bytes: new Uint8Array(INTAKE_UPLOAD_MAX_BYTES + 1),
     }));
   });
@@ -250,6 +304,7 @@ describe("D170 intake upload route", () => {
       () => intake.upload({
         workflow: "person-lookup",
         mediaType: "text/csv",
+        fileName: "roster.csv",
         bytes: new TextEncoder().encode(ROSTER_CSV),
       }),
       /is not registered for spreadsheet intake/,
@@ -337,6 +392,107 @@ describe("D170 intake session wire", () => {
     await assert.rejects(
       () => intake.read("11111111-1111-4111-8111-111111111111"),
       /does not exist/,
+    );
+  });
+});
+
+describe("D171 rerun diff — these exact bytes have run before", () => {
+  /** Map, validate and enqueue the roster; returns the enqueued session id. */
+  async function runTheRoster(harness: Surface): Promise<string> {
+    const created = await uploadRoster(harness.intake);
+    const sessionId = created.session.intakeSessionId;
+    const headerFingerprint = created.session.headerFingerprint;
+    const wire = await harness.intake.read(sessionId);
+    for (const [index, targetFieldId] of [[0, "emplId"], [1, "effectiveDate"]] as const) {
+      const current = await harness.intake.read(sessionId);
+      assert.equal(
+        (await harness.send(sessionId, current.expectedVersion, "confirm-intake-mapping", {
+          targetFieldId,
+          sourceColumnId: wire.columns[index].sourceColumnId,
+          headerFingerprint,
+        })).state,
+        "applied",
+      );
+    }
+    const beforeExclude = await harness.intake.read(sessionId);
+    assert.equal(
+      (await harness.send(sessionId, beforeExclude.expectedVersion, "exclude-intake-row", {
+        sourceRow: 2,
+        reason: "Bad EID, out of scope",
+      })).state,
+      "applied",
+    );
+    const beforeValidate = await harness.intake.read(sessionId);
+    assert.equal((await harness.send(sessionId, beforeValidate.expectedVersion, "validate-intake")).state, "applied");
+    const beforeEnqueue = await harness.intake.read(sessionId);
+    assert.equal(
+      (await harness.send(sessionId, beforeEnqueue.expectedVersion, "enqueue-intake-manifest", { dryRun: false })).state,
+      "applied",
+    );
+    return sessionId;
+  }
+
+  it("serves no rerun view for a file that has never been enqueued", async () => {
+    const { intake } = surface();
+    const created = await uploadRoster(intake);
+    assert.equal(created.session.rerun, undefined);
+    assert.equal(created.session.intakeManifestId, undefined);
+    assert.equal(created.session.sourceName, "cohort-a.csv");
+  });
+
+  it("puts every enqueued row on the queue surface under the workflow's own title", async () => {
+    const harness = surface();
+    const sessionId = await runTheRoster(harness);
+    const manifestId = (await harness.intake.read(sessionId)).intakeManifestId;
+    if (manifestId === undefined) throw new Error("the enqueued session names no manifest");
+    const manifest = harness.database.authority.intakeManifests.get(manifestId);
+    if (manifest === undefined) throw new Error("the manifest is missing from authority");
+
+    const day = harness.projection.buildDashboardDayWire(NOW.slice(0, 10));
+    assert.equal(day.queueSurfaces.length, manifest.validRows.length, "one queue row per valid source row");
+    assert.deepEqual(
+      day.queueSurfaces.map((row) => row.title).sort(),
+      ["Intake 10456712", "Intake 10998801"],
+      "the title is the workflow's OWN presentation over the manifest's stored input",
+    );
+    for (const row of day.queueSurfaces) {
+      assert.equal(String(row.workflowId), INTAKE_FIXTURE_WORKFLOW_ID);
+      assert.equal(row.status, "queued");
+      assert.equal(row.configFingerprint, CONFIG_SNAPSHOT.fingerprint);
+    }
+    assert.deepEqual(
+      day.statusCounts.map((entry) => [entry.status, entry.count]),
+      [["queued", 2]],
+    );
+  });
+
+  it("serves the manifest and a same-plan diff on the session that enqueued it", async () => {
+    const harness = surface();
+    const sessionId = await runTheRoster(harness);
+    const wire = await harness.intake.read(sessionId);
+    assert.equal(wire.state, "enqueued");
+    assert.notEqual(wire.intakeManifestId, undefined);
+    assert.equal(wire.rerun?.intakeManifestId, wire.intakeManifestId);
+    assert.equal(wire.rerun?.totals.valid, 2);
+    assert.equal(wire.rerun?.totals.excluded, 1);
+    assert.equal(wire.rerun?.diff.kind, "same-plan", "nothing has moved since it ran");
+  });
+
+  it("shows the mapping axis moving when the same bytes are mapped differently", async () => {
+    const harness = surface();
+    const first = await runTheRoster(harness);
+    assert.equal((await harness.intake.read(first)).state, "enqueued");
+
+    // The enqueued session is closed, so the same file uploads into a NEW one.
+    const second = await uploadRoster(harness.intake);
+    assert.equal(second.state, "created");
+    const fresh = second.session;
+    assert.equal(fresh.rerun?.intakeManifestId, (await harness.intake.read(first)).intakeManifestId);
+    assert.equal(fresh.rerun?.diff.kind, "changed", "an unmapped session is not last week's plan");
+    assert.deepEqual(
+      fresh.rerun?.diff.kind === "changed" ? fresh.rerun.diff.changes.map((change) => change.what) : [],
+      ["mapping"],
+      "only the mapping axis moved — same bytes, same projection, same contract",
     );
   });
 });

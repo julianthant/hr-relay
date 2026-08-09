@@ -22,7 +22,7 @@ import { CaptureSessionSchema } from "../../src/domain/capture.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { HASH_A, LATER, NOW, UUID_7, UUID_8 } from "./fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
-import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
+import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {
@@ -91,6 +91,7 @@ function harness(): Harness {
       try { held.close(); } catch { /* an already-closed handle is the restart fixture's point */ }
     });
     kernel = createCommandKernel({
+      configIdentity: UNSTORED_CONFIG_IDENTITY,
       intakeParser: UNWIRED_INTAKE_PARSER,
       intakeProjections: NO_INTAKE_PROJECTIONS,
       authority: {

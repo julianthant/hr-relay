@@ -30,41 +30,70 @@ export const intakeFixtureProjection = defineIntakeProjection(IntakeFixtureInput
   department: CANONICAL_FIELDS.department,
 });
 
-export const intakeFixtureDescriptor: AnyWorkflowDescriptor = defineWorkflowDescriptor({
+/**
+ * The same workflow under a different enqueue policy, so the fan-out's
+ * `reject-active` path is exercised against a real descriptor rather than an
+ * injected fault. Both share the ONE input schema object, which is what makes
+ * one projection valid for both.
+ */
+function defineIntakeFixtureDescriptor(options: Readonly<{
+  id: string;
+  code: string;
+  contractFingerprint: string;
+  enqueue: "allow-parallel" | "reject-active";
+}>): AnyWorkflowDescriptor {
+  return defineWorkflowDescriptor({
+    id: options.id,
+    version: 1,
+    contractFingerprint: options.contractFingerprint,
+    code: options.code,
+    label: "Intake fixture",
+    icon: "ShieldCheck",
+    category: "operations",
+    canonicalInput: defineCanonicalInput(
+      IntakeFixtureInput,
+      z.strictObject({
+        emplId: CANONICAL_FIELDS.eid.schema,
+        effectiveDate: CANONICAL_FIELDS.effectiveDate.schema,
+        department: CANONICAL_FIELDS.department.schema.optional(),
+      }),
+      [{ emplId: "10456712", effectiveDate: "2026-07-01" }],
+    ),
+    inputSubject: "eid",
+    surface: { shape: "single" },
+    enqueue: options.enqueue,
+    actions: STANDARD_WORKFLOW_ACTIONS,
+    surfaces: {},
+    details: [],
+    identity: { matchKey: (input) => `eid:${input.emplId}` },
+    presentation: { title: (input) => `Intake ${input.emplId}` },
+    scenarios: ["fixture-graph/happy"],
+    flow: flow(IntakeFixtureInput)
+      .step("probe", FixtureReadReceipt, {
+        dependsOn: [],
+        replay: "checkpoint",
+        bind: ({ input }) => ({ eid: input.emplId }),
+      })
+      .build({
+        schema: z.strictObject({ emplId: CANONICAL_FIELDS.eid.schema }),
+        dependsOn: ["probe"],
+        derive: ({ input }) => ({ emplId: input.emplId }),
+      }),
+  });
+}
+
+export const intakeFixtureDescriptor: AnyWorkflowDescriptor = defineIntakeFixtureDescriptor({
   id: INTAKE_FIXTURE_WORKFLOW_ID,
-  version: 1,
-  contractFingerprint: "f".repeat(64),
   code: "if",
-  label: "Intake fixture",
-  icon: "ShieldCheck",
-  category: "operations",
-  canonicalInput: defineCanonicalInput(
-    IntakeFixtureInput,
-    z.strictObject({
-      emplId: CANONICAL_FIELDS.eid.schema,
-      effectiveDate: CANONICAL_FIELDS.effectiveDate.schema,
-      department: CANONICAL_FIELDS.department.schema.optional(),
-    }),
-    [{ emplId: "10456712", effectiveDate: "2026-07-01" }],
-  ),
-  inputSubject: "eid",
-  surface: { shape: "single" },
+  contractFingerprint: "f".repeat(64),
   enqueue: "allow-parallel",
-  actions: STANDARD_WORKFLOW_ACTIONS,
-  surfaces: {},
-  details: [],
-  identity: { matchKey: (input) => `eid:${input.emplId}` },
-  presentation: { title: (input) => `Intake ${input.emplId}` },
-  scenarios: ["fixture-graph/happy"],
-  flow: flow(IntakeFixtureInput)
-    .step("probe", FixtureReadReceipt, {
-      dependsOn: [],
-      replay: "checkpoint",
-      bind: ({ input }) => ({ eid: input.emplId }),
-    })
-    .build({
-      schema: z.strictObject({ emplId: CANONICAL_FIELDS.eid.schema }),
-      dependsOn: ["probe"],
-      derive: ({ input }) => ({ emplId: input.emplId }),
-    }),
+});
+
+/** One active run per item — the policy an intake fan-out must honour per row. */
+export const INTAKE_SERIAL_WORKFLOW_ID = "intake-fixture-serial";
+export const intakeSerialFixtureDescriptor: AnyWorkflowDescriptor = defineIntakeFixtureDescriptor({
+  id: INTAKE_SERIAL_WORKFLOW_ID,
+  code: "is",
+  contractFingerprint: "e".repeat(64),
+  enqueue: "reject-active",
 });

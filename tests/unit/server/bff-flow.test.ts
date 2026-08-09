@@ -31,7 +31,7 @@ import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.j
 import { HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { AT, DAY } from "./helpers/dashboard-harness.js";
-import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
+import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 
 interface Harness {
   readonly app: Hono;
@@ -89,6 +89,7 @@ function harness(): Harness {
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
 
   const kernel = createCommandKernel({
+    configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
@@ -115,9 +116,12 @@ function harness(): Harness {
     clock,
     spans,
     projection,
+    descriptors,
     authorityRead: {
       getRun: (runId) => database.authority.runs.get(runId),
       getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
+      getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
+      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
     },
   });
   const startPlans = createStartPlanService({

@@ -49,10 +49,12 @@ import {
   resolveInspectSelection,
   type IntakeLayout,
 } from "../domain/intake/parse.js";
+import { deriveIntakeEnqueuePlan } from "../domain/intake/enqueue.js";
 import { confirmBinding } from "../domain/intake/mapping.js";
 import type { IntakeProjection } from "../domain/intake/projection.js";
 import { validateIntakeRows } from "../domain/intake/validate.js";
 import { deepFreeze } from "../domain/immutability.js";
+import type { InstanceSelection, RunPriority, RunShape } from "../domain/run/envelope.js";
 import { isTerminalRunState, runClaim, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
 import { RunCheckpointRecordSchema } from "../domain/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "./checkpoint-patch.js";
@@ -60,6 +62,7 @@ import { isLiveWorker } from "../domain/run/worker.js";
 import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../domain/schema-bound-value.js";
 import type { WriteIntentRecord } from "../domain/write-safety.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
+import { resolveInstances, supportsDryRun } from "../services/start/plan.js";
 
 /* ── the Phase-1f arm partition (doc 03 §Phase-1f authority) ─────────────── */
 
@@ -100,18 +103,19 @@ const PHASE1_ACTIVE = {
     "capture-discard",
   ],
   // D170 (2i-E1): the five non-enqueue intake arms over the durable session.
-  // `enqueue-intake-manifest` stays deferred until 2i-E2 mints the manifest.
+  // D171 (2i-E2) adds the sixth: the manifest mint and the run fan-out.
   intake: [
     "inspect-intake",
     "confirm-intake-mapping",
     "correct-intake-row",
     "exclude-intake-row",
     "validate-intake",
+    "enqueue-intake-manifest",
   ],
 } as const;
 
 const PHASE1_DEFERRED = {
-  intake: ["enqueue-intake-manifest"],
+  intake: [],
   settings: ["apply-settings"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
   run: [],
@@ -241,6 +245,23 @@ export interface IntakeProjectionResolver {
   resolve(workflowId: string): IntakeProjection | undefined;
 }
 
+/**
+ * The config identity a run enqueued by THIS process is stamped with (D171).
+ *
+ * `start-run` copies it from the start plan, which the planning service stamped
+ * from the same resolved config; `retry` copies it from the run it retries. An
+ * intake fan-out has neither — the command IS the plan — so the composition
+ * root supplies its own resolved identity, and the kernel proves it against the
+ * stored `config_snapshots` row before stamping a single envelope with it. A
+ * caller-claimed config identity would be exactly the unverified value this
+ * tree bans; an unproved one would leave a run claiming a snapshot nobody can
+ * read back.
+ */
+export interface RunConfigIdentity {
+  readonly configFingerprint: string;
+  readonly configSnapshotId: string;
+}
+
 export interface CommandKernelDependencies {
   readonly authority: CommandAuthority;
   readonly clock: Clock;
@@ -250,6 +271,7 @@ export interface CommandKernelDependencies {
   readonly workerRuntime: WorkerRuntimeExecutor;
   readonly intakeParser: IntakeParser;
   readonly intakeProjections: IntakeProjectionResolver;
+  readonly configIdentity: RunConfigIdentity;
 }
 
 export interface CommandKernel {
@@ -388,6 +410,126 @@ function activeRunsForItem(
     .filter((run) => !isTerminalRunState(run.lifecycle));
 }
 
+/* ── the shared run fan-out (D171) ───────────────────────────────────────── */
+
+/** One run a fan-out will insert: its identity plus the exact input it stores. */
+interface PlannedRunInsert {
+  readonly runId: string;
+  readonly itemId: string;
+  readonly traceId: string;
+  /** Only ever used to NAME the item in an enqueue-policy refusal. */
+  readonly matchKey: string;
+  readonly rawInput: unknown;
+  /** The canonical value bound to its schema hash (D62/D110). */
+  readonly parsedInput: unknown;
+}
+
+/** Everything the runs of one fan-out share, stamped once for all of them. */
+interface FanOutEnvelope {
+  readonly workflow: string;
+  readonly descriptorVersion: number;
+  readonly contractFingerprint: string;
+  readonly requestedInstance?: InstanceSelection;
+  readonly resolvedInstance: InstanceSelection;
+  readonly configFingerprint: string;
+  readonly configSnapshotId: string;
+  readonly shape: RunShape;
+  readonly priority: RunPriority;
+  readonly dryRun: boolean;
+  readonly ingressSchemaHash: string;
+}
+
+/**
+ * Insert N queued runs under one enqueue policy — the ONE place a fan-out is
+ * expressed (doc 03 §2.4 Enqueue).
+ *
+ * `start-run` and the intake manifest enqueue reach it with different plans and
+ * the same obligations: the descriptor's enqueue policy is evaluated against
+ * live authority per item, a `reject-active` collision refuses the WHOLE
+ * command, and a proposed run id that already exists is a fault rather than an
+ * adoption. Everything it writes is inside the caller's authority transaction,
+ * so a refusal on run 39 of 40 leaves nothing behind.
+ */
+function fanOutQueuedRuns(
+  repositories: AuthorityRepositories,
+  request: CommandRequest,
+  descriptor: AnyWorkflowDescriptor,
+  envelope: FanOutEnvelope,
+  planned: readonly PlannedRunInsert[],
+  now: string,
+  origin: string,
+): Readonly<{ affectedTargets: readonly TargetReference[]; versionChanges: readonly VersionChange[] }> {
+  const affectedTargets: TargetReference[] = [];
+  const versionChanges: VersionChange[] = [];
+  for (const entry of planned) {
+    // An authority read error here aborts the whole command — never "continue
+    // and enqueue anyway" (doc 03 §2.4 Enqueue).
+    const active = activeRunsForItem(repositories, envelope.workflow, entry.itemId);
+    if (descriptor.enqueue === "reject-active" && active.length > 0) {
+      reject(
+        request,
+        "policy-refused",
+        `${envelope.workflow} item ${entry.itemId} (${entry.matchKey}) already has an active run `
+        + `(${active[0].envelope.traceId}); nothing from ${origin} was started`,
+      );
+    }
+    if (descriptor.enqueue === "supersede-active") {
+      for (const activeRun of active) {
+        const outcome = repositories.runs.transition({
+          runId: activeRun.envelope.runId,
+          expectedVersion: activeRun.version,
+          lifecycle: { state: "terminal", outcome: "superseded", endedAt: now },
+          now,
+        });
+        requireApplied(outcome, `superseding run ${activeRun.envelope.runId}`);
+        affectedTargets.push(runTarget(activeRun.envelope.runId));
+        versionChanges.push({
+          target: runTarget(activeRun.envelope.runId),
+          before: activeRun.version,
+          after: activeRun.version + 1,
+        });
+      }
+    }
+
+    const record = RunRecordSchema.parse({
+      envelope: {
+        runId: entry.runId,
+        workflow: envelope.workflow,
+        itemId: entry.itemId,
+        traceId: entry.traceId,
+        descriptorVersion: envelope.descriptorVersion,
+        contractFingerprint: envelope.contractFingerprint,
+        ...(envelope.requestedInstance === undefined ? {} : { requestedInstance: envelope.requestedInstance }),
+        resolvedInstance: envelope.resolvedInstance,
+        configFingerprint: envelope.configFingerprint,
+        configSnapshotId: envelope.configSnapshotId,
+        shape: envelope.shape,
+        priority: envelope.priority,
+        dryRun: envelope.dryRun,
+        attempt: 1,
+        enqueuedAt: now,
+      },
+      input: {
+        raw: entry.rawInput,
+        parsed: entry.parsedInput,
+        ingressSchemaHash: envelope.ingressSchemaHash,
+      },
+      lifecycle: { state: "queued" },
+      claimGeneration: 0,
+      hidden: false,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const inserted = repositories.runs.enqueue(record);
+    if (inserted.state !== "inserted") {
+      throw new Error(`${origin} proposed run id ${entry.runId}, which already exists; refusing to adopt it`);
+    }
+    affectedTargets.push(runTarget(entry.runId));
+  }
+  return Object.freeze({ affectedTargets, versionChanges });
+}
+
 /* ── the arms ────────────────────────────────────────────────────────────── */
 
 function executeStartRun(
@@ -463,76 +605,40 @@ function executeStartRun(
     after: consumption.plan.version,
   }];
 
-  for (const planned of plan.planned) {
-    // An authority read error here aborts the whole command — never "continue
-    // and enqueue anyway" (doc 03 §2.4 Enqueue).
-    const active = activeRunsForItem(repositories, plan.workflowId, planned.itemId);
-    if (descriptor.enqueue === "reject-active" && active.length > 0) {
-      reject(
-        request,
-        "policy-refused",
-        `${plan.workflowId} item ${planned.itemId} (${planned.matchKey}) already has an active run `
-        + `(${active[0].envelope.traceId}); nothing from plan ${plan.startPlanId} was started`,
-      );
-    }
-    if (descriptor.enqueue === "supersede-active") {
-      for (const activeRun of active) {
-        const outcome = repositories.runs.transition({
-          runId: activeRun.envelope.runId,
-          expectedVersion: activeRun.version,
-          lifecycle: { state: "terminal", outcome: "superseded", endedAt: now },
-          now,
-        });
-        requireApplied(outcome, `superseding run ${activeRun.envelope.runId}`);
-        affectedTargets.push(runTarget(activeRun.envelope.runId));
-        versionChanges.push({
-          target: runTarget(activeRun.envelope.runId),
-          before: activeRun.version,
-          after: activeRun.version + 1,
-        });
-      }
-    }
+  const fanOut = fanOutQueuedRuns(
+    repositories,
+    request,
+    descriptor,
+    {
+      workflow: plan.workflowId,
+      descriptorVersion: plan.descriptorVersion,
+      contractFingerprint: plan.descriptorFingerprint,
+      ...(plan.requestedInstance === undefined ? {} : { requestedInstance: plan.requestedInstance }),
+      resolvedInstance: plan.resolvedInstance,
+      configFingerprint: plan.configFingerprint,
+      configSnapshotId: plan.configSnapshotId,
+      shape: plan.shape,
+      priority: plan.priority,
+      dryRun: plan.dryRun,
+      ingressSchemaHash: plan.ingressSchemaHash,
+    },
+    plan.planned.map((planned) => ({
+      runId: planned.runId,
+      itemId: planned.itemId,
+      traceId: planned.traceId,
+      matchKey: planned.matchKey,
+      rawInput: planned.rawInput,
+      parsedInput: planned.input,
+    })),
+    now,
+    `plan ${plan.startPlanId}`,
+  );
 
-    const record = RunRecordSchema.parse({
-      envelope: {
-        runId: planned.runId,
-        workflow: plan.workflowId,
-        itemId: planned.itemId,
-        traceId: planned.traceId,
-        descriptorVersion: plan.descriptorVersion,
-        contractFingerprint: plan.descriptorFingerprint,
-        ...(plan.requestedInstance === undefined ? {} : { requestedInstance: plan.requestedInstance }),
-        resolvedInstance: plan.resolvedInstance,
-        configFingerprint: plan.configFingerprint,
-        configSnapshotId: plan.configSnapshotId,
-        shape: plan.shape,
-        priority: plan.priority,
-        dryRun: plan.dryRun,
-        attempt: 1,
-        enqueuedAt: now,
-      },
-      input: {
-        raw: planned.rawInput,
-        parsed: planned.input,
-        ingressSchemaHash: plan.ingressSchemaHash,
-      },
-      lifecycle: { state: "queued" },
-      claimGeneration: 0,
-      hidden: false,
-      version: 1,
-      createdAt: now,
-      updatedAt: now,
-    });
-    const inserted = repositories.runs.enqueue(record);
-    if (inserted.state !== "inserted") {
-      throw new Error(
-        `start plan ${plan.startPlanId} proposed run id ${planned.runId}, which already exists; refusing to adopt it`,
-      );
-    }
-    affectedTargets.push(runTarget(planned.runId));
-  }
-
-  return applied(request, affectedTargets, versionChanges);
+  return applied(
+    request,
+    [...affectedTargets, ...fanOut.affectedTargets],
+    [...versionChanges, ...fanOut.versionChanges],
+  );
 }
 
 function executeRetry(
@@ -1088,6 +1194,12 @@ function executeCapture(
  *    nothing once the header row or the sheet moves under it. Dropping them
  *    loudly is the only alternative to silently re-pointing them at whoever now
  *    occupies row 17.
+ *
+ * D171 adds the sixth arm, `enqueue-intake-manifest`, which is the irreversible
+ * one: it re-derives the plan, gates on doc 06 §5's `enqueueReadiness`, mints
+ * the immutable manifest and fans out one run per valid row — all inside the
+ * one authority transaction with the session's CAS to `enqueued`, so a refusal
+ * on the last row leaves no manifest, no run and no state change.
  */
 function executeIntake(
   dependencies: CommandKernelDependencies,
@@ -1095,13 +1207,11 @@ function executeIntake(
   request: IntakeCommand,
   now: string,
 ): CommandApplication {
-  if (request.type === "enqueue-intake-manifest") {
-    throw new Error("intake/enqueue-intake-manifest is deferred and must have been rejected before dispatch");
-  }
   const sessionId = request.target.intakeSessionId;
   const current = repositories.intakeSessions.get(sessionId);
   if (current === undefined) reject(request, "target-not-found", `intake session ${sessionId} does not exist`);
-  if (current.state !== "mapping" && current.state !== "validated") {
+  if (request.type !== "enqueue-intake-manifest"
+    && current.state !== "mapping" && current.state !== "validated") {
     reject(
       request,
       "invalid-state",
@@ -1354,6 +1464,178 @@ function executeIntake(
         updatedAt: now,
         version: current.version + 1,
       });
+    }
+
+    case "enqueue-intake-manifest": {
+      if (current.state === "enqueued") {
+        reject(
+          request,
+          "invalid-state",
+          `intake session ${sessionId} already enqueued as manifest ${String(current.intakeManifestId)}; `
+          + "a manifest fans out exactly once",
+        );
+      }
+      if (current.state !== "validated" || current.validation.state !== "validated") {
+        reject(
+          request,
+          "invalid-state",
+          `intake session ${sessionId} is ${current.state}; the pre-run rejection review is mandatory `
+          + "(doc 06 §5) — validate this mapping, review what it rejects, then run",
+        );
+      }
+      // The ONLY intake arm that CASes. The five mapping arms validate current
+      // authority instead, but this one turns a reviewed plan into real HR runs:
+      // if anything moved since the operator read the reject list, they are
+      // enqueueing a plan they never saw.
+      if (current.version !== request.target.expectedVersion) {
+        conflict(
+          request,
+          current.version,
+          `intake session ${sessionId} is at version ${String(current.version)}, not `
+          + `${String(request.target.expectedVersion)}; the plan you reviewed has moved — reload before running`,
+        );
+      }
+      const sourceName = current.sourceName;
+      if (sourceName === undefined) {
+        reject(
+          request,
+          "invalid-state",
+          `intake session ${sessionId} retains no source file name, so its manifest could not name the file `
+          + "it ran; re-upload the file to start a session that does",
+        );
+      }
+      const projection = requireProjection();
+      const descriptor = resolveDescriptorOrReject(dependencies, request, current.workflow);
+      if (request.payload.dryRun && !supportsDryRun(descriptor)) {
+        reject(
+          request,
+          "policy-refused",
+          `${current.workflow} declares no dry-run boundary; enqueue this file for real or not at all`,
+        );
+      }
+      const layout = currentLayout();
+      const planning = workflowPlanning(descriptor);
+      const canonicalInputSchemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
+      // Re-derived against the RETAINED `readAt`, so the manifest this writes is
+      // the plan the operator reviewed — never one the clock moved underneath.
+      const plan = deriveIntakeEnqueuePlan({
+        session: {
+          workflow: current.workflow,
+          artifact: current.artifact,
+          sourceName,
+          sheet: current.sheet,
+          bindings: current.bindings,
+          constants: current.constants,
+          corrections: current.corrections,
+          exclusions: current.exclusions,
+          readAt: current.validation.readAt,
+        },
+        projection,
+        layout,
+        manifestId: dependencies.ids.uuid(),
+        createdAt: now,
+        workflowContractFingerprint: descriptor.contractFingerprint,
+        canonicalInputSchemaHash,
+        deriveItemId: (parsedInput) =>
+          ItemIdSchema.parse(deriveItemId(current.workflow, planning.matchKey(parsedInput))),
+      });
+      if (!plan.readiness.ready) {
+        const rows = plan.readiness.unresolvedRows;
+        reject(
+          request,
+          "policy-refused",
+          `${plan.readiness.message} [${plan.readiness.reason}${rows.length === 0 ? "" : `: source rows ${rows.join(", ")}`}]`,
+        );
+      }
+
+      // The stamped config identity must be a snapshot a reader can fetch back.
+      // A run naming a snapshot authority does not hold could never be replayed
+      // against the config it actually ran under.
+      const { configFingerprint, configSnapshotId } = dependencies.configIdentity;
+      const snapshot = repositories.configSnapshots.get(configSnapshotId);
+      if (snapshot === undefined) {
+        throw new Error(
+          `intake session ${sessionId} cannot enqueue: authority holds no config snapshot ${configSnapshotId}`,
+        );
+      }
+      if (snapshot.fingerprint !== configFingerprint) {
+        throw new Error(
+          `intake session ${sessionId} cannot enqueue: config snapshot ${configSnapshotId} holds fingerprint `
+          + `${snapshot.fingerprint.slice(0, 12)}…, not the ${configFingerprint.slice(0, 12)}… this process resolved`,
+        );
+      }
+
+      const stored = repositories.intakeManifests.insert(plan.manifest);
+      if (stored.state !== "inserted") {
+        throw new Error(
+          `intake session ${sessionId} minted manifest id ${plan.manifest.manifestId}, which already exists; `
+          + "refusing to adopt it",
+        );
+      }
+
+      const fanOut = fanOutQueuedRuns(
+        repositories,
+        request,
+        descriptor,
+        {
+          workflow: current.workflow,
+          descriptorVersion: descriptor.version,
+          contractFingerprint: descriptor.contractFingerprint,
+          resolvedInstance: resolveInstances(descriptor, undefined),
+          configFingerprint,
+          configSnapshotId,
+          // Doc 06 §5's coordinator/member fan-out has no runtime yet (nothing
+          // mints an `operation` run), so each row is an independent `single`
+          // run and the MANIFEST is what joins them — which is the artefact the
+          // section makes "42 rows ran" checkable with anyway.
+          shape: "single",
+          // A spreadsheet fan-out is the definition of bulk, and this is a
+          // server stamp rather than a caller claim (doc 03 §1.1).
+          priority: "bulk",
+          dryRun: request.payload.dryRun,
+          ingressSchemaHash: deriveSchemaHash(descriptor.input, "input"),
+        },
+        plan.manifest.validRows.map((row) => {
+          const runId = dependencies.ids.uuid();
+          let canonicalInput: unknown;
+          try {
+            // D62: the manifest's stored value is re-read through the
+            // descriptor's CURRENT canonical schema, never its ingress parser.
+            canonicalInput = planning.parseCanonicalInput(row.parsedInput);
+          } catch (error) {
+            throw new Error(
+              `intake manifest ${plan.manifest.manifestId} source row ${String(row.sourceRow)} does not satisfy `
+              + `${current.workflow}'s canonical input schema; nothing was enqueued`,
+              { cause: error },
+            );
+          }
+          return {
+            runId,
+            itemId: row.itemId,
+            traceId: deriveTraceId(descriptor.code, runId, dependencies.clock),
+            matchKey: planning.matchKey(row.parsedInput),
+            // The manifest's own stored value IS this run's ingress: it is what
+            // intake submitted, and `validRows[].inputHash` pins its bytes.
+            rawInput: row.parsedInput,
+            parsedInput: { schemaHash: canonicalInputSchemaHash, value: canonicalInput },
+          };
+        }),
+        now,
+        `intake manifest ${plan.manifest.manifestId}`,
+      );
+
+      const updated = repositories.intakeSessions.update({
+        ...current,
+        state: "enqueued",
+        intakeManifestId: plan.manifest.manifestId,
+        updatedAt: now,
+        version: current.version + 1,
+      });
+      return applied(
+        request,
+        [target, ...fanOut.affectedTargets],
+        [{ target, before: current.version, after: updated.version }, ...fanOut.versionChanges],
+      );
     }
   }
 }

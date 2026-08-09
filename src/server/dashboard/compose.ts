@@ -284,6 +284,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     workerRuntime,
     intakeParser,
     intakeProjections,
+    // D171: the identity an intake fan-out stamps its runs with — the SAME
+    // resolved config and stored snapshot the start planner uses, so a run born
+    // from a spreadsheet and one born from the run surface are comparable.
+    configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
   });
 
   const commands = createDashboardCommandService({
@@ -291,9 +295,12 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     clock,
     spans: spanWriter,
     projection,
+    descriptors,
     authorityRead: {
       getRun: (runId) => database.authority.runs.get(runId),
       getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
+      getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
+      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
     },
   });
 
@@ -313,6 +320,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: {
       getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
+      findIntakeManifestsBySource: (sourceSha256) =>
+        database.authority.intakeManifests.findBySource(sourceSha256),
     },
     artifacts,
     parser: intakeParser,

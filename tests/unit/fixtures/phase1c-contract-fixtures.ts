@@ -44,7 +44,7 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "intake", type: "correct-intake-row", target: INTAKE_TARGET, payload: { sourceRow: 17, field: "emplId", correctedValue: "10456712" } },
   { ...BASE_COMMAND, family: "intake", type: "exclude-intake-row", target: INTAKE_TARGET, payload: { sourceRow: 31, reason: "Source row is not in scope" } },
   { ...BASE_COMMAND, family: "intake", type: "validate-intake", target: INTAKE_TARGET },
-  { ...BASE_COMMAND, family: "intake", type: "enqueue-intake-manifest", target: { intakeManifestId: UUID_4, expectedVersion: 1 } },
+  { ...BASE_COMMAND, family: "intake", type: "enqueue-intake-manifest", target: INTAKE_TARGET, payload: { dryRun: false } },
   { ...BASE_COMMAND, family: "worker-browser", type: "plan-worker-count", target: { workflowId: "onboarding", expectedVersion: 1 }, payload: { desiredWorkers: 2 } },
   { ...BASE_COMMAND, family: "worker-browser", type: "spawn-worker", target: { workflowId: "onboarding", expectedVersion: 1 }, payload: { workerId: "worker-1" } },
   { ...BASE_COMMAND, family: "worker-browser", type: "stop-worker", target: WORKER_TARGET },

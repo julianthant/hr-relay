@@ -1489,6 +1489,14 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/intake/validate.ts:IntakeValidationInput",
   "src/domain/intake/validate.ts:ValidatedRow",
   "src/domain/intake/validate.ts:IntakeValidationResult",
+  // Same shape one level up (D171): the enqueue derivation takes a live
+  // `IntakeProjection` and the workflow's own `deriveItemId` FUNCTION, and hands
+  // back the manifest plus its readiness verdict in the same call stack. Both
+  // durable halves ARE schema-described — `IntakePlanManifestSchema` is what the
+  // authority row stores and `EnqueueReadinessSchema` is what gates it.
+  "src/domain/intake/enqueue.ts:IntakeEnqueueSessionView",
+  "src/domain/intake/enqueue.ts:IntakeEnqueuePlan",
+  "src/domain/intake/enqueue.ts:IntakeEnqueuePlanInput",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {

@@ -75,6 +75,18 @@ export const IntakeSessionSchema = z.strictObject({
   workflow: WorkflowIdSchema,
   /** The whole content-addressed identity (D161/D167's rule), never a bare id. */
   artifact: ArtifactRefSchema,
+  /**
+   * The file name the operator uploaded, which the D159 manifest requires as
+   * `source.originalName` and NOTHING else in the system knows: a
+   * content-addressed artifact has a digest, not a name, so the upload route is
+   * the one place it is ever observed (D171).
+   *
+   * Optional on the RECORD and required at the route: a session minted before
+   * this leaf existed must still parse (D133 — a stored record is read forward,
+   * never back-filled), and enqueue refuses it by name rather than inventing a
+   * name for a file the manifest will claim forever.
+   */
+  sourceName: z.string().min(1).optional(),
   sheet: z.string().min(1),
   /** Null while discovery could not preselect and the operator has not chosen. */
   headerRowIndex: z.number().int().nonnegative().nullable(),

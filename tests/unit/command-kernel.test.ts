@@ -47,7 +47,7 @@ import {
 import { QUEUED_RUN, RUN_ID, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
 import { fixtureDescriptor } from "./architecture/helpers/descriptor-fixtures.js";
 import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
-import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
+import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -179,6 +179,7 @@ function createHarness(wrap?: RepositoryWrap): Harness {
   const workerCalls: string[] = [];
   const writeCalls: string[] = [];
   const kernel = createCommandKernel({
+    configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: {

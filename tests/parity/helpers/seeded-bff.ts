@@ -43,7 +43,7 @@ import {
   personLookupDescriptor,
 } from "../../../src/workflows/person-lookup/descriptor.js";
 import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
-import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
+import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 
@@ -613,6 +613,7 @@ export async function startSeededServer(
   const runIds = seed({ database, spans, notes });
 
   const kernel = createCommandKernel({
+    configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
@@ -639,9 +640,12 @@ export async function startSeededServer(
     clock,
     spans,
     projection,
+    descriptors,
     authorityRead: {
       getRun: (runId) => database.authority.runs.get(runId),
       getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
+      getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
+      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
     },
   });
   const startPlans = createStartPlanService({

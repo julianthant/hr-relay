@@ -38,11 +38,14 @@ import {
   IntakeSessionSchema,
   type IntakeSession,
 } from "../../../domain/intake/session.js";
+import { currentRerunState } from "../../../domain/intake/enqueue.js";
+import { rerunDiff, type IntakePlanManifest } from "../../../domain/intake/manifest.js";
 import {
   resolveInspectSelection,
   type IntakeParse,
   type IntakeParseRefusalCode,
 } from "../../../domain/intake/parse.js";
+import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { suggestBindings } from "../../../domain/intake/suggestions.js";
 import { validateIntakeRows } from "../../../domain/intake/validate.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../domain/intake/wire.js";
@@ -69,6 +72,13 @@ export const INTAKE_UPLOAD_MEDIA_TYPES = Object.freeze([
 export const IntakeUploadRequestSchema = z.strictObject({
   workflow: WorkflowIdSchema,
   mediaType: z.enum(INTAKE_UPLOAD_MEDIA_TYPES),
+  /**
+   * Required, because the D159 manifest requires `source.originalName` and this
+   * is the one moment the system sees it: a content-addressed artifact has a
+   * digest, not a name (D171). Every real uploader has one — a dropzone reads
+   * `file.name` — so demanding it here is what stops enqueue inventing one.
+   */
+  fileName: z.string().min(1).max(255),
   byteLength: z.number().int().positive().max(
     INTAKE_UPLOAD_MAX_BYTES,
     `an intake upload may not exceed ${String(INTAKE_UPLOAD_MAX_BYTES)} bytes`,
@@ -83,7 +93,10 @@ export interface IntakeServiceDependencies {
   readonly authority: Readonly<{
     withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
   }>;
-  readonly authorityRead: Readonly<{ getIntakeSession(intakeSessionId: string): IntakeSession | undefined }>;
+  readonly authorityRead: Readonly<{
+    getIntakeSession(intakeSessionId: string): IntakeSession | undefined;
+    findIntakeManifestsBySource(sourceSha256: string): readonly IntakePlanManifest[];
+  }>;
   readonly artifacts: ContentAddressedArtifactWriter;
   readonly parser: PreparedIntakeParser;
   readonly projections: IntakeProjectionResolver;
@@ -94,7 +107,12 @@ export interface IntakeServiceDependencies {
 }
 
 export interface IntakeService {
-  upload(input: Readonly<{ workflow: string; mediaType: string; bytes: Uint8Array }>): Promise<IntakeUploadOutcome>;
+  upload(input: Readonly<{
+    workflow: string;
+    mediaType: string;
+    fileName: string;
+    bytes: Uint8Array;
+  }>): Promise<IntakeUploadOutcome>;
   read(intakeSessionId: string): Promise<IntakeSessionWire>;
   prepare(command: unknown): Promise<void>;
 }
@@ -182,13 +200,43 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
         };
       })();
 
+    /**
+     * Doc 06 §7 vector #11 (D171): these exact bytes may have run before. The
+     * LATEST manifest for this (digest, workflow) pair is what a rerun would be
+     * compared against, and the diff is computed against the session's CURRENT
+     * mapping — so an operator who re-uploads last week's export sees whether
+     * anything moved before they enqueue it a second time.
+     */
+    const rerun = ((): unknown => {
+      if (layout === null) return undefined;
+      const prior = dependencies.authorityRead
+        .findIntakeManifestsBySource(session.artifact.sha256)
+        .filter((manifest) => manifest.workflow === session.workflow)
+        .at(-1);
+      if (prior === undefined) return undefined;
+      return {
+        intakeManifestId: prior.manifestId,
+        createdAt: prior.createdAt,
+        totals: prior.totals,
+        diff: rerunDiff(prior, currentRerunState({
+          session,
+          layout,
+          projection,
+          workflowContractFingerprint: descriptor.contractFingerprint,
+          canonicalInputSchemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"),
+        })),
+      };
+    })();
+
     return IntakeSessionWireSchema.parse({
       wireVersion: 1,
       intakeSessionId: session.intakeSessionId,
       workflow: session.workflow,
       artifact: session.artifact,
+      ...(session.sourceName === undefined ? {} : { sourceName: session.sourceName }),
       state: session.state,
       expectedVersion: session.version,
+      ...(session.intakeManifestId === undefined ? {} : { intakeManifestId: session.intakeManifestId }),
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       sheets: parse.sheets,
@@ -206,6 +254,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       exclusions: session.exclusions,
       suggestions,
       validation,
+      ...(rerun === undefined ? {} : { rerun }),
     });
   };
 
@@ -214,6 +263,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       const request = IntakeUploadRequestSchema.parse({
         workflow: input.workflow,
         mediaType: baseMediaType(input.mediaType),
+        fileName: input.fileName,
         byteLength: input.bytes.byteLength,
       });
       requireProjection(request.workflow);
@@ -239,6 +289,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
           actorId: dependencies.actorId,
           workflow: request.workflow,
           artifact,
+          sourceName: request.fileName,
           sheet: parse.sheet,
           headerRowIndex: parse.layout === null ? null : parse.layout.headerRowIndex,
           bindings: [],
@@ -269,7 +320,6 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       // family. The kernel remains the one authority that parses and refuses a
       // malformed request; this only warms a seam.
       if (!parsed.success || parsed.data.family !== "intake") return;
-      if (parsed.data.type === "enqueue-intake-manifest") return;
       const session = dependencies.authorityRead.getIntakeSession(parsed.data.target.intakeSessionId);
       if (session === undefined) return;
       const selection = parsed.data.type === "inspect-intake"

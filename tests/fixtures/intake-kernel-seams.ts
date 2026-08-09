@@ -6,9 +6,26 @@
  * empty target set: a suite that accidentally reaches an intake arm must see
  * the reason, not a session mapped against nothing.
  */
-import type { IntakeParser, IntakeProjectionResolver } from "../../src/core/command-kernel.js";
+import type {
+  IntakeParser,
+  IntakeProjectionResolver,
+  RunConfigIdentity,
+} from "../../src/core/command-kernel.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 import type { IntakeService } from "../../src/server/dashboard/commands/intake-service.js";
+
+/**
+ * The D171 config identity for a kernel that enqueues no intake manifest.
+ *
+ * It names a snapshot no database holds, so an intake fan-out reached by
+ * accident throws by name instead of stamping runs with a config identity
+ * nobody can read back. Every other arm copies its config identity from the
+ * start plan or the run it retries, so none of them can reach this.
+ */
+export const UNSTORED_CONFIG_IDENTITY: RunConfigIdentity = Object.freeze({
+  configFingerprint: "e".repeat(64),
+  configSnapshotId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+});
 
 export const UNWIRED_INTAKE_PARSER: IntakeParser = Object.freeze({
   parse: (request: Readonly<{ artifact: { sha256: string }; sheet: string }>): never => {

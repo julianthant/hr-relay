@@ -110,13 +110,19 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
    * creation carries bytes, and bytes do not belong in a journaled command
    * envelope. A re-upload of the same digest JOINS its open session — the same
    * `200` either way, with the operator's existing mapping still on it.
+   *
+   * `filename` is required (D171): the durable manifest must name the file it
+   * ran, and a content-addressed artifact carries a digest rather than a name,
+   * so this request is the only place that fact is ever observed.
    */
   app.post("/api/v1/intake/files", async (c) => {
     const workflow = z.string().min(1).parse(c.req.query("workflow"));
+    const fileName = z.string().min(1).parse(c.req.query("filename"));
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     const outcome = await deps.intake.upload({
       workflow,
       mediaType: c.req.header("content-type") ?? "",
+      fileName,
       bytes,
     });
     if (outcome.state === "refused") {

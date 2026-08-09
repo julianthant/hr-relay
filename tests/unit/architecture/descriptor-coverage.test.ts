@@ -25,12 +25,15 @@ import {
   WORKFLOW_MODULES,
   auditImplBindings,
   auditWorkflowModuleBindings,
+  intakeProjectionRegistry,
   readPendingImplBindings,
 } from "../../../src/control/workflow-registry.js";
 import { flow } from "../../../src/base/flow.js";
 import { defineWorkflowDescriptor, workflowProjections } from "../../../src/base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
+import { CANONICAL_FIELDS } from "../../../src/domain/fields/registry.js";
 import { BrowserSystemIdSchema, FingerprintSchema, TaskIdSchema } from "../../../src/domain/ids.js";
+import { defineIntakeProjection } from "../../../src/domain/intake/projection.js";
 import { BUILD_MANIFEST, BUILD_MANIFEST_PATH } from "../../../src/domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
 import { ICON_NAMES, STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
@@ -43,6 +46,11 @@ import {
 } from "../../../src/infra/build/workflow-build-manifest.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
 import { FixtureReadReceipt, fixtureDescriptor } from "./helpers/descriptor-fixtures.js";
+import {
+  INTAKE_FIXTURE_WORKFLOW_ID,
+  intakeFixtureDescriptor,
+  intakeFixtureProjection,
+} from "../../fixtures/intake-workflow-fixture.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 
 const ALL: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, fixtureDescriptor];
@@ -269,6 +277,33 @@ describe("descriptor coverage", () => {
       stores: [...module.stores, extraStore],
     }]);
     assert.match(extra.join("\n"), /lists extra store onbase/);
+  });
+
+  it("refuses an intake projection built over a COPY of the descriptor's input schema (D171)", () => {
+    // The real fixture reuses the one schema object, so it registers.
+    assert.deepEqual(
+      Object.keys(intakeProjectionRegistry([{
+        descriptor: intakeFixtureDescriptor,
+        intake: intakeFixtureProjection,
+      }])),
+      [INTAKE_FIXTURE_WORKFLOW_ID],
+    );
+    // A structurally identical copy is exactly the drift that would let intake
+    // produce values the workflow itself never accepted.
+    const copied = z.strictObject({
+      emplId: CANONICAL_FIELDS.eid.schema,
+      effectiveDate: CANONICAL_FIELDS.effectiveDate.schema,
+    });
+    assert.throws(
+      () => intakeProjectionRegistry([{
+        descriptor: intakeFixtureDescriptor,
+        intake: defineIntakeProjection(copied, {
+          emplId: CANONICAL_FIELDS.eid,
+          effectiveDate: CANONICAL_FIELDS.effectiveDate,
+        }),
+      }]),
+      /must reuse the descriptor's own schema/,
+    );
   });
 
   it("rejects a descriptor whose detail path is not in the producing node's output", () => {

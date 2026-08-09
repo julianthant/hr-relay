@@ -181,6 +181,17 @@ export const IntakeExclusionSchema = z.strictObject({
   operatorConfirmedAt: IsoInstantSchema,
 });
 
+/** Derived from the dispositions, never accumulated beside them (§7 #12). */
+export const IntakeManifestTotalsSchema = z.strictObject({
+  sourceRows: z.number().int().nonnegative(),
+  valid: z.number().int().nonnegative(),
+  rejected: z.number().int().nonnegative(),
+  rejectionEvents: z.number().int().nonnegative(),
+  excluded: z.number().int().nonnegative(),
+  corrected: z.number().int().nonnegative(),
+});
+export type IntakeManifestTotals = z.infer<typeof IntakeManifestTotalsSchema>;
+
 export const IntakePlanManifestSchema = z.strictObject({
   version: z.literal(1),
   manifestId: IntakeManifestIdSchema,
@@ -197,14 +208,7 @@ export const IntakePlanManifestSchema = z.strictObject({
   /** The schema every `parsedInput` was produced by, and must be re-read with. */
   canonicalInputSchemaHash: FingerprintSchema,
   createdAt: IsoInstantSchema,
-  totals: z.strictObject({
-    sourceRows: z.number().int().nonnegative(),
-    valid: z.number().int().nonnegative(),
-    rejected: z.number().int().nonnegative(),
-    rejectionEvents: z.number().int().nonnegative(),
-    excluded: z.number().int().nonnegative(),
-    corrected: z.number().int().nonnegative(),
-  }),
+  totals: IntakeManifestTotalsSchema,
   sourceRowDispositions: z.array(SourceRowDispositionSchema),
   validRows: z.array(ValidRowSchema),
   rejectedRows: z.array(RowRejectSchema),

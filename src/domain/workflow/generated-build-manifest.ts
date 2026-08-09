@@ -695,7 +695,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-pdf-pages"
     },
     {
-      "fingerprint": "54d5fa86b1acb2384772edb4ead284839e87757cf1a3e46f4506f56a9ba83c0a",
+      "fingerprint": "e91c2fb51abdd74ee330fe1dc8146fd7de511eb0e9fb8c8f5ecf08938f4704d3",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -759,7 +759,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/intake/mapping.ts",
-          "sha256": "cba97593d153b87d53318a89cd55ef4b09a02f2ea97d1c05ebfc049b3c67ce79"
+          "sha256": "7a15e27e70f00710ccb4b6aeab64b4059e63edf007c6186de03b292cbac20a32"
         },
         {
           "path": "src/domain/intake/projection.ts",
@@ -1781,7 +1781,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr/extract-form-page"
     },
     {
-      "fingerprint": "1f5d2659c444004c322a52f781dc0643d1e99e5ccf40e9e362dd2b0044824dd3",
+      "fingerprint": "efb6e45b3dc2f2e6852e231d97737fc85ba4ec2cdd75bc9fa2fa166de0eafe67",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1841,7 +1841,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/intake/mapping.ts",
-          "sha256": "cba97593d153b87d53318a89cd55ef4b09a02f2ea97d1c05ebfc049b3c67ce79"
+          "sha256": "7a15e27e70f00710ccb4b6aeab64b4059e63edf007c6186de03b292cbac20a32"
         },
         {
           "path": "src/domain/intake/projection.ts",

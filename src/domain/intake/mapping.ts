@@ -135,6 +135,53 @@ export function headerFingerprint(columns: readonly DetectedColumn[]): Fingerpri
 }
 
 /**
+ * The manifest's `mappingSnapshotHash` (doc 06 §5, D171): the identity of the
+ * DECISIONS a plan was built from, as opposed to `mappingFingerprint`, which is
+ * the identity of the LAYOUT they were made against.
+ *
+ * It folds the sheet, the settled header row, the layout fingerprint, the
+ * confirmed bindings and the run constants — and deliberately nothing else:
+ *
+ * - `confirmedAt` is excluded, because a mapping is WHAT it maps, not when the
+ *   operator clicked. Folding the instant would make `rerunDiff` report a
+ *   mapping change for a re-confirmed identical binding, and a diff that cries
+ *   wolf is a diff nobody reads.
+ * - corrections and exclusions are excluded, because they are row-level
+ *   decisions the manifest records in full in their own arrays; §7 vector #11's
+ *   question is "was this run planned the same WAY", not "were the same cells
+ *   touched".
+ *
+ * Bindings and constants are sorted by target field id so two sessions that
+ * reached the same mapping in a different ORDER hash the same.
+ */
+export function deriveMappingSnapshotHash(snapshot: Readonly<{
+  workflow: string;
+  sheet: string;
+  headerRowIndex: number;
+  headerFingerprint: string;
+  bindings: readonly ColumnBinding[];
+  constants: readonly { targetFieldId: IntakeTargetFieldId; value: unknown }[];
+}>): Fingerprint {
+  const byTarget = (left: { targetFieldId: string }, right: { targetFieldId: string }): number =>
+    left.targetFieldId.localeCompare(right.targetFieldId);
+  return FingerprintSchema.parse(sha256Hex(`hrauto:intake-mapping-snapshot:v1\0${canonicalJsonStringify({
+    workflow: WorkflowIdSchema.parse(snapshot.workflow),
+    sheet: snapshot.sheet,
+    headerRowIndex: snapshot.headerRowIndex,
+    headerFingerprint: FingerprintSchema.parse(snapshot.headerFingerprint),
+    bindings: [...snapshot.bindings].sort(byTarget).map((binding) => ({
+      targetFieldId: binding.targetFieldId,
+      canonicalFieldId: binding.canonicalFieldId,
+      sourceColumnId: binding.sourceColumnId,
+    })),
+    constants: [...snapshot.constants].sort(byTarget).map((constant) => ({
+      targetFieldId: constant.targetFieldId,
+      value: constant.value,
+    })),
+  })}`));
+}
+
+/**
  * What happened to one saved binding when it met the current layout.
  *
  * `held` is the only state that survives into a reusable binding without an

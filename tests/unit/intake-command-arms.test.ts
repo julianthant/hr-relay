@@ -12,8 +12,17 @@
  * - a header/sheet move discards the row-level decisions that named rows under
  *   the OLD header, instead of silently re-pointing them;
  * - a repeat of an identical decision is a no-op, not a version bump;
- * - `enqueue-intake-manifest` is still refused `capability-unavailable` with
- *   zero authority movement.
+ *
+ * and, from D171 (2i-E2):
+ *
+ * - `enqueue-intake-manifest` gates on doc 06 §5's readiness, so an unresolved
+ *   rejection and a zero-valid-row file both refuse BY NAME instead of running
+ *   a partial file or reporting a no-op success;
+ * - the fan-out is ONE transaction with the manifest and the session CAS: a
+ *   run refused by the descriptor's enqueue policy leaves no manifest, no run
+ *   and no state change;
+ * - a manifest fans out exactly once, and a session that moved since the
+ *   operator reviewed it conflicts rather than enqueueing an unreviewed plan.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -22,16 +31,28 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { createCommandKernel, type IntakeParser } from "../../src/core/command-kernel.js";
 import { manualClock } from "../../src/domain/clock.js";
+import { deriveItemId } from "../../src/domain/identifiers.js";
+import { ItemIdSchema } from "../../src/domain/ids.js";
 import { detectColumns, headerFingerprint } from "../../src/domain/intake/mapping.js";
 import { IntakeSessionSchema } from "../../src/domain/intake/session.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { deriveIntakeParse } from "../../src/server/intake/intake-parser.js";
-import { HASH_A, NOW, UUID_2, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import {
+  CONFIG_SNAPSHOT,
+  HASH_A,
+  NOW,
+  UUID_1,
+  UUID_2,
+  UUID_3,
+  UUID_7,
+} from "./fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
 import {
   INTAKE_FIXTURE_WORKFLOW_ID,
+  INTAKE_SERIAL_WORKFLOW_ID,
   intakeFixtureDescriptor,
   intakeFixtureProjection,
+  intakeSerialFixtureDescriptor,
 } from "../fixtures/intake-workflow-fixture.js";
 
 /* ── the source file, as a grid the shared edge would have produced ──────── */
@@ -51,6 +72,7 @@ const COLUMNS = detectColumns(
 );
 const LAYOUT_FINGERPRINT = headerFingerprint(COLUMNS);
 const EID_COLUMN = COLUMNS[0].sourceColumnId;
+const DATE_COLUMN = COLUMNS[1].sourceColumnId;
 const DEPT_COLUMN = COLUMNS[2].sourceColumnId;
 
 /** A second worksheet, so a sheet switch is a real layout change. */
@@ -104,12 +126,15 @@ function harness(sessionOverrides: Record<string, unknown> = {}) {
     clock,
   );
   openDatabases.push(database);
+  // The config identity an intake fan-out stamps must name a stored snapshot.
+  database.withAuthorityTransaction((repositories) => repositories.configSnapshots.insert(CONFIG_SNAPSHOT));
 
   const session = IntakeSessionSchema.parse({
     intakeSessionId: UUID_7,
     actorId: "local-operator",
     workflow: INTAKE_FIXTURE_WORKFLOW_ID,
     artifact: { id: UUID_2, sha256: HASH_A, bytes: 4096, mediaType: "text/csv" },
+    sourceName: "cohort-a.csv",
     sheet: SHEET,
     headerRowIndex: HEADER_ROW,
     bindings: [],
@@ -129,8 +154,13 @@ function harness(sessionOverrides: Record<string, unknown> = {}) {
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids: sequentialIdFactory("b"),
+    configIdentity: { configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: UUID_1 },
     descriptors: {
-      resolve: (workflowId) => (workflowId === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureDescriptor : undefined),
+      resolve: (workflowId) => {
+        if (workflowId === INTAKE_FIXTURE_WORKFLOW_ID) return intakeFixtureDescriptor;
+        if (workflowId === INTAKE_SERIAL_WORKFLOW_ID) return intakeSerialFixtureDescriptor;
+        return undefined;
+      },
     },
     writeResolution: {
       resolvePresent: () => { throw new Error("unused"); },
@@ -144,7 +174,10 @@ function harness(sessionOverrides: Record<string, unknown> = {}) {
     },
     intakeParser: fixtureParser,
     intakeProjections: {
-      resolve: (workflowId) => (workflowId === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureProjection : undefined),
+      resolve: (workflowId) =>
+        (workflowId === INTAKE_FIXTURE_WORKFLOW_ID || workflowId === INTAKE_SERIAL_WORKFLOW_ID
+          ? intakeFixtureProjection
+          : undefined),
     },
   });
 
@@ -171,7 +204,18 @@ function harness(sessionOverrides: Record<string, unknown> = {}) {
     headerFingerprint: LAYOUT_FINGERPRINT,
   });
 
-  return { database, kernel, current, send, bindEid };
+  /** Both REQUIRED targets bound, then validated — the pre-enqueue state. */
+  const mapAndValidate = () => {
+    bindEid();
+    send("confirm-intake-mapping", {
+      targetFieldId: "effectiveDate",
+      sourceColumnId: DATE_COLUMN,
+      headerFingerprint: LAYOUT_FINGERPRINT,
+    });
+    send("validate-intake");
+  };
+
+  return { database, kernel, current, send, bindEid, mapAndValidate };
 }
 
 /* ── the arms ────────────────────────────────────────────────────────────── */
@@ -361,24 +405,7 @@ describe("D170 intake arms — validate-intake", () => {
   });
 });
 
-describe("D170 intake arms — the enqueue arm stays deferred", () => {
-  it("refuses enqueue-intake-manifest with zero authority movement", () => {
-    const { database, kernel } = harness();
-    const before = database.getMeta().authorityGeneration;
-    const result = kernel.execute({
-      commandId: commandId(),
-      requestedAt: NOW,
-      requestedBy: "local-operator",
-      source: "dashboard",
-      family: "intake",
-      type: "enqueue-intake-manifest",
-      target: { intakeManifestId: UUID_2, expectedVersion: 1 },
-    });
-    assert.equal(result.state, "rejected");
-    assert.equal(result.state === "rejected" ? result.code : "", "capability-unavailable");
-    assert.equal(database.getMeta().authorityGeneration, before);
-  });
-
+describe("D170 intake arms — every arm needs its session", () => {
   it("refuses every arm on a session that does not exist", () => {
     const { kernel } = harness();
     const result = kernel.execute({
@@ -392,5 +419,243 @@ describe("D170 intake arms — the enqueue arm stays deferred", () => {
     });
     assert.equal(result.state, "rejected");
     assert.equal(result.state === "rejected" ? result.code : "", "target-not-found");
+  });
+});
+
+/* ── D171: the enqueue ───────────────────────────────────────────────────── */
+
+/** The fixture file's row 2 (`10-4567`) is the one the canonical EID refuses. */
+const REJECTED_ROW = 2;
+
+function enqueue(send: ReturnType<typeof harness>["send"], dryRun = false) {
+  return send("enqueue-intake-manifest", { dryRun });
+}
+
+describe("D171 enqueue-intake-manifest — the readiness gate", () => {
+  it("refuses a session that has not been validated", () => {
+    const { database, current, send, bindEid } = harness();
+    bindEid();
+    const before = database.getMeta().authorityGeneration;
+    const result = enqueue(send);
+    assert.equal(result.state, "rejected");
+    assert.equal(result.state === "rejected" ? result.code : "", "invalid-state");
+    assert.match(result.state === "rejected" ? result.message : "", /rejection review is mandatory/);
+    assert.equal(current().state, "mapping");
+    assert.equal(database.getMeta().authorityGeneration, before, "a refused enqueue moves no authority row");
+  });
+
+  it("refuses while a row is still rejected, naming the rows that block it", () => {
+    const { database, send, mapAndValidate } = harness();
+    mapAndValidate();
+    const result = enqueue(send);
+    assert.equal(result.state, "rejected");
+    assert.equal(result.state === "rejected" ? result.code : "", "policy-refused");
+    const message = result.state === "rejected" ? result.message : "";
+    assert.match(message, /unresolved-rejections/);
+    assert.match(message, new RegExp(`source rows ${String(REJECTED_ROW)}`));
+    assert.equal(database.authority.intakeManifests.findBySource(HASH_A).length, 0);
+  });
+
+  it("refuses a file whose every row is excluded rather than reporting a no-op success", () => {
+    const { database, send, mapAndValidate } = harness();
+    for (const sourceRow of [1, 2, 3]) send("exclude-intake-row", { sourceRow, reason: "Wrong sheet" });
+    mapAndValidate();
+    const result = enqueue(send);
+    assert.equal(result.state, "rejected");
+    assert.match(result.state === "rejected" ? result.message : "", /no-valid-rows/);
+    assert.equal(database.authority.intakeManifests.findBySource(HASH_A).length, 0);
+  });
+
+  it("refuses a dry run the workflow declares no boundary for", () => {
+    const { send, mapAndValidate } = harness();
+    send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
+    mapAndValidate();
+    const result = enqueue(send, true);
+    assert.equal(result.state, "rejected");
+    assert.equal(result.state === "rejected" ? result.code : "", "policy-refused");
+    assert.match(result.state === "rejected" ? result.message : "", /no dry-run boundary/);
+  });
+
+  it("conflicts when the session moved since the plan was reviewed", () => {
+    const { current, kernel, send, mapAndValidate } = harness();
+    send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
+    mapAndValidate();
+    const result = kernel.execute({
+      commandId: commandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "intake",
+      type: "enqueue-intake-manifest",
+      target: { intakeSessionId: UUID_7, expectedVersion: current().version - 1 },
+      payload: { dryRun: false },
+    });
+    assert.equal(result.state, "conflict");
+    assert.equal(current().state, "validated");
+  });
+});
+
+describe("D171 enqueue-intake-manifest — the fan-out", () => {
+  function readyHarness() {
+    const created = harness();
+    created.send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
+    created.mapAndValidate();
+    return created;
+  }
+
+  it("mints one immutable manifest and one queued run per valid row", () => {
+    const { database, current, send } = readyHarness();
+    const result = enqueue(send);
+    assert.equal(result.state, "applied");
+
+    const session = current();
+    assert.equal(session.state, "enqueued");
+    assert.notEqual(session.intakeManifestId, undefined);
+
+    const manifests = database.authority.intakeManifests.findBySource(HASH_A);
+    assert.equal(manifests.length, 1);
+    const manifest = manifests[0];
+    assert.equal(manifest.manifestId, session.intakeManifestId);
+    assert.deepEqual({ ...manifest.totals }, {
+      sourceRows: 3,
+      valid: 2,
+      rejected: 0,
+      rejectionEvents: 0,
+      excluded: 1,
+      corrected: 0,
+    });
+    assert.equal(manifest.source.originalName, "cohort-a.csv");
+    assert.equal(manifest.workflowContractFingerprint, intakeFixtureDescriptor.contractFingerprint);
+
+    const runTargets = result.state === "applied"
+      ? result.affectedTargets.filter((target) => target.family === "run")
+      : [];
+    assert.equal(runTargets.length, 2);
+    for (const row of manifest.validRows) {
+      const runs = database.authority.runs.listByItem({
+        workflow: INTAKE_FIXTURE_WORKFLOW_ID,
+        itemId: row.itemId,
+      });
+      assert.equal(runs.length, 1, `source row ${String(row.sourceRow)} enqueued exactly one run`);
+      const run = runs[0];
+      assert.equal(run.lifecycle.state, "queued");
+      assert.equal(run.envelope.shape, "single");
+      assert.equal(run.envelope.priority, "bulk");
+      assert.equal(run.envelope.dryRun, false);
+      assert.equal(run.envelope.configSnapshotId, UUID_1);
+      assert.equal(run.envelope.configFingerprint, CONFIG_SNAPSHOT.fingerprint);
+      // D62: the run's canonical input is re-read through the CURRENT schema
+      // and bound to the exact hash the manifest pins.
+      assert.equal(run.input.parsed.schemaHash, manifest.canonicalInputSchemaHash);
+      assert.deepEqual(run.input.raw, row.parsedInput);
+    }
+  });
+
+  it("records the excluded row and the source value a correction replaced", () => {
+    const { database, current, send } = harness();
+    send("exclude-intake-row", { sourceRow: 3, reason: "Left the department" });
+    send("confirm-intake-mapping", {
+      targetFieldId: "emplId",
+      sourceColumnId: EID_COLUMN,
+      headerFingerprint: LAYOUT_FINGERPRINT,
+    });
+    send("correct-intake-row", { sourceRow: REJECTED_ROW, field: "emplId", correctedValue: "10456799" });
+    send("confirm-intake-mapping", {
+      targetFieldId: "effectiveDate",
+      sourceColumnId: DATE_COLUMN,
+      headerFingerprint: LAYOUT_FINGERPRINT,
+    });
+    send("validate-intake");
+    assert.equal(enqueue(send).state, "applied");
+
+    const manifestId = current().intakeManifestId;
+    if (manifestId === undefined) throw new Error("the enqueued session names no manifest");
+    const manifest = database.authority.intakeManifests.get(manifestId);
+    if (manifest === undefined) throw new Error("the manifest is missing from authority");
+    assert.equal(manifest.totals.valid, 2);
+    assert.deepEqual(manifest.exclusions.map((entry) => entry.sourceRow), [3]);
+    assert.equal(manifest.corrections.length, 1);
+    // The ORIGINAL is read back from the file and redacted by the canonical
+    // field's own declared transform — never carried on the session.
+    assert.equal(manifest.corrections[0].original.state, "transformed");
+    assert.equal(
+      manifest.corrections[0].original.state === "transformed" ? manifest.corrections[0].original.value : "",
+      "4567",
+      "the eid's declared last4 transform, over the file's own cell",
+    );
+  });
+
+  it("fans out exactly once — a second enqueue is refused", () => {
+    const { database, current, kernel, send } = readyHarness();
+    assert.equal(enqueue(send).state, "applied");
+    const manifestId = current().intakeManifestId;
+    const result = kernel.execute({
+      commandId: commandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "intake",
+      type: "enqueue-intake-manifest",
+      target: { intakeSessionId: UUID_7, expectedVersion: current().version },
+      payload: { dryRun: false },
+    });
+    assert.equal(result.state, "rejected");
+    assert.match(result.state === "rejected" ? result.message : "", /fans out exactly once/);
+    assert.equal(current().intakeManifestId, manifestId);
+    assert.equal(database.authority.intakeManifests.findBySource(HASH_A).length, 1);
+  });
+
+  it("refuses every mapping command once the session enqueued", () => {
+    const { send } = readyHarness();
+    assert.equal(enqueue(send).state, "applied");
+    const result = send("exclude-intake-row", { sourceRow: 1, reason: "Too late" });
+    assert.equal(result.state, "rejected");
+    assert.match(result.state === "rejected" ? result.message : "", /only an open session/);
+  });
+
+  it("writes NOTHING when the enqueue policy refuses the LAST row", () => {
+    const { database, current, send } = harness({ workflow: INTAKE_SERIAL_WORKFLOW_ID });
+    send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
+    send("confirm-intake-mapping", {
+      targetFieldId: "emplId",
+      sourceColumnId: EID_COLUMN,
+      headerFingerprint: LAYOUT_FINGERPRINT,
+    });
+    send("confirm-intake-mapping", {
+      targetFieldId: "effectiveDate",
+      sourceColumnId: DATE_COLUMN,
+      headerFingerprint: LAYOUT_FINGERPRINT,
+    });
+    send("validate-intake");
+
+    // Source row 3 already has an active run, and this workflow is
+    // `reject-active` — so the fan-out refuses AFTER inserting row 1's.
+    const collidingItemId = ItemIdSchema.parse(deriveItemId(INTAKE_SERIAL_WORKFLOW_ID, "eid:10998801"));
+    database.withAuthorityTransaction((repositories) => repositories.runs.enqueue({
+      ...QUEUED_RUN,
+      envelope: {
+        ...QUEUED_RUN.envelope,
+        runId: UUID_3,
+        workflow: INTAKE_SERIAL_WORKFLOW_ID,
+        itemId: collidingItemId,
+        traceId: "is-170000-3333",
+      },
+    }));
+    const versionBefore = current().version;
+    const generationBefore = database.getMeta().authorityGeneration;
+
+    const result = enqueue(send);
+    assert.equal(result.state, "rejected");
+    assert.equal(result.state === "rejected" ? result.code : "", "policy-refused");
+
+    assert.equal(database.authority.intakeManifests.findBySource(HASH_A).length, 0, "no manifest survives");
+    const survivingRow1 = database.authority.runs.listByItem({
+      workflow: INTAKE_SERIAL_WORKFLOW_ID,
+      itemId: ItemIdSchema.parse(deriveItemId(INTAKE_SERIAL_WORKFLOW_ID, "eid:10456712")),
+    });
+    assert.equal(survivingRow1.length, 0, "the run inserted before the refusal rolled back with it");
+    assert.equal(current().state, "validated");
+    assert.equal(current().version, versionBefore);
+    assert.equal(database.getMeta().authorityGeneration, generationBefore);
   });
 });

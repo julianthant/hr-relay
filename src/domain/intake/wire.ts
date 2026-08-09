@@ -25,13 +25,18 @@ import { z } from "zod";
 import { ArtifactRefSchema } from "../artifacts.js";
 import {
   FingerprintSchema,
+  IntakeManifestIdSchema,
   IntakeSessionIdSchema,
   IsoInstantSchema,
   PositiveIntSchema,
   WorkflowIdSchema,
 } from "../ids.js";
 import { ServedHeaderCandidateSchema, HeaderDiscoverySchema } from "./header-discovery.js";
-import { RowRejectSchema } from "./manifest.js";
+import {
+  IntakeManifestTotalsSchema,
+  RerunDiffSchema,
+  RowRejectSchema,
+} from "./manifest.js";
 import { ColumnBindingSchema, DetectedColumnSchema } from "./mapping.js";
 import { IntakeTargetSchema } from "./projection.js";
 import {
@@ -56,14 +61,39 @@ export const IntakeValidationWireSchema = z.discriminatedUnion("state", [
 ]);
 export type IntakeValidationWire = z.infer<typeof IntakeValidationWireSchema>;
 
+/**
+ * "This exact file has run before" — doc 06 §7 vector #11, served (D171).
+ *
+ * A rerun references an immutable manifest and an immutable artifact, so the
+ * operator must SEE what moved before enqueueing the same bytes a second time.
+ * The prior manifest is found by the session's own source digest, so the
+ * `source-artifact` axis is equal by construction and `diff` reports only the
+ * mapping, projection, contract and canonical-schema axes.
+ *
+ * It is present on an ENQUEUED session too, where it names that session's own
+ * manifest and reads `same-plan` — which is exactly the manifest view the run
+ * surface links to.
+ */
+export const IntakeRerunWireSchema = z.strictObject({
+  intakeManifestId: IntakeManifestIdSchema,
+  createdAt: IsoInstantSchema,
+  totals: IntakeManifestTotalsSchema,
+  diff: RerunDiffSchema,
+});
+export type IntakeRerunWire = z.infer<typeof IntakeRerunWireSchema>;
+
 export const IntakeSessionWireSchema = z.strictObject({
   wireVersion: z.literal(1),
   intakeSessionId: IntakeSessionIdSchema,
   workflow: WorkflowIdSchema,
   artifact: ArtifactRefSchema,
+  /** The name the file was uploaded under; absent on a pre-D171 session. */
+  sourceName: z.string().min(1).optional(),
   state: IntakeSessionStateSchema,
   /** The CAS token every intake command target carries. */
   expectedVersion: PositiveIntSchema,
+  /** Set exactly when the session enqueued; the manifest is the rerun authority. */
+  intakeManifestId: IntakeManifestIdSchema.optional(),
   createdAt: IsoInstantSchema,
   updatedAt: IsoInstantSchema,
 
@@ -87,5 +117,7 @@ export const IntakeSessionWireSchema = z.strictObject({
   /** Proposals only. Never pre-applied, never folded into `bindings`. */
   suggestions: z.array(SuggestionSchema),
   validation: IntakeValidationWireSchema,
+  /** Absent when these bytes have never been enqueued for this workflow. */
+  rerun: IntakeRerunWireSchema.optional(),
 });
 export type IntakeSessionWire = z.infer<typeof IntakeSessionWireSchema>;

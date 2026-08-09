@@ -1289,6 +1289,119 @@ stays blocked and inspectable rather than reporting a no-op success.
 artifact, mapping snapshot, intake projection, workflow contract and canonical-input schema — and a
 "rerun with existing data" must show the diff before creating a run (§7 vector #11).
 
+### 5.2 Phase-2i as-built — the enqueue: readiness, the manifest mint, the fan-out (D171)
+
+`enqueue-intake-manifest` is the sixth intake arm and the irreversible one: it turns a reviewed
+mapping into N real HR runs. It activates here (2i-E2) over D170's durable session, and everything
+below is normative.
+
+**The command targets the SESSION.** Its placeholder target named an `intakeManifestId` that cannot
+exist when the command is issued — the command is what mints it — so it is amended (D161/D167's
+rule: no producer ever sent the old shape) to `{intakeSessionId, expectedVersion}`, the same target
+its five siblings carry, plus an explicit `payload: {dryRun}`. `dryRun` is required rather than
+defaulted, exactly as `StartPlanIngressSchema` requires it: a fan-out that silently chose one is a
+fan-out that silently chose whether to touch a real system.
+
+**It is the ONE intake arm that CASes.** The five mapping arms validate current authority and retain
+the observed version for audit; this one refuses on version drift, because if anything moved since
+the operator read the reject list they are enqueueing a plan they never saw. The other gates, in
+order and each naming exactly what blocks: the session must exist; an already-`enqueued` session is
+refused naming its manifest (`a manifest fans out exactly once`); a `mapping` or `discarded` session
+is refused with §5's mandatory review named; the session must retain a source file name; the
+workflow must declare an intake projection and a registered descriptor; and `dryRun` on a workflow
+with no dry-run boundary is `policy-refused` — the same `dry-run-unsupported` rule `planStart`
+applies, evaluated through the same `supportsDryRun`.
+
+**Readiness is judged on the manifest that would be written.** `deriveIntakeEnqueuePlan`
+(`src/domain/intake/enqueue.ts`) re-runs `validateIntakeRows`, builds the manifest and returns it
+beside `enqueueReadiness(manifest)`, so there is no second count of "how many rows are still
+rejected" that could disagree with the row the operator would be handed. The pass runs against the
+session's RETAINED `readAt`, so a two-digit year resolves exactly as it did at review. A refusal
+carries the readiness `message`, its `reason`, and the unresolved source rows.
+
+**A correction's `original` is read from the source, never carried.** The session retains only the
+corrected value, so the manifest's `IntakeCorrection.original` is looked up in the bound column of
+the re-derived row and redacted through the canonical field's own declared
+`(classification, transform)`. A correction whose field is unbound, whose column is absent, or whose
+row is beyond the file THROWS: each means the session and its layout have become mutually
+inconsistent, which no command sequence can produce, and recording a plausible blank would put a lie
+in an immutable manifest.
+
+**`mappingSnapshotHash` is the identity of the DECISIONS**, where `mappingFingerprint` is the
+identity of the LAYOUT. `deriveMappingSnapshotHash` folds the workflow, sheet, settled header row,
+layout fingerprint, confirmed bindings and run constants, sorted by target field id so two sessions
+that reached the same mapping in a different order hash the same. It deliberately excludes
+`confirmedAt` (a mapping is what it maps, not when it was clicked — folding the instant would make
+`rerunDiff` report a change for a re-confirmed identical binding) and corrections/exclusions (the
+manifest records those in full in their own arrays; §7 #11 asks whether the run was planned the same
+WAY).
+
+**The manifest must name its file, so the session retains one.** `source.originalName` is required
+by the D159 schema and a content-addressed artifact has a digest, not a name — so
+`POST /api/v1/intake/files` requires a `filename` query parameter and the session retains it as
+`sourceName`. The leaf is OPTIONAL on the session record and required at the route: a row minted
+before it existed must still parse (D133 — a stored record is read forward, never back-filled), and
+enqueue refuses such a session by name rather than inventing a name the manifest would claim forever.
+
+**One fan-out path.** `fanOutQueuedRuns` in the command kernel is the ONE place N queued runs are
+inserted; `start-run` and this arm reach it with different plans and identical obligations — the
+descriptor's enqueue policy is evaluated against live authority per item, `supersede-active`
+supersedes, a `reject-active` collision refuses the WHOLE command, and a proposed run id that
+already exists is a fault rather than an adoption.
+
+**What an intake run's envelope carries.** `shape: "single"` and `priority: "bulk"` are server
+stamps, not caller claims. Per row: a fresh `runId`, the row's `itemId` from the manifest, a
+`traceId` derived from the descriptor code, the descriptor's current version/fingerprint, every
+browser system resolved to `prod` through the same `resolveInstances` the planner uses,
+`ingressSchemaHash` from the descriptor's input schema, and `input.parsed` bound to
+`canonicalInputSchemaHash` after re-reading the manifest's stored `parsedInput` through the
+descriptor's CURRENT canonical schema (D62 — never its ingress parser); a value that fails that
+parse throws naming the source row and enqueues nothing. `input.raw` is the manifest's own stored
+`parsedInput`: that value IS what intake submitted, and `validRows[].inputHash` pins its bytes.
+
+**The config identity is injected and PROVED.** `start-run` copies it from the start plan and
+`retry` from the run it retries; an intake fan-out has neither, so `CommandKernelDependencies`
+carries a `configIdentity` supplied by the composition root — the same resolved fingerprint and
+stored snapshot the start-plan service uses — and the arm reads the `config_snapshots` row back and
+compares its fingerprint before stamping a single envelope. A caller-claimed identity would be an
+unverified value; an unproved one would leave a run naming a snapshot nobody can read back.
+
+**Everything commits together.** The manifest insert, every run insert, and the session CAS to
+`enqueued` (with its required `intakeManifestId`) run in the ONE outer authority transaction, so a
+refusal on the last row of a file leaves no manifest, no run, no state change and no generation
+advance. Partial fan-out is unrepresentable rather than merely avoided.
+
+**Deviation from §5's coordinator sentence, recorded.** §5 describes the fan-out as an `operation`
+coordinator plus `operation-member` children. Nothing in the runtime mints an `operation` run — the
+shape exists only in the queue projection's rendering, and doc 07's workflow tiers assign
+`operation-member` fan-out to the oath-signature / emergency-contact tier — so intake enqueues N
+independent `single` runs and the MANIFEST is what joins them.
+That is the artefact §5 already relies on to make "42 rows ran" checkable, and its `validRows[].itemId`
+joins to runs through `(workflow, itemId)`. Inventing a coordinator with no descriptor behind it
+would be the fabrication this program bans; the coordinator receipt §5 describes lands with the
+first workflow that genuinely needs one.
+
+**The runs reach the queue like any others.** The dashboard command service emits one `run.queued`
+span per enqueued run, joined to the manifest by `itemId` (unique in a file by
+`duplicate-identity`), titled with the workflow's OWN `presentation.title` over the manifest's
+stored `parsedInput`. A count mismatch between valid rows and reported runs throws rather than
+filing a partial fan-out.
+
+**`rerunDiff` is served, not just computable.** The session wire carries an optional `rerun`
+`{intakeManifestId, createdAt, totals, diff}` whenever the LATEST manifest for this
+`(source digest, workflow)` pair exists — on the upload response and on
+`GET /api/v1/intake/:sessionId` alike, since both render from one `buildWire`. The prior manifest is
+found BY the session's own digest, so the `source-artifact` axis is equal by construction and the
+diff reports the mapping, projection, contract and canonical-schema axes. An enqueued session serves
+its own manifest reading `same-plan`, which is the manifest view the run surface links to.
+
+**One more identity, closed.** `intakeProjectionRegistry` now refuses a module whose projection was
+built over a COPY of its descriptor's input schema rather than the schema object itself. Everything
+above rests on that identity: validation parses each assembled row through the PROJECTION's schema
+and enqueue re-reads the stored value through the DESCRIPTOR's canonical schema. It is the same
+identity-not-equivalence argument `defineIntakeProjection` already makes per target field, applied
+to the whole input.
+
 ### 5.1 Mobile photo capture is a recoverable artifact-intake source
 
 > **Scope trim (D79d, operator 2026-07-24) — read before implementing.** Phone capture is

@@ -6,6 +6,11 @@
  *    (a run is born at ENQUEUE, doc 03 §1.1). Authority commits FIRST inside
  *    the kernel's transaction; the JSONL line follows — the doc's crash gap
  *    ("repairable, never a lost filing") lives between those two steps.
+ * 1b. The same emission for every run an applied `enqueue-intake-manifest`
+ *    fanned out (D171). A spreadsheet row's run is born at enqueue like any
+ *    other, and its title comes from the workflow's OWN presentation over the
+ *    manifest's stored `parsedInput` — the manifest is the durable record of
+ *    what was enqueued, so the queue rows and the manifest cannot disagree.
  * 2. `gate.resolved` span emission for an applied `resolve-gate`.
  * 3. A projection refresh for applied run-family commands that emit no span
  *    (hide/unhide/rename/bump/cancel change authority presentation/lifecycle
@@ -17,9 +22,12 @@
  * exhaustive parse.
  */
 import { z } from "zod";
+import { workflowPlanning, type AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import type { Clock } from "../../../domain/clock.js";
 import { CommandRequestSchema, type CommandResult } from "../../../domain/commands.js";
+import type { IntakePlanManifest } from "../../../domain/intake/manifest.js";
+import type { IntakeSession } from "../../../domain/intake/session.js";
 import { sha256Hex } from "../../../domain/sha256.js";
 import type { StartPlanRecord } from "../../../domain/run/start-plan.js";
 import type { RunRecord } from "../../../domain/run/record.js";
@@ -33,9 +41,12 @@ export interface DashboardCommandServiceDeps {
   readonly clock: Clock;
   readonly spans: SpanJsonlWriter;
   readonly projection: RunQueueProjection;
+  readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   readonly authorityRead: {
     getRun(runId: string): RunRecord | undefined;
     getStartPlan(startPlanId: string): StartPlanRecord | undefined;
+    getIntakeSession(intakeSessionId: string): IntakeSession | undefined;
+    getIntakeManifest(manifestId: string): IntakePlanManifest | undefined;
   };
 }
 
@@ -82,6 +93,73 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
             actorId: request.requestedBy,
             title: planned.title,
             ...(planned.subtitle === undefined ? {} : { subtitle: planned.subtitle }),
+            descriptorVersion: run.envelope.descriptorVersion,
+            contractFingerprint: run.envelope.contractFingerprint,
+            resolvedInstance: run.envelope.resolvedInstance,
+            configFingerprint: run.envelope.configFingerprint,
+            configSnapshotId: run.envelope.configSnapshotId,
+          });
+        }
+        return result;
+      }
+
+      if (request.family === "intake" && request.type === "enqueue-intake-manifest") {
+        const session = deps.authorityRead.getIntakeSession(request.target.intakeSessionId);
+        if (session?.intakeManifestId === undefined) {
+          throw new Error(
+            `intake session ${request.target.intakeSessionId} names no manifest after its enqueue applied`,
+          );
+        }
+        const manifest = deps.authorityRead.getIntakeManifest(session.intakeManifestId);
+        if (manifest === undefined) {
+          throw new Error(`intake manifest ${session.intakeManifestId} is missing from authority after its enqueue applied`);
+        }
+        const descriptor = deps.descriptors.resolve(manifest.workflow);
+        if (descriptor === undefined) {
+          throw new Error(`workflow ${manifest.workflow} vanished from the registry after its intake enqueue applied`);
+        }
+        const planning = workflowPlanning(descriptor);
+        // The join is the ITEM id, which the manifest and the run envelope both
+        // carry and which `duplicate-identity` guarantees is unique in a file.
+        const enqueued = new Map<string, RunRecord>();
+        for (const target of result.affectedTargets) {
+          if (target.family !== "run") continue;
+          const run = deps.authorityRead.getRun(target.runId);
+          if (run === undefined) {
+            throw new Error(`run ${target.runId} from applied intake manifest ${manifest.manifestId} is missing from authority`);
+          }
+          enqueued.set(run.envelope.itemId, run);
+        }
+        if (enqueued.size !== manifest.validRows.length) {
+          throw new Error(
+            `intake manifest ${manifest.manifestId} has ${String(manifest.validRows.length)} valid rows but its `
+            + `command reported ${String(enqueued.size)} runs; refusing to file a partial fan-out`,
+          );
+        }
+        for (const row of manifest.validRows) {
+          const run = enqueued.get(row.itemId);
+          if (run === undefined) {
+            throw new Error(
+              `intake manifest ${manifest.manifestId} source row ${String(row.sourceRow)} (${row.itemId}) has no enqueued run`,
+            );
+          }
+          const subtitle = planning.subtitle(row.parsedInput);
+          deps.spans.emit({
+            t: "run.queued",
+            kind: "run",
+            ts: run.envelope.enqueuedAt,
+            workflow: run.envelope.workflow,
+            runId: run.envelope.runId,
+            attempt: run.envelope.attempt,
+            traceId: run.envelope.traceId,
+            spanPath: runSpanPath(run.envelope.traceId),
+            itemId: run.envelope.itemId,
+            shape: run.envelope.shape,
+            priority: run.envelope.priority,
+            dryRun: run.envelope.dryRun,
+            actorId: request.requestedBy,
+            title: planning.title(row.parsedInput),
+            ...(subtitle === undefined ? {} : { subtitle }),
             descriptorVersion: run.envelope.descriptorVersion,
             contractFingerprint: run.envelope.contractFingerprint,
             resolvedInstance: run.envelope.resolvedInstance,

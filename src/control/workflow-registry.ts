@@ -103,6 +103,24 @@ export function intakeProjectionRegistry(
   const entries: [string, IntakeProjection][] = [];
   for (const module of modules) {
     if (module.intake === undefined) continue;
+    /**
+     * The projection's `inputSchema` must BE the descriptor's input schema
+     * object, not a copy that agrees today (D171).
+     *
+     * Everything downstream rests on it: validation parses each assembled row
+     * through the projection's schema, and enqueue then re-reads that stored
+     * value through the DESCRIPTOR's canonical schema and titles it with the
+     * descriptor's own presentation. A structurally-similar second schema would
+     * make intake produce values the workflow never accepted — the same
+     * identity-not-equivalence argument `defineIntakeProjection` already makes
+     * per target field, applied to the whole input.
+     */
+    if (module.intake.inputSchema !== module.descriptor.input) {
+      throw new Error(
+        `workflow ${String(module.descriptor.id)} declares an intake projection over a different input schema `
+        + "object than its descriptor's; it must reuse the descriptor's own schema, not a copy of it",
+      );
+    }
     entries.push([String(module.descriptor.id), module.intake]);
   }
   return Object.freeze(Object.fromEntries(entries));
