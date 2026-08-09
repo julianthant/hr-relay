@@ -8,6 +8,13 @@
  * disposition; a field the rules cannot decide is `ambiguous`; and nothing
  * here APPLIES anything — the output is advice for the review gate.
  *
+ * D178 unparks the `ai` arm behind the caller's separate `ai` flag: the
+ * fields the rules could not decide are asked about, but ONLY those whose
+ * canonical classification permits the `allow` transform. `relationship` is
+ * `sensitive-hr`, so the field legacy's LLM fallback existed for is the one
+ * this arm withholds — it stays `ambiguous` for the operator rather than
+ * being sent in a redacted form no model could read anyway.
+ *
  * Street-LINE advice is deliberately not offered yet (D165): the 2026-07-13
  * incident lives on that surface, `composeResolvedStreet` did not port, and
  * the EC migration owns the live re-verification that would make a street
@@ -25,6 +32,7 @@ import {
 } from "../../../domain/contracts/normalization/normalize-contact.js";
 import { CANONICAL_FIELDS } from "../../../domain/fields/registry.js";
 import {
+  ContactAdviceSchema,
   canonicalizeRelationshipRule,
   isLikelyUsAddress,
   isUsCountry,
@@ -39,7 +47,14 @@ import {
   GeocodeRequestSchema,
   type GeocodeOutcome,
 } from "../../../domain/normalization/geocode.js";
-import { redactValue } from "../../../domain/redaction.js";
+import { RedactedFieldSchema, redactValue } from "../../../domain/redaction.js";
+import {
+  ADVISORY_PROMPT_SCHEMA_HASH,
+  AdvisoryAnswerEnvelopeSchema,
+  CONTACT_ADVICE_SCHEMA_HASH,
+  buildAdvisoryPrompt,
+  parseAdvisoryAnswer,
+} from "../../../domain/trust/advisory.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import type { ProviderResponseEnvelope } from "../../../domain/providers.js";
 
@@ -113,7 +128,10 @@ export const readContactAdviceTask = defineTask(NormalizeContact, {
 
     // The declared provider policy: census first for a US-shaped address,
     // nominatim as the fallback — each observation recorded, never silent.
-    const unavailable: { capability: "geocode.census" | "geocode.nominatim"; reason: unknown }[] = [];
+    const unavailable: {
+      capability: "geocode.census" | "geocode.nominatim" | "ai.advisory";
+      reason: unknown;
+    }[] = [];
     let geocodeAnswered = false;
     if (input.geocode && normalized.address1 !== undefined) {
       const request = GeocodeRequestSchema.parse({
@@ -175,10 +193,96 @@ export const readContactAdviceTask = defineTask(NormalizeContact, {
       }
     }
 
+    // ── the ai advice arm (D178) ───────────────────────────────────────────
+    //
+    // Redaction happens BEFORE the wire, and the declared classification —
+    // not the usefulness of the answer — decides what may be asked about. A
+    // contact field is askable only when its canonical redaction transform is
+    // `allow`; `relationship` is `sensitive-hr`, so the one field legacy's LLM
+    // fallback existed for is precisely the one this arm will not send. It
+    // stays `ambiguous` for the operator, which is the honest outcome.
+    let aiAnswered = false;
+    let aiAsked = false;
+    if (input.ai && ambiguous.size > 0) {
+      const askable = [...ambiguous].filter((field) => FIELD_CANONICAL[field].redactTransform === "allow");
+      const withheld = [...ambiguous].filter((field) => FIELD_CANONICAL[field].redactTransform !== "allow");
+      if (withheld.length > 0) {
+        ctx.log.info("contact advisory withheld fields whose classification forbids provider use", {
+          fields: withheld.join(","),
+        });
+      }
+      if (askable.length > 0) {
+        aiAsked = true;
+        const facts = askable.map((field) => {
+          const raw = contact[field];
+          if (raw === undefined) throw new Error(`contact field ${field} is ambiguous but carries no value`);
+          const canonical = FIELD_CANONICAL[field];
+          return RedactedFieldSchema.parse({
+            key: field,
+            ...redactValue(canonical.classification, canonical.redactTransform, raw),
+          });
+        });
+        const prompt = buildAdvisoryPrompt("contact-normalization", facts);
+        const response = await ctx.providers["ai.advisory"].call({
+          schemaHash: ADVISORY_PROMPT_SCHEMA_HASH,
+          value: prompt,
+        });
+        if (response.state === "unavailable") {
+          unavailable.push({ capability: "ai.advisory", reason: response.reason });
+        } else if (response.state === "invalid-response") {
+          unavailable.push({
+            capability: "ai.advisory",
+            reason: { code: "adapter-unavailable", message: response.reason },
+          });
+        } else {
+          aiAnswered = true;
+          const envelope = AdvisoryAnswerEnvelopeSchema.parse(response.value.value);
+          const parsed = parseAdvisoryAnswer(envelope, ContactAdviceSchema, CONTACT_ADVICE_SCHEMA_HASH);
+          if (!parsed.ok) {
+            // A malformed answer is a REFUSAL, never a partial accept: the
+            // fields stay ambiguous and the reason names the failing paths.
+            aiAnswered = false;
+            unavailable.push({
+              capability: "ai.advisory",
+              reason: { code: "adapter-unavailable", message: parsed.reason },
+            });
+          } else {
+            const asked = new Set(askable);
+            for (const advised of parsed.advice.fields) {
+              // An answer for a field nobody asked about is dropped LOUDLY —
+              // it is the model volunteering a value for a withheld field.
+              if (!asked.has(advised.field)) {
+                throw new Error(
+                  `contact advisory answered unasked field ${advised.field}; the prompt carried only ${askable.join(",")}`,
+                );
+              }
+              const raw = contact[advised.field];
+              if (raw === undefined || advised.value === raw) continue;
+              changes.push({
+                field: advised.field,
+                before: redactedBefore(advised.field, raw),
+                after: advised.value,
+                source: {
+                  kind: "ai",
+                  provider: envelope.provider,
+                  model: envelope.model,
+                  confidence: advised.confidence,
+                },
+              });
+              normalized[advised.field] = advised.value;
+              ambiguous.delete(advised.field);
+            }
+          }
+        }
+      }
+    }
+
     const ambiguousFields = [...ambiguous].map((field) => ContactFieldIdSchema.parse(field));
+    const geocodeAsked = input.geocode && normalized.address1 !== undefined;
+    const answered = (geocodeAsked ? geocodeAnswered : true) && (aiAsked ? aiAnswered : true);
     const disposition = ambiguousFields.length > 0
       ? { kind: "ambiguous" as const, fields: ambiguousFields }
-      : input.geocode && !geocodeAnswered && unavailable.length > 0
+      : !answered && unavailable.length > 0
         ? { kind: "advisory-unavailable" as const, unavailable }
         : { kind: "complete" as const };
 

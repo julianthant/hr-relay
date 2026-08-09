@@ -12,9 +12,13 @@
  * gate shows before/after/source, and accepted changes become operator-
  * correction provenance (doc 06 §4.2).
  *
- * As-built deviations from the §4.2 sketch, recorded under D165:
- * - the `ai` source arm did not land — its producer is 2i's advisory
- *   provider; a schema arm nothing can produce would be a dead vocabulary;
+ * As-built deviations from the §4.2 sketch, recorded under D165 and D178:
+ * - the `ai` source arm landed at D178 behind its own `ai` input flag, and it
+ *   is NARROWER than legacy's LLM fallback by construction: a field may be
+ *   asked about only when its canonical classification permits the `allow`
+ *   transform, so `relationship` (`sensitive-hr`) is never sent and stays
+ *   `ambiguous` for the operator — the declared classification decides, not
+ *   the usefulness of the answer;
  * - `before` uses the canonical field's OWN classification/redaction
  *   transform (`redactValue`), so a durable checkpoint never carries a raw
  *   direct-identifier address line;
@@ -23,9 +27,16 @@
  *   caller opts into geocode advice, the task owns the sequencing.
  */
 import { z } from "zod";
-import { IsoInstantSchema, ProviderCapabilityIdSchema, taskId } from "../../ids.js";
+import {
+  AiModelIdSchema,
+  AiProviderIdSchema,
+  IsoInstantSchema,
+  ProviderCapabilityIdSchema,
+  taskId,
+} from "../../ids.js";
 import {
   CanonicalRelationshipSchema,
+  ContactFieldIdSchema,
   NormalizationRuleIdSchema,
 } from "../../normalization/contact-rules.js";
 import { GeocodeConfidenceSchema } from "../../normalization/geocode.js";
@@ -33,11 +44,8 @@ import { ProviderUnavailableReasonSchema } from "../../provider-admission.js";
 import { DataClassificationSchema } from "../../redaction.js";
 import { defineTaskContract } from "../base.js";
 
-export const ContactFieldIdSchema = z.enum([
-  "relationship", "cellPhone", "homePhone", "address1", "address2",
-  "city", "state", "postalCode", "country",
-]);
-export type ContactFieldId = z.infer<typeof ContactFieldIdSchema>;
+export { ContactFieldIdSchema } from "../../normalization/contact-rules.js";
+export type { ContactFieldId } from "../../normalization/contact-rules.js";
 
 /** Raw operator/OCR values; absent means the form did not carry the field. */
 export const ContactFieldsInputSchema = z.strictObject({
@@ -91,6 +99,17 @@ export const NormalizationChangeSchema = z.strictObject({
       observedAt: IsoInstantSchema,
       confidence: GeocodeConfidenceSchema,
     }),
+    /**
+     * D178 unparks the `ai` arm doc 06 §4.2 sketched. `confidence` is the
+     * MODEL's own number and is labelled as such on the review gate — it is
+     * not a verdict, and an ai-sourced change can never be auto-applied.
+     */
+    z.strictObject({
+      kind: z.literal("ai"),
+      provider: AiProviderIdSchema,
+      model: AiModelIdSchema,
+      confidence: z.number().min(0).max(1),
+    }),
   ]),
 });
 export type NormalizationChange = z.infer<typeof NormalizationChangeSchema>;
@@ -124,6 +143,14 @@ export const NormalizeContactInputSchema = z.strictObject({
   contact: ContactFieldsInputSchema,
   /** The caller's declared provider policy: no flag, no remote reads. */
   geocode: z.boolean(),
+  /**
+   * The second declared provider policy (D178): ask an `ai.advisory` provider
+   * about the fields the deterministic rules could not decide. It is separate
+   * from `geocode` because the two spend different budgets against different
+   * remote systems, and a caller that wants address verification has not
+   * thereby consented to a model reading the record.
+   */
+  ai: z.boolean(),
   /** When the contact is being read — replay resolves rules identically. */
   readAt: IsoInstantSchema,
 });
@@ -141,7 +168,7 @@ export const NormalizeContact = defineTaskContract({
   input: NormalizeContactInputSchema,
   output: NormalizeContactOutputSchema,
   errorCodes: ["empty-contact"],
-  providers: ["geocode.census", "geocode.nominatim"] as const,
+  providers: ["geocode.census", "geocode.nominatim", "ai.advisory"] as const,
   subject: { kind: "none", reason: "pure per-record normalization advice resolves no person" },
   freshness: {
     // Provider-derived facts age; a day-old geocode observation must not ride
@@ -155,6 +182,8 @@ export const NormalizeContact = defineTaskContract({
     "normalization/contact/nominatim-fallback",
     "normalization/contact/advisory-unavailable",
     "normalization/contact/ambiguous",
+    "normalization/contact/ai-advice",
+    "normalization/contact/ai-withheld-field",
   ],
   example: {
     normalized: { cellPhone: "8585551212", state: "CA", postalCode: "92093" },
