@@ -206,8 +206,11 @@ export const CAPTURE_UNKNOWN_SESSION_MESSAGE =
 export const CAPTURE_PHOTO_MEDIA_TYPES = ["image/jpeg", "image/png"] as const;
 export const CaptureUploadMediaTypeSchema = z.enum(CAPTURE_PHOTO_MEDIA_TYPES);
 
-/** A phone photograph, at the size a modern camera actually produces. */
-export const CAPTURE_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+/*
+ * There is deliberately no size constant here. `config.capture.maxPhotoBytes`
+ * and `maxPhotos` already own those limits, and a second copy in the domain
+ * would be a value that could disagree with the one actually enforced.
+ */
 
 export const CapturePhotoWireSchema = z.strictObject({
   photoId: CapturePhotoIdSchema,
