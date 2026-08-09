@@ -69,7 +69,25 @@ export const CaptureHandoffSchema = z.discriminatedUnion("state", [
     runId: RunIdSchema,
     intakeManifestId: IntakeManifestIdSchema,
   }),
-  z.strictObject({ state: z.literal("failed"), failureId: FailureIdSchema }),
+  /**
+   * `failureId` is a CORRELATION id, not a reference to a `FailureRecord`: no
+   * such row exists for a capture handoff, because a `FailureRecord` binds a
+   * run and this failure happens before one exists. It is what ties the failed
+   * session to the failed outbox row, and nothing more.
+   *
+   * `message` is the projector's own recorded reason. Without it the failure
+   * id names nothing a reader can resolve, and the phone — whose operator is
+   * the person choosing between Retry and Discard — is told only that
+   * something went wrong. OPTIONAL so a row written before this leaf existed
+   * still parses (D133: a durable schema is read forward, never back-filled);
+   * a reader that needs it and does not find it fails loud rather than
+   * substituting prose.
+   */
+  z.strictObject({
+    state: z.literal("failed"),
+    failureId: FailureIdSchema,
+    message: z.string().min(1).optional(),
+  }),
 ]);
 export type CaptureHandoff = z.infer<typeof CaptureHandoffSchema>;
 

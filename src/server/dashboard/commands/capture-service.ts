@@ -180,7 +180,7 @@ export function createCaptureService(dependencies: CaptureServiceDependencies): 
         // The phone's operator is the person who decides between Retry and
         // Discard, and the failure id decides nothing for them — so the wire
         // carries the projector's own recorded reason instead.
-        ? { state: "failed", message: failureMessage(session) }
+        ? { state: "failed", message: failedHandoffMessage(session) }
         : session.handoff,
       finalizationGeneration: session.finalizationGeneration,
       version: session.version,
@@ -191,13 +191,26 @@ export function createCaptureService(dependencies: CaptureServiceDependencies): 
     });
   }
 
-  function failureMessage(session: CaptureSession): string {
+  /**
+   * The failed handoff's own recorded reason, read from the row the projector
+   * wrote. It is deliberately NOT looked up in `failures`: a `FailureRecord`
+   * binds a run, and a handoff that never reached one has no such row — a
+   * lookup there always misses, and the `?? "something went wrong"` it invites
+   * would hide exactly the sentence the operator needs. A row that records a
+   * failure without its reason is a defect, so it throws by name.
+   */
+  function failedHandoffMessage(session: CaptureSession): string {
     if (session.handoff.state !== "failed") {
       throw new Error(`capture session ${session.sessionId} has no failure to describe`);
     }
-    const failure = dependencies.authority.withAuthorityTransaction((repositories) =>
-      repositories.failures.get(String(session.handoff.state === "failed" ? session.handoff.failureId : "")));
-    return failure?.summary ?? "the bundle could not be handed off; retry or discard it";
+    const { message } = session.handoff;
+    if (message === undefined) {
+      throw new Error(
+        `capture session ${session.sessionId} records a failed handoff (${session.handoff.failureId}) with no `
+        + "reason, so there is nothing honest to show the operator holding the phone",
+      );
+    }
+    return message;
   }
 
   /**
