@@ -563,11 +563,18 @@ explicit operator architecture decision; a migration questionnaire cannot enable
   guard; doc 12 §4.4 is the as-built. A real-shaped
   copied authority DB passes corruption → read-only degraded mode → checksummed-backup restore →
   projection rebuild with claims/dependencies/checkpoints/intents/outboxes/capture handoffs intact.
-- **Archive model (D80) proven:** a version bump moves prior-version runs out of every active
-  surface into the read-only Archive; an archived run renders from self-contained data with **zero
-  old-version code paths**; the ledger is untouched by archiving; relaunch-from-archive starts a
-  fresh current-version run; and a bump **refuses** while any prior-version run is non-terminal,
-  listing them.
+- ~~**Archive model (D80) proven**~~ — **MET 2026-08-09 (2i-G, D179).** All five clauses are pinned
+  in `tests/unit/archive-model.test.ts` against the real authority database and the real command
+  kernel, one `it` per clause: a bump archives the prior-version run and leaves the current-version
+  one alone (and the run ROW survives — archiving is a display lifecycle, not a delete);
+  `buildArchivedRunDetail` renders a stored record with the descriptor list **empty**, which is the
+  only way "zero old-version code paths" is checkable; a ledger partition written before the bump
+  is **byte-identical** after it; relaunch mints a run carrying the CURRENT version and fingerprint,
+  is not a retry, leaves the archived record identical and refuses a stale content digest; and a
+  non-terminal prior-version run refuses the apply by name with **nothing archived at all**, not
+  even the run that was eligible. Registry drift between review and apply is a sixth fixture.
+  `archive-invariants` is active. Doc 03 §10.2's *D179 — the archive model as-built* is the
+  normative record.
 
 **What Phase 2 still does not prove.** Workflow-specific gates and each production system's receipt/
 verify quality remain migration-specific. The foundation write sequence itself is no longer deferred

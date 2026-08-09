@@ -327,7 +327,8 @@ The BFF serves 7 endpoints today; each slice names what it adds.
         URL is the working path today.
       · **Pre-existing, not introduced:** the intake takeover renders a dark shell under the light
         theme (sibling of the `paper-ink`-renders-dark residual already deferred to 2j).
-- [ ] **2i-G — PARTS 1 AND 2 LANDED 2026-08-09 (D176/D177, D178); the rest is still open.**
+- [x] ~~**2i-G**~~ — **CLOSED 2026-08-09 (D176/D177, D178, D179/D180).** Explorer Phase B is the
+      only 2i-G-adjacent item left, and it is doc 12 §5.3/§5.4's own milestone, listed below.
   - [x] ~~Read-only Workflow Explorer (doc 12 §5 Phase A)~~ — **DONE.** Projection derived from
         `WORKFLOW_MODULES` at `GET /api/v1/explorer`, surface at `?explore=<workflowId>`. Doc 12
         §5.7 is the as-built; doc 03 §13 owns placement. Two named exclusions: the §5.2 live-run
@@ -360,8 +361,25 @@ The BFF serves 7 endpoints today; each slice names what it adds.
           corpus re-stamped once for the descriptor-hash change the domain edits caused.
         · **No live provider call was made.** The production adapter takes its `fetch` by injection
           and every fixture uses it; a live smoke is available but was not run.
-  - [ ] **Archive / version-bump UI** (with task D80's model). Untouched.
-  - [ ] **Activity report** (doc 13 §6.7). Untouched.
+  - [x] ~~**Archive model, version-bump flow and Archive UI** (D80)~~ — **DONE (D179).** Authority
+        schema **v13** adds `version_bump_applications`, `archived_runs` and `archive_relaunches`,
+        all aborting UPDATE and DELETE in SQL; `version_plans` takes its first real shape with a
+        `planned → applied` CAS. The three `version-archive` command arms are ACTIVE. An archived
+        run holds its final projected row plus detail, receipt, failure and evidence POINTERS, taken
+        through an `ArchiveSnapshotSource` seam over the same projection the live surfaces render.
+        `apply` re-derives blockers inside its own transaction and refuses `active-version-blockers`
+        naming each one; the plan survives the refusal. Surface at `?archive=` (ledger) and
+        `?archive=<runId>` (read-only detail); the bump flow sits on the same page because it is
+        what fills it.
+        · **A defect this uncovered and fixed:** the queue projection stamped the build serving the
+          PAGE as every row's `appVersion`, so run-detail's "served by a different app build"
+          comparison could never fire. The stamp is now durable on `RunRecord`, written at the one
+          enqueue point and read forward (D133) — never back-filled.
+  - [x] ~~**Activity report** (doc 13 §6.7)~~ — **DONE (D180).**
+        `GET /api/v1/reports/activity?from=&to=`, built INSIDE the one run/queue projection so §8
+        guard #4 holds by construction, refusing a missing range rather than defaulting one.
+        Durations report their unmeasured runs beside their median; a retired workflow's runs count
+        and say they are unregistered. Surface at `?activity=<from>..<to>`.
   - [ ] **Explorer Phase B** (doc 12 §5.3/§5.4) — the closed presentation/policy edit union, the
         stale-base apply refusal, the code-change brief. Not started; it is the other half of doc
         07's explorer exit criterion.
@@ -382,10 +400,11 @@ The BFF serves 7 endpoints today; each slice names what it adds.
 
 ### Phase 2 exit criteria not yet met (doc 07 §"Hard exit criteria")
 
-- [ ] **Archive model (D80) proven** — a version bump moves prior-version runs into a read-only
-      Archive, an archived run renders with zero old-version code paths, the ledger is untouched,
-      relaunch starts a fresh current-version run, and a bump REFUSES while any prior-version run is
-      non-terminal. **Nothing of this exists yet.**
+- [x] ~~**Archive model (D80) proven**~~ — **MET 2026-08-09 (2i-G, D179).** Five clauses, five
+      fixtures in `tests/unit/archive-model.test.ts` over the real authority database and the real
+      kernel; `archive-invariants` activated with an import-closure arm against a checked-in
+      violating fixture, raw-SQL immutability arms, a no-ledger-path arm and a digest fixed-point
+      arm. Doc 03 §10.2's *D179 — the archive model as-built* is the normative record.
 - [x] ~~Read-only explorer renders the as-built person-lookup graph accurately (2i)~~ — **MET
       2026-08-09 (2i-G, D176)**, proved by `workflow-editor-compile-integrity` over the real
       registry plus three parity states. The EDIT half of doc 07's same bullet is Phase B and

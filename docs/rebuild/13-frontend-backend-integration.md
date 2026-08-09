@@ -622,6 +622,35 @@ Wire Settings/doctor/storage health, Archive/version bump, Explorer/run overlay,
 generated safe catalog/help surfaces, worker/session controls, and the remaining notification and
 search states. Development row/panel catalog and design-system kit remain fixture-only.
 
+#### D180 — the Activity report as-built (2i-G, 2026-08-09)
+
+`GET /api/v1/reports/activity?from=&to=` serves `ActivityReportWire`. **Both bounds are required
+and the route refuses without them** — an aggregate over a window the caller never named is a
+number nobody asked for, and defaulting one silently would be a report that answers a different
+question than the link says.
+
+**Every total is built inside `run-queue-projection.ts`**, from the same in-memory surfaces the
+Queue Panel renders. §8 guard #4 names Activity aggregates explicitly and D81 is the reason: a
+second summation path could disagree with the day it summarises. Hidden rows, archived rows and
+member containment are therefore already applied — the report inherits them rather than re-deciding
+them.
+
+**Three places the wire is honest rather than tidy, each enforced by the schema:**
+
+1. **Durations report their misses.** `measuredRuns` and `unmeasuredRuns` PARTITION the terminal
+   runs, and the median and longest are present-or-absent with a reason. D124's lesson at scale: a
+   median over a denominator that quietly dropped its unknowns is the number that gets quoted in a
+   meeting.
+2. **A retired workflow's runs still count.** `registration` is `registered{label, categoryId}` or
+   `unregistered{reason}`; the report never invents a label from an id.
+3. **The status totals must sum to the reported total**, and terminal plus in-flight must partition
+   it. A report whose own parts disagree is the bug class D81 exists to make unrepresentable, so it
+   is refused at the boundary rather than rendered.
+
+The surface opens with the sentence and the numbers set into it, then the same totals as
+proportional rows — no KPI-card row and no chart runtime, which also keeps the bundle within §8
+guard #13. There is no live stream: the range is an explicit refresh, exactly as §5 specifies.
+
 ### 6.8 Phase 3+ workflow migrations
 
 Each workflow migration uses the same integration checklist:
@@ -807,6 +836,13 @@ Add these to doc 10’s inventory when their owning code lands:
     every capture pointer carries dimensions or explicit missing metadata.
 11. **Archive self-containment:** archived detail tests run with the originating descriptor/runtime
     absent.
+
+    **LANDED as `archive-invariants` (2i-G, D179).** It is checked over the archived-detail read
+    path's whole IMPORT CLOSURE, not by reading one file — a descriptor read three modules deep is
+    the same coupling with more steps — and it runs against a checked-in violating fixture that
+    reaches `src/base/workflow.ts` two hops away through a re-export, so a walker that resolved
+    nothing could not pass. The behavioural half reads a stored record back with the descriptor
+    list EMPTY.
 12. **Demo isolation:** the dev demo stays in the legacy repo, so no rebuild production import can
     reach `components/dev/rebuild-demo/**` or its mock wire modules — structural under D93. The
     guard survives only for mock wire modules copied into the rebuild repo as test fixtures.

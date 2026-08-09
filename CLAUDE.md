@@ -282,6 +282,30 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-09: An archive is DATA, and the only way to prove it is to delete the code (D179).**
+  Charter §25's whole claim is that reading an archived run needs no old-version code, and the only
+  check that can settle it is reading a stored record back with the descriptor list EMPTY — which
+  is what `archive-invariants` and `archive-model` both do. Everything else follows from taking
+  that literally: the archived record holds the FINAL PROJECTED ROW plus detail/receipt/failure and
+  evidence POINTERS, taken through a seam over the same projection the live surfaces render (so the
+  frozen bytes are the bytes the operator last saw, not a second derivation), and the workflow
+  LABEL is frozen in — resolving it later would be a descriptor read on the archived path, and
+  falling back to the id would substitute a plausible value for one nobody recorded. The three v13
+  tables abort UPDATE and DELETE **in SQL**, because an archive whose rows could be rewritten is a
+  weaker record than the live row it replaced. Two things the build surfaced. **(1) The app-version
+  stamp did not exist.** The queue projection stamped `deps.appVersion` — the build serving the
+  PAGE — on every row, so run-detail's "served by a different app build" warning compared a value
+  with itself and was structurally unable to fire. It is now durable on `RunRecord`, written at the
+  ONE enqueue point, and read forward (D133): a pre-D179 run reports its absence with its reason
+  and an application-scope bump treats it as prior-version, which is the fail-closed reading.
+  **(2) A refusal must be computed where it decides, not where it was reviewed.** `apply` re-derives
+  candidates AND blockers from authority inside its own transaction rather than trusting the plan's
+  list — a run that went queued between review and apply is exactly the unresolved possible-submit
+  the rule exists to keep out — and a refused apply leaves the plan `planned`, so the same reviewed
+  plan applies once the blocker settles. The surface keeps Apply clickable while blockers exist for
+  the same reason: a button disabled by a client-side count would be the client claiming to know
+  what only that transaction can.
+
 - **2026-08-09: A credential that must survive a QR belongs in the FRAGMENT, and a refusal that
   varies is an oracle (D174).** The capture token has to reach a phone through a scanned link, which
   looks like it forces a secret into a URL and breaks doc 11's "no secret-bearing URLs". It does

@@ -2270,6 +2270,9 @@ gains a field; it does not gain a sibling.
 
 Consequences that follow and must not be re-litigated per surface: **collapse rules, hidden rows,
 archived runs (§10.2), and delegated-member containment are applied once, inside the projection.**
+**The Activity report (D180) is a range rendering of this same payload**, built inside the
+projection for the same reason: a report that summed rows a second way could disagree with the day
+it summarises. Its contract lives in doc 13 §6.7.
 A member counted in a group is not also counted at top level because there is no second place that
 could count it.
 
@@ -2318,6 +2321,68 @@ queue priority/claim order only and can never plan, apply, or imply version/arch
 The scope of a bump is declared by whoever makes the change — single-workflow, multi-workflow, or
 dashboard — and recorded in that update's change record (same store as fix records: what, why,
 version, commit).
+
+#### D179 — the archive model as-built (2i-G, 2026-08-09)
+
+**The app version is the other half of the archive key, and it was not being kept.** The queue
+projection stamped `deps.appVersion` — the build serving the PAGE — on every row, so the run-detail
+"served by a different app build" comparison compared a value with itself and could never fire.
+`RunRecord` now carries an `appVersion` stamped at the ONE enqueue point (`fanOutQueuedRuns`, and
+the retry arm, which stamps the build it is enqueued under rather than inheriting the one it
+retries). It is **read forward, never back-filled** (D133's rule): a run from before D179 reports
+its absence with its reason, and an application-scope bump treats an unstamped run as prior-version
+— the fail-closed reading, since it demonstrably is not the current build's.
+
+**Authority schema v13** adds three tables, all insert-only in SQL rather than by convention,
+because an archive whose rows could be rewritten is a WEAKER record than the live row it replaced:
+
+| table | holds |
+|---|---|
+| `version_bump_applications` | the applied bump — charter §25's change record |
+| `archived_runs` | one self-contained record per swept run, with its content digest |
+| `archive_relaunches` | relaunch provenance, keyed by the FRESH run |
+
+`version_plans` (released in v1, zero production rows because the family was deferred) gets its
+first real shape under the same D164 precedent `artifact_outbox` set: it holds the exact
+`VersionBumpPlan` rather than an opaque payload, and it moves `planned → applied` exactly once
+under a CAS — the same discipline a start plan follows, because it is the same problem.
+
+**An archived run is the FINAL PROJECTED ROW plus its detail, receipt, failure and evidence
+POINTERS.** The kernel takes those payloads through an `ArchiveSnapshotSource` seam that the server
+implements over the same run/queue projection and run-detail query the live surfaces render, so the
+frozen bytes are the bytes the operator last saw rather than a second derivation of them. The
+workflow LABEL is frozen into the record too: resolving it at read time would be a descriptor read
+on the archived path, and falling back to the id would substitute a plausible value for one nobody
+recorded. Evidence is pointers only — the content-addressed bytes, the checkpoints and the ledger
+lines all stay exactly where they are.
+
+**The three arms, and where each refusal is computed:**
+
+- `plan-version-bump` mints an immutable plan **even when it cannot be applied**, because the
+  charter's requirement is that the flow LISTS the blockers — the list is what the operator needs
+  in order to clear it. An `application`-scope plan must name the RUNNING build; a scope nobody can
+  verify could archive every run on the strength of a typo.
+- `apply-version-bump` re-derives candidates **and blockers from authority inside the applying
+  transaction**, never from the plan's copy: a run that went queued between review and apply is
+  exactly the possible-submit the refusal exists to keep out of an archive. It refuses on
+  `active-version-blockers` naming every blocking run by trace, workflow and state; on registry
+  drift; and on an app build that moved since review. A refused apply leaves the plan `planned`, so
+  the SAME reviewed plan applies once the blocker settles — a refusal is not a spent plan.
+- `relaunch-archived-run` cites the record's content digest, resolves the CURRENT descriptor, and
+  replans from the archived RAW submission through today's ingress and canonical schemas. It never
+  replays the archived canonical value — that value was validated by a schema which has, by
+  definition, since moved — and it is not a retry: the fresh run carries no `retryOf`, and neither
+  side of the link is rewritten to record it.
+
+**Archived rows leave every live read once, inside the projection**, beside hidden rows and member
+containment (§10.1) — so a swept run leaves the queue, the workflow badge, the status pill, the
+month calendar and the Activity report at the same instant, by construction.
+
+**The Archive surface is read-only structurally.** No retry, no cancel, no hide, no resolution —
+absent, not disabled, because a disabled control still claims the act exists. The one control is
+Relaunch, and the archived-detail query resolves the registry for exactly one thing: whether a
+current version exists to relaunch ONTO. `archive-invariants` proves the rest by reading a stored
+record back with the descriptor list empty.
 
 ### 10.3 Operator-assigned run display names (D83)
 
