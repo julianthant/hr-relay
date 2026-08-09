@@ -19,6 +19,8 @@
   - button "Switch to Paper Ink"
 - main:
   - button "Workflow Panel — Person Lookup, minimised. 14 rows on this day, across every workflow": "14"
+  - button "Archive"
+  - button "Activity"
   - button "Explore graph"
   - button "UI catalog"
   - button "Import spreadsheet"

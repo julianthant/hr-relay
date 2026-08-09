@@ -1,0 +1,179 @@
+# activity-report--paper-ink--narrow-1024x768
+# adapter: fixture
+# fixture: activity-report
+# descriptorHash: a49c6afce540cab28ca47f9f9fb0b38b3e18f5661ed563e140e7c148e509c2d7
+# appVersion: 0.1.0
+# viewport: narrow-1024x768  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "This is the newest day served" [disabled]
+  - button "Notifications — 1 unread item": "1"
+  - button "Settings"
+  - button "Keyboard shortcuts"
+  - button "Switch to Paper Ink"
+- main:
+  - button "Workflow Panel — Person Lookup, minimised. 14 rows on this day, across every workflow": "14"
+  - button "Archive"
+  - button "Activity"
+  - button "Explore graph"
+  - button "UI catalog"
+  - button "Import spreadsheet"
+  - button "Start a run"
+  - region "Activity report":
+    - button "Dashboard"
+    - text: Activity From
+    - textbox "From": 2026-07-01
+    - text: To
+    - textbox "To": 2026-08-03
+    - paragraph:
+      - strong: "12"
+      - text: runs started between 2026-07-01 and 2026-08-03.
+      - strong: "10"
+      - text: finished and
+      - strong: "2"
+      - text: are still in flight.
+    - text: How long they took median 14m 34slongest 27m 12s9 measured 1 finished run has no recorded end instant, so it is excluded from every duration above rather than counted as zero. By day
+    - table "By day":
+      - rowgroup:
+        - row "Name Share Runs %":
+          - columnheader "Name"
+          - columnheader "Share"
+          - columnheader "Runs"
+          - columnheader "%"
+      - rowgroup:
+        - row "2026-07-29 3 25%":
+          - cell "2026-07-29"
+          - cell
+          - cell "3"
+          - cell "25%"
+        - row "2026-07-30 4 33%":
+          - cell "2026-07-30"
+          - cell
+          - cell "4"
+          - cell "33%"
+        - row "2026-08-03 5 42%":
+          - cell "2026-08-03"
+          - cell
+          - cell "5"
+          - cell "42%"
+    - text: By workflow
+    - table "By workflow":
+      - rowgroup:
+        - row "Name Share Runs %":
+          - columnheader "Name"
+          - columnheader "Share"
+          - columnheader "Runs"
+          - columnheader "%"
+      - rowgroup:
+        - row "Person Lookup 9 75%":
+          - cell "Person Lookup"
+          - cell
+          - cell "9"
+          - cell "75%"
+        - row "retired-workflow 3 25%":
+          - cell "retired-workflow"
+          - cell
+          - cell "3"
+          - cell "25%"
+    - text: By category
+    - table "By category":
+      - rowgroup:
+        - row "Name Share Runs %":
+          - columnheader "Name"
+          - columnheader "Share"
+          - columnheader "Runs"
+          - columnheader "%"
+      - rowgroup:
+        - row "people 9 75%":
+          - cell "people"
+          - cell
+          - cell "9"
+          - cell "75%"
+        - row "the workflows behind these runs are no longer registered 3 25%":
+          - cell "the workflows behind these runs are no longer registered"
+          - cell
+          - cell "3"
+          - cell "25%"
+    - text: By status
+    - table "By status":
+      - rowgroup:
+        - row "Name Share Runs %":
+          - columnheader "Name"
+          - columnheader "Share"
+          - columnheader "Runs"
+          - columnheader "%"
+      - rowgroup:
+        - row "done 7 58%":
+          - cell "done"
+          - cell
+          - cell "7"
+          - cell "58%"
+        - row "failed 2 17%":
+          - cell "failed"
+          - cell
+          - cell "2"
+          - cell "17%"
+        - row "running 2 17%":
+          - cell "running"
+          - cell
+          - cell "2"
+          - cell "17%"
+        - row "cancelled 1 8%":
+          - cell "cancelled"
+          - cell
+          - cell "1"
+          - cell "8%"
+    - text: By outcome
+    - table "By outcome":
+      - rowgroup:
+        - row "Name Share Runs %":
+          - columnheader "Name"
+          - columnheader "Share"
+          - columnheader "Runs"
+          - columnheader "%"
+      - rowgroup:
+        - row "done 7 70%":
+          - cell "done"
+          - cell
+          - cell "7"
+          - cell "70%"
+        - row "failed 2 20%":
+          - cell "failed"
+          - cell
+          - cell "2"
+          - cell "20%"
+        - row "cancelled 1 10%":
+          - cell "cancelled"
+          - cell
+          - cell "1"
+          - cell "10%"
+    - text: Failures
+    - table "Failures by code":
+      - rowgroup:
+        - row "Code Runs Transient Examples":
+          - columnheader "Code"
+          - columnheader "Runs"
+          - columnheader "Transient"
+          - columnheader "Examples"
+      - rowgroup:
+        - row "SESSION_LOST 1 1 aa11bb22-0001-4000-8000-aa11bb220001":
+          - cell "SESSION_LOST"
+          - cell "1"
+          - cell "1"
+          - cell "aa11bb22-0001-4000-8000-aa11bb220001"
+        - row "SUBJECT_MISMATCH 1 0 aa11bb22-0002-4000-8000-aa11bb220002":
+          - cell "SUBJECT_MISMATCH"
+          - cell "1"
+          - cell "0"
+          - cell "aa11bb22-0002-4000-8000-aa11bb220002"
+    - paragraph: Every total here is a rendering of the one run/queue projection the Queue Panel reads, generated 2026-08-03T11:00:00.000Z. Hidden and archived runs are excluded once, inside it, so this report and the day it summarises cannot disagree.
+- region "Session Panel":
+  - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
+  - text: v0.1.0
+  - status: Live

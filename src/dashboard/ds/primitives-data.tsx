@@ -94,7 +94,14 @@ export function TR({
       className={cn(
         "h-[var(--ds-h-row)]",
         dsMotion.base,
-        interactive && "cursor-pointer hover:bg-[var(--ds-surface-2)]",
+        // A row that opens something is a pressable, so it acknowledges the
+        // press rather than waiting for whatever the click opens. `:active` is
+        // transient, so no stored parity screenshot can see it.
+        interactive && cn(
+          "cursor-pointer hover:bg-[var(--ds-surface-2)]",
+          "active:bg-[var(--ds-surface-3)]",
+          dsMotion.fast,
+        ),
         selected && "bg-[var(--ds-surface-selected)]",
         className,
       )}

@@ -1,0 +1,11 @@
+{
+  "stateId": "activity-report",
+  "viewport": "1440x900",
+  "theme": "paper-ink",
+  "adapter": "fixture",
+  "fixtureId": "activity-report",
+  "descriptorHash": "a49c6afce540cab28ca47f9f9fb0b38b3e18f5661ed563e140e7c148e509c2d7",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-08-03",
+  "variant": "default"
+}

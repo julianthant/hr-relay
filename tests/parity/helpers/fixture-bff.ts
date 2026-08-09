@@ -31,6 +31,12 @@ import {
 import { FIXTURE_INTAKE_MAPPING, FIXTURE_INTAKE_SESSIONS } from "./fixture-intake.js";
 import { FIXTURE_EXPLORER_WIRE, FIXTURE_UI_CATALOG_WIRE } from "./fixture-explorer.js";
 import {
+  FIXTURE_ACTIVITY_REPORT,
+  FIXTURE_ARCHIVE_INDEX,
+  FIXTURE_ARCHIVED_RUN,
+  FIXTURE_ARCHIVED_RUN_ID,
+} from "./fixture-archive.js";
+import {
   CAPTURE_TOKEN_HEADER,
   CAPTURE_UNKNOWN_SESSION_MESSAGE,
   CaptureSessionWireSchema,
@@ -127,6 +133,27 @@ export function createFixtureBff(): { app: Hono } {
    */
   app.get("/api/v1/explorer", (c) => c.json(FIXTURE_EXPLORER_WIRE as unknown));
   app.get("/api/v1/ui-catalog", (c) => c.json(FIXTURE_UI_CATALOG_WIRE as unknown));
+
+  /**
+   * The Archive and Activity pair (2i-G, D179/D180). The archived detail is
+   * served by exact run id: a fixture that answered any id with the same
+   * record would let a surface pass while addressing the wrong run.
+   */
+  app.get("/api/v1/archive", (c) => c.json(FIXTURE_ARCHIVE_INDEX as unknown));
+  app.get("/api/v1/archive/:runId", (c) => {
+    if (c.req.param("runId") !== FIXTURE_ARCHIVED_RUN_ID) {
+      return c.json(wireError("ARCHIVE_RUN_UNKNOWN", `no fixture archived run ${c.req.param("runId")}`), 404);
+    }
+    return c.json(FIXTURE_ARCHIVED_RUN as unknown);
+  });
+  app.get("/api/v1/reports/activity", (c) => {
+    const from = c.req.query("from");
+    const to = c.req.query("to");
+    if (from === undefined || to === undefined) {
+      return c.json(wireError("ACTIVITY_RANGE_REQUIRED", "an activity report requires from= and to="), 400);
+    }
+    return c.json(FIXTURE_ACTIVITY_REPORT as unknown);
+  });
 
   /**
    * The intake pair (2i-E3). The upload answers `201` with the mid-mapping

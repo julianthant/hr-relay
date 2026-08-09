@@ -33,6 +33,7 @@ import {
   FIXTURE_CATALOG_QUERY,
   FIXTURE_EXPLORER_WORKFLOW_ID,
 } from "./helpers/fixture-explorer.js";
+import { FIXTURE_ACTIVITY_RANGE, FIXTURE_ARCHIVED_RUN_ID } from "./helpers/fixture-archive.js";
 import { gotoAppState, type AppRoute } from "./helpers/app-driver.js";
 
 const REFERENCES = resolve(import.meta.dirname, "references");
@@ -69,6 +70,24 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   { id: "explorer-graph", route: { day: FIXTURE_DAY, explore: FIXTURE_EXPLORER_WORKFLOW_ID } },
   { id: "explorer-transaction", route: { day: FIXTURE_DAY, explore: "kuali-timekeeper-annotation" } },
   { id: "catalog-search", route: { day: FIXTURE_DAY, catalog: FIXTURE_CATALOG_QUERY } },
+  /*
+    The archive model's three operator states (2i-G, D179). `archive-ledger`
+    is the sweep-grouped record with the version-bump flow beneath it, and it
+    carries a BLOCKER on purpose — a refusal surface photographed only in its
+    happy state proves nothing. `archive-run` is the read-only detail, whose
+    whole claim is that it renders with no descriptor behind it.
+  */
+  { id: "archive-ledger", route: { day: FIXTURE_DAY, archive: "" } },
+  { id: "archive-run", route: { day: FIXTURE_DAY, archive: FIXTURE_ARCHIVED_RUN_ID } },
+  /*
+    The Activity report (2i-G, D180) over a fixed range, including the
+    unregistered-workflow row and the unmeasured-duration warning — the two
+    places the report has to be honest rather than tidy.
+  */
+  {
+    id: "activity-report",
+    route: { day: FIXTURE_DAY, activity: `${FIXTURE_ACTIVITY_RANGE.from}..${FIXTURE_ACTIVITY_RANGE.to}` },
+  },
 ];
 
 let server: FixtureServer;
@@ -131,6 +150,8 @@ for (const viewport of PARITY_VIEWPORTS) {
             state.route.intake !== undefined
             || state.route.explore !== undefined
             || state.route.catalog !== undefined
+            || state.route.archive !== undefined
+            || state.route.activity !== undefined
           ) await dismissWorkflowWindow(page);
           await applyTheme(page, theme satisfies ParityTheme);
           await page.waitForTimeout(120);

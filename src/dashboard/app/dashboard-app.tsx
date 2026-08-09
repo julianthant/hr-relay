@@ -23,13 +23,15 @@ import {
 import { CapabilityAvailabilitySchema, type CapabilityAvailability } from "../../domain/absence.js";
 import { InputRunSurfaceSchema } from "../../domain/workflow/ingress.js";
 import { WORKFLOW_DESCRIPTORS } from "../../workflows/descriptor-registry.js";
-import { BookMarked, FileSpreadsheet, GitBranch } from "lucide-react";
+import { Archive as ArchiveIcon, BookMarked, ChartNoAxesColumn, FileSpreadsheet, GitBranch } from "lucide-react";
 import { Button, ToastProvider, TooltipProvider, dsIcon, useDemoTheme } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
 import { useRunDetail } from "../state/use-run-detail.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
+import { ActivityReport } from "../surfaces/activity.js";
+import { ARCHIVE_INDEX, ArchiveWorkspace } from "../surfaces/archive.js";
 import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { UiCatalogWorkspace } from "../surfaces/ui-catalog.js";
 import { LogPanel, defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel.js";
@@ -353,6 +355,31 @@ function LoadedApp({
               tasks are written in. Neither is a command — they take no argument
               from the operator and change nothing — so both are secondary.
             */}
+            {/*
+              Archive and Activity sit with the two reference entries rather
+              than in the top bar, and that is a decision, not an omission: the
+              takeovers replace the MAIN REGION only, while the top bar carries
+              the day nav, the calendar and the workflow counts — every one of
+              which is about the dashboard view specifically. A switcher up
+              there would sit above controls that do not apply to the view it
+              switched to.
+            */}
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<ArchiveIcon aria-hidden className={dsIcon.sm} />}
+              onClick={() => setRoute({ ...route, archive: ARCHIVE_INDEX })}
+            >
+              Archive
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<ChartNoAxesColumn aria-hidden className={dsIcon.sm} />}
+              onClick={() => setRoute({ ...route, activity: "" })}
+            >
+              Activity
+            </Button>
             <Button
               size="sm"
               variant="ghost"
@@ -402,6 +429,31 @@ function LoadedApp({
                 onSession={(next) => setRoute({ ...route, intake: next ?? INTAKE_NEW })}
                 onClose={() => setRoute({ ...route, intake: undefined })}
                 onEnqueued={() => setRoute({ ...route, intake: undefined })}
+              />
+            </div>
+          ) : takeover === "archive" ? (
+            /*
+              The Archive replaces the queue whole. It is the opposite view of
+              the same world — what has LEFT the live surfaces — so showing it
+              beside a live queue would invite exactly the comparison D80 says
+              is not available: an archived run and a current one ran different
+              code.
+            */
+            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
+              <ArchiveWorkspace
+                selection={route.archive ?? ARCHIVE_INDEX}
+                actorId={boot.actor.id}
+                onSelection={(next) => setRoute({ ...route, archive: next })}
+                onClose={() => setRoute({ ...route, archive: undefined })}
+              />
+            </div>
+          ) : takeover === "activity" ? (
+            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
+              <ActivityReport
+                range={route.activity ?? ""}
+                today={today}
+                onRange={(next) => setRoute({ ...route, activity: next })}
+                onClose={() => setRoute({ ...route, activity: undefined })}
               />
             </div>
           ) : takeover === "explore" ? (

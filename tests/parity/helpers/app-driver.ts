@@ -27,6 +27,10 @@ export interface AppRoute {
   readonly explore?: string;
   /** The UI catalog takeover's search term; `""` opens it browsing (2i-G). */
   readonly catalog?: string;
+  /** `""` is the archive ledger; a run id opens that archived run (2i-G). */
+  readonly archive?: string;
+  /** `from..to`; `""` opens the report on its default range (2i-G). */
+  readonly activity?: string;
 }
 
 export function routeUrl(baseUrl: string, route: AppRoute): string {
@@ -36,6 +40,8 @@ export function routeUrl(baseUrl: string, route: AppRoute): string {
   if (route.section !== undefined) url.searchParams.set("section", route.section);
   if (route.start === true) url.searchParams.set("start", "1");
   if (route.intake !== undefined) url.searchParams.set("intake", route.intake);
+  if (route.archive !== undefined) url.searchParams.set("archive", route.archive);
+  if (route.activity !== undefined) url.searchParams.set("activity", route.activity);
   if (route.explore !== undefined) url.searchParams.set("explore", route.explore);
   if (route.catalog !== undefined) url.searchParams.set("catalog", route.catalog);
   return url.toString();

@@ -15,6 +15,13 @@ import {
 import { StorageDoctorWireSchema, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
 import { RunAdvisoryWireSchema, type RunAdvisoryWire } from "../../domain/dashboard/advisory.js";
 import {
+  ArchiveIndexWireSchema,
+  ArchivedRunDetailWireSchema,
+  type ArchiveIndexWire,
+  type ArchivedRunDetailWire,
+} from "../../domain/dashboard/archive.js";
+import { ActivityReportWireSchema, type ActivityReportWire } from "../../domain/dashboard/activity.js";
+import {
   UiCatalogWireSchema,
   WorkflowExplorerWireSchema,
   type UiCatalogWire,
@@ -98,6 +105,23 @@ export interface DashboardQueries {
    * transport faults — so only a real fault throws.
    */
   requestFailureAdvisory(runId: string): Promise<RunAdvisoryWire>;
+  /**
+   * The read-only Archive index plus the LIVE version-bump state (2i-G, D179).
+   *
+   * The version state is re-derived per request rather than read off a stored
+   * plan: a plan is a review copy and it goes stale the moment a run is
+   * enqueued, so a surface that showed the plan's copy would invite an apply
+   * whose blocker list the operator had already been shown as empty.
+   */
+  archiveIndex(): Promise<ArchiveIndexWire>;
+  /** ONE archived run, whole. Nothing on this path resolves a descriptor. */
+  archivedRun(runId: string): Promise<ArchivedRunDetailWire>;
+  /**
+   * The Activity report over an explicit range (2i-G, D180). Both bounds are
+   * required — an aggregate over a window the caller never named is a number
+   * nobody asked for.
+   */
+  activityReport(from: string, to: string): Promise<ActivityReportWire>;
 }
 
 export interface CaptureStartRequest {
@@ -189,6 +213,21 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
       return parseOrThrow(CaptureStartResultSchema, `POST ${path}`, response.body);
     },
 
+    async archiveIndex(): Promise<ArchiveIndexWire> {
+      return parseOrThrow(
+        ArchiveIndexWireSchema,
+        "GET /api/v1/archive",
+        await transport.requestJson("/api/v1/archive"),
+      );
+    },
+    async archivedRun(runId: string): Promise<ArchivedRunDetailWire> {
+      const path = `/api/v1/archive/${encodeURIComponent(runId)}`;
+      return parseOrThrow(ArchivedRunDetailWireSchema, `GET ${path}`, await transport.requestJson(path));
+    },
+    async activityReport(from: string, to: string): Promise<ActivityReportWire> {
+      const path = `/api/v1/reports/activity?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+      return parseOrThrow(ActivityReportWireSchema, `GET ${path}`, await transport.requestJson(path));
+    },
     async workflowExplorer(): Promise<WorkflowExplorerWire> {
       return parseOrThrow(
         WorkflowExplorerWireSchema,

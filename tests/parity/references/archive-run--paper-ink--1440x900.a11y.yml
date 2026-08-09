@@ -1,0 +1,57 @@
+# archive-run--paper-ink--1440x900
+# adapter: fixture
+# fixture: archive-run
+# descriptorHash: a49c6afce540cab28ca47f9f9fb0b38b3e18f5661ed563e140e7c148e509c2d7
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "This is the newest day served" [disabled]
+  - button "Notifications — 1 unread item": "1"
+  - button "Settings"
+  - button "Keyboard shortcuts"
+  - button "Switch to Paper Ink"
+- main:
+  - button "Workflow Panel — Person Lookup, minimised. 14 rows on this day, across every workflow": "14"
+  - button "Archive"
+  - button "Activity"
+  - button "Explore graph"
+  - button "UI catalog"
+  - button "Import spreadsheet"
+  - button "Start a run"
+  - region "Archive":
+    - button "Ledger"
+    - text: Archive Read-only
+    - region "Archived run EID 10873698":
+      - text: EID 10873698 Person Lookup · pl-090400-aa11
+      - button "Relaunch as a new run"
+      - term: Status
+      - definition: Done
+      - term: Ran under
+      - definition: v1 · bbbbbbbb
+      - term: App build
+      - definition: 0.0.9
+      - term: Archived
+      - definition: 3:00 AM by local-operator
+      - term: Why
+      - definition: version bumped · shape changed
+      - term: Integrity
+      - definition: eeeeeeee
+      - text: What it did
+      - list "Archived run timeline":
+        - listitem: UCPath person read
+        - listitem: Cross verification
+      - text: Evidence
+      - paragraph: this run settled before receipts were derived
+      - text: ucpath-person cross-verify
+      - paragraph: The write ledger is never archived. What was filed in a real system stays where it was filed.
+- region "Session Panel":
+  - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
+  - text: v0.1.0
+  - status: Live

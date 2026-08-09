@@ -39,6 +39,20 @@ export interface AppRouteState {
    * and the term may legitimately be blank.
    */
   readonly catalog?: string;
+  /**
+   * The read-only Archive (2i-G, D179). An empty value opens the index; a run
+   * id opens that archived run's detail beside it — the same
+   * `?archive=<runId>` link an operator can send, which is the point of
+   * addressing it rather than holding it in component state.
+   */
+  readonly archive?: string;
+  /**
+   * The Activity report (2i-G, D180) as `from..to`. The RANGE is in the URL
+   * because a report is a thing people cite: "the numbers I was looking at"
+   * has to survive being pasted into a message. An empty value means the
+   * surface is open on its default range.
+   */
+  readonly activity?: string;
 }
 
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
@@ -58,6 +72,8 @@ export function parseRoute(search: string): AppRouteState {
   const intake = params.get("intake");
   const explore = params.get("explore");
   const catalog = params.get("catalog");
+  const archive = params.get("archive");
+  const activity = params.get("activity");
   const route: {
     day?: string;
     run?: string;
@@ -66,6 +82,8 @@ export function parseRoute(search: string): AppRouteState {
     intake?: string;
     explore?: string;
     catalog?: string;
+    archive?: string;
+    activity?: string;
   } = { start: params.get("start") === "1" };
   if (day !== null && DAY_PATTERN.test(day)) route.day = day;
   if (run !== null && run.length > 0) route.run = run;
@@ -75,6 +93,10 @@ export function parseRoute(search: string): AppRouteState {
   // Unlike every key above, an EMPTY catalog value is meaningful: the surface
   // is open with no search term. Presence is what opens it.
   if (catalog !== null) route.catalog = catalog;
+  // Both of these follow `catalog`: an EMPTY value is meaningful (the index,
+  // and the default range), so presence is what opens the surface.
+  if (archive !== null) route.archive = archive;
+  if (activity !== null) route.activity = activity;
   return route;
 }
 
@@ -90,6 +112,8 @@ export function routeToSearch(route: AppRouteState): string {
   if (route.intake !== undefined) params.set("intake", route.intake);
   if (route.explore !== undefined) params.set("explore", route.explore);
   if (route.catalog !== undefined) params.set("catalog", route.catalog);
+  if (route.archive !== undefined) params.set("archive", route.archive);
+  if (route.activity !== undefined) params.set("activity", route.activity);
   const query = params.toString();
   return query.length === 0 ? "" : `?${query}`;
 }
@@ -102,8 +126,16 @@ export function routeToSearch(route: AppRouteState): string {
  * to test first: the operator's in-progress WORK outranks either reference
  * view, and the workflow-scoped reference outranks the system-scoped one.
  */
-export function activeTakeover(route: AppRouteState): "intake" | "explore" | "catalog" | "none" {
+export function activeTakeover(
+  route: AppRouteState,
+): "intake" | "archive" | "activity" | "explore" | "catalog" | "none" {
   if (route.intake !== undefined) return "intake";
+  // Archive and Activity outrank the two reference views for the same reason
+  // intake outranks all of them: they are places the operator navigates TO and
+  // stays, while the explorer and the catalog are things they look UP. What
+  // they are not is work — which is why intake still outranks both.
+  if (route.archive !== undefined) return "archive";
+  if (route.activity !== undefined) return "activity";
   if (route.explore !== undefined) return "explore";
   if (route.catalog !== undefined) return "catalog";
   return "none";
