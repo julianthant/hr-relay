@@ -178,15 +178,39 @@ The BFF serves 7 endpoints today; each slice names what it adds.
       NO workflow declares an intake projection (work-study, doc 06 §8's example, does not
       exist — person-lookup is the sensible first target: a spreadsheet of people fanning out
       N lookups). Sub-slices, each its own commit:
-      - **E1 — server sessions + non-enqueue arms.** `POST /api/v1/intake/files` (raw bytes →
-        content-addressed writer → `ArtifactRef`, size-capped); authority schema v12
-        `intake_sessions` (version-CAS row: artifact ref + sheet/header selection + confirmed
-        bindings + corrections/exclusions + state; rows/columns RE-DERIVED from the immutable
-        artifact, never stored); activate `inspect-intake` / `confirm-intake-mapping` /
-        `correct-intake-row` / `exclude-intake-row` / `validate-intake` as thin executors over
-        the pure pipeline (amend the placeholder payloads to carry whole `ArtifactRef`s per
-        D161/D167's rule); intake session/parse wire + GET routes; partition-pin +
-        COMMAND_FIXTURES updates.
+      - **E1 — server sessions + non-enqueue arms.** Design settled 2026-08-08:
+        · **The ROUTE creates the session, commands only mutate it** (capture's exact
+          precedent — no `capture-open` arm exists; phone routes create those rows).
+          `POST /api/v1/intake/files?workflow=<id>` takes raw bytes (size-capped), writes
+          them through the content-addressed writer, runs discovery via the grid edge, mints
+          the `intake_sessions` row (state `mapping`), and returns the session wire.
+        · **Authority schema v12**: `intake_sessions` with searchable columns
+          (workflow, source_sha256, state) beside record_json; version-CAS updates;
+          extend the pinned digest table with v12's literal. Session record
+          (`src/domain/intake/session.ts`): id, actorId, workflow, `artifact: ArtifactRef`,
+          sheet, `headerRowIndex` nullable, `bindings: ColumnBinding[]`, constants,
+          corrections (+correctedAt), exclusions (+reason, at), state
+          `mapping|validated|enqueued|discarded`, a `validation` union retaining `readAt`
+          (two-digit-year replay determinism), optional intakeManifestId (enqueued requires
+          it), version/createdAt/updatedAt. Rows/columns are RE-DERIVED from the immutable
+          artifact every read — never stored in authority.
+        · **The kernel gets an injected deterministic `intakeParser` seam**
+          (`(artifact, sheet, headerRowIndex) => {sheets, columns, rows, headerFingerprint}`,
+          composed from `src/stores/common/spreadsheet-grid.ts` + the artifact opener) — the
+          kernel cannot import a spreadsheet parser, but binding confirmation must validate
+          `sourceColumnId` against the REAL layout and pin its `headerFingerprint`.
+        · **Placeholder payloads amend** (D161/D167 rule — they were deferred-arm
+          placeholders no producer ever sent): `inspect-intake` → `{sheet?, headerRowIndex?}`
+          re-parse selection (artifact rides the session); `confirm-intake-mapping` →
+          `{targetFieldId, sourceColumnId, headerFingerprint}` per-field (the kernel's
+          `confirmBinding` is the ONE mint; suggestions stay client hints);
+          `correct-intake-row` → `{sourceRow, field, correctedValue}`;
+          `exclude-intake-row` keeps `{rowId, reason}` shape as `{sourceRow, reason}`;
+          `validate-intake` stays payload-free (kernel runs `validateIntakeRows` over the
+          re-derived rows + stored bindings, retains the validation arm + readAt).
+        · Partition pins + COMMAND_FIXTURES move with the activation (five arms; enqueue
+          stays deferred until E2); intake session wire + `GET /api/v1/intake/:sessionId`
+          serving session + parse view + suggestions.
       - **E2 — enqueue.** `enqueue-intake-manifest`: `enqueueReadiness` gate → insert the
         immutable manifest (D159 repo) → fan out N runs mirroring `executeStart`'s envelope
         construction (config snapshot, fingerprints, run.queued spans); `rerunDiff` served on
