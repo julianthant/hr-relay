@@ -1664,6 +1664,28 @@ The refusal is not a dead end but the designed failure path: it throws inside th
 transaction, so session and outbox land durable `failed` together and the phone shows Retry Finalize
 beside the reason. Fixtures prove the whole success path over a test workflow that declares one.
 
+**A capture handoff failure records its OWN reason, because its `failureId` can never resolve.**
+D167's projector minted a `failureId` and wrote no `failures` row anywhere — correctly, since a
+`FailureRecord` binds a run and this failure happens before one exists — so the service's lookup of
+that id could never succeed and fell through to a generic sentence. The projector's real message
+(the one naming the missing binding) was returned in its in-memory report and thrown away, which is
+the banned swallowed-fallback pattern sitting on this slice's headline path. `CaptureHandoff`'s
+`failed` arm now carries an **optional** `message` (optional per D133; the `failureId` beside it is
+a correlation id, not a reference), the projector writes the caught sentence onto the handoff it
+already builds, and a stored failure with no reason makes the read **throw by name** rather than
+substituting prose. The operator holding the phone is the person choosing between Retry Finalize and
+Discard, and "something went wrong" decides nothing for them.
+
+**Two residuals, recorded rather than papered over.** (1) A run the handoff enqueues emits **no
+`run.queued` span**, because spans are emitted by the command service and this enqueue happens
+inside the finalize projector — so a capture-started run would not appear on the dashboard's queue.
+It is unreachable today (no workflow declares a binding) and the fixture asserting
+`CAPTURE_INTAKE_BINDINGS` is empty is deliberately the thing that will fail the day one does, which
+is the moment this must be closed. (2) `inspectSecret` returning `unknown` — a broken ngrok config
+rather than a missing one — is read as "not present", so the refusal says
+`ingress-credential-missing` when the honest diagnosis is "could not be read". Fail-closed in
+direction, imprecise in wording; left as-is because the remediation it prints is correct either way.
+
 **`capture-durability-and-scope` is ACTIVE.** It enforces the closed union in both directions, the
 `:param` segment bound, the byte-identical ingress refusal (driven through a real Hono app with a
 no-ingress negative control), the token never becoming durable or wire state, the allowlist of who

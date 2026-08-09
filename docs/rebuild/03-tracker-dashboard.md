@@ -2437,3 +2437,100 @@ in-flight command's KEY and that control alone carries the spinner. Everything e
   offers no "unbind". Offering either would be a control that silently does nothing. person-lookup
   does not need a constant — `keepNonHdh` and `includeCrmDates` carry schema defaults — but the
   first workflow with a required non-column field (doc 06 §8's `effectiveDate`) will need the arm.
+
+---
+
+## 12. The capture phone surface — the surface contract (2i-F, D175)
+
+Doc 06 §5.1 owns what capture DURABLY records and which routes exist; this section owns what the
+person holding the phone sees. It is the only surface in this program rendered on a device the
+operator does not sit at, and every decision below comes from that.
+
+### 12.1 The use scene picks the theme, not the category
+
+The operator dashboard is dark because it lives on a desk. The phone surface is **light**, because
+its use scene is somebody standing at a filing cabinet or a front desk with a paper form in one
+hand, often under a window. A dark UI at whatever brightness the phone happens to be on is the most
+common way a capture flow becomes unreadable at the exact moment it is being used. Nothing is
+restyled to achieve this: `tokens.css` already ships both themes behind `data-demo-theme`, so the
+phone selects `paper-ink` and spends no new colour. The palette budget, the `--ds-*` layer, and the
+tailwind ratchet are unchanged, and no operator surface moves.
+
+### 12.2 It is ONE page whose bottom bar changes verb
+
+Capture → review/reorder → finalize are three states of one page, not three pages and not a wizard.
+The task is short, the durable session means a reload lands exactly where the operator was, and a
+step indicator would spend the top of a small screen narrating a sequence the bottom bar already
+states. The action bar is pinned in the thumb zone and is the only place a primary action ever
+appears; what changes between states is its verb, not its position.
+
+### 12.3 Order is meaning, so it is a numeral and a button — never a drag
+
+Every photograph tile carries its page number as a large real numeral, because the durable record
+enforces contiguous ordinals and the bundle IS the order. Reordering is explicit ▲/▼ controls, not
+drag: a drag target inside a scrolling list on a touch screen is the classic failure mode, it
+cannot be half-performed with a keyboard, and it announces nothing to a screen reader. Buttons are
+reachable, announceable, and each one is a complete act.
+
+### 12.4 The camera is the platform's, not ours
+
+Photographs are taken through a real `<input type="file" accept="image/*" capture="environment">`
+inside a `<label>` — the same real-input-in-a-label pattern the `Dropzone` primitive established
+(D173). Building a viewfinder would mean re-implementing focus, exposure and orientation worse than
+the phone already does, on the one surface where a bad photograph is the whole failure.
+
+### 12.5 A failure is the server's own sentence, in reserved space
+
+The error region is always in the DOM with its height reserved, so a refusal never jumps the layout
+under a thumb that is already moving. It is a `role="alert"` and it renders the server's message
+VERBATIM — the kernel's refusal, the projector's failure, the named upload rejection. The phone
+composes no prose of its own and swallows no catch: the operator holding the phone is the person who
+has to choose between Retry Finalize and Discard, and "something went wrong" decides nothing for
+them. Colour is never the only carrier.
+
+### 12.6 The QR is the operator's half, and the token exists once
+
+Start Capture is a small control inside the existing dashboard. It calls the loopback-only session
+route and renders the returned `phoneUrl` as an inline-SVG QR built by `src/domain/qr-code.ts` — a
+pure encoder rather than a dependency, so the payload never leaves the process. The raw token exists
+in exactly that one response and is rendered, never stored: the durable row has only its digest, and
+the URL carries it in the FRAGMENT, which no server sees. A refused ingress renders its `message`
+and `remediation` in place of the QR, because "capture is unavailable" without the reason is a dead
+end an operator cannot act on.
+
+### 12.7 As-built notes (2026-08-09)
+
+- **The phone is a SEPARATE Vite entry**, `capture.html` over `src/dashboard/phone/`, not a route in
+  the operator SPA. Serving the operator bundle over a public tunnel would ship the whole operator
+  UI to the phone origin, and no route filter can un-send bytes. `build.manifest` is emitted so the
+  ingress allowlist is generated from the phone entry's own asset closure rather than hand-listed.
+  `dashboard-wire-boundary` now walks **every** `*.html` entry under `src/dashboard`, not just
+  `index.html` — otherwise a second entry would silently escape D120's Node-built-in check — and a
+  new arm proves the phone closure reaches no operator surface, client, or app module.
+- **One transport owner per bundle.** `provider-capability-boundary` pinned `fetch` to
+  `src/dashboard/client/**`; the phone legitimately needs its own, so
+  `src/dashboard/phone/capture-client.ts` is named as the phone bundle's single transport owner
+  rather than the rule being relaxed. Its error path returns a `CapturePhoneError` that names why a
+  body was unreadable — the `fail-loud-catch-default` ratchet caught a `.catch(() => undefined)`
+  there and was right to.
+- **The camera stays the primary control even after the first photograph**, and Review is the quiet
+  one on the left. Promoting Review was a hazard, not a taste question: Review and Send would then
+  both be "primary, on the right", so a second tap from a thumb already travelling would finalize
+  the bundle.
+- **Motion is the house language, not a phone dialect.** The one authored moment — a photograph
+  settling into the list — uses `--ds-dur-enter` and `--ds-travel-md`. An invented
+  `--ds-phone-*` pair differing by 30ms and 2px would have been a second motion language that also
+  needed its own `prefers-reduced-motion` block to stay honest; the house tokens already collapse.
+  Press feedback is `active:scale-[0.97]`, not a 1px translate: a finger COVERS a 48px control, so
+  the only visible feedback is at its edges.
+- **Red is reserved for Discard.** Per-tile Remove was `danger`-toned, which put three red controls
+  down the reorder list — louder than Send, inverting the attention ladder the token file is
+  explicit about.
+- **Parity: 15 references added** (five states × pixel/a11y/provenance) at one phone viewport in
+  their own block, so the operator corpus is not multiplied. **12 moved, none silently**: the
+  `intake-upload` triples, because the QR start control lives on that surface; the a11y diff is
+  exactly the three lines it adds.
+- **Pre-existing defect found and NOT fixed here:** the intake takeover renders a dark shell under
+  the light theme, leaving the dropzone heading near-invisible. It is identical in the committed
+  baseline and is a sibling of the `paper-ink`-renders-dark residual already deferred to 2j's corpus
+  work; fixing it here would re-freeze references for a reason unrelated to capture.

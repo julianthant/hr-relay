@@ -299,9 +299,34 @@ The BFF serves 7 endpoints today; each slice names what it adds.
           Confirmed against references frozen before this slice. Fixing it re-freezes all 61
           pre-existing references for a reason unrelated to intake; it belongs with 2j's
           corpus work.
-- [ ] **2i-F — capture surface.** The token-scoped phone routes (fail-closed enumeration), QR
-      start, the real PDF bundler + intake-enqueue wiring into D167's seams, `capture.ingress`
-      dependency handling, and ACTIVATE `capture-durability-and-scope`.
+- [x] **2i-F — capture surface. DONE 2026-08-09 (D174/D175).** Token-scoped phone routes over a
+      CLOSED union with fail-closed enumeration (one refusal for unknown/malformed/expired/
+      discarded; the ingress Host gets a body byte-identical to an unrouted path); the token rides
+      the QR's URL FRAGMENT and the `X-Capture-Token` header, never a URL the server sees. QR start
+      renders from a pure in-process encoder (`src/domain/qr-code.ts`, ISO/IEC 18004, v1–40). The
+      real PDF bundler is deterministic and dependency-free — digest re-verified per photo, JPEG
+      `/DCTDecode` and PNG `/FlateDecode`+`/Predictor 15` with NO re-encode, everything it cannot
+      decode refused by name, no date and a digest-folded `/ID`. The intake handoff derives its
+      manifest/run ids from the outbox stable key and writes a real `IntakePlanManifest` with a new
+      optional `capture` block. `capture.ingress` resolves to an origin or a NAMED result
+      (`on-demand-ngrok` refuses `ingress-not-built` rather than serving a loopback QR).
+      `capture-durability-and-scope` is ACTIVE. Notes for whoever comes next:
+      · **No workflow can declare a capture intake binding**, so the production handoff refuses by
+        name into durable `failed` + Retry Finalize — the D170-before-D172 shape. A photograph
+        cannot yield an employee id or a document number without an OCR-backed workflow that does
+        not exist. `tests/unit/server/capture-surface.test.ts` asserts `CAPTURE_INTAKE_BINDINGS` is
+        empty ON PURPOSE: it is the thing that fails the day someone adds one.
+      · **When that day comes, close this first:** a run the handoff enqueues emits **no
+        `run.queued` span**, because spans come from the command service and this enqueue happens
+        inside the finalize projector — so a capture-started run would not appear on the queue.
+      · **A capture failure records its own reason durably.** D167's `failureId` can never resolve
+        to a `FailureRecord` (that binds a run, which does not exist yet), so the projector writes
+        its sentence onto the handoff and a stored failure with no reason THROWS rather than
+        substituting prose.
+      · The on-demand ngrok tunnel LAUNCHER is still not built; `forwarded` with an explicit HTTPS
+        URL is the working path today.
+      · **Pre-existing, not introduced:** the intake takeover renders a dark shell under the light
+        theme (sibling of the `paper-ink`-renders-dark residual already deferred to 2j).
 - [ ] **2i-G — LATER tier:** read-only Workflow Explorer (doc 12 §5 Phase A; guard
       `workflow-editor-compile-integrity`), AI advisories (doc 12 §4.4; guard
       `ai-advisory-no-authority`; the normalization `ai` arm + bootstrap unavailable-reason come
