@@ -72,6 +72,8 @@ const PHASE1_ACTIVE = {
     "edit-checkpoint",
   ],
   gate: ["resolve-gate"],
+  // 2i-B: the notification inbox lifecycle over D134/D138's durable rows.
+  notification: ["notification-read", "notification-unread", "notification-snooze"],
   // D167: the durable capture core — sessions, photo mutations, and the
   // stable-keyed finalize outbox.
   capture: [
@@ -97,7 +99,7 @@ const PHASE1_DEFERRED = {
   settings: ["apply-settings"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
   run: [],
-  notification: ["notification-read", "notification-unread", "notification-snooze"],
+  notification: [],
   capture: [],
 } as const;
 
@@ -151,6 +153,7 @@ type RunCommand = Extract<CommandRequest, { family: "run" }>;
 type RunBasicCommand = Extract<RunCommand, { type: "retry" | "cancel" | "bump" | "hide" | "unhide" }>;
 type RunEditCheckpointCommand = Extract<RunCommand, { type: "edit-checkpoint" }>;
 type CaptureCommand = Extract<CommandRequest, { family: "capture" }>;
+type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
 
@@ -799,6 +802,60 @@ function captureTarget(captureSessionId: string): TargetReference {
 }
 
 /**
+ * 2i-B: the inbox lifecycle over D134/D138's durable rows. Read-state and
+ * snooze are INDEPENDENT axes — marking read preserves the snooze, snoozing
+ * preserves the read state — and a snoozed row still folds durably; snooze
+ * only suppresses delivery (doc 03 §2.6, D138).
+ */
+function executeNotification(
+  repositories: AuthorityRepositories,
+  request: NotificationCommand,
+  now: string,
+): CommandApplication {
+  const current = repositories.notifications.get(request.target.notificationId);
+  if (current === undefined) {
+    reject(request, "target-not-found", `notification ${request.target.notificationId} does not exist`);
+  }
+  if (current.actorId !== request.target.actorId) {
+    reject(
+      request,
+      "invalid-state",
+      `notification ${request.target.notificationId} belongs to ${current.actorId}, not ${request.target.actorId}`,
+    );
+  }
+  if (current.version !== request.target.expectedVersion) {
+    reject(
+      request,
+      "invalid-state",
+      `notification ${request.target.notificationId} moved to version ${String(current.version)} `
+      + `(you loaded ${String(request.target.expectedVersion)}); reload the inbox`,
+    );
+  }
+  if (request.type === "notification-snooze" && Date.parse(request.payload.until) <= Date.parse(now)) {
+    reject(request, "invalid-state", "a snooze must end in the future");
+  }
+  repositories.notifications.updateState({
+    notificationId: request.target.notificationId,
+    expectedVersion: current.version,
+    status: request.type === "notification-read"
+      ? "read"
+      : request.type === "notification-unread"
+        ? "unread"
+        : current.status,
+    snooze: request.type === "notification-snooze"
+      ? { state: "snoozed", until: request.payload.until }
+      : current.snooze,
+    updatedAt: now,
+  });
+  const target: TargetReference = { family: "notification", notificationId: request.target.notificationId };
+  return applied(request, [target], [{
+    target,
+    before: current.version,
+    after: current.version + 1,
+  }]);
+}
+
+/**
  * Doc 06 §5.1 (D167): the durable capture arms. Every mutation validates the
  * requested refs and state against CURRENT authority — version drift alone
  * is never a CAS conflict, and an inapplicable command rejects by name.
@@ -1281,10 +1338,11 @@ function dispatchActive(
     }
     case "capture":
       return executeCapture(dependencies, repositories, request, now);
+    case "notification":
+      return executeNotification(repositories, request, now);
     case "intake":
     case "settings":
     case "version-archive":
-    case "notification":
       throw new Error(`${request.family}/${request.type} is deferred and must have been rejected before dispatch`);
   }
   throw new Error("command dispatch fell through an exhaustive family/action switch");

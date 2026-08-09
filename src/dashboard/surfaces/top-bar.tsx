@@ -14,7 +14,7 @@
  * cannot disagree, because there is nothing here that counts anything.
  */
 import { useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, Calendar, ChevronLeft, ChevronRight, Keyboard, Moon, ShieldCheck, Sun } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Bell, Calendar, ChevronLeft, ChevronRight, Keyboard, Moon, ShieldCheck, Sun } from "lucide-react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import {
@@ -35,10 +35,12 @@ import {
   dsText,
   type DemoTheme,
 } from "../ds/ui.js";
-import type { DayCountWireSchema } from "../../domain/dashboard/projection.js";
+import type { DayCountWireSchema, NotificationWireSchema } from "../../domain/dashboard/projection.js";
 import type { ServerClockWireSchema } from "../../domain/dashboard/bootstrap.js";
+import { systemClock } from "../../domain/clock.js";
+import { useDashboardClient } from "../state/client-context.js";
 import { DemoShortcutsLegend } from "./shortcuts.js";
-import { plural } from "./format.js";
+import { fmtClock, plural } from "./format.js";
 
 export type DayCountWire = z.infer<typeof DayCountWireSchema>;
 export type ServerClockWire = z.infer<typeof ServerClockWireSchema>;
@@ -482,6 +484,117 @@ export function NavHistoryControls({ nav }: { nav: NavControls }) {
  * click, so pointer, touch and keyboard all get to it, unlike the hover-only
  * tooltip DESIGN.md forbids for anything load-bearing.
  */
+type NotificationWire = z.infer<typeof NotificationWireSchema>;
+
+const SEVERITY_TONE: Record<NotificationWire["severity"], string> = {
+  error: "text-[color:var(--ds-danger)]",
+  warning: "text-[color:var(--ds-status-waiting-fg)]",
+  info: "text-[color:var(--ds-fg)]",
+};
+
+/**
+ * 2i-B: the inbox bell over doc 03 §2.6's durable rows. Every row renders
+ * durable state — the wire is the fold, not a toast log — and the actions
+ * are the three activated lifecycle arms. Read/unread and snooze are
+ * independent axes; snoozing does not mark read (D138). A failed command is
+ * fine to drop silently HERE only because nothing local changed: the row
+ * re-renders from the next SSE snapshot either way, so the surface can never
+ * disagree with authority.
+ */
+export function NotificationBell({ notifications, actorId }: {
+  notifications: readonly NotificationWire[];
+  actorId: string;
+}) {
+  const client = useDashboardClient();
+  const [commandError, setCommandError] = useState<string | null>(null);
+  const unread = notifications.filter((entry) => entry.state === "unread").length;
+  const issue = (
+    type: "notification-read" | "notification-unread" | "notification-snooze",
+    entry: NotificationWire,
+  ): void => {
+    setCommandError(null);
+    client.executeCommand({
+      commandId: crypto.randomUUID(),
+      requestedAt: systemClock.now().toISOString(),
+      requestedBy: actorId,
+      source: "notification-bell",
+      family: "notification",
+      type,
+      target: { notificationId: entry.notificationId, actorId, expectedVersion: entry.revision },
+      ...(type === "notification-snooze"
+        ? { payload: { until: new Date(systemClock.nowMs() + 3_600_000).toISOString() } }
+        : {}),
+    }).then((result) => {
+      if (result.state === "rejected") setCommandError(result.message);
+    }, (caught: unknown) => {
+      setCommandError(caught instanceof Error ? caught.message : String(caught));
+    });
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={unread > 0 ? `Notifications — ${plural(unread, "unread item")}` : "Notifications"}
+          icon={<Bell aria-hidden className={dsIcon.md} />}
+        >
+          <CountBadge value={unread} tone={unread > 0 ? "info" : "neutral"} />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent title="Notifications" width="lg" align="end">
+        {commandError !== null && (
+          <span role="alert" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
+            {commandError}
+          </span>
+        )}
+        {notifications.length === 0 ? (
+          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+            Nothing needs your attention.
+          </span>
+        ) : (
+          <div className="flex flex-col gap-[var(--ds-space-base)]">
+            {notifications.map((entry) => (
+              <div key={entry.notificationId} className="flex flex-col gap-[var(--ds-space-tight)]">
+                <span className="flex items-baseline gap-[var(--ds-space-snug)]">
+                  <span
+                    className={cn(
+                      dsText.body,
+                      "min-w-0 flex-1 truncate",
+                      entry.state === "read" ? "text-[color:var(--ds-fg-muted)]" : SEVERITY_TONE[entry.severity],
+                      entry.state === "unread" && "font-semibold",
+                    )}
+                  >
+                    {entry.title}
+                  </span>
+                  <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
+                    {entry.state === "snoozed" ? `snoozed · ${fmtClock(entry.occurredAt)}` : fmtClock(entry.occurredAt)}
+                  </span>
+                </span>
+                <span className="flex gap-[var(--ds-space-snug)]">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => issue(entry.state === "unread" ? "notification-read" : "notification-unread", entry)}
+                  >
+                    {entry.state === "unread" ? "Mark read" : "Mark unread"}
+                  </Button>
+                  {entry.state !== "snoozed" && (
+                    <Button variant="ghost" size="sm" onClick={() => issue("notification-snooze", entry)}>
+                      Snooze 1h
+                    </Button>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function ShortcutsPopover({ onOpenHelp }: { onOpenHelp?: () => void }) {
   return (
     <Popover>
@@ -524,6 +637,8 @@ export function ShortcutsPopover({ onOpenHelp }: { onOpenHelp?: () => void }) {
  * views it switches between.
  */
 export function TopBar({
+  notifications,
+  actorId,
   day,
   today,
   monthCounts,
@@ -533,6 +648,8 @@ export function TopBar({
   nav,
   onOpenHelp,
 }: {
+  notifications: readonly NotificationWire[];
+  actorId: string;
   /** the day partition the whole app is reading */
   day: string;
   today: string;
@@ -570,6 +687,7 @@ export function TopBar({
       <DateNav day={day} today={today} monthCounts={monthCounts} onDay={onDay} />
 
       <span className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-hair)]">
+        <NotificationBell notifications={notifications} actorId={actorId} />
         <ShortcutsPopover onOpenHelp={onOpenHelp} />
         {/* The theme pair. One control, and its LABEL names the destination
             ("Switch to Paper Ink"), because a lone sun/moon glyph never says

@@ -118,10 +118,14 @@ The BFF serves 7 endpoints today; each slice names what it adds.
       references re-frozen (6 triples). RESIDUAL: the run-receipt parity fixture still exercises
       only the receipt's `missing` arm — adapter #1 holds no authority rows; a populated-receipt
       reference needs an adapter-#2 state (noted for 2j's corpus work).
-- [ ] **2i-B — notification bell + inbox.** Activate the DEFERRED notification command family
-      (read/unread/snooze — the D166/D167 activation pattern), add the lifecycle route, and the
-      top-bar bell + inbox UI (doc 03 §2.6; the bell is "ABSENT rather than stubbed" at
-      `top-bar.tsx:7-10`). D138 ordering already holds server-side.
+- [x] **2i-B — notification bell + inbox. DONE 2026-08-08.** The notification family activated
+      (read/unread/snooze with version CAS + actor-ownership checks; read-state and snooze stay
+      independent axes per D138), the day wire serves the durable rows through
+      `notificationWireOf` (severity by trigger, `snoozed` only while in force), and the top-bar
+      bell + inbox popover issue the three arms with command failures surfaced inline (the
+      ratchet refused a swallowed catch — correctly). All parity references re-frozen for the
+      bell. RESIDUAL: the wire's severity/state shape supersedes doc 03 §2.6's sketch
+      (no `critical`, merged snooze state) — flag for the doc 03 as-built pass in 2j.
 - [ ] **2i-C — Edit Data rail.** Client half only (server fully active per D166): `editPolicyFor`
       with the reason always shown, the widened rail (`--ds-w-context-rail-wide`, 520px), Save →
       `run/edit-checkpoint`, the SSE `run.claimed` staleness signal disabling Save (doc 03 D19,

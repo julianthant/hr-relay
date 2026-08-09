@@ -69,6 +69,8 @@ const EXPECTED_ACTIVE = {
     "edit-checkpoint",
   ],
   gate: ["resolve-gate"],
+  // 2i-B: the inbox lifecycle activated over D134/D138's durable rows.
+  notification: ["notification-read", "notification-unread", "notification-snooze"],
   // D167: the durable capture core activated — sessions, photo mutations,
   // and the stable-keyed finalize outbox.
   capture: [
@@ -85,7 +87,7 @@ const EXPECTED_DEFERRED = {
   settings: ["apply-settings"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
   run: [],
-  notification: ["notification-read", "notification-unread", "notification-snooze"],
+  notification: [],
   capture: [],
 } as const;
 

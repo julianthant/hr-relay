@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { NotificationRecordSchema } from "../notifications.js";
 import {
   ActorIdSchema,
   BrowserSystemIdSchema,
@@ -167,6 +168,35 @@ export const WorkerCardWireSchema = z.strictObject({
   ]),
   revision: RowRevisionSchema,
 });
+/**
+ * 2i-B: durable notification row → wire. Severity orders by what the
+ * operator must DO — a failure or an unknown write outcome is `error`, the
+ * waiting/storage family is `warning`, and `verified-done` is `info`.
+ * `snoozed` wins the state only while the snooze is still in force; an
+ * expired snooze reads as its underlying status again, because snooze
+ * suppresses delivery without changing read state (doc 03 §2.6, D138).
+ */
+export function notificationWireOf(
+  record: z.infer<typeof NotificationRecordSchema>,
+  nowMs: number,
+): z.infer<typeof NotificationWireSchema> {
+  const severity = record.trigger === "failed" || record.trigger === "write-parked"
+    ? "error"
+    : record.trigger === "verified-done"
+      ? "info"
+      : "warning";
+  const snoozed = record.snooze.state === "snoozed" && Date.parse(record.snooze.until) > nowMs;
+  return NotificationWireSchema.parse({
+    notificationId: record.notificationId,
+    actorId: record.actorId,
+    severity,
+    title: record.title,
+    state: snoozed ? "snoozed" : record.status,
+    occurredAt: record.lastSeenAt,
+    revision: record.version,
+  });
+}
+
 export const NotificationWireSchema = z.strictObject({
   notificationId: NotificationIdSchema,
   actorId: ActorIdSchema,

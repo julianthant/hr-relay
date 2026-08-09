@@ -68,7 +68,9 @@ function harness(): Harness {
     clock,
     appVersion: "0.1.0",
     descriptorSetHash: descriptorSetHash([fixtureDescriptor.contractFingerprint]),
-    authority: { getRun: (runId) => database.authority.runs.get(runId) },
+    authority: { getRun: (runId) => database.authority.runs.get(runId),
+      listNotifications: () => [],
+    },
     descriptors,
     projectionStore: database,
   });
@@ -285,14 +287,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7b",
         requestedAt: h.clock.now().toISOString(),
         requestedBy: "local-operator",
-        source: "notification-inbox",
-        family: "notification",
-        type: "notification-read",
-        target: {
-          notificationId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7c",
-          actorId: "local-operator",
-          expectedVersion: 1,
-        },
+        // 2i-B activated the notification family; settings stays the
+        // deferred probe.
+        source: "settings-surface",
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: { settingsSchemaHash: "a".repeat(64), patchFingerprint: "b".repeat(64), patch: {} },
       }),
     });
     assert.equal(deferredArm.status, 422);

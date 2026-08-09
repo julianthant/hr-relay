@@ -590,7 +590,10 @@ export async function startSeededServer(
     clock,
     appVersion: SEEDED_APP_VERSION,
     descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
-    authority: { getRun: (runId) => database.authority.runs.get(runId) },
+    authority: {
+      getRun: (runId) => database.authority.runs.get(runId),
+      listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
+    },
     descriptors,
     projectionStore: database,
   });
@@ -665,7 +668,9 @@ export async function startSeededServer(
     runDetail: {
       stateRoot,
       projection,
-      authority: { getRun: (runId) => database.authority.runs.get(runId) },
+      authority: {
+      getRun: (runId) => database.authority.runs.get(runId),
+    },
       trust: createReceiptService({ database, descriptors: [personLookupDescriptor] }),
     },
     commands,

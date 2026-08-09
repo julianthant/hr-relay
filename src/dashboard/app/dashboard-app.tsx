@@ -272,6 +272,8 @@ function LoadedApp({
       className={cn("flex h-screen min-h-0 flex-col bg-[color:var(--ds-bg)] text-[color:var(--ds-fg)]")}
     >
       <TopBar
+        notifications={dayWire?.notifications ?? []}
+        actorId={boot.actor.id}
         day={day}
         today={today}
         monthCounts={dayWire?.monthCounts ?? []}

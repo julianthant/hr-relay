@@ -39,6 +39,7 @@ import type { Clock } from "../../../domain/clock.js";
 import { localDatePart } from "../../../domain/clock.js";
 import {
   DashboardDayWireSchema,
+  notificationWireOf,
   QueueSurfaceWireSchema,
   TERMINAL_QUEUE_STATUSES,
   type DashboardDayWire,
@@ -47,9 +48,11 @@ import {
 import { DashboardDayPatchSchema } from "../../../domain/dashboard/subscription.js";
 import {
   FingerprintSchema,
+  LOCAL_OPERATOR_ACTOR_ID,
   ProjectionCursorSchema,
   type Fingerprint,
 } from "../../../domain/ids.js";
+import { NotificationRecordSchema } from "../../../domain/notifications.js";
 import type { RunRecord } from "../../../domain/run/record.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { sha256Hex } from "../../../domain/sha256.js";
@@ -125,7 +128,11 @@ export interface RunQueueProjectionDeps {
   /** One fingerprint over the registered descriptor set — doc 02's skew tripwire. */
   readonly descriptorSetHash: Fingerprint;
   /** Narrow authority read view; the projection never mutates authority. */
-  readonly authority: { getRun(runId: string): RunRecord | undefined };
+  readonly authority: {
+    getRun(runId: string): RunRecord | undefined;
+    /** 2i-B: the durable inbox rows the day wire serves. */
+    listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
+  };
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   /** The rebuildable projection tables (doc 03 §2.3). */
   readonly projectionStore: {
@@ -761,7 +768,9 @@ export class RunQueueProjection {
         .map(([statusKey, count]) => ({ status: statusKey, count })),
       queueSurfaces: surfaces,
       workerCards,
-      notifications: [],
+      notifications: this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID)
+        .map((record) => notificationWireOf(record, this.#deps.clock.nowMs()))
+        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || String(a.notificationId).localeCompare(String(b.notificationId))),
     });
   }
 }

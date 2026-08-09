@@ -41,6 +41,7 @@ export interface AuthorityFake {
   readonly records: Map<string, RunRecord>;
   getRun(runId: string): RunRecord | undefined;
   put(record: RunRecord): void;
+  listNotifications(actorId: string): readonly never[];
 }
 
 export function authorityFake(): AuthorityFake {
@@ -49,6 +50,7 @@ export function authorityFake(): AuthorityFake {
     records,
     getRun: (runId) => records.get(runId),
     put: (record) => records.set(record.envelope.runId, record),
+    listNotifications: () => [],
   };
 }
 

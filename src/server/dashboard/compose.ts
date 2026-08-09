@@ -141,7 +141,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     clock,
     appVersion,
     descriptorSetHash: setHash,
-    authority: { getRun: (runId) => database.authority.runs.get(runId) },
+    authority: {
+      getRun: (runId) => database.authority.runs.get(runId),
+      listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
+    },
     descriptors,
     projectionStore: database,
   });
@@ -229,7 +232,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     runDetail: {
       stateRoot,
       projection,
-      authority: { getRun: (runId) => database.authority.runs.get(runId) },
+      authority: {
+      getRun: (runId) => database.authority.runs.get(runId),
+    },
       // D140/D142: the receipt and failure sections serve CONTENT through the
       // one authority-backed derivation, the same one `explain run` reads.
       trust: createReceiptService({ database, descriptors: DESCRIPTORS }),
