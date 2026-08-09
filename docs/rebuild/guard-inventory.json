@@ -53,7 +53,7 @@
       "file": "tests/unit/architecture/legacy-capability-disposition.test.ts",
       "status": "active",
       "owner": "docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "Every D58 legacy capability surface is classified exactly once without a proxy disposition.",
+      "invariant": "Every D58 legacy capability surface is classified exactly once by a recursively strict disposition union that has no proxy arm; status is the disposition's projection in both directions; every native/replaced target and every evidence token resolves to a real repo path, a real package.json script, or a real legacy path, and a decided entry must cite rebuild proof rather than only that legacy still exists; and no entry stays open on a milestone at or before the completedThrough the runtime itself reports (D184).",
       "replacementRequired": true
     },
     {
