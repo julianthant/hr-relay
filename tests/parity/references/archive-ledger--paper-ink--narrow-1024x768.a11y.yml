@@ -1,7 +1,7 @@
 # archive-ledger--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: archive-ledger
-# descriptorHash: a49c6afce540cab28ca47f9f9fb0b38b3e18f5661ed563e140e7c148e509c2d7
+# descriptorHash: ceb5bb8474683b81b96efcdc6ed9f5d4eebe4cfad336c9370e961876fb99d1bb
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -49,7 +49,7 @@
           - cell "3:00 AM"
           - cell
     - region "Version bump":
-      - text: Version bump A bump moves every prior-version run out of the live surfaces and into this archive. app 0.1.0 Person Lookup now v2 · a49c6afc0 archivable1 blocking
+      - text: Version bump A bump moves every prior-version run out of the live surfaces and into this archive. app 0.1.0 Person Lookup now v2 · ceb5bb840 archivable1 blocking
       - button "Plan a bump"
       - text: Reviewed plan plan aa11bb220 would be archived1 would blockplanned 3:30 AM
       - list:

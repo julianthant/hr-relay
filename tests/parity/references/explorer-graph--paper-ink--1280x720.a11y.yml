@@ -1,7 +1,7 @@
 # explorer-graph--paper-ink--1280x720
 # adapter: fixture
 # fixture: explorer-graph
-# descriptorHash: a49c6afce540cab28ca47f9f9fb0b38b3e18f5661ed563e140e7c148e509c2d7
+# descriptorHash: ceb5bb8474683b81b96efcdc6ed9f5d4eebe4cfad336c9370e961876fb99d1bb
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -31,7 +31,7 @@
     - group "Registered workflows":
       - button "person-lookup" [pressed]
       - button "kuali-timekeeper-annotation"
-    - text: code pl category search version 1 shape single enqueue reject-active subject derived from input system crm system ucpath edit data declared-fields review no run surface declared intake 2 bindable fields capture none descriptor src/workflows/person-lookup/descriptor.ts module src/workflows/person-lookup/module.ts contract 4d7a3d5c2e0aresult c1db3f17036333 files fingerprinted6 scenarios
+    - text: code pl category search version 1 shape single enqueue reject-active subject derived from input system crm system ucpath edit data declared-fields review no run surface declared intake 2 bindable fields capture none descriptor src/workflows/person-lookup/descriptor.ts module src/workflows/person-lookup/module.ts contract 99fd17f6d99aresult c1db3f17036333 files fingerprinted7 scenarios
     - navigation "Graph structure":
       - text: Graph · 4 nodes
       - list:
@@ -46,8 +46,8 @@
       - text: Result active-status crm-dates
     - heading "searching" [level=3]
     - text: Task Searching Depends on Nothing — this node may start immediately. replay checkpoint condition always runs Detail projections Selection selection.status
-    - region "ucpath/search-person-org": runs ucpath/search-person-org Searching Implemented by store ucpath kind browser driver ucpath Subject binding the person search resolves identity rather than confirming it Errors search-unavailable unexpected-page-state Freshness default 4h Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios person-lookup/happy-by-eid person-lookup/ambiguous-name person-lookup/not-found Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts input ee4776e0a94eoutput 6b08cc3af988impl ed5d5229c7cd
-    - region "Scenarios": Scenarios person-lookup/ambiguous-name walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-failure-retry walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts person-lookup/happy-by-eid walks tests/scenario/person-lookup.scenario.test.ts person-lookup/happy-by-eid-with-dates walks tests/scenario/person-lookup.scenario.test.ts person-lookup/not-found walks tests/scenario/person-lookup.scenario.test.ts
+    - region "ucpath/search-person-org": runs ucpath/search-person-org Searching Implemented by store ucpath kind browser driver ucpath Subject binding the person search resolves identity rather than confirming it Errors search-unavailable unexpected-page-state Freshness default 4h Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios person-lookup/happy-by-eid person-lookup/ambiguous-name person-lookup/not-found person-lookup/ucpath-drill-subject-mismatch Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts input ee4776e0a94eoutput 6b08cc3af988impl c37fc40a81a8
+    - region "Scenarios": Scenarios person-lookup/ambiguous-name walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-failure-retry walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts person-lookup/happy-by-eid walks tests/scenario/person-lookup.scenario.test.ts person-lookup/happy-by-eid-with-dates walks tests/scenario/person-lookup.scenario.test.ts person-lookup/not-found walks tests/scenario/person-lookup.scenario.test.ts person-lookup/ucpath-drill-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts
 - region "Session Panel":
   - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
   - text: v0.1.0
