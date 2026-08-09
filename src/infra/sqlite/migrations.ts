@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 11;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 12;
 
 /** The run lifecycle states in which exactly one worker owns the row (doc 02 §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -323,6 +323,24 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   artifact_outbox: jsonRecordTable("artifact_outbox"),
   artifact_sink_heads: jsonRecordTable("artifact_sink_heads"),
   /**
+   * Doc 06 §2.2's in-progress upload → map → validate session (2i-E1). The
+   * operator's decisions plus the immutable source identity — rows and
+   * columns are re-derived from the content-addressed artifact, never
+   * stored. `source_sha256` and `state` are columns so "does this exact
+   * file already have an open session" is a lookup, not a JSON scan.
+   */
+  intake_sessions: `
+    CREATE TABLE intake_sessions (
+      record_key TEXT PRIMARY KEY,
+      workflow TEXT NOT NULL,
+      source_sha256 TEXT NOT NULL,
+      state TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    ) STRICT
+  `,
+  /**
    * Doc 06 §5's immutable plan manifest. `record_key` is the manifest id; the
    * source digest is a column so "has this exact file been run before" is a
    * lookup rather than a scan over parsed JSON.
@@ -411,6 +429,7 @@ const POST_V1_TABLE_ORDER = [
   "ledger_projections",
   "intake_manifests",
   "ocr_extractions",
+  "intake_sessions",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -810,6 +829,24 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEGIN
           SELECT RAISE(ABORT, 'an admitted extraction is immutable; a re-read is a new row after an explicit replacement');
         END`,
+    ],
+  },
+  {
+    /*
+     * 2i-E1: the durable intake session — the in-progress upload → map →
+     * validate state doc 06 §2.2 walks, which D159's TERMINAL manifest
+     * deliberately does not cover (a manifest is the immutable rerun
+     * authority; a session is the operator's working state before one
+     * exists). Mutable under a version CAS like `capture_sessions`;
+     * rows/columns are never stored — they re-derive from the
+     * content-addressed artifact, so a stored copy could only drift from
+     * its own source.
+     */
+    version: 12,
+    statements: [
+      SQLITE_TABLE_DDL.intake_sessions,
+      "CREATE INDEX intake_sessions_source_idx ON intake_sessions(source_sha256, state)",
+      "CREATE INDEX intake_sessions_state_idx ON intake_sessions(state, updated_at)",
     ],
   },
 ] as const);

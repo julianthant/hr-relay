@@ -753,6 +753,28 @@ describe("native SQLite authority schema", () => {
   });
 });
 
+const INTAKE_SESSION = {
+  intakeSessionId: "7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5e",
+  actorId: "local-operator",
+  workflow: "person-lookup",
+  artifact: {
+    id: "11111111-2222-4333-8444-555555555555",
+    sha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
+    bytes: 2048,
+    mediaType: "text/csv",
+  },
+  sheet: "default",
+  headerRowIndex: null,
+  bindings: [],
+  constants: [],
+  corrections: [],
+  exclusions: [],
+  state: "mapping",
+  validation: { state: "none" },
+  version: 1,
+  createdAt: NOW,
+  updatedAt: NOW,
+};
 const INTAKE_MANIFEST = {
   version: 1,
   manifestId: "9f8a1c2d-4b5e-4a6f-9c8d-0e1f2a3b4c5d",
@@ -866,6 +888,7 @@ describe("authority generation accounting", () => {
       mutate: (db) => { db.authority.evidenceReceipts.insert(EVIDENCE_RECEIPT); },
     },
     { table: "intake_manifests", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
+    { table: "intake_sessions", mutate: (db) => { db.authority.intakeSessions.create(INTAKE_SESSION); } },
     { table: "ocr_extractions", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },
     { table: "knowledge_records", mutate: (db) => { db.authority.knowledgeRecords.insert(KNOWLEDGE_RECORD); } },
     { table: "fix_records", mutate: (db) => { db.authority.fixRecords.insert(FIX_RECORD); } },

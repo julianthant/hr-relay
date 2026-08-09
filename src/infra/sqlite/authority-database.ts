@@ -80,6 +80,7 @@ import {
   type RunTerminalOutboxRecord,
 } from "../../domain/run/terminal-outbox.js";
 import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
+import { IntakeSessionSchema } from "../../domain/intake/session.js";
 import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
 import { FailureRecordSchema, type FailureRecord } from "../../domain/trust/failure.js";
 import {
@@ -599,6 +600,19 @@ type IntakeManifestRepository = Readonly<{
   findBySource(sourceSha256: string): readonly z.infer<typeof IntakePlanManifestSchema>[];
 }>;
 
+/**
+ * Doc 06 §2.2's durable in-progress session (2i-E1). Create-in-mapping,
+ * version-CAS updates that keep the searchable columns in step with the
+ * record, and a by-source lookup so a re-upload of the same bytes can find
+ * its open session instead of silently forking a second one.
+ */
+type IntakeSessionRepository = Readonly<{
+  create(input: unknown): z.infer<typeof IntakeSessionSchema>;
+  get(intakeSessionId: string): z.infer<typeof IntakeSessionSchema> | undefined;
+  update(input: unknown): z.infer<typeof IntakeSessionSchema>;
+  findActiveBySource(sourceSha256: string): readonly z.infer<typeof IntakeSessionSchema>[];
+}>;
+
 /** Doc 06 §4.3 — one page, read once, for one form (D159). */
 type OcrExtractionRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof AdmittedExtractionSchema>>;
@@ -615,6 +629,7 @@ export type AuthorityRepositories = Readonly<{
   runTerminalOutbox: RunTerminalOutboxRepository;
   diagnosticBundles: DiagnosticBundleRepository;
   evidenceReceipts: EvidenceReceiptRepository;
+  intakeSessions: IntakeSessionRepository;
   intakeManifests: IntakeManifestRepository;
   ocrExtractions: OcrExtractionRepository;
   knowledgeRecords: KnowledgeRepository;
@@ -2599,6 +2614,63 @@ export class AuthorityDatabase implements Disposable {
        * run has already fanned out against it, so a differing rebuild is a
        * refusal rather than an overwrite.
        */
+      /**
+       * Doc 06 §2.2's in-progress session (2i-E1): created in `mapping` by the
+       * upload route, mutated by the intake command arms under a version CAS.
+       * The searchable columns move WITH the record on every update — a
+       * column that lagged its own JSON would make "open session for this
+       * file" a lie.
+       */
+      intakeSessions: Object.freeze({
+        create: (input: unknown) => {
+          const record = IntakeSessionSchema.parse(input);
+          if (record.state !== "mapping" || record.version !== 1) {
+            throw new Error(
+              `intake session ${record.intakeSessionId} must be created in mapping state at version 1`,
+            );
+          }
+          return this.#authorityWrite("intake_sessions", () => {
+            this.#database.prepare(`
+              INSERT INTO intake_sessions
+                (record_key, workflow, source_sha256, state, record_json, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              record.intakeSessionId, record.workflow, record.artifact.sha256, record.state,
+              canonicalJsonStringify(record), record.createdAt, record.updatedAt,
+            );
+            return { result: record, changes: 1 };
+          });
+        },
+        get: (intakeSessionId: string) =>
+          this.#readRecord("intake_sessions", intakeSessionId, IntakeSessionSchema),
+        update: (input: unknown) => {
+          const record = IntakeSessionSchema.parse(input);
+          return this.#authorityWrite("intake_sessions", () => {
+            const outcome = this.#database.prepare(`
+              UPDATE intake_sessions SET record_json = ?, state = ?, updated_at = ?
+              WHERE record_key = ? AND json_extract(record_json, '$.version') = ?
+            `).run(
+              canonicalJsonStringify(record), record.state, record.updatedAt,
+              record.intakeSessionId, record.version - 1,
+            );
+            const changes = sqliteChanges(outcome.changes);
+            if (changes !== 1) {
+              throw new Error(
+                `intake session ${record.intakeSessionId} update to version ${String(record.version)} `
+                + `raced past its expected predecessor; ${String(changes)} rows changed`,
+              );
+            }
+            return { result: record, changes: 1 };
+          });
+        },
+        /** Open sessions for these exact bytes — a re-upload finds its session instead of forking one. */
+        findActiveBySource: (sourceSha256: string) => Object.freeze(this.#database.prepare(`
+          SELECT record_json FROM intake_sessions
+          WHERE source_sha256 = ? AND state IN ('mapping', 'validated')
+          ORDER BY created_at, record_key
+        `).all(sourceSha256).map((row) =>
+          parseJsonRecord(IntakeSessionSchema, JsonRowSchema.parse(row).record_json))),
+      }),
       intakeManifests: Object.freeze({
         insert: (input: unknown) => {
           const record = IntakePlanManifestSchema.parse(input);

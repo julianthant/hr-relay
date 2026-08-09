@@ -37,6 +37,7 @@ export const AuthorityTableNameSchema = z.enum([
   "durable_outbox",
   "artifact_outbox",
   "artifact_sink_heads",
+  "intake_sessions",
   "intake_manifests",
   "ocr_extractions",
 ]);

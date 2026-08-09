@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AuthorityTableName } from "../../domain/authority.js";
 import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
+import { IntakeSessionSchema } from "../../domain/intake/session.js";
 import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/commands.js";
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
@@ -177,6 +178,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   artifact_outbox: ArtifactOutboxStorageRecordSchema,
   /** Typed at D164, when the first sink projector landed. */
   artifact_sink_heads: ArtifactSinkHeadRecordSchema,
+  /** Doc 06 §2.2's in-progress session (2i-E1). */
+  intake_sessions: IntakeSessionSchema,
   /** Doc 06 §5's immutable plan manifest (D159). */
   intake_manifests: IntakePlanManifestSchema,
   /** Doc 06 §4.3's admitted page extraction (D159). */
