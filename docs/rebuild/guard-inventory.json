@@ -231,11 +231,10 @@
     {
       "name": "capture-durability-and-scope",
       "file": "tests/unit/architecture/capture-durability-and-scope.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: capture-durability-and-scope.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/06-data-intake-and-edit-data.md",
+      "invariant": "D174 (doc 06 §5.1; doc 11 §capture ingress; doc 12 §7): the phone reaches capture and nothing else, and a capture bundle is durable before it is reported. SCOPE — the routes registered under /api/v1/capture/phone/ and the declared CAPTURE_PHONE_ROUTES union are the same set in BOTH directions; a `:param` matches exactly one segment so no path walks out of the prefix; no operator route or catch-all can be spelled as a phone route or served as a phone asset; and a request arriving on the configured ingress Host is refused with a status and body BYTE-IDENTICAL to an unrouted path, driven through a real Hono app with a no-ingress negative control proving the filter is what refuses. ENUMERATION — the raw token is never durable or wire state (only its domain-separated digest is), the session wire carries neither `token` nor `tokenDigest`, the strict record refuses a token field outright, and the credential rides a header rather than any path or query value. DURABILITY — only the command kernel, the authority database, the finalize projector and the capture service's two declared clock transitions (expiry, first-connect) may write `capture_sessions` or the finalization outbox; ONLY the finalize projector may declare a session `finalized`, so nothing can report \"Sent\" without the outbox having settled; and the record's own refinements (a finalized session names its bundle and enqueued handoff, a failed one names its failure handoff, a finalizing/failed one carries a generation, the D174 ingress stamp stays read-forward optional) are each proven by a violating fixture. Every arm runs against a violating fixture as well as the real subject.",
+      "replacementRequired": true
     },
     {
       "name": "commit-routes-through-mutation",
