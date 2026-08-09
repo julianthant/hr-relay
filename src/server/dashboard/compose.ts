@@ -37,6 +37,8 @@ import {
   DESCRIPTORS,
   INTAKE_PROJECTIONS,
   SERVER_REGISTRY,
+  WORKFLOW_MODULES,
+  readPendingImplBindings,
 } from "../../control/workflow-registry.js";
 import { createCommandKernel, type WorkerRuntimeExecutor, type WriteResolutionExecutor } from "../../core/command-kernel.js";
 import { createPhase1WorkerRuntimeExecutor, type WorkerProcessSupervisor } from "../../core/worker-loop.js";
@@ -69,6 +71,9 @@ import { createIntakeService } from "./commands/intake-service.js";
 import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
+import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
+import { readCommittedUiCatalog } from "./queries/ui-catalog.js";
+import { buildSafeUiCatalog } from "../../stores/ucpath/driver/catalog.js";
 import { createRunQueueProjection } from "./projectors/run-queue-projection.js";
 import { createDashboardStreamHub } from "./subscriptions/dashboard-stream.js";
 import { startDashboardHttpServer } from "./http-server.js";
@@ -422,6 +427,25 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       clock,
       serviceState: () => backupServiceState,
     },
+    /**
+     * The explorer reads the SAME `WORKFLOW_MODULES` tuple the kernel composes
+     * from (2i-G, D176) — not `DESCRIPTORS`, because a module also carries the
+     * store list, the intake projection and the capture binding the surface
+     * reports. The UI catalog comes off the in-memory registries here so the
+     * served committed artifact can be checked against them on every read.
+     */
+    explorer: {
+      clock,
+      modules: WORKFLOW_MODULES,
+      descriptorSetHash: setHash,
+      // `EXPLORER_SOURCE_ROOT`, never `repoRoot`: these files belong to the
+      // source tree this process is running, while `repoRoot` names where
+      // runtime state resolves from and may legitimately be a temp directory.
+      pendingImplBindings: readPendingImplBindings(EXPLORER_SOURCE_ROOT),
+      uiCatalog: buildSafeUiCatalog(),
+      listScenarioSources: () => readScenarioSources(EXPLORER_SOURCE_ROOT),
+    },
+    uiCatalog: { readCatalogJson: () => readCommittedUiCatalog(EXPLORER_SOURCE_ROOT) },
   });
 
   const server = await startDashboardHttpServer({ app, port: input.isolation.backendPort });

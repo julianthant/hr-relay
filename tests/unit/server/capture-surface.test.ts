@@ -77,6 +77,7 @@ import {
   captureFixtureDescriptor,
   handBuiltCaptureBinding,
 } from "../fixtures/capture-intake-fixtures.js";
+import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import {
   NO_INTAKE_PROJECTIONS,
   UNWIRED_INTAKE_PARSER,
@@ -326,6 +327,8 @@ function surface(options: SurfaceOptions = {}): Surface {
       clock,
       serviceState: () => ({ state: "never-run", reason: "the test harness runs no backup lane" }),
     },
+    explorer: explorerQueryDeps(clock, descriptorSetHash(["explorer-harness"])),
+    uiCatalog: uiCatalogQueryDeps(),
   });
 
   return {

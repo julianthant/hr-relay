@@ -45,6 +45,7 @@ import {
 import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
+import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 
@@ -708,6 +709,8 @@ export async function startSeededServer(
         reason: "the seeded adapter runs no backup lane",
       }),
     },
+    explorer: explorerQueryDeps(clock, descriptorSetHash([CONTRACT_FINGERPRINT])),
+    uiCatalog: uiCatalogQueryDeps(),
   });
 
   const server: Server = createServer((req, res) => {

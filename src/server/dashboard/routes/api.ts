@@ -24,6 +24,8 @@ import {
 import type { StartPlanService } from "../commands/start-plan-service.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../queries/bootstrap.js";
 import { buildStorageDoctor, type StorageQueryDeps } from "../queries/storage.js";
+import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explorer.js";
+import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catalog.js";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
@@ -39,6 +41,10 @@ export interface DashboardAppDeps {
   readonly capture: CaptureService;
   readonly hub: DashboardStreamHub;
   readonly storage: StorageQueryDeps;
+  /** Doc 12 §5.2's read-only explorer projection (2i-G, D176). */
+  readonly explorer: ExplorerQueryDeps;
+  /** The committed semantic UI catalog, served read-only (2i-G, D177). */
+  readonly uiCatalog: UiCatalogQueryDeps;
   /**
    * The Host a capture ingress forwards under, when one is configured. A
    * request arriving on it is a PHONE request and may reach nothing outside
@@ -142,6 +148,15 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
 
   // Doc 03 §2.5's read-only doctor, on demand from the Settings surface.
   app.get("/api/v1/storage/doctor", async (c) => c.json(await buildStorageDoctor(deps.storage)));
+
+  /**
+   * Doc 12 §5.2's read-only explorer (2i-G, D176) and the committed UI catalog
+   * (D177). Both are GET-only by construction: Phase A has no draft, no apply
+   * and no compile, so there is no writing counterpart to guard — the surface
+   * cannot offer a mutation because the wire has nowhere to send one.
+   */
+  app.get("/api/v1/explorer", (c) => c.json(buildWorkflowExplorer(deps.explorer)));
+  app.get("/api/v1/ui-catalog", (c) => c.json(buildUiCatalogWire(deps.uiCatalog)));
 
   app.get("/api/v1/dashboard", (c) => {
     const day = DayQuerySchema.parse(c.req.query("day"));

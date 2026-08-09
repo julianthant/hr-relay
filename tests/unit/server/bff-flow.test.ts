@@ -33,6 +33,7 @@ import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { AT, DAY } from "./helpers/dashboard-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
+import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 
 interface Harness {
   readonly app: Hono;
@@ -184,6 +185,8 @@ function harness(): Harness {
         reason: "the test harness runs no backup lane",
       }),
     },
+    explorer: explorerQueryDeps(clock, descriptorSetHash([fixtureDescriptor.contractFingerprint])),
+    uiCatalog: uiCatalogQueryDeps(),
   });
   return { app, database, stateRoot, clock, noteWriter, hub };
 }
