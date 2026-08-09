@@ -224,10 +224,31 @@ The BFF serves 7 endpoints today; each slice names what it adds.
         · Partition pins + COMMAND_FIXTURES move with the activation (five arms; enqueue
           stays deferred until E2); intake session wire + `GET /api/v1/intake/:sessionId`
           serving session + parse view + suggestions.
-      - **E2 — enqueue.** `enqueue-intake-manifest`: `enqueueReadiness` gate → insert the
-        immutable manifest (D159 repo) → fan out N runs mirroring `executeStart`'s envelope
-        construction (config snapshot, fingerprints, run.queued spans); `rerunDiff` served on
-        re-inspect of an already-manifested source.
+      - [x] **E2 — enqueue. LANDED 2026-08-09 as D171.** Normative text: doc 06 §5.2. The arm
+        gates (state → CAS → source name → projection/descriptor → dry-run boundary), derives
+        the plan through the new pure `src/domain/intake/enqueue.ts`, mints the D159 manifest and
+        fans out N runs — manifest + runs + the session CAS to `enqueued` in ONE transaction, so
+        a refusal on the last row leaves nothing. Notes E3 needs:
+        · **The upload route now requires `?filename=`.** The D159 manifest requires
+          `source.originalName` and a content-addressed artifact has no name, so the dropzone
+          must send `file.name`; the session retains it as `sourceName` (optional on the record,
+          required at the route, refused by name at enqueue).
+        · **`enqueue-intake-manifest` payload is `{dryRun}`** and its target is
+          `{intakeSessionId, expectedVersion}` — the wire's `expectedVersion` is the CAS basis,
+          so Run must post the version the reviewed wire served, not a refetched one.
+        · **The wire grew `sourceName?`, `intakeManifestId?` and `rerun?`**
+          (`{intakeManifestId, createdAt, totals, diff}`) — that last one is the manifest +
+          rerunDiff view E3 renders, present on the upload response and the session GET alike,
+          and reading `same-plan` on the session that enqueued it.
+        · **Runs are `single`/`bulk`, joined to the manifest by `itemId`.** Doc 06 §5's
+          `operation` coordinator has no runtime; the deviation is recorded in §5.2.
+        · **`createCommandKernel` gained a required `configIdentity`** — every kernel
+          construction site passes one, and tests that never enqueue use
+          `UNSTORED_CONFIG_IDENTITY` (it names a snapshot no database holds, so an accidental
+          fan-out throws).
+        · **`intakeProjectionRegistry` now refuses a projection built over a COPY of its
+          descriptor's input schema.** person-lookup's declaration must reuse the descriptor's
+          own schema object, which matters because its input is a union.
       - **E3 — the grid UI.** Dropzone (new primitive), header-candidate picker, mapping grid
         (suggestions as hints, accept = the ONE `confirmBinding` mint), validation review
         (rows split, per-cell errors, fix/exclude), manifest + rerunDiff view, Run; a
