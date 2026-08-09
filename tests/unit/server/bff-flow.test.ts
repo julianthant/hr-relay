@@ -153,6 +153,12 @@ function harness(): Harness {
       authorityMeta: () => database.getMeta(),
       // The harness runs no backup lane; "missing" is its true state.
       backupSummary: () => "missing",
+      // No advisory provider is composed in this harness (D178).
+      advisoryAvailability: () => ({
+        state: "unavailable",
+        code: "not-configured",
+        reason: "no ai.advisory provider is composed in this harness",
+      }),
     },
     projection,
     runDetail: {

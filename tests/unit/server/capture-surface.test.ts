@@ -301,6 +301,12 @@ function surface(options: SurfaceOptions = {}): Surface {
       projection,
       authorityMeta: () => database.getMeta(),
       backupSummary: () => "missing",
+      // No advisory provider is composed in this harness (D178).
+      advisoryAvailability: () => ({
+        state: "unavailable",
+        code: "not-configured",
+        reason: "no ai.advisory provider is composed in this harness",
+      }),
     },
     projection,
     runDetail: {

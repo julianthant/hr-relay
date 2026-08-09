@@ -27,6 +27,7 @@ import { buildStorageDoctor, type StorageQueryDeps } from "../queries/storage.js
 import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explorer.js";
 import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catalog.js";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
+import { buildRunAdvisory, type AdvisoryQueryDeps } from "../queries/advisory.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { errorText } from "../support.js";
@@ -45,6 +46,12 @@ export interface DashboardAppDeps {
   readonly explorer: ExplorerQueryDeps;
   /** The committed semantic UI catalog, served read-only (2i-G, D177). */
   readonly uiCatalog: UiCatalogQueryDeps;
+  /**
+   * Doc 12 §4.4's advisory seam (2i-G, D178). Absent when no `ai.advisory`
+   * adapter is composed — the route then refuses by NAME rather than the
+   * composition root wiring a producer that answers nothing.
+   */
+  readonly advisory?: AdvisoryQueryDeps;
   /**
    * The Host a capture ingress forwards under, when one is configured. A
    * request arriving on it is a PHONE request and may reach nothing outside
@@ -173,6 +180,20 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
       c.req.param("section"),
       ...(cursor === undefined ? [] : [cursor]),
     ));
+  });
+
+  /**
+   * Doc 12 §4.4's on-demand failure advisory (D178). It is a POST because it
+   * SPENDS a provider budget — a GET the surface could prefetch would make a
+   * model call every time an operator opened a failed run — and it is
+   * deliberately NOT part of the command family: it journals nothing, changes
+   * nothing, and returns advice the operator may ignore.
+   */
+  app.post("/api/v1/runs/:runId/advisory", async (c) => {
+    if (deps.advisory === undefined) {
+      throw new Error("the failure advisory is not available: no ai.advisory provider is composed");
+    }
+    return c.json(await buildRunAdvisory(deps.advisory, c.req.param("runId")));
   });
 
   app.post("/api/v1/start-plans", async (c) => {

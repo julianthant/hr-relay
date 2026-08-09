@@ -48,7 +48,12 @@ import { systemClock } from "../../domain/clock.js";
 import { SettingsOverrideSchema } from "../../domain/config/schema.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
-import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../domain/ids.js";
+import {
+  FingerprintSchema,
+  LOCAL_OPERATOR_ACTOR_ID,
+  ProviderAdmissionIdSchema,
+  type Fingerprint,
+} from "../../domain/ids.js";
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import { configResolutionEnvironment } from "../../domain/secrets.js";
 import { sha256Hex } from "../../domain/sha256.js";
@@ -78,6 +83,13 @@ import { createRunQueueProjection } from "./projectors/run-queue-projection.js";
 import { createDashboardStreamHub } from "./subscriptions/dashboard-stream.js";
 import { startDashboardHttpServer } from "./http-server.js";
 import { createReceiptService } from "../trust/receipt-service.js";
+import { createAdvisoryProviderClient } from "../../core/provider-admission.js";
+import { produceFailureTriageAdvisory } from "../../services/trust/advisory.js";
+import { createGeminiAdvisoryAdapter } from "../../infra/providers/gemini-advisory.js";
+import { createProviderPool } from "../../infra/providers/provider-pool.js";
+import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
+import { optionalSecretFamily, providerModelChain } from "../../domain/secrets.js";
+import type { AdvisoryQueryDeps } from "./queries/advisory.js";
 
 export interface DashboardRuntime {
   readonly port: number;
@@ -106,6 +118,14 @@ export const AUTHORITY_BACKUP_INTERVAL_MS = 15 * 60 * 1000;
  * regardless of age.
  */
 export const AUTHORITY_BACKUP_MAX_AGE_MS = 45 * 60 * 1000;
+
+/**
+ * The advisory model this root names when the operator's `.env` declares no
+ * chain — the same explicit-with-provenance rule `OCR_GEMINI_MODEL_ID` follows
+ * (legacy `provider-limits.ts` priority-1 tier-1), never a default minted
+ * inside the secrets reader.
+ */
+export const ADVISORY_GEMINI_MODEL_ID = "gemini-3-flash-preview";
 
 export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint {
   return FingerprintSchema.parse(
@@ -366,6 +386,58 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   // a phone that may never come back.
   await capture.drainFinalizations();
 
+  /**
+   * Doc 12 §4.4's advisory (2i-G, D178). The pool composes from the SAME
+   * `geminiApiKeys` family and model chain the OCR pool uses, because they
+   * are the same keys — but the capability, and therefore the budget, is its
+   * own. No key composes NO adapter and no seam: the route then refuses by
+   * name, and the bootstrap wire says `not-configured` with the environment
+   * variable to set. A composed-but-empty advisory would be worse than none.
+   */
+  const advisoryKeys = optionalSecretFamily("geminiApiKeys", env);
+  const advisoryModels = providerModelChain("geminiApiKeys", env);
+  const advisoryChildren = (advisoryModels.length > 0 ? advisoryModels : [ADVISORY_GEMINI_MODEL_ID])
+    .flatMap((modelId) => advisoryKeys.map((apiKey, keyIndex) => ({
+      label: `gemini-key${String(keyIndex + 1)}/${modelId}`,
+      adapter: createGeminiAdvisoryAdapter({ apiKey, modelId, clock }),
+    })));
+  const advisoryScheduler = createTimeoutDeadlineScheduler(clock);
+  const advisory: AdvisoryQueryDeps | undefined = advisoryChildren.length === 0
+    ? undefined
+    : {
+      authority: {
+        getRun: (runId) => database.authority.runs.get(runId),
+        getFailureForRun: (runId) => database.authority.failures.listByRun(runId).at(-1),
+      },
+      advise: (run, failure) => {
+        // The SUBJECT run's own retained config identity (D116's discipline),
+        // read back from authority rather than recomputed from this process's
+        // current config — the run was budgeted under what it stored.
+        const snapshot = database.authority.configSnapshots.get(run.envelope.configSnapshotId);
+        if (snapshot === undefined) {
+          throw new Error(
+            `run ${run.envelope.runId} retained config snapshot ${run.envelope.configSnapshotId}`
+            + " is absent from authority; the failure advisory cannot bind an identity it cannot read",
+          );
+        }
+        const client = createAdvisoryProviderClient({
+          runId: run.envelope.runId,
+          attempt: run.envelope.attempt,
+          surface: "failure-triage",
+          configSnapshotId: snapshot.configSnapshotId,
+          configFingerprint: snapshot.fingerprint,
+          configSnapshot: snapshot,
+          runSignal: new AbortController().signal,
+          adapters: { "ai.advisory": createProviderPool("ai.advisory", advisoryChildren) },
+          repository: database.authority.providerAdmissions,
+          clock,
+          idFactory: { next: () => ProviderAdmissionIdSchema.parse(ids.uuid()) },
+          deadlineScheduler: advisoryScheduler,
+        });
+        return produceFailureTriageAdvisory({ clock, client }, failure);
+      },
+    };
+
   const hub = createDashboardStreamHub({ projection });
 
   const app = createDashboardApp({
@@ -377,6 +449,13 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
       projection,
       authorityMeta: () => database.getMeta(),
+      advisoryAvailability: () => (advisory === undefined
+        ? {
+          state: "unavailable",
+          code: "not-configured",
+          reason: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process",
+        }
+        : { state: "available" }),
       backupSummary: () => {
         let liveGeneration: { state: "known"; value: number } | { state: "unavailable" };
         try {
@@ -434,6 +513,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
      * reports. The UI catalog comes off the in-memory registries here so the
      * served committed artifact can be checked against them on every read.
      */
+    ...(advisory === undefined ? {} : { advisory }),
     explorer: {
       clock,
       modules: WORKFLOW_MODULES,

@@ -676,6 +676,13 @@ export async function startSeededServer(
       authorityMeta: () => database.getMeta(),
       // The seeded adapter runs no backup lane; "missing" is its true state.
       backupSummary: () => "missing",
+      // The parity corpus never composes a provider (D178): a reference must
+      // not depend on a key being present in the environment that captured it.
+      advisoryAvailability: () => ({
+        state: "unavailable",
+        code: "not-configured",
+        reason: "no ai.advisory provider is composed in this harness",
+      }),
     },
     projection,
     runDetail: {

@@ -83,6 +83,7 @@ import {
 } from "../../infra/providers/geocode-adapters.js";
 import { createGeminiOcrExtractAdapter } from "../../infra/providers/gemini-ocr-extract.js";
 import { createProviderPool } from "../../infra/providers/provider-pool.js";
+import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import { taskStoreRegistry } from "../../stores/index.js";
 
@@ -108,20 +109,13 @@ export const WORKER_SWEEP_INTERVAL_MS = 30_000;
  */
 export const OCR_GEMINI_MODEL_ID = "gemini-3-flash-preview";
 
-/** The one real timer implementation behind the kernel's scheduler port. */
-export function createTimeoutDeadlineScheduler(clock: Clock): MonotonicDeadlineScheduler {
-  return Object.freeze({
-    schedule(deadlineMonotonicMs: number, onDeadline: () => void): MonotonicDeadlineHandle {
-      const delayMs = Math.max(0, deadlineMonotonicMs - clock.monotonicMs());
-      const handle = setTimeout(onDeadline, delayMs);
-      return Object.freeze({
-        cancel: (): void => {
-          clearTimeout(handle);
-        },
-      });
-    },
-  });
-}
+/**
+ * The one real timer behind the kernel's scheduler port. It MOVED to
+ * `src/infra/scheduling/` at D178 — the dashboard process needs it too, for
+ * doc 12 §4.4's admitted advisory — and is re-exported here so every existing
+ * caller keeps its import.
+ */
+export { createTimeoutDeadlineScheduler };
 
 /** Structured stdout logging for the worker CLI process (never `console.*`). */
 export function lineTaskLogger(write: (line: string) => void, clock: Clock): TaskLogger {

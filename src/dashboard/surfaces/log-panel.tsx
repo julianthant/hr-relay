@@ -97,7 +97,11 @@ import { elapsedSecondsBetween, fmtClock, fmtElapsed, plural } from "./format.js
 import { ReceiptView, type ReceiptSectionPayload } from "./receipt.js";
 import { RunProvenanceBar, type QueueSurfaceWire } from "./run-identity.js";
 import { FailureDetailBody } from "./trust.js";
+import { FailureAdvisoryPanel } from "./advisory.js";
+import type { CapabilityAvailabilitySchema } from "../../domain/absence.js";
 import { dsStatusOf, outcomeDsStatusOf } from "./status.js";
+
+type CapabilityAvailability = z.infer<typeof CapabilityAvailabilitySchema>;
 
 type RunDetailWire = z.infer<typeof RunDetailWireSchema>;
 type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;
@@ -405,11 +409,16 @@ function InlineFailureRecord({
   errorNotes,
   completedAt,
   anchorRef,
+  runId,
+  aiAdvisory,
 }: {
   failure: FailurePayload;
   errorNotes: readonly NotePage["notes"][number][];
   completedAt?: string;
   anchorRef?: (node: HTMLElement | null) => void;
+  runId: string;
+  /** Doc 12 §4.4's advisory availability, off the bootstrap wire (D178). */
+  aiAdvisory: CapabilityAvailability;
 }) {
   return (
     <div
@@ -444,6 +453,9 @@ function InlineFailureRecord({
           <>
             {completedAt !== undefined && <MetaLine items={[`failed ${fmtClock(completedAt)}`]} />}
             <FailureDetailBody detail={failure.value} />
+            {/* Below the record's own remediation, never above it: the record
+                is the evidence and the advisory is a reading of it (D178). */}
+            <FailureAdvisoryPanel runId={runId} availability={aiAdvisory} />
           </>
         ) : failure.state === "error" ? (
           <MetaLine items={[failure.code, failure.message]} />
@@ -655,6 +667,7 @@ function LogsTab({
   workflowLabel,
   currentAppVersion,
   currentDescriptorHash,
+  aiAdvisory,
 }: {
   detail: RunDetailWire;
   notes: NotePage | undefined;
@@ -667,6 +680,7 @@ function LogsTab({
   workflowLabel: string;
   currentAppVersion: string;
   currentDescriptorHash: string;
+  aiAdvisory: CapabilityAvailability;
 }) {
   const [query, setQuery] = useState("");
   useEffect(() => setQuery(""), [detail.runId]);
@@ -705,6 +719,8 @@ function LogsTab({
         errorNotes={errorNotes}
         {...(detail.outcome.state === "terminal" ? { completedAt: detail.outcome.completedAt } : {})}
         anchorRef={failureRef}
+        runId={detail.runId}
+        aiAdvisory={aiAdvisory}
       />
     ) : null;
 
@@ -854,6 +870,12 @@ export interface LogPanelProps {
   actorId: string;
   /** An applied correction bumped the run version — the owner refetches detail. */
   onDetailEdited: () => void;
+  /**
+   * Doc 12 §4.4's advisory availability, from the bootstrap wire (2i-G, D178).
+   * The panel keeps its control and states the server's reason when no
+   * provider is composed, rather than the affordance vanishing.
+   */
+  aiAdvisory: CapabilityAvailability;
 }
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
@@ -878,6 +900,7 @@ export function LogPanel({
   currentDescriptorHash,
   actorId,
   onDetailEdited,
+  aiAdvisory,
 }: LogPanelProps) {
   const available = tabsFor(detail);
   const fallback = defaultTabFor(detail);
@@ -1156,6 +1179,7 @@ export function LogPanel({
               workflowLabel={workflowLabel}
               currentAppVersion={currentAppVersion}
               currentDescriptorHash={currentDescriptorHash}
+              aiAdvisory={aiAdvisory}
             />
           )}
           {effectiveTab === "receipt" && (

@@ -5,6 +5,7 @@
  * milestone named — never a plausible placeholder.
  */
 import { z } from "zod";
+import type { CapabilityAvailability } from "../../../domain/absence.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { workflowProjections } from "../../../base/workflow.js";
 import type { Clock } from "../../../domain/clock.js";
@@ -30,12 +31,22 @@ export interface BootstrapQueryDeps {
    * route. Must not throw when authority itself is unavailable.
    */
   readonly backupSummary: () => "current" | "stale" | "missing";
+  /**
+   * Whether this process composed an `ai.advisory` provider (2i-G, D178).
+   *
+   * `ai-advisory` came off the deferred table when the producer landed, so
+   * the wire now reports a real fact about THIS process rather than a
+   * milestone: composed keys make the feature available, and no key makes it
+   * `not-configured` naming the environment family to set. A feature that
+   * says "deferred" after it shipped is the same lie as one that says
+   * "available" when nothing is wired.
+   */
+  readonly advisoryAvailability: () => CapabilityAvailability;
 }
 
 const DEFERRED_FEATURES = [
   ["capture", "mobile capture authority lands in 2h"],
   ["ocr", "OCR review surfaces land in 2h"],
-  ["ai-advisory", "advisory providers land in 2h"],
   ["archive", "archive snapshots land with the version service in 2i"],
   ["workflow-editor", "the editor is a Phase-3 surface"],
 ] as const;
@@ -94,10 +105,13 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     // 2i-D: the one real section. Editable settings (`apply-settings`) stay a
     // deferred command family; Storage is read-only health + the doctor.
     settingsSections: [{ id: "storage", label: "Storage", revision: 1 }],
-    featureAvailability: DEFERRED_FEATURES.map(([feature, reason]) => ({
-      feature,
-      availability: { state: "unavailable", code: "deferred", reason },
-    })),
+    featureAvailability: [
+      ...DEFERRED_FEATURES.map(([feature, reason]) => ({
+        feature,
+        availability: { state: "unavailable", code: "deferred", reason },
+      })),
+      { feature: "ai-advisory", availability: deps.advisoryAvailability() },
+    ],
   });
 }
 

@@ -13,6 +13,7 @@ import {
   type RunDetailWire,
 } from "../../domain/dashboard/run-detail.js";
 import { StorageDoctorWireSchema, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
+import { RunAdvisoryWireSchema, type RunAdvisoryWire } from "../../domain/dashboard/advisory.js";
 import {
   UiCatalogWireSchema,
   WorkflowExplorerWireSchema,
@@ -87,6 +88,16 @@ export interface DashboardQueries {
   workflowExplorer(): Promise<WorkflowExplorerWire>;
   /** The committed `generated/ui-catalog.json`, served read-only (2i-G, D177). */
   uiCatalog(): Promise<UiCatalogWire>;
+  /**
+   * Doc 12 §4.4's on-demand failure advisory (2i-G, D178).
+   *
+   * It is a METHOD an operator action calls, never a section the panel
+   * prefetches: it spends a provider budget, so nothing may invoke it as a
+   * side effect of opening a run. The three §4.4 outcomes all arrive as a
+   * `200` document — `unavailable` and `invalid-response` are answers, not
+   * transport faults — so only a real fault throws.
+   */
+  requestFailureAdvisory(runId: string): Promise<RunAdvisoryWire>;
 }
 
 export interface CaptureStartRequest {
@@ -183,6 +194,14 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         WorkflowExplorerWireSchema,
         "GET /api/v1/explorer",
         await transport.requestJson("/api/v1/explorer"),
+      );
+    },
+    async requestFailureAdvisory(runId: string): Promise<RunAdvisoryWire> {
+      const path = `/api/v1/runs/${encodeURIComponent(runId)}/advisory`;
+      return parseOrThrow(
+        RunAdvisoryWireSchema,
+        `POST ${path}`,
+        await transport.requestJson(path, { method: "POST" }),
       );
     },
     async uiCatalog(): Promise<UiCatalogWire> {

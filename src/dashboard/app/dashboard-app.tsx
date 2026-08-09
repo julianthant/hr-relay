@@ -20,6 +20,7 @@ import {
   SystemInstancePrimitiveSchema,
   type FrontendBootstrapWire,
 } from "../../domain/dashboard/bootstrap.js";
+import { CapabilityAvailabilitySchema, type CapabilityAvailability } from "../../domain/absence.js";
 import { InputRunSurfaceSchema } from "../../domain/workflow/ingress.js";
 import { WORKFLOW_DESCRIPTORS } from "../../workflows/descriptor-registry.js";
 import { BookMarked, FileSpreadsheet, GitBranch } from "lucide-react";
@@ -246,6 +247,23 @@ function LoadedApp({
 
   const dayCount = dayWire?.monthCounts.find((c) => c.day === day)?.count ?? 0;
 
+  /**
+   * The first consumer of `featureAvailability` (2i-G, D178). A feature the
+   * boot document does not mention is `not-configured` with a reason naming
+   * exactly that — never a silent `available`, which is how a surface starts
+   * offering something the server never wired.
+   */
+  const advisoryAvailability = useMemo((): CapabilityAvailability => {
+    const entry = boot.featureAvailability.find(({ feature }) => feature === "ai-advisory");
+    return entry === undefined
+      ? {
+        state: "unavailable",
+        code: "not-configured",
+        reason: "this server's bootstrap document does not report the ai-advisory feature",
+      }
+      : CapabilityAvailabilitySchema.parse(entry.availability);
+  }, [boot.featureAvailability]);
+
   const startWorkflow = useMemo((): RunStartWorkflow => {
     const descriptor = WORKFLOW_DESCRIPTORS.find((d) => d.id === activeWorkflowId);
     const declared = descriptor?.surfaces?.inputRun;
@@ -453,6 +471,7 @@ function LoadedApp({
                   currentDescriptorHash={boot.descriptorHash}
                   actorId={boot.actor.id}
                   onDetailEdited={() => setDetailNonce((nonce) => nonce + 1)}
+                  aiAdvisory={advisoryAvailability}
                 />
               </div>
             )}
