@@ -1002,6 +1002,61 @@ tests and Vitest projects remain runnable through initial cutover; neither test 
 projects may be removed without a later explicit operator-ratified retirement. New/touched legacy
 diagnostics are governed by §1.1; rebuild tests are zero-debt from their first file.
 
+#### D190 — the safety-critical coverage floor as-built (2j, 2026-08-09)
+
+**The floor above was RED and had been red for a whole tail.** `npm run test:coverage` failed the
+`src/**/*projection*.ts` safety-critical threshold from D180 (2i-G) until this decision closed it:
+
+| measured at | lines | statements | functions |
+|---|---|---|---|
+| `f0b1fca` (pre-2j) | 78.12% ❌ | 76.80% ❌ | 79.85% ❌ |
+| `56eb93d` (2j, before this) | 78.67% ❌ | 77.28% ❌ | pass |
+| after | **97.61%** | **97.14%** | **96.27%** |
+
+One file carried the whole deficit. Every other file in the glob was already 87–96%;
+`src/server/dashboard/projectors/run-queue-projection.ts` was at **70.08% lines / 68.47%
+statements**, because D180 added ~140 lines of range aggregation — `buildActivityReportWire` — and
+**no test ever executed it**. It is now 99.43%. Nothing else moved: no threshold was lowered, no
+exclusion added, no test written to touch a line. What closed it is behaviour that was genuinely
+unproved — the by-day/workflow/category/status/outcome rollups, D124 at scale (a terminal run whose
+surface carries no end instant is reported as `unmeasuredRuns`, never counted as a zero), a retired
+workflow's runs counting while carrying `unregistered{reason}`, the failure breakdown refusing a
+failure id authority does not hold, and the D81 half that asserts the report AGREES with the day
+payload it summarises rather than re-deriving it — plus the fold arms a run only reaches when
+something moves (a recovery requeue, a gate resolving, a restart closing a span it never opened, a
+worker stopping, the two write-once identity refusals, and `refreshRun`'s span-less hide/archive).
+
+**One line stays deliberately unreached, and it is not dead weight.** `#endedAt`'s final arm — "run
+reads `<status>` but neither authority nor its run span recorded an end instant" — cannot be reached
+through `#surface`, because a *terminal* status can only come from a terminal lifecycle or a folded
+run end, and both earlier branches return on exactly those. It is a defensive refusal guarding a
+coupling between two private methods; deleting it to buy a coverage point would pin `#endedAt` to
+`#status`'s current shape. A guard against a state the code cannot currently reach is not the same
+thing as an untested feature, and the two must not be conflated to make a number.
+
+**Why nobody saw it, which is the useful half.** `test:coverage` is **not in the per-commit gate
+family** (`typecheck` · `lint` · `test` · `test:architecture` · `test:parity` · `build:manifest
+--check`). It is an end-of-slice check — and *an end-of-slice check that a slice forgets is a check
+that cannot fail*. `gate-coverage` did its job the whole time: it asserts the lane stays
+**registered** (`--coverage` and `suite-size.ts` still in `package.json`), never that it was **run**,
+so registration was green across every red commit. That is the same rot shape as §5 item 4 (an
+active scan that resolves an empty file set) and item 9 (a lane that rewrites the expectation it
+compares against): the check exists, the check is wired, the check never executes against reality.
+
+**Recommendation, with the measurement behind it: `test:coverage` should REPLACE `test` and
+`test:architecture` in the per-commit family.** It is a strict superset of both — `vitest run
+--coverage` runs every project, and `tests/unit/architecture` is inside the `unit` project's glob, so
+`test:architecture` is already a re-run of a subset — and on this machine the whole family measured
+**`test` 21.5 s + `test:architecture` 17.4 s ≈ 39 s** against **`test:coverage` 28.2 s**. Adding the
+floors is therefore not a cost, it is a saving; the only reason to keep them apart is that a
+mid-slice commit can honestly dip a floor when a production module lands one commit ahead of its
+tests. That objection is exactly this failure inverted — the floor was red for a *tail*, not a
+commit, and "the slice will check at the end" is the assumption that just failed. A commit that must
+land under a floor should be a stated exception, which is the posture this tree takes everywhere
+else. **The change is NOT applied here.** What runs before every commit is a rule about how the
+program works, so it is recorded as a named, measured recommendation for the operator rather than
+slipped in behind a coverage fix.
+
 ### 3.12 D71 executable contract/type-budget suite
 
 The Phase-0 disposable spike is converted—not copied blindly—into committed tests against the real
