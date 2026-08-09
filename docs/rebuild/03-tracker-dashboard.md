@@ -2341,3 +2341,99 @@ forever**, artifacts + checkpoints until purge.
 Unchanged and load-bearing: durability. A notification is a durable record first and a desktop
 delivery second — **failed OS delivery still leaves an unread inbox item.** Desktop delivery may
 never be the only alert.
+
+---
+
+## 11. The intake workspace — the surface contract (2i-E3, D173)
+
+Doc 06 §2.2 owns the FLOW (upload → map → validate → run) and doc 06 §2.5 owns the invariant that
+makes it safe. This section owns how that flow is presented, because three of its decisions are
+surface decisions with consequences and one of them is the reason the surface exists at all.
+
+### 11.1 Proposed against decided is a PLACE, not a colour
+
+§2.5 forbids a suggestion ever being pre-applied, and the mechanism already exists — only
+`confirm-intake-mapping` mints a binding, reachable from nothing but a press. The surface's job is
+to make the same fact legible, and it spends its whole visual budget on it:
+
+- a **decided** binding is a solid control in the row's own `Bound column` cell, carrying the
+  file's real sample values beneath it — so the operator confirms what a column HOLDS rather than
+  what it is called, which is the only defence against a correctly-named column of wrong data;
+- a **proposal** is recessed and dashed, lives in a **different column** (`Suggested`), and always
+  carries an explicit verb (`Use it`) plus the scorer's own reasons in words. An `ambiguous`
+  proposal states its ambiguity and receives no visual preference, because picking one of two
+  indistinguishable columns for the operator is the silent guess in miniature.
+
+Two states that are never in the same place cannot be confused for one another. A tone would have
+had to be learned; a position does not.
+
+### 11.2 The grid's rows are the WORKFLOW's fields, never the file's columns
+
+One row per declared intake target (doc 06 §2.2 step 2 in as many words). The workflow's
+requirements are the fixed axis and the spreadsheet is the variable — turn it around and the grid's
+shape depends on the export, and an operator can finish it without ever seeing a field the workflow
+wanted. Unmapped required targets are therefore visible by construction rather than by a check.
+
+### 11.3 It is a workspace at `?intake=<sessionId>`, not a dialog
+
+The session is a durable row (D170). It survives reload, and mapping a dozen columns then reviewing
+four hundred rejections takes minutes during which the operator will want to look at the queue.
+Trapping a task whose whole state is already safe on the server is what a modal is for and this is
+not that, so the workspace takes over the main region beside the existing queue/panel pair and is
+abandonable at any moment; `?intake=new` opens it at the dropzone and the upload response replaces
+that with the session's own id. The takeover HIDES the queue rather than dimming it — a
+half-visible queue behind a takeover is the modal it deliberately is not.
+
+Three bands, and the outcome band is `sticky bottom-0` on purpose: an operator scrolling a long
+grid must always be able to read WHY Run is disabled, and a disabled button whose explanation is
+off-screen is how a person concludes the product is broken.
+
+### 11.4 Readiness is DERIVED for courtesy and JUDGED by the kernel
+
+The band names the blockers it can see on the served wire — no header row settled, nothing bound,
+an unvalidated mapping. That is a courtesy, never the authority: `enqueueReadiness` judges the
+manifest the arm would actually write (doc 06 §5.2), and its refusal renders verbatim. A surface
+that decided readiness itself would eventually disagree with the server about what is about to
+happen, which on this product means disagreeing about whether real HR runs were filed.
+
+Staleness needs no client arithmetic either. Every mapping arm sets `validation: {state:"none"}`,
+so "the review you are looking at describes the current mapping" is a served fact.
+
+### 11.5 The destructive act names its cost before it happens
+
+Changing the sheet or the header row discards every binding, correction and exclusion (D170 — they
+all named rows and columns under the old layout). The surface confirms first, with the counts, and
+the confirmation ARRIVES rather than blinking in. Discovering it afterwards would be the definition
+of a surprise.
+
+### 11.6 Which control is in flight, not merely that one is
+
+Every intake command is a round trip. Locking the surface while showing a spinner nowhere means the
+operator presses `Use it` and the interface appears to do nothing, so the workspace tracks the
+in-flight command's KEY and that control alone carries the spinner. Everything else disables.
+
+### 11.7 As-built notes
+
+- **`Dropzone` is a new DS primitive** (`primitives-form.tsx`): a real `<input type="file">` inside
+  a `<label>`, so the drop target and the browse control are one control that the keyboard, the
+  screen reader and touch all reach for free. It states what it takes and its size cap from the
+  server's own constants, and it **never filters a dropped file** — `accept` is a picker hint, and
+  a file the server would refuse is handed over so the server can refuse it BY NAME. Drag state is
+  a counter, not a boolean, because `dragleave` fires when the pointer crosses into a child.
+- **The transport grew `requestJsonResponse`.** The intake upload is the one route whose STATUS is
+  the answer: `201` created a session for these bytes, `200` joined the open one they already have.
+  Any other status throws — falling through to "refused" would report a server defect as the
+  operator's bad file.
+- **`Banner` forwards no unknown props**, so `data-demo-enter` spread onto it type-checks (a spread
+  skips excess-property checking) and is silently dropped at runtime. Arriving surfaces wrap
+  instead. Generalize the shape: a spread onto a component with explicit props is not a compile-time
+  guarantee that the prop arrives.
+- **The parity lane dismisses the floating workflow window for the intake states only.** The window
+  covers the workspace's left edge — its target-field column and its stage tabs — and dismisses on
+  the first click outside it, which is the operator's very first act on a takeover. The queue's
+  references keep it, because the queue is what that window is FOR.
+- **Deferred, with its reason.** There is no arm that sets a run-wide CONSTANT and none that REMOVES
+  a binding, so the grid renders `constants` read-only (today always empty) and its column control
+  offers no "unbind". Offering either would be a control that silently does nothing. person-lookup
+  does not need a constant — `keepNonHdh` and `includeCrmDates` carry schema defaults — but the
+  first workflow with a required non-column field (doc 06 §8's `effectiveDate`) will need the arm.

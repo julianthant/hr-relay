@@ -1,7 +1,11 @@
 # Handoff — finish Phase 2 (rest of 2h, then 2i and 2j)
 
-**Date:** 2026-08-07, extended 2026-08-08
-**Paused at:** **ALL OF TAIL 2h IS COMPLETE (D146–D167, closed 2026-08-08).** The 2026-08-08
+**Date:** 2026-08-07, extended 2026-08-08 and 2026-08-09
+**Paused at:** **2i-E (the intake surface) CLOSED 2026-08-09 with D170–D173** — the durable session,
+the enqueue, and the grid UI over person-lookup's first real intake projection. Resume at **2i-F,
+the capture surface**. Everything below about 2h remains true.
+
+**ALL OF TAIL 2h IS COMPLETE (D146–D167, closed 2026-08-08).** The 2026-08-08
 session landed D162–D167 in six commits: executor/worker provider+artifact wiring with the guard
 relaxation, the roster store (tiers verbatim, scoring redesigned), the stable-keyed artifact
 projector with the xlsx-retention sink, the normalization advice store + geocode adapters + the
@@ -49,7 +53,7 @@ has found a defect every single time it has been run.
 - Guards: **54 active** (edit-data-field-policy joined at D166), 11 planned, 4 retired.
 - Authority schema version: **11** (D164/D167 typed the v1 shells at the repo layer — no
   migration; zero production rows existed).
-- Highest decision in use: **D167**.
+- Highest decision in use: **D173**.
 
 ## Progress
 
@@ -166,7 +170,7 @@ The BFF serves 7 endpoints today; each slice names what it adds.
       summary newest-manifest ties now break by generation. Tests: `storage-summary.test.ts`
       (4, real service round-trip), bff-flow doctor arm, runtime-composition storage seam arm;
       parity refrozen once (the top-bar gear).
-- [ ] **2i-E — intake surface.** Upload → mapping grid (suggestions never pre-applied) →
+- [x] **2i-E — intake surface. DONE 2026-08-09 (D170–D173).** Upload → mapping grid (suggestions never pre-applied) →
       validation review (rows split, per-cell errors) → manifest + rerunDiff → run (doc 06
       §2.2/§5.0). The 2026-08-08 recon sized it: the PURE pipeline is complete and tested
       (`src/domain/intake/` — header-discovery, mapping with `confirmBinding` as sole mint,
@@ -249,10 +253,52 @@ The BFF serves 7 endpoints today; each slice names what it adds.
         · **`intakeProjectionRegistry` now refuses a projection built over a COPY of its
           descriptor's input schema.** person-lookup's declaration must reuse the descriptor's
           own schema object, which matters because its input is a union.
-      - **E3 — the grid UI.** Dropzone (new primitive), header-candidate picker, mapping grid
-        (suggestions as hints, accept = the ONE `confirmBinding` mint), validation review
-        (rows split, per-cell errors, fix/exclude), manifest + rerunDiff view, Run; a
-        person-lookup intake projection so the surface has a real consumer; parity refreeze.
+      - [x] **E3 — the grid UI. LANDED 2026-08-09 as D172 (projection) + D173 (surface).**
+        Normative text: doc 06 §2.8 and doc 03 §11. **2i-E is now COMPLETE** — the route and
+        all six arms stop refusing by name, because person-lookup finally declares a
+        projection. Notes for 2i-F and beyond:
+        · **A union input schema now resolves** (D172). `resolveSchemaPath` traverses every
+          member and demands the SAME schema object wherever the path resolves; a member that
+          lacks the path makes the target `omissible`, so `required` means "every valid input
+          must supply this". person-lookup shares one `PersonNameSchema` (which IS
+          `CANONICAL_FIELDS.fullName.schema`) across both arms and the canonical view.
+          Its projection is `{emplId → eid, name → fullName}` and deliberately nothing else —
+          `keepNonHdh`/`includeCrmDates` are recorded `execution-option` in the canonical scan.
+          **The descriptor closure moved, so `contractFingerprint` moved**; that is why every
+          parity `.meta.json` shows a new `descriptorHash`.
+        · **NEITHER person-lookup target is `required`**, which is the union telling the truth.
+          A row carrying neither identifier rejects as `cross-field`/`workflow-schema` with
+          zod's root message — literally `Invalid input`, because `BoundaryIssueSchema` keeps
+          only `{path, code, message}` and zod reports a failed non-discriminated union at the
+          root. Legible enough to fix or exclude, but it does not NAME the missing identifier.
+          Composing that message is `validate.ts`'s business — recorded in doc 06 §2.8.
+        · **Two intake arms do not exist and the surface says so by omission.** Nothing sets a
+          run-wide CONSTANT and nothing REMOVES a binding, so constants render read-only
+          (always empty today) and the column control offers no "unbind". person-lookup does
+          not need a constant, but **doc 06 §8's `effectiveDate` example does** — the first
+          workflow with a required non-column field needs a seventh arm.
+        · **The transport grew `requestJsonResponse`** because the upload's STATUS is the
+          answer (`201` created / `200` joined / `422` refused). Any other status THROWS
+          rather than being reported as a refusal. 2i-F's capture routes will want the same
+          seam if a phone upload distinguishes created from joined.
+        · **`Banner` (and any DS component with explicit props) forwards nothing else** — a
+          spread `data-demo-enter` type-checks and is dropped at runtime, so an enter
+          transition silently never runs. Wrap, do not spread.
+        · **The parity lane dismisses the floating workflow window for intake states only**
+          (`dismissWorkflowWindow`, a centred click on the panel header — NOT the body, where
+          the dropzone would open a file chooser). The window covers a takeover's left edge
+          and dismisses on the first click outside it anyway.
+        · **Fixtures are DERIVED, not typed.** `tests/parity/helpers/fixture-intake.ts` feeds a
+          cell grid through the real `detectColumns`/`rankHeaderRows`/`suggestBindings`/
+          `validateIntakeRows`, so a screenshot of a suggestion score is a screenshot of what
+          the scorer returns. Copy that shape for the capture corpus.
+        · **RESIDUAL, pre-existing and NOT introduced here:** every `paper-ink` (light) parity
+          reference actually renders DARK. `applyTheme` sets `data-demo-theme` on
+          `<html>`/`<body>`, but `LoadedApp` writes its own `data-demo-theme={theme}` on the app
+          root, which wins for the whole subtree — so the light theme has never been captured.
+          Confirmed against references frozen before this slice. Fixing it re-freezes all 61
+          pre-existing references for a reason unrelated to intake; it belongs with 2j's
+          corpus work.
 - [ ] **2i-F — capture surface.** The token-scoped phone routes (fail-closed enumeration), QR
       start, the real PDF bundler + intake-enqueue wiring into D167's seams, `capture.ingress`
       dependency handling, and ACTIVATE `capture-durability-and-scope`.
