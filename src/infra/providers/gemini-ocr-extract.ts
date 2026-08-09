@@ -51,10 +51,15 @@ import {
   type ProviderRequestEnvelope,
 } from "../../domain/providers.js";
 import { OcrFormTypeSchema } from "../../domain/ocr/form-registry.js";
+import {
+  GeminiResponseBodySchema,
+  geminiAnswerText,
+  geminiGenerateContent,
+  geminiRetryAt,
+  parseGeminiModelJson,
+} from "./gemini-transport.js";
 import { SubmittedExtractionSchema } from "../../domain/ocr/extraction.js";
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
-
-const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
 /** The exact payload `ocr/extract-form-page` sends; refused strictly here. */
 const OcrExtractRequestPayloadSchema = z.strictObject({
@@ -65,16 +70,6 @@ const OcrExtractRequestPayloadSchema = z.strictObject({
 });
 
 const SUBMISSION_SCHEMA_HASH = deriveSchemaHash(SubmittedExtractionSchema, "output");
-
-/** Only what this adapter consumes from a generateContent response. */
-const GeminiResponseBodySchema = z.looseObject({
-  responseId: z.string().min(1).optional(),
-  candidates: z.array(z.looseObject({
-    content: z.looseObject({
-      parts: z.array(z.looseObject({ text: z.string().optional() })).optional(),
-    }).optional(),
-  })).optional(),
-});
 
 export interface GeminiOcrExtractAdapterDependencies {
   /** One key of the `geminiApiKeys` family; the composition root reads secrets. */
@@ -93,41 +88,6 @@ async function collectBytes(stream: Readable): Promise<Buffer> {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
   }
   return Buffer.concat(chunks);
-}
-
-/**
- * A model that follows the brief answers bare JSON, but a fenced answer is a
- * transport habit worth tolerating — stripping ```json fences changes no fact
- * about the page. Anything that still fails to parse is `invalid-response`.
- */
-function parseModelJson(text: string):
-  Readonly<{ ok: true; value: unknown }> | Readonly<{ ok: false; reason: string }> {
-  const unfenced = text.trim().replace(/^```(?:json)?\s*/u, "").replace(/\s*```$/u, "");
-  try {
-    return { ok: true, value: JSON.parse(unfenced) as unknown };
-  } catch (error) {
-    // The body could contain anything the model chose to say, including page
-    // contents, so the reason reports its SHAPE only — never an excerpt.
-    return {
-      ok: false,
-      reason: `the model answered ${String(unfenced.length)} chars that are not JSON`
-        + ` (${error instanceof Error ? error.message.slice(0, 80) : "unparseable"})`,
-    };
-  }
-}
-
-function retryAtFrom(retryAfter: string | null, clock: Clock): string {
-  if (retryAfter !== null) {
-    const seconds = Number(retryAfter);
-    if (Number.isFinite(seconds) && seconds > 0) {
-      return new Date(clock.nowMs() + Math.ceil(seconds) * 1000).toISOString();
-    }
-    const httpDate = Date.parse(retryAfter);
-    if (Number.isFinite(httpDate) && httpDate > clock.nowMs()) return new Date(httpDate).toISOString();
-  }
-  // No usable Retry-After: the provider's rate windows are per-minute, so the
-  // next fixed UTC minute boundary — D112's own window semantics, not a guess.
-  return new Date((Math.floor(clock.nowMs() / 60_000) + 1) * 60_000).toISOString();
 }
 
 export function createGeminiOcrExtractAdapter(
@@ -160,26 +120,16 @@ export function createGeminiOcrExtractAdapter(
       const payload = parseRequest(requestInput);
       const pageBytes = await collectBytes(await dependencies.artifacts.open(payload.page));
 
-      const response = await fetchFn(
-        `${GEMINI_ENDPOINT}/${dependencies.modelId}:generateContent`,
-        {
-          method: "POST",
-          signal: options.signal,
-          headers: {
-            "content-type": "application/json",
-            "x-goog-api-key": dependencies.apiKey,
-          },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: payload.instruction },
-                { inline_data: { mime_type: payload.page.mediaType, data: pageBytes.toString("base64") } },
-              ],
-            }],
-            generationConfig: { responseMimeType: "application/json", temperature: 0 },
-          }),
-        },
-      );
+      const response = await geminiGenerateContent({
+        apiKey: dependencies.apiKey,
+        modelId: dependencies.modelId,
+        parts: [
+          { text: payload.instruction },
+          { inline_data: { mime_type: payload.page.mediaType, data: pageBytes.toString("base64") } },
+        ],
+        signal: options.signal,
+        fetchFn,
+      });
 
       const capturedAt = dependencies.clock.now().toISOString();
       const evidenceBase = {
@@ -196,7 +146,7 @@ export function createGeminiOcrExtractAdapter(
             reason: ProviderUnavailableReasonSchema.parse({
               code: "rate-exhausted",
               message: `gemini ${dependencies.modelId} answered 429 for ocr.extract`,
-              retryAt: retryAtFrom(response.headers.get("retry-after"), dependencies.clock),
+              retryAt: geminiRetryAt(response.headers.get("retry-after"), dependencies.clock),
             }),
           },
           usage,
@@ -225,9 +175,7 @@ export function createGeminiOcrExtractAdapter(
       }
 
       const body = GeminiResponseBodySchema.parse(await response.json());
-      const text = (body.candidates?.[0]?.content?.parts ?? [])
-        .map((part) => part.text ?? "")
-        .join("");
+      const text = geminiAnswerText(body);
       const evidence = {
         ...evidenceBase,
         summary: `${evidenceBase.summary}, ${String(text.length)} chars`,
@@ -240,7 +188,7 @@ export function createGeminiOcrExtractAdapter(
           evidence,
         }));
       }
-      const parsed = parseModelJson(text);
+      const parsed = parseGeminiModelJson(text);
       if (!parsed.ok) {
         return deepFreeze(ProviderAdapterOutcomeSchema.parse({
           response: { state: "invalid-response", reason: parsed.reason },

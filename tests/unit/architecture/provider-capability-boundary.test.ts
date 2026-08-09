@@ -52,6 +52,13 @@ const PROVIDER_CLIENT_TYPE_OWNERS: ReadonlySet<string> = new Set([
   "src/base/providers.ts",
   "src/core/provider-admission.ts",
   "src/core/run-executor.ts",
+  // D178. Doc 12 §4.4's advisory is the first provider consumer OUTSIDE a run
+  // task: a task receives its clients through `ctx.providers` and never names
+  // the type, but an on-demand operator advisory has no task context to
+  // inherit. It still obtains its client from the kernel
+  // (`createAdvisoryProviderClient`) — this entry lets it declare what it was
+  // handed, not mint one.
+  "src/services/trust/advisory.ts",
 ]);
 const ADMITTED_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
   "src/core/provider-admission.ts",
@@ -61,6 +68,13 @@ const ADMISSION_MODULE_IMPORTERS: ReadonlySet<string> = new Set([
   "src/core/provider-admission.ts",
   "src/core/run-executor.ts",
   "src/server/worker/compose.ts",
+  // D178. The dashboard process became a second admitted-provider consumer
+  // when doc 12 §4.4's on-demand advisory landed: it composes the pool and
+  // mints the client through the kernel's `createAdvisoryProviderClient`,
+  // exactly as the worker root does for a run. A composition root is the ONE
+  // place this may happen — the query it hands the closure to names no
+  // provider type at all.
+  "src/server/dashboard/compose.ts",
 ]);
 
 export function auditProviderCapabilityBoundary(root: string): readonly string[] {
@@ -177,13 +191,16 @@ describe("provider capability boundary", () => {
       gitVisibleFiles(["src/infra/providers"]).map((path) => relative(REPO_ROOT, path).replaceAll("\\", "/")),
       [
         "src/infra/providers/deterministic-provider.ts",
+        "src/infra/providers/gemini-advisory.ts",
         "src/infra/providers/gemini-ocr-extract.ts",
+        "src/infra/providers/gemini-transport.ts",
         "src/infra/providers/geocode-adapters.ts",
         "src/infra/providers/provider-pool.ts",
       ].sort(),
-      "the deterministic harness, the D161 gemini ocr.extract adapter, the D165 census/nominatim"
-        + " geocode adapters, and the D165 rotation pool; a new production adapter joins this list"
-        + " deliberately, in the same commit that reviews it",
+      "the deterministic harness, the D161 gemini ocr.extract adapter, the D178 gemini ai.advisory"
+        + " adapter and the transport half they share, the D165 census/nominatim geocode adapters,"
+        + " and the D165 rotation pool; a new production adapter joins this list deliberately, in"
+        + " the same commit that reviews it",
     );
   });
 
