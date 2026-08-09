@@ -36,15 +36,22 @@ export const intakeFixtureProjection = defineIntakeProjection(IntakeFixtureInput
  * injected fault. Both share the ONE input schema object, which is what makes
  * one projection valid for both.
  */
-function defineIntakeFixtureDescriptor(options: Readonly<{
+export function defineIntakeFixtureDescriptor(options: Readonly<{
   id: string;
   code: string;
   contractFingerprint: string;
   enqueue: "allow-parallel" | "reject-active";
+  /**
+   * A version bump is a source edit plus `npm run build:manifest`, which is
+   * exactly what moving `version` and `contractFingerprint` together produces.
+   * The D185 lifecycle walk needs the SAME workflow at two versions to archive
+   * one of its own runs, so the factory is exported rather than copied.
+   */
+  version?: number;
 }>): AnyWorkflowDescriptor {
   return defineWorkflowDescriptor({
     id: options.id,
-    version: 1,
+    version: options.version ?? 1,
     contractFingerprint: options.contractFingerprint,
     code: options.code,
     label: "Intake fixture",

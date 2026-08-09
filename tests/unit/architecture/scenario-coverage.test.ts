@@ -257,7 +257,9 @@ describe("scenario coverage", () => {
         `${file} is neither corpus kind`,
       );
     }
+    // Both kinds are in use, so neither arm is enforcing an empty set.
     assert.ok(files.some(({ file }) => GRAPH_SCENARIO_FILE_PATTERN.test(file)));
+    assert.ok(files.some(({ file }) => INTEGRATION_WALK_FILE_PATTERN.test(file)));
   });
 
   it("reads an `it` title as a scenario CLAIM only when its head is a scenario id", () => {
