@@ -8,13 +8,14 @@ import {
   useContext,
   useId,
   useRef,
+  useState,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
-import { Check, ChevronDown, Lock, Minus, Pencil, Search, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronDown, Lock, Minus, Pencil, Search, TriangleAlert, Upload, X } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import { dsBorder, dsFocus, dsFocusWithin, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
 
@@ -630,5 +631,118 @@ export function LockedValue({
         {value}
       </span>
     </span>
+  );
+}
+
+/* =========================================================================
+ * Dropzone — bytes enter the system here
+ * ====================================================================== */
+
+/**
+ * The one place an operator hands this system a FILE (doc 06 §2.2 step 1).
+ *
+ * It is a `<label>` wrapping a real `<input type="file">`, not a div with a
+ * click handler. That is what makes the keyboard, the screen reader and the
+ * touch device all reach it for free, and it is why the drop target and the
+ * browse control are the same control rather than two affordances that can
+ * disagree about what was accepted.
+ *
+ * Three deliberate refusals:
+ *
+ *  - **It states what it takes** — the extensions and the size cap, from the
+ *    server's own constants — because a dropzone that only says "no" after the
+ *    upload has taught the operator nothing.
+ *  - **It never filters silently.** `accept` is a HINT to the file picker; a
+ *    dragged file that does not match still arrives, and this hands it over
+ *    unchanged so the SERVER refuses it by name. Quietly ignoring a dropped
+ *    file is indistinguishable from a broken page.
+ *  - **`busy` disables it and says so.** An upload in flight with a live drop
+ *    target is how the same file gets sent twice.
+ *
+ * Drag state is tracked with a counter, not a boolean: `dragleave` fires when
+ * the pointer crosses into a CHILD element, so a boolean flickers the whole
+ * time the file is over the zone.
+ */
+export function Dropzone({
+  label,
+  accept,
+  hint,
+  busy,
+  busyLabel = "Reading…",
+  onFile,
+  className,
+}: {
+  label: ReactNode;
+  /** the picker hint, e.g. `.csv,.xlsx` — never used to drop a file */
+  accept?: string;
+  /** what is accepted and how large, in the product's own words */
+  hint?: ReactNode;
+  busy?: boolean;
+  busyLabel?: string;
+  onFile: (file: File) => void;
+  className?: string;
+}) {
+  const [depth, setDepth] = useState(0);
+  const over = depth > 0 && busy !== true;
+
+  const take = (list: FileList | null): void => {
+    const file = list?.item(0);
+    // No file is a real outcome (a cancelled picker, a drag of something that
+    // is not a file); it is not an error and it is not a reason to guess.
+    if (file === null || file === undefined) return;
+    onFile(file);
+  };
+
+  return (
+    <label
+      onDragEnter={(event) => {
+        event.preventDefault();
+        setDepth((current) => current + 1);
+      }}
+      onDragOver={(event) => event.preventDefault()}
+      onDragLeave={() => setDepth((current) => Math.max(0, current - 1))}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDepth(0);
+        if (busy === true) return;
+        take(event.dataTransfer.files);
+      }}
+      className={cn(
+        "flex flex-col items-center justify-center gap-[var(--ds-space-tight)]",
+        "border-dashed p-[var(--ds-space-section)] text-center",
+        dsBorder.base,
+        dsRadius.lg,
+        dsFocusWithin,
+        dsMotion.base,
+        over
+          ? "border-[color:var(--ds-accent)] bg-[color:var(--ds-accent-quiet)]"
+          : "bg-[color:var(--ds-recess-bg)] hover:border-[color:var(--ds-border-loud)]",
+        busy === true ? "cursor-progress opacity-70" : "cursor-pointer",
+        className,
+      )}
+    >
+      <input
+        type="file"
+        accept={accept}
+        disabled={busy}
+        className="sr-only"
+        onChange={(event) => {
+          take(event.currentTarget.files);
+          // Clearing lets the SAME file be chosen again after a refusal —
+          // otherwise `change` never fires and the zone looks dead.
+          event.currentTarget.value = "";
+        }}
+      />
+      <Upload
+        aria-hidden
+        className={cn(dsIcon.lg, over ? "text-[color:var(--ds-accent)]" : "text-[color:var(--ds-fg-faint)]")}
+      />
+      <span className={cn(dsText.ui, "font-medium text-[color:var(--ds-fg)]")}>
+        {busy === true ? busyLabel : label}
+      </span>
+      {hint !== undefined && (
+        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{hint}</span>
+      )}
+    </label>
   );
 }

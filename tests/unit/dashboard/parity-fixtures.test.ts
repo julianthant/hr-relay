@@ -24,10 +24,68 @@ import {
   FIXTURE_RUN_DETAILS,
   FIXTURE_SECTIONS,
 } from "../../parity/helpers/fixture-day.js";
+import {
+  FIXTURE_INTAKE_MAPPING,
+  FIXTURE_INTAKE_VALIDATED,
+} from "../../parity/helpers/fixture-intake.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
 afterAll(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
+});
+
+/**
+ * The intake corpus (2i-E3) is derived, not typed: every column id, layout
+ * fingerprint, suggestion score and row disposition comes from the same domain
+ * functions the kernel runs. These cases assert the properties that make the
+ * references EVIDENCE rather than decoration — a hand-edited fixture would
+ * still schema-parse, so schema parsing alone proves nothing here.
+ */
+describe("intake fixture corpus", () => {
+  it("keeps suggestions out of bindings, which is the whole §2.5 invariant", () => {
+    // Mid-mapping: one binding confirmed, and a proposal for the OTHER target
+    // still sitting unapplied beside it. If the fixture ever folded one into
+    // the other, the reference would document the exact defect §2.5 bans.
+    expect(FIXTURE_INTAKE_MAPPING.bindings.map((binding) => binding.targetFieldId)).toEqual(["emplId"]);
+    const proposed = FIXTURE_INTAKE_MAPPING.suggestions.map((suggestion) => suggestion.targetFieldId);
+    expect(proposed).toContain("name");
+    for (const suggestion of FIXTURE_INTAKE_MAPPING.suggestions) {
+      expect(Object.keys(suggestion).sort()).toEqual(
+        ["ambiguous", "score", "sourceColumnId", "targetFieldId", "why"],
+      );
+    }
+  });
+
+  it("covers every source row exactly once across valid, rejected and excluded", () => {
+    const validation = FIXTURE_INTAKE_VALIDATED.validation;
+    expect(validation.state).toBe("validated");
+    if (validation.state !== "validated") return;
+    const rejectedRows = new Set(validation.rejected.map((reject) => reject.sourceRow));
+    expect(validation.validRows + rejectedRows.size + validation.excluded.length)
+      .toBe(FIXTURE_INTAKE_VALIDATED.rowCount);
+  });
+
+  it("exercises the rejection kinds an operator actually has to decide about", () => {
+    const validation = FIXTURE_INTAKE_VALIDATED.validation;
+    if (validation.state !== "validated") throw new Error("the validated fixture is not validated");
+    const codes = new Set(validation.rejected.map((reject) => reject.code));
+    // A cell that cannot be read, a row the workflow's own schema refuses, and
+    // one person listed twice — the three shapes the review surface renders
+    // differently. A corpus of one kind would leave two arms unphotographed.
+    expect(codes).toContain("cell-coercion");
+    expect(codes).toContain("duplicate-identity");
+    expect(codes).toContain("cross-field");
+  });
+
+  it("redacts a rejected cell by its canonical field's declared transform", () => {
+    const validation = FIXTURE_INTAKE_VALIDATED.validation;
+    if (validation.state !== "validated") throw new Error("the validated fixture is not validated");
+    const coercion = validation.rejected.find((reject) => reject.kind === "cell-coercion");
+    expect(coercion).toBeDefined();
+    // `eid` declares `last4`, so the durable manifest — and this reference —
+    // never carries the whole identifier.
+    expect(coercion?.kind === "cell-coercion" ? coercion.raw.state : undefined).toBe("transformed");
+  });
 });
 
 describe("parity fixture corpus", () => {

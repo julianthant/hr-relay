@@ -161,6 +161,13 @@ export {
    */
   ValueField,
   LockedValue,
+  /**
+   * The one place bytes enter this system. A real `<input type="file">` inside
+   * a `<label>`, so the drop target and the browse control are one control —
+   * and it never filters a dropped file itself, because the server is what
+   * refuses a file by name.
+   */
+  Dropzone,
 } from "./primitives-form.js";
 
 export {

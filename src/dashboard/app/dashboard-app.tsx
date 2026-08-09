@@ -22,11 +22,13 @@ import {
 } from "../../domain/dashboard/bootstrap.js";
 import { InputRunSurfaceSchema } from "../../domain/workflow/ingress.js";
 import { WORKFLOW_DESCRIPTORS } from "../../workflows/descriptor-registry.js";
-import { ToastProvider, TooltipProvider, useDemoTheme } from "../ds/ui.js";
+import { FileSpreadsheet } from "lucide-react";
+import { Button, ToastProvider, TooltipProvider, dsIcon, useDemoTheme } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
 import { useRunDetail } from "../state/use-run-detail.js";
+import { IntakeWorkspace } from "../surfaces/intake.js";
 import { LogPanel, defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel.js";
 import { QueuePanel, type QueueSurfaceWire, type QueueViewState } from "../surfaces/queue.js";
 import { RunStartButton, RunStartSurfaces, type RunStartWorkflow } from "../surfaces/run-start.js";
@@ -43,7 +45,7 @@ import {
 } from "../surfaces/shell.js";
 import { TopBar, serverLocalDay } from "../surfaces/top-bar.js";
 import { usePanelSections } from "./use-panel-sections.js";
-import { parseRoute, routeToSearch, type AppRouteState } from "./url-state.js";
+import { INTAKE_NEW, parseRoute, routeToSearch, type AppRouteState } from "./url-state.js";
 
 /**
  * The 1i BFF serves no actions yet (the action projection lands with 2g), so
@@ -315,9 +317,43 @@ function LoadedApp({
               dayCount={dayCount}
             />
             <div className="flex-1" />
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<FileSpreadsheet aria-hidden className={dsIcon.sm} />}
+              onClick={() => setRoute({ ...route, intake: INTAKE_NEW })}
+            >
+              Import spreadsheet
+            </Button>
             <RunStartButton onOpen={() => setStartOpen(true)} />
           </div>
 
+          {/*
+            The intake workspace REPLACES the queue for as long as it is open.
+            It is not a dialog: the session is durable, mapping and reviewing
+            take minutes, and the operator must be able to leave and come back
+            to `?intake=<id>`. Hiding the queue is the honest statement that
+            they are in a different task — a half-visible queue behind a
+            takeover is the modal it deliberately is not.
+          */}
+          {route.intake !== undefined ? (
+            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
+              <IntakeWorkspace
+                workflowId={activeWorkflowId}
+                workflowLabel={workflowLabelOf(activeWorkflowId)}
+                actorId={boot.actor.id}
+                supportsDryRun={
+                  startWorkflow.inputRun.state === "present"
+                  && startWorkflow.inputRun.surface.supportsDryRun === true
+                }
+                sessionId={route.intake === INTAKE_NEW ? undefined : route.intake}
+                onSession={(next) => setRoute({ ...route, intake: next ?? INTAKE_NEW })}
+                onClose={() => setRoute({ ...route, intake: undefined })}
+                onEnqueued={() => setRoute({ ...route, intake: undefined })}
+              />
+            </div>
+          ) : (
+          <>
           <StatusFilters
             statusCounts={dayWire?.statusCounts ?? []}
             dayCount={dayCount}
@@ -365,6 +401,8 @@ function LoadedApp({
               </div>
             )}
           </div>
+          </>
+          )}
         </main>
 
         {panelMode.mode === "floating" && (

@@ -20,8 +20,26 @@ export interface StreamHandle {
   close(): void;
 }
 
+/** A response whose STATUS is part of the contract, kept beside its body. */
+export interface JsonResponse {
+  readonly status: number;
+  readonly ok: boolean;
+  readonly body: unknown;
+}
+
 export interface DashboardTransport {
   requestJson(path: string, init?: RequestInit): Promise<unknown>;
+  /**
+   * The same request, with the status line preserved.
+   *
+   * Two routes make the status load-bearing rather than incidental: the command
+   * route rides `409`/`422` with a typed body, and the intake upload answers
+   * `201` for a session it CREATED against `200` for one it JOINED — the same
+   * wire shape, two different things to tell the operator. `requestJson` throws
+   * that distinction away by design, so a caller who needs it asks for it here
+   * instead of re-deriving it from the payload.
+   */
+  requestJsonResponse(path: string, init?: RequestInit): Promise<JsonResponse>;
   openStream(
     path: string,
     options: Readonly<{ lastEventId?: string; onMessage: (message: SseMessage) => void }>,
@@ -35,25 +53,32 @@ export function createDashboardTransport(input: Readonly<{
   const baseUrl = input.baseUrl.replace(/\/$/, "");
   const fetchImpl: FetchLike = input.fetchImpl ?? ((url, init) => fetch(url, init));
 
+  const send = async (path: string, init?: RequestInit): Promise<JsonResponse> => {
+    let response: Response;
+    try {
+      response = await fetchImpl(`${baseUrl}${path}`, {
+        ...init,
+        headers: { accept: "application/json", ...(init?.body === undefined ? {} : { "content-type": "application/json" }), ...init?.headers },
+      });
+    } catch (error) {
+      throw networkError(`${init?.method ?? "GET"} ${path}`, error);
+    }
+    const body: unknown = await response.json().catch((error: unknown) => {
+      throw httpError(response.status, { unparseable: String(error) });
+    });
+    return Object.freeze({ status: response.status, ok: response.ok, body });
+  };
+
   return Object.freeze({
     async requestJson(path: string, init?: RequestInit): Promise<unknown> {
-      let response: Response;
-      try {
-        response = await fetchImpl(`${baseUrl}${path}`, {
-          ...init,
-          headers: { accept: "application/json", ...(init?.body === undefined ? {} : { "content-type": "application/json" }), ...init?.headers },
-        });
-      } catch (error) {
-        throw networkError(`${init?.method ?? "GET"} ${path}`, error);
-      }
-      const body: unknown = await response.json().catch((error: unknown) => {
-        throw httpError(response.status, { unparseable: String(error) });
-      });
+      const response = await send(path, init);
       // Command results legitimately ride 409/422 with a typed body; every
       // other non-2xx is the wire-error contract.
-      if (!response.ok && path !== "/api/v1/commands") throw httpError(response.status, body);
-      return body;
+      if (!response.ok && path !== "/api/v1/commands") throw httpError(response.status, response.body);
+      return response.body;
     },
+
+    requestJsonResponse: send,
 
     openStream(
       path: string,
