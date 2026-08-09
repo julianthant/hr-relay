@@ -13,6 +13,12 @@ import {
   type RunDetailWire,
 } from "../../domain/dashboard/run-detail.js";
 import { StorageDoctorWireSchema, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
+import {
+  UiCatalogWireSchema,
+  WorkflowExplorerWireSchema,
+  type UiCatalogWire,
+  type WorkflowExplorerWire,
+} from "../../domain/dashboard/explorer.js";
 import { CaptureStartResultSchema, type CaptureStartResult } from "../../domain/capture-surface.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../domain/intake/wire.js";
 import { WIRE_ERROR_BODY, httpError, schemaError } from "./errors.js";
@@ -72,6 +78,15 @@ export interface DashboardQueries {
    * fault must never render as "capture is misconfigured".
    */
   startCaptureSession(request: CaptureStartRequest): Promise<CaptureStartResult>;
+  /**
+   * Doc 12 §5.2's read-only explorer projection (2i-G, D176).
+   *
+   * There is deliberately no mutating counterpart on this interface: Phase A
+   * has no draft, no validate and no apply, so the surface cannot offer one.
+   */
+  workflowExplorer(): Promise<WorkflowExplorerWire>;
+  /** The committed `generated/ui-catalog.json`, served read-only (2i-G, D177). */
+  uiCatalog(): Promise<UiCatalogWire>;
 }
 
 export interface CaptureStartRequest {
@@ -161,6 +176,21 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         throw httpError(response.status, response.body);
       }
       return parseOrThrow(CaptureStartResultSchema, `POST ${path}`, response.body);
+    },
+
+    async workflowExplorer(): Promise<WorkflowExplorerWire> {
+      return parseOrThrow(
+        WorkflowExplorerWireSchema,
+        "GET /api/v1/explorer",
+        await transport.requestJson("/api/v1/explorer"),
+      );
+    },
+    async uiCatalog(): Promise<UiCatalogWire> {
+      return parseOrThrow(
+        UiCatalogWireSchema,
+        "GET /api/v1/ui-catalog",
+        await transport.requestJson("/api/v1/ui-catalog"),
+      );
     },
   });
 }

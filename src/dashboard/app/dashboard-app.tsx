@@ -22,13 +22,15 @@ import {
 } from "../../domain/dashboard/bootstrap.js";
 import { InputRunSurfaceSchema } from "../../domain/workflow/ingress.js";
 import { WORKFLOW_DESCRIPTORS } from "../../workflows/descriptor-registry.js";
-import { FileSpreadsheet } from "lucide-react";
+import { BookMarked, FileSpreadsheet, GitBranch } from "lucide-react";
 import { Button, ToastProvider, TooltipProvider, dsIcon, useDemoTheme } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
 import { useRunDetail } from "../state/use-run-detail.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
+import { WorkflowExplorer } from "../surfaces/explorer.js";
+import { UiCatalogWorkspace } from "../surfaces/ui-catalog.js";
 import { LogPanel, defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel.js";
 import { QueuePanel, type QueueSurfaceWire, type QueueViewState } from "../surfaces/queue.js";
 import { RunStartButton, RunStartSurfaces, type RunStartWorkflow } from "../surfaces/run-start.js";
@@ -45,7 +47,13 @@ import {
 } from "../surfaces/shell.js";
 import { TopBar, serverLocalDay } from "../surfaces/top-bar.js";
 import { usePanelSections } from "./use-panel-sections.js";
-import { INTAKE_NEW, parseRoute, routeToSearch, type AppRouteState } from "./url-state.js";
+import {
+  INTAKE_NEW,
+  activeTakeover,
+  parseRoute,
+  routeToSearch,
+  type AppRouteState,
+} from "./url-state.js";
 
 /**
  * The 1i BFF serves no actions yet (the action projection lands with 2g), so
@@ -271,6 +279,9 @@ function LoadedApp({
   );
 
   const ready = dayResource.state === "loaded" || dayResource.state === "failed";
+  // One resolution of "which takeover owns the main region", so the JSX below
+  // cannot disagree with a link that carries more than one key.
+  const takeover = activeTakeover(route);
 
   return (
     <div
@@ -317,6 +328,29 @@ function LoadedApp({
               dayCount={dayCount}
             />
             <div className="flex-1" />
+            {/*
+              The two reference entries sit here, beside the panel they describe,
+              because both are read from the ACTIVE workflow's context: the
+              explorer opens on it, and the catalog is the vocabulary its browser
+              tasks are written in. Neither is a command — they take no argument
+              from the operator and change nothing — so both are secondary.
+            */}
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<GitBranch aria-hidden className={dsIcon.sm} />}
+              onClick={() => setRoute({ ...route, explore: activeWorkflowId })}
+            >
+              Explore graph
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<BookMarked aria-hidden className={dsIcon.sm} />}
+              onClick={() => setRoute({ ...route, catalog: "" })}
+            >
+              UI catalog
+            </Button>
             <Button
               size="sm"
               variant="secondary"
@@ -336,7 +370,7 @@ function LoadedApp({
             they are in a different task — a half-visible queue behind a
             takeover is the modal it deliberately is not.
           */}
-          {route.intake !== undefined ? (
+          {takeover === "intake" ? (
             <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
               <IntakeWorkspace
                 workflowId={activeWorkflowId}
@@ -350,6 +384,28 @@ function LoadedApp({
                 onSession={(next) => setRoute({ ...route, intake: next ?? INTAKE_NEW })}
                 onClose={() => setRoute({ ...route, intake: undefined })}
                 onEnqueued={() => setRoute({ ...route, intake: undefined })}
+              />
+            </div>
+          ) : takeover === "explore" ? (
+            /*
+              The explorer takes over for the same reason intake does: it is a
+              different task, and a half-visible queue behind a reference view
+              is the modal this deliberately is not. It carries no session, so
+              closing it simply drops the key.
+            */
+            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
+              <WorkflowExplorer
+                workflowId={route.explore ?? activeWorkflowId}
+                onWorkflow={(next) => setRoute({ ...route, explore: next })}
+                onClose={() => setRoute({ ...route, explore: undefined })}
+              />
+            </div>
+          ) : takeover === "catalog" ? (
+            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
+              <UiCatalogWorkspace
+                query={route.catalog ?? ""}
+                onQuery={(next) => setRoute({ ...route, catalog: next })}
+                onClose={() => setRoute({ ...route, catalog: undefined })}
               />
             </div>
           ) : (
