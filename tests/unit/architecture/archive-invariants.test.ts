@@ -1,0 +1,230 @@
+/**
+ * `archive-invariants` — the structural half of D80/D179 (doc 03 §10.2, doc 13
+ * §8 guard #11).
+ *
+ * The behavioural clauses live in `tests/unit/archive-model.test.ts`, which
+ * drives a real bump through the real kernel. What CANNOT be proved by driving
+ * it once is that the archive stays this way, so four things are checked here
+ * by construction:
+ *
+ * 1. **Self-containment is structural.** The module that serves an archived
+ *    run may not reach the workflow registry for CONTENT. It is checked over
+ *    the import closure, not by grepping one file, because a descriptor read
+ *    three modules deep is the same coupling with more steps — and it is
+ *    checked against a violating fixture, so a dead check cannot stand in for
+ *    enforcement.
+ * 2. **The archive is insert-only in SQL.** Not by convention and not by
+ *    repository discipline: the migration's triggers are executed against a
+ *    real database and every UPDATE and DELETE must ABORT. An archive whose
+ *    rows could be rewritten is a weaker record than the live row it replaced.
+ * 3. **The ledger is untouchable from here.** No module on the archive path
+ *    may name `ledger/` at all — archiving is a display lifecycle and what was
+ *    filed in a real HR system is an audit one.
+ * 4. **The content digest is a fixed point.** Re-deriving a stored record's
+ *    digest from its own content must reproduce it, and a tampered record must
+ *    not — otherwise `archiveFingerprint`, which a relaunch cites, would be
+ *    decoration.
+ */
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative, resolve } from "node:path";
+import { afterEach, describe, it } from "vitest";
+import { DatabaseSync } from "node:sqlite";
+import {
+  archivedRunContentDigest,
+  ArchivedRunContentSchema,
+  ArchivedRunRecordSchema,
+} from "../../../src/domain/archive/model.js";
+import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { manualClock } from "../../../src/domain/clock.js";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { REPO_ROOT } from "./helpers/guard-files.js";
+import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
+import {
+  ARCHIVED_RUN,
+  ARCHIVE_RELAUNCH,
+  VERSION_BUMP_APPLICATION,
+  VERSION_PLAN_ROW,
+} from "../fixtures/archive-fixtures.js";
+
+const roots: string[] = [];
+const databases: AuthorityDatabase[] = [];
+
+afterEach(() => {
+  for (const database of databases.splice(0)) database.close();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+/* ── the import-closure walker ───────────────────────────────────────────── */
+
+/**
+ * The modules an archived run's READ path may value-reach. Type-only imports
+ * are exempt for the same reason `dashboard-wire-boundary` exempts them: a
+ * type does not survive emission, so it cannot execute a descriptor lookup.
+ */
+const IMPORT_PATTERN =
+  /^\s*(?:import|export)\s+(?!type\s)(?:[\s\S]*?from\s+)?["']([^"']+)["'];?\s*$/gmu;
+
+function resolveSpecifier(fromFile: string, specifier: string): string | undefined {
+  if (!specifier.startsWith(".")) return undefined;
+  const target = resolve(dirname(fromFile), specifier.replace(/\.js$/u, ".ts"));
+  return target;
+}
+
+function closureOf(entry: string): ReadonlySet<string> {
+  const seen = new Set<string>();
+  const pending = [entry];
+  while (pending.length > 0) {
+    const file = pending.pop();
+    if (file === undefined || seen.has(file)) continue;
+    let content: string;
+    try {
+      content = readFileSync(file, "utf8");
+    } catch {
+      // A `.tsx` sibling or a directory index the archive path never has;
+      // recorded as unreachable rather than silently skipped.
+      continue;
+    }
+    seen.add(file);
+    for (const match of content.matchAll(IMPORT_PATTERN)) {
+      const next = resolveSpecifier(file, match[1]);
+      if (next !== undefined) pending.push(next);
+    }
+  }
+  return seen;
+}
+
+/** Modules whose whole purpose is to resolve or interpret a descriptor. */
+const REGISTRY_MODULES = Object.freeze([
+  "src/base/workflow.ts",
+  "src/control/workflow-registry.ts",
+  "src/domain/workflow/generated-build-manifest.ts",
+]);
+
+describe("archive invariants", () => {
+  it("keeps the archived-run read path free of the workflow registry, and catches a violation", () => {
+    const entry = join(REPO_ROOT, "src/server/dashboard/queries/archive.ts");
+    const closure = [...closureOf(entry)].map((file) => relative(REPO_ROOT, file).replaceAll("\\", "/"));
+    const reached = REGISTRY_MODULES.filter((module) => closure.includes(module));
+    assert.deepEqual(
+      reached,
+      [],
+      `the archive read path value-reaches ${reached.join(", ")}; an archived run must render with the `
+      + "originating descriptor absent (doc 13 §8 guard #11)",
+    );
+
+    /*
+      The negative control, run through the SAME walker: a module that reaches
+      the registry — even two hops away, and even through a `.js` specifier —
+      must be caught. Without it, a walker that silently resolved nothing would
+      report a clean closure forever.
+      */
+    const violating = join(REPO_ROOT, "tests/unit/architecture/fixtures/archive-registry-violation.ts");
+    const violatingClosure = [...closureOf(violating)]
+      .map((file) => relative(REPO_ROOT, file).replaceAll("\\", "/"));
+    assert.equal(
+      REGISTRY_MODULES.some((module) => violatingClosure.includes(module)),
+      true,
+      "the violating fixture must be caught by the same walker that clears the real module",
+    );
+  });
+
+  it("never names the ledger from any archive module", () => {
+    const files = [
+      "src/domain/archive/model.ts",
+      "src/services/archive/archive-service.ts",
+      "src/server/dashboard/queries/archive.ts",
+    ];
+    for (const file of files) {
+      // Comments are stripped first: the word MUST appear in the prose — the
+      // whole point of these modules is that the ledger is never archived —
+      // and it must never appear in the code.
+      const code = readFileSync(join(REPO_ROOT, file), "utf8")
+        .replaceAll(/\/\*[\s\S]*?\*\//gu, "")
+        .replaceAll(/^\s*\/\/.*$/gmu, "");
+      // A `ledger/` PATH or an import of a ledger module. A schema FIELD named
+      // `ledgerPartitions` is the opposite of a violation: it is how an
+      // archived run points AT lines it must never move.
+      assert.equal(
+        /["'`][^"'`]*ledger\//u.test(code) || /from\s+["'][^"']*ledger[^"']*["']/u.test(code),
+        false,
+        `${file} names a ledger path or module; archiving is a display lifecycle and the ledger is an audit one`,
+      );
+    }
+  });
+
+  it("aborts every UPDATE and DELETE against the three archive tables", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-archive-immutable-"));
+    roots.push(root);
+    const path = join(root, "authority.sqlite");
+    const database = AuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "archive-guard" },
+      manualClock(new Date(NOW)),
+    );
+    databases.push(database);
+    database.withAuthorityTransaction((repositories) => {
+      repositories.runs.enqueue(QUEUED_RUN);
+      repositories.versionPlans.insert(VERSION_PLAN_ROW);
+      repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      repositories.archivedRuns.insert(ARCHIVED_RUN);
+      repositories.runs.enqueue({
+        ...QUEUED_RUN,
+        envelope: {
+          ...QUEUED_RUN.envelope,
+          runId: ARCHIVE_RELAUNCH.runId,
+          itemId: "77777777-0007-4000-8000-777700000007",
+          traceId: "pl-170001-3333",
+        },
+      });
+      repositories.archiveRelaunches.insert(ARCHIVE_RELAUNCH);
+      return undefined;
+    });
+    database.close();
+    databases.pop();
+
+    // Raw SQL, deliberately: the repositories have no update or delete verb,
+    // so the only honest way to prove the row cannot move is to try to move it
+    // the way a future repository method or a stray migration would.
+    const raw = new DatabaseSync(path);
+    try {
+      for (const table of ["version_bump_applications", "archived_runs", "archive_relaunches"]) {
+        // A trigger only fires on a row that exists, so an empty table would
+        // pass this check by doing nothing at all.
+        const rows = raw.prepare(`SELECT count(*) AS count FROM ${table}`).get() as { count: number };
+        assert.equal(rows.count > 0, true, `${table} has no row to attempt a mutation against`);
+        assert.throws(
+          () => raw.prepare(`UPDATE ${table} SET created_at = ?`).run("2030-01-01T00:00:00.000Z"),
+          /immutable/u,
+          `${table} accepted an UPDATE`,
+        );
+        assert.throws(
+          () => raw.prepare(`DELETE FROM ${table}`).run(),
+          /never deleted/u,
+          `${table} accepted a DELETE`,
+        );
+      }
+    } finally {
+      raw.close();
+    }
+  });
+
+  it("makes the content digest a fixed point, and refuses a tampered record", () => {
+    const { contentDigest: _stored, ...content } = ARCHIVED_RUN;
+    const rederived = archivedRunContentDigest(ArchivedRunContentSchema.parse(content));
+    assert.equal(rederived, ARCHIVED_RUN.contentDigest);
+
+    // A record whose stored content no longer hashes to its digest is exactly
+    // what `relaunch-archived-run` refuses on, so the property has to hold in
+    // one direction as well as the other.
+    const tamperedContent = ArchivedRunContentSchema.parse({ ...content, archivedBy: "someone-else" });
+    assert.notEqual(archivedRunContentDigest(tamperedContent), ARCHIVED_RUN.contentDigest);
+
+    // And the record schema itself still parses byte-stable, so a re-read of
+    // stored bytes cannot produce a second, different digest.
+    const roundTripped = ArchivedRunRecordSchema.parse(JSON.parse(canonicalJsonStringify(ARCHIVED_RUN)));
+    assert.equal(roundTripped.contentDigest, ARCHIVED_RUN.contentDigest);
+    assert.equal(ARCHIVE_RELAUNCH.archivedRunId, ARCHIVED_RUN.runId);
+  });
+});

@@ -19,9 +19,10 @@
  * 2. FIXTURE — a seeded world containing hidden, delegated (operation +
  *    members), rejected/failed, gated, and terminal rows proves Workflow
  *    Panel total == Status Bar sum == rendered Queue Panel row count BY
- *    CONSTRUCTION, folded and served from the one payload. (Archived rows
- *    join this fixture when the D80 archive service lands in 2i — archive
- *    state is not yet representable in this tree.)
+ *    CONSTRUCTION, folded and served from the one payload. An ARCHIVED row joins them at D179: it is
+ *    excluded once, in the same place hidden rows and member containment are,
+ *    so a prior-version run leaves the queue, the workflow badge, the status
+ *    pill and the month calendar at the same instant.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -130,6 +131,11 @@ describe("one-projection-counts (D81)", () => {
       lifecycle: { state: "terminal", outcome: "failed", endedAt: "2026-08-03T17:20:00.000Z", failureId: uuidOf(9007) },
       version: 3,
     }));
+    // D179/D80: a prior-version run a bump has archived. It is excluded by the
+    // SAME pass that drops a hidden row, which is why adding it here moves no
+    // count on its own — that agreement is the whole property.
+    queuedEventOf(world, { seed: 9 });
+    world.authority.archived.add(uuidOf(9));
     queuedEventOf(world, { seed: 8 }); // parked on an operator gate
     world.writer.emit({
       t: "gate.opened", ts: world.clock.now().toISOString(), workflow: "person-lookup",
