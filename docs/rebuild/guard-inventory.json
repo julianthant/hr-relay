@@ -4,7 +4,7 @@
   "architectureRoot": "tests/unit/architecture",
   "testScript": "test:architecture",
   "coveragePolicy": {
-    "exclusionListSha256": "3fd6cca7742da0cc489985c45cccf163136643a6819eb98fb3114a41f35dcc30",
+    "exclusionListSha256": "8e9b140a2c11848c9940f13350d6a455b082c4ad9b4f9e54d4e6e6918c272763",
     "minimumFloors": {
       "global": 60,
       "safetyCritical": 80
@@ -29,7 +29,7 @@
       "file": "tests/unit/architecture/dashboard-wire-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/13-frontend-backend-integration.md",
-      "invariant": "Doc 13 \u00a78.2/\u00a78.3/\u00a78.13: src/dashboard declares no handwritten structural mirror of a *Wire contract (schema-inferred types only), no dashboard file carries a registered workflow-id string literal \u2014 workflow identity reaches surfaces only as served data or the bundle-safe descriptor tuple, never as a branchable literal \u2014 and the bundled-import closure of the entry declared in src/dashboard/index.html reaches no Node built-in, so a shared domain contract can never drag node:path/node:fs/node:crypto into the browser bundle.",
+      "invariant": "Doc 13 \u00a78.2/\u00a78.3/\u00a78.13 and doc 12 \u00a77: src/dashboard declares no handwritten structural mirror of a *Wire contract (schema-inferred types only), no dashboard file carries a registered workflow-id string literal \u2014 workflow identity reaches surfaces only as served data or the bundle-safe descriptor tuple, never as a branchable literal \u2014 and the bundled-import closure of EVERY *.html entry under src/dashboard reaches no Node built-in, so a shared domain contract can never drag node:path/node:fs/node:crypto into a browser bundle. 2i-F/D175 generalised that arm from the single hardcoded index.html to every entry, and added the phone-scope arm: the capture.html entry's closure may not reach src/dashboard/surfaces/**, src/dashboard/client/** or src/dashboard/app/**, because the capture ingress is doc 12 \u00a77's ONE exception to loopback-only and serves that page's own asset closure \u2014 a single transitive import would ship the run detail, the command envelope and the SSE transport to a public origin without touching a route. Both arms carry negative controls: the config resolver's real node:crypto/node:path reach, and the operator entry's legitimate reach into all three forbidden roots.",
       "replacementRequired": true
     },
     {
@@ -417,7 +417,7 @@
       "file": "tests/unit/architecture/provider-capability-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/01-task-contract.md; docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "Every capability maps exactly once to a strict immutable provider budget and reaches remote I/O only through the single durable admission kernel; whole-src and transitive task import scans confine raw network/vendor modules and adapters to infra/providers, forbid hidden ProviderClient construction, prove exhaustion makes zero adapter calls/non-sleep requeue, and keep the adapter surface deliberate: infra/providers holds the deterministic harness plus the reviewed production adapters (D161's gemini ocr.extract first), the run executor is the ONE production consumer (D162: per-invocation admitted clients over the run's retained config snapshot, ingredients composed by the worker root), and production pools stay absent until 2h-D.",
+      "invariant": "Every capability maps exactly once to a strict immutable provider budget and reaches remote I/O only through the single durable admission kernel; whole-src and transitive task import scans confine raw network/vendor modules and adapters to infra/providers, forbid hidden ProviderClient construction, prove exhaustion makes zero adapter calls/non-sleep requeue, and keep the adapter surface deliberate: infra/providers holds the deterministic harness plus the reviewed production adapters (D161's gemini ocr.extract first), the run executor is the ONE production consumer (D162: per-invocation admitted clients over the run's retained config snapshot, ingredients composed by the worker root), and production pools stay absent until 2h-D. The same single-owner rule covers the frontend transport, ONE owner per browser bundle: src/dashboard/client/** for the operator bundle and the single file src/dashboard/phone/capture-client.ts for the phone bundle (2i-F/D175) — named as one file rather than a subtree, so a phone component that reached for fetch directly still fails.",
       "replacementRequired": true
     },
     {

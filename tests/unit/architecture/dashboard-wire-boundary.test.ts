@@ -39,10 +39,24 @@
  *     strictly worse — a stubbed `resolve()` invents a plausible-but-wrong
  *     absolute path, which is exactly the silent-wrong-value failure this
  *     program forbids.
+ *
+ *     2i-F generalised this arm from `index.html` to EVERY `*.html` entry under
+ *     src/dashboard. A hardcoded entry filename was the wrong shape all along:
+ *     the phone surface added a second entry, and a second entry importing the
+ *     same shared domain contracts is the most likely place for the next
+ *     breach — which would have been completely unguarded.
+ *
+ * (14) Phone-bundle scope (doc 12 §7, D175): the `capture.html` entry's import
+ *     closure may not reach `src/dashboard/surfaces/**`, `src/dashboard/client/**`
+ *     or `src/dashboard/app/**`. The capture ingress is the ONE exception to the
+ *     loopback rule and it serves the phone page's own asset closure, so "the
+ *     phone cannot reach the queue" is a claim about that closure — one
+ *     transitive import would ship the run detail, the command envelope and the
+ *     SSE transport to a public origin without touching a route.
  */
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { builtinModules } from "node:module";
 import { join, resolve } from "node:path";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
@@ -140,13 +154,53 @@ function nodeBuiltinReach(entry: string): readonly string[] {
   return violations.sort();
 }
 
-/** The entry the bundler actually uses, read from the HTML rather than assumed. */
+/**
+ * EVERY entry the bundler uses, read from the HTML rather than assumed.
+ *
+ * This walked `index.html` alone until 2i-F added `capture.html`, and a
+ * hardcoded filename is exactly the wrong shape for this guard: a second entry
+ * would have escaped the Node-built-in check silently, which is the failure
+ * mode D120 exists to prevent — the breach it caught was six modules deep in a
+ * shared domain contract, so a NEW entry importing the same contracts is the
+ * most likely place for the next one. `walkFiles` is TS-only, so the HTML files
+ * are enumerated directly.
+ */
+function dashboardHtmlFiles(): readonly string[] {
+  const files = readdirSync(DASHBOARD_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".html"))
+    .map((entry) => entry.name)
+    .sort();
+  expect(files.length, "src/dashboard declares at least one HTML entry").toBeGreaterThan(0);
+  return files;
+}
+
 function dashboardEntries(): readonly string[] {
-  const html = readFileSync(join(DASHBOARD_ROOT, "index.html"), "utf8");
-  const entries = [...html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)]
-    .map((match) => `src/dashboard${match[1] ?? ""}`);
+  const entries = dashboardHtmlFiles().flatMap((file) => {
+    const html = readFileSync(join(DASHBOARD_ROOT, file), "utf8");
+    const scripts = [...html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)]
+      .map((match) => `src/dashboard${match[1] ?? ""}`);
+    expect(scripts.length, `${file} declares a module entry`).toBeGreaterThan(0);
+    return scripts;
+  });
   expect(entries.length).toBeGreaterThan(0);
   return entries;
+}
+
+/** Every project-internal source file an entry's bundled-import closure reaches. */
+function bundleClosure(entry: string): ReadonlySet<string> {
+  const seen = new Set<string>();
+  const pending = [resolve(REPO_ROOT, entry)];
+  while (pending.length > 0) {
+    const file = pending.pop();
+    if (file === undefined || seen.has(file)) continue;
+    seen.add(file);
+    for (const specifier of bundledSpecifiers(file, parse(file))) {
+      if (isNodeBuiltin(specifier)) continue;
+      const target = resolveSourceFile(file, specifier);
+      if (target !== undefined && !seen.has(target)) pending.push(target);
+    }
+  }
+  return new Set([...seen].map((file) => repoRelative(file)));
 }
 
 function parse(file: string): ts.SourceFile {
@@ -190,8 +244,14 @@ describe("dashboard wire boundary (doc 13 §8)", () => {
     expect(violations).toEqual([]);
   });
 
-  it("reaches no Node built-in from the dashboard bundle entry", () => {
+  it("reaches no Node built-in from ANY dashboard bundle entry", () => {
     const entries = dashboardEntries();
+    // Both shipped entries are covered, not merely one of them: the whole
+    // point of walking the HTML is that the entry set is read rather than
+    // assumed, and an entry the walker never visits is an unguarded bundle.
+    expect(dashboardHtmlFiles()).toContain("index.html");
+    expect(dashboardHtmlFiles()).toContain("capture.html");
+    expect(entries.length).toBeGreaterThanOrEqual(2);
     // The `@` alias the walker rewrites must be the one the bundler resolves.
     expect(readFileSync(join(REPO_ROOT, "vite.dashboard.config.ts"), "utf8"))
       .toContain('"@": resolve(import.meta.dirname, "src/dashboard")');
@@ -205,6 +265,42 @@ describe("dashboard wire boundary (doc 13 §8)", () => {
     expect(breach.some((violation) => violation.includes('"node:crypto"'))).toBe(true);
     expect(breach.some((violation) =>
       violation.includes("src/domain/config/runtime-paths.ts") && violation.includes('"node:path"'))).toBe(true);
+  });
+
+  /**
+   * (14) The phone bundle's SCOPE, as a fact about its import closure.
+   *
+   * Doc 12 §7 grants the capture ingress exactly one exception to the
+   * loopback-only rule, and the ingress serves `capture.html` plus that page's
+   * own asset closure. So "the phone cannot reach the queue" is only true if
+   * the phone's closure does not CONTAIN the queue: a single import from
+   * `phone/` into `surfaces/`, `client/` or `app/` would pull the run detail,
+   * the command envelope and the SSE transport into a bundle served on a
+   * public origin, and it would do so without changing a single route.
+   *
+   * The check is on the closure rather than on the phone's own import lines,
+   * because the dangerous version of this is transitive — exactly how
+   * `node:path` reached the dashboard six modules deep. `src/domain/**` and
+   * `src/dashboard/ds/**` are shared on purpose: contracts and the token layer
+   * are what keep the two surfaces one product.
+   */
+  it("reaches no operator surface, client or app module from the phone entry", () => {
+    const forbidden = ["src/dashboard/surfaces/", "src/dashboard/client/", "src/dashboard/app/"];
+    const closure = bundleClosure("src/dashboard/phone/main.tsx");
+    // Non-vacuous: the walker must really be resolving the phone's own modules.
+    expect(closure).toContain("src/dashboard/phone/capture-client.ts");
+    expect(closure).toContain("src/dashboard/phone/capture-app.tsx");
+    const violations = [...closure]
+      .filter((file) => forbidden.some((root) => file.startsWith(root)))
+      .sort();
+    expect(violations, "the phone bundle may not reach an operator module").toEqual([]);
+
+    // The rule only means something because the walker can SEE such a reach:
+    // the operator entry legitimately reaches all three.
+    const operator = bundleClosure("src/dashboard/app/main.tsx");
+    for (const root of forbidden) {
+      expect([...operator].some((file) => file.startsWith(root)), root).toBe(true);
+    }
   });
 
   it("branches on no concrete workflow id anywhere under src/dashboard", () => {

@@ -1,0 +1,115 @@
+/* ==========================================================================
+   THE PHONE CAPTURE SURFACE — its own sizes over the product's own palette
+   ==========================================================================
+   2i-F, D175.
+
+   The operator dashboard is a DENSE CONSOLE: 10–13px type, 20–32px controls,
+   read at desk distance with a mouse. This page is the same product held in one
+   hand, in daylight, by someone whose other hand is holding a paper form. Every
+   COLOUR here is the product's — `ds/tokens.css` is imported unchanged and
+   nothing below invents a hue — and every SIZE here is this page's, because a
+   28px control is not reachable with a thumb and 12px body text is not readable
+   at arm's length in sun.
+
+   That split is the whole reason this file exists rather than an edit to
+   `ds/tokens.css`: adding phone heights to the console's token file would put
+   two answers to "how tall is a control" in one place, and the console's answer
+   would eventually drift toward the phone's. Nothing the operator's bundle
+   reaches imports this file.
+
+   LIGHT ON PURPOSE. `capture.html` stamps `data-demo-theme="light"` — Paper Ink
+   — and carries no `dark` class. The console is dark because it lives on a desk
+   under office light; a phone screen in daylight needs the light theme, and the
+   choice comes from the use scene rather than from the category.
+
+   MOTION. One authored moment (a photograph settling into the list) and one
+   token for it, zeroed under `prefers-reduced-motion` alongside the product's
+   own durations. No key-frames — the tailwind guard bans them under
+   `src/dashboard`, and a transition is interruptible where an animation is not.
+   ========================================================================== */
+@import "../app/index.css";
+@import "../ds/tokens.css";
+
+:root {
+  /* THE THUMB. 48px, not 44: 44 is the floor every guideline names, and a floor
+     is what a control must never go below rather than what it should be. The
+     extra four pixels are what keep a press on a moving bus from landing on the
+     page above. */
+  --ds-phone-touch: 48px;
+  /* The gap BETWEEN two touch targets. 12px, over the 8px floor, because the
+     two controls it most often separates are `Up` and `Down` on the same tile —
+     the one pair where a mis-press does something wrong rather than nothing. */
+  --ds-phone-gap: 12px;
+  /* The page's own edge. One inset, so the bar, the list and the status region
+     all start on the same vertical. */
+  --ds-phone-inset: 16px;
+
+  /* TYPE. Three sizes, and the smallest is the 16px body floor — there is no
+     "meta" step on this page, because a phone has no room for a tier of text
+     that exists to be skimmed past. */
+  --ds-phone-text: 16px;
+  --ds-phone-lh: 24px;
+  --ds-phone-text-lead: 18px;
+  --ds-phone-lh-lead: 26px;
+  /* The page number, as a real numeral. Order is meaning here — the schema
+     enforces contiguous ordinals and the bundle is assembled in this order — so
+     the number is the largest thing on a tile, not a badge in its corner. */
+  --ds-phone-numeral: 30px;
+
+  /* The action bar: one 48px control plus its air, top and bottom. */
+  --ds-phone-bar: calc(var(--ds-phone-touch) + 2 * var(--ds-phone-inset));
+
+  /* THE RESERVED ERROR REGION. It occupies its height whether or not it holds a
+     message, so a refusal appears in place instead of shoving the list and the
+     bar down under the operator's thumb mid-press. Two lines of body type. */
+  --ds-phone-notice-min: calc(2 * var(--ds-phone-lh));
+
+  /* NO MOTION TOKENS HERE, deliberately. The one authored moment on this page
+     — a photograph settling into the list — reads the product's OWN house pair,
+     `--ds-dur-enter` (150ms) and `--ds-travel-md` (8px, "a record arriving"),
+     which is exactly what is arriving. An invented 180ms/6px near-duplicate
+     would have been a second motion language differing from the first by an
+     imperceptible amount, and it would have needed its own
+     `prefers-reduced-motion` block to stay honest. Reading the house tokens
+     means the reduced-motion switch at the foot of `ds/tokens.css` already
+     zeroes both the clock and the distance for this page too. */
+}
+
+/* --------------------------------------------------------------------------
+   The three type steps, as classes, for the same reason `ds-text-*` are
+   classes: a size is changed by changing a token, never by a stray arbitrary
+   value at a call site winning over one.
+   -------------------------------------------------------------------------- */
+.phone-text {
+  font-size: var(--ds-phone-text);
+  line-height: var(--ds-phone-lh);
+}
+.phone-text-lead {
+  font-size: var(--ds-phone-text-lead);
+  line-height: var(--ds-phone-lh-lead);
+}
+.phone-numeral {
+  font-size: var(--ds-phone-numeral);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--ds-tracking-tight);
+}
+
+/* The settle. `from` is the state a tile is mounted in; the app flips it to
+   `to` on the next frame, so the transition runs from an already-painted
+   value rather than from nothing. Opacity and transform only. */
+.phone-settle {
+  transition-property: opacity, transform;
+  transition-duration: var(--ds-dur-enter);
+  transition-timing-function: var(--ds-ease-out);
+}
+.phone-settle[data-phone-enter="from"] {
+  opacity: 0;
+  /* DOWN, because a photograph is appended to the END of the list — it rises
+     into the place it is going to occupy rather than dropping onto it. */
+  transform: translateY(var(--ds-travel-md));
+}
+.phone-settle[data-phone-enter="to"] {
+  opacity: 1;
+  transform: translateY(0);
+}
