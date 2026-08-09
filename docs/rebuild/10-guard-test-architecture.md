@@ -687,6 +687,88 @@ read while still permitting replay-safe browser downloads.
   inventory in both directions. A missing ServiceNow/SharePoint/Old-Kronos endpoint or provider key,
   an unregistered `process.env` read, and a stale registry entry all fail with the exact owner.
 
+#### 3.11 as-built — the capability-closure sweep (D184, 2026-08-09, 2j)
+
+The normative text above is unchanged. What follows is what actually landed, and what the guard
+had been failing to hold until it did.
+
+**What was broken.** `legacy-capability-disposition` proved exactly two things: every discovered
+legacy path is owned exactly once, and every `sourcePaths` entry still exists in the legacy repo.
+It never read a *disposition*. So 73 of 78 entries sat at `status:"open"` with
+`disposition:{kind:"open"}`, and **53 of those named a milestone that had already shipped** — 49 on
+`2i`, 4 on `2h`, plus the 1b/1f/1i-spine strays. An entry that says "open, owner 2i" after 2i ships
+is not a work item; it is a claim nobody can act on, and this is the file that gates cutover
+(`cutoverRequiresZeroOpen: true`). "Cutover-readiness mode" had been prose here since round 8.
+
+**The re-disposition.** Every entry was re-decided against the rebuild *tree*, never against the
+plan. 27 close as `native`/`replaced` with the real paths and the accepted differences; one closes
+as `retired`; 50 stay open because they are genuinely not built, each moved to the milestone that
+will build it with the reason recorded. The rule applied throughout: **a wrong `native` claim is
+worse than an honest `open`**, so a family whose core landed but whose operator-visible half did
+not (the Log Panel without its screenshot gallery, Settings without an editor, capture without an
+operator photo review) stays open and says exactly what is missing.
+
+**Three vocabulary additions**, all sanctioned by doc 07 §3.6 rather than invented here:
+
+- `open` gains a required non-empty `reason`. A bare `{kind, milestone}` is *how* 73 entries came
+  to name shipped milestones — there was nothing in the record to contradict.
+- `retired` joins the used dispositions (one entry: legacy's dev-only `?view=` scaffolding).
+- `status` becomes `open | implemented | retired | retirement-candidate`, an exact projection of
+  the disposition. A two-valued flag would have had to call a retirement "implemented".
+
+Every disposition arm also carries `milestone`, including `candidateForRetirement`, so
+`ownerMilestone` has something to be checked against.
+
+**The five audits.** The inventory is now parsed by a recursively strict zod schema inside the
+guard — which *is* the proxy-free arm, since `proxy` is not in the union — and:
+
+1. `status` is the disposition's projection through one closed table, both ways.
+2. `ownerMilestone` must equal the milestone of the disposition that decided it.
+3. every `native.targetIds` / `replaced.replacement` resolves to a git-visible path in **this**
+   repo, directories included.
+4. no entry may be `open` while its owner is at or before the milestone the runtime reports as
+   `completedThrough`.
+5. every `verificationEvidence` token parses as one of four checkable forms — `npm run <script>`
+   present in `package.json`, `legacy-source-present:<path>`,
+   `ported-with-provenance:<commit>:<path>:<blob>`, or a repo path — **and a decided entry must
+   cite at least one rebuild path or script.** "The legacy file still exists" was the only evidence
+   73 entries carried, and it proves nothing about this repo.
+
+**The completed set is DERIVED, not typed.** Doc 07's ordered work items are the guard's one
+milestone enum, and the marker is obtained by invoking the real `phase` command
+(`startRebuildRuntime(..., ["phase"])`) — the same thing an operator runs. A hand-typed list of
+finished milestones is a second answer that can disagree with the product. **Closing a tail is
+therefore what arms the next sweep:** advancing `COMPLETED_THROUGH` in
+`src/core/runtime-composition.ts` is the act that forces the next re-disposition, and it will fail
+loud, by entry id, naming every stranded item. Two non-vacuity assertions stop the sweep from
+passing by looking at nothing. Nine negative controls drive the audit against mutated fixtures,
+one per arm plus the schema refusals.
+
+**What the sweep found, and what it leaves standing.** Zero entries are now open at or before the
+runtime's `completedThrough` (`2h`). **Sixteen remain honestly open on `2i`** — the settings
+editor and its route, cross-run search and its nav surface, the operator browser/worker controls
+and per-instance daemon stop, three of the four legacy LLM surfaces (run summary, record sanity
+check, selector suggestion — `AdvisorySurfaceIdSchema` is a closed two-value enum, so each is a
+declared schema change), the operator-side capture photo review, and the explorer's entire Phase-B
+edit half (`workflow-modifier`, `workflow-design`, `workflow-presentation`, `build-data-bank`).
+That is the evidenced answer to whether 2i closed its §3.6 obligations: **it did not**, and the
+guard now makes advancing the marker require settling all sixteen rather than discovering them at
+cutover. One entry moved to `2j` itself: the production BFF serves no frontend bytes at all, and
+`api.ts` allow-lists `/capture.html` for the phone host gate while nothing in production serves it.
+
+**The two sibling sweeps in the same decision.** D107's pending-impl bindings already audit both
+directions plus two extras, and the checked-in empty set is correct against the as-built — but its
+"a store now implements this, delete the entry" arm had **no fixture**, so it was enforced only by
+the empty set happening to be right. An empty allowlist cannot prove an arm; it now has one.
+`provider-capability-boundary`'s exact `src/infra/providers` file list is airtight in the
+tree→guard direction, but two defects sat on the other side: `ADMISSION_MODULE_IMPORTERS` listed
+the admission module as its own importer (unreachable — the arm resolves *imports*), and the D68
+declared provider inventory had drifted from the built adapter tree with nothing watching (groq,
+mistral, openrouter and sambanova declare `ocr.extract` + `ai.advisory` and have no adapter
+module). Both are now reconciled both ways: every allowlisted path must be a git-visible module,
+and every `ProviderId` carries either a reviewed adapter-module list whose paths exist or a
+reviewed declared-without-adapter reason.
+
 ### 3.13 Round-8 guards (2026-07-26) — the decisions that need mechanical teeth
 
 Four ratified decisions are worthless as prose. Each gets a guard, and each guard is listed in the
