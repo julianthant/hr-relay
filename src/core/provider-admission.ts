@@ -20,6 +20,7 @@ import {
 import {
   ProviderAdmissionDenyRequestSchema,
   ProviderAdmissionReserveRequestSchema,
+  ProviderAdvisoryExecutionIdentitySchema,
   ProviderCostEstimateSchema,
   ProviderExecutionIdentitySchema,
   ProviderUnavailableReasonSchema,
@@ -337,6 +338,53 @@ export function createAdmittedProviderClient(
         dependencies.runSignal.removeEventListener("abort", onRunAbort);
       }
     },
+  });
+}
+
+/**
+ * The ONE way an operator-surface advisory obtains an admitted client (D178).
+ *
+ * Doc 12 §4.4's advisory is on-demand and presentation-lane: there is no
+ * claimed run, no node and no task context to inherit an execution identity
+ * from. The identity it binds instead is the SUBJECT run's — its id, its
+ * retained attempt, and its own stored config snapshot, read from authority by
+ * the caller and never recomputed from current config (D116's discipline). The
+ * surface names what was asked, which is what makes `provider_admissions` a
+ * truthful record of who spent the budget.
+ *
+ * It lives here so `createAdmittedProviderClient` keeps exactly two callers:
+ * a composition root that minted its own client would be a second admission
+ * path in everything but name.
+ */
+export function createAdvisoryProviderClient(dependencies: Readonly<{
+  runId: unknown;
+  attempt: unknown;
+  surface: unknown;
+  configSnapshotId: unknown;
+  configFingerprint: unknown;
+  configSnapshot: unknown;
+  runSignal: AbortSignal;
+  adapters: ProviderAdapterRegistry;
+  repository: ProviderAdmissionRepository;
+  clock: Clock;
+  idFactory: ProviderAdmissionIdFactory;
+  deadlineScheduler: MonotonicDeadlineScheduler;
+}>): ProviderClient<"ai.advisory"> {
+  return createAdmittedProviderClient("ai.advisory", {
+    execution: ProviderAdvisoryExecutionIdentitySchema.parse({
+      runId: dependencies.runId,
+      attempt: dependencies.attempt,
+      surface: dependencies.surface,
+    }),
+    configSnapshotId: dependencies.configSnapshotId,
+    configFingerprint: dependencies.configFingerprint,
+    configSnapshot: dependencies.configSnapshot,
+    runSignal: dependencies.runSignal,
+    adapters: dependencies.adapters,
+    repository: dependencies.repository,
+    clock: dependencies.clock,
+    idFactory: dependencies.idFactory,
+    deadlineScheduler: dependencies.deadlineScheduler,
   });
 }
 

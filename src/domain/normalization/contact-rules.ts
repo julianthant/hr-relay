@@ -18,6 +18,34 @@
  */
 import { z } from "zod";
 
+/**
+ * The contact fields this tree advises on. It lives here rather than in the
+ * task contract because two modules outside that contract need it — the store
+ * task and doc 12 §4.4's advisory answer schema — and a vocabulary imported
+ * from a contract boundary would put the contract in both import closures.
+ */
+export const ContactFieldIdSchema = z.enum([
+  "relationship", "cellPhone", "homePhone", "address1", "address2",
+  "city", "state", "postalCode", "country",
+]);
+export type ContactFieldId = z.infer<typeof ContactFieldIdSchema>;
+
+/**
+ * What an `ai.advisory` invocation may answer for a contact (D178). It is a
+ * SPARSE list on purpose: a field the model is unsure of is omitted and stays
+ * with the operator as `ambiguous`, which is the honest outcome — an answer
+ * for every asked field would make "the model had nothing" indistinguishable
+ * from "the model guessed".
+ */
+export const ContactAdviceSchema = z.strictObject({
+  fields: z.array(z.strictObject({
+    field: ContactFieldIdSchema,
+    value: z.string().min(1).max(120),
+    confidence: z.number().min(0).max(1),
+  })).min(1).max(9),
+});
+export type ContactAdvice = z.infer<typeof ContactAdviceSchema>;
+
 /** The closed rule vocabulary; a change names exactly the rule that made it. */
 export const NormalizationRuleIdSchema = z.enum([
   "phone-digits",

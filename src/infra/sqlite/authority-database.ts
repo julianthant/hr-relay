@@ -186,6 +186,7 @@ import {
   ProviderAdmissionSweepRequestSchema,
   ProviderBudgetCounterSchema,
   ProviderUnavailableReasonSchema,
+  isRunNodeExecutionIdentity,
   type ProviderAdmissionRecord,
   type ProviderBudgetCounter,
 } from "../../domain/provider-admission.js";
@@ -3966,7 +3967,15 @@ export class AuthorityDatabase implements Disposable {
       || run.envelope.configFingerprint !== request.configFingerprint) {
       throw new Error(`provider admission ${request.admissionId} does not match run ${request.execution.runId} execution/config identity`);
     }
-    if (run.lifecycle.state !== "running" || run.lifecycle.currentNodeId !== request.execution.nodeId) {
+    // A run-NODE admission must be the node the run is executing right now.
+    // An operator-advisory admission (D178) deliberately makes no such claim:
+    // doc 12 §4.4's advisory reads FINISHED authority on the presentation lane,
+    // so requiring a live node would either make the feature impossible or
+    // force it to name a node the descriptor never reached. What it still
+    // binds is everything that is true — the run's identity, its retained
+    // attempt, and its own config snapshot, all checked directly above.
+    if (isRunNodeExecutionIdentity(request.execution)
+      && (run.lifecycle.state !== "running" || run.lifecycle.currentNodeId !== request.execution.nodeId)) {
       throw new Error(`provider admission ${request.admissionId} run ${request.execution.runId} is not executing node ${request.execution.nodeId}`);
     }
     const snapshot = this.#readRecord(

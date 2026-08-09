@@ -38,6 +38,7 @@ import {
   TraceIdSchema,
   taskId,
 } from "../../src/domain/ids.js";
+import { isRunNodeExecutionIdentity } from "../../src/domain/provider-admission.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
@@ -464,6 +465,8 @@ describe("executor capability wiring, wired", () => {
     );
     assert.ok(admission !== undefined);
     assert.equal(admission.lifecycle.state, "settled");
+    // A run-node identity, not D178's operator-advisory arm.
+    assert.ok(isRunNodeExecutionIdentity(admission.execution));
     assert.equal(admission.execution.taskId, "ocr/extract-form-page");
     assert.equal(admission.execution.nodeId, "extract");
     assert.equal(admission.configSnapshotId, QUEUED_RUN.envelope.configSnapshotId);

@@ -192,6 +192,27 @@ export const ProviderCapabilityIdSchema = z.enum([
   "ai.advisory",
 ]);
 
+/**
+ * The model families `src/domain/secrets.ts` registers a key family for, named
+ * here so an advisory's provenance is a closed vocabulary rather than free
+ * text (doc 12 §4.4). Only `gemini` composes today; the rest are registered
+ * because their keys already are, and a provenance value nothing can produce
+ * is refused by the composition root, not by this enum.
+ */
+export const AiProviderIdSchema = z.enum(["gemini", "groq", "mistral", "open-router", "sambanova"]);
+/** A remote model identifier — not a secret, but never free-form prose. */
+export const AiModelIdSchema = brandedText<"AiModelId">(
+  /^[a-z0-9][a-z0-9._-]{0,63}$/,
+  "ai model id must be lowercase alphanumeric with . _ -",
+);
+/**
+ * The closed set of questions an advisory may be asked (doc 12 §4.4). It lives
+ * beside the capability ids rather than in `trust/advisory.ts` because the
+ * provider-admission identity names it too, and the two modules must not
+ * import each other.
+ */
+export const AdvisorySurfaceIdSchema = z.enum(["failure-triage", "contact-normalization"]);
+
 export const TaskStoreIdSchema = z.union([
   SystemIdSchema,
   z.templateLiteral(["workflow:", WorkflowIdSchema]),
@@ -265,5 +286,8 @@ export type BrowserSystemId = z.infer<typeof BrowserSystemIdSchema>;
 export type ServiceSystemId = z.infer<typeof ServiceSystemIdSchema>;
 export type SystemId = z.infer<typeof SystemIdSchema>;
 export type ProviderCapabilityId = z.infer<typeof ProviderCapabilityIdSchema>;
+export type AiProviderId = z.infer<typeof AiProviderIdSchema>;
+export type AiModelId = z.infer<typeof AiModelIdSchema>;
+export type AdvisorySurfaceId = z.infer<typeof AdvisorySurfaceIdSchema>;
 export type TaskStoreId = z.infer<typeof TaskStoreIdSchema>;
 export type TaskId = z.infer<typeof TaskIdSchema>;

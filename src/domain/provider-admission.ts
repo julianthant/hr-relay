@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ProviderBudgetSchema } from "./config/schema.js";
 import {
+  AdvisorySurfaceIdSchema,
   ConfigSnapshotIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
@@ -59,12 +60,47 @@ export const RedactedProviderEvidenceSchema = z.strictObject({
   capturedAt: IsoInstantSchema,
 });
 
-export const ProviderExecutionIdentitySchema = z.strictObject({
+/**
+ * WHO is spending the budget (D112 identity binding), in the two shapes that
+ * actually exist (D178).
+ *
+ * The first arm is a node of a CLAIMED run, and its bytes are unchanged from
+ * v9 on purpose: `provider_admissions` rows are durable and parse strictly at
+ * read, so adding a required discriminator would stop every stored admission
+ * from parsing — the D133 defect exactly. A plain union of two strict objects
+ * with disjoint required keys resolves without one.
+ *
+ * The second arm is doc 12 §4.4's on-demand operator advisory. It is bound to
+ * a real run because budget accounting has a subject and the row's `run_id`
+ * references one, but it is NOT executing a node: an advisory is read from
+ * finished authority, on the presentation lane, so claiming a `nodeId` the
+ * descriptor never reached would make the row lie about what happened (D144).
+ * The run's own retained `attempt`/config identity still binds — the same
+ * discipline D116 uses when a recovery lease reads the TARGET run's stored
+ * fingerprint instead of recomputing one.
+ */
+export const ProviderRunNodeExecutionIdentitySchema = z.strictObject({
   runId: RunIdSchema,
   attempt: PositiveIntSchema,
   nodeId: NodeIdSchema,
   taskId: TaskIdSchema,
 });
+export const ProviderAdvisoryExecutionIdentitySchema = z.strictObject({
+  runId: RunIdSchema,
+  attempt: PositiveIntSchema,
+  surface: AdvisorySurfaceIdSchema,
+});
+export const ProviderExecutionIdentitySchema = z.union([
+  ProviderRunNodeExecutionIdentitySchema,
+  ProviderAdvisoryExecutionIdentitySchema,
+]);
+
+/** True when the identity names a node of a claimed run rather than a surface. */
+export function isRunNodeExecutionIdentity(
+  identity: z.output<typeof ProviderExecutionIdentitySchema>,
+): identity is z.output<typeof ProviderRunNodeExecutionIdentitySchema> {
+  return "nodeId" in identity;
+}
 
 export const ProviderBudgetReservationSchema = z.strictObject({
   requestCount: z.literal(1),
