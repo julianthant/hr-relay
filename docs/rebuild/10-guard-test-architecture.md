@@ -610,6 +610,59 @@ read while still permitting replay-safe browser downloads.
   coverage as applicable; every write has subject/proof/crash cases; every branch/delegation/gate
   arm is covered. A production bug fix cannot close without a regression scenario id in its
   `FixRecord`. Orphaned, stale-fingerprint, and never-executed scenarios fail.
+
+  **AS-BUILT 2026-08-09 (D185) — the corpus has exactly TWO kinds, and the directory is guarded.**
+  Everything above audits the REGISTERED set, which means it is structurally blind to the corpus as
+  a *directory*: a `tests/scenario/*.scenario.test.ts` that nothing registers, and an `it` inside a
+  registered file naming an id nobody registered, are invisible to all three of its directions.
+  That was not hypothetical — `person-lookup/ucpath-drill-subject-mismatch` had been executing
+  unregistered since it landed, and was registered against `ucpath/search-person-org` (mirroring
+  `person-lookup/crm-subject-mismatch` on the CRM read contracts) as part of this decision.
+
+  The two kinds are:
+
+  - a **graph scenario**, `<name>.scenario.test.ts`, which walks ONE declared path of ONE descriptor
+    and claims the coverage points it exercised. Every id it declares is either an
+    `EXECUTABLE_SCENARIO_MANIFEST` row naming *that* file, or — for a fixture descriptor with no
+    production reference to be registered against — an id in `tests/scenario/coverage-claims.ts`;
+  - an **integration walk**, `<name>.walk.test.ts`, which crosses SLICES rather than following one
+    graph. It therefore claims no coverage point and carries no manifest row (the manifest's own
+    `file` regex refuses a walk path outright), and it exists for the joins only composition can
+    falsify.
+
+  `auditScenarioCorpusLayout` (in `src/domain/workflow/scenario-execution.ts`, pure over an injected
+  listing so it can be proved against corpora it will never find on disk) closes both directions: a
+  file of neither kind, a graph scenario that claims nothing, an empty file, a duplicate listing, an
+  unregistered id, an id declared in a file its row does not name, a manifest row nothing executes,
+  a manifest row naming an absent file, and a walk that claims a graph path are each refused BY
+  NAME, and each has a negative control that moves exactly one thing in the REAL corpus. The
+  recogniser is the corpus's existing convention made mechanical: an `it` title whose head (before
+  `" — "`) parses as a `ScenarioId` is a CLAIM. A typo is slug-shaped, so it stays a claim and
+  FAILS — reclassifying an unrecognised id as prose is precisely how the drift above survived.
+
+  **What an integration walk is for, and what it may not do.** `tests/scenario/operator-lifecycle.walk.test.ts`
+  is the first: spreadsheet bytes → intake session → `enqueue-intake-manifest` fan-out → one run
+  settled `done` through the real D110/D114 composite → receipt → notification → version bump →
+  archived record rendered → relaunch, over ONE real authority database and the production read
+  models (`createRunQueueProjection`, `buildRunDetail`, `createArchiveSnapshotSource`,
+  `createReceiptService`). It asserts JOINS, never behaviour a slice suite already owns — the
+  manifest `itemId` that joins the runs it minted, an un-run intake row BLOCKING a version bump, the
+  archived row/detail being byte-identical to the LAST LIVE projection, the archived receipt being
+  the exact record the receipt service derived beforehand, and a relaunch sharing only the ITEM.
+  Duplicating a slice suite in a walk is worse than absence: a capture walk was considered and
+  refused because `capture-surface`'s property 4 already drives capture session → finalize outbox →
+  handoff refusal → durable `failed` → retry-finalize end to end.
+
+  **Where a producer does not exist, the walk asserts the REFUSAL by name rather than skipping the
+  step.** Three are recorded as of 2026-08-09: (1) no registered workflow declares an intake
+  projection, so the fan-out leg necessarily runs on `intake-fixture`; (2) a fixture workflow's
+  evidence leaves are undeclared in `EVIDENCE_FIELD_CLASSIFICATIONS`, so its receipt derivation
+  refuses with *"no declared evidence classification for …"* and the archived record freezes
+  `receipt: absent` WITH the reason — the positive half of that join runs on the registered
+  `person-lookup` exit run, the only place today where declared evidence and terminal authority are
+  both true; (3) nothing in `src/` publishes a notification, so terminal settlement is asserted to
+  file NO inbox row before the walk publishes the `verified-done` trigger through the real inbox
+  itself. Each of these is a real production gap, and the walk is where they are visible.
 - **`evidence-receipt.test.ts`.** Every terminal run produces a strict receipt with input/config/
   graph fingerprints, node outcomes, provenance, artifact/proof/failure refs, exclusions, and an
   explicit confidence (`verified|partial|unknown`). `done` requires all mandatory evidence and no
