@@ -405,11 +405,34 @@ export function buildRunEvidenceReceipt(input: ReceiptBuildInput): RunEvidenceRe
           verdict: "absent",
           evidence: [evidenceEntryRef(decisionId)],
         });
-      } else if (terminalDependencies.has(id)) {
+      } else {
+        /**
+         * EVERY record-less node emits its obligation, not only a terminal
+         * dependency (D187).
+         *
+         * `verificationId` is minted for every node in the graph a few lines
+         * above, and a DOWNSTREAM node's derived fact cites its upstream
+         * nodes' verification ids by that mint. Emitting the row only for a
+         * terminal dependency therefore made the id resolvable or dangling
+         * depending on a completely unrelated property — and
+         * `assertEvidenceRefsResolve` correctly refused the whole receipt,
+         * which turns the ONE surface whose job is to explain a run into an
+         * HTTP 500.
+         *
+         * The state is reachable in production, not just in fixtures: doc 02
+         * §5.4's `startAt` resume with `envelope.injected` (the Edit Data path,
+         * D166/D168) gives a downstream node its upstream VALUE without any
+         * upstream checkpoint. `unknown` is the honest verdict for "authority
+         * holds no checkpoint for this node and no recorded reason it did not
+         * run", and it is exactly what the operator needs to see in the
+         * verification section. `mandatory` still tracks the terminal
+         * dependency set, so confidence is unchanged for every receipt that
+         * could already be derived.
+         */
         verification.push({
           id: evidence.verificationId,
           obligation: `node.${id}`,
-          mandatory: true,
+          mandatory: terminalDependencies.has(id),
           verdict: "unknown",
           evidence: [],
         });

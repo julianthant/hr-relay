@@ -510,7 +510,13 @@ function LoadedApp({
             </div>
 
             {detailValue !== undefined && (
-              <div className="flex min-h-0 w-[minmax(0,var(--ds-w-panel))] min-w-0 flex-1">
+              <div className="flex min-h-0 min-w-0 flex-1">
+                {/* This wrapper used to carry `w-[minmax(0,var(--ds-w-panel))]`,
+                    which did nothing at all: `minmax()` is only valid inside a
+                    grid track list, so the browser dropped the declaration, and
+                    `--ds-w-panel` was never defined either. Its width has always
+                    come from `flex-1`. See D187 — the real collapse was one
+                    level down, in `LogPanel`'s own root. */}
                 <LogPanel
                   detail={detailValue}
                   sections={sections}

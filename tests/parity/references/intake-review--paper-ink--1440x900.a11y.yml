@@ -16,7 +16,7 @@
   - button "Notifications — 1 unread item": "1"
   - button "Settings"
   - button "Keyboard shortcuts"
-  - button "Switch to Paper Ink"
+  - button "Switch to Graphite Warm"
 - main:
   - button "Workflow Panel — Person Lookup, minimised. 14 rows on this day, across every workflow": "14"
   - button "Archive"

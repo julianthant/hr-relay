@@ -137,9 +137,6 @@
     - searchbox "Search logs"
     - text: wf a49c6afc
     - button "Run provenance"
-    - status:
-      - button "identity-review Go to the decision since 9:49 AM"
-      - button "Dismiss this reminder — the decision stays open"
   - complementary "Run data":
     - text: Run data
     - button "Hide run data"

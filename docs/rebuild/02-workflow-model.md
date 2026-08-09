@@ -1482,6 +1482,49 @@ throws the §5.4 error naming `cross-verify: missing context (no checkpoint, not
 and, from `require()`, `searching.selection.selected` null where `cross-verify`'s bind needs an EID.
 Nothing launched, no Duo spent, no partial run row.
 
+### 8.1 AS-BUILT — the worked example is the shipped workflow (2j, 2026-08-09)
+
+**Doc 07's Phase-2 exit criterion "doc 02 §8 marked as-built" is MET here.** The exercise above
+was written as a design sketch before any of it ran. It has since run **live**, twice over, and
+this section records where the sketch and the shipped system differ. Everything not listed below
+shipped as written.
+
+**The exit run (D74, 2026-08-04).** Run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace
+`pl-000619-4ebf`, executed person-lookup against the real UCPath and the real CRM on the new
+executor, recovered a dead CRM session mid-run, terminalized `done` at attempt 2 with a correct
+result, and rendered all four parity surfaces from the ONE projection. The descriptor is
+`src/workflows/person-lookup/descriptor.ts`; the four steps, their contracts, the `always-rerun`
+`active-status`, and the `when`-gated `crm-dates` are all as §8 describes.
+
+**Five deltas the live run forced, each with its owning decision.**
+
+1. **A span is folded by `(attempt, spanPath)`, not by `spanPath`** (D121/D122). §8 above already
+   writes `…/cross-verify#1` and `#2`, but the projector's fold key and the timeline's React seed
+   each used only two thirds of `(runId, attempt, spanPath)` — which is invisible until a node
+   genuinely re-runs, and every fixture had one attempt. The retry narrative in §8 is therefore
+   the exact case that exposed it: a 262.9 s cancelled attempt and a 12.8 s done attempt at the
+   same `spanPath` collapsed into one row.
+2. **A `skipped` node is its own timeline arm carrying a closed `notRun` reason** (D123). §8 step 4
+   says `crm-dates` skipped "(`when` false ⇒ span end `skipped`)"; the surface rendered that word
+   as **Cancelled**, which names an act somebody took. The executor now stamps the skip reason on
+   the `span.ended` task span using the same closed vocabulary the durable result records.
+3. **A terminal run serves its own `endedAt`** (D124). The queue row computed `now − startedAt` for
+   every non-`queued` status, so this run's ~14.5 minutes rendered as 2h 47m and kept growing.
+4. **Session acquisition is bounded on its own leaf, `timeouts.sessionAcquireMs`** (D125). §8's
+   `auth:crm#2` is one line of narrative; live it cost **262.9 s**, because every step inside a
+   login recipe was bounded and nothing bounded the CHAIN.
+5. **Its input schema is a UNION, and the intake projection had to learn that** (D172).
+   `PersonLookupInput`'s `by-name`/`by-eid` arms mean NEITHER intake target is `required` —
+   which is the union telling the truth, not a gap. §8's `require()` walk is unchanged.
+
+**What §8 still does not exercise, by construction.** person-lookup declares no branch, gate,
+delegation or transaction, so `workflowProjections(...).coveragePoints` derives **zero** graph
+coverage points for it — the correct answer, not a pass by absence (`scenario-coverage.test.ts`
+proves the derivation against `fixtureDescriptor`, whose fifteen points span every path-bearing
+node kind). §5.5's freshness walk passes trivially here for the same reason §8 says it does: there
+is no transaction commit to be a freshness sink. The write half of the model is proved instead by
+`kuali-timekeeper-annotation` (doc 09 §Phase-2 controlled-commit as-built).
+
 ---
 
 ## 9. Open questions for the operator / orchestrator

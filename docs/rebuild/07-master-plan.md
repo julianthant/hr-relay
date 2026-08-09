@@ -503,8 +503,8 @@ live proof. They land in this order, because each is a consumer of the one befor
 |---|---|---|
 | **2g** | Rest of the event/trust layer over 1f's minimal durable `FailureRecord` and terminal-result authorities: automatic redacted diagnostic bundles, rich failure/evidence projections, terminal run evidence receipts + `explain run`, durable actor-keyed notification inbox (read/unread + snooze per D79b), knowledge/fix records, and ordered actor-attributed ledger projection + recovery verification. **D82 acceptance test applies here:** the receipt must let the operator complete their double-check without opening UCPath | Docs 03/09/11/12 |
 | **2h** | Data-service/intake foundation: extraction/normalization/ocr/roster stores; production provider pools/adapters/consumers over 1f's generic admission core; generic/duplicate-safe column mapping; strict validation/rejection; immutable intake manifests + rerun diff; the OCR three-producer routes + classify/group scanner stack (operator-added scope, D151/D157/D158); the i9 sectioned form (D160); executor/worker provider + artifact wiring (D162); durable capture sessions/photo artifacts/finalize outbox (crash matrix slimmed per D79d); Edit Data core; stable-keyed local artifact projector. **COMPLETE 2026-08-08 (D146–D167).** | Docs 01/03/06/12 |
-| **2i** | Rest of the operator surface: evidence/failure/notification/run-explain views, storage health/backups, Edit Data + intake + capture UI, generated UI catalog, optional read-only AI advisories, and the **read-only Workflow Explorer** over tasks/delegation/scenarios/source links | Docs 03/06/12 |
-| **2j** | Base integration/restore/soak + documentation gate: full scenario corpus, corruption→restore drill, dependency/control/capture concurrency matrix, worker teardown/multi-worker soak, redaction scan, capability-inventory validation, then update every owning doc to as-built | Docs 03/05/10/12 + this plan |
+| **2i** | Rest of the operator surface: evidence/failure/notification/run-explain views, storage health/backups, Edit Data + intake + capture UI, generated UI catalog, optional read-only AI advisories, and the **read-only Workflow Explorer** over tasks/delegation/scenarios/source links. **COMPLETE 2026-08-09 (D168–D180).** The explorer's EDIT half (doc 12 §5.3/§5.4 Phase B) is the one named exclusion — see the exit criteria below. | Docs 03/06/12 |
+| **2j** | Base integration/restore/soak + documentation gate: full scenario corpus, corruption→restore drill, dependency/control/capture concurrency matrix, worker teardown/multi-worker soak, redaction scan, capability-inventory validation, then update every owning doc to as-built. **COMPLETE 2026-08-09 (D181–D186).** | Docs 03/05/10/12 + this plan |
 
 **Workflow editor scope (D79a — DSL mode TRIMMED).** The read-only explorer is 2i. Editing is
 limited to presentation overrides (hot-applied through their strict atomic file) plus a closed set
@@ -521,16 +521,28 @@ explicit operator architecture decision; a migration questionnaire cannot enable
 - *(Live person-lookup, `descriptor-coverage`, surface rendering, and speed sanity all moved to
   Phase 1's exit—see D74. The historical D13 live-lift parity gate remains rejected: D88 isolates
   the runtimes. New surfaces are validated by strict fixtures + isolated live proof, per §4.)*
-- Docs updated: doc 02 §8 marked as-built; any contract flaw found is fixed in the owning doc first.
-- Transaction dry-run shows prepare preview and zero commit span/intent. **MET live 2026-08-04.**
-  Controlled write proof records a fresh matching subject proof; the forced mismatch/unknown variants
-  produce no intent or click. **MET live** — the mismatch refused at prepare, zero durable rows. The
-  controlled match yields one external transaction, one committed intent, one typed
+- ~~Docs updated: doc 02 §8 marked as-built; any contract flaw found is fixed in the owning doc
+  first.~~ **MET 2026-08-09 (2j).** Doc 02 §8.1 is the as-built: the worked example ran live as
+  D74's exit test, and §8.1 records the five deltas the live run forced (D121/D122 fold identity,
+  D123 `skipped`, D124 terminal duration, D125 session-acquire bound, D172's union input) plus what
+  §8 structurally does not exercise. Every contract flaw the live runs found was fixed in its owning
+  doc first, in the same commit that recorded it — that is the D-series discipline itself.
+- ~~Transaction dry-run shows prepare preview and zero commit span/intent. Controlled write proof
+  records a fresh matching subject proof; the forced mismatch/unknown variants produce no intent or
+  click. The controlled match yields one external transaction, one committed intent, one typed
   transaction-output checkpoint plus validated proof, one ledger entry, one terminal span; a later
-  fresh same-key run performs no second click. **NOT MET (D128):** one external transaction did
-  occur, it produced no landing proof, and the kernel therefore produced none of the five rows —
-  blocked on a writable target, not on the kernel. The later-run criterion is met in its parked form
-  (a fresh run on the parked key refused in 1ms with zero browser sessions).
+  fresh same-key run performs no second click.~~ **ALL MET live 2026-08-04 (D135).** Dry run 6.6 s
+  with zero durable rows; the forced mismatch refused at beat ② with zero fence and zero click; ONE
+  controlled commit on doc **4489** in 16.45 s producing a `committed` intent, a transaction
+  checkpoint whose proof is the verifier's reload read-back, both outbox rows and the terminal span;
+  the idempotency re-run answered `already-present` in 2 ms with no browser and no second click.
+  *(This bullet read **NOT MET (D128)** until 2026-08-09. D128 concluded the operator's documents sat
+  at a step that did not own the field; D135 withdrew that conclusion the SAME DAY — Kuali's own
+  `ActionPage` query reports the step's `sectionSettings` as `edit`, and the two real causes were
+  defects in this repository's driver: a ~700 ms gadget debounce the run fenced inside, and a
+  `commit` that returned at request time so the verifier's reload cancelled the in-flight save. The
+  exit line was simply never updated to match §3.8 and doc 09 §Phase-2 controlled-commit as-built,
+  both of which recorded MET on 2026-08-04.)*
 - Crash/outbox fixtures and context-exclusive lease tests remain green under
   multiple workers. **MET 2026-08-04** over the REAL Kuali store and a real authority database:
   crash injection at every inner four-row-primitive seam and every outer beat-⑦ seam, the present /
@@ -547,11 +559,18 @@ explicit operator architecture decision; a migration questionnaire cannot enable
   `descriptorRuntimeNodes`, rendered task ids equal `workflowProjections(...).contracts`, every UI id
   equals the catalog's own `taskUses`, and every printed source link resolves to a git-tracked file.
   Doc 12 §5.7 records the two named exclusions (the live-run overlay; scenario coverage *claims*).
-  Every supported constrained edit passes compile+scenario+
+  ~~Every supported constrained edit passes compile+scenario+
   diff+version+restart-gated atomic apply+rollback; every prohibited code/selector/proof edit
-  refuses loudly and generates a code-change brief. (No DSL authoring mode exists to test — D79a.)
-  **The edit half is Phase B and remains unbuilt** — doc 12 §5.3/§5.4; the guard carries no arms for
-  it and its inventory entry says so.
+  refuses loudly and generates a code-change brief.~~ (No DSL authoring mode exists to test — D79a.)
+  **The EDIT half is Phase B and is DEFERRED OUT OF PHASE 2 by D186 (2026-08-09)**, on D79a's own
+  argument one level down: an editor exists to avoid a code change per tweak *across many
+  workflows*, and this tree has one production workflow plus the one-node transaction proof, so
+  building it now would fix its closed policy union and override schema against a sample of one.
+  The criterion is **reassigned, not waived** — doc 12 §5.3 names the trigger that ends the
+  deferral (the second production workflow whose presentation/policy an operator wants to change
+  without a code change) and §5.4's apply protocol is unchanged by it. `workflow-editor-compile-
+  integrity` holds Phase A's read-only boundary today and its inventory entry records that it
+  carries no Phase-B arms.
 - **Tail criteria** (formerly Phase-1 exits, now due here): every terminal fixture emits a complete
   evidence receipt/confidence or a structured failure + redacted diagnostic bundle, and **D82 is
   demonstrated on a real receipt** — the operator completes a double-check from the row alone.

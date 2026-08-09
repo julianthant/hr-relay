@@ -1,0 +1,109 @@
+# run-receipt-populated--graphite-warm--1440x900
+# adapter: seeded
+# fixture: seeded-done-run
+# descriptorHash: a49c6afce540cab28ca47f9f9fb0b38b3e18f5661ed563e140e7c148e509c2d7
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "No earlier day is served" [disabled]
+  - button "Pick a day — showing Mon, Aug 3 · today, 8 rows": Mon, Aug 3 · today 8
+  - button "This is the newest day served" [disabled]
+  - button "Notifications": "0"
+  - button "Settings — storage needs attention"
+  - button "Keyboard shortcuts"
+  - button "Switch to Paper Ink"
+- main:
+  - button "Workflow Panel — Person Lookup, minimised. 8 rows on this day, across every workflow": "8"
+  - button "Archive"
+  - button "Activity"
+  - button "Explore graph"
+  - button "UI catalog"
+  - button "Import spreadsheet"
+  - button "Start a run"
+  - group "Filter the queue by status":
+    - group "Scope the queue":
+      - button "All 8" [pressed]
+      - button "Needs you 2"
+    - button "Queued — 2": Queued 2
+    - button "Running — 1": Running 1
+    - button "Review — 1": Review 1
+    - button "Write parked — 1": Write parked 1
+    - button "Done — 1": Done 1
+    - button "Done with warnings — 0": "0"
+    - button "Failed — 1": Failed 1
+    - button "Cancelled — 1": Cancelled 1
+  - region "Queue":
+    - heading "Person Lookup" [level=2]
+    - text: Needs you 2
+    - button "EID 10001573 — review":
+      - text: EID 10001573
+      - button "What this run did not report — EID 10001573"
+      - text: Review 10:00 AM pl-090505-0005 0s Right-click or press m for every command on EID 10001573
+    - button "EID 10555121 — write parked":
+      - text: EID 10555121
+      - button "What this run did not report — EID 10555121"
+      - text: Write parked 10:00 AM pl-090606-0006 0s Right-click or press m for every command on EID 10555121
+    - text: Active 1
+    - button "Blirea, Glaundi — running":
+      - text: Blirea, Glaundi
+      - button "What this run did not report — Blirea, Glaundi"
+      - text: Running 10:00 AM pl-090202-0002 0s Right-click or press m for every command on Blirea, Glaundi
+    - text: Queued 2
+    - button "EID 10873698 — queued — queued":
+      - text: EID 10873698 — queued
+      - button "What this run did not report — EID 10873698 — queued"
+      - text: Queued 10:00 AM pl-090101-0001 Right-click or press m for every command on EID 10873698 — queued
+    - button "Onboarding packet — 3 people — queued":
+      - text: Onboarding packet — 3 people
+      - button "What this run did not report — Onboarding packet — 3 people"
+      - text: Queued 0/3 0 Name Detail
+      - button "Member 1 —"
+      - button "Member 2 —"
+      - button "Member 3 —"
+      - text: 10:00 AM pl-093030-0030 Right-click or press m for every command on Onboarding packet — 3 people
+    - text: Finished 3
+    - button "Battistessa, Johnnie — done" [pressed]:
+      - text: Battistessa, Johnnie
+      - button "What this run did not report — Battistessa, Johnnie"
+      - text: Done 10:00 AM pl-090303-0003 took 0s Right-click or press m for every command on Battistessa, Johnnie
+    - button "EID 10873698 — failed":
+      - text: EID 10873698
+      - button "What this run did not report — EID 10873698"
+      - text: Failed 10:00 AM pl-090404-0004 took 0s Right-click or press m for every command on EID 10873698
+    - button "EID 10222333 — cancelled":
+      - text: EID 10222333
+      - button "What this run did not report — EID 10222333"
+      - text: Cancelled 10:00 AM pl-090707-0007 took 0s Right-click or press m for every command on EID 10222333
+  - region "Run shape": active-status 0s cross-verify 0s searching 10:00 AM 10:00 AM 0s elapsed
+  - region "Run detail":
+    - text: Battistessa, Johnnie Done pl-090303-0003
+    - img "Done"
+    - text: verified-done · 10:00 AM
+    - tablist "Run detail sections":
+      - tab "Logs"
+      - tab "Receipt" [selected]
+    - text: Done completed 10:00 AM Receipt receipt 26d4aa68-ab6e-5cc3-affa-338722744eberun 00000000-0003-4000-8000-000000000003
+    - region "Input": Input emplId 3698input includeCrmDates falseinput keepNonHdh falseinput
+    - region "Observations": Observations hdh unresolved — node "active-status" stored no provenance row for output field "hdh", so the instant this value was observed is not recoverable from authority reason unresolved — node "active-status" stored no provenance row for output field "reason", so the instant this value was observed is not recoverable from authority state activederived
+    - region "Decisions": "Decisions branch — not-taken node \"crm-dates\" did not run: its declared `when` condition was false for this run's input"
+    - region "Actions": Actions workflow:person-lookup/read-active-status local-projection — This run wrote nothing — no write was attempted.10:00 AM
+    - region "Verification": Verification node.searching unknown node.cross-verify unknown node.active-status verifiedrequired node.crm-dates absent completion.terminal-result verifiedrequired identity.eid-agrees-across-sources unknownrequired identity.ucpath-selection-is-unambiguous absentrequired
+    - region "Output": Output hdh truederived reason UCPath reports an active HDH appointment and CRM onboarding is completederived state activederived state not-requestedderived
+    - text: confidence unknownresult partialattempt 1generated 10:00 AM
+  - complementary "Run data":
+    - text: Run data
+    - button "Hide run data"
+    - region "Data": Data No data yet Values this run recorded appear here as it reads them.
+    - separator
+    - region "Attempts": Attempts current-attempt 1 requeues 0 enqueued-day 2026-08-03
+    - separator
+    - text: 3 fields · 1 attempt
+- region "Session Panel":
+  - button "Sessions 1 working 0 idle"
+  - text: v0.1.0
+  - status: Live

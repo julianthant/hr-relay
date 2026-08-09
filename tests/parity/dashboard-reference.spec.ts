@@ -14,6 +14,7 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
 import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
+import { startSeededServer, SEEDED_APP_VERSION, SEEDED_DAY, type SeededServer } from "./helpers/seeded-bff.js";
 import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import {
   FIXTURE_APP_VERSION,
@@ -24,8 +25,9 @@ import {
 import {
   PARITY_THEMES,
   PARITY_VIEWPORTS,
-  applyTheme,
+  assertThemeApplied,
   captureParityPair,
+  installTheme,
   type ParityTheme,
 } from "./helpers/capture.js";
 import { FIXTURE_INTAKE_IDS } from "./helpers/fixture-intake.js";
@@ -91,6 +93,21 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
 ];
 
 let server: FixtureServer;
+/**
+ * Adapter #2, started for exactly one state (2j). The reference corpus is
+ * otherwise the deterministic fixture adapter, and the whole reason this one
+ * server exists here is that a RECEIPT cannot be authored: it is DERIVED from
+ * authority rows (D141), and adapter #1 truthfully holds none. Until now the
+ * `run-receipt` reference therefore photographed only the receipt's `missing`
+ * arm, so the panel that carries D82's whole acceptance bar — "the operator
+ * completes the double-check without opening UCPath" — had never been
+ * photographed with anything in it.
+ *
+ * The seeded adapter is byte-stable for the same reasons the fixture one is:
+ * a `manualClock` at `SEEDED_AT` and ids from a seed function, never
+ * `randomUUID` or the wall clock.
+ */
+let seeded: SeededServer;
 
 test.beforeAll(async () => {
   // Build (or prove the reuse of) the bundle under test before anything serves
@@ -98,10 +115,12 @@ test.beforeAll(async () => {
   // is not in the working tree.
   ensureParityBundle();
   server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+  seeded = await startSeededServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
 });
 
 test.afterAll(async () => {
   await server.close();
+  await seeded.close();
 });
 
 /**
@@ -142,6 +161,9 @@ for (const viewport of PARITY_VIEWPORTS) {
         test(state.id, async ({ page }) => {
           const errors = failOnPageErrors(page);
           await page.setViewportSize({ width: viewport.width, height: viewport.height });
+          // BEFORE navigation: the theme is selected through the product's own
+          // stored preference, so React seeds its state from it (D187).
+          await installTheme(page, theme satisfies ParityTheme);
           await gotoAppState(page, server.baseUrl, state.route);
           // Every TAKEOVER dismisses the floating window for the same reason
           // the intake workspace does: it sits over the surface under test,
@@ -153,7 +175,7 @@ for (const viewport of PARITY_VIEWPORTS) {
             || state.route.archive !== undefined
             || state.route.activity !== undefined
           ) await dismissWorkflowWindow(page);
-          await applyTheme(page, theme satisfies ParityTheme);
+          await assertThemeApplied(page, theme satisfies ParityTheme);
           await page.waitForTimeout(120);
 
           expect(errors, `page errors while rendering ${state.id}`).toEqual([]);
@@ -184,8 +206,9 @@ test.describe("access variants", () => {
   test("keyboard-only focus lands on the queue", async ({ page }) => {
     const errors = failOnPageErrors(page);
     await page.setViewportSize({ width: 1440, height: 900 });
+    await installTheme(page, PARITY_THEMES[1]);
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
-    await applyTheme(page, PARITY_THEMES[1]);
+    await assertThemeApplied(page, PARITY_THEMES[1]);
     await page.keyboard.press("Tab");
     await page.keyboard.press("Tab");
     await page.keyboard.press("Tab");
@@ -208,8 +231,9 @@ test.describe("access variants", () => {
     const errors = failOnPageErrors(page);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize({ width: 1440, height: 900 });
+    await installTheme(page, PARITY_THEMES[1]);
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
-    await applyTheme(page, PARITY_THEMES[1]);
+    await assertThemeApplied(page, PARITY_THEMES[1]);
     expect(errors).toEqual([]);
 
     await captureParityPair(page, REFERENCES, {
@@ -224,4 +248,50 @@ test.describe("access variants", () => {
       variant: "reduced-motion",
     });
   });
+});
+
+/**
+ * The populated receipt, from adapter #2 over a real authority database (2j).
+ *
+ * One viewport, both themes: the point is the receipt BODY — input,
+ * observations, decisions, actions, verification, output, reuse, warnings, in
+ * the schema's narrative order — and photographing it at three widths would
+ * only add pixels to review. Its `missing` twin stays in the fixture corpus,
+ * because "no authority rows" is a real state the panel must also render.
+ */
+test.describe("populated receipt (adapter #2)", () => {
+  for (const theme of PARITY_THEMES) {
+    test(`run-receipt-populated @ ${theme.name}`, async ({ page }) => {
+      const errors = failOnPageErrors(page);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await installTheme(page, theme satisfies ParityTheme);
+      await gotoAppState(page, seeded.baseUrl, {
+        day: SEEDED_DAY,
+        run: seeded.runIds["doneRun"] ?? "",
+        section: "receipt",
+      });
+      // The floating workflow window opens over the queue's left column. The
+      // takeover dismissal clicks at y=100, which on THIS layout is the status
+      // filter row — it would change the queue's filter and reset the panel's
+      // open section. The empty gutter between the queue and the panel is the
+      // only inert target at this viewport.
+      await page.mouse.click(500, 500);
+      await page.waitForTimeout(120);
+      await assertThemeApplied(page, theme satisfies ParityTheme);
+      await page.waitForTimeout(120);
+      expect(errors, "page errors while rendering the populated receipt").toEqual([]);
+
+      await captureParityPair(page, REFERENCES, {
+        stateId: "run-receipt-populated",
+        viewport: "1440x900",
+        theme: theme.name,
+        adapter: "seeded",
+        fixtureId: "seeded-done-run",
+        descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+        appVersion: SEEDED_APP_VERSION,
+        capturedAt: SEEDED_DAY,
+        variant: "default",
+      });
+    });
+  }
 });

@@ -415,13 +415,23 @@ command that released generation 1, with the same evidence-note requirement.
    rows rather than inventing values), and failing at OPEN denies access to every
    unrelated row including the ledger. Neither half is decided here.
 
-### What is required before this criterion can be met
+### ~~What is required before this criterion can be met~~ — MET 2026-08-04 (D135)
 
-A target document at a workflow step that OWNS the field being written, named by
-the operator. The kernel, the contract, the store, the driver, the fence, the
-binding proof and the fail-closed completion arm are all proven; what is missing
-is a write that can land. Until then Phase 2's write half is **BLOCKED**, and
-doc 07's rule stands: write-heavy workflow migration may not begin.
+**This block described the D128 conclusion, which D135 withdrew the same day; it is kept for the
+record and is no longer in force.** It read: *"A target document at a workflow step that OWNS the
+field being written, named by the operator. … Until then Phase 2's write half is BLOCKED, and doc
+07's rule stands: write-heavy workflow migration may not begin."*
+
+D128 was wrong about the target. Kuali's own `ActionPage` query reports step `Task 1 - Kristina &
+TES` with `sectionSettings: edit` for the section holding `Timekeeper Name:*`, and the two things
+actually hiding the write were defects in THIS repository's driver: a Kuali text gadget debounces
+into the document model (~700 ms) and the run fenced and clicked inside that window, and `commit`
+returned at REQUEST time so the verifier's `page.reload()` cancelled the in-flight save. Both are
+fixed and both are proven on the wire per run. The controlled commit landed on doc **4489** and the
+propagation window was measured over four write/restore cycles on doc **4490**, which is what moved
+`recoveryAbsence` from `operator-only` to `stabilized`. The measured numbers are in
+§Phase-2 controlled-commit as-built above. **Write-heavy workflow migration is no longer blocked by
+this criterion** (each workflow still owes its own §3.2 controlled-commit proof).
 
 ---
 

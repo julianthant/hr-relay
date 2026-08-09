@@ -1018,7 +1018,17 @@ export function LogPanel({
       className={cn(
         // Below the three-column threshold the region is a scrolling stack, so
         // the rail sits under the panel instead of squeezing it to nothing.
-        "flex min-h-0 flex-col gap-[var(--ds-space-cozy)] overflow-y-auto",
+        //
+        // `w-full` is load-bearing (D187). This element is a FLEX CHILD of the
+        // shell's panel column, and without an explicit width a flex child
+        // sizes to its content — so the grid below resolved
+        // `minmax(0,1fr) var(--ds-w-context-rail)` to **2px 376px**, collapsing
+        // the entire run-detail panel (the failure record, the evidence
+        // receipt — every trust surface) into a 2px sliver while the
+        // accessibility tree still reported all of it. Every `run-*` reference
+        // in the parity corpus photographed that empty column and nobody read
+        // the pixels, because the a11y half agreed the content was there.
+        "flex min-h-0 w-full min-w-0 flex-col gap-[var(--ds-space-cozy)] overflow-y-auto",
         "min-[1280px]:grid min-[1280px]:h-full min-[1280px]:overflow-hidden",
         "min-[1280px]:grid-rows-[auto_minmax(0,1fr)]",
         railState.collapsed

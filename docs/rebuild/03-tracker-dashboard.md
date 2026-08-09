@@ -1140,6 +1140,30 @@ and `version` are untouched — and no per-attempt delivery state is stored at a
 channel reports `no-channel`, never success. Snooze is evaluated at delivery time only: a snoozed
 row still folds durably, it just does not ping.
 
+**AS-BUILT (2i-B, 2026-08-08; recorded 2j) — the `NotificationWire` sketch above is SUPERSEDED by
+what the wire actually serves.** The `interface NotificationWire` block in this section was written
+before the durable row existed and does not describe `NotificationWireSchema`
+(`src/domain/dashboard/projection.ts`). Three differences, each deliberate:
+
+- **There is no `critical` severity.** The sketch's four-value ladder had no consumer: severity is
+  DERIVED from the trigger by what the operator must DO, and D79b's six trigger keys map onto three
+  outcomes — `failed`/`write-parked` → `error`, `verified-done` → `info`, and the waiting/storage
+  family (`gate-waiting`, `repeating`, `storage`) → `warning`. A fourth level would have needed a
+  trigger that means "worse than error", and no trigger does. Adding one is a decision about the
+  trigger vocabulary, not about the wire.
+- **`state` is a single three-value axis `unread | read | snoozed`, not `state` plus `snoozedUntil`.**
+  The DURABLE model keeps read-state and snooze as two independent axes exactly as D138 requires —
+  `NotificationRecord` carries `status` and `snooze` separately, and snoozing never changes read
+  state. The WIRE folds them because the inbox renders one row state: `snoozed` wins **only while
+  the snooze is still in force**, and an expired snooze reads as its underlying status again with
+  nothing written back. Serving `snoozedUntil` as its own field would have invited the client to
+  re-derive that comparison against its own clock, which is how two surfaces come to disagree about
+  whether a row is snoozed.
+- **`dedupeKey`, `trigger`, `message`, `count` and `link` are not on the wire.** The row carries all
+  of them durably; the bell and inbox render `title`, `severity`, `state`, `occurredAt` and
+  `revision`. `revision` IS `version`, which is what the read/snooze commands CAS against — the
+  sketch had no version at all, and without it the three arms could not have been safe.
+
 **Trigger arguments are closed (D138).** "Notification text uses redacted arguments" is enforced by
 having no free-text argument: every trigger-event arm is ids, closed codes, and counts, and the
 title/message are composed from those. A caller cannot hand the inbox prose, so captured form

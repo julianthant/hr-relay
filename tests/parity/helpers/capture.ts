@@ -51,16 +51,69 @@ export interface A11ySnapshotSource {
   locator(selector: string): { ariaSnapshot(): Promise<string> };
 }
 
-/** Applies the theme the way the app does: the attribute on html AND body. */
-export async function applyTheme(page: Page, theme: ParityTheme): Promise<void> {
-  await page.evaluate((attribute) => {
-    document.documentElement.setAttribute("data-demo-theme", attribute);
-    document.body.setAttribute("data-demo-theme", attribute);
-    // The shipped shell hardcodes `class="dark"`; the light theme has to win
-    // against it exactly as it does in the product.
-    document.documentElement.classList.toggle("dark", attribute === "dark");
-    document.body.classList.toggle("dark", attribute === "dark");
-  }, theme.attribute);
+/**
+ * The key `useDemoTheme` persists its selection under
+ * (`src/dashboard/ds/theme.ts`). Seeding it is how the harness asks the PRODUCT
+ * for a theme instead of telling the DOM about one.
+ */
+const DEMO_THEME_STORAGE_KEY = "rebuild-demo.theme";
+
+/**
+ * Select the theme through the product's own contract, BEFORE navigation.
+ *
+ * ## The defect this replaces (2j, D187)
+ *
+ * `applyTheme` used to stamp `data-demo-theme` on `<html>` and `<body>` with a
+ * post-navigation `page.evaluate`. That reached the portalled overlays and
+ * nothing else, because `LoadedApp` renders its own `data-demo-theme={theme}`
+ * on the app root and `tokens.css` scopes the whole palette off the bare
+ * `[data-demo-theme=…]` selector — so the app root re-themed its entire
+ * subtree from INSIDE, out of React state the harness never touched. Every
+ * `paper-ink` reference in the corpus was photographed DARK, and the semantic
+ * half agreed with the pixels: the toggle's accessible name read
+ * "Switch to Paper Ink", which is what a DARK app says. The harness set a
+ * theme, the product ignored it, and nothing compared the two — a check that
+ * could not fail.
+ *
+ * Seeding `localStorage` before the first navigation makes `readStoredTheme()`
+ * seed React state itself, so the app root, `<html>`, `<body>` and the toggle
+ * label all agree because they all come from one value. It also removes the
+ * fight with the shipped shell's hardcoded `class="dark"`, which the product
+ * never has to win either.
+ */
+export async function installTheme(page: Page, theme: ParityTheme): Promise<void> {
+  await page.addInitScript(
+    ([key, attribute]) => {
+      window.localStorage.setItem(String(key), String(attribute));
+    },
+    [DEMO_THEME_STORAGE_KEY, theme.attribute] as const,
+  );
+}
+
+/**
+ * Prove the product actually adopted the theme, on all three writers.
+ *
+ * This is the half whose absence hid the defect for the whole corpus. A
+ * harness that selects a theme and does not verify it has only expressed a
+ * preference. The app root is checked explicitly because it is the one that
+ * wins the cascade.
+ */
+export async function assertThemeApplied(page: Page, theme: ParityTheme): Promise<void> {
+  const observed = await page.evaluate(() => ({
+    html: document.documentElement.getAttribute("data-demo-theme"),
+    body: document.body.getAttribute("data-demo-theme"),
+    root: document.querySelector("[data-parity-ready]")?.getAttribute("data-demo-theme") ?? null,
+  }));
+  const disagreeing = Object.entries(observed)
+    .filter(([, value]) => value !== theme.attribute)
+    .map(([where, value]) => `${where}=${value ?? "absent"}`);
+  if (disagreeing.length > 0) {
+    throw new Error(
+      `theme ${theme.name} (${theme.attribute}) was requested but ${disagreeing.join(", ")}; `
+      + "the app root's own data-demo-theme scopes the whole palette, so a disagreement here "
+      + "means the capture is photographing a theme nobody selected",
+    );
+  }
 }
 
 /**

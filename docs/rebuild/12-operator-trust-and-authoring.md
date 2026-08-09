@@ -936,6 +936,31 @@ locations without reverse-engineering row prose.
 
 ### 5.3 Phase B—safe edits only
 
+> **DEFERRED OUT OF PHASE 2 — D186 (2j, 2026-08-09).** Phase B is **not built**, and this is a
+> decision rather than a slip. The argument is D79a's own, one level down: an editor exists to
+> avoid a code change per tweak **across many workflows**, and the tree today has ONE production
+> workflow (`person-lookup`) plus the one-node transaction proof
+> (`kuali-timekeeper-annotation`). With one workflow, editing the source IS the cheaper and more
+> reviewable path, so a Phase-B pipeline right now would be — in §5.4's own words about the
+> trimmed DSL — "a pipeline whose only user is its own test". Building it against a single
+> consumer would also fix its closed policy union and its override schema against a sample of
+> one, which is precisely how an authoring surface acquires the wrong shape.
+>
+> **What holds the line meanwhile.** Phase A shipped and is proved: the explorer is a projection
+> of the ONE composition root, and `workflow-editor-compile-integrity` asserts the read-only
+> boundary in both directions plus D79a's no-DSL trim. Its guard-inventory entry already records
+> that it carries **no Phase-B arms**, and it gains them in the commit that builds them. Nothing
+> about the deferral weakens a safety property: there is no partial editor, no half-authority, and
+> no config path that can reach a descriptor.
+>
+> **The trigger that ends the deferral, named so it is checkable.** The SECOND production workflow
+> whose presentation, notification preference, or allowlisted policy value an operator wants to
+> change *without* a code change. At that point the closed set has two consumers to be shaped by,
+> and §5.4's apply protocol (strict versioned override, temp+fsync+atomic-replace, stale-base
+> refusal, code-change brief for everything else) is what must be built — unchanged by this
+> deferral. Doc 07's Phase-2 exit criterion is amended accordingly; the criterion is not waived,
+> it is reassigned to the migration that first needs it.
+
 In Phase-2 tail 2i, the editor may change only a closed, reviewable subset:
 
 - presentation labels/order/grouping and notification preferences;
