@@ -853,6 +853,104 @@ Phase-1 exports:
 These tests land immediately before or with the real contract they exercise. A standalone scratch
 file outside the repository is never a Phase-1 gate and is deleted after its findings are captured.
 
+### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
+
+Doc 11 §6 already says redaction is schema-owned and that "tests seed canary passwords, cookies,
+storage state, SSNs, DOBs, and private keys and scan every produced note/failure/screenshot
+metadata/bundle/notification." Until D183 nothing owned that sentence: redaction appeared only as a
+**clause** inside §3.10's `evidence-receipt`, the notification guard, §3.11's `ai-advisory-no-authority`
+and `provider-capability-boundary` — four partial views of one rule, each looking at one producer,
+none of them able to answer *"what about the surface nobody thought of?"*. This guard is that sweep,
+and it has two halves that catch different failures. Neither is sufficient alone.
+
+**Egress is the axis, not "is it a wire".** A value's obligation depends on where the bytes go:
+
+| egress class | what it is |
+|---|---|
+| `operator-loopback` | the dashboard bound to `127.0.0.1` (doc 11 §6.1), read by the one authorized operator |
+| `phone-scoped` | doc 12 §7's single non-loopback ingress — the operator's own phone |
+| `durable-authority` | a row in the authority database, retained and re-served |
+| `durable-file` | bytes under the state root that are never pruned (the ledger) |
+| `process-egress` | bytes handed to a third party — today an AI provider |
+| `os-notification` | text the operating system renders, possibly on a locked screen |
+
+**(a) The declaration audit.** Every registered surface is walked through `z.toJSONSchema`, and each
+leaf is either provably harmless — an enum, a literal, a number, a boolean, a pattern- or
+format-constrained string — or a **redacted subtree**, or it must carry a declared **origin**:
+
+- `repository-authored` — composed inside `src/` from literals, closed vocabularies, branded ids and
+  numbers; it cannot hold a captured value.
+- `declared-redacted` — pushed through `redactValue` under a declared `(classification, transform)`.
+- `local-filesystem-name` — a file this repository itself created.
+- `captured-hr-value` — read from an external HR system or the operator's own uploaded file.
+- `external-text` — free text authored OUTSIDE this repository and copied verbatim (a thrown
+  `error.message`, a page title, a provider's answer). Nobody here controls what it contains.
+
+The matrix is where the teeth are. `os-notification` admits **only** `repository-authored` — doc 03
+§2.6's "no raw secrets or captured form contents in notification text" as a schema property rather
+than a promise. `process-egress` admits only what this repository wrote or explicitly redacted.
+`durable-file` needs a written **exception** for a captured value and refuses external text outright.
+`durable-authority` needs an exception for external text — which is how `FailureRecord.summary`
+(`error.message` verbatim, D142) and the receipt warning that copies it end up **named** rather than
+assumed. `operator-loopback` admits every origin, because the operator is entitled to their own run's
+data; its teeth are that every leaf is dispositioned at all, plus half (b).
+
+Redaction arms are recognised **structurally** — every arm declares `state`, `classification` and
+`transform` — never by comparing bytes against a standalone serialization of `RedactedFieldSchema`.
+The byte comparison is the obvious check and it silently stops working exactly when a schema is
+embedded and `z.toJSONSchema` hoists the shared subtree behind a `$ref`; every redacted value would
+then decompose into a free-text `key` plus an open `value`, and the table would fill with
+dispositions for leaves that already carry their own.
+
+Because the audit reads the schema rather than a list, **a field added to a wire contract cannot
+ship without a decision**: it lands as a new undispositioned leaf and the guard goes red. The
+completeness check runs in both directions at two levels — every module that can declare a surface
+(everything under `src/domain/dashboard/`, plus a named set covering capture, intake, the ledger,
+notifications and the trust records) must be registered, and every exported `*WireSchema` must be
+either a registered surface or carried by one.
+
+A `*Redacted`-suffixed leaf must be declared `declared-redacted`, or its **name** must be waived with
+a written reason; a source arm additionally refuses any `<name>Redacted:` write in `src/` that is not
+a schema declaration. Both halves exist because of what the first sweep found: `valueRedacted` on the
+run-detail Data and context sections **is not redacted** — `src/server/dashboard/queries/run-detail.ts`
+serves the raw recorded scalar, which doc 03 §1.1(c) entitles that rail to — so the value is fine and
+the NAME is the defect, waived by decision rather than quietly accepted. In the other direction,
+`page.urlRedacted`, `page.titleRedacted` and `subject.*.displayRedacted` have **no producer at all**
+today: they are declared, consumed by the run-detail wire and dropped by the advisory's table, and
+never filled. The first code that fills one is what the producer arm exists to stop, which is why it
+ships before the code it guards.
+
+**(b) The canary sweep.** Doc 11 §6's exact sentinel list — a password, a cookie, a storage-state
+blob, a private key, a credential-file path, an unissued SSN, an impossible DOB — plus a person name
+and an EID, each impossible in real data so a hit is never a coincidence. The plant is asserted to
+have reached the source **before** anything is derived from it: a sweep whose sentinels never landed
+proves nothing and goes green forever. Then the real producers run:
+
+- `buildFailureTriagePrompt` over a maximal `FailureRecord` whose every free-text leaf carries a
+  sentinel. Nothing survives, and every dropped path still appears as a **withheld** fact — silence
+  would tell the model the fact does not exist, which is a different and false statement.
+- `projectNotificationTrigger` over all seven trigger arms, plus a proof that each arm's schema
+  **refuses** free text in every one of its fields. D138's "there is nowhere to put it" as a checked
+  property, not a review note.
+- `ledgerLineForOutbox`: no universal canary in the line, and an undeclared key cannot ride along —
+  the ledger is never pruned, so a value that reaches it is permanent.
+- `buildRunEvidenceReceipt` over the REAL 2026-08-04 person-lookup exit run seeded into a real
+  authority database. The subject's full name is genuinely in the stored checkpoints and absent from
+  the receipt, which still answers the operator's question with its declared `last4`.
+- `redactDiagnosticFields`: an unclassified field is dropped **with** a warning, never passed through.
+
+Every mechanical arm runs against a violating fixture through the guard's own entry points —
+undispositioned leaf, refused origin, missing exception, gratuitous exception, stale disposition,
+orphan disposition, a decoy shape that merely resembles a redacted arm, a fixture producer writing
+`urlRedacted: page.url()` — plus a positive control proving the canary scanner fires on a planted
+value. An arm that would pass a deliberately-leaking fixture is not enforcement.
+
+This guard deliberately does **not** restate `no-secret-values-in-logs.test.ts` (a credential
+interpolated into a `log.*` call), `secrets-single-source.test.ts`, `evidence-receipt.test.ts` (the
+receipt's own canaries and its declaration-time refusals), the unit `advisory-redaction.test.ts`,
+`notification-durability.test.ts` or `capture-durability-and-scope.test.ts`. It audits in one sweep,
+in both directions, the surfaces those guards each see one at a time.
+
 ---
 
 ## 4. `descriptor-coverage.test.ts` — the ONE rebuild guard replacing parity-list design
