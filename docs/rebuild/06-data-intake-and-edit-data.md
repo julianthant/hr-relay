@@ -793,6 +793,26 @@ and both keyless geocoders. Proof: `tests/unit/normalization-rules.test.ts`,
 `tests/unit/provider-pool.test.ts`, and five executable scenarios in
 `tests/scenario/normalization-contact.scenario.test.ts`.
 
+**As-built delta (D178, 2026-08-09) — the `ai` arm goes live, NARROWER than legacy's.** The
+`ai` source arm (`{provider, model, confidence}`) landed behind its own `ai` input flag, separate
+from `geocode` because the two spend different budgets against different remote systems and a
+caller who wanted address verification has not thereby consented to a model reading the record.
+The task asks about the fields the deterministic rules could not decide — but **only those whose
+canonical `redactTransform` is `allow`**, because doc 12 §4.4's rule is that redaction happens
+before the wire and the DECLARED classification decides, not the usefulness of the answer.
+`CANONICAL_FIELDS.relationship` is `sensitive-hr`, whose widest permitted transform is `count`, so
+the one field legacy's LLM fallback existed for is precisely the one this arm withholds: it stays
+`ambiguous` for the operator, which is the honest outcome. `address1`/`postalCode`/`cellPhone`/
+`homePhone` are `direct-identifier` and are likewise never asked about; `city`/`state`/`country`
+are `safe-diagnostic` and are. An answer naming a field the prompt did not carry throws BY NAME
+rather than being applied — that is the model volunteering a value for a withheld field. A
+malformed answer is a refusal that leaves the fields ambiguous, never a partial accept, and joins
+`advisory-unavailable` beside the geocoders' own exhaustion. `ContactFieldIdSchema` and the new
+`ContactAdviceSchema` moved into `src/domain/normalization/contact-rules.ts` so doc 12's advisory
+module can reach the vocabulary without putting the task contract in its import closure. Proof:
+`normalization/contact/ai-advice` and `normalization/contact/ai-withheld-field` in the same
+scenario corpus — the second asserts the withheld value appears NOWHERE in the prepared request.
+
 ### 4.3 Phase-2h as-built — OCR extraction admits three producers identically (D151)
 
 **Operator requirement (2026-08-05):** a page may be read by the automated provider pipeline, by an

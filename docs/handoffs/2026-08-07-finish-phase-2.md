@@ -327,7 +327,7 @@ The BFF serves 7 endpoints today; each slice names what it adds.
         URL is the working path today.
       · **Pre-existing, not introduced:** the intake takeover renders a dark shell under the light
         theme (sibling of the `paper-ink`-renders-dark residual already deferred to 2j).
-- [ ] **2i-G — PART 1 LANDED 2026-08-09 (D176/D177); the rest is still open.**
+- [ ] **2i-G — PARTS 1 AND 2 LANDED 2026-08-09 (D176/D177, D178); the rest is still open.**
   - [x] ~~Read-only Workflow Explorer (doc 12 §5 Phase A)~~ — **DONE.** Projection derived from
         `WORKFLOW_MODULES` at `GET /api/v1/explorer`, surface at `?explore=<workflowId>`. Doc 12
         §5.7 is the as-built; doc 03 §13 owns placement. Two named exclusions: the §5.2 live-run
@@ -342,8 +342,24 @@ The BFF serves 7 endpoints today; each slice names what it adds.
         `generated/ui-catalog.json` after asserting it still describes the drivers; a stale artifact
         throws with the generator's own remediation and the surface never regenerates. Surface at
         `?catalog=<term>`.
-  - [ ] **AI advisories** (doc 12 §4.4; guard `ai-advisory-no-authority`; the normalization `ai` arm
-        + bootstrap unavailable-reason come off). Untouched.
+  - [x] ~~**AI advisories** (doc 12 §4.4)~~ — **DONE (D178).** Failure triage lands as
+        `POST /api/v1/runs/:runId/advisory` behind an explicit button inside the failure record —
+        deliberately NOT a run-detail section, because a section spends a provider budget every
+        time an operator opens a failed run. Redaction is DECLARED per leaf and an undeclared leaf
+        refuses by name; only `safe-diagnostic` leaves as a value, so `summary` (which is
+        `error.message` verbatim and can name a person) is withheld and the closed vocabularies
+        beside it are what the model sees. Guard `ai-advisory-no-authority` **ACTIVATED** over the
+        module graph in both directions plus the declaration, the advice shape and the route.
+        The normalization `ai` arm went live NARROWER than legacy's (classification decides, so
+        `relationship` is never sent), and the bootstrap's `ai-advisory` entry now reports a real
+        fact about the process instead of a milestone.
+        · **Still without a producer, by design:** run summary over a `RunEvidenceReceipt`, the
+          record sanity check, and the dev-only selector-suggestion brief. `AdvisorySurfaceIdSchema`
+          carries no arm for them.
+        · **Parity delta:** the six `run-failed` references re-frozen for the new panel; the whole
+          corpus re-stamped once for the descriptor-hash change the domain edits caused.
+        · **No live provider call was made.** The production adapter takes its `fetch` by injection
+          and every fixture uses it; a live smoke is available but was not run.
   - [ ] **Archive / version-bump UI** (with task D80's model). Untouched.
   - [ ] **Activity report** (doc 13 §6.7). Untouched.
   - [ ] **Explorer Phase B** (doc 12 §5.3/§5.4) — the closed presentation/policy edit union, the
@@ -375,7 +391,15 @@ The BFF serves 7 endpoints today; each slice names what it adds.
       registry plus three parity states. The EDIT half of doc 07's same bullet is Phase B and
       remains open.
 - [ ] Capture fixtures prove restart survival + no duplicate photos/handoffs (2h-F)
-- [ ] AI-advisory fixtures prove redaction, strict output, provider exhaustion, zero authority edge (2i)
+- [x] ~~AI-advisory fixtures prove redaction, strict output, provider exhaustion, zero authority
+      edge (2i)~~ — **MET 2026-08-09 (2i-G, D178).** One fixture per arm:
+      `tests/unit/advisory-redaction.test.ts` (a classified leaf never reaches the prepared
+      request), `advisory-strict-output.test.ts` (malformed provider reply → typed refusal naming
+      paths, never values), `advisory-provider-exhaustion.test.ts` (spent budget / no adapter /
+      whole pool exhausted → typed `unavailable` with the reservation conservatively retained, over
+      a REAL authority database), `advisory-zero-authority.test.ts` (a produced/refused/unavailable
+      round trip leaves every authority family except provider admission byte-identical), plus the
+      structural guard `ai-advisory-no-authority`.
 - [ ] Real-shaped copied authority DB survives corruption → restore → rebuild (2j)
 
 ## Deviations from the plan already made — do not re-litigate

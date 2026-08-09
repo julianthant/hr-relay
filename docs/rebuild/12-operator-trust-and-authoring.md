@@ -807,6 +807,105 @@ registry entry, or call the command/mutation services.
 
 ---
 
+**As-built (D178, 2026-08-09) — this section landed, and the guard came with it.**
+
+**What a prompt is made of, and what it is NOT.** `src/domain/trust/advisory.ts` assembles every
+prompt from the subject record's LEAVES, each pushed through the ONE `redactValue` implementation
+under a `(classification, transform)` pair declared in that file. An undeclared leaf is a loud
+refusal naming the exact path — never a silent drop, which is how a prompt starts carrying a field
+nobody reviewed. A dropped leaf still APPEARS in the prompt as its redacted arm, because "this fact
+exists and was withheld" is information the model should have while absence is not.
+
+The declaration produced a finding worth stating plainly: **`FailureRecord.summary` is
+`error.message` verbatim**, so a task that threw *"no candidate matched EID 10456789"* would have
+put an employee id on the wire. `summary`, `causeChain.summary` and `remediation.message` are
+therefore declared `sensitive-hr`/`drop`, and `page.urlRedacted` / `page.titleRedacted` /
+`subject.*.displayRedacted` are `direct-identifier`/`drop`. What the model actually receives is the
+CLOSED vocabularies beside them — code, node, task, write state, page state, remediation kind,
+cause codes — which is enough to explain a failure CLASS, the only thing this section asks an
+advisory to do. **Only `safe-diagnostic` may leave the process as a value**, and the guard enforces
+that rather than the weaker "the pairing is permitted".
+
+The advisory leaf rule is deliberately FINER than the receipt's (`evidence-classification.ts`
+treats an array as one leaf because every receipt fact must be dated by a stored `FactProvenance`
+row). A prompt carries no provenance obligation, so it classifies per element FIELD:
+`causeChain.code` goes and `causeChain.summary` does not. Under the receipt's rule the whole array
+would need one verdict and the useful half would have gone out with the unsafe half.
+
+**The answer schema travels with the question.** The prompt carries the closed advice schema's own
+JSON-Schema projection and its fingerprint (D151's "one instruction, generated from the registry" —
+a hand-written prompt and a strict parser drift apart the first time the schema grows), and the
+consumer parses the answer through that exact schema. A non-conforming answer is `invalid-response`
+whose reason names the failing PATHS and never echoes the model's text. **That rule caught a real
+leak in D161's adapter:** `JSON.parse`'s own message QUOTES the offending input
+(`Unexpected token 'I', "I think the"…`), so the shared transport now reports only the error's
+NAME beside the answer's length.
+
+**One adapter, per-consumer schemas.** `src/infra/providers/gemini-advisory.ts` is transport +
+provenance only — it stamps provider/model and passes the model's JSON through VERBATIM as
+`answer`, and the CONSUMER owns the closed shape. `gemini-transport.ts` is the half it shares with
+D161's OCR adapter (endpoint, header-borne key, the 429 → `rate-exhausted` mapping with the
+provider's own `Retry-After`, fenced-JSON tolerance): two private copies of that would have drifted
+on exactly how a rate limit is reported to the admission kernel.
+
+**Admission binds the SUBJECT run, and says so honestly.** An on-demand operator advisory has no
+claimed run, no node and no task to inherit an execution identity from, so
+`ProviderExecutionIdentitySchema` became a plain union of two strict objects: the v9 run-node arm
+with its bytes UNCHANGED (durable `provider_admissions` rows parse strictly at read — a required
+discriminator would have stopped every stored admission from parsing, the D133 defect exactly) and
+an advisory arm `{runId, attempt, surface}`. `#providerAdmissionContext` still validates the run's
+existence, its retained attempt and its own stored config snapshot (D116's discipline: the target
+run's retained identity, never recomputed from current config); only the "is executing this node"
+check is skipped, because a finished run is not executing anything and claiming a node the
+descriptor never reached would make the row lie about what happened (D144).
+
+**The zero-authority edge is a property of the wiring.** `src/services/trust/advisory.ts` holds
+exactly a clock and an admitted `ProviderClient<"ai.advisory">` — no store, no transaction, no
+command service, no run handle — so it cannot transition a run, resolve evidence, select identity
+or acknowledge a warning even by accident. The caller reads the `FailureRecord` from authority and
+hands the VALUE over. The ONE durable footprint an advisory leaves is its `provider_admissions` row
+and the capability counter beside it, because D112 budgets every provider call and grants a read no
+exemption; `advisory-zero-authority.test.ts` proves a produced/refused/unavailable round trip
+leaves every other authority family byte-identical.
+
+**The surface asks, it does not prefetch.** The advisory is `POST /api/v1/runs/:runId/advisory` and
+deliberately NOT a run-detail section: a section is fetched whenever the server advertises it, and
+this call spends a provider budget — every operator opening a failed run would have made a model
+call. `FailureAdvisoryPanel` renders inside the failure record BELOW its remediation ladder (the
+record is the evidence; the advisory is a reading of it), behind an explicit "Explain this failure"
+button, and every produced advisory carries provider/model/template-version/input-digest plus the
+standing sentence that it is advisory, is not evidence, and cannot change the run. `unavailable`
+and `invalid-response` render as a `Refusal` with the closed code and the reason — never a blank.
+
+**The bootstrap's `ai-advisory` deferral came off.** `featureAvailability` now reports a fact about
+THIS process — `available` when keys composed a pool, `not-configured` naming the environment
+family when they did not — and the panel is its first consumer, keeping its control and stating the
+server's reason rather than vanishing (the instance selector's house rule).
+
+**Two boundary widenings, both deliberate and both named in `provider-capability-boundary`:**
+`src/services/trust/advisory.ts` may type `ProviderClient` (it is the first provider consumer
+outside a run task, which receives clients through `ctx.providers`), and
+`src/server/dashboard/compose.ts` may import the admission module (it became a second
+admitted-provider composition root). The BFF query it hands the closure to names no provider type
+at all. `createTimeoutDeadlineScheduler` moved out of the worker composition root to
+`src/server/scheduling/` for the same reason — two roots needing one timer is how a second ad-hoc
+`setTimeout` gets born, and a bound armed on one of those is invisible to the kernel.
+
+**Still deferred, explicitly.** §4.4's table names five adapters; two landed (failure triage, and
+doc 06 §4.2's contact normalization). Run summary over a `RunEvidenceReceipt`, the record sanity
+check and the development-only selector-suggestion brief have no producer yet, and
+`AdvisorySurfaceIdSchema` carries no arm for them — a surface nothing can answer is a dead
+vocabulary. `evidenceRefs` on the recorded invocation is served as the wire's `failureId` beside the
+outcome rather than a separate list; a receipt-scoped advisory will need the fuller form.
+
+**Proof:** `tests/unit/advisory-redaction.test.ts`, `tests/unit/advisory-strict-output.test.ts`,
+`tests/unit/advisory-provider-exhaustion.test.ts`, `tests/unit/advisory-zero-authority.test.ts`,
+`tests/unit/architecture/ai-advisory-no-authority.test.ts`, and the two new executable scenarios in
+`tests/scenario/normalization-contact.scenario.test.ts`. No test contacts a live provider: the
+production adapter takes its `fetch` by injection precisely so these can exist.
+
+---
+
 ## 5. Workflow explorer/editor—staged hybrid, one graph
 
 ### 5.1 Decision

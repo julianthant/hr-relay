@@ -558,7 +558,9 @@ explicit operator architecture decision; a migration questionnaire cannot enable
   Failed OS notification delivery still leaves a durable unread inbox item. Capture fixtures prove
   open/finalizing sessions survive restart and that duplicate/reordered requests do not duplicate
   photos or handoffs; the phone origin cannot reach a non-capture route. AI-advisory fixtures prove
-  redaction, strict output, explicit provider exhaustion, and zero authority edge. A real-shaped
+  redaction, strict output, explicit provider exhaustion, and zero authority edge — **MET
+  2026-08-09 (2i-G, D178)**, one fixture per arm plus the activated `ai-advisory-no-authority`
+  guard; doc 12 §4.4 is the as-built. A real-shaped
   copied authority DB passes corruption → read-only degraded mode → checksummed-backup restore →
   projection rebuild with claims/dependencies/checkpoints/intents/outboxes/capture handoffs intact.
 - **Archive model (D80) proven:** a version bump moves prior-version runs out of every active
