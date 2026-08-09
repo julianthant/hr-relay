@@ -410,6 +410,52 @@ person-lookup's input is a UNION and `defineIntakeProjection` resolves target pa
 object, so that declaration is real design work belonging with the grid surface (2i-E3). Until then
 every arm and the upload route refuse **by name** rather than mapping against an invented target set.
 
+### 2.8 Phase-2i as-built — the first real projection, and unions resolve (D172)
+
+`person-lookup` is the first workflow to declare an intake projection, so this is the commit where
+the route and all six arms stop refusing by name. Three decisions, each of which a permissive
+implementation would have got wrong quietly.
+
+**A union input schema IS traversed, on one rule.** `resolveSchemaPath` refused unions outright, and
+`PersonLookupInput` is `{name, …} | {emplId, name?, …}` — so the whole union-input class of
+workflows was unmappable. Two workarounds were available and both are silent-wrong-value bugs:
+resolving against *the first arm that has the key* picks one shape's schema for a value the other
+shape will parse, and flattening the union into one object invents a schema the workflow never
+declared. Instead the path resolves in **every** member, and:
+
+- it must resolve to the **same schema object** everywhere it resolves. Two arms spelling
+  `z.string().min(1)` twice are two objects — §7 vector #6 at arm granularity — so
+  `divergent-across-union` refuses by name and names how many arms disagreed. `person-lookup`
+  therefore shares one `PersonNameSchema` across both arms and the canonical view;
+- a member that lacks the path makes the target **omissible**, so `required` means "every valid
+  input must supply this". That is the only reading under which §5's `unmapped-required` rejection
+  is true — claiming otherwise would reject, per row, inputs the workflow itself accepts;
+- if no member resolves it, the failure reported is the one that walked FURTHEST, so the message
+  names a real shape's fields rather than "a union".
+
+A union at the LEAF is a value shape, not a fork: nothing is left to walk, so it resolves as itself
+and a canonical field that is itself a union still matches by identity.
+
+**The projection binds two targets, and only two.** `emplId → eid` and `name → fullName` are the
+whole of what a roster row says about a *person*. `keepNonHdh` and `includeCrmDates` are recorded in
+`config/canonical-field-inventory.json` as `execution-option` precisely because they describe the
+RUN, and binding a spreadsheet column to one would let a file decide whether this system reads CRM.
+They keep their schema defaults, so an intake row that omits them is valid.
+
+**Neither target is `required`, and that is the union telling the truth.** No single path is
+present-and-mandatory in every accepted input. The combination is still enforced, one level down:
+§5's pipeline parses every assembled row through this exact schema, so a row carrying neither
+identifier is rejected with the schema's own words. **Residual:** zod reports a failed non-
+discriminated union as a root issue reading `Invalid input`, and `BoundaryIssueSchema` keeps only
+`{path, code, message}` — so such a row rejects legibly as `workflow-schema` but without naming
+which identifier was missing. Composing that message is `validate.ts`'s business, recorded here for
+whoever next touches it.
+
+`name` reusing `CANONICAL_FIELDS.fullName.schema` is not a cosmetic tidy: §1's invariant is proved
+by OBJECT IDENTITY, so a column bound to `name` is coerced through `fullName.coerce` and must then
+satisfy the very schema the workflow validates with. The descriptor's source closure moved, so
+`contractFingerprint` moved with it — expected, and the reason the parity `wf` stamp re-freezes.
+
 ---
 
 ## 3. Extraction store tasks (service store — D4)

@@ -39,7 +39,7 @@ import {
 } from "../ids.js";
 import { deriveSchemaHash } from "../schema-bound-value.js";
 import { sha256Hex } from "../sha256.js";
-import { isSchemaPathFailure, resolveSchemaPath } from "../../validation/schema-path.js";
+import { isSchemaPathFailure, resolveSchemaPath, type SchemaPathFailure } from "../../validation/schema-path.js";
 import { CanonicalFieldIdSchema, isFactoryDefinedCanonicalField } from "../fields/registry.js";
 import type { CanonicalField, CanonicalFieldId } from "../fields/registry.js";
 
@@ -75,6 +75,27 @@ export function isFactoryDefinedIntakeProjection(candidate: IntakeProjection): b
   return FACTORY_DEFINED_PROJECTIONS.has(candidate);
 }
 
+/**
+ * Why a target path could not be resolved, in the input schema's own terms.
+ *
+ * The union arm is worth its own sentence (D172): "the two arms spell the same
+ * constraint twice" is a fixable authoring mistake with a one-line fix (share
+ * the schema object), and a generic "not a strict object" would send the author
+ * looking for a structural problem that is not there.
+ */
+function intakeTargetPathRefusal(targetFieldId: IntakeTargetFieldId, failure: SchemaPathFailure): string {
+  if (failure.kind === "no-such-field") {
+    return `intake projection target ${targetFieldId} names no field in the input schema `
+      + `(${failure.at} is not among ${failure.known.join(", ")})`;
+  }
+  if (failure.kind === "divergent-across-union") {
+    return `intake projection target ${targetFieldId} resolves to ${String(failure.members)} DIFFERENT schema objects `
+      + `across the input union at ${failure.at}; every arm that declares the path must share one schema object, `
+      + "because coercing a cell through one arm's copy is the drift doc 06 §7 #6 bans";
+  }
+  return `intake projection target ${targetFieldId} walks through ${failure.at}, which is not a strict object`;
+}
+
 export function defineIntakeProjection(
   inputSchema: z.ZodType,
   bindings: Readonly<Record<string, CanonicalField>>,
@@ -98,11 +119,7 @@ export function defineIntakeProjection(
 
     const resolved = resolveSchemaPath(inputSchema, targetFieldId.split("."));
     if (isSchemaPathFailure(resolved)) {
-      throw new Error(
-        resolved.kind === "no-such-field"
-          ? `intake projection target ${targetFieldId} names no field in the input schema (${resolved.at} is not among ${resolved.known.join(", ")})`
-          : `intake projection target ${targetFieldId} walks through ${resolved.at}, which is not a strict object`,
-      );
+      throw new Error(intakeTargetPathRefusal(targetFieldId, resolved));
     }
     if (resolved.schema !== field.schema) {
       throw new Error(

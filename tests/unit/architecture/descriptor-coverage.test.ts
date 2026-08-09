@@ -21,6 +21,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import {
   DESCRIPTORS,
+  INTAKE_PROJECTIONS,
   SERVER_REGISTRY,
   WORKFLOW_MODULES,
   auditImplBindings,
@@ -304,6 +305,33 @@ describe("descriptor coverage", () => {
       }]),
       /must reuse the descriptor's own schema/,
     );
+  });
+
+  /**
+   * D172 — the SHIPPED registry, not a fixture of it. Until person-lookup
+   * declared one, every intake route and arm refused by name, so "at least one
+   * workflow is spreadsheet-capable" is a real claim about the running system.
+   */
+  it("registers the production intake projections over the canonical registry's own fields", () => {
+    const registered = Object.entries(INTAKE_PROJECTIONS);
+    assert.equal(registered.length > 0, true, "no workflow declares an intake projection");
+    for (const [workflowId, projection] of registered) {
+      assert.equal(
+        DESCRIPTORS.some((descriptor) => String(descriptor.id) === workflowId),
+        true,
+        `${workflowId} has an intake projection but no registered descriptor`,
+      );
+      assert.equal(projection.targets.length > 0, true, `${workflowId} declares an empty projection`);
+      for (const target of projection.targets) {
+        const field = CANONICAL_FIELDS[target.canonicalFieldId];
+        assert.notEqual(field, undefined, `${workflowId}.${target.targetFieldId} names no canonical field`);
+        assert.equal(
+          field.label,
+          target.label,
+          `${workflowId}.${target.targetFieldId} labels itself differently from its canonical field`,
+        );
+      }
+    }
   });
 
   it("rejects a descriptor whose detail path is not in the producing node's output", () => {

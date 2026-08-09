@@ -125,6 +125,73 @@ describe("doc 06 §1 intake projection", () => {
     assert.notEqual(required.fingerprint, workStudyIntake.fingerprint);
   });
 
+  /**
+   * D172 — the union arm. `PersonLookupInput` is the real motivator: a workflow
+   * that accepts "a name" or "an EID (plus an optional name)" is exactly the
+   * shape a roster fans out over, and refusing to traverse the union would have
+   * made the whole class unmappable.
+   */
+  describe("a union input schema (D172)", () => {
+    const Named = z.strictObject({
+      name: CANONICAL_FIELDS.fullName.schema,
+      department: CANONICAL_FIELDS.department.schema.optional(),
+    });
+    const Identified = z.strictObject({
+      emplId: CANONICAL_FIELDS.eid.schema,
+      name: CANONICAL_FIELDS.fullName.schema.optional(),
+      department: CANONICAL_FIELDS.department.schema.optional(),
+    });
+    const UnionInput = z.union([Named, Identified]);
+
+    it("resolves a target every arm declares, and one only some arms declare", () => {
+      const projection = defineIntakeProjection(UnionInput, {
+        emplId: CANONICAL_FIELDS.eid,
+        name: CANONICAL_FIELDS.fullName,
+      });
+      assert.deepEqual(projection.targets.map((target) => target.targetFieldId), ["emplId", "name"]);
+      // Neither is required: no single path is present-and-mandatory in EVERY
+      // accepted input, so demanding a column for one would reject rows the
+      // workflow itself accepts.
+      assert.deepEqual(requiredTargetIds(projection), []);
+    });
+
+    it("refuses two arms that spell the same constraint with two schema objects", () => {
+      const Divergent = z.union([
+        z.strictObject({ name: CANONICAL_FIELDS.fullName.schema }),
+        z.strictObject({ name: z.string().min(1) }),
+      ]);
+      assert.throws(
+        () => defineIntakeProjection(Divergent, { name: CANONICAL_FIELDS.fullName }),
+        /resolves to 2 DIFFERENT schema objects across the input union/,
+      );
+    });
+
+    it("refuses a target no arm declares, naming a real arm's fields", () => {
+      assert.throws(
+        () => defineIntakeProjection(UnionInput, { ssn: CANONICAL_FIELDS.ssn }),
+        /names no field in the input schema/,
+      );
+    });
+
+    it("keeps a target required when every arm requires it", () => {
+      const AlwaysNamed = z.union([
+        z.strictObject({ name: CANONICAL_FIELDS.fullName.schema, kind: z.literal("a") }),
+        z.strictObject({ name: CANONICAL_FIELDS.fullName.schema, kind: z.literal("b") }),
+      ]);
+      const projection = defineIntakeProjection(AlwaysNamed, { name: CANONICAL_FIELDS.fullName });
+      assert.deepEqual(requiredTargetIds(projection), ["name"]);
+    });
+
+    it("resolves a nested path through a union of objects", () => {
+      const NestedUnion = z.union([
+        z.strictObject({ contact: z.strictObject({ city: CANONICAL_FIELDS.city.schema }) }),
+        z.strictObject({ contact: z.strictObject({ city: CANONICAL_FIELDS.city.schema, state: CANONICAL_FIELDS.state.schema }) }),
+      ]);
+      const projection = defineIntakeProjection(NestedUnion, { "contact.city": CANONICAL_FIELDS.city });
+      assert.equal(projection.target(IntakeTargetFieldIdSchema.parse("contact.city"))?.canonicalFieldId, "city");
+    });
+  });
+
   it("resolves a nested target path", () => {
     const NestedInput = z.strictObject({
       contact: z.strictObject({ city: CANONICAL_FIELDS.city.schema }),

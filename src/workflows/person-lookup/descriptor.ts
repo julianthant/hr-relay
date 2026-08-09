@@ -19,6 +19,7 @@ import {
   ReadOnboardingDatesOutputSchema,
 } from "../../domain/contracts/crm/read-onboarding-dates.js";
 import { CrmReadOnboardingRecord } from "../../domain/contracts/crm/read-onboarding-record.js";
+import { CANONICAL_FIELDS } from "../../domain/fields/registry.js";
 import {
   ActiveStatusOutcomeSchema,
   ReadActiveStatus,
@@ -35,6 +36,21 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js
 /* ── workflow-constant input ─────────────────────────────────────────────── */
 
 /**
+ * The person's name, as one schema object shared by both arms of the input
+ * union and by the canonical view (D172).
+ *
+ * It IS the canonical `fullName` schema rather than a structurally identical
+ * `z.string().min(1)`, because `defineIntakeProjection` proves doc 06 §1 by
+ * OBJECT IDENTITY: a spreadsheet column bound to `name` is coerced through
+ * `CANONICAL_FIELDS.fullName.coerce` and must then satisfy the very schema this
+ * workflow validates with, not a copy that agrees today. Sharing one object
+ * across both arms is the other half of the same fact — two arms spelling the
+ * constraint twice would be two schemas for one field, which the resolver
+ * refuses by name.
+ */
+const PersonNameSchema = CANONICAL_FIELDS.fullName.schema;
+
+/**
  * The ingress schema — the ONE place defaults are applied (doc 02 §2). There is
  * deliberately no `dryRun` field: that is kernel envelope state (D6), and a
  * workflow that could declare it could also disagree with the executor about
@@ -42,13 +58,13 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js
  */
 export const PersonLookupInput = z.union([
   z.strictObject({
-    name: z.string().min(1),
+    name: PersonNameSchema,
     keepNonHdh: z.boolean().default(false),
     includeCrmDates: z.boolean().default(false),
   }),
   z.strictObject({
     emplId: EidSchema,
-    name: z.string().min(1).optional(),
+    name: PersonNameSchema.optional(),
     keepNonHdh: z.boolean().default(false),
     includeCrmDates: z.boolean().default(false),
   }),
@@ -63,13 +79,13 @@ export const PersonLookupCanonicalInput = defineCanonicalInput(
   PersonLookupInput,
   z.union([
     z.strictObject({
-      name: z.string().min(1),
+      name: PersonNameSchema,
       keepNonHdh: z.boolean(),
       includeCrmDates: z.boolean(),
     }),
     z.strictObject({
       emplId: EidSchema,
-      name: z.string().min(1).optional(),
+      name: PersonNameSchema.optional(),
       keepNonHdh: z.boolean(),
       includeCrmDates: z.boolean(),
     }),
