@@ -124,12 +124,23 @@ export function registerStorageComposer(composer: StorageComposer): void {
  * sequence, not the phase letter. Phase 1 closed with `1i-spine` (D74, live
  * person-lookup, 2026-08-04); Phase 2's controlled transaction proof was met
  * live the same day (D135, doc 4489); tail `2g` completed 2026-08-04
- * (D134–D145), and tail `2h` — the data-service/intake foundation, the
- * largest tail — completed 2026-08-08 (D146–D167). `active` is tail `2i`,
- * the operator surface (doc 07 §Phase 2's deferred-base-tails table).
+ * (D134–D145), tail `2h` — the data-service/intake foundation, the largest
+ * tail — completed 2026-08-08 (D146–D167), tail `2i` — the operator surface —
+ * completed 2026-08-09 (D168–D180), and tail `2j` — the integration/restore/
+ * soak/documentation gate — closed Phase 2 the same day (D181–D189).
+ *
+ * `active` is now **Phase 3**, the per-workflow migration loop (doc 07 §3.1),
+ * and it is deliberately the phase rather than a workflow id: doc 07 §3.3
+ * orders the migrations but the operator picks which one starts, so naming one
+ * here would be this file asserting a decision it does not own.
+ *
+ * Two criteria left Phase 2 with an explicit disposition rather than a build,
+ * and both are recorded where a reader will find them: the explorer's EDIT
+ * half (D186, doc 12 §5.3 — reassigned with a named trigger) and the BFF's
+ * missing static handler (D189, doc 13 §6.9 — a named gap with an owner).
  */
-const COMPLETED_THROUGH = "2h";
-const ACTIVE_ITEM = "2i";
+const COMPLETED_THROUGH = "2j";
+const ACTIVE_ITEM = "3-workflow-migration";
 
 export function runtimeHelp(isolation: RuntimeIsolation): string {
   return [

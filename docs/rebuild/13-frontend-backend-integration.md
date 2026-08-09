@@ -665,6 +665,39 @@ Each workflow migration uses the same integration checklist:
 
 ---
 
+### 6.9 NOT BUILT — the BFF serves no frontend bytes (2j, 2026-08-09, D189)
+
+**A named gap, recorded so it cannot read as met-by-silence.** The production BFF
+(`src/server/dashboard/http-server.ts` + `routes/api.ts`) has **no static handler**: every unrouted
+path 404s, and the only servers in this tree that deliver `dist/dashboard` are the parity lane's
+test fixtures. Three consequences, all real:
+
+1. **`npm run rebuild:dashboard:prod` claims a mode the runtime does not implement.** The script
+   passes `--prod`; `startRebuildRuntime` never parses it. Today the operator's working path is the
+   Vite dev server on 5174 beside the BFF on 3938 (doc 03 §Operational isolation), which is why this
+   went unnoticed — the frontend has always been served by something else.
+2. **The phone capture page has no delivery path.** `api.ts` allow-lists `/capture.html` for the
+   phone host gate and nothing in production serves that file, so 2i-F's token-scoped surface is
+   unreachable from a phone even though every route behind it works and is tested.
+3. `config/legacy-capabilities.json`'s `legacy-route-static` is therefore genuinely **open**, and
+   D184 moved it to the non-workflow capability closure milestone rather than closing it.
+
+**Why 2j did not build it, decided rather than skipped.** The static handler itself is small — the
+parity fixture's `serveStatic` (traversal-checked, content-typed) would port in an afternoon. What
+is NOT small is that the bytes would be served on the ONE surface deliberately exposed to the public
+internet through the capture ingress, behind the same Host gate whose whole contract is that the
+phone origin reaches capture routes and nothing else (`capture-durability-and-scope`, D174). Adding
+an internet-reachable file handler to that path is a security change and it deserves its own slice
+with its own review, not a tail-end addition to a documentation gate. The second half is missing
+anyway: the on-demand ngrok tunnel LAUNCHER is still unbuilt (D175), so static bytes alone would not
+make the phone surface reachable end to end.
+
+**Owner and trigger.** The first migration that needs the phone surface in production. That slice
+builds both halves together — the static handler *and* the tunnel launcher — plus a guard arm that
+the file handler cannot serve anything outside the capture allow-list to a phone-origin request, and
+`--prod` starts meaning what its script name says. Until then the operator path is the dev server
+beside the BFF, which is what has always actually run.
+
 ## 7. Exact visual-parity and contract verification
 
 ### 7.1 Reference route matrix

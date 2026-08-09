@@ -615,6 +615,18 @@ protocol is unchanged by it.
     real Kuali controlled commit's durable footprint. `cli storage restore` did not exist before
     this slice and could not have: nothing in production had ever recorded the runtime-lock
     snapshot its stopped-system proof is derived from. Measured numbers: doc 03 §2.5 D181.
+- **NAMED GAP carried out of Phase 2, not met-by-silence (2j, D189): the production BFF serves no
+  frontend bytes.** `http-server.ts` has no static handler and `api.ts` 404s every unrouted path, so
+  `npm run rebuild:dashboard:prod` names a mode the runtime never parses and **2i-F's token-scoped
+  phone capture surface has no delivery path in production** — `/capture.html` is allow-listed by
+  the Host gate and nothing serves it. Nothing else regresses: the operator's working path has
+  always been the Vite dev server on 5174 beside the BFF on 3938. It is deferred deliberately —
+  those bytes would be served on the one surface exposed to the public internet through the capture
+  ingress, behind the gate whose whole contract is "a phone origin reaches capture routes and
+  nothing else", and the tunnel launcher (D175) is unbuilt anyway, so static bytes alone would not
+  make the phone reachable. Owner: the first migration that needs the phone in production, building
+  both halves plus the guard arm. Doc 13 §6.9 is the normative record;
+  `config/legacy-capabilities.json`'s `legacy-route-static` stays honestly **open**.
 - ~~**Archive model (D80) proven**~~ — **MET 2026-08-09 (2i-G, D179).** All five clauses are pinned
   in `tests/unit/archive-model.test.ts` against the real authority database and the real command
   kernel, one `it` per clause: a bump archives the prior-version run and leaves the current-version
