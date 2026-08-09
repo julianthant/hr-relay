@@ -74,6 +74,8 @@ function harness(): Harness {
     descriptorSetHash: descriptorSetHash([fixtureDescriptor.contractFingerprint]),
     authority: { getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: () => [],
+      isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
+      getFailure: (failureId: string) => database.authority.failures.get(failureId),
     },
     descriptors,
     projectionStore: database,
@@ -91,6 +93,7 @@ function harness(): Harness {
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
 
   const kernel = createCommandKernel({
+    appVersion: "0.1.0",
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,

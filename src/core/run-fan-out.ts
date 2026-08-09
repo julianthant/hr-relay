@@ -72,6 +72,13 @@ export interface FanOutEnvelope {
   readonly priority: RunPriority;
   readonly dryRun: boolean;
   readonly ingressSchemaHash: string;
+  /**
+   * Charter §25 / D179: the app build stamped on every run AT ENQUEUE. It is
+   * required here — the one place runs are created — because a run without it
+   * cannot be told apart from a current one by an application-scope version
+   * bump, and back-filling it later would claim a build the run never saw.
+   */
+  readonly appVersion: string;
 }
 
 /**
@@ -146,6 +153,7 @@ export function fanOutQueuedRuns(
       lifecycle: { state: "queued" },
       claimGeneration: 0,
       hidden: false,
+      appVersion: envelope.appVersion,
       version: 1,
       createdAt: now,
       updatedAt: now,

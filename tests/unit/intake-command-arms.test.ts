@@ -151,6 +151,7 @@ function harness(sessionOverrides: Record<string, unknown> = {}) {
   database.withAuthorityTransaction((repositories) => repositories.intakeSessions.create(session));
 
   const kernel = createCommandKernel({
+    appVersion: "0.1.0",
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids: sequentialIdFactory("b"),

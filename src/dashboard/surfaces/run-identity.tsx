@@ -68,7 +68,16 @@ export function RunProvenanceBar({
   const testSystems = surface.resolvedInstances.filter(({ instance }) => instance === "test");
   const ranShape = shortFingerprint(surface.descriptorHash);
   const shapeMoved = surface.descriptorHash !== currentDescriptorHash;
-  const staleApp = surface.appVersion !== currentAppVersion;
+  /**
+   * D179: the row now carries the build the RUN was enqueued under, so this
+   * comparison can finally fire. Before D179 the projection stamped the
+   * serving build here and `staleApp` was structurally always false — the
+   * warning existed but could never appear.
+   */
+  const ranAppVersion = surface.appVersion.state === "present"
+    ? surface.appVersion.value
+    : undefined;
+  const staleApp = ranAppVersion !== undefined && ranAppVersion !== currentAppVersion;
 
   return (
     <span className="flex min-w-0 shrink-0 items-center gap-[var(--ds-space-snug)]">
@@ -111,7 +120,11 @@ export function RunProvenanceBar({
             <KeyValueList
               items={[
                 { key: "Workflow", value: `${workflowLabel} · ${ranShape}`, tone: shapeMoved ? "warning" : "default" },
-                { key: "App build", value: surface.appVersion, tone: staleApp ? "warning" : "default" },
+                {
+                  key: "App build",
+                  value: ranAppVersion ?? "unstamped",
+                  tone: staleApp || ranAppVersion === undefined ? "warning" : "default",
+                },
                 { key: "Requested by", value: surface.actorId },
                 { key: "Config", value: shortFingerprint(surface.configFingerprint) },
                 { key: "Attempt", value: `#${surface.attempt}` },
@@ -127,9 +140,11 @@ export function RunProvenanceBar({
                 shapeMoved
                   ? `This run's SHAPE is a prior descriptor. It is not comparable with a ${shortFingerprint(currentDescriptorHash)} run, and a retry would replay retired code.`
                   : "The descriptor fingerprint is the run's shape; a row served under the same fingerprint is the same run shape.",
-                staleApp
-                  ? `Served by app ${surface.appVersion}; this dashboard is ${currentAppVersion}. The app build is the other half of the archive key.`
-                  : `Served by the app build this dashboard is running (${currentAppVersion}), which is why it is stated once on the Sessions bar rather than on every run.`,
+                ranAppVersion === undefined
+                  ? `${surface.appVersion.state === "absent" ? surface.appVersion.reason : ""} — the app build is the other half of the archive key, so this run can only be told apart from a current one by its descriptor.`
+                  : staleApp
+                    ? `Ran under app ${ranAppVersion}; this dashboard is ${currentAppVersion}. The app build is the other half of the archive key.`
+                    : `Ran under the app build this dashboard is running (${currentAppVersion}), which is why it is stated once on the Sessions bar rather than on every run.`,
               ]}
             />
           </div>

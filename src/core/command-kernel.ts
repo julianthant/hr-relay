@@ -273,6 +273,12 @@ export interface CommandKernelDependencies {
   readonly authority: CommandAuthority;
   readonly clock: Clock;
   readonly ids: IdFactory;
+  /**
+   * The RUNNING app build (D179). Every run this kernel enqueues is stamped
+   * with it, and an application-scope version bump verifies the operator's
+   * claimed scope against it rather than trusting the command's own text.
+   */
+  readonly appVersion: string;
   readonly descriptors: WorkflowDescriptorResolver;
   readonly writeResolution: WriteResolutionExecutor;
   readonly workerRuntime: WorkerRuntimeExecutor;
@@ -480,6 +486,7 @@ function executeStartRun(
       priority: plan.priority,
       dryRun: plan.dryRun,
       ingressSchemaHash: plan.ingressSchemaHash,
+      appVersion: dependencies.appVersion,
     },
     plan.planned.map((planned) => ({
       runId: planned.runId,
@@ -572,6 +579,10 @@ function executeRetry(
     lifecycle: { state: "queued" },
     claimGeneration: 0,
     hidden: false,
+    // A retry is a fresh enqueue, so it stamps the build it is enqueued
+    // under — not the build the run it retries carried. The DESCRIPTOR
+    // identity above is deliberately inherited; the app build is not.
+    appVersion: dependencies.appVersion,
     version: 1,
     createdAt: now,
     updatedAt: now,
@@ -1453,6 +1464,7 @@ function executeIntake(
           priority: "bulk",
           dryRun: request.payload.dryRun,
           ingressSchemaHash: deriveSchemaHash(descriptor.input, "input"),
+          appVersion: dependencies.appVersion,
         },
         plan.manifest.validRows.map((row) => {
           const runId = dependencies.ids.uuid();

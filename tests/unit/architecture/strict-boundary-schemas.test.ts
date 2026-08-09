@@ -312,6 +312,19 @@ import {
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "../fixtures/phase1c-contract-fixtures.js";
+import {
+  ARCHIVE_RELAUNCH,
+  ARCHIVED_RUN,
+  VERSION_BUMP_APPLICATION,
+  VERSION_BUMP_PLAN,
+  VERSION_PLAN_ROW,
+} from "../fixtures/archive-fixtures.js";
+import {
+  ArchivedRunRecordSchema,
+  ArchiveRelaunchRecordSchema,
+  VersionBumpApplicationSchema,
+  VersionBumpPlanSchema,
+} from "../../../src/domain/archive/model.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
@@ -679,14 +692,8 @@ const SQLITE_OPAQUE_RECORD = {
   payload: { schemaHash: HASH_A, value: { reserved: true } },
   createdAt: NOW,
 };
-const SQLITE_VERSION_PLAN = {
-  versionPlanId: UUID_1,
-  version: 1,
-  planFingerprint: HASH_A,
-  state: "planned",
-  payload: { schemaHash: HASH_A, value: { target: "1.1.0" } },
-  createdAt: NOW,
-};
+/** D179: the real plan row, whose fingerprint the schema recomputes. */
+const SQLITE_VERSION_PLAN = VERSION_PLAN_ROW;
 const SQLITE_ARTIFACT_OUTBOX = {
   outboxId: UUID_1,
   artifactId: UUID_2,
@@ -843,7 +850,19 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ImmutableInsertDisposition", schema: ImmutableInsertDispositionSchema, fixtures: ["inserted", "existing"] },
   { name: "SqliteStorageRecordId", schema: SqliteStorageRecordIdSchema, fixtures: [UUID_1] },
   { name: "OpaqueAuthorityRecord", schema: OpaqueAuthorityRecordSchema, fixtures: [SQLITE_OPAQUE_RECORD], openFixturePaths: ["payload.value"] },
-  { name: "VersionPlanStorageRecord", schema: VersionPlanStorageRecordSchema, fixtures: [SQLITE_VERSION_PLAN], openFixturePaths: ["payload.value"] },
+  { name: "VersionPlanStorageRecord", schema: VersionPlanStorageRecordSchema, fixtures: [SQLITE_VERSION_PLAN] },
+  { name: "VersionBumpPlan", schema: VersionBumpPlanSchema, fixtures: [VERSION_BUMP_PLAN] },
+  { name: "VersionBumpApplication", schema: VersionBumpApplicationSchema, fixtures: [VERSION_BUMP_APPLICATION] },
+  // `input.raw` is the operator's exact submission and `input.parsed.value` is
+  // a schema-bound canonical value — both are open JSON by contract (doc 02
+  // §2), which is precisely why the archive keeps them beside their hashes.
+  {
+    name: "ArchivedRunRecord",
+    schema: ArchivedRunRecordSchema,
+    fixtures: [ARCHIVED_RUN],
+    openFixturePaths: ["input.raw", "input.parsed.value"],
+  },
+  { name: "ArchiveRelaunchRecord", schema: ArchiveRelaunchRecordSchema, fixtures: [ARCHIVE_RELAUNCH] },
   { name: "ArtifactOutboxStorageRecord", schema: ArtifactOutboxStorageRecordSchema, fixtures: [SQLITE_ARTIFACT_OUTBOX], openFixturePaths: ["payload.value"] },
   { name: "ProjectionStorageRecord", schema: ProjectionStorageRecordSchema, fixtures: [SQLITE_PROJECTION], openFixturePaths: ["payload.value"] },
   { name: "AuthorityBackupServiceOptions", schema: AuthorityBackupServiceOptionsSchema, fixtures: [{ directory: "/tmp/backups" }] },

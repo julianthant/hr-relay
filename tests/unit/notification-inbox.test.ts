@@ -59,6 +59,7 @@ function harness(): { database: AuthorityDatabase; kernel: CommandKernel } {
   );
   disposers.push(() => database.close());
   const kernel = createCommandKernel({
+    appVersion: "0.1.0",
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,

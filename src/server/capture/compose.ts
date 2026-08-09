@@ -36,6 +36,8 @@ export interface CaptureComposeInput {
   readonly bindings: Readonly<Record<string, CaptureIntakeBinding>>;
   readonly config: Config;
   readonly configIdentity: Readonly<{ configFingerprint: string; configSnapshotId: string }>;
+  /** The running app build, stamped on the run a capture handoff enqueues (D179). */
+  readonly appVersion: string;
   readonly env: NodeJS.ProcessEnv;
   readonly clock: Clock;
   readonly ids: IdFactory;
@@ -65,6 +67,7 @@ export function composeCaptureSurface(input: CaptureComposeInput): CaptureServic
       bindings: { resolve: (workflowId) => input.bindings[workflowId] },
       descriptors: input.descriptors,
       configIdentity: input.configIdentity,
+      appVersion: input.appVersion,
       clock: input.clock,
     }),
     ids: input.ids,

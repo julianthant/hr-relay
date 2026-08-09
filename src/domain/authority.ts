@@ -40,6 +40,9 @@ export const AuthorityTableNameSchema = z.enum([
   "intake_sessions",
   "intake_manifests",
   "ocr_extractions",
+  "version_bump_applications",
+  "archived_runs",
+  "archive_relaunches",
 ]);
 
 export const ProjectionTableNameSchema = z.enum([

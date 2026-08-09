@@ -1,7 +1,7 @@
 # run-open-gate--graphite-warm--1280x720
 # adapter: fixture
 # fixture: run-open-gate
-# descriptorHash: 104939b10f0b29c2a14972307d02c33062a9eaec028471f51dfb9b6b05c2ced9
+# descriptorHash: a49c6afce540cab28ca47f9f9fb0b38b3e18f5661ed563e140e7c148e509c2d7
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -133,7 +133,7 @@
       - tab "Receipt"
     - text: 9:47 AM Searching UCPath directory for Blirea, Glaundi 9:48 AM Two candidates share the name Blirea, Glaundi identity-review since 9:49 AM The run is held here. It cannot go past this step until you pick. 9:49 AM identity-review gate opened for candidate selection
     - searchbox "Search logs"
-    - text: wf 104939b1
+    - text: wf a49c6afc
     - button "Run provenance"
     - status:
       - button "identity-review Go to the decision since 9:49 AM"

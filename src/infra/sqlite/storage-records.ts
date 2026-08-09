@@ -37,6 +37,13 @@ import { StartPlanRecordSchema } from "../../domain/run/start-plan.js";
 import { RunTerminalOutboxRecordSchema } from "../../domain/run/terminal-outbox.js";
 import { WorkerLeaseRecordSchema } from "../../domain/run/worker.js";
 import { SchemaBoundCanonicalValueSchema } from "../../domain/schema-bound-value.js";
+import {
+  ArchivedRunRecordSchema,
+  ArchiveRelaunchRecordSchema,
+  VersionBumpApplicationSchema,
+  VersionBumpPlanSchema,
+  versionBumpPlanFingerprint,
+} from "../../domain/archive/model.js";
 import { RunCheckpointRecordSchema } from "../../domain/workflow/checkpoint.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../domain/write-safety.js";
 import {
@@ -55,14 +62,85 @@ export const OpaqueAuthorityRecordSchema = z.strictObject({
   createdAt: IsoInstantSchema,
 });
 
+/**
+ * The version-bump plan row (D179). The released v1 shell held an opaque
+ * `payload` and a three-state enum; it had ZERO production rows because the
+ * whole `version-archive` family was deferred, so this is the first real shape
+ * rather than a migration of one — the same D164 precedent `artifact_outbox`
+ * set when its first producer landed.
+ *
+ * Two shell corrections come with it. The payload is the exact
+ * `VersionBumpPlan`, not a schema-bound blob, because the apply arm reads the
+ * plan's own scope back and a blob would let a reader see whatever it parsed
+ * the bytes as. And `rejected` is gone: a bump that meets a blocker leaves the
+ * plan `planned` so the operator can clear the blocker and apply the SAME
+ * reviewed plan — a rejected state would have been written by nothing and read
+ * by nobody.
+ */
 export const VersionPlanStorageRecordSchema = z.strictObject({
   versionPlanId: VersionPlanIdSchema,
   version: PositiveIntSchema,
   planFingerprint: FingerprintSchema,
-  state: z.enum(["planned", "applied", "rejected"]),
-  payload: SchemaBoundCanonicalValueSchema,
+  state: z.enum(["planned", "applied"]),
+  plan: VersionBumpPlanSchema,
   createdAt: IsoInstantSchema,
+  appliedAt: IsoInstantSchema.optional(),
+}).superRefine((record, context) => {
+  if ((record.state === "applied") !== (record.appliedAt !== undefined)) {
+    context.addIssue({
+      code: "custom",
+      path: ["appliedAt"],
+      message: "a version plan carries an applied instant exactly when it is applied",
+    });
+  }
+  if (record.plan.versionPlanId !== record.versionPlanId) {
+    context.addIssue({ code: "custom", path: ["plan"], message: "a version plan row and its plan must share one id" });
+  }
+  if (record.planFingerprint !== versionBumpPlanFingerprint(record.plan)) {
+    context.addIssue({
+      code: "custom",
+      path: ["planFingerprint"],
+      message: "a version plan's fingerprint must be the digest of the plan it stores",
+    });
+  }
 });
+
+/**
+ * The applied bump (D179) — charter §25's change record, insert-only. It is a
+ * separate row from the plan on purpose: the plan is what was REVIEWED, this
+ * is what was DONE, and the archived runs reference this one.
+ */
+export const VersionBumpApplicationStorageRecordSchema = VersionBumpApplicationSchema;
+
+/**
+ * One archived run, self-contained (D179). The row is immutable in SQL, not
+ * merely by convention: an archive that could be rewritten would be a worse
+ * record than the live row it replaced.
+ */
+export const ArchivedRunStorageRecordSchema = ArchivedRunRecordSchema;
+
+/** Relaunch provenance (D179) — insert-only, keyed by the FRESH run. */
+export const ArchiveRelaunchStorageRecordSchema = ArchiveRelaunchRecordSchema;
+
+/** The CAS `apply-version-bump` presents to move a plan `planned → applied`. */
+export const VersionPlanConsumeRequestSchema = z.strictObject({
+  versionPlanId: VersionPlanIdSchema,
+  expectedVersion: PositiveIntSchema,
+  planFingerprint: FingerprintSchema,
+  now: IsoInstantSchema,
+});
+export type VersionPlanConsumeRequest = z.infer<typeof VersionPlanConsumeRequestSchema>;
+
+export const VersionPlanConsumeOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("consumed"), plan: VersionPlanStorageRecordSchema }),
+  z.strictObject({ state: z.literal("already-consumed"), plan: VersionPlanStorageRecordSchema }),
+  z.strictObject({
+    state: z.literal("refused"),
+    code: z.enum(["not-found", "version-mismatch", "fingerprint-mismatch"]),
+    message: z.string().min(1),
+  }),
+]);
+export type VersionPlanConsumeOutcome = z.infer<typeof VersionPlanConsumeOutcomeSchema>;
 
 /**
  * Doc 03 §2.1 (D45) / doc 06 §4.1: one stable-keyed durable projection row,
@@ -184,11 +262,18 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   intake_manifests: IntakePlanManifestSchema,
   /** Doc 06 §4.3's admitted page extraction (D159). */
   ocr_extractions: AdmittedExtractionSchema,
+  /** D179 / doc 03 §10.2 — the archive model's three durable facts. */
+  version_bump_applications: VersionBumpApplicationStorageRecordSchema,
+  archived_runs: ArchivedRunStorageRecordSchema,
+  archive_relaunches: ArchiveRelaunchStorageRecordSchema,
 } satisfies Record<AuthorityRecordTableName, z.ZodType>);
 
 export type DiagnosticAttachmentStorageRecord = z.infer<typeof DiagnosticAttachmentStorageRecordSchema>;
 export type OpaqueAuthorityRecord = z.infer<typeof OpaqueAuthorityRecordSchema>;
 export type VersionPlanStorageRecord = z.infer<typeof VersionPlanStorageRecordSchema>;
+export type VersionBumpApplicationStorageRecord = z.infer<typeof VersionBumpApplicationStorageRecordSchema>;
+export type ArchivedRunStorageRecord = z.infer<typeof ArchivedRunStorageRecordSchema>;
+export type ArchiveRelaunchStorageRecord = z.infer<typeof ArchiveRelaunchStorageRecordSchema>;
 export type ArtifactOutboxStorageRecord = z.infer<typeof ArtifactOutboxStorageRecordSchema>;
 export type ArtifactSinkHeadRecord = z.infer<typeof ArtifactSinkHeadRecordSchema>;
 export type ProjectionStorageRecord = z.infer<typeof ProjectionStorageRecordSchema>;

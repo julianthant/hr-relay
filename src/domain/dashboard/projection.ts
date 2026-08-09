@@ -8,6 +8,7 @@ import {
   ItemIdSchema,
   LocalDateSchema,
   NotificationIdSchema,
+  PositiveIntSchema,
   ProjectionCursorSchema,
   RunIdSchema,
   TraceIdSchema,
@@ -15,10 +16,10 @@ import {
   WorkflowIdSchema,
 } from "../ids.js";
 import {
-  AppVersionSchema,
   PanelKindSchema,
   ProjectionGenerationSchema,
   RowRevisionSchema,
+  RunAppVersionSchema,
   RunDetailSectionSchema,
 } from "./primitives.js";
 
@@ -50,7 +51,15 @@ const QueueBaseFields = {
   attempt: z.number().int().positive(),
   lineage: ParentRunSchema,
   actorId: ActorIdSchema,
-  appVersion: AppVersionSchema,
+  /**
+   * The app build THIS RUN was enqueued under (D179) — not the build serving
+   * the page. Before D179 the projection stamped its own `deps.appVersion`
+   * here, which made every row claim the current build and left the run-detail
+   * "served by a different app build" comparison structurally unable to fire.
+   * A run enqueued before the stamp existed says so, with its reason.
+   */
+  appVersion: RunAppVersionSchema,
+  descriptorVersion: PositiveIntSchema,
   descriptorHash: FingerprintSchema,
   configFingerprint: FingerprintSchema,
   resolvedInstances: z.array(ResolvedInstanceSchema),

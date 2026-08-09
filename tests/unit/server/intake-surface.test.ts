@@ -120,6 +120,7 @@ function surface(): Surface {
   });
 
   const kernel = createCommandKernel({
+    appVersion: "0.1.0",
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids: sequentialIdFactory("d"),
@@ -150,6 +151,8 @@ function surface(): Surface {
     authority: {
       getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: () => [],
+      isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
+      getFailure: (failureId: string) => database.authority.failures.get(failureId),
     },
     descriptors,
     projectionStore: database,

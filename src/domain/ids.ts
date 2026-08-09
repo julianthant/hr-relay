@@ -73,6 +73,10 @@ export const BrowserSessionIdSchema = brandedText<"BrowserSessionId">(UUID_PATTE
 export const CaptureSessionIdSchema = brandedText<"CaptureSessionId">(UUID_PATTERN, "capture session id must be a UUID");
 export const CapturePhotoIdSchema = brandedText<"CapturePhotoId">(UUID_PATTERN, "capture photo id must be a UUID");
 export const VersionPlanIdSchema = brandedText<"VersionPlanId">(UUID_PATTERN, "version plan id must be a UUID");
+export const VersionBumpApplicationIdSchema = brandedText<"VersionBumpApplicationId">(
+  UUID_PATTERN,
+  "version bump application id must be a UUID",
+);
 export const CommandAuditIdSchema = brandedText<"CommandAuditId">(UUID_PATTERN, "command audit id must be a UUID");
 export const OutboxIdSchema = brandedText<"OutboxId">(UUID_PATTERN, "outbox id must be a UUID");
 export const WriteIntentIdSchema = brandedText<"WriteIntentId">(UUID_PATTERN, "write intent id must be a UUID");
@@ -253,6 +257,7 @@ export type BrowserSessionId = z.infer<typeof BrowserSessionIdSchema>;
 export type CaptureSessionId = z.infer<typeof CaptureSessionIdSchema>;
 export type CapturePhotoId = z.infer<typeof CapturePhotoIdSchema>;
 export type VersionPlanId = z.infer<typeof VersionPlanIdSchema>;
+export type VersionBumpApplicationId = z.infer<typeof VersionBumpApplicationIdSchema>;
 export type CommandAuditId = z.infer<typeof CommandAuditIdSchema>;
 export type OutboxId = z.infer<typeof OutboxIdSchema>;
 export type WriteIntentId = z.infer<typeof WriteIntentIdSchema>;

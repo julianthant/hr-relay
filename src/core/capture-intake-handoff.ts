@@ -62,6 +62,8 @@ export interface CaptureIntakeHandoffOptions {
   readonly descriptors: Readonly<{ resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined }>;
   /** Proven against the stored snapshot before a single run is stamped (D171). */
   readonly configIdentity: Readonly<{ configFingerprint: string; configSnapshotId: string }>;
+  /** The running app build, stamped on the run this handoff enqueues (D179). */
+  readonly appVersion: string;
   readonly clock: Clock;
 }
 
@@ -245,6 +247,7 @@ export function createCaptureIntakeHandoff(options: CaptureIntakeHandoffOptions)
           configFingerprint: options.configIdentity.configFingerprint,
           configSnapshotId: options.configIdentity.configSnapshotId,
           ingressSchemaHash: deriveSchemaHash(descriptor.input, "input"),
+          appVersion: options.appVersion,
         },
         [{
           runId,

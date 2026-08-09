@@ -179,6 +179,7 @@ function createHarness(wrap?: RepositoryWrap): Harness {
   const workerCalls: string[] = [];
   const writeCalls: string[] = [];
   const kernel = createCommandKernel({
+    appVersion: "0.1.0",
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,

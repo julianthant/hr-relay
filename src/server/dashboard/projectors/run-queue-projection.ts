@@ -45,6 +45,10 @@ import {
   type DashboardDayWire,
   type QueueSurfaceWire,
 } from "../../../domain/dashboard/projection.js";
+import {
+  ActivityReportWireSchema,
+  type ActivityReportWire,
+} from "../../../domain/dashboard/activity.js";
 import { DashboardDayPatchSchema } from "../../../domain/dashboard/subscription.js";
 import {
   FingerprintSchema,
@@ -54,6 +58,7 @@ import {
 } from "../../../domain/ids.js";
 import { NotificationRecordSchema } from "../../../domain/notifications.js";
 import type { RunRecord } from "../../../domain/run/record.js";
+import type { FailureRecord } from "../../../domain/trust/failure.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { sha256Hex } from "../../../domain/sha256.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../events/types.js";
@@ -132,6 +137,16 @@ export interface RunQueueProjectionDeps {
     getRun(runId: string): RunRecord | undefined;
     /** 2i-B: the durable inbox rows the day wire serves. */
     listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
+    /**
+     * D179/D80: whether a version bump has archived this run. Doc 03 §10.1 is
+     * explicit that archived rows are excluded ONCE, inside the projection,
+     * alongside hidden rows and member containment — so an archived run leaves
+     * the queue, the workflow badge, the status pill, the month calendar and
+     * the Activity report at the same instant, by construction.
+     */
+    isArchived(runId: string): boolean;
+    /** D180: the failure breakdown the Activity report aggregates. */
+    getFailure(failureId: string): FailureRecord | undefined;
   };
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   /** The rebuildable projection tables (doc 03 §2.3). */
@@ -526,7 +541,10 @@ export class RunQueueProjection {
       const day = localDatePart(new Date(row.queued.ts));
       const authority = this.#authorityRun(runId);
       const previousStatus = this.#notifiedStatus.get(runId);
-      if (authority.hidden) {
+      // Archiving is count-bearing exactly like hiding: the row leaves the
+      // payload, so the client is handed a fresh snapshot rather than a patch
+      // that could only describe a row that is no longer there.
+      if (authority.hidden || this.#deps.authority.isArchived(runId)) {
         if (previousStatus !== undefined) {
           this.#notifiedStatus.delete(runId);
           snapshotNeeded = true;
@@ -661,7 +679,17 @@ export class RunQueueProjection {
         ? { state: "root" }
         : { state: "child", parentRunId: queued.parentRunId },
       actorId: queued.actorId,
-      appVersion: this.#deps.appVersion,
+      /**
+       * D179: the build THIS RUN was enqueued under, read from authority.
+       * Serving `deps.appVersion` here made every row claim the build that
+       * was serving the page, so the run-detail "served by a different app
+       * build" comparison could never fire. A run enqueued before the stamp
+       * existed reports its absence with the reason; it is never back-filled.
+       */
+      appVersion: authority.appVersion === undefined
+        ? { state: "absent", reason: "enqueued before runs stamped their app build (D179)" }
+        : { state: "present", value: authority.appVersion },
+      descriptorVersion: authority.envelope.descriptorVersion,
       descriptorHash: queued.contractFingerprint,
       configFingerprint: queued.configFingerprint,
       resolvedInstances: Object.entries(queued.resolvedInstance).map(([system, instance]) => ({ system, instance })),
@@ -713,6 +741,10 @@ export class RunQueueProjection {
       const rowDay = localDatePart(new Date(row.queued.ts));
       const authority = this.#authorityRun(row.queued.runId);
       if (authority.hidden) continue;
+      // D80: a prior-version run has left every active surface. It is excluded
+      // here — before the month count, before the day filter, before the row
+      // is pushed — so no count can disagree about whether it is still live.
+      if (this.#deps.authority.isArchived(row.queued.runId)) continue;
       const countsAtTopLevel = row.queued.shape !== "operation-member";
       if (rowDay.startsWith(monthPrefix) && countsAtTopLevel) {
         monthCounts.set(rowDay, (monthCounts.get(rowDay) ?? 0) + 1);
@@ -771,6 +803,144 @@ export class RunQueueProjection {
       notifications: this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID)
         .map((record) => notificationWireOf(record, this.#deps.clock.nowMs()))
         .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || String(a.notificationId).localeCompare(String(b.notificationId))),
+    });
+  }
+
+  /**
+   * The Activity report (D180, doc 13 §5/§6.7) — a range rendering of the SAME
+   * surfaces `buildDashboardDayWire` renders. It lives on this class, and not
+   * in a query module, because doc 13 §8 guard #4 names Activity aggregates
+   * explicitly: a report that summed rows a second way could disagree with the
+   * day it summarises, which is the exact count/badge divergence D81 exists to
+   * make unrepresentable. Hidden rows, archived rows and member containment
+   * are already applied here, once, for every surface.
+   */
+  buildActivityReportWire(from: string, to: string): ActivityReportWire {
+    if (this.#health.state === "degraded") {
+      throw new Error(
+        `the run/queue projection is degraded and refuses to serve activity aggregates: ${this.#health.lastError ?? "unknown"}`,
+      );
+    }
+    const start = z.iso.date().parse(from);
+    const end = z.iso.date().parse(to);
+    if (start > end) throw new Error(`activity range ${start}..${end} ends before it starts`);
+
+    const inRange: { day: string; surface: QueueSurfaceWire; authority: RunRecord }[] = [];
+    for (const row of this.#rows.values()) {
+      const day = localDatePart(new Date(row.queued.ts));
+      if (day < start || day > end) continue;
+      const authority = this.#authorityRun(row.queued.runId);
+      if (authority.hidden) continue;
+      if (this.#deps.authority.isArchived(row.queued.runId)) continue;
+      // Member containment, applied once: a member counted inside its
+      // operation's rollup is not counted again at top level.
+      if (row.queued.shape === "operation-member") continue;
+      inRange.push({ day, surface: this.#surface(row, authority), authority });
+    }
+
+    const days = new Map<string, number>();
+    const workflows = new Map<string, number>();
+    const statuses = new Map<string, number>();
+    const outcomes = new Map<string, number>();
+    const failures = new Map<string, { runs: number; transient: number; sample: string[] }>();
+    const measured: { runId: string; ms: number }[] = [];
+    let unmeasured = 0;
+    let terminalRuns = 0;
+
+    for (const { day, surface, authority } of inRange) {
+      days.set(day, (days.get(day) ?? 0) + 1);
+      workflows.set(surface.workflowId, (workflows.get(surface.workflowId) ?? 0) + 1);
+      statuses.set(surface.status, (statuses.get(surface.status) ?? 0) + 1);
+      if (authority.lifecycle.state !== "terminal") continue;
+      terminalRuns += 1;
+      outcomes.set(authority.lifecycle.outcome, (outcomes.get(authority.lifecycle.outcome) ?? 0) + 1);
+      // D124: a terminal row with no end instant has an UNKNOWN duration. It
+      // is counted as unknown, never as `now − startedAt`, because that number
+      // grows every time the report is refreshed.
+      if (surface.endedAt.state === "present") {
+        measured.push({
+          runId: surface.runId,
+          ms: Math.max(0, Date.parse(surface.endedAt.value) - Date.parse(surface.startedAt)),
+        });
+      } else {
+        unmeasured += 1;
+      }
+      const { failureId } = authority.lifecycle;
+      if (failureId === undefined) continue;
+      const failure = this.#deps.authority.getFailure(failureId);
+      if (failure === undefined) {
+        throw new Error(
+          `run ${surface.runId} settled failed against failure ${failureId}, which authority does not hold; `
+          + "refusing to report a failure breakdown with a hole in it",
+        );
+      }
+      const bucket = failures.get(failure.code) ?? { runs: 0, transient: 0, sample: [] };
+      bucket.runs += 1;
+      if (failure.transient) bucket.transient += 1;
+      if (bucket.sample.length < 5) bucket.sample.push(surface.runId);
+      failures.set(failure.code, bucket);
+    }
+
+    const categories = new Map<string, number>();
+    let unregisteredCategoryRuns = 0;
+    const workflowTotals = [...workflows.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([workflowId, runs]) => {
+      const descriptor = this.#deps.descriptors.resolve(workflowId);
+      if (descriptor === undefined) {
+        unregisteredCategoryRuns += runs;
+        return {
+          workflowId,
+          registration: {
+            state: "unregistered",
+            reason: `workflow ${workflowId} is no longer registered; its label and category are unavailable`,
+          },
+          runs,
+        };
+      }
+      categories.set(descriptor.category, (categories.get(descriptor.category) ?? 0) + runs);
+      return {
+        workflowId,
+        registration: { state: "registered", label: descriptor.label, categoryId: descriptor.category },
+        runs,
+      };
+    });
+
+    const sorted = [...measured].sort((a, b) => a.ms - b.ms);
+    const longest = sorted.at(-1);
+    const median = sorted.length === 0 ? undefined : sorted[Math.floor((sorted.length - 1) / 2)];
+
+    return ActivityReportWireSchema.parse({
+      wireVersion: 1,
+      from: start,
+      to: end,
+      generatedAt: this.#deps.clock.now().toISOString(),
+      totalRuns: inRange.length,
+      terminalRuns,
+      inFlightRuns: inRange.length - terminalRuns,
+      days: [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, runs]) => ({ day, runs })),
+      workflows: workflowTotals,
+      categories: [
+        ...[...categories.entries()].sort(([a], [b]) => a.localeCompare(b))
+          .map(([categoryId, runs]) => ({ category: { state: "registered", categoryId }, runs })),
+        ...(unregisteredCategoryRuns === 0 ? [] : [{
+          category: { state: "unregistered", reason: "the workflows behind these runs are no longer registered" },
+          runs: unregisteredCategoryRuns,
+        }]),
+      ],
+      statuses: [...statuses.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([status, runs]) => ({ status, runs })),
+      outcomes: [...outcomes.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([outcome, runs]) => ({ outcome, runs })),
+      failures: [...failures.entries()].sort(([a], [b]) => a.localeCompare(b))
+        .map(([code, bucket]) => ({ code, runs: bucket.runs, transient: bucket.transient, sample: bucket.sample })),
+      durations: {
+        measuredRuns: measured.length,
+        unmeasuredRuns: unmeasured,
+        medianMs: median === undefined
+          ? { state: "absent", reason: "no terminal run in range carries both a start and an end instant" }
+          : { state: "present", value: median.ms },
+        longestMs: longest === undefined
+          ? { state: "absent", reason: "no terminal run in range carries both a start and an end instant" }
+          : { state: "present", value: longest.ms, runId: longest.runId },
+        totalMs: measured.reduce((total, entry) => total + entry.ms, 0),
+      },
     });
   }
 }

@@ -103,7 +103,7 @@ export const RunDisplayNameSchema = z.string().superRefine((value, context) => {
   }
 });
 
-const SemverSchema = z.string().regex(
+export const SemverSchema = z.string().regex(
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
   "version must be semantic version text",
 );
@@ -197,10 +197,20 @@ export const SettingsCommandRequestSchema = z.strictObject({
   }),
 });
 
-const VersionScopeSchema = z.discriminatedUnion("kind", [
+/**
+ * Charter §25's declared bump scope. `workflows` names an exact set whose
+ * descriptors moved; `application` is the dashboard update that bumps the
+ * effective version of EVERY workflow, because old runs may not be
+ * interpretable against new dashboard state. Exported because the durable
+ * archive model (D179) binds the same scope a command declared — a plan that
+ * recorded a looser copy of its own scope could apply to runs the operator
+ * never named.
+ */
+export const VersionScopeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("workflows"), workflowIds: z.array(WorkflowIdSchema).min(1) }),
   z.strictObject({ kind: z.literal("application"), applicationVersion: SemverSchema }),
 ]);
+export type VersionScope = z.infer<typeof VersionScopeSchema>;
 
 export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({

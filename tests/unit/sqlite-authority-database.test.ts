@@ -47,6 +47,12 @@ import {
   WORKFLOW_ID,
 } from "./fixtures/phase1f-run-fixtures.js";
 import {
+  ARCHIVE_RELAUNCH,
+  ARCHIVED_RUN,
+  VERSION_BUMP_APPLICATION,
+  VERSION_PLAN_ROW,
+} from "./fixtures/archive-fixtures.js";
+import {
   PersonLookupCanonicalInput,
   personLookupDescriptor,
 } from "../../src/workflows/person-lookup/descriptor.js";
@@ -56,14 +62,9 @@ const openDatabases: AuthorityDatabase[] = [];
 const CLOCK = manualClock(new Date(NOW));
 const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
 const OPAQUE_RECORD = { recordId: UUID_8, payload: SCHEMA_BOUND_VALUE, createdAt: NOW };
-const VERSION_PLAN = {
-  versionPlanId: UUID_7,
-  version: 1,
-  planFingerprint: HASH_A,
-  state: "planned",
-  payload: SCHEMA_BOUND_VALUE,
-  createdAt: NOW,
-};
+/** A second logical item, so the relaunched run is not a duplicate of its source. */
+const RELAUNCH_ITEM_ID = UUID_7;
+
 const ARTIFACT_OUTBOX = {
   outboxId: UUID_7,
   artifactId: UUID_8,
@@ -922,7 +923,35 @@ describe("authority generation accounting", () => {
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
     { table: "config_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
-    { table: "version_plans", mutate: (db) => { db.authority.versionPlans.insert(VERSION_PLAN); } },
+    { table: "version_plans", mutate: (db) => { db.authority.versionPlans.insert(VERSION_PLAN_ROW); } },
+    // D179: the archive's three durable facts. Each needs the row it references
+    // to exist first — the FKs are `ON DELETE RESTRICT` on purpose, so an
+    // archived run can never outlive the run row it describes.
+    {
+      table: "version_bump_applications",
+      prepare: (db) => { db.authority.versionPlans.insert(VERSION_PLAN_ROW); },
+      mutate: (db) => { db.authority.versionBumpApplications.insert(VERSION_BUMP_APPLICATION); },
+    },
+    {
+      table: "archived_runs",
+      prepare: (db) => {
+        db.authority.runs.enqueue(QUEUED_RUN);
+        db.authority.versionPlans.insert(VERSION_PLAN_ROW);
+        db.authority.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      },
+      mutate: (db) => { db.authority.archivedRuns.insert(ARCHIVED_RUN); },
+    },
+    {
+      table: "archive_relaunches",
+      prepare: (db) => {
+        db.authority.runs.enqueue(QUEUED_RUN);
+        db.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, runId: ARCHIVE_RELAUNCH.runId, itemId: RELAUNCH_ITEM_ID, traceId: "pl-170001-3333" } });
+        db.authority.versionPlans.insert(VERSION_PLAN_ROW);
+        db.authority.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+        db.authority.archivedRuns.insert(ARCHIVED_RUN);
+      },
+      mutate: (db) => { db.authority.archiveRelaunches.insert(ARCHIVE_RELAUNCH); },
+    },
     { table: "checkpoint_payloads", mutate: (db) => { db.authority.gateResults.insert(GATE_RESULT); } },
     { table: "run_checkpoints", mutate: (db) => { db.authority.runCheckpoints.insert(RUN_CHECKPOINT); } },
     { table: "start_plans", mutate: (db) => { db.authority.startPlans.create(START_PLAN); } },

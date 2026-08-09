@@ -209,6 +209,8 @@ import {
   type AuthorityCopyInspection,
 } from "./recovery-contracts.js";
 import {
+  ArchivedRunStorageRecordSchema,
+  ArchiveRelaunchStorageRecordSchema,
   ArtifactOutboxAckRequestSchema,
   ArtifactOutboxStorageRecordSchema,
   ArtifactSinkHeadRecordRequestSchema,
@@ -217,12 +219,18 @@ import {
   DiagnosticAttachmentStorageRecordSchema,
   OpaqueAuthorityRecordSchema,
   ProjectionStorageRecordSchema,
+  VersionBumpApplicationStorageRecordSchema,
+  VersionPlanConsumeRequestSchema,
   VersionPlanStorageRecordSchema,
+  type ArchivedRunStorageRecord,
+  type ArchiveRelaunchStorageRecord,
   type ArtifactOutboxStorageRecord,
   type ArtifactSinkHeadRecord,
   type DiagnosticAttachmentStorageRecord,
   type OpaqueAuthorityRecord,
   type ProjectionStorageRecord,
+  type VersionBumpApplicationStorageRecord,
+  type VersionPlanConsumeOutcome,
   type VersionPlanStorageRecord,
 } from "./storage-records.js";
 import {
@@ -622,6 +630,27 @@ type IntakeSessionRepository = Readonly<{
   findActiveBySource(sourceSha256: string): readonly z.infer<typeof IntakeSessionSchema>[];
 }>;
 
+/**
+ * D179: a reviewable version-bump plan, consumed exactly once. Insert plus a
+ * CAS `planned → applied` — the same shape a start plan has, because it is the
+ * same problem: an immutable proposal a later command must not be able to
+ * apply twice.
+ */
+type VersionPlanRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<VersionPlanStorageRecord>;
+  get(versionPlanId: string): VersionPlanStorageRecord | undefined;
+  list(): readonly VersionPlanStorageRecord[];
+  consume(input: unknown): VersionPlanConsumeOutcome;
+}>;
+
+/** D179: one self-contained archived run per prior-version run a bump swept. */
+type ArchivedRunRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<ArchivedRunStorageRecord>;
+  get(runId: string): ArchivedRunStorageRecord | undefined;
+  isArchived(runId: string): boolean;
+  list(): readonly ArchivedRunStorageRecord[];
+}>;
+
 /** Doc 06 §4.3 — one page, read once, for one form (D159). */
 type OcrExtractionRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof AdmittedExtractionSchema>>;
@@ -655,7 +684,15 @@ export type AuthorityRepositories = Readonly<{
   runCheckpoints: RunCheckpointRepository;
   notifications: NotificationRepository;
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
-  versionPlans: ImmutableRepository<VersionPlanStorageRecord>;
+  versionPlans: VersionPlanRepository;
+  versionBumpApplications: ImmutableRepository<VersionBumpApplicationStorageRecord> & Readonly<{
+    list(): readonly VersionBumpApplicationStorageRecord[];
+  }>;
+  archivedRuns: ArchivedRunRepository;
+  archiveRelaunches: Readonly<{
+    insert(input: unknown): ImmutableInsertResult<ArchiveRelaunchStorageRecord>;
+    listByArchivedRun(archivedRunId: string): readonly ArchiveRelaunchStorageRecord[];
+  }>;
   writeIntents: WriteIntentRepository;
   writeAttempts: ReadRepository<z.infer<typeof WriteAttemptRecordSchema>> & Readonly<{
     listByIntent(writeIntentId: string): readonly z.infer<typeof WriteAttemptRecordSchema>[];
@@ -3037,6 +3074,163 @@ export class AuthorityDatabase implements Disposable {
           return this.#insertSimpleRecord("version_plans", record.versionPlanId, record, VersionPlanStorageRecordSchema, record.createdAt);
         },
         get: (versionPlanId: string) => this.#readRecord("version_plans", versionPlanId, VersionPlanStorageRecordSchema),
+        list: () => Object.freeze(this.#database.prepare(`
+          SELECT record_json FROM version_plans ORDER BY created_at DESC, record_key
+        `).all().map((row) => parseJsonRecord(VersionPlanStorageRecordSchema, JsonRowSchema.parse(row).record_json))),
+        /**
+         * `planned → applied`, exactly once, under the caller's CAS token —
+         * the same discipline `startPlans.consume` follows, and for the same
+         * reason: a reviewable proposal that could be applied twice would
+         * archive one sweep's runs under two different change records.
+         */
+        consume: (input: unknown) => {
+          const request = VersionPlanConsumeRequestSchema.parse(input);
+          return this.#authorityWrite("version_plans", () => {
+            const current = this.#readRecord("version_plans", request.versionPlanId, VersionPlanStorageRecordSchema);
+            if (current === undefined) {
+              return {
+                result: Object.freeze({ state: "refused" as const, code: "not-found" as const,
+                  message: `version plan ${request.versionPlanId} does not exist` }),
+                changes: 0,
+              };
+            }
+            if (current.state === "applied") {
+              return { result: Object.freeze({ state: "already-consumed" as const, plan: current }), changes: 0 };
+            }
+            if (current.version !== request.expectedVersion) {
+              return {
+                result: Object.freeze({ state: "refused" as const, code: "version-mismatch" as const,
+                  message: `version plan ${request.versionPlanId} is at version ${String(current.version)}, `
+                    + `not the ${String(request.expectedVersion)} this apply expected` }),
+                changes: 0,
+              };
+            }
+            if (current.planFingerprint !== request.planFingerprint) {
+              return {
+                result: Object.freeze({ state: "refused" as const, code: "fingerprint-mismatch" as const,
+                  message: `version plan ${request.versionPlanId} holds fingerprint ${current.planFingerprint.slice(0, 12)}…, `
+                    + `not the ${request.planFingerprint.slice(0, 12)}… this apply reviewed` }),
+                changes: 0,
+              };
+            }
+            const next = VersionPlanStorageRecordSchema.parse({
+              ...current,
+              state: "applied",
+              version: current.version + 1,
+              appliedAt: request.now,
+            });
+            const outcome = this.#database.prepare(`
+              UPDATE version_plans SET record_json = ? WHERE record_key = ?
+            `).run(canonicalJsonStringify(next), request.versionPlanId);
+            return { result: Object.freeze({ state: "consumed" as const, plan: next }), changes: sqliteChanges(outcome.changes) };
+          });
+        },
+      }),
+      /**
+       * D179 / doc 03 §10.2 — the archive model's three durable facts. All
+       * three are insert-only here AND in SQL: the migration's triggers abort
+       * every UPDATE and DELETE, so an archive cannot be quietly rewritten by
+       * a future repository method either.
+       */
+      versionBumpApplications: Object.freeze({
+        insert: (input: unknown) => {
+          const record = VersionBumpApplicationStorageRecordSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("version_bump_applications", () => {
+            const existing = this.#readRecord(
+              "version_bump_applications", record.applicationId, VersionBumpApplicationStorageRecordSchema,
+            );
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`version bump application ${record.applicationId} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const outcome = this.#database.prepare(`
+              INSERT INTO version_bump_applications
+                (record_key, version_plan_id, scope_kind, target_version, applied_app_version, archived_count, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              record.applicationId, record.versionPlanId, record.scope.kind, record.targetVersion,
+              record.appliedAppVersion, record.archivedRunIds.length, json, record.appliedAt,
+            );
+            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(outcome.changes) };
+          });
+        },
+        get: (applicationId: string) => this.#readRecord(
+          "version_bump_applications", applicationId, VersionBumpApplicationStorageRecordSchema,
+        ),
+        list: () => Object.freeze(this.#database.prepare(`
+          SELECT record_json FROM version_bump_applications ORDER BY created_at DESC, record_key
+        `).all().map((row) => parseJsonRecord(
+          VersionBumpApplicationStorageRecordSchema, JsonRowSchema.parse(row).record_json,
+        ))),
+      }),
+      archivedRuns: Object.freeze({
+        insert: (input: unknown) => {
+          const record = ArchivedRunStorageRecordSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("archived_runs", () => {
+            const existing = this.#readRecord("archived_runs", record.runId, ArchivedRunStorageRecordSchema);
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(
+                  `run ${record.runId} is already archived under ${existing.applicationId}; refusing to re-archive it `
+                  + `with different content under ${record.applicationId}`,
+                );
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const outcome = this.#database.prepare(`
+              INSERT INTO archived_runs
+                (record_key, application_id, workflow, descriptor_version, contract_fingerprint, app_version, content_digest, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              record.runId, record.applicationId, record.workflowId,
+              record.archivedIdentity.descriptorVersion, record.archivedIdentity.contractFingerprint,
+              record.appVersion.state === "present" ? record.appVersion.value : null,
+              record.contentDigest, json, record.archivedAt,
+            );
+            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(outcome.changes) };
+          });
+        },
+        get: (runId: string) => this.#readRecord("archived_runs", runId, ArchivedRunStorageRecordSchema),
+        /**
+         * The predicate the ONE run/queue projection asks per row (D81/D80).
+         * It reads the index rather than the record so excluding an archived
+         * row never costs a JSON parse.
+         */
+        isArchived: (runId: string) => CountRowSchema.parse(this.#database.prepare(`
+          SELECT count(*) AS count FROM archived_runs WHERE record_key = ?
+        `).get(runId)).count > 0,
+        list: () => Object.freeze(this.#database.prepare(`
+          SELECT record_json FROM archived_runs ORDER BY created_at DESC, record_key
+        `).all().map((row) => parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(row).record_json))),
+      }),
+      archiveRelaunches: Object.freeze({
+        insert: (input: unknown) => {
+          const record = ArchiveRelaunchStorageRecordSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("archive_relaunches", () => {
+            const existing = this.#readRecord("archive_relaunches", record.runId, ArchiveRelaunchStorageRecordSchema);
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`relaunch provenance for run ${record.runId} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const outcome = this.#database.prepare(`
+              INSERT INTO archive_relaunches (record_key, archived_run_id, record_json, created_at)
+              VALUES (?, ?, ?, ?)
+            `).run(record.runId, record.archivedRunId, json, record.relaunchedAt);
+            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(outcome.changes) };
+          });
+        },
+        listByArchivedRun: (archivedRunId: string) => Object.freeze(this.#database.prepare(`
+          SELECT record_json FROM archive_relaunches WHERE archived_run_id = ? ORDER BY created_at DESC, record_key
+        `).all(archivedRunId).map((row) => parseJsonRecord(
+          ArchiveRelaunchStorageRecordSchema, JsonRowSchema.parse(row).record_json,
+        ))),
       }),
       writeIntents: Object.freeze({
         recordObservedPresent: (input: unknown) => {

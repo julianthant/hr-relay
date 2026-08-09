@@ -1,7 +1,7 @@
 # run-failed--paper-ink--1440x900
 # adapter: fixture
 # fixture: run-failed
-# descriptorHash: 104939b10f0b29c2a14972307d02c33062a9eaec028471f51dfb9b6b05c2ced9
+# descriptorHash: a49c6afce540cab28ca47f9f9fb0b38b3e18f5661ed563e140e7c148e509c2d7
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -138,7 +138,7 @@
     - button "Explain this failure" [disabled]
     - text: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process What the run said 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath 9:36 AM Run failed at cross-verify; nothing was written 9:36 AM Run failed at cross-verify; nothing was written"
     - searchbox "Search logs"
-    - text: wf 104939b1
+    - text: wf a49c6afc
     - button "Run provenance"
   - complementary "Run data":
     - text: Run data

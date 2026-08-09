@@ -35,6 +35,7 @@ import {
   WorkerIdSchema,
   WriteIntentIdSchema,
 } from "../ids.js";
+import { AppVersionSchema } from "../dashboard/primitives.js";
 import { SchemaBoundCanonicalValueSchema } from "../schema-bound-value.js";
 import { VerdictKeySchema } from "../workflow/presentation.js";
 import { RunEnvelopeSchema } from "./envelope.js";
@@ -225,6 +226,21 @@ export const RunRecordSchema = z.strictObject({
   displayName: RunDisplayNameSchema.optional(),
   /** Reversible presentation tombstone (D49), not a delete. */
   hidden: z.boolean(),
+  /**
+   * Charter §25 / D179: the app build this run was ENQUEUED under, stamped
+   * once and never rewritten. It is the other half of the archive key — a
+   * dashboard update bumps every workflow's effective version, so without a
+   * per-run stamp an application-scope bump cannot tell a current run from a
+   * prior one.
+   *
+   * **Optional because it is read forward, never back-filled (D133's rule).**
+   * Runs enqueued before D179 carry no stamp, and writing the CURRENT app
+   * version into one would claim a build that run never saw. An absent stamp
+   * is therefore reported as absent, and an application-scope bump treats it
+   * as prior-version — the fail-closed reading, since it demonstrably is not
+   * the current build's.
+   */
+  appVersion: AppVersionSchema.optional(),
   /** Optimistic-concurrency token every command target carries. */
   version: PositiveIntSchema,
   createdAt: IsoInstantSchema,

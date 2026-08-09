@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 12;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 13;
 
 /** The run lifecycle states in which exactly one worker owns the row (doc 02 §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -376,6 +376,57 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       UNIQUE (source_sha256, source_page, form_type)
     ) STRICT
   `,
+  /**
+   * D179 / doc 03 §10.2 — the applied version bump. Charter §25's change
+   * record: what scope moved, to which build, and how many runs left the
+   * active surfaces because of it.
+   */
+  version_bump_applications: `
+    CREATE TABLE version_bump_applications (
+      record_key TEXT PRIMARY KEY,
+      version_plan_id TEXT NOT NULL UNIQUE REFERENCES version_plans(record_key) ON DELETE RESTRICT,
+      scope_kind TEXT NOT NULL CHECK (scope_kind IN ('workflows', 'application')),
+      target_version TEXT NOT NULL,
+      applied_app_version TEXT NOT NULL,
+      archived_count INTEGER NOT NULL CHECK (archived_count >= 0),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  /**
+   * One archived run, stored as SELF-CONTAINED data (charter §25). The row
+   * holds the run's final projected row, its detail, its receipt/failure and
+   * its evidence POINTERS, so rendering it needs no descriptor and no
+   * old-version code. `content_digest` is the integrity value a relaunch
+   * cites back.
+   */
+  archived_runs: `
+    CREATE TABLE archived_runs (
+      record_key TEXT PRIMARY KEY REFERENCES tasks(record_key) ON DELETE RESTRICT,
+      application_id TEXT NOT NULL REFERENCES version_bump_applications(record_key) ON DELETE RESTRICT,
+      workflow TEXT NOT NULL,
+      descriptor_version INTEGER NOT NULL CHECK (descriptor_version >= 1),
+      contract_fingerprint TEXT NOT NULL,
+      app_version TEXT,
+      content_digest TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  /**
+   * Relaunch provenance, keyed by the FRESH run (charter §25: relaunch starts
+   * a new run on the current version and is never a resume). One archived run
+   * may be relaunched more than once, and neither side is rewritten to record
+   * it — the link is its own insert-only fact.
+   */
+  archive_relaunches: `
+    CREATE TABLE archive_relaunches (
+      record_key TEXT PRIMARY KEY REFERENCES tasks(record_key) ON DELETE RESTRICT,
+      archived_run_id TEXT NOT NULL REFERENCES archived_runs(record_key) ON DELETE RESTRICT,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
   spans: jsonRecordTable("spans"),
   gates: jsonRecordTable("gates"),
   notes: jsonRecordTable("notes"),
@@ -430,9 +481,12 @@ const POST_V1_TABLE_ORDER = [
   "intake_manifests",
   "ocr_extractions",
   "intake_sessions",
+  "version_bump_applications",
+  "archived_runs",
+  "archive_relaunches",
 ] as const satisfies readonly TableName[];
 
-const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
+const TABLE_ORDER =[...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
 
 export const SQLITE_MIGRATIONS = deepFreeze([
   {
@@ -847,6 +901,62 @@ export const SQLITE_MIGRATIONS = deepFreeze([
       SQLITE_TABLE_DDL.intake_sessions,
       "CREATE INDEX intake_sessions_source_idx ON intake_sessions(source_sha256, state)",
       "CREATE INDEX intake_sessions_state_idx ON intake_sessions(state, updated_at)",
+    ],
+  },
+  {
+    /*
+     * 2i-G: the archive model (D179, charter §25 / doc 03 §10.2). Three facts,
+     * all insert-only in SQL rather than by convention:
+     *
+     * - the applied bump, which is the change record;
+     * - one self-contained record per archived run;
+     * - relaunch provenance keyed by the fresh run.
+     *
+     * The triggers are the load-bearing part. An archive whose rows could be
+     * updated or deleted would be a WEAKER record than the live run row it
+     * replaced, and the whole argument for archiving — that the operator can
+     * still read exactly what happened, forever, without the code that did it
+     * — depends on the bytes not moving. Nothing here touches the ledger:
+     * archiving is a display lifecycle and the ledger is an audit one.
+     */
+    version: 13,
+    statements: [
+      SQLITE_TABLE_DDL.version_bump_applications,
+      SQLITE_TABLE_DDL.archived_runs,
+      SQLITE_TABLE_DDL.archive_relaunches,
+      "CREATE INDEX archived_runs_application_idx ON archived_runs(application_id, created_at)",
+      "CREATE INDEX archived_runs_workflow_idx ON archived_runs(workflow, created_at)",
+      "CREATE INDEX archive_relaunches_source_idx ON archive_relaunches(archived_run_id, created_at)",
+      `CREATE TRIGGER version_bump_applications_immutable_update
+        BEFORE UPDATE ON version_bump_applications
+        BEGIN
+          SELECT RAISE(ABORT, 'an applied version bump is immutable; a later bump is a new application');
+        END`,
+      `CREATE TRIGGER version_bump_applications_never_deleted
+        BEFORE DELETE ON version_bump_applications
+        BEGIN
+          SELECT RAISE(ABORT, 'applied version bumps are never deleted');
+        END`,
+      `CREATE TRIGGER archived_runs_immutable_update
+        BEFORE UPDATE ON archived_runs
+        BEGIN
+          SELECT RAISE(ABORT, 'an archived run is immutable; the archive is the record, not a cache of one');
+        END`,
+      `CREATE TRIGGER archived_runs_never_deleted
+        BEFORE DELETE ON archived_runs
+        BEGIN
+          SELECT RAISE(ABORT, 'archived runs are never deleted');
+        END`,
+      `CREATE TRIGGER archive_relaunches_immutable_update
+        BEFORE UPDATE ON archive_relaunches
+        BEGIN
+          SELECT RAISE(ABORT, 'relaunch provenance is immutable; a second relaunch is a second row');
+        END`,
+      `CREATE TRIGGER archive_relaunches_never_deleted
+        BEFORE DELETE ON archive_relaunches
+        BEGIN
+          SELECT RAISE(ABORT, 'relaunch provenance is never deleted');
+        END`,
     ],
   },
 ] as const);

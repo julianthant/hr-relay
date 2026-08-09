@@ -203,6 +203,8 @@ function surface(options: SurfaceOptions = {}): Surface {
     authority: {
       getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: () => [],
+      isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
+      getFailure: (failureId: string) => database.authority.failures.get(failureId),
     },
     descriptors,
     projectionStore: database,
@@ -220,6 +222,7 @@ function surface(options: SurfaceOptions = {}): Surface {
 
   const kernelIds = sequentialIdFactory("a");
   const kernel = createCommandKernel({
+    appVersion: "0.1.0",
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids: kernelIds,
@@ -264,6 +267,7 @@ function surface(options: SurfaceOptions = {}): Surface {
   const capture = composeCaptureSurface({
     database,
     artifacts,
+    appVersion: "0.1.0",
     commands,
     descriptors,
     bindings: options.bindings ?? {},

@@ -595,7 +595,9 @@ export async function startSeededServer(
     descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
     authority: {
       getRun: (runId) => database.authority.runs.get(runId),
-      listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
+      listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
+      isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
+      getFailure: (failureId: string) => database.authority.failures.get(failureId),
     },
     descriptors,
     projectionStore: database,
@@ -615,6 +617,7 @@ export async function startSeededServer(
   const runIds = seed({ database, spans, notes });
 
   const kernel = createCommandKernel({
+    appVersion: "0.1.0",
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,

@@ -91,6 +91,7 @@ function harness(): Harness {
       try { held.close(); } catch { /* an already-closed handle is the restart fixture's point */ }
     });
     kernel = createCommandKernel({
+    appVersion: "0.1.0",
       configIdentity: UNSTORED_CONFIG_IDENTITY,
       intakeParser: UNWIRED_INTAKE_PARSER,
       intakeProjections: NO_INTAKE_PROJECTIONS,

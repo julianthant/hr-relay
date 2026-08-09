@@ -255,6 +255,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     authority: {
       getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
+      isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
+      getFailure: (failureId) => database.authority.failures.get(failureId),
     },
     descriptors,
     projectionStore: database,
@@ -311,6 +313,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids,
+    // D179: the build every run this kernel enqueues is stamped with, and the
+    // build an application-scope version bump is checked against.
+    appVersion,
     descriptors,
     writeResolution,
     workerRuntime,
@@ -376,6 +381,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     bindings: CAPTURE_INTAKE_BINDINGS,
     config: resolved.config,
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
+    appVersion,
     env,
     clock,
     ids,

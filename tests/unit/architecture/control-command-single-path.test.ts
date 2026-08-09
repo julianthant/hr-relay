@@ -133,6 +133,7 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
     throw new Error(`${seam} process seam was reached before authority validation`);
   };
   const kernel = createCommandKernel({
+    appVersion: "0.1.0",
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,

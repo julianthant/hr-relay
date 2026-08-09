@@ -125,7 +125,13 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
       ? { state: "root" }
       : { state: "child", parentRunId: uuidOf(input.parentSeed) },
     actorId: "local-operator",
-    appVersion: FIXTURE_APP_VERSION,
+    // D179: the row carries the build the RUN was enqueued under. The corpus
+    // pins one stamped row and one unstamped one so both arms of the union are
+    // photographed — a run from before the stamp existed is a real state.
+    appVersion: input.seed === 4
+      ? { state: "absent", reason: "enqueued before runs stamped their app build (D179)" }
+      : { state: "present", value: FIXTURE_APP_VERSION },
+    descriptorVersion: 1,
     descriptorHash: FIXTURE_DESCRIPTOR_HASH,
     configFingerprint: CONFIG_FINGERPRINT,
     resolvedInstances: [

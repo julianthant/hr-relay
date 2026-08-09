@@ -181,6 +181,7 @@ describe("start planning", () => {
     const itemId = deriveItemId("person-lookup", "eid:10873698");
     database.authority.runs.enqueue(buildQueuedRun({
       descriptor: personLookupDescriptor,
+      appVersion: "0.1.0",
       runId: "aaaaaaaa-0001-4000-8000-000100000000",
       itemId,
       traceId: "pl-170000-aaaa",

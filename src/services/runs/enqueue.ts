@@ -33,6 +33,8 @@ export interface QueuedRunSpec {
   readonly dryRun: boolean;
   readonly parent?: RunParent;
   readonly retryOf?: string;
+  /** The running app build, stamped at enqueue and never rewritten (D179). */
+  readonly appVersion: string;
   readonly now: string;
 }
 
@@ -67,6 +69,7 @@ export function buildQueuedRun(spec: QueuedRunSpec): RunRecord {
     lifecycle: { state: "queued" },
     claimGeneration: 0,
     hidden: false,
+    appVersion: spec.appVersion,
     version: 1,
     createdAt: enqueuedAt,
     updatedAt: enqueuedAt,

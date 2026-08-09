@@ -147,7 +147,14 @@ describe("THE run/queue projection (D81)", () => {
     const failed = day.queueSurfaces.find(({ runId }) => runId === uuidOf(4));
     assert.equal(failed?.availableSections.includes("failure"), true);
     assert.equal(day.descriptorHash, DESCRIPTOR_SET_HASH);
-    assert.equal(day.queueSurfaces.every(({ appVersion }) => appVersion === APP_VERSION), true);
+    // D179: the row carries the build the RUN was enqueued under. The harness
+    // seeds runs with no stamp (they predate D179 exactly as the two real runs
+    // in authority do), so every row reports the absence with its reason
+    // rather than borrowing the build serving the page.
+    assert.equal(
+      day.queueSurfaces.every(({ appVersion }) => appVersion.state === "absent"),
+      true,
+    );
   });
 
   it("projects worker cards from worker/browser spans and links the in-flight run", () => {
