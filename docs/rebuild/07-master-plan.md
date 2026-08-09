@@ -517,7 +517,10 @@ functions, and write-proof/subject rules stay code-only; anything the closed edi
 generates a **code-change brief**, never partial config. Reinstating the mode requires a new,
 explicit operator architecture decision; a migration questionnaire cannot enable it.
 
-**Hard exit criteria (Phase 2).**
+**Hard exit criteria (Phase 2) — ALL MET 2026-08-09, with ONE criterion explicitly REASSIGNED
+(the explorer's edit half, D186).** Every bullet below carries its final disposition. The one
+reassignment is not a waiver: doc 12 §5.3 names the trigger that ends the deferral, and §5.4's apply
+protocol is unchanged by it.
 - *(Live person-lookup, `descriptor-coverage`, surface rendering, and speed sanity all moved to
   Phase 1's exit—see D74. The historical D13 live-lift parity gate remains rejected: D88 isolates
   the runtimes. New surfaces are validated by strict fixtures + isolated live proof, per §4.)*
@@ -547,9 +550,15 @@ explicit operator architecture decision; a migration questionnaire cannot enable
   multiple workers. **MET 2026-08-04** over the REAL Kuali store and a real authority database:
   crash injection at every inner four-row-primitive seam and every outer beat-⑦ seam, the present /
   absent recovery arms, browser-context cleanup on a post-fence park, and two workers on one
-  database admitting exactly one fence. **The ordered LEDGER PROJECTOR fixtures are not buildable
+  database admitting exactly one fence. ~~**The ordered LEDGER PROJECTOR fixtures are not buildable
   yet** — beat ⑦ writes the ledger outbox row, but the serialized JSONL projector is a 2g tail and
-  does not exist, so its concurrency/tail-loss arms move to 2g with it. Recovery demonstrates that one `absent` observation cannot retry, durable
+  does not exist, so its concurrency/tail-loss arms move to 2g with it.~~ **The projector landed in
+  2g (D145) and its arms landed with it:** `tests/unit/ledger-projector.test.ts` pins two projectors
+  racing one `(system,date)` lease with no duplicate sequence, crash catch-up with exact-byte
+  re-derivation, and the torn-tail / gap / duplicate / digest-mismatch refusals, with
+  `ledger-projector` active. 2j's soak closes the last of it: after 3 workers × 30 runs on one
+  database, `projectAll()` reports every partition `projected` and the whole-database invariant
+  sweep is `valid` (doc 05 §7.1, D182). Recovery demonstrates that one `absent` observation cannot retry, durable
   `not_before` scheduling occupies no worker, and only contract-qualified negative
   settlement may increment the generation.
 - ~~Read-only explorer accurately renders the as-built person-lookup graph/task/UI/scenario/result
@@ -571,17 +580,41 @@ explicit operator architecture decision; a migration questionnaire cannot enable
   without a code change) and §5.4's apply protocol is unchanged by it. `workflow-editor-compile-
   integrity` holds Phase A's read-only boundary today and its inventory entry records that it
   carries no Phase-B arms.
-- **Tail criteria** (formerly Phase-1 exits, now due here): every terminal fixture emits a complete
-  evidence receipt/confidence or a structured failure + redacted diagnostic bundle, and **D82 is
-  demonstrated on a real receipt** — the operator completes a double-check from the row alone.
-  Failed OS notification delivery still leaves a durable unread inbox item. Capture fixtures prove
-  open/finalizing sessions survive restart and that duplicate/reordered requests do not duplicate
-  photos or handoffs; the phone origin cannot reach a non-capture route. AI-advisory fixtures prove
-  redaction, strict output, explicit provider exhaustion, and zero authority edge — **MET
-  2026-08-09 (2i-G, D178)**, one fixture per arm plus the activated `ai-advisory-no-authority`
-  guard; doc 12 §4.4 is the as-built. A real-shaped
-  copied authority DB passes corruption → read-only degraded mode → checksummed-backup restore →
-  projection rebuild with claims/dependencies/checkpoints/intents/outboxes/capture handoffs intact.
+- **Tail criteria** (formerly Phase-1 exits, now due here) — **ALL MET; the last two closed
+  2026-08-09 in 2j.**
+  - ~~every terminal fixture emits a complete evidence receipt/confidence or a structured failure +
+    redacted diagnostic bundle, and **D82 is demonstrated on a real receipt** — the operator
+    completes a double-check from the row alone.~~ **MET 2026-08-09 (D187).** The receipt has been
+    derivable since D140–D144, but the panel that renders it was **two pixels wide** at every
+    viewport since 1i-spine — the accessibility tree reported every word while the screen showed an
+    empty column, so D82's acceptance bar was unmet ON SCREEN while passing every gate. The panel
+    now claims its width, `buildRunEvidenceReceipt` no longer refuses a run whose upstream node has
+    no checkpoint, and the corpus carries its first POPULATED receipt reference — derived from
+    authority through adapter #2, because a receipt cannot be authored (D141).
+  - ~~Failed OS notification delivery still leaves a durable unread inbox item.~~ **MET
+    2026-08-08 (D138)**; `notification-durability` is active and pins the order — the row is
+    committed before any delivery is attempted, and a delivery that throws is never written back.
+  - ~~Capture fixtures prove open/finalizing sessions survive restart and that duplicate/reordered
+    requests do not duplicate photos or handoffs; the phone origin cannot reach a non-capture
+    route.~~ **MET 2026-08-09 (2h-F D167 + 2i-F D174/D175).** Restart-with-open-session,
+    restart-mid-finalize converging to ONE artifact and ONE handoff, no duplicate photos/handoffs,
+    and failed→retry-finalize are pinned in `tests/unit/capture-durability.test.ts`; the
+    token-scoped closed union with fail-closed enumeration and the Host gate are pinned in
+    `tests/unit/server/capture-surface.test.ts`, with `capture-durability-and-scope` active. 2j's
+    C9/C10 add the two-caller kernel race and the two-projector race over one pending outbox.
+  - ~~AI-advisory fixtures prove redaction, strict output, explicit provider exhaustion, and zero
+    authority edge.~~ **MET 2026-08-09 (2i-G, D178)**, one fixture per arm plus the activated
+    `ai-advisory-no-authority` guard; doc 12 §4.4 is the as-built.
+  - ~~A real-shaped copied authority DB passes corruption → read-only degraded mode →
+    checksummed-backup restore → projection rebuild with claims/dependencies/checkpoints/intents/
+    outboxes/capture handoffs intact.~~ **MET 2026-08-09 (2j, D181).** Drilled twice: in fixtures
+    over a seeded real-shaped database through `composeStorageCommand`
+    (`tests/unit/storage-restore-drill.test.ts`), and ONCE live on a COPY of the standing local
+    authority database — corruption named read-only in 0.92 s, restore in 0.99 s, doctor healthy in
+    0.71 s, with 14 runs / 2 checkpoints / 2 write intents / 2 outbox rows preserved including the
+    real Kuali controlled commit's durable footprint. `cli storage restore` did not exist before
+    this slice and could not have: nothing in production had ever recorded the runtime-lock
+    snapshot its stopped-system proof is derived from. Measured numbers: doc 03 §2.5 D181.
 - ~~**Archive model (D80) proven**~~ — **MET 2026-08-09 (2i-G, D179).** All five clauses are pinned
   in `tests/unit/archive-model.test.ts` against the real authority database and the real command
   kernel, one `it` per clause: a bump archives the prior-version run and leaves the current-version

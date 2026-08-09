@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "reviewedAt": "2026-08-04",
+  "reviewedAt": "2026-08-09",
   "architectureRoot": "tests/unit/architecture",
   "testScript": "test:architecture",
   "coveragePolicy": {
@@ -204,11 +204,12 @@
     {
       "name": "authority-target-no-fallback",
       "file": "tests/unit/architecture/authority-target-no-fallback.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: authority-target-no-fallback.",
+      "status": "retired",
+      "owner": "docs/rebuild/03-tracker-dashboard.md",
+      "invariant": "RETIRED by D188 (2j, 2026-08-09): the invariant is held, and held harder, by `storage-recovery`. WHERE THE INVARIANT WENT: `AuthorityDatabase.open` refuses an existing-but-empty file by name rather than replacing it, `inspectExistingReadOnly` refuses a schema that is not exactly the supported version, and `storage-recovery` executes the whole family — corrupt, truncated, newer-schema, foreign-key-invalid, invariant-invalid and record-invalid files all open DEGRADED READ-ONLY with a named cause and zero bytes written. D181 added the restore half over a real-shaped copied database. A separate guard could only re-assert what those arms already execute against real SQLite files.",
       "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "retiredBy": "D188",
+      "replacedBy": "storage-recovery"
     },
     {
       "name": "bounded-task-deadline",
@@ -237,11 +238,12 @@
     {
       "name": "commit-routes-through-mutation",
       "file": "tests/unit/architecture/commit-routes-through-mutation.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: commit-routes-through-mutation.",
+      "status": "retired",
+      "owner": "docs/rebuild/09-write-safety.md",
+      "invariant": "RETIRED by D188 (2j, 2026-08-09): held by `task-driver-boundary`, which refuses a `commit` implementation outside a store driver owner that validates its capability AND refuses premature capability forgery, both against a checked-in violating fixture. WHERE THE INVARIANT WENT: the capability itself became runtime-unforgeable at D127 — a module-private WeakSet in `src/core/write-sequencer.ts` is the sole mint and drivers verify with `assertSequencerMintedMutationCapability` — so routing is enforced by construction and the guard only has to keep the allowlist honest.",
       "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "retiredBy": "D188",
+      "replacedBy": "task-driver-boundary"
     },
     {
       "name": "control-command-single-path",
@@ -278,11 +280,12 @@
     {
       "name": "dry-run-composition-submit-free",
       "file": "tests/unit/architecture/dry-run-composition-submit-free.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: dry-run-composition-submit-free.",
+      "status": "retired",
+      "owner": "docs/rebuild/09-write-safety.md",
+      "invariant": "RETIRED by D188 (2j, 2026-08-09): held by `write-safety-contract` plus the executable scenario `kuali-timekeeper-annotation/dry-run-preview`, which runs the REAL write sequencer over a REAL authority database and asserts DURABLE absence — zero `write_intents`, zero `run_checkpoints`, zero `durable_outbox` rows — rather than inspecting a composition for the absence of a call. WHERE THE INVARIANT WENT: `executeDryRun` is a separate arm and `executeTransaction` with `dryRun` refuses loudly, so a submit-free dry run is a property of the kernel's shape, and the scenario is what proves it on rows.",
       "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "retiredBy": "D188",
+      "replacedBy": "write-safety-contract"
     },
     {
       "name": "edit-data-field-policy",
@@ -379,10 +382,10 @@
       "name": "one-time-import-offline",
       "file": "tests/unit/architecture/one-time-import-offline.test.ts",
       "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: one-time-import-offline.",
+      "owner": "docs/rebuild/07-master-plan.md",
+      "invariant": "PLANNED, re-owned by D188 (2j, 2026-08-09) from the meaningless `phase-1-or-later` to the cutover gate. The invariant is that the one-time import of legacy operational data runs OFFLINE against a copy and never reaches a live system. It has no subject yet: no import path exists in this tree, and D150/D156 retired the legacy accounting that would have fed one. It activates in the commit that builds the cutover data migration (doc 07 §6), not before.",
       "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "activationMilestone": "cutover-gate"
     },
     {
       "name": "permanent-key-dedupe",
@@ -404,10 +407,10 @@
       "name": "preflight-coverage",
       "file": "tests/unit/architecture/preflight-coverage.test.ts",
       "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: preflight-coverage.",
+      "owner": "docs/rebuild/12-operator-trust-and-authoring.md",
+      "invariant": "PLANNED, re-owned by D188 (2j, 2026-08-09). Its subject is the PREFLIGHT FRAMEWORK's own coverage — that every declared runtime dependency has a preflight scenario exercising its failure, not merely its presence. `runtime-dependency-coverage` and `runtime-environment-coverage` already hold the declaration side, and `authority.health` is the one runner wired end to end; the missing half is a corpus of executed fault scenarios (`src/domain/trust/preflight-scenarios.ts` declares them, nothing runs them). It activates with the first migration that adds a preflight runner, which is where the second declared fault gets a producer.",
       "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "activationMilestone": "phase-3-workflow-migration"
     },
     {
       "name": "provider-capability-boundary",
@@ -472,11 +475,12 @@
     {
       "name": "sleep-budget",
       "file": "tests/unit/architecture/sleep-budget.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: sleep-budget.",
+      "status": "retired",
+      "owner": "docs/rebuild/05-execution-parallelism.md",
+      "invariant": "RETIRED by D188 (2j, 2026-08-09): doc 05 §7's row reads \"wait-for-timeout ratchet + span sleep budget\", and both halves are now enforced elsewhere. WHERE THE INVARIANT WENT: the `wait-for-timeout-allowlist` ratchet bans `waitForTimeout` outright, and every wait in the kernel goes through the injected `MonotonicDeadlineScheduler` with `bounded-task-deadline` holding the per-invocation bound — so there is no authored sleep for a budget to measure. D182's soak runs 3 workers x 30 runs with a manual clock and a manual scheduler and never advances a real timer, which is the same fact executed.",
       "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "retiredBy": "D188",
+      "replacedBy": "bounded-task-deadline"
     },
     {
       "name": "storage-recovery",
