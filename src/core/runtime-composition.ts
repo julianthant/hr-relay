@@ -144,6 +144,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  explain run <traceId|runId> [--json]  explain one run from authority (doc 12 §2.5)",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page (D151/D158)",
     "  storage doctor [--json]  read-only authority + backup health report (doc 03 §2.5; exit 0 = healthy AND current backup)",
+    "  storage restore --from <manifest.json> [--json]  quarantine the suspect authority and swap in ONE named verified backup (D181)",
   ].join("\n");
 }
 

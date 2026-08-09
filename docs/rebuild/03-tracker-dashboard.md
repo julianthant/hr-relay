@@ -995,10 +995,11 @@ of erasing claim, delegation, checkpoint, and write-fence truth. The base theref
    `authority-unknown`; any possible external write is parked for doc 09's live probe/operator
    resolution before execution continues.
 
-Phase 1 cannot exit until an automated restore drill copies a real-shaped fixture DB, corrupts the
-copy, detects it, restores the newest verified backup, rebuilds projections, and proves pending
-commands/delegations/write intents and capture handoffs remain consistent. Backups are useful
-recovery state, so they
+An automated restore drill copies a real-shaped DB, corrupts the copy, detects it, restores the
+named verified backup, rebuilds projections, and proves pending commands/delegations/write intents
+and capture handoffs remain consistent. (This sentence read "Phase 1 cannot exit until…" until
+2026-08-09; D74 moved the drill behind the first live proof and the as-built below is where it
+actually landed, in **2j**.) Backups are useful recovery state, so they
 are excluded from ordinary tracker cleanup and covered by disk-space warnings.
 
 **As-built (2i-D, 2026-08-08, D169) — the doctor/backup wire is live; restore and retention are
@@ -1025,6 +1026,74 @@ growth to real generations. First real run of the doctor (2026-08-08) correctly 
 standing local authority DEGRADED at schema v10 against the v11 build — the migration applies at
 the next read-write open, and a summary that had guessed "healthy" would have hidden exactly
 this.
+
+#### D181 — the restore command, and the process locks the interlock was always about (2j, 2026-08-09)
+
+**`rebuild:cli storage restore --from <manifest.json>` is live, and the reason it could not have
+been built earlier is that its precondition did not exist.** `OfflineAuthorityRestoreService` has
+required a one-time `StoppedSystemProof` since Phase 1c, `RecoveryStopProofStore` has refused to
+issue one without a recorded `RecoveryRuntimeLockSnapshot`, and **nothing in production had ever
+recorded a snapshot** — `recordRuntimeState` had no caller, and `.tracker-rebuild/locks` (pinned as
+a distinct isolated resource by D88) was never created. The restore path was therefore complete,
+tested, and unreachable.
+
+**The locks are now real, one file per role.** `src/infra/sqlite/runtime-process-locks.ts` gives
+the dashboard composition (`server`) and the worker composition (`workers`) a lock file each,
+taken BEFORE the authority database opens and released only AFTER its handle closes. Each process
+writes only its own file; the snapshot the stop-proof store records is **composed at observation
+time** from both. That is the load-bearing choice: one shared snapshot file would need a
+read-modify-write from two processes, and a lost update there would report a running server as
+stopped — the exact state this interlock exists to refuse. A second live holder of one role is now
+refused by name and pid, which is the "two dashboards over one authority store" collision
+`config/runtime-isolation.json` has named since D88 and nothing enforced.
+
+**Liveness is OBSERVED, never assumed, and the observation writes nothing.** A crashed process
+leaves its lock held. Reading that as "still running" would make restore permanently impossible
+after a crash — the one moment it is most needed — so the observation asks the operating system
+whether the recorded pid still exists and reports `stopped` only for a pid that is genuinely gone
+(`EPERM` counts as ALIVE: the process exists and belongs to someone else). It never rewrites
+another process's lock file to make a restore possible. `runtimeGeneration` is the sum of the two
+lock generations, so it strictly advances whenever either process restarts, which is what stops a
+proof issued before a restart from matching the runtime after it.
+
+**The command never chooses a backup.** `--from` names one exact manifest, because "restore the
+newest" is a decision about which minutes of real HR work to discard and no default is right; a
+missing or tampered manifest refuses by file name rather than falling back. Projection rebuild runs
+against the STAGED copy through the same `createRunQueueProjection` the dashboard uses, and a
+degraded rebuild refuses the whole restore while the live authority is still untouched —
+`rebuildFromJsonl` records rather than throws, so without that check an operator would be handed a
+database whose surfaces are silently empty. A refusal is REPORTED with its whole `cause` chain and
+exit 1 (not a stack trace) plus the observed lock line, because a running runtime is an expected
+outcome the operator has to read.
+
+**Measured — the 2j drill on a copy of the standing local authority database (2026-08-09).** Never
+in place; `.tracker-rebuild/state.db` was copied to a scratch repo root with its `spans/` (14,044 B
+across two JSONL files) and drilled there.
+
+| Step | Measured |
+|---|---|
+| copied authority | 565,248 B, schema **v10**, authority generation 75 |
+| dashboard boot over the copy (migrate v10→v13 + start backup) | **1.07 s**; `-wal` 177,192 B |
+| verified backup written | `authority-g76-…sqlite` **684,032 B**, manifest 942 B, generation **76** |
+| corruption injected | 36,864 B of interior pages overwritten (`0x5A`), SQLite header left intact |
+| `storage doctor` over the corruption | **0.92 s**, exit 1, `authority-corrupt` (`quick_check` ≠ ok), 1 verified restore candidate, zero bytes written |
+| runtime lock at restore time | `server` held by hard-killed pid 89364 → observed **stopped** (the crash path, not the graceful one) |
+| `storage restore --from <manifest>` | **0.99 s**, restored generation 76, projections rebuilt |
+| suspect quarantined | 565,248 B + `-wal` 177,192 B + `-shm` 32,768 B, byte-identical to what the doctor saw |
+| `storage doctor` after restore | **0.71 s**, exit 0, healthy schema v13, generation 76, **167 pages** |
+| authority preserved | 14 runs, 2 checkpoints, **2 write intents**, 2 durable-outbox rows, 1 command — including the real Kuali controlled commit's durable footprint |
+| projections rebuilt | `runs_view` re-folded from the copied spans JSONL |
+
+**One defect the drill found and fixed:** a `StorageHealthCause.summary` is a one-line human
+sentence printed inside the doctor's report, the Settings surface, and a notification title — and
+the failures that produce it are frequently zod errors whose `message` is pretty-printed multi-line
+JSON. The first drill run printed `authority: DEGRADED —` followed by twenty lines of issue
+objects, burying the sentence. `storageHealthCauseFromError` now collapses runs of whitespace;
+every word survives, nothing is truncated, and the line is a line.
+
+**Still not built, and named:** the retention sweep (14/8/5) stays a remainder, and no config leaf
+names the suspect directory — it is `<stateRoot>/suspects` by construction. Doc 03 §2.5's
+"a configurable path may point at another local volume" remains unimplemented.
 
 ### 2.6 Durable single-operator notifications
 

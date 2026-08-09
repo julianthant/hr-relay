@@ -66,6 +66,7 @@ import {
   AuthorityDatabase,
   summarizeBackupHealth,
 } from "../../infra/sqlite/index.js";
+import { acquireRuntimeProcessLock } from "../../infra/sqlite/runtime-process-locks.js";
 import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
@@ -169,6 +170,17 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const env = input.env ?? configResolutionEnvironment();
   const resolved = resolveConfigWithProvenance(env, {}, clock);
   mkdirSync(stateRoot, { recursive: true });
+  /**
+   * D181: this process takes the `server` role lock BEFORE it opens the
+   * authority database. Two dashboards over one authority store is the
+   * collision `config/runtime-isolation.json` has named since D88 and nothing
+   * enforced; it is also the fact `cli storage restore` needs, because a
+   * stopped-system proof is composed from these two lock files.
+   */
+  const processLock = acquireRuntimeProcessLock(
+    { processLockRoot: join(repoRoot, input.isolation.processLockRoot), name: "server", pid: process.pid },
+    clock,
+  );
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
     clock,
@@ -565,6 +577,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       // to the stopper, never a half-closed process.
       await requestBackup("graceful-drain");
       database.close();
+      // Released only after the handle is closed: the lock's whole meaning is
+      // "nothing holds this database open", so releasing it first would let a
+      // restore start against a still-open file.
+      processLock.release();
       if (backupServiceState.state === "failed") {
         throw new Error(`graceful-drain authority backup failed: ${backupServiceState.message}`);
       }

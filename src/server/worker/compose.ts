@@ -85,6 +85,7 @@ import { createGeminiOcrExtractAdapter } from "../../infra/providers/gemini-ocr-
 import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
+import { acquireRuntimeProcessLock } from "../../infra/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../../stores/index.js";
 
 /**
@@ -337,6 +338,17 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const resolved = resolveConfigWithProvenance(env, {}, clock);
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
+  /**
+   * D181: the `workers` role lock, taken before the database opens. The
+   * authority worker LEASE is the richer fence and stays the one that decides
+   * who may claim runs; this file lock answers a question the lease cannot,
+   * because `cli storage restore` must know whether a worker is running at a
+   * moment when the authority database may be unreadable.
+   */
+  const processLock = acquireRuntimeProcessLock(
+    { processLockRoot: join(repoRoot, input.isolation.processLockRoot), name: "workers", pid: input.processId ?? process.pid },
+    clock,
+  );
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" },
     clock,
@@ -553,6 +565,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
     database.close();
+    processLock.release();
   }
 }
 
