@@ -1,17 +1,16 @@
 # Handoff — finish Phase 2 (rest of 2h, then 2i and 2j)
 
 **Date:** 2026-08-07, extended 2026-08-08
-**Paused at:** 2h-A is DONE (D160, live-proved on the whole real 44-page scan) and 2h-B's first half
-is DONE (D161 — the production gemini adapter, live-proved byte-identical to a human route-2
-reading). Tree clean at `bf39d5f`; gates all green (test 1180 · architecture 327 · parity 70).
-Resume at **2h-B second half: executor/worker wiring** — `src/core/run-executor.ts` still refuses
-contracts declaring provider capabilities or content-addressed artifacts; build `ctx.providers`
-(via `createAdmittedProviderClient` with the run's retained config snapshot + `providerAdmissions`
-repo + adapter registry) and `ctx.artifacts` (the content-addressed writer), compose in
-`src/server/worker/compose.ts`, and RELAX the `provider-capability-boundary` arms that confine
-`createAdmittedProviderClient` to the kernel (call-site + import restrictions) in the same commit.
-Doc 06 §4.10/§4.11 record both as-builts; the runtime phase marker now reports
-`completedThrough: "2g"` / `active: "2h"`.
+**Paused at:** **ALL OF TAIL 2h IS COMPLETE (D146–D167, closed 2026-08-08).** The 2026-08-08
+session landed D162–D167 in six commits: executor/worker provider+artifact wiring with the guard
+relaxation, the roster store (tiers verbatim, scoring redesigned), the stable-keyed artifact
+projector with the xlsx-retention sink, the normalization advice store + geocode adapters + the
+rotation pool, the Edit Data core (CAS-against-resume-fence save + replay consume), and durable
+capture (sessions as rows, the stable-keyed finalize outbox, restart/duplicate fixtures). The
+runtime phase marker reports `completedThrough: "2h"` / `active: "2i"`. Resume at **2i, the
+operator surface** — docs 03 + 12 are primary; the checklist below names the 2i slices, and the
+2h as-builts in doc 06 name every seam 2i must wire (the ai advisory arm, the Edit Data rail, the
+capture phone surface + PDF bundler + intake enqueue, the capture-durability-and-scope guard).
 
 **Supersedes** `2026-08-05-phase2-tail-2h.md` for scope — that brief covers only 2h. Read it for the
 D146–D159 detail; read this one for what remains of the whole phase.
@@ -40,11 +39,14 @@ has found a defect every single time it has been run.
 ## Current state
 
 - Branch: `master`. Worktrees: none. Uncommitted changes: **clean**.
-- 23 commits this session, from `eaafe9f` to `f2621f6`. **Never pushed — do not push.**
-- Gates ALL GREEN: typecheck · lint · **test 1162/1162** · test:coverage · **test:parity 70** ·
+- 2026-08-08 session: six feature commits `0be4fc9` → `5226ff0` plus the 2h-closing chore.
+  **Never pushed — do not push.**
+- Gates ALL GREEN: typecheck · lint · **test 1270+** · **architecture 332** · **test:parity 70** ·
   build:manifest:check
-- Guards: **52 active**, 13 planned, 4 retired.
-- Authority schema version: **11**.
+- Guards: **54 active** (edit-data-field-policy joined at D166), 11 planned, 4 retired.
+- Authority schema version: **11** (D164/D167 typed the v1 shells at the repo layer — no
+  migration; zero production rows existed).
+- Highest decision in use: **D167**.
 
 ## Progress
 

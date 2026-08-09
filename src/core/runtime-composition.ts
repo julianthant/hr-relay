@@ -102,12 +102,13 @@ export function registerExplainComposer(composer: ExplainComposer): void {
  * `completedThrough` is the LAST completed work item of doc 07's ordered
  * sequence, not the phase letter. Phase 1 closed with `1i-spine` (D74, live
  * person-lookup, 2026-08-04); Phase 2's controlled transaction proof was met
- * live the same day (D135, doc 4489), and tail `2g` — the event/trust layer —
- * completed 2026-08-04 (D134–D145). `active` is tail `2h`, the data-service /
- * intake foundation (doc 07 §Phase 2's deferred-base-tails table).
+ * live the same day (D135, doc 4489); tail `2g` completed 2026-08-04
+ * (D134–D145), and tail `2h` — the data-service/intake foundation, the
+ * largest tail — completed 2026-08-08 (D146–D167). `active` is tail `2i`,
+ * the operator surface (doc 07 §Phase 2's deferred-base-tails table).
  */
-const COMPLETED_THROUGH = "2g";
-const ACTIVE_ITEM = "2h";
+const COMPLETED_THROUGH = "2h";
+const ACTIVE_ITEM = "2i";
 
 export function runtimeHelp(isolation: RuntimeIsolation): string {
   return [
