@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { manualClock } from "../../../src/domain/clock.js";
+import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
@@ -443,5 +444,69 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const attempts = await json(await h.app.request(`/api/v1/runs/${runId}/context-attempts`));
     const entries = (attempts.payload as { entries: { label: string; valueRedacted: string }[] }).entries;
     assert.deepEqual(entries[0], { label: "current-attempt", valueRedacted: "1" });
+  });
+
+  it("serves the Activity report over a NAMED range and refuses one the caller never named (D180)", async () => {
+    const h = harness();
+    const planResponse = await json(await h.app.request("/api/v1/start-plans", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid: "10873698", mode: "read-only" }], dryRun: false }),
+    }));
+    await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7e",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "start-run",
+        family: "start",
+        type: "start-run",
+        target: {
+          workflowId: "fixture-graph",
+          startPlanId: planResponse.startPlanId,
+          expectedVersion: planResponse.expectedVersion,
+        },
+        payload: planResponse.fingerprints,
+      }),
+    });
+
+    const report = ActivityReportWireSchema.parse(
+      await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
+    );
+    // The report is the SAME projection the day payload is served from, so the
+    // route cannot hand back a total the dashboard would disagree with.
+    const day = await json(await h.app.request(`/api/v1/dashboard?day=${DAY}`));
+    assert.equal(report.totalRuns, (day.queueSurfaces as unknown[]).length);
+    assert.deepEqual(report.days, [{ day: DAY, runs: 1 }]);
+    assert.deepEqual(report.workflows, [{
+      workflowId: "fixture-graph",
+      registration: { state: "registered", label: "Fixture Graph", categoryId: "operations" },
+      runs: 1,
+    }]);
+    assert.equal(report.terminalRuns, 0);
+    assert.equal(report.durations.medianMs.state, "absent");
+
+    // A missing bound is never "today" or "this month": the route refuses and
+    // says which parameters it needs, rather than answering a different
+    // question than the link the operator followed asked.
+    const halfRange = await h.app.request(`/api/v1/reports/activity?from=${DAY}`);
+    assert.equal(halfRange.ok, false);
+    assert.match(String((await json(halfRange)).message), /requires both from= and to=/);
+
+    const noRange = await h.app.request("/api/v1/reports/activity");
+    assert.equal(noRange.ok, false);
+    assert.match(String((await json(noRange)).message), /requires both from= and to=/);
+
+    // A malformed bound is refused by the wire schema, by name.
+    const badBound = await h.app.request(`/api/v1/reports/activity?from=today&to=${DAY}`);
+    assert.equal(badBound.status, 400);
+    assert.equal((await json(badBound)).code, "SCHEMA_INVALID");
+
+    // An inverted range never returns an empty report that reads as "no work".
+    const inverted = await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=2026-08-01`);
+    assert.equal(inverted.ok, false);
+    assert.match(String((await json(inverted)).message), /ends before it starts/);
   });
 });
