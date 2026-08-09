@@ -26,6 +26,7 @@ import {
   WorkflowIdSchema,
   WriteIntentIdSchema,
 } from "./ids.js";
+import { ArtifactRefSchema } from "./artifacts.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import { CheckpointPatchSchema } from "./workflow/checkpoint.js";
 
@@ -235,10 +236,13 @@ export const NotificationCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("notification"), type: z.literal("notification-snooze"), target: z.strictObject({ notificationId: NotificationIdSchema, actorId: ActorIdSchema, expectedVersion: PositiveIntSchema }), payload: z.strictObject({ until: IsoInstantSchema }) }),
 ]);
 
+// D167: the WHOLE ArtifactRef, not an id+fingerprint pair — D161 recorded
+// why: a reduced identity names bytes nobody can resolve. This was a
+// deferred-arm placeholder; no producer ever sent the old shape.
 const CapturePhotoPayloadSchema = z.strictObject({
   photoId: CapturePhotoIdSchema,
-  artifactId: ArtifactIdSchema,
-  contentFingerprint: FingerprintSchema,
+  artifact: ArtifactRefSchema,
+  originalMediaType: z.string().min(1),
 });
 
 export const CaptureCommandRequestSchema = z.discriminatedUnion("type", [

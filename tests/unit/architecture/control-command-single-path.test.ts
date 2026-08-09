@@ -69,6 +69,12 @@ const EXPECTED_ACTIVE = {
     "edit-checkpoint",
   ],
   gate: ["resolve-gate"],
+  // D167: the durable capture core activated — sessions, photo mutations,
+  // and the stable-keyed finalize outbox.
+  capture: [
+    "capture-upload", "capture-replace", "capture-reorder", "capture-delete",
+    "capture-finalize", "capture-retry-finalize", "capture-discard",
+  ],
 } as const;
 
 const EXPECTED_DEFERRED = {
@@ -80,10 +86,7 @@ const EXPECTED_DEFERRED = {
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
   run: [],
   notification: ["notification-read", "notification-unread", "notification-snooze"],
-  capture: [
-    "capture-upload", "capture-replace", "capture-reorder", "capture-delete",
-    "capture-finalize", "capture-retry-finalize", "capture-discard",
-  ],
+  capture: [],
 } as const;
 
 const DEFERRED_KEYS = new Set(

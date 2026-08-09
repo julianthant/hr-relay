@@ -72,6 +72,17 @@ const PHASE1_ACTIVE = {
     "edit-checkpoint",
   ],
   gate: ["resolve-gate"],
+  // D167: the durable capture core — sessions, photo mutations, and the
+  // stable-keyed finalize outbox.
+  capture: [
+    "capture-upload",
+    "capture-replace",
+    "capture-reorder",
+    "capture-delete",
+    "capture-finalize",
+    "capture-retry-finalize",
+    "capture-discard",
+  ],
 } as const;
 
 const PHASE1_DEFERRED = {
@@ -87,15 +98,7 @@ const PHASE1_DEFERRED = {
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
   run: [],
   notification: ["notification-read", "notification-unread", "notification-snooze"],
-  capture: [
-    "capture-upload",
-    "capture-replace",
-    "capture-reorder",
-    "capture-delete",
-    "capture-finalize",
-    "capture-retry-finalize",
-    "capture-discard",
-  ],
+  capture: [],
 } as const;
 
 export const PHASE1_ACTIVE_COMMAND_ARMS = deepFreeze(PHASE1_ACTIVE);
@@ -147,6 +150,7 @@ export interface WorkflowDescriptorResolver {
 type RunCommand = Extract<CommandRequest, { family: "run" }>;
 type RunBasicCommand = Extract<RunCommand, { type: "retry" | "cancel" | "bump" | "hide" | "unhide" }>;
 type RunEditCheckpointCommand = Extract<RunCommand, { type: "edit-checkpoint" }>;
+type CaptureCommand = Extract<CommandRequest, { family: "capture" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
 
@@ -790,6 +794,174 @@ function executeEditCheckpoint(
   }]);
 }
 
+function captureTarget(captureSessionId: string): TargetReference {
+  return { family: "capture", captureSessionId };
+}
+
+/**
+ * Doc 06 §5.1 (D167): the durable capture arms. Every mutation validates the
+ * requested refs and state against CURRENT authority — version drift alone
+ * is never a CAS conflict, and an inapplicable command rejects by name.
+ * Exact phone retries converge through the journal's commandId dedupe;
+ * content-level no-ops (the same photo again, the same order again) apply
+ * without minting a new version. Only `finalized|discarded|expired` are
+ * terminal; `failed` is durable and recoverable through retry-finalize,
+ * which mints the NEXT finalization generation over the SAME photo set.
+ */
+function executeCapture(
+  dependencies: CommandKernelDependencies,
+  repositories: AuthorityRepositories,
+  request: CaptureCommand,
+  now: string,
+): CommandApplication {
+  const sessionId = request.target.captureSessionId;
+  const current = repositories.captureSessions.get(sessionId);
+  if (current === undefined) reject(request, "target-not-found", `capture session ${sessionId} does not exist`);
+  const target = captureTarget(sessionId);
+  const applyUpdate = (next: unknown): CommandApplication => {
+    const updated = repositories.captureSessions.update(next);
+    return applied(request, [target], [{
+      target,
+      before: current.version,
+      after: updated.version,
+    }]);
+  };
+  const noOp = (): CommandApplication => applied(request, [target], []);
+  const requireState = (allowed: readonly string[], what: string): void => {
+    if (!allowed.includes(current.state)) {
+      reject(
+        request,
+        "invalid-state",
+        `capture session ${sessionId} is ${current.state}; ${what} applies only to a ${allowed.join("/")} session`,
+      );
+    }
+  };
+
+  switch (request.type) {
+    case "capture-upload": {
+      requireState(["open"], "uploading a photo");
+      const existing = current.photoRefs.find((photo) => String(photo.photoId) === String(request.payload.photoId));
+      if (existing !== undefined) {
+        if (existing.artifact.sha256 === request.payload.artifact.sha256) return noOp();
+        reject(
+          request,
+          "invalid-state",
+          `photo ${String(request.payload.photoId)} already exists with different bytes; `
+          + "capture-replace is the arm for changing a photo",
+        );
+      }
+      return applyUpdate({
+        ...current,
+        photoRefs: [...current.photoRefs, {
+          photoId: request.payload.photoId,
+          artifact: request.payload.artifact,
+          ordinal: current.photoRefs.length + 1,
+          originalMediaType: request.payload.originalMediaType,
+        }],
+        version: current.version + 1,
+      });
+    }
+    case "capture-replace": {
+      requireState(["open"], "replacing a photo");
+      const existing = current.photoRefs.find((photo) => String(photo.photoId) === String(request.payload.photoId));
+      if (existing === undefined) {
+        reject(request, "invalid-state", `photo ${String(request.payload.photoId)} does not exist; nothing to replace`);
+      }
+      if (existing.artifact.sha256 === request.payload.artifact.sha256) return noOp();
+      return applyUpdate({
+        ...current,
+        photoRefs: current.photoRefs.map((photo) =>
+          String(photo.photoId) === String(request.payload.photoId)
+            ? { ...photo, artifact: request.payload.artifact, originalMediaType: request.payload.originalMediaType }
+            : photo),
+        version: current.version + 1,
+      });
+    }
+    case "capture-reorder": {
+      requireState(["open"], "reordering photos");
+      const requested = request.payload.orderedPhotoIds.map((photoId) => String(photoId));
+      const held = current.photoRefs.map((photo) => String(photo.photoId));
+      if (requested.length !== held.length || new Set(requested).size !== requested.length
+        || !held.every((photoId) => requested.includes(photoId))) {
+        reject(
+          request,
+          "invalid-state",
+          `the reorder names ${String(requested.length)} photos but the session holds `
+          + `${String(held.length)}; a reorder must be an exact permutation`,
+        );
+      }
+      const currentOrder = [...current.photoRefs].sort((a, b) => a.ordinal - b.ordinal)
+        .map((photo) => String(photo.photoId));
+      if (currentOrder.join("\0") === requested.join("\0")) return noOp();
+      return applyUpdate({
+        ...current,
+        photoRefs: current.photoRefs.map((photo) => ({
+          ...photo,
+          ordinal: requested.indexOf(String(photo.photoId)) + 1,
+        })),
+        version: current.version + 1,
+      });
+    }
+    case "capture-delete": {
+      requireState(["open"], "deleting a photo");
+      const existing = current.photoRefs.find((photo) => String(photo.photoId) === String(request.payload.photoId));
+      if (existing === undefined) {
+        reject(request, "invalid-state", `photo ${String(request.payload.photoId)} does not exist; nothing to delete`);
+      }
+      const remaining = [...current.photoRefs]
+        .filter((photo) => String(photo.photoId) !== String(request.payload.photoId))
+        .sort((a, b) => a.ordinal - b.ordinal)
+        .map((photo, index) => ({ ...photo, ordinal: index + 1 }));
+      return applyUpdate({ ...current, photoRefs: remaining, version: current.version + 1 });
+    }
+    case "capture-finalize":
+    case "capture-retry-finalize": {
+      requireState(
+        request.type === "capture-finalize" ? ["open"] : ["failed"],
+        request.type === "capture-finalize" ? "finalizing" : "retrying finalization",
+      );
+      if (current.photoRefs.length === 0) {
+        reject(request, "invalid-state", `capture session ${sessionId} holds no photos; there is nothing to finalize`);
+      }
+      const generation = current.finalizationGeneration + 1;
+      const ordered = [...current.photoRefs].sort((a, b) => a.ordinal - b.ordinal);
+      const stableKey = FingerprintSchema.parse(createHash("sha256")
+        .update("hrauto:capture-finalization:v1\0")
+        .update(canonicalJsonStringify({
+          sessionId,
+          generation,
+          photos: ordered.map((photo) => photo.artifact.sha256),
+        }))
+        .digest("hex"));
+      const existingOutbox = repositories.captureFinalizationOutboxes.getByStableKey(stableKey);
+      if (existingOutbox === undefined) {
+        repositories.captureFinalizationOutboxes.insert({
+          outboxId: dependencies.ids.uuid(),
+          sessionId,
+          generation,
+          stableKey,
+          orderedPhotoArtifacts: ordered.map((photo) => photo.artifact),
+          workflow: current.workflow,
+          ...(current.formType === undefined ? {} : { formType: current.formType }),
+          state: "pending",
+          createdAt: now,
+        });
+      }
+      return applyUpdate({
+        ...current,
+        state: "finalizing",
+        handoff: { state: "pending" },
+        finalizationGeneration: generation,
+        version: current.version + 1,
+      });
+    }
+    case "capture-discard": {
+      requireState(["open", "failed"], "discarding");
+      return applyUpdate({ ...current, state: "discarded", version: current.version + 1 });
+    }
+  }
+}
+
 function executePresentation(
   repositories: AuthorityRepositories,
   request: RunBasicCommand | RunRenameCommand,
@@ -1107,11 +1279,12 @@ function dispatchActive(
       }
       break;
     }
+    case "capture":
+      return executeCapture(dependencies, repositories, request, now);
     case "intake":
     case "settings":
     case "version-archive":
     case "notification":
-    case "capture":
       throw new Error(`${request.family}/${request.type} is deferred and must have been rejected before dispatch`);
   }
   throw new Error("command dispatch fell through an exhaustive family/action switch");

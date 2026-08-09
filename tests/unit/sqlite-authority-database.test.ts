@@ -83,6 +83,34 @@ const ARTIFACT_SINK_HEAD_REQUEST = {
   lastOutboxId: UUID_7,
   projectedAt: NOW,
 };
+const CAPTURE_ARTIFACT = {
+  id: UUID_8,
+  sha256: HASH_B,
+  bytes: 1024,
+  mediaType: "image/jpeg",
+};
+const CAPTURE_SESSION = {
+  sessionId: UUID_7,
+  tokenDigest: HASH_A,
+  workflow: "person-lookup",
+  state: "open",
+  photoRefs: [{ photoId: UUID_8, artifact: CAPTURE_ARTIFACT, ordinal: 1, originalMediaType: "image/heic" }],
+  handoff: { state: "pending" },
+  finalizationGeneration: 0,
+  version: 1,
+  createdAt: NOW,
+  expiresAt: LATER,
+};
+const CAPTURE_OUTBOX = {
+  outboxId: UUID_7,
+  sessionId: UUID_8,
+  generation: 1,
+  stableKey: HASH_C,
+  orderedPhotoArtifacts: [CAPTURE_ARTIFACT],
+  workflow: "person-lookup",
+  state: "pending",
+  createdAt: NOW,
+};
 const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
 const ACTIVE_STATUS = {
   state: "active" as const,
@@ -876,9 +904,9 @@ describe("authority generation accounting", () => {
     { table: "run_checkpoints", mutate: (db) => { db.authority.runCheckpoints.insert(RUN_CHECKPOINT); } },
     { table: "start_plans", mutate: (db) => { db.authority.startPlans.create(START_PLAN); } },
     { table: "ocr_approvals", mutate: (db) => { db.authority.opaque.ocrApprovals.insert(OPAQUE_RECORD); } },
-    { table: "capture_sessions", mutate: (db) => { db.authority.opaque.captureSessions.insert(OPAQUE_RECORD); } },
+    { table: "capture_sessions", mutate: (db) => { db.authority.captureSessions.create(CAPTURE_SESSION); } },
     { table: "capture_photo_order", mutate: (db) => { db.authority.opaque.capturePhotoOrder.insert(OPAQUE_RECORD); } },
-    { table: "capture_finalization_outboxes", mutate: (db) => { db.authority.opaque.captureFinalizationOutboxes.insert(OPAQUE_RECORD); } },
+    { table: "capture_finalization_outboxes", mutate: (db) => { db.authority.captureFinalizationOutboxes.insert(CAPTURE_OUTBOX); } },
     { table: "write_intents", mutate: (db) => { db.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT); } },
     { table: "write_attempts", mutate: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); } },
     {

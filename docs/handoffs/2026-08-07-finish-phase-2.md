@@ -92,7 +92,13 @@ has found a defect every single time it has been run.
       operator provenance, and the activated `edit-data-field-policy` guard. Bounds recorded in
       doc 06 §6 as-built: retry-then-edit-queued for terminal runs; attempt-1 collision refuses
       loudly. The rail UI is 2i.
-- [ ] **2h-F — durable capture** sessions / photo artifacts / finalize outbox (doc 06 §5.1, D79d trim).
+- [x] **2h-F — durable capture. DONE 2026-08-08 (D167).** Session + finalize-outbox schemas,
+      typed repos over the v1 shells, all seven command arms active (current-state validation,
+      no blanket CAS, content-level no-ops), and the finalize projector with deterministic
+      bundler + transactional handoff seams. Fixtures pin restart-with-open-session,
+      restart-mid-finalize convergence to one artifact/one handoff, no duplicate
+      photos/handoffs, and failed→retry-finalize→finalized. The phone HTTP surface + real PDF
+      bundler + intake enqueue wiring are 2i; `capture-durability-and-scope` activates there.
 
 ### Remaining — 2i (operator surface)
 

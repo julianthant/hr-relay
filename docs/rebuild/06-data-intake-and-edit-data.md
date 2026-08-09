@@ -1322,6 +1322,31 @@ The durable finalize-outbox fixture covers the publish/enqueue boundary without 
 state matrix. The dashboard shows session state, photo count/order, bundle digest/page count,
 handoff run, expiry, and structured failure.
 
+**As-built (D167, 2026-08-08) — the durable core landed; the phone surface is 2i.**
+`CaptureSessionSchema` and `CaptureFinalizationOutboxSchema` land in `src/domain/capture.ts` as
+sketched (tokenDigest only, contiguous ordinals, the handoff union, and a finalization
+GENERATION — retry-finalize mints generation+1 over the SAME photo set); `capture_sessions` and
+`capture_finalization_outboxes` became TYPED repositories over the v1 shells (version-CAS session
+updates, `listActive` for restart reload, stable-key lookup and an idempotent `pending → done|
+failed` settle on the outbox) while `capture_photo_order` stays opaque until 2i's history view
+needs it. All seven command arms ACTIVATED in the kernel: mutations validate against CURRENT
+state (version drift alone is never a CAS conflict), content-level repeats are no-ops, a
+finalize from `open` atomically moves the session to `finalizing` and inserts ONE stable-keyed
+outbox (`getByStableKey` is how a duplicate converges), and discard is refused mid-finalize. The
+photo payload carries the WHOLE `ArtifactRef` (D161's rule — the sketched id+fingerprint pair
+named bytes nobody could resolve). The finalize projector
+(`src/infra/capture/finalize-projector.ts`) bundles through an INJECTED deterministic bundler,
+publishes content-addressed, then ONE transaction runs the handoff enqueue seam and records
+final artifact + outbox done + session finalized — a handoff throw rolls the whole settlement
+back and lands durable `failed` on session AND outbox together. The photos→PDF library and the
+intake-manifest/run enqueue wiring are deliberately seams: both belong to 2i's capture surface,
+and the durability protocol is what this slice proves. Fixtures pin the exit criterion's core
+(`tests/unit/capture-durability.test.ts`): an open session survives a restart, restart
+mid-finalize replays to ONE artifact and ONE handoff, duplicate/reordered requests never
+duplicate photos, and a failed handoff retries into generation 2 with exactly one final handoff.
+The `capture-durability-and-scope` guard STAYS PLANNED until the phone-origin route enumeration
+exists — half a guard would claim an invariant nothing enforces.
+
 ---
 
 ## 6. The Edit-Data surface (charter §12)
