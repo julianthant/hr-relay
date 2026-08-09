@@ -20,6 +20,7 @@ import type { ReactNode } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import { Banner, DS_STATUS, EmptyState, MetaLine, SectionLabel, dsIcon, dsText } from "../ds/ui.js";
+import { ReceiptEvidenceBody } from "./trust.js";
 import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
 import { fmtClock } from "./format.js";
 import type { OutcomeWire, TerminalOutcomeResult } from "./status.js";
@@ -81,10 +82,7 @@ export function ReceiptView({
       {receipt.state === "available" && (
         <ReceiptSection label="Receipt">
           <MetaLine items={[`receipt ${receipt.value.receiptId}`, `run ${receipt.value.runId}`]} />
-          <EmptyState
-            title="Receipt recorded"
-            description="The full evidence view — writes, read-backs, completion criteria — lands with the trust surfaces (2g)."
-          />
+          <ReceiptEvidenceBody receipt={receipt.value} />
         </ReceiptSection>
       )}
       {receipt.state === "missing" && <EmptyState title="No receipt" description={receipt.reason} />}

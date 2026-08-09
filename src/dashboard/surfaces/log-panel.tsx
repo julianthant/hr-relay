@@ -96,6 +96,7 @@ import {
 import { elapsedSecondsBetween, fmtClock, fmtElapsed, plural } from "./format.js";
 import { ReceiptView, type ReceiptSectionPayload } from "./receipt.js";
 import { RunProvenanceBar, type QueueSurfaceWire } from "./run-identity.js";
+import { FailureDetailBody } from "./trust.js";
 import { dsStatusOf, outcomeDsStatusOf } from "./status.js";
 
 type RunDetailWire = z.infer<typeof RunDetailWireSchema>;
@@ -440,12 +441,10 @@ function InlineFailureRecord({
 
       <div className="mt-[var(--ds-space-base)] flex flex-col gap-[var(--ds-space-base)] pl-5">
         {failure.state === "available" ? (
-          <MetaLine
-            items={[
-              completedAt === undefined ? false : `failed ${fmtClock(completedAt)}`,
-              "the full record lands with the trust surfaces",
-            ]}
-          />
+          <>
+            {completedAt !== undefined && <MetaLine items={[`failed ${fmtClock(completedAt)}`]} />}
+            <FailureDetailBody detail={failure.value} />
+          </>
         ) : failure.state === "error" ? (
           <MetaLine items={[failure.code, failure.message]} />
         ) : (

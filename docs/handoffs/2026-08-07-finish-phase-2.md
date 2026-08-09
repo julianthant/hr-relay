@@ -108,14 +108,16 @@ Sliced 2026-08-08 from the landscape recon (docs 03/12/13 + the dashboard tree).
 (build before the first migration) comes first; the LATER tier may reorder but blocks Phase 3.
 The BFF serves 7 endpoints today; each slice names what it adds.
 
-- [ ] **2i-A — trust surfaces (START HERE).** The receipt and failure wires are D140/D142-complete
-      (`GET /api/v1/runs/:runId/:section` already serves whole `RunEvidenceReceipt` and the
-      whitelisted `FailureDetailWireSchema`), but `receipt.tsx:81-89` and
-      `log-panel.tsx:402-453` still render 2g-era placeholders that DISCARD the served content
-      (writeState/subject/causeChain/diagnosticBundle/sameFingerprintSeen). Pure rendering work:
-      the full receipt view (doc 12 §2.3's acceptance: "complete the double-check without
-      opening UCPath"), the failure detail (writeState unconditional, never behind disclosure),
-      a failure tab in `TAB_ORDER`, new parity references for both.
+- [x] **2i-A — trust surfaces. DONE 2026-08-08.** `src/dashboard/surfaces/trust.tsx` renders the
+      full served content both placeholders discarded: the failure record (write-state sentence
+      unconditional and never behind a disclosure, subject via served displayRedacted,
+      sameFingerprintSeen as a count, remediation ladder, cause chain + fingerprint, bundle
+      presence/absence with reason) and the receipt body in the schema's narrative order
+      (input → observations → decisions → actions → verification → output → reuse → warnings,
+      redaction rendered as final — a drop arm is an explicit redacted state). run-failed parity
+      references re-frozen (6 triples). RESIDUAL: the run-receipt parity fixture still exercises
+      only the receipt's `missing` arm — adapter #1 holds no authority rows; a populated-receipt
+      reference needs an adapter-#2 state (noted for 2j's corpus work).
 - [ ] **2i-B — notification bell + inbox.** Activate the DEFERRED notification command family
       (read/unread/snooze — the D166/D167 activation pattern), add the lifecycle route, and the
       top-bar bell + inbox UI (doc 03 §2.6; the bell is "ABSENT rather than stubbed" at
