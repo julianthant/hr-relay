@@ -81,6 +81,10 @@ export const SearchPersonOrg = defineTaskContract({
     "person-lookup/happy-by-eid",
     "person-lookup/ambiguous-name",
     "person-lookup/not-found",
+    // The drill-back subject check is this contract's own behaviour: a detail
+    // page displaying a different EID never becomes a candidate. It mirrors
+    // `person-lookup/crm-subject-mismatch` on the two CRM read contracts.
+    "person-lookup/ucpath-drill-subject-mismatch",
   ],
   example: {
     results: [{

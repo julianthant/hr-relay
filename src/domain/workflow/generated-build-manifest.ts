@@ -145,7 +145,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali-timekeeper-annotation"
     },
     {
-      "fingerprint": "4d7a3d5c2e0a52a8d7ff4821450fb3e8fbbe41076c43d05b16b8b067d10d16e9",
+      "fingerprint": "99fd17f6d99aec03099f464e4d019fb2235018899692fc6873df2fe76db61dd0",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -177,7 +177,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
-          "sha256": "b061fafaebe9bc9dd4a0e9c1711f5f5c08ec5e911909eb17f66f409d92707a99"
+          "sha256": "77f432dc92d89aa2921158dfc341d1449766c5eea08d16f91a591a7fe45357ea"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
@@ -277,7 +277,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/person-lookup/descriptor.ts",
-          "sha256": "2f12e5199bab8a177572e7f0b13a9b5899d9808071115e748c2ff341214b1ee4"
+          "sha256": "94da5a85f074ff7c75f02df7f57aab8e0c8c268a3c38aeee322cc5547d1254fa"
         }
       ],
       "id": "person-lookup"
@@ -1959,7 +1959,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "ed5d5229c7cd4dc57c397e01b469e2431a0ee1cc4d034ad61ae9f5479701f223",
+      "fingerprint": "c37fc40a81a8720d700b31f70ba1643b1ff28b4eea9dd3482353f62635e4c6d4",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2003,7 +2003,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
-          "sha256": "b061fafaebe9bc9dd4a0e9c1711f5f5c08ec5e911909eb17f66f409d92707a99"
+          "sha256": "77f432dc92d89aa2921158dfc341d1449766c5eea08d16f91a591a7fe45357ea"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
@@ -2121,7 +2121,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "b29c8e3744d91a00ab789264cb8d596dbfa77c3fc1028f6d9049190839050afb",
+      "fingerprint": "c2939b6ca3d62c1e42ee3fd8fe71772c080ff2a4947940bb9528e024417a773d",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2165,7 +2165,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
-          "sha256": "b061fafaebe9bc9dd4a0e9c1711f5f5c08ec5e911909eb17f66f409d92707a99"
+          "sha256": "77f432dc92d89aa2921158dfc341d1449766c5eea08d16f91a591a7fe45357ea"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",

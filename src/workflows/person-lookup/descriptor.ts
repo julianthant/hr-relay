@@ -244,6 +244,7 @@ export const personLookupDescriptor = defineWorkflowDescriptor({
     "person-lookup/not-found",
     "person-lookup/crm-failure-retry",
     "person-lookup/crm-subject-mismatch",
+    "person-lookup/ucpath-drill-subject-mismatch",
   ],
   flow: personLookupFlow,
 });

@@ -450,7 +450,7 @@
       "file": "tests/unit/architecture/scenario-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/02-workflow-model.md",
-      "invariant": "Every branch arm, gate open/resolve, delegation size/replay/policy, and transaction outcome derived from the node tuple is claimed by a registered scenario, and every claim resolves to a path that still exists — so a renamed arm cannot keep a deleted path looking covered.",
+      "invariant": "Every branch arm, gate open/resolve, delegation size/replay/policy, and transaction outcome derived from the node tuple is claimed by a registered scenario, and every claim resolves to a path that still exists — so a renamed arm cannot keep a deleted path looking covered. D185 adds the corpus DIRECTORY, which the registered-set audits structurally cannot see: `tests/scenario/` holds exactly two declared kinds — a graph scenario (`*.scenario.test.ts`) and an integration walk (`*.walk.test.ts`) — and every file on disk is one of them. An `it` title whose head parses as a ScenarioId is a CLAIM, so a typo stays a claim and fails rather than being reclassified as prose, and every claim must be a manifest row naming THAT file or a graph-claim corpus id; every manifest row must name a file the corpus contains and a test that file declares; a graph scenario that claims nothing, a walk that claims a graph path or carries a manifest row, and a file of neither kind are each refused by name. `auditScenarioCorpusLayout` is pure over an injected listing, and every arm carries a negative control built by moving exactly one thing in the REAL corpus.",
       "replacementRequired": true
     },
     {
