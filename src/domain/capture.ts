@@ -32,6 +32,27 @@ export const CaptureSessionStateSchema = z.enum([
 ]);
 export type CaptureSessionState = z.infer<typeof CaptureSessionStateSchema>;
 
+export const CaptureIngressModeSchema = z.enum(["disabled", "on-demand-ngrok", "forwarded"]);
+export type CaptureIngressMode = z.infer<typeof CaptureIngressModeSchema>;
+
+/**
+ * Which path served this session's phone, stamped at start (D174, doc 11).
+ *
+ * `forwardedUrl` is ROUTING CONFIG and never authority, so the row keeps the
+ * mode plus a digest of the origin — enough for troubleshooting to say "that
+ * session was served from a different origin than this one", never enough to
+ * re-route anything from a stored value.
+ *
+ * OPTIONAL on purpose (D133): a required leaf added to a durable schema stops
+ * every row written before it from parsing, and back-filling one would claim a
+ * fact that session never had. Rows created before D174 report no ingress.
+ */
+export const CaptureSessionIngressSchema = z.strictObject({
+  mode: CaptureIngressModeSchema,
+  originDigest: FingerprintSchema,
+});
+export type CaptureSessionIngress = z.infer<typeof CaptureSessionIngressSchema>;
+
 /** One immutable photo: converted bytes behind a whole ArtifactRef (D161's rule). */
 export const CapturePhotoRefSchema = z.strictObject({
   photoId: CapturePhotoIdSchema,
@@ -69,6 +90,7 @@ export const CaptureSessionSchema = z.strictObject({
   createdAt: IsoInstantSchema,
   connectedAt: IsoInstantSchema.optional(),
   expiresAt: IsoInstantSchema,
+  ingress: CaptureSessionIngressSchema.optional(),
 }).superRefine((session, context) => {
   const photoIds = new Set(session.photoRefs.map((photo) => String(photo.photoId)));
   if (photoIds.size !== session.photoRefs.length) {

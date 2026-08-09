@@ -27,6 +27,14 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../base/workflow.js";
+import {
+  activeRunsForItem,
+  fanOutQueuedRuns,
+  requireApplied,
+  runTarget,
+  type TargetReference,
+  type VersionChange,
+} from "./run-fan-out.js";
 import type { ArtifactRef } from "../domain/artifacts.js";
 import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import type { Clock } from "../domain/clock.js";
@@ -54,7 +62,6 @@ import { confirmBinding } from "../domain/intake/mapping.js";
 import type { IntakeProjection } from "../domain/intake/projection.js";
 import { validateIntakeRows } from "../domain/intake/validate.js";
 import { deepFreeze } from "../domain/immutability.js";
-import type { InstanceSelection, RunPriority, RunShape } from "../domain/run/envelope.js";
 import { isTerminalRunState, runClaim, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
 import { RunCheckpointRecordSchema } from "../domain/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "./checkpoint-patch.js";
@@ -299,23 +306,10 @@ class CommandRefusal extends Error {
   }
 }
 
-/** Built loosely, then proven strict by the `CommandResultSchema`/audit parses. */
-type TargetReference = Readonly<Record<string, unknown>>;
-
-interface VersionChange {
-  readonly target: TargetReference;
-  readonly before: number;
-  readonly after: number;
-}
-
 interface CommandApplication {
   readonly result: CommandResult;
   readonly versionChanges: readonly VersionChange[];
   readonly affectedDependencyIds: readonly string[];
-}
-
-function runTarget(runId: string): TargetReference {
-  return { family: "run", runId };
 }
 
 function workerTarget(workerId: string): TargetReference {
@@ -394,141 +388,6 @@ function requireRun(
   return run;
 }
 
-function requireApplied(outcome: { state: string }, what: string): void {
-  if (outcome.state !== "applied") {
-    throw new Error(`${what} unexpectedly reported ${outcome.state} inside an exclusive authority transaction`);
-  }
-}
-
-function activeRunsForItem(
-  repositories: AuthorityRepositories,
-  workflowId: string,
-  itemId: string,
-): readonly RunRecord[] {
-  return repositories.runs
-    .listByItem({ workflow: workflowId, itemId })
-    .filter((run) => !isTerminalRunState(run.lifecycle));
-}
-
-/* ── the shared run fan-out (D171) ───────────────────────────────────────── */
-
-/** One run a fan-out will insert: its identity plus the exact input it stores. */
-interface PlannedRunInsert {
-  readonly runId: string;
-  readonly itemId: string;
-  readonly traceId: string;
-  /** Only ever used to NAME the item in an enqueue-policy refusal. */
-  readonly matchKey: string;
-  readonly rawInput: unknown;
-  /** The canonical value bound to its schema hash (D62/D110). */
-  readonly parsedInput: unknown;
-}
-
-/** Everything the runs of one fan-out share, stamped once for all of them. */
-interface FanOutEnvelope {
-  readonly workflow: string;
-  readonly descriptorVersion: number;
-  readonly contractFingerprint: string;
-  readonly requestedInstance?: InstanceSelection;
-  readonly resolvedInstance: InstanceSelection;
-  readonly configFingerprint: string;
-  readonly configSnapshotId: string;
-  readonly shape: RunShape;
-  readonly priority: RunPriority;
-  readonly dryRun: boolean;
-  readonly ingressSchemaHash: string;
-}
-
-/**
- * Insert N queued runs under one enqueue policy — the ONE place a fan-out is
- * expressed (doc 03 §2.4 Enqueue).
- *
- * `start-run` and the intake manifest enqueue reach it with different plans and
- * the same obligations: the descriptor's enqueue policy is evaluated against
- * live authority per item, a `reject-active` collision refuses the WHOLE
- * command, and a proposed run id that already exists is a fault rather than an
- * adoption. Everything it writes is inside the caller's authority transaction,
- * so a refusal on run 39 of 40 leaves nothing behind.
- */
-function fanOutQueuedRuns(
-  repositories: AuthorityRepositories,
-  request: CommandRequest,
-  descriptor: AnyWorkflowDescriptor,
-  envelope: FanOutEnvelope,
-  planned: readonly PlannedRunInsert[],
-  now: string,
-  origin: string,
-): Readonly<{ affectedTargets: readonly TargetReference[]; versionChanges: readonly VersionChange[] }> {
-  const affectedTargets: TargetReference[] = [];
-  const versionChanges: VersionChange[] = [];
-  for (const entry of planned) {
-    // An authority read error here aborts the whole command — never "continue
-    // and enqueue anyway" (doc 03 §2.4 Enqueue).
-    const active = activeRunsForItem(repositories, envelope.workflow, entry.itemId);
-    if (descriptor.enqueue === "reject-active" && active.length > 0) {
-      reject(
-        request,
-        "policy-refused",
-        `${envelope.workflow} item ${entry.itemId} (${entry.matchKey}) already has an active run `
-        + `(${active[0].envelope.traceId}); nothing from ${origin} was started`,
-      );
-    }
-    if (descriptor.enqueue === "supersede-active") {
-      for (const activeRun of active) {
-        const outcome = repositories.runs.transition({
-          runId: activeRun.envelope.runId,
-          expectedVersion: activeRun.version,
-          lifecycle: { state: "terminal", outcome: "superseded", endedAt: now },
-          now,
-        });
-        requireApplied(outcome, `superseding run ${activeRun.envelope.runId}`);
-        affectedTargets.push(runTarget(activeRun.envelope.runId));
-        versionChanges.push({
-          target: runTarget(activeRun.envelope.runId),
-          before: activeRun.version,
-          after: activeRun.version + 1,
-        });
-      }
-    }
-
-    const record = RunRecordSchema.parse({
-      envelope: {
-        runId: entry.runId,
-        workflow: envelope.workflow,
-        itemId: entry.itemId,
-        traceId: entry.traceId,
-        descriptorVersion: envelope.descriptorVersion,
-        contractFingerprint: envelope.contractFingerprint,
-        ...(envelope.requestedInstance === undefined ? {} : { requestedInstance: envelope.requestedInstance }),
-        resolvedInstance: envelope.resolvedInstance,
-        configFingerprint: envelope.configFingerprint,
-        configSnapshotId: envelope.configSnapshotId,
-        shape: envelope.shape,
-        priority: envelope.priority,
-        dryRun: envelope.dryRun,
-        attempt: 1,
-        enqueuedAt: now,
-      },
-      input: {
-        raw: entry.rawInput,
-        parsed: entry.parsedInput,
-        ingressSchemaHash: envelope.ingressSchemaHash,
-      },
-      lifecycle: { state: "queued" },
-      claimGeneration: 0,
-      hidden: false,
-      version: 1,
-      createdAt: now,
-      updatedAt: now,
-    });
-    const inserted = repositories.runs.enqueue(record);
-    if (inserted.state !== "inserted") {
-      throw new Error(`${origin} proposed run id ${entry.runId}, which already exists; refusing to adopt it`);
-    }
-    affectedTargets.push(runTarget(entry.runId));
-  }
-  return Object.freeze({ affectedTargets, versionChanges });
-}
 
 /* ── the arms ────────────────────────────────────────────────────────────── */
 
@@ -607,7 +466,7 @@ function executeStartRun(
 
   const fanOut = fanOutQueuedRuns(
     repositories,
-    request,
+    (message) => reject(request, "policy-refused", message),
     descriptor,
     {
       workflow: plan.workflowId,
@@ -1575,7 +1434,7 @@ function executeIntake(
 
       const fanOut = fanOutQueuedRuns(
         repositories,
-        request,
+        (message) => reject(request, "policy-refused", message),
         descriptor,
         {
           workflow: current.workflow,

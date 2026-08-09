@@ -32,7 +32,12 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
-import { DESCRIPTORS, INTAKE_PROJECTIONS, SERVER_REGISTRY } from "../../control/workflow-registry.js";
+import {
+  CAPTURE_INTAKE_BINDINGS,
+  DESCRIPTORS,
+  INTAKE_PROJECTIONS,
+  SERVER_REGISTRY,
+} from "../../control/workflow-registry.js";
 import { createCommandKernel, type WorkerRuntimeExecutor, type WriteResolutionExecutor } from "../../core/command-kernel.js";
 import { createPhase1WorkerRuntimeExecutor, type WorkerProcessSupervisor } from "../../core/worker-loop.js";
 import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
@@ -61,6 +66,7 @@ import { createContentAddressedArtifactWriter } from "../../infra/artifacts/cont
 import { createIntakeParser } from "../intake/intake-parser.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
 import { createIntakeService } from "./commands/intake-service.js";
+import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
 import { createRunQueueProjection } from "./projectors/run-queue-projection.js";
@@ -133,7 +139,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")),
   ).version;
 
-  const resolved = resolveConfigWithProvenance(input.env ?? configResolutionEnvironment(), {}, clock);
+  const env = input.env ?? configResolutionEnvironment();
+  const resolved = resolveConfigWithProvenance(env, {}, clock);
   mkdirSync(stateRoot, { recursive: true });
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
@@ -332,6 +339,28 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     actorId: LOCAL_OPERATOR_ACTOR_ID,
   });
 
+  /**
+   * Capture (2i-F, D174) — one composition value, shared with the BFF test
+   * harnesses so a test can never prove a surface the product does not have.
+   */
+  const capture = composeCaptureSurface({
+    database,
+    artifacts,
+    commands,
+    descriptors,
+    bindings: CAPTURE_INTAKE_BINDINGS,
+    config: resolved.config,
+    configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
+    env,
+    clock,
+    ids,
+  });
+
+  // Restart recovery (doc 06 §5.1): whatever the last process left `pending`
+  // is settled before the first request is served, so a bundle never waits on
+  // a phone that may never come back.
+  await capture.drainFinalizations();
+
   const hub = createDashboardStreamHub({ projection });
 
   const app = createDashboardApp({
@@ -381,6 +410,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     commands,
     startPlans,
     intake,
+    capture,
     hub,
     storage: {
       doctorOptions: {

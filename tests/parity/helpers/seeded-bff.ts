@@ -44,6 +44,7 @@ import {
 } from "../../../src/workflows/person-lookup/descriptor.js";
 import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
+import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 
@@ -663,6 +664,7 @@ export async function startSeededServer(
 
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
+    capture: UNWIRED_CAPTURE_SERVICE,
     bootstrap: {
       appVersion: SEEDED_APP_VERSION,
       clock,

@@ -545,6 +545,14 @@ type CaptureSessionRepository = Readonly<{
   update(input: unknown): CaptureSession;
   /** `open`/`finalizing`/`failed` — what a restarted dashboard must reload. */
   listActive(): readonly CaptureSession[];
+  /**
+   * The phone presents a token; the row holds only its DIGEST (D167), so this
+   * is how a token becomes a session. It looks in EVERY state on purpose: a
+   * finalized session still has to tell the phone "Sent", and a discarded or
+   * expired one still has to be refused with the SAME answer an unknown token
+   * gets (D174) — which the caller can only produce if it can tell them apart.
+   */
+  findByTokenDigest(tokenDigest: string): CaptureSession | undefined;
 }>;
 
 /**
@@ -3335,6 +3343,22 @@ export class AuthorityDatabase implements Disposable {
           `).all();
           return Object.freeze(rows.map((row) =>
             parseJsonRecord(CaptureSessionSchema, JsonRowSchema.parse(row).record_json)));
+        },
+        findByTokenDigest: (tokenDigest: string) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM capture_sessions
+            WHERE json_extract(record_json, '$.tokenDigest') = ?
+            ORDER BY created_at, record_key
+          `).all(FingerprintSchema.parse(tokenDigest));
+          const records = rows.map((row) =>
+            parseJsonRecord(CaptureSessionSchema, JsonRowSchema.parse(row).record_json));
+          if (records.length > 1) {
+            throw new Error(
+              `${String(records.length)} capture sessions share one token digest; refusing to guess which one `
+              + "a phone is holding",
+            );
+          }
+          return records[0];
         },
       }),
       captureFinalizationOutboxes: Object.freeze({

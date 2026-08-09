@@ -42,6 +42,32 @@ export function deriveTraceId(code: string, runId: string, clock: Clock): TraceI
  * The digest is folded into UUID shape so `ItemId` stays one id kind rather
  * than growing a second spelling.
  */
+/**
+ * A UUID-shaped id that is a pure function of what it names (D174).
+ *
+ * The capture finalize handoff runs inside a transaction that a crash may
+ * replay, and its contract promises "a replay returns the SAME identities".
+ * `ids.uuid()` cannot keep that promise — it mints a different value every
+ * call — so the manifest and run a capture bundle produces are folded from the
+ * outbox's stable key instead. Same bundle, same generation, same ids, on the
+ * first attempt and on the fifth.
+ */
+export function deriveStableUuid(namespace: string, key: string): string {
+  const digest = createHash("sha256")
+    .update(namespace)
+    .update("\0")
+    .update(key)
+    .digest("hex");
+  const variant = "89ab"[Number.parseInt(digest[16], 16) % 4];
+  return [
+    digest.slice(0, 8),
+    digest.slice(8, 12),
+    `5${digest.slice(13, 16)}`,
+    `${variant}${digest.slice(17, 20)}`,
+    digest.slice(20, 32),
+  ].join("-");
+}
+
 export function deriveItemId(workflowId: string, matchKey: string): string {
   const digest = createHash("sha256")
     .update("hrauto:logical-item:v1\0")

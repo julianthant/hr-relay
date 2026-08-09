@@ -20,6 +20,10 @@ import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { RegisteredTaskStore } from "../base/store.js";
 import { TaskIdSchema } from "../domain/ids.js";
 import type { IntakeProjection } from "../domain/intake/projection.js";
+import {
+  isFactoryDefinedCaptureIntakeBinding,
+  type CaptureIntakeBinding,
+} from "../domain/capture-intake.js";
 import { taskStoreRegistry } from "../stores/index.js";
 import { kualiTimekeeperAnnotationModule } from "../workflows/kuali-timekeeper-annotation/module.js";
 import { personLookupModule } from "../workflows/person-lookup/module.js";
@@ -127,6 +131,51 @@ export function intakeProjectionRegistry(
 }
 
 export const INTAKE_PROJECTIONS = intakeProjectionRegistry(WORKFLOW_MODULES);
+
+/**
+ * The same shape for a photographed DOCUMENT source (D174, doc 06 §5.1).
+ *
+ * A capture handoff may only reach a workflow that has DECLARED how a bundle
+ * becomes its input. None has: `person-lookup` is identified by an employee id
+ * or a name and `kuali-timekeeper-annotation` by a document number, and
+ * neither is derivable from a photograph without an OCR-backed workflow that
+ * does not exist yet. So this registry is empty on purpose and the handoff
+ * refuses by name — exactly how `INTAKE_PROJECTIONS` stood between D170 and
+ * D172, and for the same reason: an invented binding would put a
+ * plausible-but-wrong canonical input into a real run.
+ */
+export interface WorkflowCaptureView {
+  readonly descriptor: AnyWorkflowDescriptor;
+  readonly captureIntake?: CaptureIntakeBinding;
+}
+
+export function captureIntakeRegistry(
+  modules: readonly WorkflowCaptureView[],
+): Readonly<Record<string, CaptureIntakeBinding>> {
+  const entries: [string, CaptureIntakeBinding][] = [];
+  for (const module of modules) {
+    if (module.captureIntake === undefined) continue;
+    if (!isFactoryDefinedCaptureIntakeBinding(module.captureIntake)) {
+      throw new Error(
+        `workflow ${String(module.descriptor.id)} declares a capture intake binding that did not come from `
+        + "defineCaptureIntakeBinding; a hand-built one carries no fingerprint anything can trust",
+      );
+    }
+    // Identity, not equivalence — the same argument `intakeProjectionRegistry`
+    // makes: a structurally-similar second schema would let capture produce
+    // values the workflow never accepted.
+    if (module.captureIntake.inputSchema !== module.descriptor.input) {
+      throw new Error(
+        `workflow ${String(module.descriptor.id)} declares a capture intake binding over a different input `
+        + "schema object than its descriptor's; it must reuse the descriptor's own schema, not a copy of it",
+      );
+    }
+    entries.push([String(module.descriptor.id), module.captureIntake]);
+  }
+  return Object.freeze(Object.fromEntries(entries));
+}
+
+export const CAPTURE_INTAKE_BINDINGS = captureIntakeRegistry(WORKFLOW_MODULES);
 
 /**
  * A globally bound task is not enough: the workflow module itself is the

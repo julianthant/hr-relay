@@ -1497,6 +1497,16 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/intake/enqueue.ts:IntakeEnqueueSessionView",
   "src/domain/intake/enqueue.ts:IntakeEnqueuePlan",
   "src/domain/intake/enqueue.ts:IntakeEnqueuePlanInput",
+  // The capture intake binding is `IntakeProjection`'s exact shape for a
+  // photographed DOCUMENT source (D174): it holds the workflow's own zod schema
+  // object and a `build` FUNCTION, so a schema describing it would be
+  // describing a validator. `CaptureBundleFacts` is the in-process argument to
+  // that function and is never stored or served. What DOES become durable has
+  // schemas: `CaptureFinalizationOutboxSchema` names the bundle, and the
+  // binding's `fingerprint` is what `IntakePlanManifestSchema` retains.
+  "src/domain/capture-intake.ts:CaptureBundleFacts",
+  "src/domain/capture-intake.ts:CaptureIntakeBinding",
+  "src/domain/capture-intake.ts:CaptureIntakeBindingDefinition",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {

@@ -32,6 +32,7 @@ import { HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { AT, DAY } from "./helpers/dashboard-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
+import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
 
 interface Harness {
   readonly app: Hono;
@@ -140,6 +141,7 @@ function harness(): Harness {
 
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
+    capture: UNWIRED_CAPTURE_SERVICE,
     bootstrap: {
       appVersion: "0.1.0",
       clock,
