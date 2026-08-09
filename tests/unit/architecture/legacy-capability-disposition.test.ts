@@ -148,7 +148,15 @@ const CapabilityInventorySchema = z.strictObject({
 type CapabilityInventory = z.infer<typeof CapabilityInventorySchema>;
 type CapabilityEntry = z.infer<typeof CapabilityEntrySchema>;
 
-const PhaseStatusSchema = z.object({ completedThrough: MilestoneSchema, active: MilestoneSchema });
+/**
+ * `completedThrough` must be a doc-07 work item, because the whole sweep is
+ * its position in that order. `active` deliberately is NOT: once the program
+ * leaves Phase 2 the active item is a MIGRATION identifier from §3.3's order,
+ * not a base work item, and a guard that parsed it strictly would refuse to
+ * run the moment the marker advanced past 2j — turning an unrelated schema
+ * into a gate on the program's own progress.
+ */
+const PhaseStatusSchema = z.object({ completedThrough: MilestoneSchema, active: z.string().min(1) });
 
 /**
  * The completed set comes from the RUNTIME's own marker, read through the same
@@ -348,6 +356,23 @@ describe("D58 legacy capability disposition", () => {
       parsedInventory.entries.some((entry) => MILESTONE_ORDER.indexOf(entry.ownerMilestone) <= completedIndex),
       "no entry is owned by a completed milestone; the sweep would be vacuous",
     );
+  });
+
+  it("never blocks the phase marker's next advance (D184)", () => {
+    // `cutoverRequiresZeroOpen` gates CUTOVER — doc 07 §6's whole-program flip
+    // — not a Phase-2 tail. An entry left sitting on a tail is therefore a
+    // record-keeping defect that must never become a gate on the program's own
+    // progress, so the sweep is run AHEAD against every base work item through
+    // 2j, the last of them. This is what makes advancing the marker in
+    // `src/core/runtime-composition.ts` a one-line change rather than an
+    // archaeology exercise.
+    for (const completedThrough of MILESTONE_ORDER.slice(0, MILESTONE_ORDER.indexOf("2j") + 1)) {
+      assert.deepEqual(
+        auditCapabilityClosure(parsedInventory, { ...closureFacts, completedThrough }),
+        [],
+        `the inventory would block a phase marker reporting completedThrough ${completedThrough}`,
+      );
+    }
   });
 
   describe("negative controls — the audit fails when it should", () => {

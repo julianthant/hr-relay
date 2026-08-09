@@ -84,10 +84,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "2i-F (D175) landed the phone capture surface (src/dashboard/phone/) and the operator's QR start (src/dashboard/surfaces/capture-start.tsx). The operator-side photo review legacy carries — CapturePhotoTile, CapturePhotoLightbox and the capture modal — is NOT built: the run-detail `captures` section lists artifact refs but nothing serves artifact bytes, so an operator cannot open a captured photo from the dashboard. Doc 07 s3.5 assigns the dashboard capture UI to 2i, so 2i still owns it."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "2i-F (D175) landed the phone capture surface (src/dashboard/phone/) and the operator's QR start (src/dashboard/surfaces/capture-start.tsx). The operator-side photo review legacy carries — CapturePhotoTile, CapturePhotoLightbox and the capture modal — is NOT built: the run-detail `captures` section lists artifact refs but nothing serves artifact BYTES. It is therefore blocked on the same artifact route legacy-route-files owns, and closes with it."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/capture",
         "src/dashboard/phone/capture-app.tsx",
@@ -180,10 +180,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "The top bar, date/month navigation, history controls, the D138 notification bell, the shortcuts legend and the workflow rail landed across 1i-spine/2g/2i (src/dashboard/surfaces/top-bar.tsx, shortcuts.tsx, shell.tsx). SearchBar and SearchResults are NOT built — there is no cross-run search endpoint at all (see legacy-route-search) — and doc 07 s3.6 assigns the query UI to 2g/2i, so 2i still owns it."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "The top bar, date/month navigation, history controls, the D138 notification bell, the shortcuts legend and the workflow rail landed across 1i-spine/2g/2i (src/dashboard/surfaces/top-bar.tsx, shortcuts.tsx, shell.tsx). SearchBar and SearchResults are NOT built — there is no cross-run search endpoint at all — so this family closes with legacy-route-search, as the migrations produce the run corpus a search surface must be shaped by."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/navigation",
         "src/dashboard/surfaces/top-bar.tsx",
@@ -321,10 +321,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "2i-D (D169) landed the read-only Storage section — the bootstrap health summary plus the full byte-re-verified doctor — and the SERVER owns the section list, so a served section this build cannot render says so by name. Editable settings fields, the AI-assist section and the credentials reference panel are NOT built: `settings`/`apply-settings` is in the command union but src/dashboard/surfaces/settings.tsx records that editable settings stay a deferred command family and that nothing there pretends to save."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "2i-D (D169) landed the read-only Storage section — the bootstrap health summary plus the full byte-re-verified doctor — and the SERVER owns the section list, so a served section this build cannot render says so by name. D169 records editable settings as a DEFERRED COMMAND FAMILY: `settings`/`apply-settings` is in the command union but src/dashboard/surfaces/settings.tsx states outright that nothing there pretends to save. The editable fields, the AI-assist section and the credentials reference panel therefore close with doc 07 s2 row 3's explicit non-workflow capability closure; the operator loses legacy's settings dialog at cutover, so this is a cutover-parity item rather than a workflow-coupled one."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/settings",
         "src/dashboard/surfaces/settings.tsx",
@@ -416,10 +416,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "2i-G (D176/D177) landed the READ-ONLY Workflow Explorer and the UI-catalog surface, both read-only STRUCTURALLY — no command endpoint, no command client, no non-GET request. Doc 12 s5.3/s5.4's Phase B — the closed presentation/policy edit union, the stale-base apply refusal and the code-change brief — is not started, and doc 07's Phase-2 exit criteria still carry the EDIT half of the explorer bullet. This entry is one of the three that keep 2i formally incomplete."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "2i-G (D176/D177) landed the READ-ONLY Workflow Explorer and the UI-catalog surface, both read-only STRUCTURALLY — no command endpoint, no command client, no non-GET request. Doc 12 s5.3's Phase B is DEFERRED OUT OF PHASE 2 by D186 on D79a's own argument: an editor exists to avoid a code change per tweak across MANY workflows, and this tree has one production workflow plus a one-node transaction proof, so building it now would fix its closed policy union against a sample of one. D186 names the trigger — the SECOND production workflow whose presentation, notification preference or allowlisted policy value an operator wants to change without a code change — and reassigns the criterion to the migration that first needs it, which is this milestone."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/workflow-modifier",
         "src/dashboard/surfaces/explorer.tsx",
@@ -501,10 +501,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "POST /api/v1/runs/:runId/advisory serves failure triage (D178) and the bootstrap reports ai-advisory availability for THIS process. `sanity`, `selector` and `summarize` have no producer: AdvisorySurfaceIdSchema is a closed two-value enum (failure-triage, contact-normalization), so each is a declared schema change plus a redaction declaration rather than a wiring change, and D178 records all three as remaining without a producer and without a surface arm."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "POST /api/v1/runs/:runId/advisory serves failure triage (D178) and the bootstrap reports ai-advisory availability for THIS process. `sanity`, `selector` and `summarize` have no producer: D178 records all three as remaining without a producer and without a surface arm, and AdvisorySurfaceIdSchema is a closed two-value enum, so each is a declared schema change plus a redaction declaration rather than wiring. Doc 07 s3.6 calls these adapters OPTIONAL with the deterministic paths primary, so closure here is a build-or-retire decision at the plan's explicit non-workflow capability closure."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/ai-assist.ts",
         "src/server/dashboard/queries/advisory.ts",
@@ -593,10 +593,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "There is no per-INSTANCE stop. The command union's stop-worker addresses a worker by workflow scope, not by a spawned daemon instance id, because a rebuild worker is a foreground process holding a durable claim lease and a per-role process lock (D181) rather than a supervised detached daemon. Naming an instance would need a supervisor the rebuild does not have, so this is a real gap rather than an accepted difference until the operator worker controls are finished."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "There is no per-INSTANCE stop. The command union's stop-worker addresses a worker by workflow scope, not by a spawned daemon instance id, because a rebuild worker is a foreground process holding a durable claim lease and a per-role process lock (D181) rather than a supervised detached daemon. Naming an instance would need a supervisor the rebuild does not have, and whether one is wanted is decided by how multi-worker operation actually behaves once real workflows run — so it closes with them, not ahead of them."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/daemon-stop-instance.ts",
         "src/domain/commands.ts"
@@ -749,10 +749,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "POST /api/v1/commands covers plan/spawn/stop/pause/resume-worker, refresh/reopen-browser and the run family (retry, cancel, bump, hide), and queue depth is `statusCounts` on GET /api/v1/dashboard. NOT built: browser kill/focus/check/screenshot/auto-recovery, worker drain over the wire (it exists only as the CLI's --drain flag), and every bulk cancel/retry/delete. Doc 07 s3.6 assigns the operator control UI to 2i, so 2i still owns them."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "POST /api/v1/commands covers plan/spawn/stop/pause/resume-worker, refresh/reopen-browser and the run family (retry, cancel, bump, hide), and queue depth is `statusCounts` on GET /api/v1/dashboard. NOT built: browser kill/focus/check/screenshot/auto-recovery, worker drain over the wire (it exists only as the CLI's --drain flag), and every bulk cancel/retry/delete. Every one of those is a fact about operating MANY runs at once, and the rebuild has two workflows and no run corpus, so their consumer arrives with the migrations — which is also where a bulk affordance can be proved against real volume rather than a fixture."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/ops.ts",
         "src/domain/commands.ts",
@@ -817,10 +817,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "There is no /api/search. Failure detail is served per run at GET /api/v1/runs/:runId/failure, and legacy's selector-warnings are subsumed by GET /api/v1/ui-catalog's stale-artifact refusal (D177), which fails loud with the generator's own remediation rather than reporting a warning. The cross-run search over runs, entries and failure fingerprints is NOT built, and doc 07 s3.6 assigns the query UI to 2g/2i."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "There is no /api/search. Failure detail is served per run at GET /api/v1/runs/:runId/failure, and legacy's selector-warnings are subsumed by GET /api/v1/ui-catalog's stale-artifact refusal (D177), which fails loud with the generator's own remediation rather than reporting a warning. The cross-run search over runs, entries and failure fingerprints is NOT built: its consumer is a corpus of runs, and the rebuild has produced two, so shaping a search surface now would fix its ranking and its facets against nothing. It closes as the migrations produce the corpus."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/search.ts",
         "src/server/dashboard/queries/ui-catalog.ts",
@@ -839,10 +839,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "GET /api/v1/bootstrap serves `settingsSections` (storage only) and GET /api/v1/storage/doctor serves the read-only doctor. The write path exists in the command union as `settings`/`apply-settings` but no surface issues it, and there is no delete or recover equivalent. Same gap as legacy-dashboard-settings, from the server side."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "GET /api/v1/bootstrap serves `settingsSections` (storage only) and GET /api/v1/storage/doctor serves the read-only doctor. The write path exists in the command union as `settings`/`apply-settings` but no surface issues it, and there is no delete or recover equivalent — D169's deferred-command-family record, from the server side. Closes with legacy-dashboard-settings under doc 07 s2 row 3's non-workflow capability closure."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/settings.ts",
         "src/server/dashboard/queries/storage.ts",
@@ -881,10 +881,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2j",
-        "reason": "The production BFF serves NO frontend bytes: src/server/dashboard/http-server.ts has no static handler and api.ts 404s everything unrouted, so the dashboard is delivered by Vite and the only dist/dashboard static server in the tree is test-only (tests/parity/helpers/). This is more than a convenience gap — api.ts allow-lists /capture.html for the phone host gate, but nothing in production serves it, so the phone capture page has no delivery path from the BFF. Serving the built bundle is a base integration concern, which is 2j's own scope."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "The production BFF serves NO frontend bytes: src/server/dashboard/http-server.ts has no static handler, api.ts 404s everything unrouted through app.notFound, and the only dist/dashboard static servers in the tree are test-only (tests/parity/helpers/). This is more than a convenience gap — api.ts allow-lists /capture.html for the phone host gate, but nothing in production serves it, so the phone capture page has NO delivery path from the BFF. Serving the built bundle is base-integration work, which was 2j's own scope; 2j closed (D181-D186) without it, so it moves to doc 07 s2 row 3's explicit non-workflow capability closure. It is a HARD cutover blocker, not a nicety: cutover flips the operator onto this runtime, and a runtime that cannot deliver its own frontend has no operator surface at all."
       },
-      "ownerMilestone": "2j",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/static.ts",
         "src/server/dashboard/http-server.ts",
@@ -928,10 +928,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "GET /api/v1/explorer serves the read-only projection (D176) and api.ts records that Phase A has no draft, no apply and no compile. The POST/DELETE design half is doc 12 s5.3/s5.4's Phase B and is not started; legacy's /api/data-bank half belongs to legacy-tool-workflow-design-build-data-bank. One of the three entries that keep 2i formally incomplete."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "GET /api/v1/explorer serves the read-only projection (D176) and api.ts records that Phase A has no draft, no apply and no compile. The POST/DELETE design half is doc 12 s5.3/s5.4's Phase B, DEFERRED OUT OF PHASE 2 by D186 and reassigned to the migration that first needs it. Legacy's /api/data-bank half belongs to legacy-tool-workflow-design-build-data-bank."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/workflow-design.ts",
         "src/server/dashboard/queries/explorer.ts"
@@ -949,10 +949,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "Presentation facts are baked into GET /api/v1/bootstrap (workflowCategories) and GET /api/v1/explorer, but the presentation OVERRIDE family — read, preview, write and delete against a strict atomic file — is doc 12 s5.3's Phase B and is not started. One of the three entries that keep 2i formally incomplete."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "Presentation facts are baked into GET /api/v1/bootstrap (workflowCategories) and GET /api/v1/explorer, but the presentation OVERRIDE family — read, preview, write and delete against a strict versioned atomic file — is doc 12 s5.4's apply protocol, DEFERRED OUT OF PHASE 2 by D186 and reassigned to the migration that first needs it. D186 leaves the protocol itself unchanged: strict versioned override, temp+fsync+atomic-replace, stale-base refusal, code-change brief for everything else."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/workflow-presentation.ts",
         "src/server/dashboard/queries/bootstrap.ts",
@@ -1026,10 +1026,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "2i-G (D178) landed the zero-authority advisory edge — per-leaf declared redaction, the answer schema travelling with the question, typed exhaustion, and a durable footprint that is only the D112 admission row — with exactly TWO declared surfaces: failure-triage and contact-normalization. Legacy's run summary, record sanity check and selector suggestion have no producer and no surface arm, and AdvisorySurfaceIdSchema is closed, so each is a declared schema plus redaction change rather than a wiring change."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "2i-G (D178) landed the zero-authority advisory edge — per-leaf declared redaction, the answer schema travelling with the question, typed exhaustion, and a durable footprint that is only the D112 admission row — with exactly TWO declared surfaces: failure-triage and contact-normalization. Legacy's run summary, record sanity check and selector suggestion have no producer and no surface arm (D178), and AdvisorySurfaceIdSchema is closed. Doc 07 s3.6 calls these adapters OPTIONAL with deterministic explain/rules/catalog primary, so this closes as a build-or-retire decision at non-workflow capability closure."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/services/llm",
         "src/domain/trust/advisory.ts",
@@ -1265,10 +1265,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "D178 records that record sanity check remains WITHOUT a producer and carries no surface arm. AdvisorySurfaceIdSchema is a closed two-value enum, and an advisory surface needs a declared per-leaf redaction classification plus a template before it can exist, so adding this is a declared schema change rather than wiring. Doc 07 s3.6 assigns the optional advisory adapters to 2i."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "D178 records that record sanity check remains WITHOUT a producer and carries no surface arm. AdvisorySurfaceIdSchema is a closed two-value enum, and an advisory surface needs a declared per-leaf redaction classification plus a template before it can exist. Doc 07 s3.6 calls the advisory adapters OPTIONAL, so this closes as a build-or-retire decision at the plan's explicit non-workflow capability closure."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/sanity-check-record.ts",
         "src/domain/trust/advisory.ts"
@@ -1286,10 +1286,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "The DETERMINISTIC half is closed: `npm run selector:search` resolves operator language against the generated catalog and fails loud on a stale catalog or zero matches (see legacy-tool-selectors-search). The LLM suggestion half has no producer — D178 records it, and AdvisorySurfaceIdSchema is closed. Doc 07 s3.6 assigns the optional advisory adapters to 2i and keeps the deterministic catalog primary."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "The DETERMINISTIC half is closed: `npm run selector:search` resolves operator language against the generated catalog and fails loud on a stale catalog or zero matches (see legacy-tool-selectors-search). The LLM suggestion half has no producer — D178 records it, and AdvisorySurfaceIdSchema is closed. Doc 07 s3.6 keeps the deterministic catalog primary and the adapter optional, so this closes as a build-or-retire decision at non-workflow capability closure."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/selector-suggest.ts",
         "scripts/search-ui.ts",
@@ -1331,10 +1331,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "`rebuild:cli explain run <traceId|runId>` is the DETERMINISTIC analogue and is derived from authority through the same derivation the run-detail receipt uses (D82/D144), with no model in the path. The LLM run summary itself has no producer — D178 records it — and AdvisorySurfaceIdSchema is closed. Doc 07 s3.6 assigns the optional advisory adapters to 2i and keeps deterministic explain primary."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "`rebuild:cli explain run <traceId|runId>` is the DETERMINISTIC analogue and is derived from authority through the same derivation the run-detail receipt uses (D82/D144), with no model in the path. The LLM run summary itself has no producer — D178 records it — and AdvisorySurfaceIdSchema is closed. Doc 07 s3.6 keeps deterministic explain primary and the adapter optional, so this closes as a build-or-retire decision at non-workflow capability closure."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/summarize-run.ts",
         "src/server/explain/explain-run.ts",
@@ -1449,10 +1449,10 @@
       ],
       "disposition": {
         "kind": "open",
-        "milestone": "2i",
-        "reason": "No workflow-design data-bank codegen exists; the two codegen scripts in the tree are scripts/generate-build-manifest.ts and scripts/generate-ui-catalog.ts. The data bank fed legacy's workflow EDITOR, which is doc 12 s5.3/s5.4's Phase B and is not started, so this cannot close ahead of it."
+        "milestone": "phase-3-workflow-migration",
+        "reason": "No workflow-design data-bank codegen exists; the two codegen scripts in the tree are scripts/generate-build-manifest.ts and scripts/generate-ui-catalog.ts. The data bank fed legacy's workflow EDITOR, so it cannot close ahead of doc 12 s5.3's Phase B, which D186 deferred out of Phase 2 and reassigned to the migration that first needs it."
       },
-      "ownerMilestone": "2i",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/workflow-design/build-data-bank.ts",
         "src/server/dashboard/queries/explorer.ts"

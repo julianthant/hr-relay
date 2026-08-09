@@ -744,17 +744,56 @@ loud, by entry id, naming every stranded item. Two non-vacuity assertions stop t
 passing by looking at nothing. Nine negative controls drive the audit against mutated fixtures,
 one per arm plus the schema refusals.
 
-**What the sweep found, and what it leaves standing.** Zero entries are now open at or before the
-runtime's `completedThrough` (`2h`). **Sixteen remain honestly open on `2i`** — the settings
-editor and its route, cross-run search and its nav surface, the operator browser/worker controls
-and per-instance daemon stop, three of the four legacy LLM surfaces (run summary, record sanity
-check, selector suggestion — `AdvisorySurfaceIdSchema` is a closed two-value enum, so each is a
-declared schema change), the operator-side capture photo review, and the explorer's entire Phase-B
-edit half (`workflow-modifier`, `workflow-design`, `workflow-presentation`, `build-data-bank`).
-That is the evidenced answer to whether 2i closed its §3.6 obligations: **it did not**, and the
-guard now makes advancing the marker require settling all sixteen rather than discovering them at
-cutover. One entry moved to `2j` itself: the production BFF serves no frontend bytes at all, and
-`api.ts` allow-lists `/capture.html` for the phone host gate while nothing in production serves it.
+**Where the unbuilt entries actually belong.** The first pass parked sixteen on `2i` and one on
+`2j`, which was the wrong reading of what this file is for. `cutoverRequiresZeroOpen` gates
+**cutover** — doc 07 §6's whole-program flip — not a Phase-2 tail, and §2's row 3 already names the
+home for everything Phase 2 does not build: *per-workflow migration, **plus explicit non-workflow
+capability closure (§3.6)***, with its exit requiring every inventory entry to reach
+native/replaced/retired. Assigning 49 legacy operator surfaces to "milestone 2i" was an early guess
+made in 1a, long before 2i was sliced; the operator's actual 2i (2i-A…2i-G, D168–D180) never
+contained them. All seventeen are therefore re-milestoned to `phase-3-workflow-migration` — a
+re-milestoning, never a re-classification: every one keeps `status:"open"`, and nothing was
+promoted to `native`/`replaced` to make a gate green. Four groups, each with the deciding reason in
+the entry itself:
+
+- **Explorer Phase B (4)** — `workflow-modifier`, `workflow-design`, `workflow-presentation`,
+  `build-data-bank`. **D186** defers Phase B out of Phase 2 on D79a's own argument and names a
+  checkable trigger (the second production workflow whose presentation/policy an operator wants to
+  change without a code change), explicitly *reassigning* the criterion to the migration that first
+  needs it.
+- **Settings editing (2)** — the surface and its route. **D169** already records editable settings
+  as a deferred command family; the surface says so in its own header.
+- **The producerless advisory surfaces (5)** — `ai-assist`, `service-llm`, and the three ops
+  scripts. **D178** records run summary, record sanity check and selector suggestion as having no
+  producer and no surface arm, and `AdvisorySurfaceIdSchema` is closed, so each is a declared schema
+  change. §3.6 calls these adapters *optional* with the deterministic paths primary, so each closes
+  as a build-or-retire decision.
+- **Consumer-gated operator surfaces (6)** — bulk/browser controls, per-instance daemon stop,
+  cross-run search and its nav surface, the operator-side capture photo review, and static asset
+  serving. Each is a fact about operating *many* runs, or is blocked on the artifact-bytes route;
+  the tree has two workflows and no run corpus, so shaping them now would fix their facets and
+  affordances against nothing.
+
+The milestone id is coarse by construction — doc 07 has no finer ordered item past 2j — so the
+granularity lives where D184 put it: every entry's `reason` names what is missing and what decides
+it, and §3.3's order plus §3.6's grouped decisions are where each one actually lands.
+
+**One item is called out because 2j closed over it.** `legacy-route-static`: the production BFF
+serves **no frontend bytes at all** — `http-server.ts` has no static handler, `api.ts` 404s
+everything unrouted through `app.notFound`, and the only `dist/dashboard` servers in the tree are
+test-only. `api.ts` allow-lists `/capture.html` for the phone host gate while nothing in production
+serves it, so the phone capture page has no delivery path from the BFF. That is base-integration
+work, which was 2j's own scope, and 2j closed (D181–D186) without it. It is a **hard cutover
+blocker**: cutover flips the operator onto this runtime, and a runtime that cannot deliver its own
+frontend has no operator surface at all.
+
+**The inventory must never gate the program's own progress.** A tail that closes with an entry
+still parked on it is a record-keeping defect, not a reason to stop — so the guard runs the sweep
+AHEAD, asserting a clean audit for *every* base work item through `2j`. `completedThrough` stays
+strictly typed as a doc-07 work item, because its position in that order is the whole mechanism;
+`active` is deliberately a plain string, since past 2j it names a §3.3 **migration** rather than a
+base work item, and parsing it strictly would make an unrelated schema refuse to run the moment the
+marker advanced.
 
 **The two sibling sweeps in the same decision.** D107's pending-impl bindings already audit both
 directions plus two extras, and the checked-in empty set is correct against the as-built — but its
