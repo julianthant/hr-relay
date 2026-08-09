@@ -28,6 +28,7 @@ import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explor
 import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catalog.js";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
 import { buildRunAdvisory, type AdvisoryQueryDeps } from "../queries/advisory.js";
+import { buildArchiveIndex, buildArchivedRunDetail, type ArchiveQueryDeps } from "../queries/archive.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { errorText } from "../support.js";
@@ -36,6 +37,8 @@ export interface DashboardAppDeps {
   readonly bootstrap: BootstrapQueryDeps;
   readonly projection: RunQueueProjection;
   readonly runDetail: RunDetailQueryDeps;
+  /** Doc 03 §10.2's read-only Archive + the live version-bump state (2i-G, D179). */
+  readonly archive: ArchiveQueryDeps;
   readonly commands: DashboardCommandService;
   readonly startPlans: StartPlanService;
   readonly intake: IntakeService;
@@ -163,6 +166,21 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
    * cannot offer a mutation because the wire has nowhere to send one.
    */
   app.get("/api/v1/explorer", (c) => c.json(buildWorkflowExplorer(deps.explorer)));
+
+  /* ── archive + activity (D179/D180, doc 13 §3.6) ───────────────────────── */
+  app.get("/api/v1/archive", (c) => c.json(buildArchiveIndex(deps.archive)));
+  app.get("/api/v1/archive/:runId", (c) =>
+    c.json(buildArchivedRunDetail(deps.archive, c.req.param("runId"))));
+  app.get("/api/v1/reports/activity", (c) => {
+    const from = c.req.query("from");
+    const to = c.req.query("to");
+    if (from === undefined || to === undefined) {
+      // A missing range is NOT "today" or "this month": an aggregate over a
+      // window the caller never named is a number nobody asked for.
+      throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
+    }
+    return c.json(deps.projection.buildActivityReportWire(from, to));
+  });
   app.get("/api/v1/ui-catalog", (c) => c.json(buildUiCatalogWire(deps.uiCatalog)));
 
   app.get("/api/v1/dashboard", (c) => {

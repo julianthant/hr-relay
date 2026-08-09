@@ -38,6 +38,7 @@ import {
 import { createIntakeParser } from "../../../src/server/intake/intake-parser.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 import {
   INTAKE_FIXTURE_WORKFLOW_ID,
   intakeFixtureDescriptor,
@@ -121,6 +122,7 @@ function surface(): Surface {
 
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
+    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids: sequentialIdFactory("d"),

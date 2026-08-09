@@ -391,6 +391,19 @@ type RunRepository = Readonly<{
    * single-operator lookup.
    */
   findByTrace(traceId: string): RunRecord | undefined;
+  /**
+   * D179: every run of one workflow, whatever its state. A version bump has to
+   * see the whole set — the terminal rows it would archive AND the non-terminal
+   * ones that refuse it — so this deliberately does not filter.
+   */
+  listByWorkflow(workflow: string): readonly RunRecord[];
+  /**
+   * The distinct workflows that HAVE runs. An application-scope bump reaches
+   * every one of them, including workflows whose descriptor has since been
+   * retired: their runs are prior-version by definition, and enumerating the
+   * live registry instead would leave exactly those rows unsweepable.
+   */
+  listWorkflows(): readonly string[];
   claimNext(input: unknown): RunClaimOutcome;
   renewClaim(input: unknown): RunHeartbeatOutcome;
   transition(input: unknown): RunUpdateOutcome;
@@ -3730,6 +3743,15 @@ export class AuthorityDatabase implements Disposable {
         });
       },
       get: (runId: string) => this.#readRunRow(runId),
+      /** D179: the whole set a version bump assesses — terminal and not. */
+      listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
+        SELECT record_json FROM tasks WHERE workflow = ? ORDER BY created_at, record_key
+      `).all(workflow).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
+      listWorkflows: () => Object.freeze(
+        z.array(z.strictObject({ workflow: z.string() })).parse(this.#database.prepare(`
+          SELECT DISTINCT workflow AS workflow FROM tasks ORDER BY workflow
+        `).all()).map(({ workflow }) => workflow),
+      ),
       findByTrace: (traceId: string) => {
         const parsed = TraceIdSchema.parse(traceId);
         const rows = this.#database.prepare(`

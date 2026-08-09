@@ -331,6 +331,18 @@ export class RunQueueProjection {
     this.#notify({ runIds: [runId], workerChanged: false });
   }
 
+  /**
+   * ONE run's queue row, rendered by the same `#surface` every payload uses.
+   * D179's archive freezes this exact value, so an archived row and the live
+   * row it replaced are the same bytes — not a second derivation that could
+   * disagree with the row the operator was looking at.
+   */
+  queueSurface(runId: string): QueueSurfaceWire | undefined {
+    const row = this.#rows.get(runId);
+    if (row === undefined) return undefined;
+    return this.#surface(row, this.#authorityRun(runId));
+  }
+
   /* ── folding ───────────────────────────────────────────────────────────── */
 
   #row(runId: string, eventType: string): RunFoldRecord {

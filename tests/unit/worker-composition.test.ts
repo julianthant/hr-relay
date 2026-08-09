@@ -39,6 +39,7 @@ import {
 } from "./fixtures/phase1f-executor-harness.js";
 import { sequentialIdFactory, RUN_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -349,6 +350,7 @@ function kernelHarness(): { database: AuthorityDatabase; kernel: CommandKernel; 
   openDatabases.push(database);
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
+    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,

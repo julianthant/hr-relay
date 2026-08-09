@@ -23,6 +23,7 @@ import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { HASH_A, LATER, NOW, UUID_7, UUID_8 } from "./fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {
@@ -92,6 +93,7 @@ function harness(): Harness {
     });
     kernel = createCommandKernel({
     appVersion: "0.1.0",
+    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
       configIdentity: UNSTORED_CONFIG_IDENTITY,
       intakeParser: UNWIRED_INTAKE_PARSER,
       intakeProjections: NO_INTAKE_PROJECTIONS,

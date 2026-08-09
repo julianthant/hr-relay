@@ -54,6 +54,7 @@ import {
 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 
 /* ── the ratified Phase-1f partition (doc 03 §Phase-1f authority) ────────── */
 
@@ -85,12 +86,14 @@ const EXPECTED_ACTIVE = {
     "inspect-intake", "confirm-intake-mapping", "correct-intake-row",
     "exclude-intake-row", "validate-intake", "enqueue-intake-manifest",
   ],
+  // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
+  "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
 } as const;
 
 const EXPECTED_DEFERRED = {
   intake: [],
   settings: ["apply-settings"],
-  "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
+  "version-archive": [],
   run: [],
   notification: [],
   capture: [],
@@ -134,6 +137,7 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
   };
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
+    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,

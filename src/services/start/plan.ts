@@ -26,7 +26,7 @@ import {
 } from "../../domain/ids.js";
 import type { InstanceSelection, RunPriority, RunShape } from "../../domain/run/envelope.js";
 import { InstanceSelectionSchema } from "../../domain/run/envelope.js";
-import { isTerminalRunState } from "../../domain/run/record.js";
+import { isTerminalRunState, type RunRecord } from "../../domain/run/record.js";
 import {
   deriveCanonicalInputDigest,
   derivePlannedInputFingerprint,
@@ -35,10 +35,19 @@ import {
 } from "../../domain/run/start-plan.js";
 import type { PlannedRun, StartPlanRecord, StartRefusal } from "../../domain/run/start-plan.js";
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
-import type { AuthorityDatabase } from "../../infra/sqlite/authority-database.js";
+
 
 export interface StartPlannerDeps {
-  readonly authority: AuthorityDatabase;
+  /**
+   * Narrowed to the ONE read the planner makes (D179). An `AuthorityDatabase`
+   * satisfies it structurally, so every existing caller is unchanged; the
+   * relaunch arm, which runs INSIDE a command transaction and holds only the
+   * repositories, can now plan through this same function instead of growing
+   * a second, divergent copy of ingress parsing.
+   */
+  readonly authority: Readonly<{
+    authority: Readonly<{ runs: Readonly<{ listByItem(input: unknown): readonly RunRecord[] }> }>;
+  }>;
   readonly clock: Clock;
   readonly ids: IdFactory;
   /** How long a confirmation stays valid before it must be re-planned. */

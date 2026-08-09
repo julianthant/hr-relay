@@ -47,6 +47,7 @@ import {
   UUID_7,
 } from "./fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
 import {
   INTAKE_FIXTURE_WORKFLOW_ID,
   INTAKE_SERIAL_WORKFLOW_ID,
@@ -152,6 +153,7 @@ function harness(sessionOverrides: Record<string, unknown> = {}) {
 
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
+    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids: sequentialIdFactory("b"),

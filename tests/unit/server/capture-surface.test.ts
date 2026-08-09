@@ -78,6 +78,8 @@ import {
   handBuiltCaptureBinding,
 } from "../fixtures/capture-intake-fixtures.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
+import { archiveQueryDeps } from "../../fixtures/archive-seams.js";
 import {
   NO_INTAKE_PROJECTIONS,
   UNWIRED_INTAKE_PARSER,
@@ -223,6 +225,7 @@ function surface(options: SurfaceOptions = {}): Surface {
   const kernelIds = sequentialIdFactory("a");
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
+    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids: kernelIds,
@@ -313,6 +316,12 @@ function surface(options: SurfaceOptions = {}): Surface {
       }),
     },
     projection,
+    archive: archiveQueryDeps({
+      database,
+      clock,
+      appVersion: "0.1.0",
+      descriptors: [captureFixtureDescriptor],
+    }),
     runDetail: {
       stateRoot,
       projection,

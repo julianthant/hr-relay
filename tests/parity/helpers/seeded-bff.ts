@@ -46,6 +46,7 @@ import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
+import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 
@@ -616,8 +617,24 @@ export async function startSeededServer(
 
   const runIds = seed({ database, spans, notes });
 
+  const runDetailDeps = {
+    stateRoot,
+    projection,
+    authority: {
+      getRun: (runId: string) => database.authority.runs.get(runId),
+      latestCheckpoint: (workflowId: string, itemId: string, nodeId: string) =>
+        database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
+    },
+    descriptors: {
+      resolve: (workflowId: string) =>
+        (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
+    },
+    trust: createReceiptService({ database, descriptors: [personLookupDescriptor] }),
+  };
+
   const kernel = createCommandKernel({
-    appVersion: "0.1.0",
+    appVersion: SEEDED_APP_VERSION,
+    archiveSnapshots: archiveSnapshots(runDetailDeps),
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
@@ -688,20 +705,13 @@ export async function startSeededServer(
       }),
     },
     projection,
-    runDetail: {
-      stateRoot,
-      projection,
-      authority: {
-        getRun: (runId) => database.authority.runs.get(runId),
-        latestCheckpoint: (workflowId, itemId, nodeId) =>
-          database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
-      },
-      descriptors: {
-        resolve: (workflowId) =>
-          (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
-      },
-      trust: createReceiptService({ database, descriptors: [personLookupDescriptor] }),
-    },
+    runDetail: runDetailDeps,
+    archive: archiveQueryDeps({
+      database,
+      clock,
+      appVersion: SEEDED_APP_VERSION,
+      descriptors: [personLookupDescriptor],
+    }),
     commands,
     startPlans,
     hub,

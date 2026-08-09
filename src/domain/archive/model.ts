@@ -220,6 +220,18 @@ const ArchivedRunContentFields = {
   runId: RunIdSchema,
   applicationId: VersionBumpApplicationIdSchema,
   workflowId: WorkflowIdSchema,
+  /**
+   * The workflow's operator-facing label, FROZEN at archive time. Resolving it
+   * from the live registry when the Archive renders would be a descriptor read
+   * on the archived path — the exact coupling "zero old-version code paths"
+   * forbids — and falling back to the id would substitute a plausible value
+   * for one nobody recorded. A workflow already retired when the sweep ran has
+   * no label, and says so.
+   */
+  workflowLabel: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
   traceId: TraceIdSchema,
   /** The identity that made it prior-version, retained verbatim. */
   archivedIdentity: WorkflowVersionIdentitySchema,

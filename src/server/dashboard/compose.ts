@@ -90,6 +90,8 @@ import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { optionalSecretFamily, providerModelChain } from "../../domain/secrets.js";
 import type { AdvisoryQueryDeps } from "./queries/advisory.js";
+import { createArchiveSnapshotSource, type ArchiveQueryDeps } from "./queries/archive.js";
+import type { RunDetailQueryDeps } from "./queries/run-detail.js";
 
 export interface DashboardRuntime {
   readonly port: number;
@@ -309,6 +311,34 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     resolve: (workflowId: string) => INTAKE_PROJECTIONS[workflowId],
   };
 
+  /**
+   * Hoisted above the kernel because D179's archive freezes the SAME payloads
+   * these deps render: the snapshot source and the route are one read model,
+   * not two.
+   */
+  const runDetailDeps: RunDetailQueryDeps = {
+    stateRoot,
+    projection,
+    authority: {
+      getRun: (runId) => database.authority.runs.get(runId),
+      latestCheckpoint: (workflowId, itemId, nodeId) =>
+        database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
+    },
+    descriptors: {
+      resolve: (workflowId) => DESCRIPTORS.find((descriptor) => descriptor.id === workflowId),
+    },
+    // D140/D142: the receipt and failure sections serve CONTENT through the
+    // one authority-backed derivation, the same one `explain run` reads.
+    trust: createReceiptService({ database, descriptors: DESCRIPTORS }),
+  };
+
+  const archiveDeps: ArchiveQueryDeps = {
+    clock,
+    appVersion,
+    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
+    descriptors: { list: () => DESCRIPTORS },
+  };
+
   const kernel = createCommandKernel({
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
@@ -325,6 +355,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     // resolved config and stored snapshot the start planner uses, so a run born
     // from a spreadsheet and one born from the run surface are comparable.
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
+    archiveSnapshots: createArchiveSnapshotSource(runDetailDeps),
   });
 
   const commands = createDashboardCommandService({
@@ -481,22 +512,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       },
     },
     projection,
-    runDetail: {
-      stateRoot,
-      projection,
-      authority: {
-        getRun: (runId) => database.authority.runs.get(runId),
-        latestCheckpoint: (workflowId, itemId, nodeId) =>
-          database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
-      },
-      descriptors: {
-        resolve: (workflowId) =>
-          DESCRIPTORS.find((descriptor) => descriptor.id === workflowId),
-      },
-      // D140/D142: the receipt and failure sections serve CONTENT through the
-      // one authority-backed derivation, the same one `explain run` reads.
-      trust: createReceiptService({ database, descriptors: DESCRIPTORS }),
-    },
+    runDetail: runDetailDeps,
+    archive: archiveDeps,
     commands,
     startPlans,
     intake,

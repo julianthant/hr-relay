@@ -140,6 +140,7 @@ const ARCHIVED_CONTENT = ArchivedRunContentSchema.parse({
   runId: RUN_ID,
   applicationId: ARCHIVE_APPLICATION_ID,
   workflowId: WORKFLOW_ID,
+  workflowLabel: { state: "present", value: "Person Lookup" },
   traceId: TRACE_ID,
   archivedIdentity: { workflowId: WORKFLOW_ID, descriptorVersion: 1, contractFingerprint: HASH_A },
   appVersion: { state: "present", value: "0.1.0" },
@@ -166,4 +167,15 @@ export const ARCHIVE_RELAUNCH: ArchiveRelaunchRecord = ArchiveRelaunchRecordSche
   relaunchedIdentity: CURRENT_IDENTITY,
   relaunchedBy: "local-operator",
   relaunchedAt: NOW,
+});
+
+/**
+ * The kernel's archive snapshot seam for suites that never bump a version. It
+ * THROWS rather than returning an empty snapshot: a test that accidentally
+ * reaches the archive path must fail loudly, not archive a blank row.
+ */
+export const UNWIRED_ARCHIVE_SNAPSHOTS = Object.freeze({
+  snapshot(runId: string): never {
+    throw new Error(`this harness composed no archive snapshot source; run ${runId} cannot be archived here`);
+  },
 });

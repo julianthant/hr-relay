@@ -34,6 +34,7 @@ import { AT, DAY } from "./helpers/dashboard-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
+import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 
 interface Harness {
   readonly app: Hono;
@@ -92,8 +93,23 @@ function harness(): Harness {
   });
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
 
+  const runDetailDeps = {
+    stateRoot,
+    projection,
+    authority: {
+      getRun: (runId: string) => database.authority.runs.get(runId),
+      latestCheckpoint: (workflowId: string, itemId: string, nodeId: string) =>
+        database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
+    },
+    descriptors: {
+      resolve: (workflowId: string) => (workflowId === fixtureDescriptor.id ? fixtureDescriptor : undefined),
+    },
+    trust: createReceiptService({ database, descriptors: [fixtureDescriptor] }),
+  };
+
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
+    archiveSnapshots: archiveSnapshots(runDetailDeps),
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
@@ -143,6 +159,7 @@ function harness(): Harness {
   const hub = createDashboardStreamHub({ projection });
   cleanups.push(() => hub.close());
 
+
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
@@ -164,19 +181,8 @@ function harness(): Harness {
       }),
     },
     projection,
-    runDetail: {
-      stateRoot,
-      projection,
-      authority: {
-        getRun: (runId) => database.authority.runs.get(runId),
-        latestCheckpoint: (workflowId, itemId, nodeId) =>
-          database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
-      },
-      descriptors: {
-        resolve: (workflowId) => (workflowId === fixtureDescriptor.id ? fixtureDescriptor : undefined),
-      },
-      trust: createReceiptService({ database, descriptors: [fixtureDescriptor] }),
-    },
+    runDetail: runDetailDeps,
+    archive: archiveQueryDeps({ database, clock, appVersion: "0.1.0", descriptors: [fixtureDescriptor] }),
     commands,
     startPlans,
     hub,
