@@ -23,6 +23,10 @@ export interface AppRoute {
   readonly start?: boolean;
   /** `new` for the dropzone, or an intake session id for the workspace (2i-E3). */
   readonly intake?: string;
+  /** A workflow id — the read-only Workflow Explorer takeover (2i-G). */
+  readonly explore?: string;
+  /** The UI catalog takeover's search term; `""` opens it browsing (2i-G). */
+  readonly catalog?: string;
 }
 
 export function routeUrl(baseUrl: string, route: AppRoute): string {
@@ -32,6 +36,8 @@ export function routeUrl(baseUrl: string, route: AppRoute): string {
   if (route.section !== undefined) url.searchParams.set("section", route.section);
   if (route.start === true) url.searchParams.set("start", "1");
   if (route.intake !== undefined) url.searchParams.set("intake", route.intake);
+  if (route.explore !== undefined) url.searchParams.set("explore", route.explore);
+  if (route.catalog !== undefined) url.searchParams.set("catalog", route.catalog);
   return url.toString();
 }
 

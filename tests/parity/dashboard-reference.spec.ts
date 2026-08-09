@@ -29,6 +29,10 @@ import {
   type ParityTheme,
 } from "./helpers/capture.js";
 import { FIXTURE_INTAKE_IDS } from "./helpers/fixture-intake.js";
+import {
+  FIXTURE_CATALOG_QUERY,
+  FIXTURE_EXPLORER_WORKFLOW_ID,
+} from "./helpers/fixture-explorer.js";
 import { gotoAppState, type AppRoute } from "./helpers/app-driver.js";
 
 const REFERENCES = resolve(import.meta.dirname, "references");
@@ -53,6 +57,18 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   { id: "intake-upload", route: { day: FIXTURE_DAY, intake: "new" } },
   { id: "intake-mapping", route: { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.mapping } },
   { id: "intake-review", route: { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.validated } },
+  /*
+    The two read-only reference takeovers (2i-G). `explorer-graph` is the
+    Phase-2 exit criterion's own picture — the as-built person-lookup graph,
+    served from the REAL projection — and `explorer-transaction` is the one
+    node kind that can change a live HR system, so it is the state where the
+    page's single saturated mark has to earn itself. `catalog-search` shows the
+    catalog narrowed, which is both the search in use and the provenance a
+    selector must never be read without.
+  */
+  { id: "explorer-graph", route: { day: FIXTURE_DAY, explore: FIXTURE_EXPLORER_WORKFLOW_ID } },
+  { id: "explorer-transaction", route: { day: FIXTURE_DAY, explore: "kuali-timekeeper-annotation" } },
+  { id: "catalog-search", route: { day: FIXTURE_DAY, catalog: FIXTURE_CATALOG_QUERY } },
 ];
 
 let server: FixtureServer;
@@ -108,7 +124,14 @@ for (const viewport of PARITY_VIEWPORTS) {
           const errors = failOnPageErrors(page);
           await page.setViewportSize({ width: viewport.width, height: viewport.height });
           await gotoAppState(page, server.baseUrl, state.route);
-          if (state.route.intake !== undefined) await dismissWorkflowWindow(page);
+          // Every TAKEOVER dismisses the floating window for the same reason
+          // the intake workspace does: it sits over the surface under test,
+          // and the operator's first act on a takeover is a click into it.
+          if (
+            state.route.intake !== undefined
+            || state.route.explore !== undefined
+            || state.route.catalog !== undefined
+          ) await dismissWorkflowWindow(page);
           await applyTheme(page, theme satisfies ParityTheme);
           await page.waitForTimeout(120);
 

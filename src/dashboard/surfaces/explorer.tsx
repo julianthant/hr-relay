@@ -59,7 +59,6 @@ import {
   Banner,
   Button,
   Chip,
-  ChipRow,
   EmptyState,
   IconButton,
   MetaLine,
@@ -70,6 +69,7 @@ import {
   Spinner,
   dsFocus,
   dsIcon,
+  dsMotion,
   dsText,
   useDsEnterTransition,
 } from "../ds/ui.js";
@@ -99,6 +99,46 @@ const NODE_KIND = {
 } as const;
 
 const ARM_WORD = { task: "runs", prepare: "prepares", commit: "commits" } as const;
+
+/**
+ * A freshness bound, in the units a person reads it in.
+ *
+ * `10002992` is a number an operator has to do arithmetic on before it means
+ * anything, and the arithmetic is where they get it wrong. The exact value
+ * stays reachable on the chip's title, because a contract review needs the
+ * millisecond and a glance needs the hour.
+ */
+export function fmtFreshness(limit: number | "unbounded"): string {
+  if (limit === "unbounded") return "unbounded";
+  if (limit === 0) return "always fresh";
+  const seconds = limit / 1000;
+  if (seconds < 60) return `${String(seconds)}s`;
+  const minutes = seconds / 60;
+  if (minutes < 60) return `${String(Math.round(minutes))}m`;
+  const hours = minutes / 60;
+  return hours < 24 ? `${String(Math.round(hours))}h` : `${String(Math.round(hours / 24))}d`;
+}
+
+/**
+ * A wrapping row of chips, packed rather than tracked.
+ *
+ * The DS's `ChipRow` lays chips on an equal-width GRID so a wrapped set ends on
+ * one edge instead of leaving an orphan — which is exactly right in the queue's
+ * ~400px column, where it was designed. These two surfaces are the other case:
+ * a ~700px record column holding a dozen SHORT facts (`code pl`, `version 1`),
+ * where `auto-fit` cuts seven 160px tracks and every chip sits alone at the
+ * left of one. The shared ending edge is bought with gaps wide enough that the
+ * set stops reading as a set. So the facts pack, and the ragged right edge is
+ * the deliberate cost — the DS's own note already says a row that is not a
+ * track of peers "is a flex row, and the chip is one item in it".
+ */
+function FactChips({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">
+      {children}
+    </div>
+  );
+}
 
 /* ── source links ────────────────────────────────────────────────────────── */
 
@@ -226,9 +266,14 @@ function RailEntry({
         onClick={onSelect}
         aria-current={selected ? "true" : undefined}
         className={cn(
-          "flex w-full items-center gap-[var(--ds-space-tight)] border px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-left",
-          "rounded-[var(--ds-radius-md)] ds-motion",
+          "flex w-full cursor-pointer items-center gap-[var(--ds-space-tight)] border text-left",
+          "px-[var(--ds-space-base)] py-[var(--ds-space-tight)] rounded-[var(--ds-radius-md)]",
           dsFocus,
+          // The house pressable pair, exactly as `Button` and `Chip` compose
+          // it. A rail entry swaps the whole record column; without the dip it
+          // would be the only pressable on these surfaces that ignores a press.
+          dsMotion.fast,
+          "active:translate-y-px",
           selected
             ? "border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-selected)]"
             : "border-transparent hover:bg-[var(--ds-surface-3)]",
@@ -272,31 +317,33 @@ function NodeShapeFacts({ node }: { node: ExplorerNodeWire }) {
   switch (shape.kind) {
     case "task":
       return (
-        <ChipRow>
+        <FactChips>
           <Chip label="replay">{shape.replay}</Chip>
           <Chip label="condition" tone={shape.conditional ? "info" : "neutral"}>
             {shape.conditional ? "declares when()" : "always runs"}
           </Chip>
-        </ChipRow>
+        </FactChips>
       );
     case "transaction":
       return (
-        <ChipRow>
+        <FactChips>
           <Chip label="dry run" tone="info">{shape.dryRun}</Chip>
           <Chip label="probe">{shape.probePolicy}</Chip>
-          <Chip label="probe→fence">{`${String(shape.probeToFenceMaxMs)}ms`}</Chip>
+          <Chip label="probe→fence" title={`${String(shape.probeToFenceMaxMs)} ms`}>
+            {fmtFreshness(shape.probeToFenceMaxMs)}
+          </Chip>
           <Chip label="lease">{shape.leaseScope}</Chip>
           <Chip label="retry before fence">{shape.retryBeforeFence ? "declared" : "none"}</Chip>
-        </ChipRow>
+        </FactChips>
       );
     case "branch":
       return (
         <div className="flex flex-col gap-[var(--ds-space-tight)]">
           {shape.cases.map((one) => (
             <FactRow key={one.name} label={`case ${one.name}`}>
-              <ChipRow>
+              <FactChips>
                 {one.nodes.map((target) => <Chip key={String(target)}>{target}</Chip>)}
-              </ChipRow>
+              </FactChips>
             </FactRow>
           ))}
         </div>
@@ -307,16 +354,16 @@ function NodeShapeFacts({ node }: { node: ExplorerNodeWire }) {
           <FactRow label="join"><Chip>{shape.join}</Chip></FactRow>
           {shape.branches.map((one) => (
             <FactRow key={one.id} label={`branch ${one.id}`}>
-              <ChipRow>
+              <FactChips>
                 {one.nodes.map((target) => <Chip key={String(target)}>{target}</Chip>)}
-              </ChipRow>
+              </FactChips>
             </FactRow>
           ))}
         </div>
       );
     case "child-run":
       return (
-        <ChipRow>
+        <FactChips>
           <Chip label="target">{shape.targetWorkflowId}</Chip>
           <Chip label="edge">{shape.edgeId}</Chip>
           <Chip label="cardinality">{shape.cardinality}</Chip>
@@ -326,14 +373,14 @@ function NodeShapeFacts({ node }: { node: ExplorerNodeWire }) {
           <Chip label="cascade">{shape.cascadeCancel}</Chip>
           <Chip label="after retry">{shape.afterChildRetry}</Chip>
           <Chip label="visibility">{shape.visibility}</Chip>
-        </ChipRow>
+        </FactChips>
       );
     case "gate":
       return (
-        <ChipRow>
+        <FactChips>
           <Chip label="resolved by">{shape.resolvedBy}</Chip>
           {shape.statusKey !== undefined && <Chip label="status key">{shape.statusKey}</Chip>}
-        </ChipRow>
+        </FactChips>
       );
   }
 }
@@ -354,13 +401,13 @@ function TaskRecord({ task }: { task: ExplorerTaskWire }) {
 
       <FactRow label="Implemented by">
         {task.binding.state === "bound" ? (
-          <ChipRow>
+          <FactChips>
             <Chip label="store">{task.binding.storeNamespace}</Chip>
             <Chip label="kind">{task.binding.storeKind}</Chip>
             {task.binding.driverSystem !== undefined && (
               <Chip label="driver">{task.binding.driverSystem}</Chip>
             )}
-          </ChipRow>
+          </FactChips>
         ) : (
           // A contract no store implements yet is a legitimate mid-program
           // state (D107) and it is stated, never hidden: a workflow that cannot
@@ -377,7 +424,7 @@ function TaskRecord({ task }: { task: ExplorerTaskWire }) {
             {task.subject.reason ?? "none declared"}
           </span>
         ) : (
-          <ChipRow>
+          <FactChips>
             <Chip label="kind">{task.subject.kind}</Chip>
             <Chip label="from input">{task.subject.fromInput}</Chip>
             <Chip label="identity">{task.subject.identity}</Chip>
@@ -386,13 +433,13 @@ function TaskRecord({ task }: { task: ExplorerTaskWire }) {
             </Chip>
             <Chip label="match">{task.subject.match}</Chip>
             <Chip label="required at">{task.subject.requiredAt}</Chip>
-          </ChipRow>
+          </FactChips>
         )}
       </FactRow>
 
       {task.writeSafety !== undefined && (
         <FactRow label="Write safety">
-          <ChipRow>
+          <FactChips>
             <Chip label="completion" tone="warning">{task.writeSafety.completionKind}</Chip>
             {task.writeSafety.verifyTaskId !== undefined && (
               <Chip label="verifies with">{task.writeSafety.verifyTaskId}</Chip>
@@ -404,48 +451,52 @@ function TaskRecord({ task }: { task: ExplorerTaskWire }) {
                 : `stabilized · ${String(task.writeSafety.recoveryAbsence.minSinceFenceMs)}ms · `
                   + `${String(task.writeSafety.recoveryAbsence.consistentReads)} reads`}
             </Chip>
-          </ChipRow>
+          </FactChips>
         </FactRow>
       )}
 
       <FactRow label="Errors">
-        <ChipRow>
+        <FactChips>
           {task.errorCodes.map((code) => <Chip key={code}>{code}</Chip>)}
-        </ChipRow>
+        </FactChips>
       </FactRow>
 
       {(task.requires.length > 0 || task.providers.length > 0) && (
         <FactRow label="Requires">
-          <ChipRow>
+          <FactChips>
             {task.requires.map((secret) => (
               <Chip key={String(secret)} label="secret" tone="info">{secret}</Chip>
             ))}
             {task.providers.map((provider) => (
               <Chip key={String(provider)} label="provider" tone="info">{provider}</Chip>
             ))}
-          </ChipRow>
+          </FactChips>
         </FactRow>
       )}
 
       {task.freshness !== undefined && (
         <FactRow label="Freshness">
-          <ChipRow>
-            <Chip label="default">{String(task.freshness.defaultMaxAge)}</Chip>
+          <FactChips>
+            <Chip label="default" title={`${String(task.freshness.defaultMaxAge)} ms`}>
+              {fmtFreshness(task.freshness.defaultMaxAge)}
+            </Chip>
             {task.freshness.byField.map((rule) => (
-              <Chip key={String(rule.path)} label={rule.path}>{String(rule.maxAge)}</Chip>
+              <Chip key={String(rule.path)} label={rule.path} title={`${String(rule.maxAge)} ms`}>
+                {fmtFreshness(rule.maxAge)}
+              </Chip>
             ))}
-          </ChipRow>
+          </FactChips>
         </FactRow>
       )}
 
       {task.provenance !== undefined && (
         <FactRow label="Provenance">
-          <ChipRow>
+          <FactChips>
             <Chip label="default">{task.provenance.default}</Chip>
             {task.provenance.byField.map((rule) => (
               <Chip key={String(rule.path)} label={rule.path}>{rule.source}</Chip>
             ))}
-          </ChipRow>
+          </FactChips>
         </FactRow>
       )}
 
@@ -455,27 +506,27 @@ function TaskRecord({ task }: { task: ExplorerTaskWire }) {
             No catalog entry names this contract — it reaches no browser page.
           </span>
         ) : (
-          <ChipRow>
+          <FactChips>
             {task.ui.map((link) => (
               <Chip key={link.catalogId} label={link.kind} title={`${link.label} — verified ${link.verifiedAt}`}>
                 {link.catalogId}
               </Chip>
             ))}
-          </ChipRow>
+          </FactChips>
         )}
       </FactRow>
 
       <FactRow label="Scenarios">
-        <ChipRow>
+        <FactChips>
           {task.scenarios.map((scenario) => <Chip key={String(scenario)}>{scenario}</Chip>)}
-        </ChipRow>
+        </FactChips>
       </FactRow>
 
       <FactRow label="Source">
-        <ChipRow>
+        <FactChips>
           <SourceLink label="contract" link={task.contractSource} />
           <SourceLink label="impl" link={task.implSource} />
-        </ChipRow>
+        </FactChips>
       </FactRow>
 
       <MetaLine
@@ -519,13 +570,13 @@ function NodeRecord({ node }: { node: ExplorerNodeWire }) {
             Nothing — this node may start immediately.
           </span>
         ) : (
-          <ChipRow>
+          <FactChips>
             {node.dependsOn.map((upstream) => (
               <Chip key={String(upstream)} icon={<GitBranch aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}>
                 {upstream}
               </Chip>
             ))}
-          </ChipRow>
+          </FactChips>
         )}
       </FactRow>
 
@@ -533,25 +584,25 @@ function NodeRecord({ node }: { node: ExplorerNodeWire }) {
 
       {node.details.length > 0 && (
         <FactRow label="Detail projections">
-          <ChipRow>
+          <FactChips>
             {node.details.map((detail) => (
               <Chip key={detail.key} label={detail.label} title={`${detail.key} · ${detail.display}`}>
                 {detail.fieldPath}
               </Chip>
             ))}
-          </ChipRow>
+          </FactChips>
         </FactRow>
       )}
 
       {node.editableFields.length > 0 && (
         <FactRow label="Operator-correctable">
-          <ChipRow>
+          <FactChips>
             {node.editableFields.map((field) => (
               <Chip key={String(field.fieldPath)} label={field.label} tone="info">
                 {field.fieldPath}
               </Chip>
             ))}
-          </ChipRow>
+          </FactChips>
         </FactRow>
       )}
 
@@ -584,7 +635,7 @@ function NodeRecord({ node }: { node: ExplorerNodeWire }) {
 function WorkflowIdentity({ workflow }: { workflow: ExplorerWorkflowWire }) {
   return (
     <div className="flex flex-col gap-[var(--ds-space-tight)]">
-      <ChipRow>
+      <FactChips>
         <Chip label="code">{workflow.code}</Chip>
         <Chip label="category">{workflow.category}</Chip>
         <Chip label="version">{String(workflow.version)}</Chip>
@@ -596,8 +647,8 @@ function WorkflowIdentity({ workflow }: { workflow: ExplorerWorkflowWire }) {
         {workflow.systems.map((system) => (
           <Chip key={system} label="system" tone="info">{system}</Chip>
         ))}
-      </ChipRow>
-      <ChipRow>
+      </FactChips>
+      <FactChips>
         <Chip label="edit data">{workflow.capabilities.editData}</Chip>
         <Chip label="review">{workflow.capabilities.review ? "yes" : "no"}</Chip>
         <Chip label="run surface">
@@ -623,11 +674,11 @@ function WorkflowIdentity({ workflow }: { workflow: ExplorerWorkflowWire }) {
         >
           {workflow.surfaces.captureIntake.state === "declared" ? "declared" : "none"}
         </Chip>
-      </ChipRow>
-      <ChipRow>
+      </FactChips>
+      <FactChips>
         <SourceLink label="descriptor" link={workflow.sources.descriptor} />
         <SourceLink label="module" link={workflow.sources.module} />
-      </ChipRow>
+      </FactChips>
       <MetaLine
         items={[
           `contract ${String(workflow.contractFingerprint).slice(0, 12)}`,
@@ -712,8 +763,11 @@ export function WorkflowExplorer({
       {...enter}
       aria-label="Workflow explorer"
       className={cn(
-        "flex-1 data-[demo-enter=from]:translate-y-[var(--ds-travel-md)] data-[demo-enter=from]:opacity-0",
-        "ds-motion-enter",
+        // The SAME arrival the intake takeover uses — same slot, same
+        // direction, same distance. Two takeovers that occupy one region and
+        // arrive from opposite edges read as two different products.
+        "flex-1 data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
+        "data-[demo-enter=from]:opacity-0 ds-motion-enter",
       )}
     >
       <PanelHeader
@@ -746,7 +800,12 @@ export function WorkflowExplorer({
         </div>
       )}
 
-      <PanelBody className="p-[var(--ds-space-cozy)]">
+      {/*
+        A MEASURE, on a surface whose job is reading. Left-aligned rather than
+        centred: the rail is the spine and it has to stay put as the record
+        column changes height, which a centred block does not do.
+      */}
+      <PanelBody className="p-[var(--ds-space-cozy)] [&>*]:max-w-[var(--ds-w-explorer-measure)]">
         {resource.state === "loading" && (
           <div className="flex items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]">
             <Spinner label="Loading the explorer projection" />
@@ -785,7 +844,16 @@ export function WorkflowExplorer({
           <div className="flex flex-col gap-[var(--ds-space-cozy)]">
             <WorkflowIdentity workflow={workflow} />
 
-            <div className="@container/graph flex flex-col gap-[var(--ds-space-cozy)] @3xl/graph:flex-row">
+            {/*
+              The split keys on the COLUMN, not the window (doc 03's shell
+              note): this surface is a takeover whose width changes with the
+              workflow panel's mode, so a viewport media query fires at the
+              wrong moment in both directions. `@container/graph` is on the
+              WRAPPER — a container query cannot style its own container, so
+              asking from the same element is a query that never matches.
+            */}
+            <div className="@container/graph">
+            <div className="flex flex-col gap-[var(--ds-space-cozy)] @3xl/graph:flex-row">
               <nav
                 aria-label="Graph structure"
                 className="shrink-0 @3xl/graph:w-[var(--ds-w-context-rail)]"
@@ -805,13 +873,13 @@ export function WorkflowExplorer({
                 </ol>
                 <div className="pt-[var(--ds-space-base)]">
                   <SectionLabel className="pb-[var(--ds-space-tight)]">Result</SectionLabel>
-                  <ChipRow>
+                  <FactChips>
                     {workflow.resultDependsOn.map((nodeId) => (
                       <Chip key={String(nodeId)} icon={<Repeat aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}>
                         {nodeId}
                       </Chip>
                     ))}
-                  </ChipRow>
+                  </FactChips>
                 </div>
               </nav>
 
@@ -822,6 +890,7 @@ export function WorkflowExplorer({
                   <NodeRecord node={openNode} />
                 )}
               </div>
+            </div>
             </div>
 
             <WorkflowScenarios workflow={workflow} />

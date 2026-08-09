@@ -29,6 +29,7 @@ import {
   FIXTURE_START_PLAN,
 } from "./fixture-day.js";
 import { FIXTURE_INTAKE_MAPPING, FIXTURE_INTAKE_SESSIONS } from "./fixture-intake.js";
+import { FIXTURE_EXPLORER_WIRE, FIXTURE_UI_CATALOG_WIRE } from "./fixture-explorer.js";
 import {
   CAPTURE_TOKEN_HEADER,
   CAPTURE_UNKNOWN_SESSION_MESSAGE,
@@ -119,6 +120,13 @@ export function createFixtureBff(): { app: Hono } {
   });
 
   app.post("/api/v1/start-plans", (c) => c.json(FIXTURE_START_PLAN as unknown));
+
+  /**
+   * The two read-only reference routes (2i-G). Both serve the REAL projection
+   * — see `fixture-explorer.ts` for why these fixtures are not hand-written.
+   */
+  app.get("/api/v1/explorer", (c) => c.json(FIXTURE_EXPLORER_WIRE as unknown));
+  app.get("/api/v1/ui-catalog", (c) => c.json(FIXTURE_UI_CATALOG_WIRE as unknown));
 
   /**
    * The intake pair (2i-E3). The upload answers `201` with the mid-mapping

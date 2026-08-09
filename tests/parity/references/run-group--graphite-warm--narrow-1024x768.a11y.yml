@@ -19,6 +19,8 @@
   - button "Switch to Paper Ink"
 - main:
   - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
+  - button "Explore graph"
+  - button "UI catalog"
   - button "Import spreadsheet"
   - button "Start a run"
   - group "Filter the queue by status":

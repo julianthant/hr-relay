@@ -515,6 +515,17 @@
      the operator narrows it. */
   --ds-w-context-rail-wide: 520px;
   --ds-w-context-spine: 34px;
+  /* THE READING MEASURE of a reference surface (2i-G). The workflow explorer
+     and the UI catalog are read, not operated: their content is a rail of node
+     ids beside a column of fact rows, and given the full 1400px of a takeover
+     the fact grid sprays a handful of short chips across the panel and reads as
+     debris rather than as a record. 1120 = the 376px rail + a ~700px record
+     column, which is the width at which a `--ds-w-chip-cell` track lands four
+     to five facts per line — a table, not a scatter. It is a measure, not a
+     panel width: the panel still fills the region and the content sits at its
+     leading edge, so the rail does not drift as the record column changes
+     height. */
+  --ds-w-explorer-measure: 1120px;
   /* Popover widths. A popover explains ONE thing; if it needs to be wider than
      `lg` it is a Dialog or a panel section, not a popover. */
   --ds-w-popover-sm: 240px;

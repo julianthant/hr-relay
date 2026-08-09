@@ -1,0 +1,11 @@
+{
+  "stateId": "catalog-search",
+  "viewport": "1440x900",
+  "theme": "paper-ink",
+  "adapter": "fixture",
+  "fixtureId": "catalog-search",
+  "descriptorHash": "51dbce457d11e5e0b48f0a94bf87fd0a869cb9ea86a0b46d38ca77fbd54f1d91",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-08-03",
+  "variant": "default"
+}

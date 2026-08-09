@@ -35,7 +35,6 @@ import {
   Badge,
   Banner,
   Chip,
-  ChipRow,
   EmptyState,
   IconButton,
   MetaLine,
@@ -69,6 +68,27 @@ const ENTRY_KIND = {
   observation: { word: "Observation", tone: "info" },
 } as const;
 
+/**
+ * A wrapping row of chips, packed rather than tracked.
+ *
+ * The DS's `ChipRow` lays chips on an equal-width GRID so a wrapped set ends on
+ * one edge instead of leaving an orphan — which is exactly right in the queue's
+ * ~400px column, where it was designed. These two surfaces are the other case:
+ * a ~700px record column holding a dozen SHORT facts (`code pl`, `version 1`),
+ * where `auto-fit` cuts seven 160px tracks and every chip sits alone at the
+ * left of one. The shared ending edge is bought with gaps wide enough that the
+ * set stops reading as a set. So the facts pack, and the ragged right edge is
+ * the deliberate cost — the DS's own note already says a row that is not a
+ * track of peers "is a flex row, and the chip is one item in it".
+ */
+function FactChips({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">
+      {children}
+    </div>
+  );
+}
+
 function CatalogRow({ entry }: { entry: UiCatalogEntry }) {
   const kind = ENTRY_KIND[entry.kind];
   return (
@@ -81,7 +101,7 @@ function CatalogRow({ entry }: { entry: UiCatalogEntry }) {
         <span className={cn(dsText.meta, "text-[color:var(--ds-fg-secondary)]")}>{entry.label}</span>
       </div>
 
-      <ChipRow>
+      <FactChips>
         <Chip label="system">{entry.system}</Chip>
         {"screen" in entry && <Chip label="screen">{entry.screen}</Chip>}
         {"role" in entry && <Chip label="role">{entry.role}</Chip>}
@@ -101,23 +121,23 @@ function CatalogRow({ entry }: { entry: UiCatalogEntry }) {
         <Chip label="sensitivity" tone={entry.sensitivity === "hr" ? "warning" : "neutral"}>
           {entry.sensitivity}
         </Chip>
-      </ChipRow>
+      </FactChips>
 
-      <ChipRow>
+      <FactChips>
         <Chip label="verified" icon={<ScanEye aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}>
           {entry.verification.verifiedAt}
         </Chip>
         <Chip label="fixture">{entry.verification.fixtureEvidenceRef}</Chip>
         <Chip label="live">{entry.verification.liveReadOnlyEvidenceRef}</Chip>
         <Chip label="owner">{entry.sourceLink}</Chip>
-      </ChipRow>
+      </FactChips>
 
       {entry.taskUses.length > 0 && (
-        <ChipRow>
+        <FactChips>
           {entry.taskUses.map((taskId) => (
             <Chip key={String(taskId)} label="used by">{taskId}</Chip>
           ))}
-        </ChipRow>
+        </FactChips>
       )}
 
       <MetaLine
@@ -193,8 +213,11 @@ export function UiCatalogWorkspace({
       {...enter}
       aria-label="UI catalog"
       className={cn(
-        "flex-1 data-[demo-enter=from]:translate-y-[var(--ds-travel-md)] data-[demo-enter=from]:opacity-0",
-        "ds-motion-enter",
+        // The SAME arrival the intake takeover uses — same slot, same
+        // direction, same distance. Two takeovers that occupy one region and
+        // arrive from opposite edges read as two different products.
+        "flex-1 data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
+        "data-[demo-enter=from]:opacity-0 ds-motion-enter",
       )}
     >
       <PanelHeader
@@ -230,7 +253,7 @@ export function UiCatalogWorkspace({
         )}
       </PanelToolbar>
 
-      <PanelBody className="px-[var(--ds-space-cozy)]">
+      <PanelBody className="px-[var(--ds-space-cozy)] [&>*]:max-w-[var(--ds-w-explorer-measure)]">
         {resource.state === "loading" && (
           <div className="flex items-center gap-[var(--ds-space-tight)] py-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]">
             <Spinner label="Loading the UI catalog" />

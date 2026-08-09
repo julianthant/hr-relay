@@ -1,0 +1,47 @@
+# catalog-search--graphite-warm--narrow-1024x768
+# adapter: fixture
+# fixture: catalog-search
+# descriptorHash: 51dbce457d11e5e0b48f0a94bf87fd0a869cb9ea86a0b46d38ca77fbd54f1d91
+# appVersion: 0.1.0
+# viewport: narrow-1024x768  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "This is the newest day served" [disabled]
+  - button "Notifications — 1 unread item": "1"
+  - button "Settings"
+  - button "Keyboard shortcuts"
+  - button "Switch to Paper Ink"
+- main:
+  - button "Workflow Panel — Person Lookup, minimised. 14 rows on this day, across every workflow": "14"
+  - button "Explore graph"
+  - button "UI catalog"
+  - button "Import spreadsheet"
+  - button "Start a run"
+  - region "UI catalog":
+    - text: UI catalog The committed selector-semantics catalog, exactly as generated generated/ui-catalog.json
+    - button "Close the UI catalog"
+    - group "Search the UI catalog":
+      - searchbox "Search the UI catalog by id, label, system or search term": kuali
+      - button "Clear search"
+      - text: 8 of 49 entries
+    - region "kuali":
+      - text: kuali · 8 entries
+      - list:
+        - listitem: "Screen kuali.rrss-document Kuali RRSS Separation Request Form document system kuali sensitivity restricted verified 2026-08-04 fixture evidence/ui/kuali/rrss-document.fixture.json live evidence/ui/kuali/rrss-document.live.json owner src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY used by kuali/read-timekeeper-annotation used by kuali/verify-timekeeper-annotation used by kuali/fill-timekeeper-annotation used by kuali/save-timekeeper-annotation search: kuali rrss separation request document screen1 verification scenario"
+        - listitem: "Element kuali.rrss-document.eid-field RRSS document EID field system kuali screen kuali.rrss-document role field effect observe sensitivity restricted verified 2026-08-04 fixture evidence/ui/kuali/rrss-document.fixture.json live evidence/ui/kuali/rrss-document.live.json owner src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY used by kuali/read-timekeeper-annotation used by kuali/verify-timekeeper-annotation used by kuali/fill-timekeeper-annotation used by kuali/save-timekeeper-annotation search: kuali rrss document eid field1 verification scenario"
+        - listitem: "Element kuali.rrss-document.timekeeper-field RRSS document timekeeper name field system kuali screen kuali.rrss-document role field effect prepare sensitivity hr verified 2026-08-04 fixture evidence/ui/kuali/rrss-document.fixture.json live evidence/ui/kuali/rrss-document.live.json owner src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY used by kuali/read-timekeeper-annotation used by kuali/verify-timekeeper-annotation used by kuali/fill-timekeeper-annotation search: kuali rrss document timekeeper name field1 verification scenario"
+        - listitem: "Element kuali.rrss-document.save-button RRSS document Save button system kuali screen kuali.rrss-document role button effect external-commit sensitivity restricted verified 2026-08-04 fixture evidence/ui/kuali/rrss-document.fixture.json live evidence/ui/kuali/rrss-document.live.json owner src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY used by kuali/save-timekeeper-annotation search: kuali rrss document save button external commit1 verification scenario"
+        - listitem: "Page state kuali.rrss-document.ready RRSS document loaded and identifiable system kuali screen kuali.rrss-document sensitivity restricted verified 2026-08-04 fixture evidence/ui/kuali/rrss-document.fixture.json live evidence/ui/kuali/rrss-document.live.json owner src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY used by kuali/read-timekeeper-annotation used by kuali/verify-timekeeper-annotation used by kuali/fill-timekeeper-annotation used by kuali/save-timekeeper-annotation search: kuali rrss document ready state1 verification scenario"
+        - listitem: "Page state kuali.rrss-document.timekeeper-staged RRSS document with an unsaved staged timekeeper value system kuali screen kuali.rrss-document sensitivity restricted verified 2026-08-04 fixture evidence/ui/kuali/rrss-document.fixture.json live evidence/ui/kuali/rrss-document.live.json owner src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY used by kuali/fill-timekeeper-annotation used by kuali/save-timekeeper-annotation search: kuali rrss document timekeeper staged state1 verification scenario"
+        - listitem: "Observation kuali.rrss-document.displayed-eid Displayed RRSS document EID system kuali screen kuali.rrss-document authoritative for subject sensitivity restricted verified 2026-08-04 fixture evidence/ui/kuali/rrss-document.fixture.json live evidence/ui/kuali/rrss-document.live.json owner src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY used by kuali/read-timekeeper-annotation used by kuali/verify-timekeeper-annotation used by kuali/fill-timekeeper-annotation used by kuali/save-timekeeper-annotation search: authoritative kuali rrss displayed eid1 verification scenario"
+        - listitem: "Observation kuali.rrss-document.displayed-timekeeper Displayed RRSS document timekeeper name system kuali screen kuali.rrss-document authoritative for completion sensitivity hr verified 2026-08-04 fixture evidence/ui/kuali/rrss-document.fixture.json live evidence/ui/kuali/rrss-document.live.json owner src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY used by kuali/read-timekeeper-annotation used by kuali/verify-timekeeper-annotation used by kuali/fill-timekeeper-annotation search: authoritative kuali rrss displayed timekeeper name1 verification scenario"
+- region "Session Panel":
+  - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
+  - text: v0.1.0
+  - status: Live
