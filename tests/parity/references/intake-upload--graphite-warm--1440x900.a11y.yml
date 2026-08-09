@@ -1,0 +1,31 @@
+# intake-upload--graphite-warm--1440x900
+# adapter: fixture
+# fixture: intake-upload
+# descriptorHash: 51dbce457d11e5e0b48f0a94bf87fd0a869cb9ea86a0b46d38ca77fbd54f1d91
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "This is the newest day served" [disabled]
+  - button "Notifications — 1 unread item": "1"
+  - button "Settings"
+  - button "Keyboard shortcuts"
+  - button "Switch to Paper Ink"
+- main:
+  - button "Workflow Panel — Person Lookup, minimised. 14 rows on this day, across every workflow": "14"
+  - button "Import spreadsheet"
+  - button "Start a run"
+  - text: Import a spreadsheet Person Lookup — one run per row
+  - button "Close"
+  - button "Drop a spreadsheet of people for Person Lookup A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects."
+  - text: Drop a spreadsheet of people for Person Lookup A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects.
+- region "Session Panel":
+  - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
+  - text: v0.1.0
+  - status: Live

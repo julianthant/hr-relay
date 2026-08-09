@@ -1,0 +1,82 @@
+# intake-review--paper-ink--narrow-1024x768
+# adapter: fixture
+# fixture: intake-review
+# descriptorHash: 51dbce457d11e5e0b48f0a94bf87fd0a869cb9ea86a0b46d38ca77fbd54f1d91
+# appVersion: 0.1.0
+# viewport: narrow-1024x768  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "This is the newest day served" [disabled]
+  - button "Notifications — 1 unread item": "1"
+  - button "Settings"
+  - button "Keyboard shortcuts"
+  - button "Switch to Paper Ink"
+- main:
+  - button "Workflow Panel — Person Lookup, minimised. 14 rows on this day, across every workflow": "14"
+  - button "Import spreadsheet"
+  - button "Start a run"
+  - text: Import a spreadsheet Person Lookup — one run per row
+  - button "Another file"
+  - button "Close"
+  - region "Source file":
+    - text: cohort-7-onboarding.csv sha256 3c9a71e0f2b8…7 data rows4 columnsuploaded 10:01 AM validated Header row
+    - combobox "Header row":
+      - option "row 3 — UCPath ID · Employee Name · Department · Start Date" [selected]
+      - option "row 6 — 10-4567 · Okafor, Chidi · Campus Recreation · 07/21/2026"
+      - option "row 7 — 10554120 · Ramirez, Sofia · Student Health · 07/21/2026"
+      - option "row 5 — 10001573 · Blirea, Glaundi · Housing Dining Hospitality · 07/14/2026"
+      - option "row 1 — Onboarding roster — Cohort 7"
+      - option "row 4 — 10873698 · Battistessa, Johnnie · Housing Dining Hospitality · 07/14/2026"
+      - option "row 8 — 10873698 · Battistessa, Johnnie · Housing Dining Hospitality · 08/04/2026"
+      - option "row 9 — Facilities Management · 08/04/2026"
+    - paragraph: Chosen by ranking, and changeable — every column below is read relative to it.
+  - tablist "Intake stage":
+    - tab "Mapping 2"
+    - tab "Review 4" [selected]
+  - tabpanel "Review 4":
+    - text: validated 10:02 AMvalues read as of 10:02 AM Every rejected row is fixed or excluded before this file can run — there is deliberately no way to ignore one. An exclusion is durable and keeps the reason it was made with.
+    - region "Source row 1":
+      - text: row 1 duplicate person
+      - alert: source rows 1, 5 describe the same item
+      - separator
+      - textbox "Reason for excluding source row 1":
+        - /placeholder: why this person is not in this batch
+      - button "Exclude row" [disabled]
+    - region "Source row 3":
+      - text: row 3 cell could not be read
+      - alert: is not a UCPath EID (must be 10xxxxxx, 8 digits) (Employee ID (EID))
+      - text: column UCPath IDemplIdvalue 4567 (last4)
+      - separator
+      - textbox "Corrected Employee ID (EID) for source row 3":
+        - /placeholder: corrected Employee ID (EID)
+      - button "Fix cell" [disabled]
+      - textbox "Reason for excluding source row 3":
+        - /placeholder: why this person is not in this batch
+      - button "Exclude row" [disabled]
+    - region "Source row 5":
+      - text: row 5 duplicate person
+      - alert: source rows 1, 5 describe the same item
+      - separator
+      - textbox "Reason for excluding source row 5":
+        - /placeholder: why this person is not in this batch
+      - button "Exclude row" [disabled]
+    - region "Source row 6":
+      - text: row 6 fields disagree
+      - alert: Invalid input
+      - separator
+      - textbox "Reason for excluding source row 6":
+        - /placeholder: why this person is not in this batch
+      - button "Exclude row" [disabled]
+  - text: 3 of 7 rows would run 4 rejected0 excluded
+  - button "Re-validate"
+  - button "Run 3 rows"
+- region "Session Panel":
+  - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
+  - text: v0.1.0
+  - status: Live

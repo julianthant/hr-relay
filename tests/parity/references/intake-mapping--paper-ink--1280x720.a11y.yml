@@ -1,0 +1,80 @@
+# intake-mapping--paper-ink--1280x720
+# adapter: fixture
+# fixture: intake-mapping
+# descriptorHash: 51dbce457d11e5e0b48f0a94bf87fd0a869cb9ea86a0b46d38ca77fbd54f1d91
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "This is the newest day served" [disabled]
+  - button "Notifications — 1 unread item": "1"
+  - button "Settings"
+  - button "Keyboard shortcuts"
+  - button "Switch to Paper Ink"
+- main:
+  - button "Workflow Panel — Person Lookup, minimised. 14 rows on this day, across every workflow": "14"
+  - button "Import spreadsheet"
+  - button "Start a run"
+  - text: Import a spreadsheet Person Lookup — one run per row
+  - button "Another file"
+  - button "Close"
+  - region "Source file":
+    - text: cohort-7-onboarding.csv sha256 3c9a71e0f2b8…7 data rows4 columnsuploaded 10:01 AM mapping Header row
+    - combobox "Header row":
+      - option "row 3 — UCPath ID · Employee Name · Department · Start Date" [selected]
+      - option "row 6 — 10-4567 · Okafor, Chidi · Campus Recreation · 07/21/2026"
+      - option "row 7 — 10554120 · Ramirez, Sofia · Student Health · 07/21/2026"
+      - option "row 5 — 10001573 · Blirea, Glaundi · Housing Dining Hospitality · 07/14/2026"
+      - option "row 1 — Onboarding roster — Cohort 7"
+      - option "row 4 — 10873698 · Battistessa, Johnnie · Housing Dining Hospitality · 07/14/2026"
+      - option "row 8 — 10873698 · Battistessa, Johnnie · Housing Dining Hospitality · 08/04/2026"
+      - option "row 9 — Facilities Management · 08/04/2026"
+    - paragraph: Chosen by ranking, and changeable — every column below is read relative to it.
+  - tablist "Intake stage":
+    - tab "Mapping 1" [selected]
+    - tab "Review"
+  - tabpanel "Mapping 1":
+    - table "Map person-lookup fields to columns of cohort-7-onboarding.csv":
+      - rowgroup:
+        - row "Workflow field Bound column Suggested":
+          - columnheader "Workflow field"
+          - columnheader "Bound column"
+          - columnheader "Suggested"
+      - rowgroup:
+        - row "Employee ID (EID) emplIdcanonical eid UCPath ID 10873698 · 10001573 · 10-4567 no proposal":
+          - cell "Employee ID (EID) emplIdcanonical eid"
+          - cell "UCPath ID 10873698 · 10001573 · 10-4567":
+            - combobox "Column bound to Employee ID (EID)":
+              - option "— not bound —"
+              - option "UCPath ID" [selected]
+              - option "Employee Name"
+              - option "Department"
+              - option "Start Date"
+            - text: 10873698 · 10001573 · 10-4567
+          - cell "no proposal"
+        - row "Full Name namecanonical fullName — not bound — Employee Name Bind Employee Name known header, its values parse":
+          - cell "Full Name namecanonical fullName"
+          - cell "— not bound —":
+            - combobox "Column bound to Full Name":
+              - option "— not bound —" [selected]
+              - option "UCPath ID"
+              - option "Employee Name"
+              - option "Department"
+              - option "Start Date"
+          - cell "Employee Name Bind Employee Name known header, its values parse":
+            - text: Employee Name
+            - button "Bind Employee Name": Use it
+            - text: known header, its values parse
+  - text: This mapping has not been validated, so nothing is known about its rows yet.
+  - button "Validate"
+  - button "Run" [disabled]
+- region "Session Panel":
+  - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
+  - text: v0.1.0
+  - status: Live

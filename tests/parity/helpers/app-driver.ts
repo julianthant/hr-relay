@@ -17,6 +17,8 @@ export interface AppRoute {
   readonly run?: string;
   readonly section?: string;
   readonly start?: boolean;
+  /** `new` for the dropzone, or an intake session id for the workspace (2i-E3). */
+  readonly intake?: string;
 }
 
 export function routeUrl(baseUrl: string, route: AppRoute): string {
@@ -25,6 +27,7 @@ export function routeUrl(baseUrl: string, route: AppRoute): string {
   if (route.run !== undefined) url.searchParams.set("run", route.run);
   if (route.section !== undefined) url.searchParams.set("section", route.section);
   if (route.start === true) url.searchParams.set("start", "1");
+  if (route.intake !== undefined) url.searchParams.set("intake", route.intake);
   return url.toString();
 }
 

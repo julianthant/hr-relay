@@ -1,7 +1,7 @@
 # run-open-gate--paper-ink--1280x720
 # adapter: fixture
 # fixture: run-open-gate
-# descriptorHash: 5e85d6a128fdace632299815aae6d6a444042732d49710b33898cbdaf036ffb8
+# descriptorHash: 51dbce457d11e5e0b48f0a94bf87fd0a869cb9ea86a0b46d38ca77fbd54f1d91
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -19,6 +19,7 @@
   - button "Switch to Paper Ink"
 - main:
   - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
+  - button "Import spreadsheet"
   - button "Start a run"
   - group "Filter the queue by status":
     - group "Scope the queue":
@@ -130,7 +131,7 @@
       - tab "Receipt"
     - text: 9:47 AM Searching UCPath directory for Blirea, Glaundi 9:48 AM Two candidates share the name Blirea, Glaundi identity-review since 9:49 AM The run is held here. It cannot go past this step until you pick. 9:49 AM identity-review gate opened for candidate selection
     - searchbox "Search logs"
-    - text: wf 5e85d6a1
+    - text: wf 51dbce45
     - button "Run provenance"
     - status:
       - button "identity-review Go to the decision since 9:49 AM"

@@ -28,6 +28,7 @@ import {
   captureParityPair,
   type ParityTheme,
 } from "./helpers/capture.js";
+import { FIXTURE_INTAKE_IDS } from "./helpers/fixture-intake.js";
 import { gotoAppState, type AppRoute } from "./helpers/app-driver.js";
 
 const REFERENCES = resolve(import.meta.dirname, "references");
@@ -46,6 +47,12 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   { id: "run-member", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.memberRun } },
   { id: "run-receipt", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.doneRun, section: "receipt" } },
   { id: "start-run", route: { day: FIXTURE_DAY, start: true } },
+  // The intake workspace's three points (2i-E3). `intake-mapping` is the one
+  // that matters most: a bound column and an unbound one with a live proposal
+  // beside it, which is the whole proposed-against-decided axis in one frame.
+  { id: "intake-upload", route: { day: FIXTURE_DAY, intake: "new" } },
+  { id: "intake-mapping", route: { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.mapping } },
+  { id: "intake-review", route: { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.validated } },
 ];
 
 let server: FixtureServer;
@@ -61,6 +68,27 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await server.close();
 });
+
+/**
+ * The workflow panel opens as a FLOATING window that dismisses on the first
+ * click outside it, and at these viewports it sits over the intake workspace's
+ * left edge — its target-field column and its stage tabs.
+ *
+ * The queue's references keep the window because the queue is what the window
+ * is FOR: you pick a workflow, you read its rows. The intake workspace is a
+ * takeover, so the operator's very first act is a click into it, and a
+ * reference photographed before that click documents a window rather than the
+ * surface under test. The press lands on the panel header — deliberately not
+ * the body, where the dropzone would open a file chooser instead.
+ */
+async function dismissWorkflowWindow(page: import("@playwright/test").Page): Promise<void> {
+  const viewport = page.viewportSize();
+  if (viewport === null) throw new Error("the parity lane always sets a viewport before navigating");
+  // Horizontally centred so it lands in the header's empty middle at every
+  // reference viewport — at 1024 the trailing controls reach x≈900.
+  await page.mouse.click(viewport.width / 2, 100);
+  await page.waitForTimeout(120);
+}
 
 /** A page that logged an uncaught error did not render the state under test. */
 function failOnPageErrors(page: import("@playwright/test").Page): string[] {
@@ -80,6 +108,7 @@ for (const viewport of PARITY_VIEWPORTS) {
           const errors = failOnPageErrors(page);
           await page.setViewportSize({ width: viewport.width, height: viewport.height });
           await gotoAppState(page, server.baseUrl, state.route);
+          if (state.route.intake !== undefined) await dismissWorkflowWindow(page);
           await applyTheme(page, theme satisfies ParityTheme);
           await page.waitForTimeout(120);
 
