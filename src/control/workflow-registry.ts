@@ -19,6 +19,7 @@ import { workflowProjections } from "../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { RegisteredTaskStore } from "../base/store.js";
 import { TaskIdSchema } from "../domain/ids.js";
+import type { IntakeProjection } from "../domain/intake/projection.js";
 import { taskStoreRegistry } from "../stores/index.js";
 import { kualiTimekeeperAnnotationModule } from "../workflows/kuali-timekeeper-annotation/module.js";
 import { personLookupModule } from "../workflows/person-lookup/module.js";
@@ -73,6 +74,41 @@ export interface WorkflowModuleBindingView {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly stores: readonly RegisteredTaskStore[];
 }
+
+/**
+ * Doc 06 §1's spreadsheet-capable declaration, read off the workflow's own
+ * server composition value (D170).
+ *
+ * It lives on the MODULE rather than the descriptor because an intake
+ * projection is not part of a run's contract identity — it declares which of
+ * the workflow's input fields an operator may bind a column to, which the
+ * server needs and a run envelope does not. Putting it on the descriptor would
+ * fold it into `contractFingerprint` and re-stamp every existing run's contract
+ * for a surface that touches none of them.
+ *
+ * No workflow declares one yet: person-lookup's input is a UNION, and
+ * `defineIntakeProjection` resolves target paths through a strict object, so
+ * that declaration is real design work and belongs with the grid surface
+ * (2i-E3). Until then, intake refuses BY NAME rather than mapping against an
+ * invented target set.
+ */
+export interface WorkflowIntakeView {
+  readonly descriptor: AnyWorkflowDescriptor;
+  readonly intake?: IntakeProjection;
+}
+
+export function intakeProjectionRegistry(
+  modules: readonly WorkflowIntakeView[],
+): Readonly<Record<string, IntakeProjection>> {
+  const entries: [string, IntakeProjection][] = [];
+  for (const module of modules) {
+    if (module.intake === undefined) continue;
+    entries.push([String(module.descriptor.id), module.intake]);
+  }
+  return Object.freeze(Object.fromEntries(entries));
+}
+
+export const INTAKE_PROJECTIONS = intakeProjectionRegistry(WORKFLOW_MODULES);
 
 /**
  * A globally bound task is not enough: the workflow module itself is the

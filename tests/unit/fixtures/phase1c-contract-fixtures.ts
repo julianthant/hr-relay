@@ -1,5 +1,6 @@
 import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
 import { ConfigSchema } from "../../../src/domain/config/schema.js";
+import { sourceColumnId } from "../../../src/domain/intake/mapping.js";
 import {
   deriveIdempotencyKeyDigest,
   deriveWriteBindingProofDigest,
@@ -31,15 +32,17 @@ const BASE_COMMAND = {
 
 const RUN_TARGET = { runId: UUID_2, expectedVersion: 1 };
 const INTAKE_TARGET = { intakeSessionId: UUID_3, expectedVersion: 1 };
+/** Derived, never hand-written — `sourceColumnId("Employee ID#", 1)` (D170). */
+const SOURCE_COLUMN_ID = sourceColumnId("Employee ID#", 1);
 const WORKER_TARGET = { workerId: "worker-1", expectedVersion: 1 };
 const CAPTURE_TARGET = { captureSessionId: UUID_4, expectedVersion: 1 };
 
 export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "start", type: "start-run", target: { workflowId: "onboarding", startPlanId: UUID_3, expectedVersion: 1 }, payload: { descriptorFingerprint: HASH_A, configFingerprint: HASH_B, ingressSchemaHash: HASH_C, canonicalInputSchemaHash: HASH_A, inputFingerprint: HASH_C } },
-  { ...BASE_COMMAND, family: "intake", type: "inspect-intake", target: INTAKE_TARGET, payload: { artifactId: UUID_4 } },
-  { ...BASE_COMMAND, family: "intake", type: "confirm-intake-mapping", target: INTAKE_TARGET, payload: { mappingFingerprint: HASH_A } },
-  { ...BASE_COMMAND, family: "intake", type: "correct-intake-row", target: INTAKE_TARGET, payload: { rowId: UUID_5, correctionArtifactId: UUID_6, correctionFingerprint: HASH_B } },
-  { ...BASE_COMMAND, family: "intake", type: "exclude-intake-row", target: INTAKE_TARGET, payload: { rowId: UUID_5, reason: "Source row is not in scope" } },
+  { ...BASE_COMMAND, family: "intake", type: "inspect-intake", target: INTAKE_TARGET, payload: { sheet: "Cohort A", headerRowIndex: 2 } },
+  { ...BASE_COMMAND, family: "intake", type: "confirm-intake-mapping", target: INTAKE_TARGET, payload: { targetFieldId: "emplId", sourceColumnId: SOURCE_COLUMN_ID, headerFingerprint: HASH_A } },
+  { ...BASE_COMMAND, family: "intake", type: "correct-intake-row", target: INTAKE_TARGET, payload: { sourceRow: 17, field: "emplId", correctedValue: "10456712" } },
+  { ...BASE_COMMAND, family: "intake", type: "exclude-intake-row", target: INTAKE_TARGET, payload: { sourceRow: 31, reason: "Source row is not in scope" } },
   { ...BASE_COMMAND, family: "intake", type: "validate-intake", target: INTAKE_TARGET },
   { ...BASE_COMMAND, family: "intake", type: "enqueue-intake-manifest", target: { intakeManifestId: UUID_4, expectedVersion: 1 } },
   { ...BASE_COMMAND, family: "worker-browser", type: "plan-worker-count", target: { workflowId: "onboarding", expectedVersion: 1 }, payload: { desiredWorkers: 2 } },

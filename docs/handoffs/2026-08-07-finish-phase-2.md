@@ -178,7 +178,20 @@ The BFF serves 7 endpoints today; each slice names what it adds.
       NO workflow declares an intake projection (work-study, doc 06 §8's example, does not
       exist — person-lookup is the sensible first target: a spreadsheet of people fanning out
       N lookups). Sub-slices, each its own commit:
-      - **E1 — server sessions + non-enqueue arms.** Design settled 2026-08-08:
+      - [x] **E1 — server sessions + non-enqueue arms. LANDED 2026-08-09 as D170** (schema v12
+        foundation in `4d6db1a`; arms + parser seam + route + wire in the follow-up commit).
+        Normative text: doc 06 §2.7. Two as-built notes for E2/E3:
+        · the `intakeParser` seam is **prepared then read** — async `prepare` warms one
+          `(artifact, sheet)` grid, sync `parse` derives the layout — because the kernel's
+          authority transaction cannot await. `POST /api/v1/commands` calls
+          `intake.prepare(body)` before dispatch; an unprepared key throws by name.
+        · the intake projection is declared on the workflow's **server module** (derived into
+          `INTAKE_PROJECTIONS` by `src/control/workflow-registry.ts`), NOT its descriptor —
+          keeping it out of `contractFingerprint`. **Nothing declares one yet**, so E3's
+          person-lookup projection is what first makes the surface reachable in production;
+          `defineIntakeProjection` resolves target paths through a strict object and
+          `PersonLookupInput` is a UNION, so that is real design work, not a five-line add.
+        Design settled 2026-08-08:
         · **The ROUTE creates the session, commands only mutate it** (capture's exact
           precedent — no `capture-open` arm exists; phone routes create those rows).
           `POST /api/v1/intake/files?workflow=<id>` takes raw bytes (size-capped), writes

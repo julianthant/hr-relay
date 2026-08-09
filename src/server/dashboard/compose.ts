@@ -32,7 +32,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
-import { DESCRIPTORS, SERVER_REGISTRY } from "../../control/workflow-registry.js";
+import { DESCRIPTORS, INTAKE_PROJECTIONS, SERVER_REGISTRY } from "../../control/workflow-registry.js";
 import { createCommandKernel, type WorkerRuntimeExecutor, type WriteResolutionExecutor } from "../../core/command-kernel.js";
 import { createPhase1WorkerRuntimeExecutor, type WorkerProcessSupervisor } from "../../core/worker-loop.js";
 import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
@@ -57,7 +57,10 @@ import {
 import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
+import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
+import { createIntakeParser } from "../intake/intake-parser.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
+import { createIntakeService } from "./commands/intake-service.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
 import { createRunQueueProjection } from "./projectors/run-queue-projection.js";
@@ -260,6 +263,18 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     authority: database,
     ids,
   });
+  // Doc 06 §2.2 (D170): the upload route publishes source files through the
+  // one content-addressed writer, and the parser re-derives rows and columns
+  // from those immutable bytes for every intake read.
+  const artifacts = createContentAddressedArtifactWriter({
+    workspaceRoot: repoRoot,
+    artifactRoot: input.isolation.artifactRoot,
+  });
+  const intakeParser = createIntakeParser({ artifacts });
+  const intakeProjections = {
+    resolve: (workflowId: string) => INTAKE_PROJECTIONS[workflowId],
+  };
+
   const kernel = createCommandKernel({
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
@@ -267,6 +282,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     descriptors,
     writeResolution,
     workerRuntime,
+    intakeParser,
+    intakeProjections,
   });
 
   const commands = createDashboardCommandService({
@@ -290,6 +307,20 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     configFingerprint: resolved.fingerprint,
     configSnapshotId,
     plannedBy: LOCAL_OPERATOR_ACTOR_ID,
+  });
+
+  const intake = createIntakeService({
+    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
+    authorityRead: {
+      getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
+    },
+    artifacts,
+    parser: intakeParser,
+    projections: intakeProjections,
+    descriptors,
+    clock,
+    ids,
+    actorId: LOCAL_OPERATOR_ACTOR_ID,
   });
 
   const hub = createDashboardStreamHub({ projection });
@@ -340,6 +371,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     },
     commands,
     startPlans,
+    intake,
     hub,
     storage: {
       doctorOptions: {

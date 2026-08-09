@@ -49,6 +49,7 @@ import {
   writeFixtureSessions,
   type WriteFixtureWorld,
 } from "./fixtures/write-sequencer-fixtures.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -90,6 +91,8 @@ function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDes
   const emitter = recordingEmitter().emitter;
 
   const kernel = createCommandKernel({
+    intakeParser: UNWIRED_INTAKE_PARSER,
+    intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids: sequentialIdFactory("d"),

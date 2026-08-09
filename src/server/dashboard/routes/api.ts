@@ -14,6 +14,7 @@ import { z } from "zod";
 import { WireErrorSchema } from "../../../domain/dashboard/primitives.js";
 import type { DashboardStreamEnvelope } from "../../../domain/dashboard/subscription.js";
 import type { DashboardCommandService } from "../commands/command-service.js";
+import type { IntakeService } from "../commands/intake-service.js";
 import type { StartPlanService } from "../commands/start-plan-service.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../queries/bootstrap.js";
 import { buildStorageDoctor, type StorageQueryDeps } from "../queries/storage.js";
@@ -28,6 +29,7 @@ export interface DashboardAppDeps {
   readonly runDetail: RunDetailQueryDeps;
   readonly commands: DashboardCommandService;
   readonly startPlans: StartPlanService;
+  readonly intake: IntakeService;
   readonly hub: DashboardStreamHub;
   readonly storage: StorageQueryDeps;
 }
@@ -103,8 +105,33 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
     return c.json(deps.startPlans.plan(body));
   });
 
+  /**
+   * Doc 06 §2.2's upload (D170). The ROUTE creates the session because
+   * creation carries bytes, and bytes do not belong in a journaled command
+   * envelope. A re-upload of the same digest JOINS its open session — the same
+   * `200` either way, with the operator's existing mapping still on it.
+   */
+  app.post("/api/v1/intake/files", async (c) => {
+    const workflow = z.string().min(1).parse(c.req.query("workflow"));
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    const outcome = await deps.intake.upload({
+      workflow,
+      mediaType: c.req.header("content-type") ?? "",
+      bytes,
+    });
+    if (outcome.state === "refused") {
+      return c.json(wireError(`INTAKE_${outcome.code.toUpperCase().replaceAll("-", "_")}`, outcome.message, false), 422);
+    }
+    return c.json(outcome.session, outcome.state === "created" ? 201 : 200);
+  });
+
+  app.get("/api/v1/intake/:sessionId", async (c) => c.json(await deps.intake.read(c.req.param("sessionId"))));
+
   app.post("/api/v1/commands", async (c) => {
     const body: unknown = await c.req.json();
+    // Warm the seams a synchronous authority transaction cannot await. Today
+    // that is exactly the intake parse (D170); every other family is a no-op.
+    await deps.intake.prepare(body);
     const result = deps.commands.execute(body);
     const status = result.state === "conflict" ? 409 : result.state === "rejected" ? 422 : 200;
     return c.json(result, status);

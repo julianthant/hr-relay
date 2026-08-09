@@ -26,7 +26,8 @@
  */
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../base/workflow.js";
+import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../base/workflow.js";
+import type { ArtifactRef } from "../domain/artifacts.js";
 import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import type { Clock } from "../domain/clock.js";
 import {
@@ -36,8 +37,21 @@ import {
   type CommandRequest,
   type CommandResult,
 } from "../domain/commands.js";
-import { deriveTraceId, type IdFactory } from "../domain/identifiers.js";
-import { FingerprintSchema, IsoInstantSchema, WorkerIdSchema } from "../domain/ids.js";
+import { deriveItemId, deriveTraceId, type IdFactory } from "../domain/identifiers.js";
+import {
+  FingerprintSchema,
+  IsoInstantSchema,
+  ItemIdSchema,
+  WorkerIdSchema,
+} from "../domain/ids.js";
+import {
+  IntakeParseSchema,
+  resolveInspectSelection,
+  type IntakeLayout,
+} from "../domain/intake/parse.js";
+import { confirmBinding } from "../domain/intake/mapping.js";
+import type { IntakeProjection } from "../domain/intake/projection.js";
+import { validateIntakeRows } from "../domain/intake/validate.js";
 import { deepFreeze } from "../domain/immutability.js";
 import { isTerminalRunState, runClaim, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
 import { RunCheckpointRecordSchema } from "../domain/workflow/checkpoint.js";
@@ -85,17 +99,19 @@ const PHASE1_ACTIVE = {
     "capture-retry-finalize",
     "capture-discard",
   ],
-} as const;
-
-const PHASE1_DEFERRED = {
+  // D170 (2i-E1): the five non-enqueue intake arms over the durable session.
+  // `enqueue-intake-manifest` stays deferred until 2i-E2 mints the manifest.
   intake: [
     "inspect-intake",
     "confirm-intake-mapping",
     "correct-intake-row",
     "exclude-intake-row",
     "validate-intake",
-    "enqueue-intake-manifest",
   ],
+} as const;
+
+const PHASE1_DEFERRED = {
+  intake: ["enqueue-intake-manifest"],
   settings: ["apply-settings"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
   run: [],
@@ -153,6 +169,7 @@ type RunCommand = Extract<CommandRequest, { family: "run" }>;
 type RunBasicCommand = Extract<RunCommand, { type: "retry" | "cancel" | "bump" | "hide" | "unhide" }>;
 type RunEditCheckpointCommand = Extract<RunCommand, { type: "edit-checkpoint" }>;
 type CaptureCommand = Extract<CommandRequest, { family: "capture" }>;
+type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
 type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
@@ -199,6 +216,31 @@ export interface WorkerRuntimeExecutor {
   reopenBrowser(context: WorkerRuntimeContext): unknown;
 }
 
+/**
+ * Doc 06 §2.2's re-derivation seam (D170).
+ *
+ * Rows and detected columns are a pure function of the immutable artifact plus
+ * the sheet/header selection, so the kernel re-derives them instead of reading
+ * a stored copy — but it cannot import a spreadsheet parser (that lives in
+ * `src/stores/**`, which `core` may not reach) and its authority transaction is
+ * synchronous, so the parse is PREPARED by the caller and read back here by the
+ * exact key the CURRENT session names. A key nobody prepared throws: the kernel
+ * never binds a column against a guessed layout.
+ */
+export interface IntakeParser {
+  parse(request: Readonly<{ artifact: ArtifactRef; sheet: string; headerRowIndex: number | null }>): unknown;
+}
+
+/**
+ * Doc 06 §1's spreadsheet-capable declaration, resolved per workflow. A
+ * workflow with no projection has no bindable target fields, and every arm
+ * that would need one refuses by name rather than mapping against an invented
+ * target set.
+ */
+export interface IntakeProjectionResolver {
+  resolve(workflowId: string): IntakeProjection | undefined;
+}
+
 export interface CommandKernelDependencies {
   readonly authority: CommandAuthority;
   readonly clock: Clock;
@@ -206,6 +248,8 @@ export interface CommandKernelDependencies {
   readonly descriptors: WorkflowDescriptorResolver;
   readonly writeResolution: WriteResolutionExecutor;
   readonly workerRuntime: WorkerRuntimeExecutor;
+  readonly intakeParser: IntakeParser;
+  readonly intakeProjections: IntakeProjectionResolver;
 }
 
 export interface CommandKernel {
@@ -801,6 +845,10 @@ function captureTarget(captureSessionId: string): TargetReference {
   return { family: "capture", captureSessionId };
 }
 
+function intakeTarget(intakeSessionId: string): TargetReference {
+  return { family: "intake", intakeSessionId };
+}
+
 /**
  * 2i-B: the inbox lifecycle over D134/D138's durable rows. Read-state and
  * snooze are INDEPENDENT axes — marking read preserves the snooze, snoozing
@@ -1015,6 +1063,297 @@ function executeCapture(
     case "capture-discard": {
       requireState(["open", "failed"], "discarding");
       return applyUpdate({ ...current, state: "discarded", version: current.version + 1 });
+    }
+  }
+}
+
+/**
+ * Doc 06 §2.2 (D170): the five non-enqueue intake arms over the durable
+ * session. The ROUTE creates a session — there is deliberately no open arm —
+ * and every arm here only MUTATES one, under the repository's version CAS.
+ *
+ * Three rules run through all five:
+ *
+ * 1. **The layout is re-derived, never trusted from the request.** A binding
+ *    names a column that must be present in THESE bytes under THIS header row,
+ *    and `confirm-intake-mapping` additionally proves the caller's
+ *    `headerFingerprint` is the fingerprint the file actually presents — a
+ *    mapping grid built against a layout that has since moved cannot confirm.
+ * 2. **Any change to the mapping unvalidates the session.** A validation is an
+ *    assertion about a specific `(layout, bindings, corrections, exclusions)`;
+ *    leaving `validated` standing after one of them moves would let a stale
+ *    verdict gate an enqueue.
+ * 3. **A layout change discards the operator's row-level decisions.** A
+ *    correction and an exclusion both name a source row, and a source row means
+ *    nothing once the header row or the sheet moves under it. Dropping them
+ *    loudly is the only alternative to silently re-pointing them at whoever now
+ *    occupies row 17.
+ */
+function executeIntake(
+  dependencies: CommandKernelDependencies,
+  repositories: AuthorityRepositories,
+  request: IntakeCommand,
+  now: string,
+): CommandApplication {
+  if (request.type === "enqueue-intake-manifest") {
+    throw new Error("intake/enqueue-intake-manifest is deferred and must have been rejected before dispatch");
+  }
+  const sessionId = request.target.intakeSessionId;
+  const current = repositories.intakeSessions.get(sessionId);
+  if (current === undefined) reject(request, "target-not-found", `intake session ${sessionId} does not exist`);
+  if (current.state !== "mapping" && current.state !== "validated") {
+    reject(
+      request,
+      "invalid-state",
+      `intake session ${sessionId} is ${current.state}; only an open session accepts mapping commands`,
+    );
+  }
+
+  const target = intakeTarget(sessionId);
+  const noOp = (): CommandApplication => applied(request, [target], []);
+  const applyUpdate = (next: unknown): CommandApplication => {
+    const updated = repositories.intakeSessions.update(next);
+    return applied(request, [target], [{ target, before: current.version, after: updated.version }]);
+  };
+
+  const requireProjection = (): IntakeProjection => {
+    const projection = dependencies.intakeProjections.resolve(current.workflow);
+    if (projection === undefined) {
+      reject(
+        request,
+        "policy-refused",
+        `workflow ${current.workflow} declares no intake projection; it is not spreadsheet-capable, `
+        + "so no column can be bound to it",
+      );
+    }
+    return projection;
+  };
+
+  const parseAt = (sheet: string, headerRowIndex: number | null) => {
+    const parse = IntakeParseSchema.parse(dependencies.intakeParser.parse({
+      artifact: current.artifact,
+      sheet,
+      headerRowIndex,
+    }));
+    if (parse.state === "refused") {
+      reject(
+        request,
+        "invalid-state",
+        `intake session ${sessionId} cannot read its source (${parse.code}): ${parse.message}`,
+      );
+    }
+    return parse;
+  };
+
+  /**
+   * Every arm but `inspect-intake` acts on the session's SETTLED selection.
+   * A null header row is refused rather than re-discovered: a binding minted
+   * against a row the session never recorded would name columns the session
+   * cannot describe, and its own schema refuses that pairing outright.
+   */
+  const currentLayout = (): IntakeLayout => {
+    const headerRowIndex = current.headerRowIndex;
+    if (headerRowIndex === null) {
+      reject(
+        request,
+        "invalid-state",
+        `intake session ${sessionId} has no settled header row on sheet ${JSON.stringify(current.sheet)}; `
+        + "choose one with inspect-intake before mapping",
+      );
+    }
+    const parse = parseAt(current.sheet, headerRowIndex);
+    if (parse.layout === null) {
+      throw new Error(
+        `intake session ${sessionId} names header row ${String(headerRowIndex)} on sheet `
+        + `${JSON.stringify(current.sheet)}, but the parser settled no layout for it`,
+      );
+    }
+    return parse.layout;
+  };
+
+  const boundedSourceRow = (layout: IntakeLayout, sourceRow: number): void => {
+    if (sourceRow > layout.rows.length) {
+      reject(
+        request,
+        "invalid-state",
+        `source row ${String(sourceRow)} is beyond the ${String(layout.rows.length)} data rows sheet `
+        + `${JSON.stringify(current.sheet)} holds under header row ${String(layout.headerRowIndex)}`,
+      );
+    }
+  };
+
+  switch (request.type) {
+    case "inspect-intake": {
+      const selection = resolveInspectSelection(current, request.payload);
+      const parse = parseAt(selection.sheet, selection.headerRowIndex);
+      // Discovery settles the header row when the operator has not chosen one,
+      // so the settled index is the parse's, never the request's.
+      const settled = parse.layout === null ? null : parse.layout.headerRowIndex;
+      if (selection.sheet === current.sheet && settled === current.headerRowIndex) return noOp();
+      return applyUpdate({
+        ...current,
+        sheet: selection.sheet,
+        headerRowIndex: settled,
+        bindings: [],
+        corrections: [],
+        exclusions: [],
+        state: "mapping",
+        validation: { state: "none" },
+        updatedAt: now,
+        version: current.version + 1,
+      });
+    }
+
+    case "confirm-intake-mapping": {
+      const projection = requireProjection();
+      const layout = currentLayout();
+      if (layout.headerFingerprint !== request.payload.headerFingerprint) {
+        reject(
+          request,
+          "schema-mismatch",
+          `this file's layout is ${layout.headerFingerprint.slice(0, 12)}…, not the `
+          + `${request.payload.headerFingerprint.slice(0, 12)}… the confirmation was built against; `
+          + "reload the mapping grid before confirming a binding",
+        );
+      }
+      if (projection.target(request.payload.targetFieldId) === undefined) {
+        reject(
+          request,
+          "invalid-state",
+          `${current.workflow} does not declare intake target ${request.payload.targetFieldId}`,
+        );
+      }
+      const column = layout.columns.find((entry) => entry.sourceColumnId === request.payload.sourceColumnId);
+      if (column === undefined) {
+        reject(
+          request,
+          "invalid-state",
+          `no column with id ${request.payload.sourceColumnId} is present in this file under header row `
+          + `${String(layout.headerRowIndex)}`,
+        );
+      }
+      const held = current.bindings.find((entry) => entry.targetFieldId === request.payload.targetFieldId);
+      if (held !== undefined && held.sourceColumnId === request.payload.sourceColumnId) return noOp();
+      // THE one mint (doc 06 §2.5). It re-proves both checks above against the
+      // projection and the detected columns; a suggestion cannot reach it.
+      const binding = confirmBinding({
+        projection,
+        detected: layout.columns,
+        targetFieldId: request.payload.targetFieldId,
+        sourceColumnId: request.payload.sourceColumnId,
+        confirmedAt: now,
+      });
+      return applyUpdate({
+        ...current,
+        bindings: [
+          ...current.bindings.filter((entry) => entry.targetFieldId !== binding.targetFieldId),
+          binding,
+        ].sort((left, right) => left.targetFieldId.localeCompare(right.targetFieldId)),
+        state: "mapping",
+        validation: { state: "none" },
+        updatedAt: now,
+        version: current.version + 1,
+      });
+    }
+
+    case "correct-intake-row": {
+      const projection = requireProjection();
+      const layout = currentLayout();
+      boundedSourceRow(layout, request.payload.sourceRow);
+      if (projection.target(request.payload.field) === undefined) {
+        reject(
+          request,
+          "invalid-state",
+          `${current.workflow} does not declare intake target ${request.payload.field}`,
+        );
+      }
+      if (!current.bindings.some((entry) => entry.targetFieldId === request.payload.field)) {
+        reject(
+          request,
+          "invalid-state",
+          `${request.payload.field} has no bound column, so there is no cell to correct; `
+          + "bind a column first",
+        );
+      }
+      const held = current.corrections.find((entry) =>
+        entry.sourceRow === request.payload.sourceRow && entry.field === request.payload.field);
+      if (held !== undefined && held.correctedValue === request.payload.correctedValue) return noOp();
+      return applyUpdate({
+        ...current,
+        corrections: [
+          ...current.corrections.filter((entry) =>
+            entry.sourceRow !== request.payload.sourceRow || entry.field !== request.payload.field),
+          {
+            sourceRow: request.payload.sourceRow,
+            field: request.payload.field,
+            correctedValue: request.payload.correctedValue,
+            correctedAt: now,
+          },
+        ],
+        state: "mapping",
+        validation: { state: "none" },
+        updatedAt: now,
+        version: current.version + 1,
+      });
+    }
+
+    case "exclude-intake-row": {
+      const layout = currentLayout();
+      boundedSourceRow(layout, request.payload.sourceRow);
+      const held = current.exclusions.find((entry) => entry.sourceRow === request.payload.sourceRow);
+      if (held !== undefined) {
+        if (held.reason === request.payload.reason) return noOp();
+        reject(
+          request,
+          "invalid-state",
+          `source row ${String(request.payload.sourceRow)} is already excluded (${held.reason}); `
+          + "an exclusion records the reason it was made with",
+        );
+      }
+      return applyUpdate({
+        ...current,
+        exclusions: [
+          ...current.exclusions,
+          { sourceRow: request.payload.sourceRow, reason: request.payload.reason, excludedAt: now },
+        ].sort((left, right) => left.sourceRow - right.sourceRow),
+        state: "mapping",
+        validation: { state: "none" },
+        updatedAt: now,
+        version: current.version + 1,
+      });
+    }
+
+    case "validate-intake": {
+      const projection = requireProjection();
+      const descriptor = resolveDescriptorOrReject(dependencies, request, current.workflow);
+      const layout = currentLayout();
+      const planning = workflowPlanning(descriptor);
+      // The pass is RUN and its dispositions are deliberately NOT stored: they
+      // are a pure function of the retained inputs plus this exact `readAt`, so
+      // a stored copy could only drift, while running it here is what proves
+      // the mapping can be applied to these bytes at all — a bound column that
+      // vanished throws now rather than at enqueue.
+      validateIntakeRows({
+        workflow: current.workflow,
+        sourceSha256: current.artifact.sha256,
+        projection,
+        detected: layout.columns,
+        bindings: current.bindings,
+        rows: layout.rows,
+        constants: current.constants,
+        corrections: current.corrections,
+        excludedRows: current.exclusions.map((entry) => entry.sourceRow),
+        readAt: now,
+        deriveItemId: (parsedInput) =>
+          ItemIdSchema.parse(deriveItemId(current.workflow, planning.matchKey(parsedInput))),
+      });
+      return applyUpdate({
+        ...current,
+        state: "validated",
+        validation: { state: "validated", validatedAt: now, readAt: now },
+        updatedAt: now,
+        version: current.version + 1,
+      });
     }
   }
 }
@@ -1341,6 +1680,7 @@ function dispatchActive(
     case "notification":
       return executeNotification(repositories, request, now);
     case "intake":
+      return executeIntake(dependencies, repositories, request, now);
     case "settings":
     case "version-archive":
       throw new Error(`${request.family}/${request.type} is deferred and must have been rejected before dispatch`);

@@ -43,6 +43,7 @@ import {
   personLookupDescriptor,
 } from "../../../src/workflows/person-lookup/descriptor.js";
 import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 
@@ -612,6 +613,8 @@ export async function startSeededServer(
   const runIds = seed({ database, spans, notes });
 
   const kernel = createCommandKernel({
+    intakeParser: UNWIRED_INTAKE_PARSER,
+    intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids: { uuid: () => uuidOf(7000) },
@@ -655,6 +658,7 @@ export async function startSeededServer(
   const hub = createDashboardStreamHub({ projection });
 
   const app = createDashboardApp({
+    intake: UNWIRED_INTAKE_SERVICE,
     bootstrap: {
       appVersion: SEEDED_APP_VERSION,
       clock,

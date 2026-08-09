@@ -31,6 +31,7 @@ import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.j
 import { HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { AT, DAY } from "./helpers/dashboard-harness.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 
 interface Harness {
   readonly app: Hono;
@@ -88,6 +89,8 @@ function harness(): Harness {
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
 
   const kernel = createCommandKernel({
+    intakeParser: UNWIRED_INTAKE_PARSER,
+    intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids,
@@ -132,6 +135,7 @@ function harness(): Harness {
   cleanups.push(() => hub.close());
 
   const app = createDashboardApp({
+    intake: UNWIRED_INTAKE_SERVICE,
     bootstrap: {
       appVersion: "0.1.0",
       clock,

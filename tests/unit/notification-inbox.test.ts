@@ -19,6 +19,7 @@ import { NotificationRecordSchema } from "../../src/domain/notifications.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { HASH_A, LATER, NOW, UUID_2, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {
@@ -58,6 +59,8 @@ function harness(): { database: AuthorityDatabase; kernel: CommandKernel } {
   );
   disposers.push(() => database.close());
   const kernel = createCommandKernel({
+    intakeParser: UNWIRED_INTAKE_PARSER,
+    intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: {
       withAuthorityTransaction: (work) => database.withAuthorityTransaction(
         (repositories) => work(repositories),

@@ -60,6 +60,7 @@ import {
   recordingLogger,
   sessionManagerFor,
 } from "./fixtures/phase1f-executor-harness.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {
@@ -261,6 +262,8 @@ function kernelHarness(descriptor: AnyWorkflowDescriptor): {
   );
   disposers.push(() => database.close());
   const kernel = createCommandKernel({
+    intakeParser: UNWIRED_INTAKE_PARSER,
+    intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: {
       withAuthorityTransaction: (work) => database.withAuthorityTransaction(
         (repositories) => work(repositories),

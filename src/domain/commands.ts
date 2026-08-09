@@ -3,7 +3,6 @@ import { SettingsOverrideSchema } from "./config/schema.js";
 import { deepFreeze } from "./immutability.js";
 import {
   ActorIdSchema,
-  ArtifactIdSchema,
   BrowserSessionIdSchema,
   CapturePhotoIdSchema,
   CaptureSessionIdSchema,
@@ -14,11 +13,12 @@ import {
   GateIdSchema,
   IntakeManifestIdSchema,
   IntakeSessionIdSchema,
+  IntakeTargetFieldIdSchema,
   IsoInstantSchema,
-  ItemIdSchema,
   NotificationIdSchema,
   PositiveIntSchema,
   RunIdSchema,
+  SourceColumnIdSchema,
   SourceSurfaceIdSchema,
   StartPlanIdSchema,
   VersionPlanIdSchema,
@@ -157,11 +157,17 @@ export const StartCommandRequestSchema = z.strictObject({
   }),
 });
 
+// D170: the five non-enqueue intake payloads carry what doc 06 §2.2's flow
+// actually sends. The old shapes named an artifact and two fingerprints the
+// session itself now holds, and a `rowId` for something that has no item
+// identity until it validates — they were deferred-arm placeholders no producer
+// ever sent, so they are amended rather than migrated (D161/D167's rule).
+// The artifact rides the SESSION, which the upload route creates.
 export const IntakeCommandRequestSchema = z.discriminatedUnion("type", [
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("inspect-intake"), target: IntakeVersionTargetSchema, payload: z.strictObject({ artifactId: ArtifactIdSchema }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("confirm-intake-mapping"), target: IntakeVersionTargetSchema, payload: z.strictObject({ mappingFingerprint: FingerprintSchema }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("correct-intake-row"), target: IntakeVersionTargetSchema, payload: z.strictObject({ rowId: ItemIdSchema, correctionArtifactId: ArtifactIdSchema, correctionFingerprint: FingerprintSchema }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("exclude-intake-row"), target: IntakeVersionTargetSchema, payload: z.strictObject({ rowId: ItemIdSchema, reason: OperatorReasonSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("inspect-intake"), target: IntakeVersionTargetSchema, payload: z.strictObject({ sheet: z.string().min(1).optional(), headerRowIndex: z.number().int().nonnegative().optional() }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("confirm-intake-mapping"), target: IntakeVersionTargetSchema, payload: z.strictObject({ targetFieldId: IntakeTargetFieldIdSchema, sourceColumnId: SourceColumnIdSchema, headerFingerprint: FingerprintSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("correct-intake-row"), target: IntakeVersionTargetSchema, payload: z.strictObject({ sourceRow: PositiveIntSchema, field: IntakeTargetFieldIdSchema, correctedValue: z.string() }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("exclude-intake-row"), target: IntakeVersionTargetSchema, payload: z.strictObject({ sourceRow: PositiveIntSchema, reason: OperatorReasonSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("validate-intake"), target: IntakeVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("enqueue-intake-manifest"), target: z.strictObject({ intakeManifestId: IntakeManifestIdSchema, expectedVersion: PositiveIntSchema }) }),
 ]);

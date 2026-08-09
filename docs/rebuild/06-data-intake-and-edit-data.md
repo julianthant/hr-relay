@@ -344,6 +344,72 @@ excluded from preselection — choosing between two indistinguishable columns fo
 silent guess in miniature, and `intake-canonical-field-registry` separately forbids one alias
 claiming two fields so the scorer cannot be made arbitrary from the registry side either.
 
+### 2.7 Phase-2i as-built — the durable session, the parser seam, and the five arms (D170)
+
+§2.2's flow is stateful across many operator actions, and D159's manifest is deliberately terminal,
+so the in-progress state gets its own durable row. Schema **v12**'s `intake_sessions` (2i-E1
+foundation) retains exactly the operator's DECISIONS plus the immutable source identity — the whole
+`ArtifactRef`, the sheet/header selection, confirmed bindings, run constants, corrections,
+exclusions, and a validation arm keeping `readAt`.
+
+**The ROUTE creates the session; commands only mutate it.** `POST /api/v1/intake/files?workflow=<id>`
+takes raw bytes (size-capped, media-type-checked), publishes them through the one content-addressed
+writer, runs discovery via the shared grid edge, mints the row in `mapping`, and returns the session
+wire. There is deliberately no open arm in the intake command family, exactly as capture has no
+`capture-open`: creation carries BYTES, and bytes do not belong in a command envelope that is
+journaled, replayed and audited. A **re-upload of the same source digest JOINS its open session**
+rather than forking one — the digest is the identity, and a second session over the same file would
+silently abandon the first one's mapping and let both enqueue the same rows.
+
+**Rows and detected columns are RE-DERIVED on every read, never stored.** They are a pure function of
+`(artifact bytes, sheet, headerRowIndex)`, all three of which are immutable or retained, so a stored
+copy has nothing to be reconciled against and could only drift. The kernel therefore reads them
+through an injected deterministic `intakeParser` seam — it cannot import a spreadsheet parser
+(`src/stores/**` is below it) and its authority transaction is synchronous — which is split into an
+async `prepare` (read the artifact once, parse the grid) and a pure synchronous `parse` (rank header
+candidates, settle a header row, detect columns, compute the layout fingerprint). A key nobody
+prepared **throws by name**; the kernel never maps against a guessed layout.
+
+**The five non-enqueue arms activate, and their placeholder payloads AMEND** (D161/D167's rule — they
+were deferred-arm placeholders no producer ever sent, so there is nothing to migrate):
+`inspect-intake` → `{sheet?, headerRowIndex?}`; `confirm-intake-mapping` →
+`{targetFieldId, sourceColumnId, headerFingerprint}`; `correct-intake-row` →
+`{sourceRow, field, correctedValue}`; `exclude-intake-row` → `{sourceRow, reason}`;
+`validate-intake` stays payload-free. All five target `{intakeSessionId, expectedVersion}`.
+`enqueue-intake-manifest` stays deferred until 2i-E2.
+
+Four rules run through the arms:
+
+- **`confirmBinding` is still the ONE mint**, and it is now additionally fenced by the layout: the
+  confirmation carries the `headerFingerprint` its grid was built against, and a mismatch is refused
+  rather than applied to whatever column now occupies that slot. Suggestions remain hints on the
+  wire, beside `bindings` and never folded into it.
+- **Any change to the mapping unvalidates the session.** A validation asserts something about a
+  specific `(layout, bindings, corrections, exclusions)`; leaving `validated` standing after one of
+  them moves would let a stale verdict gate an enqueue.
+- **A sheet or header-row change discards the row-level decisions.** A correction and an exclusion
+  both name a source row, and a source row means nothing once the header moves under it — dropping
+  them loudly is the only alternative to silently re-pointing them at whoever now occupies row 17.
+- **An arm other than `inspect-intake` refuses while no header row is settled.** Re-discovering one
+  inside a mapping command would mint a binding against a row the session never recorded, which its
+  own schema refuses outright.
+
+`validate-intake` RUNS `validateIntakeRows` and retains only `{validatedAt, readAt}`. Running it is
+what proves the mapping can be applied to these bytes at all (a bound column that vanished throws
+now rather than at enqueue); storing its dispositions would be the same drift as storing rows, since
+they are a pure function of the retained inputs plus that exact `readAt` — which is why `readAt` is
+retained at all (§4.6's two-digit-year resolution must replay identically). `GET
+/api/v1/intake/:sessionId` re-derives them for the review surface.
+
+**Where the projection is declared.** Doc §1's spreadsheet-capable declaration rides the workflow's
+**server composition module**, not its descriptor: an intake projection declares which input fields
+an operator may bind a column to, which the server needs and a run envelope does not, and putting it
+on the descriptor would fold it into `contractFingerprint` and re-stamp every existing run's
+contract for a surface that touches none of them. No registered workflow declares one yet —
+person-lookup's input is a UNION and `defineIntakeProjection` resolves target paths through a strict
+object, so that declaration is real design work belonging with the grid surface (2i-E3). Until then
+every arm and the upload route refuse **by name** rather than mapping against an invented target set.
+
 ---
 
 ## 3. Extraction store tasks (service store — D4)

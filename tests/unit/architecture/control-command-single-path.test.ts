@@ -53,6 +53,7 @@ import {
   UUID_5,
 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 
 /* ── the ratified Phase-1f partition (doc 03 §Phase-1f authority) ────────── */
 
@@ -77,13 +78,16 @@ const EXPECTED_ACTIVE = {
     "capture-upload", "capture-replace", "capture-reorder", "capture-delete",
     "capture-finalize", "capture-retry-finalize", "capture-discard",
   ],
+  // D170: the five non-enqueue intake arms activated over the durable session;
+  // the manifest enqueue stays deferred until 2i-E2 mints one.
+  intake: [
+    "inspect-intake", "confirm-intake-mapping", "correct-intake-row",
+    "exclude-intake-row", "validate-intake",
+  ],
 } as const;
 
 const EXPECTED_DEFERRED = {
-  intake: [
-    "inspect-intake", "confirm-intake-mapping", "correct-intake-row",
-    "exclude-intake-row", "validate-intake", "enqueue-intake-manifest",
-  ],
+  intake: ["enqueue-intake-manifest"],
   settings: ["apply-settings"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
   run: [],
@@ -128,6 +132,8 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
     throw new Error(`${seam} process seam was reached before authority validation`);
   };
   const kernel = createCommandKernel({
+    intakeParser: UNWIRED_INTAKE_PARSER,
+    intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: {
       withAuthorityTransaction: (work) => database.withAuthorityTransaction(
         (repositories) => work(wrap === undefined ? repositories : wrap(repositories)),
