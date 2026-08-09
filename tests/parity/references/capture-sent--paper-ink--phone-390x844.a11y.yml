@@ -1,0 +1,18 @@
+# capture-sent--paper-ink--phone-390x844
+# adapter: fixture
+# fixture: capture-sent
+# descriptorHash: 51dbce457d11e5e0b48f0a94bf87fd0a869cb9ea86a0b46d38ca77fbd54f1d91
+# appVersion: 0.1.0
+# viewport: phone-390x844  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "Timekeeper change form" [level=1]
+  - paragraph: Cohort 7 onboarding — the four in the blue folder
+- main:
+  - paragraph: 3 pages sent
+  - paragraph: The bundle is in the queue. You can put the phone down.
+  - term: Run
+  - definition: 2f3a4b5c-6d7e-4f8a-9b0c-1d2e3f4a5b6c
+  - term: Manifest
+  - definition: 3a4b5c6d-7e8f-4a9b-8c1d-2e3f4a5b6c7d

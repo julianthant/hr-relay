@@ -1,0 +1,16 @@
+# capture-empty--paper-ink--phone-390x844
+# adapter: fixture
+# fixture: capture-empty
+# descriptorHash: 51dbce457d11e5e0b48f0a94bf87fd0a869cb9ea86a0b46d38ca77fbd54f1d91
+# appVersion: 0.1.0
+# viewport: phone-390x844  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "Timekeeper change form" [level=1]
+  - paragraph: Cohort 7 onboarding — the four in the blue folder
+- main:
+  - paragraph: No pages yet
+  - paragraph: Photograph the form one page at a time. You can reorder or remove a page before you send it.
+  - button "Take the first page"
+  - text: Take the first page
