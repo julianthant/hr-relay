@@ -59,19 +59,29 @@ export const EXECUTOR_NOW = "2026-08-03T09:00:00.000Z";
 export interface AuthorityHarness {
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
+  /**
+   * The on-disk authority file. D182's soak re-reads it through
+   * `AuthorityDatabase.inspectExistingReadOnly` — the whole-database invariant
+   * sweep is a read-only path that needs the PATH, not the open handle.
+   */
+  readonly path: string;
+  readonly stateRoot: string;
   readonly dispose: () => void;
 }
 
 export function openAuthorityHarness(): AuthorityHarness {
   const clock = manualClock(new Date(EXECUTOR_NOW));
   const root = mkdtempSync(join(tmpdir(), "hrauto-1f-executor-"));
+  const path = join(root, "authority.sqlite");
   const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
   );
   return {
     database,
     clock,
+    path,
+    stateRoot: root,
     dispose: (): void => {
       database.close();
       rmSync(root, { recursive: true, force: true });
