@@ -1,7 +1,7 @@
 # run-failed--graphite-warm--1440x900
 # adapter: fixture
 # fixture: run-failed
-# descriptorHash: 51dbce457d11e5e0b48f0a94bf87fd0a869cb9ea86a0b46d38ca77fbd54f1d91
+# descriptorHash: 104939b10f0b29c2a14972307d02c33062a9eaec028471f51dfb9b6b05c2ced9
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -134,9 +134,11 @@
     - text: "9:33 AM Searching UCPath directory for EID 10555001 9:34 AM CRM record name disagrees with the UCPath name 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath This run failed record 00000000-0904-4000-8000-000000000904 failed 9:36 AM cross-verify failed: subject mismatch between CRM and UCPath This run wrote nothing — no write was attempted. SUBJECT_MISMATCHtask crm/read-onboarding-recordnode cross-verify expected eid ••••5001observed eid ••••4136 screen crm.onboardingpage state crm.onboarding.record-readyduring readstep 3"
     - region "What to do": What to do remediation Operator Confirm which EID is correct at the source before re-running; nothing was written.
     - region "Cause chain": "Cause chain primary — SUBJECT_MISMATCH cross-verify failed: subject mismatch between CRM and UCPath fingerprint eeeeeeeeeeee…no diagnostic bundle — no diagnostic bundle was captured; automatic capture is a separate 2g slice"
-    - text: "What the run said 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath 9:36 AM Run failed at cross-verify; nothing was written 9:36 AM Run failed at cross-verify; nothing was written"
+    - text: AI advisory
+    - button "Explain this failure" [disabled]
+    - text: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process What the run said 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath 9:36 AM Run failed at cross-verify; nothing was written 9:36 AM Run failed at cross-verify; nothing was written"
     - searchbox "Search logs"
-    - text: wf 51dbce45
+    - text: wf 104939b1
     - button "Run provenance"
   - complementary "Run data":
     - text: Run data
