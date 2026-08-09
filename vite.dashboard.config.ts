@@ -27,6 +27,31 @@ export default defineConfig({
   build: {
     outDir: "../../dist/dashboard",
     emptyOutDir: true,
+    /**
+     * TWO ENTRIES, ONE BUILD (2i-F, D175).
+     *
+     * `index.html` is the operator dashboard; `capture.html` is the phone
+     * surface doc 12 §7's ingress serves. They are separate entries rather than
+     * two routes in one bundle because the ingress must serve exactly the
+     * phone page's OWN asset closure — an entry is the only thing a bundler can
+     * state a closure for, and a phone route inside the dashboard bundle would
+     * put the queue, the run detail and the command client one code-split away
+     * from a public origin.
+     */
+    rollupOptions: {
+      input: {
+        index: resolve(import.meta.dirname, "src/dashboard/index.html"),
+        capture: resolve(import.meta.dirname, "src/dashboard/capture.html"),
+      },
+    },
+    /**
+     * REQUIRED, not a convenience. `isCapturePhoneAsset` admits the phone page
+     * plus the chunks that page reaches and nothing else, and the only
+     * authority on which chunks those are is the bundler's own manifest. A
+     * hand-maintained list would drift the first time a shared chunk split, and
+     * it would drift in the direction of serving an operator chunk.
+     */
+    manifest: true,
   },
   server: {
     port: 5174,

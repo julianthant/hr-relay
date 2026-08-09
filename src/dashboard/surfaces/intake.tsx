@@ -96,6 +96,7 @@ import {
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
+import { CaptureStart } from "./capture-start.js";
 import { fmtClock } from "./format.js";
 
 type DetectedColumn = z.infer<typeof DetectedColumnSchema>;
@@ -1197,6 +1198,10 @@ export function IntakeWorkspace({
             onFile={upload}
             className="min-h-[var(--ds-h-review-page-min)] flex-1"
           />
+          {/* The paper answer to the same question, beside the file answer
+              (2i-F). It is a peer of the dropzone, not a mode: the operator is
+              holding either a spreadsheet or a stack of forms. */}
+          <CaptureStart workflowId={workflowId} workflowLabel={workflowLabel} />
         </div>
       );
     }

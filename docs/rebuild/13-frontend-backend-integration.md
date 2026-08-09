@@ -651,10 +651,24 @@ Freeze deterministic target screenshots and accessibility snapshots for at least
 - Session Panel browser-health states, N-worker spawn, and authored fresh-session transitions;
 - Settings healthy/degraded, Archive old version, Explorer overlay, and Activity report;
 - Graphite Warm and Paper Ink at 1280×720, 1440×900, and one narrow supported width;
-- keyboard-only and reduced-motion variants.
+- keyboard-only and reduced-motion variants;
+- the phone capture surface at 390×844, in Paper Ink only (2i-F).
 
 The stored reference includes viewport, theme, fixture id, descriptor hash, app version, and
 capture date. A screenshot without the matching a11y snapshot is incomplete.
+
+**The phone viewport is its own block, not a fourth entry in the shared matrix (2i-F).** The bullets
+above are a MATRIX — every operator state is photographed at every viewport in both themes — and
+adding 390×844 to it would have minted twenty-six references of a dense console squeezed into a
+phone width, a rung the operator dashboard does not support and nobody will ever review. The phone
+capture surface is the opposite case: it is the ONE surface that renders at that width, it ships a
+single theme (`capture.html` stamps Paper Ink and carries no `dark` class, because the page is read
+at arm's length in daylight rather than at a desk), so it has nothing to photograph twice. Its five
+states live in `tests/parity/capture-phone-reference.spec.ts` under their own `test.describe`,
+sharing the same `captureParityPair` contract, the same flat `references/` namespace, the same
+PARITY_UPDATE gate and the same zero-moved-pixel comparison as everything above. The rule this
+records is general: a viewport belongs in the shared matrix when every state is meant to be seen at
+it, and in its own block when exactly one surface is.
 
 **The reference set is an expectation, not a log (D132).** Both halves of every pair are
 **compared** on a normal `npm run test:parity`: the pixels through Playwright's baseline, the

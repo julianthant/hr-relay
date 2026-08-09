@@ -13,6 +13,7 @@ import {
   type RunDetailWire,
 } from "../../domain/dashboard/run-detail.js";
 import { StorageDoctorWireSchema, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
+import { CaptureStartResultSchema, type CaptureStartResult } from "../../domain/capture-surface.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../domain/intake/wire.js";
 import { WIRE_ERROR_BODY, httpError, schemaError } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
@@ -61,6 +62,22 @@ export interface DashboardQueries {
   uploadIntakeFile(request: IntakeUploadRequest): Promise<IntakeUploadResult>;
   /** The durable session joined with its re-derived parse view and hints. */
   intakeSession(intakeSessionId: string): Promise<IntakeSessionWire>;
+  /**
+   * Doc 06 §5.1 — mint a phone capture session (2i-F, D175).
+   *
+   * `201` carries the ONE raw token that ever exists outside the phone; `409`
+   * carries a NAMED ingress refusal with its remediation. Both are outcomes the
+   * operator acts on, so both parse into `CaptureStartResult` rather than one
+   * of them throwing — and every other status still throws, because a server
+   * fault must never render as "capture is misconfigured".
+   */
+  startCaptureSession(request: CaptureStartRequest): Promise<CaptureStartResult>;
+}
+
+export interface CaptureStartRequest {
+  readonly workflowId: string;
+  readonly formType?: string;
+  readonly contextHint?: string;
 }
 
 export function createDashboardQueries(transport: DashboardTransport): DashboardQueries {
@@ -126,6 +143,24 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
     async intakeSession(intakeSessionId: string): Promise<IntakeSessionWire> {
       const path = `/api/v1/intake/${encodeURIComponent(intakeSessionId)}`;
       return parseOrThrow(IntakeSessionWireSchema, `GET ${path}`, await transport.requestJson(path));
+    },
+
+    async startCaptureSession(request: CaptureStartRequest): Promise<CaptureStartResult> {
+      const path = "/api/v1/capture/sessions";
+      const response = await transport.requestJsonResponse(path, {
+        method: "POST",
+        body: JSON.stringify({
+          workflow: request.workflowId,
+          ...(request.formType === undefined ? {} : { formType: request.formType }),
+          ...(request.contextHint === undefined ? {} : { contextHint: request.contextHint }),
+        }),
+      });
+      // 201 = started (with the token), 409 = a named ingress refusal. Both are
+      // the contract; anything else is a fault and leaves as one.
+      if (response.status !== 201 && response.status !== 409) {
+        throw httpError(response.status, response.body);
+      }
+      return parseOrThrow(CaptureStartResultSchema, `POST ${path}`, response.body);
     },
   });
 }

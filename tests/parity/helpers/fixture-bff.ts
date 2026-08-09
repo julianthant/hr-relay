@@ -29,6 +29,17 @@ import {
   FIXTURE_START_PLAN,
 } from "./fixture-day.js";
 import { FIXTURE_INTAKE_MAPPING, FIXTURE_INTAKE_SESSIONS } from "./fixture-intake.js";
+import {
+  CAPTURE_TOKEN_HEADER,
+  CAPTURE_UNKNOWN_SESSION_MESSAGE,
+  CaptureSessionWireSchema,
+  type CaptureSessionWire,
+} from "../../../src/domain/capture-surface.js";
+import {
+  FIXTURE_CAPTURE_BY_TOKEN,
+  FIXTURE_CAPTURE_PHOTO_BYTES,
+  FIXTURE_CAPTURE_START,
+} from "./fixture-capture.js";
 
 /* ── SSE envelopes ───────────────────────────────────────────────────────── */
 
@@ -68,6 +79,10 @@ function wireError(code: string, message: string): unknown {
 
 const CommandBodyProbeSchema = z.looseObject({
   target: z.looseObject({ runId: z.string().optional() }).optional(),
+});
+
+const CaptureOrderProbeSchema = z.looseObject({
+  orderedPhotoIds: z.array(z.string().min(1)).min(1),
 });
 
 export function createFixtureBff(): { app: Hono } {
@@ -133,6 +148,72 @@ export function createFixtureBff(): { app: Hono } {
     if (runId === FIXTURE_IDS.conflictRun) return c.json(FIXTURE_COMMAND_RESULTS.conflict as unknown, 409);
     if (runId === FIXTURE_IDS.rejectedRun) return c.json(FIXTURE_COMMAND_RESULTS.rejected as unknown, 422);
     return c.json(FIXTURE_COMMAND_RESULTS.applied as unknown);
+  });
+
+  /* ── capture: the operator's start, and the phone's closed union (2i-F) ─── */
+
+  app.post("/api/v1/capture/sessions", (c) => c.json(FIXTURE_CAPTURE_START as unknown, 201));
+
+  /**
+   * The phone addresses its session by the TOKEN in `X-Capture-Token` — never
+   * by an id in a path — so the fixture resolves it exactly the way the real
+   * service does, and an unknown token gets the ONE fail-closed sentence rather
+   * than a fixture-specific message that would let a reference document an
+   * enumeration oracle that does not exist.
+   */
+  const sessionByToken = (c: { req: { header: (name: string) => string | undefined } }): CaptureSessionWire | undefined =>
+    FIXTURE_CAPTURE_BY_TOKEN[c.req.header(CAPTURE_TOKEN_HEADER) ?? ""];
+
+  const unknownSession = (): Response =>
+    Response.json(
+      wireError("CAPTURE_UNKNOWN_SESSION", CAPTURE_UNKNOWN_SESSION_MESSAGE),
+      { status: 404 },
+    );
+
+  app.get("/api/v1/capture/phone/session", (c) => {
+    const session = sessionByToken(c);
+    return session === undefined ? unknownSession() : c.json(session as unknown);
+  });
+
+  app.get("/api/v1/capture/phone/photos/:photoId/bytes", (c) => {
+    const session = sessionByToken(c);
+    if (session === undefined) return unknownSession();
+    const photoId = c.req.param("photoId");
+    const bytes = session.photos.some((photo) => String(photo.photoId) === photoId)
+      ? FIXTURE_CAPTURE_PHOTO_BYTES.get(photoId)
+      : undefined;
+    if (bytes === undefined) {
+      return c.json(wireError("CAPTURE_UNKNOWN_PHOTO", `this capture holds no photograph ${photoId}`), 422);
+    }
+    return new Response(bytes.slice().buffer, {
+      status: 200,
+      headers: { "content-type": "image/png", "cache-control": "no-store" },
+    });
+  });
+
+  /**
+   * Reorder is the one phone verb the reference lane EXERCISES rather than
+   * merely photographs, so it re-derives the ordinals from the submitted order
+   * instead of echoing the session back. A fixture that ignored the request
+   * would let a broken move control screenshot perfectly.
+   */
+  app.post("/api/v1/capture/phone/order", async (c) => {
+    const session = sessionByToken(c);
+    if (session === undefined) return unknownSession();
+    const body = CaptureOrderProbeSchema.parse(await c.req.json());
+    const byId = new Map(session.photos.map((photo) => [String(photo.photoId), photo]));
+    const photos = body.orderedPhotoIds.map((photoId, index) => {
+      const photo = byId.get(photoId);
+      if (photo === undefined) {
+        throw new Error(`the fixture capture session holds no photograph ${photoId}`);
+      }
+      return { ...photo, ordinal: index + 1 };
+    });
+    return c.json(CaptureSessionWireSchema.parse({
+      ...session,
+      photos,
+      version: session.version + 1,
+    }) as unknown);
   });
 
   app.all("/api/*", (c) => c.json(wireError("ROUTE_NOT_FOUND", `no fixture route serves ${c.req.method} ${c.req.path}`), 404));
