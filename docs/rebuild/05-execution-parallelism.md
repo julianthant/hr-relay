@@ -385,6 +385,107 @@ authenticated context.
 | Fixed sleeps return | wait-for-timeout ratchet + span sleep budget |
 | OnBase overlap | identity-lease test proves close-before-release and dead-owner takeover |
 
+### 7.1 The 2j concurrency matrix — executed (D182)
+
+The table above names *risks*. This one names **cases**, and every row names the exact test that
+executes it. A risk table can be satisfied by a plausible-sounding sentence; a case table cannot,
+because the third column is a file you can open.
+
+Three rules decide what belongs here and how it is written.
+
+1. **A concurrency case is proved by more than one live caller, not by a second call.** Most of this
+   tree's concurrency coverage issues the second `claimNext`, the second `renewClaim`, or the second
+   command *from the test*. That proves the STORE refuses an illegal pair, which is necessary and is
+   not sufficient: a single-worker fixture satisfies `(runId, worker)` uniqueness by never having a
+   second worker, so it cannot falsify a loop that asks for a row it already holds. Rows C1–C8 run
+   real `runWorkerLoop` instances, more than one at a time, over ONE `AuthorityDatabase`.
+2. **The observation is sampled, not read at the end.** A double claim that was released before the
+   drain finished is invisible to a post-hoc read of the run table. C1 and C8 therefore sample the
+   durable claim set — grouped by owner, straight out of authority, never from an in-memory counter
+   a loop could keep consistent while the database disagreed — at every span event and every driver
+   call, and fail at the sampling instant.
+3. **"No worker holds two rows" and "the fleet genuinely overlaps" must be asserted together.** They
+   pull in opposite directions, and a matrix that proved only the first would be fully satisfied by
+   a runtime that silently serialized everything onto one worker — §7's third risk row. So the same
+   sampler that caps per-worker ownership at 1 also records the maximum number of workers holding
+   work at once, and the soak asserts that maximum **equals the worker count**.
+
+`composeWorkerRuntime` cannot host these rows: it derives its id from `phase1WorkerId(workflowId)`,
+so two composed workers on one workflow collide on the authority worker LEASE by design, and
+`createPhase1WorkerRuntimeExecutor` refuses `desiredWorkers !== 1`. N-worker overlap is
+`runWorkerLoop` called N times with distinct `workerId`s against one shared database — which is
+exactly the shape §2 says a later phase spawns as processes.
+
+**Dependency — claim, heartbeat, sweep, terminal authority**
+
+| # | Case | Executed by |
+|---|---|---|
+| C1 | Two live loops race one queue: every run executed once, one owner per run, ≤1 active row per worker at every sample, and 2 workers observed holding work simultaneously | `architecture/multi-worker-overlap.test.ts` |
+| C2 | A row held by a live loop is never served to a sibling `claimNext`; the holder's own second `claimNext` throws by name | `architecture/multi-worker-overlap.test.ts` |
+| C3 | A sweep interleaved with a live heartbeat: the renewed claim keeps owner/generation/attempt, only the genuinely stale row requeues, and the requeued row is re-claimed by the live loop | `architecture/multi-worker-overlap.test.ts` |
+| C4 | A zombie heartbeat whose row was swept and re-owned reports `lost` and abandons instead of stamping over the new owner | `architecture/multi-worker-overlap.test.ts` |
+| C8 | Bounded fleet soak, then whole-database invariants | `architecture/worker-teardown-soak.test.ts` |
+| — | Interactive before bulk with a second worker present; cross-workflow isolation; claim-generation monotonicity; a second active claim for one worker; transition refused on stale version or lost claim | `run-authority.test.ts` |
+| — | D118: an `attempting` write intent reaches recovery before any queued/claimable transition (all four arms) | `claim-sweep-recovery.test.ts` |
+| — | Two workers on ONE permanent write key admit exactly one fence | `kuali-transaction-proof.test.ts` |
+| — | Two ledger projectors race one `(system,date)` lease | `architecture/ledger-projector.test.ts` |
+
+**Control — worker lifetime, directives, browser sessions**
+
+| # | Case | Executed by |
+|---|---|---|
+| C5 | Stop mid-run abandons rather than terminalizing, closes the interrupted lease as `poisoned`, LEAVES the row under its stale claim, and the recovery sweep — not the dying loop — releases it to a successor that drains it to `done` | `architecture/worker-teardown-soak.test.ts` |
+| C6 | `closeAll("worker-stop")` closes nothing while a driver callback is in flight; a SECOND concurrent `closeAll` throws by name; no new lease may start once teardown began | `architecture/worker-teardown-soak.test.ts` |
+| C7 | An operation failure whose poison-close cannot prove closure raises one `AggregateError` naming BOTH, retains the resource poisoned, refuses reuse, and worker-stop still names every failing system | `architecture/worker-teardown-soak.test.ts` |
+| — | Exclusive driver use and login single-flight per `(worker,system)`; fresh-boundary close-before-open; abort-race poison-close; `closeAll("parked")` waits for an active callback; D116 fingerprint identity; D125 bounded acquisition | `worker-sessions.test.ts` |
+| — | Second live process on one worker id refused; stale lease reclaimed at boot; graceful mid-run stop; close-proof failure records the lease `crashed` | `worker-composition.test.ts` |
+| — | Single-worker drain; heartbeat renews exactly one claim; lost claim aborts without terminalizing; stop/pause directives between items | `worker-loop.test.ts` |
+
+**Capture and intake — command arms and the finalize projection**
+
+| # | Case | Executed by |
+|---|---|---|
+| C9 | Two callers finalize one session on the same reviewed version: one applies, the other is refused `invalid-state`, ONE outbox row is minted, and every arm refused for a `finalizing` session moves ZERO authority rows | `concurrency-matrix.test.ts` |
+| C10 | Two finalize projectors drain one pending outbox: exactly one handoff lands, the loser loses the session version CAS and escapes loud with its whole transaction — including its handoff — unwound | `concurrency-matrix.test.ts` |
+| — | Duplicate and reordered phone requests never duplicate photos; restart mid-finalize converges to ONE artifact and ONE handoff; retry-finalize mints the next generation; version drift alone is not a CAS conflict | `capture-durability.test.ts` |
+| — | Intake session version CAS refuses a raced write | `intake-session.test.ts` |
+| — | The one CASing intake arm conflicts when the session moved since review; a manifest fans out exactly once | `intake-command-arms.test.ts` |
+
+**Two things this matrix settles that were previously only implied.**
+
+**A capture command's `expectedVersion` is not a CAS, and that is deliberate.** Five of the six
+intake arms and all seven capture arms validate CURRENT authority inside the kernel's own
+transaction instead of comparing the caller's claim; the version CAS is reserved for the one
+irreversible step (`enqueue-intake-manifest`) and for the storage layer underneath. For capture the
+irreversible step is guarded by the **state machine** instead: a second `capture-finalize` meets a
+`finalizing` session and is refused by name, and the finalize `stableKey` folds
+`(sessionId, generation, ordered photo digests)` so even a duplicate that got past the state gate
+could not mint a second outbox. C9 executes that whole chain, so the surprising half — a required
+`expectedVersion` that does not gate — is now pinned rather than inferred from a target schema.
+
+**A dying worker never releases its own claim.** C5 asserts the row is still owned by the dead
+worker after teardown, which reads like an orphan and is the opposite: terminalizing there would be
+the loop deciding, with no browser left, that nothing happened, and requeueing there would race
+D118's write-intent check. The claim sweep is the ONLY release path, and C5 carries it through to a
+successor draining the row, so "left claimed" is proved to be a window rather than a leak.
+
+**As-built (2026-08-09).** The soak measured here is **3 workers × 30 queued `person-lookup` runs
+over one authority database in ~440 ms** wall, entirely deterministic: `manualClock` plus the
+manual monotonic scheduler, so no real timer participates and no `sleep` is spent. It samples the
+claim set 318 times, observes all 3 workers holding work simultaneously, and finishes with every
+run terminal `done` at claim generation 1 / attempt 1, zero rows in `claimed|validating|running`,
+exactly one `run_terminal_outbox` row per run, zero unresolved write intents, zero pending ledger
+outbox, and `AuthorityDatabase.inspectExistingReadOnly` re-reading the file so its ~30 named SQL
+invariants, `quick_check` and the foreign-key scan all pass. That last read is the point: a soak
+that only counted outcomes would report 30 clean runs over a corrupted claim index. The ledger
+projector is asked and must AGREE it has nothing to project — a read-only workflow mints no ledger
+entries, and asserting that is different from assuming it.
+
+**The standing rule.** A new execution or command surface that can be reached by two callers adds a
+row here in the commit that lands it, naming the test that executes it. A surface whose concurrency
+is "obviously fine" gets a row saying which existing test proves it; the one thing it may not have
+is no row.
+
 ---
 
 ## 8. Worked example — 10-person I-9 Check
