@@ -2,14 +2,16 @@
  * Doc 06 §6.2/§6.3 (D166): Edit Data's field policy is structural.
  *
  * The default is read-only — a descriptor must DECLARE every correctable
- * node+field path, a declared path must resolve through the producing task
- * node's own output schema (anything else could never re-parse), and only a
- * READ task node's output is correctable: a transaction node's output is a
- * write proof, and proof fields are structurally non-editable. The negative
- * controls run through the REAL descriptor factory, so a dead check cannot
- * stand in for enforcement; the activation arm pins the save command in the
- * ACTIVE partition so descriptors declaring fields can never outrun the
- * kernel arm that honours the policy.
+ * node+field path WITH its operator-facing label (2i-C), a declared path must
+ * resolve through the producing task node's own output schema (anything else
+ * could never re-parse; one union arm offering it is enough, since the save
+ * re-parses the whole stored output), only a READ task node's output is
+ * correctable (a transaction node's output is a write proof), and only a
+ * checkpoint-replayed node qualifies — an always-rerun node would discard the
+ * correction. The negative controls run through the REAL descriptor factory,
+ * so a dead check cannot stand in for enforcement; the activation arm pins
+ * the save command in the ACTIVE partition so descriptors declaring fields
+ * can never outrun the kernel arm that honours the policy.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
@@ -36,7 +38,7 @@ const PolicyCanonicalInput = defineCanonicalInput(
   [{ eid: "10800000" }],
 );
 
-function policyDescriptorSpec(editData: unknown) {
+function policyDescriptorSpec(editData: unknown, replay: "checkpoint" | "always-rerun" = "checkpoint") {
   const GateResult = z.strictObject({ approved: z.boolean() });
   return {
     id: "edit-policy-fixture",
@@ -60,7 +62,7 @@ function policyDescriptorSpec(editData: unknown) {
     flow: flow(PolicyInput)
       .step("probe", FixtureReadReceipt, {
         dependsOn: [],
-        replay: "checkpoint",
+        replay,
         bind: ({ input }: { input: z.output<typeof PolicyInput> }) => ({ eid: input.eid }),
       })
       .gate("approve", {
@@ -80,14 +82,14 @@ function policyDescriptorSpec(editData: unknown) {
 describe("edit data field policy", () => {
   it("accepts a declared field the producing task's output schema owns", () => {
     assert.doesNotThrow(() => defineWorkflowDescriptor(policyDescriptorSpec({
-      fields: [{ nodeId: "probe", fieldPath: "eid" }],
+      fields: [{ nodeId: "probe", fieldPath: "eid", label: "EID" }],
     })));
   });
 
   it("refuses a declared field the producing schema does not own — it could never re-parse", () => {
     assert.throws(
       () => defineWorkflowDescriptor(policyDescriptorSpec({
-        fields: [{ nodeId: "probe", fieldPath: "salary" }],
+        fields: [{ nodeId: "probe", fieldPath: "salary", label: "Salary" }],
       })),
       /editData field/u,
     );
@@ -96,9 +98,28 @@ describe("edit data field policy", () => {
   it("refuses a field on a non-task node — a proof surface is never correctable", () => {
     assert.throws(
       () => defineWorkflowDescriptor(policyDescriptorSpec({
-        fields: [{ nodeId: "approve", fieldPath: "approved" }],
+        fields: [{ nodeId: "approve", fieldPath: "approved", label: "Approved" }],
       })),
       /only a read task node's output is correctable/u,
+    );
+  });
+
+  it("refuses a field on an always-rerun node — its correction could never be replayed", () => {
+    assert.throws(
+      () => defineWorkflowDescriptor(policyDescriptorSpec(
+        { fields: [{ nodeId: "probe", fieldPath: "eid", label: "EID" }] },
+        "always-rerun",
+      )),
+      /only a checkpoint-replayed node's recorded output is correctable/u,
+    );
+  });
+
+  it("refuses a field declared without an operator-facing label (2i-C)", () => {
+    assert.throws(
+      () => defineWorkflowDescriptor(policyDescriptorSpec({
+        fields: [{ nodeId: "probe", fieldPath: "eid" }],
+      })),
+      /label/u,
     );
   });
 

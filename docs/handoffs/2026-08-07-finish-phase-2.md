@@ -7,10 +7,12 @@ relaxation, the roster store (tiers verbatim, scoring redesigned), the stable-ke
 projector with the xlsx-retention sink, the normalization advice store + geocode adapters + the
 rotation pool, the Edit Data core (CAS-against-resume-fence save + replay consume), and durable
 capture (sessions as rows, the stable-keyed finalize outbox, restart/duplicate fixtures). The
-runtime phase marker reports `completedThrough: "2h"` / `active: "2i"`. Resume at **2i, the
-operator surface** — docs 03 + 12 are primary; the checklist below names the 2i slices, and the
-2h as-builts in doc 06 name every seam 2i must wire (the ai advisory arm, the Edit Data rail, the
-capture phone surface + PDF bundler + intake enqueue, the capture-durability-and-scope guard).
+runtime phase marker reports `completedThrough: "2h"` / `active: "2i"`. **2i is underway: 2i-A
+(trust surfaces), 2i-B (notification bell + inbox), and 2i-C (the Edit Data rail, D168) are DONE
+2026-08-08.** Resume at **2i-D, Settings + storage health/doctor** — docs 03 + 12 are primary; the
+checklist below names the remaining 2i slices, and the 2h as-builts in doc 06 name every seam 2i
+must still wire (the ai advisory arm, the capture phone surface + PDF bundler + intake enqueue,
+the capture-durability-and-scope guard).
 
 **Supersedes** `2026-08-05-phase2-tail-2h.md` for scope — that brief covers only 2h. Read it for the
 D146–D159 detail; read this one for what remains of the whole phase.
@@ -126,10 +128,24 @@ The BFF serves 7 endpoints today; each slice names what it adds.
       ratchet refused a swallowed catch — correctly). All parity references re-frozen for the
       bell. RESIDUAL: the wire's severity/state shape supersedes doc 03 §2.6's sketch
       (no `critical`, merged snooze state) — flag for the doc 03 as-built pass in 2j.
-- [ ] **2i-C — Edit Data rail.** Client half only (server fully active per D166): `editPolicyFor`
-      with the reason always shown, the widened rail (`--ds-w-context-rail-wide`, 520px), Save →
-      `run/edit-checkpoint`, the SSE `run.claimed` staleness signal disabling Save (doc 03 D19,
-      doc 06 §6.1/§6.4).
+- [x] **2i-C — Edit Data rail. DONE 2026-08-08 (D168).** Not client-only after all: the recon
+      showed the `context-data` wire carried only `{label, valueRedacted}` — no patch identity, no
+      policy — so the wire grew `ContextDataSectionSchema` (per-entry edit union with the raw
+      checkpoint scalar + staged `envelope.injected` correction beside it; payload-level `editing`
+      from raw lifecycle with `expectedVersion` as the CAS basis), the server query joined details
+      × `editData` declarations by `(nodeId, fieldPath)`, and `EditDataFieldSchema` grew a
+      required `label` plus two factory refusals (always-rerun nodes; offers-rule paths).
+      Client half as planned: `editPolicyFor` composes field/run/live with the most specific
+      reason always shown; the staleness signal is as-built the DAY STREAM's queue-row status
+      (`liveLockReasonOf` — no per-run SSE client exists; recorded in doc 03 D19 + doc 06
+      §6.4.1), editing enters on focus, the rail widens (`--ds-w-context-rail-wide`'s first
+      consumer), Save → one `run/edit-checkpoint`, applied → detail+sections refetch at the
+      bumped `rowRevision`, rejected → kernel sentence verbatim with drafts kept. `person-lookup`
+      declares the three CRM dates. Open remainders recorded in D19's as-built note: the
+      `Load a prior run` footer and `actions[]` data-placement gating (served actions still
+      empty). Tests: `context-data-edit.test.ts` (6), `edit-policy.test.ts` (7), two new
+      field-policy guard arms; parity refrozen once (queued run hosts the editable showcase —
+      the seeded open-gate twin is CLAIMED, so both adapters render it locked).
 - [ ] **2i-D — Settings + storage health/doctor.** The doctor/backup wire + Settings section
       (doc 03 §2.5); `StorageHealthSummaryWireSchema` carries only a summary today. Feeds the
       `preflight-coverage` planned guard.

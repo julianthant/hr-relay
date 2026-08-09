@@ -164,7 +164,21 @@ export const personLookupDescriptor = defineWorkflowDescriptor({
   surface: { shape: "single" },
   enqueue: "reject-active",
   actions: STANDARD_WORKFLOW_ACTIONS,
-  capabilities: { review: false, editData: true },
+  capabilities: {
+    review: false,
+    // Doc 06 §6.2: the three CRM dates are the fields an operator genuinely
+    // corrects — a misread date fixed before anything downstream consumes it.
+    // Each path names the `present` arm's value; a correction against a stored
+    // `absent` outcome fails the save's full re-parse, which is the honest
+    // answer ("there is no recorded date to correct").
+    editData: {
+      fields: [
+        { nodeId: "crm-dates", fieldPath: "invitedOn.value", label: "Invited on" },
+        { nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Starts on" },
+        { nodeId: "crm-dates", fieldPath: "completedOn.value", label: "Completed on" },
+      ],
+    },
+  },
   verdicts: [
     { key: "not-found", label: "Not found", tone: "warning" },
     { key: "inactive", label: "Inactive", tone: "warning", tag: true },

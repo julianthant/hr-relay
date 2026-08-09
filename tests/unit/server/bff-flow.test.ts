@@ -144,7 +144,14 @@ function harness(): Harness {
     runDetail: {
       stateRoot,
       projection,
-      authority: { getRun: (runId) => database.authority.runs.get(runId) },
+      authority: {
+        getRun: (runId) => database.authority.runs.get(runId),
+        latestCheckpoint: (workflowId, itemId, nodeId) =>
+          database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
+      },
+      descriptors: {
+        resolve: (workflowId) => (workflowId === fixtureDescriptor.id ? fixtureDescriptor : undefined),
+      },
       trust: createReceiptService({ database, descriptors: [fixtureDescriptor] }),
     },
     commands,

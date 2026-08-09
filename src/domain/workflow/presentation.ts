@@ -113,10 +113,15 @@ export const STANDARD_WORKFLOW_ACTIONS: WorkflowActionPolicy = Object.freeze(
  * Doc 06 §6.2 (D166): the descriptor names EXACTLY which node+field paths an
  * operator may correct. The default is read-only — `true` keeps the Data
  * section visible with ZERO editable fields, never "all checkpoint JSON".
+ *
+ * `label` is what the Context rail prints over the editable value (2i-C). A
+ * field a descriptor declares correctable is, by that declaration, a field
+ * the operator sees raw — never declare a secret-bearing path here.
  */
 export const EditDataFieldSchema = z.strictObject({
   nodeId: NodeIdSchema,
   fieldPath: ContractFieldPathSchema,
+  label: z.string().min(1),
 });
 export const EditDataPolicySchema = z.union([
   z.boolean(),

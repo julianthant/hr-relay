@@ -141,7 +141,7 @@ function editDescriptor(): AnyWorkflowDescriptor {
     scenarios: ["wiring-edit-data/happy"],
     capabilities: WorkflowCapabilitiesSchema.parse({
       review: false,
-      editData: { fields: [{ nodeId: "extract", fieldPath: "eid" }] },
+      editData: { fields: [{ nodeId: "extract", fieldPath: "eid", label: "EID" }] },
     }),
     flow: fixtureFlow,
   });

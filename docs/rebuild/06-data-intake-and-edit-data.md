@@ -1425,7 +1425,52 @@ Fail-closed by construction: an unknown/raced state → reject, never last-write
 edit onto a run that has moved on. (Editing a *running* task's checkpoints is forbidden outright,
 §6.2, so the only race is park/stop ↔ resume, which the CAS closes.)
 
-### 6.5 Edit Data before first start — the intake grid is a SEPARATE surface (shared core)
+#### 6.4.1 As-built — the rail wiring (2i-C, 2026-08-08, D168)
+
+The operator surface over the D166 core landed; where the build deviates from the sketches above,
+the as-built shape is normative:
+
+- **The `context-data` wire carries the edit policy** (`ContextDataSectionSchema`,
+  `src/domain/dashboard/run-detail.ts`). Each entry serves either
+  `{editable, nodeId, fieldPath, value, pendingCorrection}` — the patch identity and the raw
+  recorded SCALAR off the latest compatible checkpoint — or `{locked, reason}` with the exact
+  sentence the operator reads. The payload-level `editing` union is the run-level half, computed
+  from RAW authority lifecycle plus the claim (the coarse queue status cannot distinguish
+  `parked-gate` from an open gate on a claimed run), and its `expectedVersion` is the CAS basis
+  for the values that same response served. Entries fold from TWO sources joined by
+  `(nodeId, fieldPath)`: the descriptor's detail projections (display value from the span fold,
+  label from the spec) and the `editData` field declarations (value from the checkpoint); a leaf
+  in both is ONE row. A declared field whose step never recorded is omitted — the Data section
+  lists what the run touched — while a recorded outcome that lacks the leaf (the absent arm of a
+  present/absent union) renders locked with the reason. Serving a field's raw scalar is justified
+  by the declaration itself: a descriptor that names a field correctable names it
+  operator-visible, so no secret-bearing path may be declared.
+- **§6.1's generation token is `authority.version`**, served as `editing.expectedVersion` — not
+  the sketched `attempt` + span-seq pair; the run version is the one fence the kernel CASes
+  (D166), so a second token would be a parallel truth. **§6.1's per-run SSE staleness signal is
+  as-built the day stream's queue row**: no run-detail-topic client exists yet, and the row
+  leaving `queued`/`awaiting-approval` is the same "this run just resumed" fact
+  (`liveLockReasonOf`, `src/dashboard/surfaces/context-rail.tsx`), consumed exactly as §6.1
+  intended — to disable Save with the reason BEFORE the CAS rejects.
+- **`EditDataFieldSchema` grew a required `label`** — the declaration is operator-facing now —
+  and the factory grew two refusals beside D166's: a field on an **always-rerun** node (its
+  correction could never be replayed; the executor would refuse the leftover patch at resume, so
+  the declaration refuses first), and path validation moved to the **offers** rule (one union arm
+  owning the path is enough) because a correctable value routinely lives on the `present` arm and
+  the save re-parses the whole stored output against reality anyway. `person-lookup` declares the
+  three CRM dates (`crm-dates`: `invitedOn.value`, `startsOn.value`, `completedOn.value`) — the
+  genuine misread-a-date correction §6 was designed for.
+- **A staged correction renders beside the recorded value.** Until the resume replays
+  `envelope.injected`, the checkpoint value and the pending value are both true, so the wire
+  serves `pendingCorrection` and the rail shows "Corrected … — applies when the run resumes"
+  under the value box. An applied save refetches the run detail at its bumped `rowRevision`, and
+  every fetched section re-fetches through that revision, so the rail never shows a CAS basis the
+  kernel already refused.
+- **Editing is entered by focusing a value box** (the reason + Save footer appears and the rail
+  widens before the first keystroke); drafts parse back into the recorded scalar's own type
+  before any command is built, a rejection keeps the drafts and shows the kernel's sentence
+  verbatim, and the per-save `reason` (required, non-empty) becomes every patch's
+  `CheckpointPatch.reason`.
 
 **Decision: the pre-first-start intake correction grid (§5) and checkpoint correction in the
 Context rail's Data section are SEPARATE surfaces that share ONE pure per-cell coercion/validation

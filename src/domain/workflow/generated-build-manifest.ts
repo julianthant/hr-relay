@@ -15,7 +15,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "ae8e5de88173ce90f7163cd23aecc4d563c85a07378f5b92e8218f99ac95c177",
+      "fingerprint": "d1a0c0495ed76771b106b6341ce0c80eb5e5e8304c5f093842308c8cf4ae0bd1",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -23,7 +23,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/workflow.ts",
-          "sha256": "b88ad1e36ec33c3955575a5b65aadc821e26934fbfabb2ed497c0b07f117ccc3"
+          "sha256": "3a9502314577f90e73abe5b5e67e3338d718cbf27e5d7110483b1ace0c201755"
         },
         {
           "path": "src/domain/canonical-json.ts",
@@ -119,7 +119,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/presentation.ts",
-          "sha256": "edeaeb5b8bb31d09e9d08971dd56b5752a53ca44dc53beb7c4727137a81310e4"
+          "sha256": "2f4b9423010165287992cf8378983a54019d0fc41fb696c14f7c1d9e20f5f030"
         },
         {
           "path": "src/domain/workflow/scenario-coverage.ts",
@@ -145,7 +145,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali-timekeeper-annotation"
     },
     {
-      "fingerprint": "ae9aaa32b1f780a29ea0f227581d60685a398372cbf18f8e5fa776940858bbcb",
+      "fingerprint": "81e4b0826d265aa551f5035d33c0320653a48f7a28ff1ca98569c95eda031090",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -153,7 +153,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/base/workflow.ts",
-          "sha256": "b88ad1e36ec33c3955575a5b65aadc821e26934fbfabb2ed497c0b07f117ccc3"
+          "sha256": "3a9502314577f90e73abe5b5e67e3338d718cbf27e5d7110483b1ace0c201755"
         },
         {
           "path": "src/domain/canonical-json.ts",
@@ -245,7 +245,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/presentation.ts",
-          "sha256": "edeaeb5b8bb31d09e9d08971dd56b5752a53ca44dc53beb7c4727137a81310e4"
+          "sha256": "2f4b9423010165287992cf8378983a54019d0fc41fb696c14f7c1d9e20f5f030"
         },
         {
           "path": "src/domain/workflow/scenario-coverage.ts",
@@ -265,7 +265,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/person-lookup/descriptor.ts",
-          "sha256": "afa922cf7e672c9f437cda769c3a76aedb45471a1f2c70ce3f9b425cd9f4e0dd"
+          "sha256": "4cec54763f2cfd2934b443f6b2f459ca07811690e1863865479cc673cbf4f685"
         }
       ],
       "id": "person-lookup"

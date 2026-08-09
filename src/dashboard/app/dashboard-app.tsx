@@ -183,7 +183,11 @@ function LoadedApp({
   onTab,
 }: LoadedAppProps) {
   const { day: dayResource, connection } = useDashboardDay(day);
-  const detail = useRunDetail(route.run);
+  // Bumped by an applied Data correction: the save moved the run version, so
+  // the open detail (and, through its rowRevision, every fetched section)
+  // refetches rather than serving a CAS basis the kernel will now refuse.
+  const [detailNonce, setDetailNonce] = useState(0);
+  const detail = useRunDetail(route.run, detailNonce);
   const detailValue = detail.state === "loaded" ? detail.value : undefined;
   // Precedence: what the operator clicked this session, then what the URL asked
   // for, then the panel's own default. The URL arm is what makes a link to a
@@ -349,6 +353,8 @@ function LoadedApp({
                   workflowLabel={workflowLabelOf(detailValue.header.workflowId)}
                   currentAppVersion={boot.appVersion}
                   currentDescriptorHash={boot.descriptorHash}
+                  actorId={boot.actor.id}
+                  onDetailEdited={() => setDetailNonce((nonce) => nonce + 1)}
                 />
               </div>
             )}

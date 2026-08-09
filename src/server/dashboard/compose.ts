@@ -233,8 +233,14 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       stateRoot,
       projection,
       authority: {
-      getRun: (runId) => database.authority.runs.get(runId),
-    },
+        getRun: (runId) => database.authority.runs.get(runId),
+        latestCheckpoint: (workflowId, itemId, nodeId) =>
+          database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
+      },
+      descriptors: {
+        resolve: (workflowId) =>
+          DESCRIPTORS.find((descriptor) => descriptor.id === workflowId),
+      },
       // D140/D142: the receipt and failure sections serve CONTENT through the
       // one authority-backed derivation, the same one `explain run` reads.
       trust: createReceiptService({ database, descriptors: DESCRIPTORS }),

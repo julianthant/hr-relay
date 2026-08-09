@@ -87,7 +87,6 @@ import type {
   SurfaceShape,
   VerdictDefinition,
   WorkflowActionPolicy,
-  WorkflowCapabilities,
   WorkflowCategory,
 } from "../domain/workflow/presentation.js";
 import { deriveGraphCoveragePoints } from "../domain/workflow/scenario-coverage.js";
@@ -111,6 +110,22 @@ export interface DetailProjectionSpec<S> {
   readonly label: string;
   readonly source: Readonly<{ nodeId: keyof S & string; fieldPath: string }>;
   readonly display: "text" | "eid" | "date" | "count" | "badge";
+}
+
+/**
+ * The authored (unbranded) face of `WorkflowCapabilitiesSchema`, the way
+ * `DetailProjectionSpec` is the authored face of its runtime schema — the
+ * factory parses the value through the schema, so the brands are enforced at
+ * definition time without every descriptor literal having to spell them.
+ */
+export interface WorkflowCapabilitiesSpec {
+  readonly review: boolean;
+  readonly editData:
+    | boolean
+    | Readonly<{
+      fields: readonly Readonly<{ nodeId: string; fieldPath: string; label: string }>[];
+    }>;
+  readonly delegationDisplay?: "inline" | "linked" | "hidden-unless-failed";
 }
 
 export interface DurableArtifactProjectionSpec<S> {
@@ -198,7 +213,7 @@ export interface WorkflowDescriptor<
   readonly completion?: Completion extends CompletionProgram
     ? SealedCompletionProgram<Completion>
     : undefined;
-  readonly capabilities?: WorkflowCapabilities;
+  readonly capabilities?: WorkflowCapabilitiesSpec;
   readonly details: readonly DetailProjectionSpec<S>[];
   readonly enqueue: EnqueuePolicy;
   readonly actions: WorkflowActionPolicy;
@@ -239,7 +254,7 @@ export interface AnyWorkflowDescriptor {
   readonly surfaces: WorkflowSurfaces;
   readonly verdicts?: readonly VerdictDefinition[];
   readonly completion?: Readonly<{ kind: "sealed-completion-program"; mode: string; gate: string }>;
-  readonly capabilities?: WorkflowCapabilities;
+  readonly capabilities?: WorkflowCapabilitiesSpec;
   readonly details: readonly Readonly<{
     key: string;
     label: string;
@@ -619,13 +634,15 @@ function assertNodeFieldPath(
   nodeId: string,
   fieldPath: string,
   owner: string,
+  unionRule: "owns" | "offers" = "owns",
 ): void {
   const node = nodeByIdOrThrow(id, nodes, nodeId, owner);
   const schema = outputSchemaOf(node);
   if (schema === undefined) {
     throw new Error(`${id}: ${owner} reads ${node.kind} node ${nodeId}, which owns no output schema`);
   }
-  assertSchemaOwnsPath(schema, fieldPath, `${id}: ${owner}`);
+  if (unionRule === "offers") assertSchemaOffersPath(schema, fieldPath, `${id}: ${owner}`);
+  else assertSchemaOwnsPath(schema, fieldPath, `${id}: ${owner}`);
 }
 
 function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSurfaces): void {
@@ -725,7 +742,22 @@ export function defineWorkflowDescriptor<
           + `"${owner.kind}"; only a read task node's output is correctable — write proofs never are`,
         );
       }
-      assertNodeFieldPath(id, nodes, field.nodeId, field.fieldPath, "editData field");
+      if (owner.replay !== "checkpoint") {
+        // An always-rerun node structurally never replays its checkpoint, so a
+        // correction to it could never be consumed — the executor would refuse
+        // the leftover patch at resume. Refusing the DECLARATION is earlier
+        // and clearer than refusing every save made against it.
+        throw new Error(
+          `${id}: editData field "${field.fieldPath}" names node "${String(field.nodeId)}" with replay `
+          + `"${owner.replay}"; only a checkpoint-replayed node's recorded output is correctable — `
+          + "an always-rerun node takes its value from the live read",
+        );
+      }
+      // `offers`, not `owns`: a correctable value routinely sits on one arm of
+      // a present/absent union, and the save re-parses the WHOLE post-patch
+      // output — a patch naming an arm the stored outcome does not hold fails
+      // there, loudly, against the actual bytes rather than the declaration.
+      assertNodeFieldPath(id, nodes, field.nodeId, field.fieldPath, "editData field", "offers");
     }
   }
 

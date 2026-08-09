@@ -13,7 +13,11 @@ import { DashboardClientError } from "../client/index.js";
 import { failed, IDLE, loaded, LOADING, type AsyncResource } from "./async-resource.js";
 import { useDashboardClient } from "./client-context.js";
 
-export function useRunDetail(runId: string | undefined): AsyncResource<RunDetailWire> {
+export function useRunDetail(
+  runId: string | undefined,
+  /** Bump to refetch the SAME run — an applied Data correction moved its version (2i-C). */
+  reloadNonce = 0,
+): AsyncResource<RunDetailWire> {
   const client = useDashboardClient();
   const [resource, setResource] = useState<AsyncResource<RunDetailWire>>(IDLE);
 
@@ -40,7 +44,7 @@ export function useRunDetail(runId: string | undefined): AsyncResource<RunDetail
     return () => {
       live = false;
     };
-  }, [client, runId]);
+  }, [client, runId, reloadNonce]);
 
   return resource;
 }

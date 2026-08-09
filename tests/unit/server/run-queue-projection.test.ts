@@ -205,7 +205,7 @@ describe("THE run/queue projection (D81)", () => {
     // seeded on the span path ALONE collapsed them to one uuid, so the strict
     // wire schema refused the whole detail ("timeline note ids must be unique")
     // and the Log Panel could not open. Observed live on the Phase-1 exit run.
-    const detail = buildRunDetail({ stateRoot: w.stateRoot, projection: w.projection, authority: w.authority }, uuidOf(1));
+    const detail = buildRunDetail({ stateRoot: w.stateRoot, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } }, uuidOf(1));
     const crossVerify = detail.timeline.events.filter((event) => event.label === "cross-verify");
     assert.equal(crossVerify.length, 2);
     assert.equal(new Set(detail.timeline.events.map((event) => event.noteId)).size, detail.timeline.events.length);
@@ -325,7 +325,7 @@ describe("the live exit-run presentation shapes (D123/D124)", () => {
     seedExitRunShape(w);
 
     const detail = buildRunDetail(
-      { stateRoot: w.stateRoot, projection: w.projection, authority: w.authority },
+      { stateRoot: w.stateRoot, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } },
       uuidOf(1),
     );
     const crmDates = detail.timeline.events.find((event) => event.label === "crm-dates");
@@ -350,7 +350,7 @@ describe("the live exit-run presentation shapes (D123/D124)", () => {
     taskEventsOf(w, 1, "crm-dates", "skipped");
 
     const detail = buildRunDetail(
-      { stateRoot: w.stateRoot, projection: w.projection, authority: w.authority },
+      { stateRoot: w.stateRoot, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } },
       uuidOf(1),
     );
     const crmDates = detail.timeline.events.find((event) => event.label === "crm-dates");

@@ -59,6 +59,10 @@ export function usePanelSections(
   const client = useDashboardClient();
   const [state, setState] = useState<PanelSectionsState>({ sections: {} });
   const runId = detail?.runId;
+  // The revision is a fetch dependency on purpose: an applied Data correction
+  // refetches the detail at a bumped rowRevision, and the sections it served
+  // (editing.expectedVersion, pending corrections) must move with it.
+  const revision = detail?.rowRevision;
   const wanted = detail === undefined ? [] : sectionsWanted(detail, tab);
   const wantedKey = wanted.join(",");
 
@@ -89,7 +93,7 @@ export function usePanelSections(
     return () => {
       live = false;
     };
-  }, [client, runId, wantedKey]);
+  }, [client, runId, wantedKey, revision]);
 
   return state;
 }

@@ -584,17 +584,44 @@ function failureDetail(runId: string, failureId: string, seed: number) {
   };
 }
 
+/** A locked context-data row, the fixture's default (2i-C wire shape). */
+type DataEntrySeed = {
+  label: string;
+  valueRedacted: string;
+  edit?: Record<string, unknown>;
+};
+
+const LOCKED_NOT_DECLARED = {
+  state: "locked",
+  reason: "not declared correctable by this workflow",
+} as const;
+
 function sectionsOf(
   seed: number,
   notes: readonly NoteSeed[],
-  dataEntries: readonly { label: string; valueRedacted: string }[],
+  dataEntries: readonly DataEntrySeed[],
   failureId?: string,
+  editing?: Record<string, unknown>,
 ): Readonly<Record<string, RunDetailSectionResponse>> {
   const runId = uuidOf(seed);
   const sections: Record<string, unknown> = {
     logs: { section: "logs", payload: notePageOf(seed, notes) },
     receipt: { section: "receipt", payload: RECEIPT_MISSING },
-    "context-data": { section: "context-data", payload: { runId, entries: dataEntries } },
+    "context-data": {
+      section: "context-data",
+      payload: {
+        runId,
+        editing: editing ?? {
+          state: "locked",
+          reason: "run is terminal; corrections apply only to a non-executing resumable run",
+        },
+        entries: dataEntries.map((entry) => ({
+          label: entry.label,
+          valueRedacted: entry.valueRedacted,
+          edit: entry.edit ?? LOCKED_NOT_DECLARED,
+        })),
+      },
+    },
     "context-attempts": {
       section: "context-attempts",
       payload: {
@@ -615,9 +642,38 @@ function sectionsOf(
 }
 
 export const FIXTURE_SECTIONS: Readonly<Record<string, Readonly<Record<string, RunDetailSectionResponse>>>> = Object.freeze({
+  // The 2i-C showcase: a RETRY-queued run — resumable, unclaimed, with the
+  // prior attempt's recorded checkpoints — is the one state where the merged
+  // Data/Edit-Data surface is genuinely editable. One row editable at rest,
+  // one carrying a staged correction. (The open-gate run cannot host this:
+  // its seeded twin is CLAIMED while its gate is open, so both adapters
+  // render it locked.)
   [FIXTURE_IDS.queuedRun]: sectionsOf(1, [
     { level: "info", minute: 55, message: "Run queued at interactive priority" },
-  ], []),
+  ], [
+    {
+      label: "Starts on",
+      valueRedacted: "2026-07-15",
+      edit: {
+        state: "editable",
+        nodeId: "crm-dates",
+        fieldPath: "startsOn.value",
+        value: "2026-07-15",
+        pendingCorrection: { state: "none" },
+      },
+    },
+    {
+      label: "Invited on",
+      valueRedacted: "2026-06-01",
+      edit: {
+        state: "editable",
+        nodeId: "crm-dates",
+        fieldPath: "invitedOn.value",
+        value: "2026-06-01",
+        pendingCorrection: { state: "pending", value: "2026-06-02", correctedAt: at(50) },
+      },
+    },
+  ], undefined, { state: "editable", expectedVersion: 2 }),
   [FIXTURE_IDS.runningRun]: sectionsOf(2, [
     { level: "info", minute: 52, message: "Searching UCPath directory for Battistessa, Johnnie" },
     { level: "info", minute: 53, message: "2 candidates returned from person search" },
@@ -625,7 +681,11 @@ export const FIXTURE_SECTIONS: Readonly<Record<string, Readonly<Record<string, R
   ], [
     { label: "Selection", valueRedacted: "exact-match" },
     { label: "Active status", valueRedacted: "pending" },
-  ]),
+  ], undefined, {
+    state: "locked",
+    reason: "the run is claimed by a worker — the resume consumes corrections and wins races; "
+      + "editing reopens when it parks or finishes",
+  }),
   [FIXTURE_IDS.doneRun]: sectionsOf(3, [
     { level: "info", minute: 35, message: "Searching UCPath directory for EID 10001573" },
     { level: "info", minute: 36, message: "Cross-verified against the CRM onboarding record" },
@@ -651,7 +711,13 @@ export const FIXTURE_SECTIONS: Readonly<Record<string, Readonly<Record<string, R
   ], [
     { label: "Selection", valueRedacted: "ambiguous (2 candidates)" },
     { label: "Active status", valueRedacted: "pending" },
-  ]),
+  ], undefined, {
+    // The seeded twin of this run is CLAIMED while its gate is open, so both
+    // adapters must render the same locked shape (dual-adapter structure).
+    state: "locked",
+    reason: "the run is claimed by a worker — the resume consumes corrections and wins races; "
+      + "editing reopens when it parks or finishes",
+  }),
   [FIXTURE_IDS.memberRun]: sectionsOf(31, [
     { level: "info", minute: 29, message: "Searching UCPath directory for Alvarez, Maria" },
     { level: "info", minute: 31, message: "Active status resolved: active" },

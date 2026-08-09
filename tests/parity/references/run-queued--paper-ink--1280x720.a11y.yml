@@ -1,7 +1,7 @@
 # run-queued--paper-ink--1280x720
 # adapter: fixture
 # fixture: run-queued
-# descriptorHash: a1c05d4e411f95dcd51ebb8b57780f20a41bbc0caa9ce20d21a9623db4da48bd
+# descriptorHash: 5e85d6a128fdace632299815aae6d6a444042732d49710b33898cbdaf036ffb8
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -128,12 +128,17 @@
       - tab "Receipt"
     - text: 9:55 AM Run queued at interactive priority
     - searchbox "Search logs"
-    - text: wf a1c05d4e
+    - text: wf 5e85d6a1
     - button "Run provenance"
   - complementary "Run data":
     - text: Run data
     - button "Hide run data"
-    - region "Data": Data No data yet Values this run recorded appear here as it reads them.
+    - region "Data":
+      - text: Data Starts on
+      - textbox "Starts on — recorded value": 2026-07-15
+      - text: Invited on
+      - textbox "Invited on — recorded value": 2026-06-02
+      - text: Corrected 2026-08-03T09:50:00.000-07:00 — applies when the run resumes; the run recorded 2026-06-01.
     - separator
     - region "Attempts": Attempts Attempt 1 2026-08-03T09:30:00.000-07:00 · this attempt
     - separator

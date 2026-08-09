@@ -850,6 +850,10 @@ export interface LogPanelProps {
   workflowLabel: string;
   currentAppVersion: string;
   currentDescriptorHash: string;
+  /** Who a Data-section correction is requested by (2i-C). */
+  actorId: string;
+  /** An applied correction bumped the run version — the owner refetches detail. */
+  onDetailEdited: () => void;
 }
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
@@ -872,6 +876,8 @@ export function LogPanel({
   workflowLabel,
   currentAppVersion,
   currentDescriptorHash,
+  actorId,
+  onDetailEdited,
 }: LogPanelProps) {
   const available = tabsFor(detail);
   const fallback = defaultTabFor(detail);
@@ -969,6 +975,11 @@ export function LogPanel({
   const noticeShown = gateOpen && !noticeDismissed && !decisionInView;
 
   const railState = useContextRail();
+  // The rail widens to its edit width while the Data section is being edited
+  // (`--ds-w-context-rail-wide`, doc 03 D19(d)); the flag resets when the
+  // operator switches runs so one run's edit session can never widen another's.
+  const [dataEditing, setDataEditing] = useState(false);
+  useEffect(() => setDataEditing(false), [detail.runId]);
   const railSections: ContextSections = {
     ...(sections["context-data"] === undefined ? {} : { "context-data": sections["context-data"] }),
     ...(sections["context-evidence"] === undefined
@@ -989,7 +1000,9 @@ export function LogPanel({
         "min-[1280px]:grid-rows-[auto_minmax(0,1fr)]",
         railState.collapsed
           ? "min-[1280px]:grid-cols-[minmax(0,1fr)_var(--ds-w-context-spine)]"
-          : "min-[1280px]:grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail)]",
+          : dataEditing
+            ? "min-[1280px]:grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail-wide)]"
+            : "min-[1280px]:grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail)]",
       )}
     >
       {detail.timeline.events.length > 0 && (
@@ -1183,6 +1196,10 @@ export function LogPanel({
           summary={detail.context}
           sections={railSections}
           onClose={() => railState.setOpen(false)}
+          actorId={actorId}
+          liveStatus={surface?.status}
+          onDataEditingChange={setDataEditing}
+          onSaved={onDetailEdited}
           className={cn(
             "shrink-0",
             "min-[1280px]:col-start-2 min-[1280px]:row-start-2 min-[1280px]:shrink",

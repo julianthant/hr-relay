@@ -25,6 +25,7 @@
  *   `not-run` reason, or an explicit statement that none was recorded.
  */
 import { z } from "zod";
+import type { JsonValue } from "../../../domain/canonical-json.js";
 import { localDatePart } from "../../../domain/clock.js";
 import {
   FailureDetailWireSchema,
@@ -35,7 +36,8 @@ import {
 } from "../../../domain/dashboard/run-detail.js";
 import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
 import type { FailureRecord } from "../../../domain/trust/failure.js";
-import type { RunRecord } from "../../../domain/run/record.js";
+import { runClaim, type RunRecord } from "../../../domain/run/record.js";
+import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
 import {
   readEventStreamLines,
   type EventStreamLine,
@@ -57,10 +59,45 @@ export interface RunDetailTrustDeps {
   countFailuresByFingerprint(fingerprint: string): number;
 }
 
+/**
+ * The slice of a workflow descriptor the context-data section reads (2i-C):
+ * the detail specs give every served value its field identity, and the
+ * `editData` capability is the ONLY source of "this field is correctable" —
+ * the same declaration the command kernel enforces on save. Structural and
+ * unbranded, so both the registry's broad descriptor view and a test fixture
+ * satisfy it.
+ */
+export interface RunDetailDescriptorView {
+  readonly details: readonly Readonly<{
+    key: string;
+    label: string;
+    source: Readonly<{ nodeId: string; fieldPath: string }>;
+  }>[];
+  readonly capabilities?: Readonly<{
+    editData?:
+      | boolean
+      | Readonly<{
+        fields: readonly Readonly<{ nodeId: string; fieldPath: string; label: string }>[];
+      }>;
+  }>;
+}
+
 export interface RunDetailQueryDeps {
   readonly stateRoot: string;
   readonly projection: RunQueueProjection;
-  readonly authority: { getRun(runId: string): RunRecord | undefined };
+  readonly authority: {
+    getRun(runId: string): RunRecord | undefined;
+    /** Doc 02 §5.7's "latest compatible attempt wins" read, for edit values. */
+    latestCheckpoint(
+      workflowId: string,
+      itemId: string,
+      nodeId: string,
+    ): RunCheckpointRecord | undefined;
+  };
+  /** Resolves the CURRENT registered descriptor for a workflow. */
+  readonly descriptors: {
+    resolve(workflowId: string): RunDetailDescriptorView | undefined;
+  };
   /** Absent until a composition wires the 2g trust services. */
   readonly trust?: RunDetailTrustDeps;
 }
@@ -324,16 +361,12 @@ export function buildRunSection(
 
   if (section === "context-data") {
     // The descriptor-declared detail patches ARE the display-safe data facts
-    // (doc 03 §1.1); nothing else is served until the 2g context ledger.
+    // (doc 03 §1.1), joined back to their declaring specs for field identity;
+    // the descriptor's editData fields extend them with the raw checkpoint
+    // scalars a correction targets (doc 06 §6, 2i-C).
     return RunDetailSectionResponseSchema.parse({
       section,
-      payload: {
-        runId,
-        entries: Object.entries(row.details).map(([label, value]) => ({
-          label,
-          valueRedacted: typeof value === "string" ? value : JSON.stringify(value),
-        })),
-      },
+      payload: buildContextDataPayload(deps, row, authority),
     });
   }
 
@@ -370,6 +403,269 @@ export function buildRunSection(
     section: "failure",
     payload: { state: "available", value: failureDetailWire(runId, failure, trust) },
   });
+}
+
+/* ── the context-data edit projection (2i-C) ─────────────────────────────── */
+
+type EditableScalar = string | number | boolean;
+
+/** Plain-string drafts; `RunDetailSectionResponseSchema.parse` brands them. */
+type ContextDataEditing =
+  | { state: "editable"; expectedVersion: number }
+  | { state: "locked"; reason: string };
+type ContextDataEntry = {
+  label: string;
+  valueRedacted: string;
+  edit:
+    | {
+      state: "editable";
+      nodeId: string;
+      fieldPath: string;
+      value: EditableScalar;
+      pendingCorrection:
+        | { state: "none" }
+        | { state: "pending"; value: EditableScalar; correctedAt: string };
+    }
+    | { state: "locked"; reason: string };
+};
+
+function isJsonRecord(value: JsonValue): value is { readonly [key: string]: JsonValue } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isEditableScalar(value: JsonValue): value is EditableScalar {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+}
+
+type ScalarLookup =
+  | { kind: "scalar"; value: EditableScalar }
+  | { kind: "absent" }
+  | { kind: "not-scalar" };
+
+/**
+ * Walk a stored output to the declared leaf. `absent` is a real outcome (the
+ * value routinely lives on one arm of a present/absent union), and a value
+ * that is not a single scalar is named as such rather than stringified into a
+ * field the operator could "correct" without understanding its shape.
+ */
+function scalarAtPath(output: JsonValue, fieldPath: string): ScalarLookup {
+  let current: JsonValue = output;
+  for (const part of fieldPath.split(".")) {
+    if (!isJsonRecord(current) || !Object.hasOwn(current, part)) return { kind: "absent" };
+    const next = current[part];
+    if (next === undefined) return { kind: "absent" };
+    current = next;
+  }
+  return isEditableScalar(current) ? { kind: "scalar", value: current } : { kind: "not-scalar" };
+}
+
+function displayScalar(value: EditableScalar): string {
+  const text = String(value);
+  return text.length === 0 ? "(empty)" : text;
+}
+
+/**
+ * The run-level half of the edit policy. Same facts, same order, as the
+ * kernel's `executeEditCheckpoint` refusal arms — this projection exists so
+ * the rail can show the reason BEFORE a save is attempted, never so the
+ * client can decide differently from the kernel.
+ */
+function contextEditingOf(
+  authority: RunRecord,
+  descriptor: RunDetailDescriptorView | undefined,
+): ContextDataEditing {
+  if (descriptor === undefined) {
+    return {
+      state: "locked",
+      reason: `workflow ${authority.envelope.workflow} has no registered descriptor in this build`,
+    };
+  }
+  const editData = descriptor.capabilities?.editData;
+  if (editData === undefined || typeof editData === "boolean") {
+    return { state: "locked", reason: "this workflow declares no correctable fields" };
+  }
+  if (runClaim(authority) !== undefined) {
+    return {
+      state: "locked",
+      reason: "the run is claimed by a worker — the resume consumes corrections and wins races; "
+        + "editing reopens when it parks or finishes",
+    };
+  }
+  const { state } = authority.lifecycle;
+  if (state !== "queued" && state !== "parked-gate") {
+    return {
+      state: "locked",
+      reason: `run is ${state}; corrections apply only to a non-executing resumable run`,
+    };
+  }
+  return { state: "editable", expectedVersion: authority.version };
+}
+
+type PendingCorrectionLookup =
+  | { state: "none" }
+  | { state: "pending"; value: EditableScalar; correctedAt: string }
+  | { state: "not-scalar" };
+
+function pendingCorrectionOf(
+  authority: RunRecord,
+  source: { nodeId: string; fieldPath: string },
+): PendingCorrectionLookup {
+  const pending = (authority.envelope.injected ?? []).find(
+    (patch) => String(patch.nodeId) === source.nodeId && patch.fieldPath === source.fieldPath,
+  );
+  if (pending === undefined) return { state: "none" };
+  if (!isEditableScalar(pending.value)) return { state: "not-scalar" };
+  return { state: "pending", value: pending.value, correctedAt: pending.correctedAt };
+}
+
+/**
+ * One entry for a correctable field: the raw recorded scalar from the latest
+ * compatible checkpoint plus any pending injected correction. `display` is
+ * the already-projected detail value when the field also backs a detail —
+ * the two views of the same leaf must not drift apart on the same row.
+ */
+function editableEntryOf(
+  deps: RunDetailQueryDeps,
+  row: RunFoldRecord,
+  authority: RunRecord,
+  label: string,
+  source: { nodeId: string; fieldPath: string },
+  display: string | undefined,
+): ContextDataEntry {
+  const stored = deps.authority.latestCheckpoint(
+    row.queued.workflow,
+    authority.envelope.itemId,
+    source.nodeId,
+  );
+  if (stored === undefined) {
+    return {
+      label,
+      valueRedacted: display === undefined ? "not recorded" : display,
+      edit: {
+        state: "locked",
+        reason: `step "${source.nodeId}" has no stored checkpoint yet; a correction supersedes a recorded fact`,
+      },
+    };
+  }
+  const lookup = scalarAtPath(stored.output.value, source.fieldPath);
+  if (lookup.kind === "absent") {
+    return {
+      label,
+      valueRedacted: display === undefined ? "not recorded on this outcome" : display,
+      edit: {
+        state: "locked",
+        reason: `the recorded outcome carries no ${source.fieldPath} — there is no stored value to correct`,
+      },
+    };
+  }
+  if (lookup.kind === "not-scalar") {
+    return {
+      label,
+      valueRedacted: display === undefined ? "structured value" : display,
+      edit: {
+        state: "locked",
+        reason: "not a single text/number value; structured output is corrected by a new run, not a field edit",
+      },
+    };
+  }
+  const pending = pendingCorrectionOf(authority, source);
+  if (pending.state === "not-scalar") {
+    return {
+      label,
+      valueRedacted: display === undefined ? displayScalar(lookup.value) : display,
+      edit: {
+        state: "locked",
+        reason: "a pending correction holds a structured value; it applies when the run resumes",
+      },
+    };
+  }
+  return {
+    label,
+    valueRedacted: display === undefined ? displayScalar(lookup.value) : display,
+    edit: {
+      state: "editable",
+      nodeId: source.nodeId,
+      fieldPath: source.fieldPath,
+      value: lookup.value,
+      pendingCorrection: pending,
+    },
+  };
+}
+
+function buildContextDataPayload(
+  deps: RunDetailQueryDeps,
+  row: RunFoldRecord,
+  authority: RunRecord,
+): { runId: string; editing: ContextDataEditing; entries: ContextDataEntry[] } {
+  const descriptor = deps.descriptors.resolve(row.queued.workflow);
+  const editing = contextEditingOf(authority, descriptor);
+  const editData = descriptor?.capabilities?.editData;
+  const editFields = typeof editData === "object" ? editData.fields : [];
+  const editByIdentity = new Map(
+    editFields.map((field) => [`${String(field.nodeId)}\0${field.fieldPath}`, field]),
+  );
+  const specs = new Map((descriptor?.details ?? []).map((spec) => [spec.key, spec]));
+
+  const entries: ContextDataEntry[] = [];
+  const covered = new Set<string>();
+  for (const [key, value] of Object.entries(row.details)) {
+    const spec = specs.get(key);
+    const display = typeof value === "string" ? value : JSON.stringify(value);
+    if (spec === undefined) {
+      // The key is real recorded data from a run that predates the current
+      // descriptor's detail set; it stays served, and stays uneditable
+      // because its field identity cannot be established.
+      entries.push({
+        label: key,
+        valueRedacted: display,
+        edit: {
+          state: "locked",
+          reason: "recorded under an earlier descriptor version; the current build does not know "
+            + "this value's field identity",
+        },
+      });
+      continue;
+    }
+    const identity = `${String(spec.source.nodeId)}\0${spec.source.fieldPath}`;
+    if (!editByIdentity.has(identity)) {
+      entries.push({
+        label: spec.label,
+        valueRedacted: display,
+        edit: { state: "locked", reason: "not declared correctable by this workflow" },
+      });
+      continue;
+    }
+    covered.add(identity);
+    entries.push(editableEntryOf(
+      deps,
+      row,
+      authority,
+      spec.label,
+      { nodeId: String(spec.source.nodeId), fieldPath: spec.source.fieldPath },
+      display,
+    ));
+  }
+  for (const field of editFields) {
+    const identity = `${String(field.nodeId)}\0${field.fieldPath}`;
+    if (covered.has(identity)) continue;
+    const stored = deps.authority.latestCheckpoint(
+      row.queued.workflow,
+      authority.envelope.itemId,
+      String(field.nodeId),
+    );
+    // The Data section lists values the run TOUCHED (doc 03 §1.1(c)); a
+    // declared-correctable field whose step never recorded is not among them.
+    if (stored === undefined) continue;
+    entries.push(editableEntryOf(
+      deps,
+      row,
+      authority,
+      field.label,
+      { nodeId: String(field.nodeId), fieldPath: field.fieldPath },
+      undefined,
+    ));
+  }
+  return { runId: authority.envelope.runId, editing, entries };
 }
 
 function receiptAbsenceReason(authority: RunRecord, trust?: RunDetailTrustDeps): string {

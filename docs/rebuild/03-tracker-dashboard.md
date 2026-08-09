@@ -1926,6 +1926,22 @@ stated need was to *feel* the editing in the context of the data, not to be hand
 Gating is still `actions[]` descriptors at the `data` placement, so a run that may not be edited
 is simply not sent a Save.
 
+**As-built (2i-C, 2026-08-08, D168) — the rail's Data section is wired end-to-end for reads.**
+`editPolicyFor` exists in `src/dashboard/surfaces/context-rail.tsx` and composes three policies,
+each carrying its own sentence onto the lock: the entry's field policy and the run-level policy
+arrive ON the `context-data` wire (doc 06 §6.4.1 owns that shape), and the live staleness signal
+is `liveLockReasonOf` over the day stream's queue-row status — there is still no per-run SSE
+client, and the queue row flipping out of `queued`/`awaiting-approval` is the same "this run was
+claimed while you were editing" fact, with the kernel's CAS as the authority either way. Editing
+enters on FOCUS of a value box; the rail widens to `--ds-w-context-rail-wide` through the log
+panel's grid (its first consumer), and Save issues one `run/edit-checkpoint` command whose applied
+result refetches the detail at the bumped `rowRevision` (which re-fetches every section through
+the same revision). A staged correction renders beside the recorded value it will supersede —
+"staged renders as staged" applied to corrections. Two (c) arms are NOT yet built and stay open:
+the `Load a prior run` / `Start a run from this data` footer, and `actions[]` gating at the
+`data` placement (the served-actions projection is still empty; the wire's `editing` union
+carries the gate until it lands).
+
 **Why the move.** Logs and Data were mutually exclusive tabs, so the operator could not watch a
 run's log stream and see what that run read and wrote at the same time. That mutual exclusion was a
 significant part of the reported clutter — the panel appeared to hold more than it did because

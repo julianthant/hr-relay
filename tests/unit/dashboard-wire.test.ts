@@ -222,7 +222,35 @@ describe("lazy detail and artifact resources", () => {
       { section: "receipt", payload: { state: "available", value: receiptWireFixture() } },
       { section: "review", payload: REVIEW_PAGE },
       { section: "people", payload: PEOPLE_PAGE },
-      { section: "context-data", payload: { runId: RUN_1, entries: [{ label: "EID", valueRedacted: "••••1234" }] } },
+      {
+        section: "context-data",
+        payload: {
+          runId: RUN_1,
+          editing: { state: "editable", expectedVersion: 3 },
+          entries: [
+            {
+              label: "EID",
+              valueRedacted: "••••1234",
+              edit: { state: "locked", reason: "not declared correctable by this workflow" },
+            },
+            {
+              label: "Starts on",
+              valueRedacted: "2026-07-15",
+              edit: {
+                state: "editable",
+                nodeId: "crm-dates",
+                fieldPath: "startsOn.value",
+                value: "2026-07-15",
+                pendingCorrection: {
+                  state: "pending",
+                  value: "2026-07-16",
+                  correctedAt: "2026-08-03T17:00:00.000Z",
+                },
+              },
+            },
+          ],
+        },
+      },
       { section: "context-evidence", payload: { runId: RUN_1, entries: [] } },
       { section: "context-attempts", payload: { runId: RUN_1, entries: [] } },
       { section: "failure", payload: { state: "available", value: failureDetailWireFixture({

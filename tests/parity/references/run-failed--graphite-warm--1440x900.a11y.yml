@@ -1,7 +1,7 @@
 # run-failed--graphite-warm--1440x900
 # adapter: fixture
 # fixture: run-failed
-# descriptorHash: a1c05d4e411f95dcd51ebb8b57780f20a41bbc0caa9ce20d21a9623db4da48bd
+# descriptorHash: 5e85d6a128fdace632299815aae6d6a444042732d49710b33898cbdaf036ffb8
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -132,7 +132,7 @@
     - region "Cause chain": "Cause chain primary — SUBJECT_MISMATCH cross-verify failed: subject mismatch between CRM and UCPath fingerprint eeeeeeeeeeee…no diagnostic bundle — no diagnostic bundle was captured; automatic capture is a separate 2g slice"
     - text: "What the run said 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath 9:36 AM Run failed at cross-verify; nothing was written 9:36 AM Run failed at cross-verify; nothing was written"
     - searchbox "Search logs"
-    - text: wf a1c05d4e
+    - text: wf 5e85d6a1
     - button "Run provenance"
   - complementary "Run data":
     - text: Run data

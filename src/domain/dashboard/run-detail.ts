@@ -20,6 +20,7 @@ import {
   WorkflowIdSchema,
   WriteBindingProofIdSchema,
 } from "../ids.js";
+import { ContractFieldPathSchema } from "../contracts/base.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
 import {
   FailureCauseSchema,
@@ -205,6 +206,61 @@ const ContextSectionSchema = z.strictObject({
 });
 
 /**
+ * A correctable value is a SCALAR leaf: the rail edits it as text and the
+ * kernel re-parses the whole post-patch output, so a structured value has no
+ * honest single-field edit affordance and stays locked with that reason.
+ */
+const EditableScalarSchema = z.union([z.string(), z.number(), z.boolean()]);
+
+/**
+ * Doc 06 §6 / doc 03 D19 (2i-C): the Data section carries, per entry, exactly
+ * what a checkpoint correction needs — the patch target identity and the raw
+ * recorded scalar — or the reason it is not editable, so `editPolicyFor` shows
+ * a reason instead of a dead control. `pendingCorrection` is the staged-write
+ * honesty rule applied to corrections: a saved patch rides `envelope.injected`
+ * and becomes authority only at replay, so until the run resumes the recorded
+ * value and the pending value are BOTH true and both render.
+ */
+const ContextDataEntryEditSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("editable"),
+    nodeId: NodeIdSchema,
+    fieldPath: ContractFieldPathSchema,
+    value: EditableScalarSchema,
+    pendingCorrection: z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("none") }),
+      z.strictObject({
+        state: z.literal("pending"),
+        value: EditableScalarSchema,
+        correctedAt: IsoInstantSchema,
+      }),
+    ]),
+  }),
+  z.strictObject({ state: z.literal("locked"), reason: z.string().min(1) }),
+]);
+
+const ContextDataSectionSchema = z.strictObject({
+  runId: RunIdSchema,
+  /**
+   * The run-level half of the edit policy, computed against raw authority
+   * lifecycle — the coarse `header.status` cannot distinguish `parked-gate`
+   * from an open gate on a running row, and a client-side guess would be a
+   * claim about whether a save can land. `expectedVersion` is the CAS basis
+   * for the values THIS response serves.
+   */
+  editing: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("editable"), expectedVersion: z.number().int().positive() }),
+    z.strictObject({ state: z.literal("locked"), reason: z.string().min(1) }),
+  ]),
+  entries: z.array(z.strictObject({
+    label: z.string().min(1),
+    valueRedacted: z.string().min(1),
+    edit: ContextDataEntryEditSchema,
+  })),
+});
+export type ContextDataSectionWire = z.infer<typeof ContextDataSectionSchema>;
+
+/**
  * The receipt section serves the WHOLE `RunEvidenceReceipt` (D140), not a
  * pointer to it. Doc 12 §2.2 puts redaction at capture time — "Redaction is
  * not deferred to the UI" — and the receipt's every value is already a
@@ -294,7 +350,7 @@ export const RunDetailSectionResponseSchema = z.discriminatedUnion("section", [
   z.strictObject({ section: z.literal("receipt"), payload: wireResourceSchema(ReceiptSectionSchema) }),
   z.strictObject({ section: z.literal("review"), payload: ReviewPageSchema }),
   z.strictObject({ section: z.literal("people"), payload: PeoplePageSchema }),
-  z.strictObject({ section: z.literal("context-data"), payload: ContextSectionSchema }),
+  z.strictObject({ section: z.literal("context-data"), payload: ContextDataSectionSchema }),
   z.strictObject({ section: z.literal("context-evidence"), payload: ContextSectionSchema }),
   z.strictObject({ section: z.literal("context-attempts"), payload: ContextSectionSchema }),
   z.strictObject({ section: z.literal("failure"), payload: wireResourceSchema(FailureDetailWireSchema) }),

@@ -669,8 +669,14 @@ export async function startSeededServer(
       stateRoot,
       projection,
       authority: {
-      getRun: (runId) => database.authority.runs.get(runId),
-    },
+        getRun: (runId) => database.authority.runs.get(runId),
+        latestCheckpoint: (workflowId, itemId, nodeId) =>
+          database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
+      },
+      descriptors: {
+        resolve: (workflowId) =>
+          (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
+      },
       trust: createReceiptService({ database, descriptors: [personLookupDescriptor] }),
     },
     commands,
