@@ -345,11 +345,10 @@
     {
       "name": "multi-worker-overlap",
       "file": "tests/unit/architecture/multi-worker-overlap.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: multi-worker-overlap.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/05-execution-parallelism.md",
+      "invariant": "ACTIVATED BY D182 (doc 05 §7.1 rows C1-C4). More than one REAL `runWorkerLoop` instance, with distinct worker ids, races ONE workflow queue over ONE shared authority database, and the durable claim set is sampled at every span event and every driver call rather than read once at the end. Two facts hold at once and pull in opposite directions: no worker EVER owns two rows in `claimed|validating|running` (doc 05 §0.3, sampled live so a double claim released before the end could not hide), and the fleet genuinely overlaps -- the observed maximum of workers holding work simultaneously equals the worker count, which is doc 05 §7's 'parallelism silently serializes' risk stated as a measurement. Every enqueued run is executed exactly once, claimed by exactly one worker, and ends terminal `done` at claim generation 1 and attempt 1, so a second claim or a requeue is visible in authority rather than only in a report. A row held by a live loop is never served to a sibling `claimNext` and the holder's own second `claimNext` throws by name. A sweep interleaved with a live heartbeat requeues only the genuinely stale row -- the freshly renewed claim keeps its owner, generation and attempt -- and the requeued row is proved re-claimable by the same live loop. A zombie heartbeat whose row was swept and re-owned reports `lost` and abandons instead of stamping a heartbeat over the new owner.",
+      "replacementRequired": true
     },
     {
       "name": "no-positional-identity",
@@ -530,11 +529,10 @@
     {
       "name": "worker-teardown-soak",
       "file": "tests/unit/architecture/worker-teardown-soak.test.ts",
-      "status": "planned",
-      "owner": "owning rebuild design doc",
-      "invariant": "Planned Phase 1+ guard: worker-teardown-soak.",
-      "replacementRequired": true,
-      "activationMilestone": "phase-1-or-later"
+      "status": "active",
+      "owner": "docs/rebuild/05-execution-parallelism.md",
+      "invariant": "ACTIVATED BY D182 (doc 05 §7.1 rows C5-C8). Doc 05 §7's first mechanical-guard row -- 'worker-soak test asserts max active claims per worker is exactly 1' -- named a test that did not exist; this is it, plus the teardown half. The soak drains 30 queued runs across 3 real `runWorkerLoop` instances over ONE authority database on a manual clock and a manual scheduler (no real timer participates), then proves authority intact rather than merely counting outcomes: every run terminal `done` exactly once at claim generation 1 and attempt 1, no row left in `claimed|validating|running`, exactly one `run_terminal_outbox` row per run, zero unresolved write intents, zero pending ledger outbox, and `AuthorityDatabase.inspectExistingReadOnly` re-reading the file so its ~30 named SQL invariants, quick_check and foreign-key scan all pass -- a soak that corrupted the claim index would still count 30 done runs. The ledger projector is asked and must AGREE there is nothing to project. Teardown: a stop signal mid-run abandons rather than terminalizing over a claim it can no longer prove, the interrupted lease is closed as `poisoned` (never as a clean worker-stop), the row is LEFT under its now-stale claim, and doc 05 §3's recovery sweep -- not the dying loop -- is what requeues it for a successor that drains it to `done`; `closeAll(\"worker-stop\")` closes nothing while a driver callback is in flight, refuses a SECOND concurrent `closeAll` by name, and refuses every new lease once teardown began; and an operation failure whose poison-close cannot prove closure raises one AggregateError naming BOTH, retains the resource as poisoned, refuses reuse, and still names every failing system when worker-stop aggregates.",
+      "replacementRequired": true
     },
     {
       "name": "workflow-editor-compile-integrity",
