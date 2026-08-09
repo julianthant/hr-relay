@@ -2534,3 +2534,95 @@ end an operator cannot act on.
   the light theme, leaving the dropzone heading near-invisible. It is identical in the committed
   baseline and is a sibling of the `paper-ink`-renders-dark residual already deferred to 2j's corpus
   work; fixing it here would re-freeze references for a reason unrelated to capture.
+
+---
+
+## 13. The two reference takeovers — the surface contract (2i-G, D176/D177)
+
+Doc 12 §5 owns what the explorer IS and §1.3 owns what the catalog IS; this section owns where they
+sit and what they refuse to look like.
+
+### 13.1 A read-only explorer must not look like an editor
+
+The shape this category always ships is the workflow-builder canvas: draggable rounded nodes, bezier
+edges, a palette down one side. On this surface that shape is a **lie** — it draws a mutation
+affordance over a graph nobody may mutate, and doc 12 §5.1 rejected the free-form visual programmer
+outright. It is refused.
+
+What a reader actually arrives holding is an id or a failure location (`separations/ucpath-transaction
+→ ucpath.smart-hr.ready-to-submit`), and what they must leave with is the exact node, contract, UI
+ids, scenarios and source paths. So **the identifier is the interface**: every id on the page is a
+`Chip`, which this system already renders monospaced and truncation-safe, and the page spends its
+whole budget on them.
+
+### 13.2 A structure rail beside a record column
+
+The rail carries the graph — nodes in declaration order, with a controller's downstream nodes
+**indented beneath it** so a branch case reads as "instead of" and a parallel branch as "alongside".
+`dependsOn` alone cannot express that difference; collapsing them would make a branch look like a
+fan-out that always runs. The record column carries the selected node's whole binding in one
+uninterrupted read, because the question is a lookup and a lookup that hides half its answer behind
+a second click is a worse index than the source tree.
+
+Two properties of the rail are pinned by test rather than by intent: every node appears **exactly
+once** whatever the control structure, and a node whose controller is declared *after* it still
+appears — a node missing from the rail is a graph the surface failed to show, which is worse than
+one drawn flat.
+
+The split keys on the **column**, not the window (see §Shell and layout): this is a takeover whose
+width changes with the workflow panel's mode. A container query cannot style its own container, so
+the query is asked from a wrapper — asking from the same element is a query that never matches, and
+it silently degrades to the stacked layout at every width.
+
+### 13.3 One saturated mark, spent on consequence
+
+Colour is restrained to the point of being an argument. Of six node kinds only **transaction** is
+tinted, because it is the one fact on the page that can change a real HR system; in the catalog only
+**observation** and a non-`observe` element `effect` are tinted, because an observation is what a
+subject binding and a completion proof are checked against and an `external-commit` element is what
+acts on a page. A page that colours six kinds six ways spends its whole colour budget on taxonomy
+and has nothing left for consequence. In every case the word travels beside the glyph, so the tint
+is never the only encoding.
+
+### 13.4 They are takeovers, and precedence is resolved in one place
+
+Both replace the queue at `?explore=<workflowId>` and `?catalog=<term>`, for §11.3's reason: a
+half-visible queue behind a reference view is the modal it deliberately is not. Two keys rather than
+one shared key, because the two are different scopes — the explorer opens on the ACTIVE workflow and
+the catalog is system-scoped — and a shared key would make "which is open" ambiguous.
+
+An **empty** `?catalog=` is meaningful: open, nothing typed. Presence rather than length is what
+opens it. Three takeover keys can be present on one link, so `activeTakeover` resolves the winner in
+ONE place (`intake` → `explore` → `catalog`): the operator's in-progress WORK outranks either
+reference view. Leaving that to whichever JSX branch is tested first is how two surfaces come to
+disagree about which of them is showing.
+
+Entry is two `ghost` buttons in the panel's action bar beside `Import spreadsheet`. They are
+secondary because neither is a command — neither takes an argument from the operator nor changes
+anything.
+
+### 13.5 As-built notes
+
+- **`ChipRow` is the wrong primitive at this width, and that is not a criticism of it.** Its
+  equal-width grid exists to stop an orphan in the queue's ~400px column. In a ~700px record column
+  holding a dozen SHORT facts (`code pl`, `version 1`) `auto-fit` cuts seven 160px tracks and leaves
+  every chip alone at the left of one; the shared ending edge is bought with gaps wide enough that
+  the set stops reading as a set. Both surfaces pack their facts in a wrapping flex row instead, and
+  the ragged right edge is the deliberate cost — the primitive's own note already says a row that is
+  not a track of peers "is a flex row, and the chip is one item in it".
+- **`--ds-w-explorer-measure` (1120px) is a reading measure, not a panel width.** A reference surface
+  given the full 1400px of a takeover sprays its facts across the panel. The content sits at the
+  panel's leading edge rather than centred, so the rail does not drift as the record column changes
+  height.
+- **A raw millisecond is arithmetic, not a fact.** `10002992` reads as `4h`, with the exact value on
+  the chip's `title`: a contract review needs the millisecond, a glance needs the hour.
+- **Motion is inherited, not extended.** Both takeovers arrive exactly as the intake takeover does
+  (4px from above, `ds-motion-enter`) — two takeovers sharing one region and arriving from opposite
+  edges read as two different products. The rail entry carries the house pressable pair
+  (`dsMotion.fast` + `active:translate-y-px`), the same one `Button` and `Chip` use. The record swap
+  and the live catalog filter are **deliberately unanimated**: one is list navigation and the other
+  fires on every keystroke, and both are exactly where motion only adds latency.
+- **The parity fixtures are the REAL projections.** A hand-written fixture graph would prove only
+  that the surface can render a shape somebody typed, and doc 07's exit criterion is about the
+  as-built graph. A change to the graph now moves these references, which is the drift signal the
+  corpus exists to give.

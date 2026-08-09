@@ -911,6 +911,76 @@ driver UI ids. Presentation overrides may migrate into Phase B once they round-t
 same descriptor projection. Generated `config/workflow-design/*.md` files are not runtime
 authority; the descriptor and validated draft history are.
 
+### 5.7 Phase A as-built — the explorer is a projection, and it proves it (2026-08-09, D176)
+
+Phase A landed in 2i-G. §5.2's list is served, with two named exclusions below.
+
+**The derivation, and why it is the whole contract.** `buildWorkflowExplorer`
+(`src/server/dashboard/queries/explorer.ts`) reads the ONE composition root — `WORKFLOW_MODULES` —
+plus each descriptor's factory-sealed `workflowProjections` / `descriptorRuntimeNodes` /
+`workflowTerminalResultExecution`, the generated build manifest, `config/pending-impl-bindings.json`,
+and the in-code UI registries. There is no literal node list, no per-workflow switch, and no
+hand-maintained table anywhere in it. A workflow appears because it is registered and a node appears
+because the factory returned it. `workflow-editor-compile-integrity` asserts that over the REAL
+registry in both directions, so "this is the as-built graph" is a checkable claim rather than a
+caption.
+
+**Source links RESOLVE; they are never interpolated.** A path is rendered to a human — or to an AI
+about to open it — as "the file that owns this fact", so every path is a candidate looked up in a
+real listing: the manifest's own fingerprinted source closure for a contract and its store
+implementation, the scenario directory listing for a scenario. A miss is reported `unresolved`
+carrying the exact path it tried and why. Printing `src/domain/contracts/<id>.ts` because the
+convention usually holds is the plausible-but-wrong value the charter forbids. A workflow
+mini-store's `workflow:` scheme is translated to a path segment in exactly one place, and the result
+is then checked like every other candidate.
+
+**UI links are reversed out of the catalog's own `taskUses`, not re-derived.** The relationship is
+already data in the driver registries (§1.2); walking recipes to recompute it would produce a second
+answer that could disagree with the one `semantic-ui-registry` pins.
+
+**A closure is reported as its presence, never as decompiled prose.** `bind`, `choose`, `when`,
+`derive`, and the write-safety key function are shown as the shape they sit in plus their source
+file. `inputSubject` states whether it is a declared constant or a function of the input rather than
+being evaluated against a fabricated input to print a specimen answer. A freshness bound of
+`Infinity` crosses the wire as the word `unbounded`: as a raw number `JSON.stringify` turns it into
+`null`, which reads as a MISSING bound rather than a deliberate one.
+
+**Two exclusions, each with its reason.**
+
+- **The live-run overlay** (§5.2's last bullet — the same graph carrying timings, attempts,
+  checkpoint reuse, failures, children, evidence and safe actions) is NOT in this slice. Doc 03's
+  run-detail timeline already serves those facts per run; joining the two projections is its own
+  work with its own wire, and shipping half of it would put a second, thinner run view beside the
+  one operators already use.
+- **Scenario coverage CLAIMS** are absent by construction. What a scenario claims to cover lives in
+  the executable corpus (`tests/scenario/coverage-claims.ts`), `scenario-coverage` already audits
+  those claims against the graph in both directions, and `src/` importing a test module to re-serve
+  them would put a second copy of that relationship in the product. Each node's own derived coverage
+  points are served instead — those come from the graph, which is where they are true.
+
+**Phase B is not started, and the guard says so.** `workflow-editor-compile-integrity` is `active`
+with only the arms Phase A can hold; §5.3/§5.4's draft union, stale-base apply and code-change brief
+have no code, so the guard has no arms for them and its inventory entry states that in as many
+words. The guard gains them in the commit that builds them.
+
+### 5.8 The generated UI catalog gets a surface, and it serves the COMMITTED artifact (2026-08-09, D177)
+
+§1.3's catalog was reachable only from `npm run selector:search` and two markdown projections. It
+now has a read-only surface, and two rules make it trustworthy.
+
+**It serves the committed bytes and never regenerates.** `npm run ui:catalog` is the ONE writer. A
+surface that regenerated on read would silently heal a stale checkout mid-session — precisely the
+defect the 2026-08-03 tracked-artifact lesson records. So the query opens
+`generated/ui-catalog.json` read-only, parses it, and then asserts through the drivers' own
+`assertSafeUiCatalogFresh` that what is on disk still equals what the registries compose. A stale
+artifact **throws with the generator's own remediation** rather than being served: a catalog that
+disagrees with the drivers describes selectors the system does not use, and an operator or an AI
+acting on it would be acting on fiction.
+
+**Provenance sits beside the id, not behind it.** §10 says plainly that the registry cannot make a
+stale live verification current, so every row carries its `verifiedAt` and both evidence refs at the
+same weight as its id — never folded into a disclosure a hurried reader skips.
+
 ---
 
 ## 6. Notifications—durable, event-derived, and actionable

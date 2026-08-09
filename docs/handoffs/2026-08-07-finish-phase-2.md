@@ -327,11 +327,28 @@ The BFF serves 7 endpoints today; each slice names what it adds.
         URL is the working path today.
       · **Pre-existing, not introduced:** the intake takeover renders a dark shell under the light
         theme (sibling of the `paper-ink`-renders-dark residual already deferred to 2j).
-- [ ] **2i-G — LATER tier:** read-only Workflow Explorer (doc 12 §5 Phase A; guard
-      `workflow-editor-compile-integrity`), AI advisories (doc 12 §4.4; guard
-      `ai-advisory-no-authority`; the normalization `ai` arm + bootstrap unavailable-reason come
-      off), generated UI catalog surface, Archive/version-bump UI (with task D80's model),
-      activity report (doc 13 §6.7).
+- [ ] **2i-G — PART 1 LANDED 2026-08-09 (D176/D177); the rest is still open.**
+  - [x] ~~Read-only Workflow Explorer (doc 12 §5 Phase A)~~ — **DONE.** Projection derived from
+        `WORKFLOW_MODULES` at `GET /api/v1/explorer`, surface at `?explore=<workflowId>`. Doc 12
+        §5.7 is the as-built; doc 03 §13 owns placement. Two named exclusions: the §5.2 live-run
+        overlay (doc 03's timeline already serves it per run) and scenario coverage *claims* (they
+        live in the test corpus and `scenario-coverage` already audits them both ways).
+  - [x] ~~Guard `workflow-editor-compile-integrity`~~ — **ACTIVATED, SCOPED.** It holds doc 10
+        §3.10's round-trip sentence over the REAL registry in both directions, Phase A's read-only
+        boundary, and D79a's no-DSL trim. **It has NO Phase-B arms** (§5.3/§5.4's draft union,
+        stale-base apply, code-change brief) because none of that exists; the inventory entry says
+        so and the guard gains them in the commit that builds them.
+  - [x] ~~Generated UI catalog surface~~ — **DONE.** `GET /api/v1/ui-catalog` serves the COMMITTED
+        `generated/ui-catalog.json` after asserting it still describes the drivers; a stale artifact
+        throws with the generator's own remediation and the surface never regenerates. Surface at
+        `?catalog=<term>`.
+  - [ ] **AI advisories** (doc 12 §4.4; guard `ai-advisory-no-authority`; the normalization `ai` arm
+        + bootstrap unavailable-reason come off). Untouched.
+  - [ ] **Archive / version-bump UI** (with task D80's model). Untouched.
+  - [ ] **Activity report** (doc 13 §6.7). Untouched.
+  - [ ] **Explorer Phase B** (doc 12 §5.3/§5.4) — the closed presentation/policy edit union, the
+        stale-base apply refusal, the code-change brief. Not started; it is the other half of doc
+        07's explorer exit criterion.
 - [x] ~~The three presentation defects deferred from Phase 1~~ — **STALE ITEM: all three were
       fixed 2026-08-04** (D123 skipped-arm, D124 terminal duration, D126 accessible-name
       collision) per doc 03 §"Phase 1g/1i-spine as-built presentation deltas" and doc 07's
@@ -353,7 +370,10 @@ The BFF serves 7 endpoints today; each slice names what it adds.
       Archive, an archived run renders with zero old-version code paths, the ledger is untouched,
       relaunch starts a fresh current-version run, and a bump REFUSES while any prior-version run is
       non-terminal. **Nothing of this exists yet.**
-- [ ] Read-only explorer renders the as-built person-lookup graph accurately (2i)
+- [x] ~~Read-only explorer renders the as-built person-lookup graph accurately (2i)~~ — **MET
+      2026-08-09 (2i-G, D176)**, proved by `workflow-editor-compile-integrity` over the real
+      registry plus three parity states. The EDIT half of doc 07's same bullet is Phase B and
+      remains open.
 - [ ] Capture fixtures prove restart survival + no duplicate photos/handoffs (2h-F)
 - [ ] AI-advisory fixtures prove redaction, strict output, provider exhaustion, zero authority edge (2i)
 - [ ] Real-shaped copied authority DB survives corruption → restore → rebuild (2j)

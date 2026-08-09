@@ -540,10 +540,18 @@ explicit operator architecture decision; a migration questionnaire cannot enable
   does not exist, so its concurrency/tail-loss arms move to 2g with it. Recovery demonstrates that one `absent` observation cannot retry, durable
   `not_before` scheduling occupies no worker, and only contract-qualified negative
   settlement may increment the generation.
-- Read-only explorer accurately renders the as-built person-lookup graph/task/UI/scenario/result
-  dependencies and exact source links. Every supported constrained edit passes compile+scenario+
+- ~~Read-only explorer accurately renders the as-built person-lookup graph/task/UI/scenario/result
+  dependencies and exact source links.~~ **MET 2026-08-09 (2i-G, D176).** The projection is derived
+  from the ONE composition root and `workflow-editor-compile-integrity` asserts the round-trip over
+  the REAL registry in both directions — node identities/order/kinds/`dependsOn` equal
+  `descriptorRuntimeNodes`, rendered task ids equal `workflowProjections(...).contracts`, every UI id
+  equals the catalog's own `taskUses`, and every printed source link resolves to a git-tracked file.
+  Doc 12 §5.7 records the two named exclusions (the live-run overlay; scenario coverage *claims*).
+  Every supported constrained edit passes compile+scenario+
   diff+version+restart-gated atomic apply+rollback; every prohibited code/selector/proof edit
   refuses loudly and generates a code-change brief. (No DSL authoring mode exists to test — D79a.)
+  **The edit half is Phase B and remains unbuilt** — doc 12 §5.3/§5.4; the guard carries no arms for
+  it and its inventory entry says so.
 - **Tail criteria** (formerly Phase-1 exits, now due here): every terminal fixture emits a complete
   evidence receipt/confidence or a structured failure + redacted diagnostic bundle, and **D82 is
   demonstrated on a real receipt** — the operator completes a double-check from the row alone.
