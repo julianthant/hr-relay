@@ -104,14 +104,44 @@ has found a defect every single time it has been run.
 
 ### Remaining — 2i (operator surface)
 
-- [ ] Evidence / failure / notification / run-explain views over the 2g records
-- [ ] Storage health + backups surface
-- [ ] Edit Data + intake + capture UI
-- [ ] Generated UI catalog surface
-- [ ] Read-only **Workflow Explorer** over tasks/delegation/scenarios/source links
-- [ ] Optional read-only AI advisories
-- [ ] The three presentation defects deferred from Phase 1 — doc 03 §"Phase 1g/1i-spine as-built
-      presentation deltas" and doc 07 §Phase 1's exit-criteria block
+Sliced 2026-08-08 from the landscape recon (docs 03/12/13 + the dashboard tree). The SHOULD tier
+(build before the first migration) comes first; the LATER tier may reorder but blocks Phase 3.
+The BFF serves 7 endpoints today; each slice names what it adds.
+
+- [ ] **2i-A — trust surfaces (START HERE).** The receipt and failure wires are D140/D142-complete
+      (`GET /api/v1/runs/:runId/:section` already serves whole `RunEvidenceReceipt` and the
+      whitelisted `FailureDetailWireSchema`), but `receipt.tsx:81-89` and
+      `log-panel.tsx:402-453` still render 2g-era placeholders that DISCARD the served content
+      (writeState/subject/causeChain/diagnosticBundle/sameFingerprintSeen). Pure rendering work:
+      the full receipt view (doc 12 §2.3's acceptance: "complete the double-check without
+      opening UCPath"), the failure detail (writeState unconditional, never behind disclosure),
+      a failure tab in `TAB_ORDER`, new parity references for both.
+- [ ] **2i-B — notification bell + inbox.** Activate the DEFERRED notification command family
+      (read/unread/snooze — the D166/D167 activation pattern), add the lifecycle route, and the
+      top-bar bell + inbox UI (doc 03 §2.6; the bell is "ABSENT rather than stubbed" at
+      `top-bar.tsx:7-10`). D138 ordering already holds server-side.
+- [ ] **2i-C — Edit Data rail.** Client half only (server fully active per D166): `editPolicyFor`
+      with the reason always shown, the widened rail (`--ds-w-context-rail-wide`, 520px), Save →
+      `run/edit-checkpoint`, the SSE `run.claimed` staleness signal disabling Save (doc 03 D19,
+      doc 06 §6.1/§6.4).
+- [ ] **2i-D — Settings + storage health/doctor.** The doctor/backup wire + Settings section
+      (doc 03 §2.5); `StorageHealthSummaryWireSchema` carries only a summary today. Feeds the
+      `preflight-coverage` planned guard.
+- [ ] **2i-E — intake UI.** Upload → mapping grid (suggestions never pre-applied) → validation
+      review (rows split, per-cell errors) → manifest + rerunDiff → run (doc 06 §2.2/§5.0);
+      backend as-built through D148/D159. New BFF intake routes.
+- [ ] **2i-F — capture surface.** The token-scoped phone routes (fail-closed enumeration), QR
+      start, the real PDF bundler + intake-enqueue wiring into D167's seams, `capture.ingress`
+      dependency handling, and ACTIVATE `capture-durability-and-scope`.
+- [ ] **2i-G — LATER tier:** read-only Workflow Explorer (doc 12 §5 Phase A; guard
+      `workflow-editor-compile-integrity`), AI advisories (doc 12 §4.4; guard
+      `ai-advisory-no-authority`; the normalization `ai` arm + bootstrap unavailable-reason come
+      off), generated UI catalog surface, Archive/version-bump UI (with task D80's model),
+      activity report (doc 13 §6.7).
+- [x] ~~The three presentation defects deferred from Phase 1~~ — **STALE ITEM: all three were
+      fixed 2026-08-04** (D123 skipped-arm, D124 terminal duration, D126 accessible-name
+      collision) per doc 03 §"Phase 1g/1i-spine as-built presentation deltas" and doc 07's
+      Phase-1 exit block ("ALL THREE FIXED"). Nothing remains.
 
 ### Remaining — 2j (integration / restore / soak / docs gate)
 
