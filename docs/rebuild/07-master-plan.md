@@ -546,8 +546,8 @@ protocol is unchanged by it.
   `commit` that returned at request time so the verifier's reload cancelled the in-flight save. The
   exit line was simply never updated to match §3.8 and doc 09 §Phase-2 controlled-commit as-built,
   both of which recorded MET on 2026-08-04.)*
-- Crash/outbox fixtures and context-exclusive lease tests remain green under
-  multiple workers. **MET 2026-08-04** over the REAL Kuali store and a real authority database:
+- ~~Crash/outbox fixtures and context-exclusive lease tests remain green under
+  multiple workers.~~ **MET 2026-08-04, and closed out in 2j (D182).** Over the REAL Kuali store and a real authority database:
   crash injection at every inner four-row-primitive seam and every outer beat-⑦ seam, the present /
   absent recovery arms, browser-context cleanup on a post-fence park, and two workers on one
   database admitting exactly one fence. ~~**The ordered LEDGER PROJECTOR fixtures are not buildable
