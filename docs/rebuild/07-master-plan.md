@@ -858,6 +858,23 @@ The initial grouped decisions are:
 | one-off debug/dev helpers (for example Kronos debug and dashboard dev components) | port only if a named supported diagnostic remains; otherwise retire with zero-consumer search plus accepted replacement/evidence |
 | general `utils`/infra helpers | no bulk copy; each consumer-driven port maps to domain/infra/store ownership, and the capability guard blocks an orphan at cutover |
 
+**Entry semantics as-built (D184, 2026-08-09).** The union above is unchanged in intent; three
+things are now pinned by `legacy-capability-disposition` rather than left to prose.
+
+- **`open` carries a required `reason`.** `{kind:"open", milestone}` alone is how 73 of 78 entries
+  came to name milestones that had already shipped — nothing in the record contradicted them. An
+  entry that moves to a later milestone must say why it moved.
+- **`status` is the disposition's projection, not a second opinion.** It is
+  `open | implemented | retired | retirement-candidate`, mapped one-to-one from the disposition
+  kind (`native`/`replaced` → `implemented`). A two-valued flag would have had to call a
+  retirement "implemented".
+- **Every disposition arm carries `milestone`,** including `candidateForRetirement`, so
+  `ownerMilestone` has something exact to agree with.
+
+And the rule the sweep is applied under: **a wrong `native` claim is worse than an honest `open`.**
+A family whose core landed but whose operator-visible half did not stays `open` and names what is
+missing; only an evidenced, resolvable target closes an entry.
+
 At every workflow rebuild-ready milestone, the commit updates affected capability entries and the
 legacy-change-accounting map. Before cutover, the guard requires zero undecided/missing entries,
 every `retired` target decision has evidence, every native/replaced target resolves, every old

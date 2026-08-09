@@ -262,6 +262,18 @@ describe("descriptor coverage", () => {
       }],
     });
     assert.match(stale.join("\n"), /no registered descriptor uses/);
+    // D184: the OTHER staleness — a pending entry a store now implements. Its
+    // arm had no fixture, so "delete the entry" was enforced only by the empty
+    // set happening to be correct; an empty allowlist cannot prove an arm.
+    const nowBound = auditImplBindings({
+      ...bindings,
+      tasks: [...bindings.tasks, {
+        taskId: TaskIdSchema.parse("ucpath/search-person-org"),
+        workflowId: "person-lookup",
+        note: "fixture — a registered store implements this contract today",
+      }],
+    });
+    assert.match(nowBound.join("\n"), /which a store now implements — delete the entry/);
 
     const module = WORKFLOW_MODULES[0];
     if (module === undefined) throw new Error("module fixture requires Person Lookup");

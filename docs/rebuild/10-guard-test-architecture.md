@@ -740,6 +740,127 @@ read while still permitting replay-safe browser downloads.
   inventory in both directions. A missing ServiceNow/SharePoint/Old-Kronos endpoint or provider key,
   an unregistered `process.env` read, and a stale registry entry all fail with the exact owner.
 
+#### 3.11 as-built — the capability-closure sweep (D184, 2026-08-09, 2j)
+
+The normative text above is unchanged. What follows is what actually landed, and what the guard
+had been failing to hold until it did.
+
+**What was broken.** `legacy-capability-disposition` proved exactly two things: every discovered
+legacy path is owned exactly once, and every `sourcePaths` entry still exists in the legacy repo.
+It never read a *disposition*. So 73 of 78 entries sat at `status:"open"` with
+`disposition:{kind:"open"}`, and **53 of those named a milestone that had already shipped** — 49 on
+`2i`, 4 on `2h`, plus the 1b/1f/1i-spine strays. An entry that says "open, owner 2i" after 2i ships
+is not a work item; it is a claim nobody can act on, and this is the file that gates cutover
+(`cutoverRequiresZeroOpen: true`). "Cutover-readiness mode" had been prose here since round 8.
+
+**The re-disposition.** Every entry was re-decided against the rebuild *tree*, never against the
+plan. 27 close as `native`/`replaced` with the real paths and the accepted differences; one closes
+as `retired`; 50 stay open because they are genuinely not built, each moved to the milestone that
+will build it with the reason recorded. The rule applied throughout: **a wrong `native` claim is
+worse than an honest `open`**, so a family whose core landed but whose operator-visible half did
+not (the Log Panel without its screenshot gallery, Settings without an editor, capture without an
+operator photo review) stays open and says exactly what is missing.
+
+**Three vocabulary additions**, all sanctioned by doc 07 §3.6 rather than invented here:
+
+- `open` gains a required non-empty `reason`. A bare `{kind, milestone}` is *how* 73 entries came
+  to name shipped milestones — there was nothing in the record to contradict.
+- `retired` joins the used dispositions (one entry: legacy's dev-only `?view=` scaffolding).
+- `status` becomes `open | implemented | retired | retirement-candidate`, an exact projection of
+  the disposition. A two-valued flag would have had to call a retirement "implemented".
+
+Every disposition arm also carries `milestone`, including `candidateForRetirement`, so
+`ownerMilestone` has something to be checked against.
+
+**The five audits.** The inventory is now parsed by a recursively strict zod schema inside the
+guard — which *is* the proxy-free arm, since `proxy` is not in the union — and:
+
+1. `status` is the disposition's projection through one closed table, both ways.
+2. `ownerMilestone` must equal the milestone of the disposition that decided it.
+3. every `native.targetIds` / `replaced.replacement` resolves to a git-visible path in **this**
+   repo, directories included.
+4. no entry may be `open` while its owner is at or before the milestone the runtime reports as
+   `completedThrough`.
+5. every `verificationEvidence` token parses as one of four checkable forms — `npm run <script>`
+   present in `package.json`, `legacy-source-present:<path>`,
+   `ported-with-provenance:<commit>:<path>:<blob>`, or a repo path — **and a decided entry must
+   cite at least one rebuild path or script.** "The legacy file still exists" was the only evidence
+   73 entries carried, and it proves nothing about this repo.
+
+**The completed set is DERIVED, not typed.** Doc 07's ordered work items are the guard's one
+milestone enum, and the marker is obtained by invoking the real `phase` command
+(`startRebuildRuntime(..., ["phase"])`) — the same thing an operator runs. A hand-typed list of
+finished milestones is a second answer that can disagree with the product. **Closing a tail is
+therefore what arms the next sweep:** advancing `COMPLETED_THROUGH` in
+`src/core/runtime-composition.ts` is the act that forces the next re-disposition, and it will fail
+loud, by entry id, naming every stranded item. Two non-vacuity assertions stop the sweep from
+passing by looking at nothing. Nine negative controls drive the audit against mutated fixtures,
+one per arm plus the schema refusals.
+
+**Where the unbuilt entries actually belong.** The first pass parked sixteen on `2i` and one on
+`2j`, which was the wrong reading of what this file is for. `cutoverRequiresZeroOpen` gates
+**cutover** — doc 07 §6's whole-program flip — not a Phase-2 tail, and §2's row 3 already names the
+home for everything Phase 2 does not build: *per-workflow migration, **plus explicit non-workflow
+capability closure (§3.6)***, with its exit requiring every inventory entry to reach
+native/replaced/retired. Assigning 49 legacy operator surfaces to "milestone 2i" was an early guess
+made in 1a, long before 2i was sliced; the operator's actual 2i (2i-A…2i-G, D168–D180) never
+contained them. All seventeen are therefore re-milestoned to `phase-3-workflow-migration` — a
+re-milestoning, never a re-classification: every one keeps `status:"open"`, and nothing was
+promoted to `native`/`replaced` to make a gate green. Four groups, each with the deciding reason in
+the entry itself:
+
+- **Explorer Phase B (4)** — `workflow-modifier`, `workflow-design`, `workflow-presentation`,
+  `build-data-bank`. **D186** defers Phase B out of Phase 2 on D79a's own argument and names a
+  checkable trigger (the second production workflow whose presentation/policy an operator wants to
+  change without a code change), explicitly *reassigning* the criterion to the migration that first
+  needs it.
+- **Settings editing (2)** — the surface and its route. **D169** already records editable settings
+  as a deferred command family; the surface says so in its own header.
+- **The producerless advisory surfaces (5)** — `ai-assist`, `service-llm`, and the three ops
+  scripts. **D178** records run summary, record sanity check and selector suggestion as having no
+  producer and no surface arm, and `AdvisorySurfaceIdSchema` is closed, so each is a declared schema
+  change. §3.6 calls these adapters *optional* with the deterministic paths primary, so each closes
+  as a build-or-retire decision.
+- **Consumer-gated operator surfaces (6)** — bulk/browser controls, per-instance daemon stop,
+  cross-run search and its nav surface, the operator-side capture photo review, and static asset
+  serving. Each is a fact about operating *many* runs, or is blocked on the artifact-bytes route;
+  the tree has two workflows and no run corpus, so shaping them now would fix their facets and
+  affordances against nothing.
+
+The milestone id is coarse by construction — doc 07 has no finer ordered item past 2j — so the
+granularity lives where D184 put it: every entry's `reason` names what is missing and what decides
+it, and §3.3's order plus §3.6's grouped decisions are where each one actually lands.
+
+**One item is called out because 2j closed over it.** `legacy-route-static`: the production BFF
+serves **no frontend bytes at all** — `http-server.ts` has no static handler, `api.ts` 404s
+everything unrouted through `app.notFound`, and the only `dist/dashboard` servers in the tree are
+test-only. `api.ts` allow-lists `/capture.html` for the phone host gate while nothing in production
+serves it, so the phone capture page has no delivery path from the BFF. That is base-integration
+work, which was 2j's own scope, and 2j closed (D181–D186) without it. It is a **hard cutover
+blocker**: cutover flips the operator onto this runtime, and a runtime that cannot deliver its own
+frontend has no operator surface at all.
+
+**The inventory must never gate the program's own progress.** A tail that closes with an entry
+still parked on it is a record-keeping defect, not a reason to stop — so the guard runs the sweep
+AHEAD, asserting a clean audit for *every* base work item through `2j`. `completedThrough` stays
+strictly typed as a doc-07 work item, because its position in that order is the whole mechanism;
+`active` is deliberately a plain string, since past 2j it names a §3.3 **migration** rather than a
+base work item, and parsing it strictly would make an unrelated schema refuse to run the moment the
+marker advanced.
+
+**The two sibling sweeps in the same decision.** D107's pending-impl bindings already audit both
+directions plus two extras, and the checked-in empty set is correct against the as-built — but its
+"a store now implements this, delete the entry" arm had **no fixture**, so it was enforced only by
+the empty set happening to be right. An empty allowlist cannot prove an arm; it now has one.
+`provider-capability-boundary`'s exact `src/infra/providers` file list is airtight in the
+tree→guard direction, but two defects sat on the other side: `ADMISSION_MODULE_IMPORTERS` listed
+the admission module as its own importer (unreachable — the arm resolves *imports*), and the D68
+declared provider inventory had drifted from the built adapter tree with nothing watching (groq,
+mistral, openrouter and sambanova declare `ocr.extract` + `ai.advisory` and have no adapter
+module). Both are now reconciled both ways: every allowlisted path must be a git-visible module,
+and every `ProviderId` carries either a reviewed adapter-module list whose paths exist or a
+reviewed declared-without-adapter reason.
+
 ### 3.13 Round-8 guards (2026-07-26) — the decisions that need mechanical teeth
 
 Four ratified decisions are worthless as prose. Each gets a guard, and each guard is listed in the

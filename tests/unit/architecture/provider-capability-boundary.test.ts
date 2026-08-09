@@ -7,6 +7,7 @@ import ts from "typescript";
 import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, PROVIDER_CAPABILITY_CONFIG_KEYS, providerBudget } from "../../../src/domain/config/schema.js";
 import { ProviderCapabilityIdSchema } from "../../../src/domain/ids.js";
+import { PROVIDER_ADAPTER_SPECS, ProviderIdSchema } from "../../../src/domain/runtime-dependencies.js";
 import { createDeterministicProviderHarness } from "../../../src/infra/providers/deterministic-provider.js";
 import { gitVisibleFiles, REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 
@@ -64,8 +65,12 @@ const ADMITTED_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
   "src/core/provider-admission.ts",
   "src/core/run-executor.ts",
 ]);
+// D184: the admission module itself was listed here and could never suppress
+// an issue — `resolveLocal` resolves an IMPORT, and no module imports itself —
+// so it was an allowlist entry that looked like a relaxation and was not one.
+// An allowlist that carries dead names cannot be read as the reviewed set of
+// exceptions, which is the only thing an allowlist is for.
 const ADMISSION_MODULE_IMPORTERS: ReadonlySet<string> = new Set([
-  "src/core/provider-admission.ts",
   "src/core/run-executor.ts",
   "src/server/worker/compose.ts",
   // D178. The dashboard process became a second admitted-provider consumer
@@ -202,6 +207,67 @@ describe("provider capability boundary", () => {
         + " and the D165 rotation pool; a new production adapter joins this list deliberately, in"
         + " the same commit that reviews it",
     );
+  });
+
+  it("keeps every allowlisted name and every declared provider resolvable (D184)", () => {
+    // An allowlist entry that names nothing is indistinguishable from a
+    // relaxation nobody reviewed, so every name resolves or the guard fails.
+    const visible = new Set(
+      gitVisibleFiles(["src"]).map((path) => relative(REPO_ROOT, path).replaceAll("\\", "/")),
+    );
+    for (const [name, allowlist] of Object.entries({
+      PROVIDER_CLIENT_TYPE_OWNERS,
+      ADMITTED_CLIENT_MINT_CALLERS,
+      ADMISSION_MODULE_IMPORTERS,
+    })) {
+      for (const path of allowlist) {
+        assert.ok(visible.has(path), `${name} names ${path}, which is not a git-visible module`);
+      }
+    }
+
+    // The D68 runtime-dependency inventory declares which PROVIDERS serve
+    // which capability — endpoints, secret families, model env names. It is
+    // not the same question as "does an adapter module exist", and the two
+    // drifted apart silently: four declared providers have no adapter at all.
+    // Reconciling them both ways makes adding a fifth a deliberate act.
+    const BUILT_PROVIDER_ADAPTERS: Readonly<Record<string, readonly string[]>> = {
+      gemini: [
+        "src/infra/providers/gemini-ocr-extract.ts",
+        "src/infra/providers/gemini-advisory.ts",
+        "src/infra/providers/gemini-transport.ts",
+      ],
+      census: ["src/infra/providers/geocode-adapters.ts"],
+      nominatim: ["src/infra/providers/geocode-adapters.ts"],
+    };
+    const DECLARED_WITHOUT_ADAPTER: Readonly<Record<string, string>> = {
+      groq: "Legacy OCR/LLM key family carried forward as ENV inventory only; D161 built the gemini adapter alone and the pool rotates gemini keys. A groq adapter is a 2h-shaped piece of work nobody has scheduled.",
+      mistral: "Same as groq — declared endpoint plus key family, no adapter module.",
+      openrouter: "Same as groq — declared endpoint plus key family, no adapter module.",
+      sambanova: "Same as groq — declared endpoint plus key family, no adapter module.",
+    };
+    for (const provider of ProviderIdSchema.options) {
+      const built = BUILT_PROVIDER_ADAPTERS[provider];
+      const declaredOnly = DECLARED_WITHOUT_ADAPTER[provider];
+      assert.equal(
+        (built === undefined) !== (declaredOnly === undefined),
+        true,
+        `provider ${provider} must have exactly one of a built adapter module list or a reviewed declared-without-adapter reason`,
+      );
+      for (const path of built ?? []) {
+        assert.ok(visible.has(path), `provider ${provider} names adapter module ${path}, which does not exist`);
+      }
+      assert.ok((declaredOnly ?? "x").trim().length > 0, `provider ${provider}: the declared-without-adapter reason must be non-empty`);
+    }
+    for (const provider of [...Object.keys(BUILT_PROVIDER_ADAPTERS), ...Object.keys(DECLARED_WITHOUT_ADAPTER)]) {
+      assert.ok(
+        (ProviderIdSchema.options as readonly string[]).includes(provider),
+        `${provider} is reviewed here but is not a declared ProviderId — delete the entry`,
+      );
+      assert.ok(
+        PROVIDER_ADAPTER_SPECS.some((spec) => spec.provider === provider),
+        `${provider} is reviewed here but has no PROVIDER_ADAPTER_SPECS entry`,
+      );
+    }
   });
 
   it("catches direct network use and adapter forgery outside infra providers", () => {
