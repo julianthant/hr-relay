@@ -125,7 +125,10 @@ export function createCaptureFinalizeProjector(options: CaptureFinalizeProjector
             options.authority.captureSessions.update(CaptureSessionSchema.parse({
               ...session,
               state: "failed",
-              handoff: { state: "failed", failureId },
+              // The reason is recorded DURABLY, not merely reported: the phone
+              // reads this row to decide between Retry and Discard, and the
+              // report below is gone the moment this call returns.
+              handoff: { state: "failed", failureId, message },
               version: session.version + 1,
             }));
           });
