@@ -4,39 +4,62 @@ The ground-up rebuild of UCSD's UCPath HR automation. This repository is **not**
 legacy repository at `/Users/julianhein/Projects/hr-automation` runs every real HR transaction and
 stays the sole production authority until a single all-at-once cutover (D89/D93).
 
-Phase 1 closed 2026-08-04 (`completedThrough: "1i-spine"`); **Phase 2 — the transaction proof** is
-active and **half landed**. `kuali-timekeeper-annotation` is the one-transaction-node workflow that
-carries it, and the whole fail-closed spine — staged preview with zero durable footprint, beat-③
-subject binding, reload read-back, permanent-key dedupe, post-fence parking — is proved: the
-dry-run half **live** on real doc 4489, the crash/recovery/dedupe/lease matrix in fixtures over a
-real authority database.
+**PHASE 2 IS COMPLETE as of 2026-08-09.** The runtime reports `completedThrough: "2j"` /
+`active: "3-workflow-migration"`. Phase 1 closed 2026-08-04 with D74's live person-lookup exit test;
+Phase 2 then proved the write half and built the four deferred base tails.
 
-**The ONE authorized controlled commit was performed on 2026-08-04 and could not land (D128).**
-Operator-named docs 4489/4490 sit at a workflow step that does not own the `Timekeeper Name:*`
-field, and Kuali's `Save` serializes only its own step's section — so the write fenced, clicked,
-answered `200` with a rendered `Form saved`, persisted nothing, read `absent`, and parked. The
-kernel did exactly the right thing; the target was wrong. Phase 2's write half is **BLOCKED** on a
-target at a step that owns the field, and write-heavy workflow migration may not begin. Evidence,
-measured numbers and durable row ids: `docs/rebuild/09-write-safety.md` §Phase-2 controlled-commit
-as-built.
+**The controlled transaction proof is MET live (D135, 2026-08-04).** `kuali-timekeeper-annotation`
+is the one-transaction-node workflow that carries it: dry run 6.6 s with zero durable rows, a forced
+subject mismatch refused at beat ② with zero fence and zero click, ONE controlled commit on real
+doc **4489** in 16.45 s producing a `committed` intent + a transaction checkpoint whose proof is the
+verifier's reload read-back + both outbox rows + the terminal span, and an idempotent re-run
+answering `already-present` in 2 ms with no browser. The propagation window was measured over four
+write/restore cycles on doc **4490**, moving `recoveryAbsence` from `operator-only` to `stabilized`;
+both documents were restored to their captured original `""` with each restore proved by reload
+read-back. *(The same-day D128 conclusion — that the operator's documents sat at a step which does
+not own the field — was WRONG and is withdrawn. Kuali's own `ActionPage` query reports that step's
+`sectionSettings` as `edit`; the two real causes were defects in THIS repository's driver: a ~700 ms
+Kuali gadget debounce the run fenced inside, and a `commit` that returned at request time so the
+verifier's reload cancelled the in-flight save.)* Write-heavy workflow migration is no longer
+blocked; each workflow still owes its own §3.2 controlled-commit proof. Evidence, measured numbers
+and durable row ids: `docs/rebuild/09-write-safety.md` §Phase-2 controlled-commit as-built.
 
-**Tail 2g — the event/trust layer — has begun (D134).** Authority schema **v10** creates every
-durable table 2g needs (diagnostic bundles + attachments, evidence receipts, knowledge and fix
-records, the ledger projector's `(system,date)` lease and projection state, a searchable failure
-fingerprint, and the notification dedupe fold), and doc 09 §6's ordered actor-attributed ledger
-projector is built in `src/infra/ledger/`. **D137/D138/D139** land the next three over it:
-automatic diagnostic capture with capture-time redaction and the retention/pin sweep
-(`src/services/trust/`), the durable actor-keyed notification inbox whose row is committed before
-any OS delivery (`src/services/notifications/`), and knowledge/fix admission with the generated
-active-view `KNOWLEDGE.md`.
+**The four tails, in order.** **2g** (D134–D145) — schema v10, automatic redacted diagnostic
+capture, the durable actor-keyed notification inbox whose row commits before any OS delivery,
+knowledge/fix admission, the ordered actor-attributed ledger projector, and D82's `RunEvidenceReceipt`
+DERIVED from authority rather than minted at settlement. **2h** (D146–D167) — the data-service and
+intake foundation: canonical field registry, column mapping, validation/rejection, immutable intake
+manifests + rerun diff, the extraction/OCR/roster/normalization stores, the OCR three-producer routes
+and the classify/group scanner stack, executor/worker provider + artifact wiring, durable capture
+sessions, and the Edit Data core. **2i** (D168–D180) — the operator surface: trust surfaces,
+notification bell + inbox, the Edit Data rail, Settings + storage doctor with a live backup cadence,
+the intake surface over schema v12, the token-scoped phone capture surface, the read-only Workflow
+Explorer, the UI catalog, AI advisories, and the archive model + Activity report over schema v13.
+**2j** (D181–D189) — the integration/restore/soak/documentation gate: see below.
 
-**2g's D82 core landed 2026-08-04 (D140–D143).** `RunEvidenceReceipt`s are DERIVED from authority
-(never minted at settlement) with declared per-field redaction and declared cross-source
-obligations, the run-detail `receipt` and `failure` sections serve real content instead of
-pointers, and `npm run rebuild:cli explain run <traceId|runId>` reads the same derivation. The
-`evidence-receipt` guard is active. **D144 then closed the gap they recorded**: a transaction node
-is terminal evidence, so `kuali-timekeeper-annotation` reaches terminal `done` over its real stored
-outcome and the controlled commit has a receipt in authority (doc 09 §3.1).
+**What 2j found, because that is what a gate is for.** Four real defects that every other gate was
+green over. **(1)** `cli storage restore` could not have worked: the offline restore service has
+demanded a one-time stopped-system proof since Phase 1c and nothing in production had ever recorded
+the runtime-lock snapshot it derives from, so the whole restore path was complete, tested and
+unreachable (D181). **(2)** Every `paper-ink` parity reference had been photographed DARK since the
+corpus existed — the harness stamped the theme on `<html>`/`<body>` after React had rendered, and
+the app root's own attribute won the cascade (D187). **(3)** Behind it, the run-detail panel — where
+the failure record and the evidence receipt live — was **two pixels wide** at every viewport since
+1i-spine, because its root is a flex child that never claimed a width; the accessibility tree
+reported every word, which is exactly why review after review passed over an empty column (D187).
+**(4)** `buildRunEvidenceReceipt` minted a verification id for every node but emitted the row
+conditionally, so a run whose upstream node has no checkpoint — doc 02 §5.4's `startAt` resume with
+injected context, i.e. the Edit Data path — made the receipt underivable and answered HTTP 500 on
+the one surface whose job is to explain a run (D187). All four are fixed.
+
+**Two criteria left Phase 2 by explicit disposition, not by silence.** The Workflow Explorer's EDIT
+half (doc 12 §5.3, **D186**) is REASSIGNED on D79a's own argument one level down — an editor exists
+to avoid a code change per tweak across many workflows and this tree has one, so its closed policy
+union would be shaped by a sample of one; the trigger that ends the deferral is named. And the
+production BFF **serves no frontend bytes** (doc 13 §6.9, **D189**), so `rebuild:dashboard:prod`
+names a mode the runtime never parsed and 2i-F's token-scoped phone capture surface has no delivery
+path — deferred because those bytes would ride the one internet-exposed path behind the Host gate,
+and because the tunnel launcher is unbuilt anyway. Neither is a waiver; both name an owner.
 
 Seeded 2026-07-31 from `hr-automation@5879004` (branch `feature/rebuild-phase1b`, which stays in the
 legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01.
@@ -45,10 +68,10 @@ legacy repo as the pre-split record). Phases 1a–1e completed 2026-08-01.
 test passed: run `4ebf7275-0158-49af-a78f-1f37948efb27` (trace `pl-000619-4ebf`) ran person-lookup
 against real UCPath + CRM on the new executor, recovered a dead CRM session mid-run, terminalized
 `done` at attempt 2 with a correct result, and rendered all four parity surfaces from the ONE
-projection. The program is now at **Phase 2's controlled transaction proof**; the runtime reports
-`completedThrough:"1i-spine"` / `active:"2-transaction-proof"`. Three presentation defects are
-recorded and deferred to 2i — see doc 03's *Phase 1g/1i-spine as-built presentation deltas* and doc
-07 §Phase 1's exit-criteria block. What Phase 1f itself landed, for context on the contracts below:
+projection. The three presentation defects that run exposed were all FIXED the same day (D123
+skipped-arm, D124 terminal duration, D126 accessible-name collision) — see doc 03's *Phase 1g/
+1i-spine as-built presentation deltas* and doc 07 §Phase 1's exit-criteria block. Doc 02 §8.1 is the
+worked example's as-built and records the five deltas the live run forced. What Phase 1f itself landed, for context on the contracts below:
 registry/task-binding corrections, worker-owned browser-session lifecycle, and mandatory task
 provenance collection landed 2026-08-02. D109's start-plan ingress authority now retains exact raw
 JSON beside canonical snapshots for accepted and refused entries, binds both schema hashes and
@@ -281,6 +304,59 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
 
 ## Lessons learned
+
+- **2026-08-09: An accessibility tree that reports content is not evidence the operator can SEE it,
+  and a harness that sets a state without verifying it has only expressed a preference (D187).** 2j's
+  parity work found three defects with one shape. The lane stamped `data-demo-theme` on
+  `<html>`/`<body>` with a post-navigation `page.evaluate`, but `LoadedApp` renders its own on the app
+  root and `tokens.css` scopes the palette off the BARE `[data-demo-theme=…]` selector — so the root
+  re-themed its subtree from inside, out of React state nothing had touched, and every `paper-ink`
+  reference had been photographed DARK since the corpus existed. The semantic half AGREED with the
+  pixels (the toggle read "Switch to Paper Ink", which is what a dark app says), so there was nothing
+  to diff. Behind it, `LogPanel`'s root is a flex child with no width, so it sized to content and its
+  own `grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail)]` resolved to **`2px 376px`** — the entire
+  run-detail panel, which is where the failure record and the evidence receipt live, was a two-pixel
+  sliver at every viewport since 1i-spine while the a11y tree reported every word of it. D82's
+  acceptance bar was unmet ON SCREEN through a dozen green gates and two deliberate reference reviews.
+  The fixes are `page.addInitScript` seeding the product's own stored preference BEFORE navigation
+  (so React seeds itself and all three writers agree), an `assertThemeApplied` that refuses when they
+  do not, and `w-full` on the panel root. Generalize it: **when a test asserts through one
+  representation of a surface, something must assert the other**, and a screenshot corpus nobody looks
+  at is a corpus that records defects rather than catching them.
+- **2026-08-09: A precondition nothing produces makes a complete, tested path unreachable — and every
+  gate stays green (D181).** `OfflineAuthorityRestoreService` has required a one-time
+  `StoppedSystemProof` since Phase 1c and `RecoveryStopProofStore` has refused to issue one without a
+  recorded `RecoveryRuntimeLockSnapshot`. **Nothing in production ever recorded a snapshot**:
+  `recordRuntimeState` had no caller and `.tracker-rebuild/locks` — pinned as a distinct isolated
+  resource since D88 — was never created. So `cli storage restore` could not have worked on its first
+  day. The fix is one lock file per role, written by the dashboard and worker compositions before the
+  database opens and released after its handle closes, with the snapshot COMPOSED at observation time
+  from both files: a shared snapshot would need a read-modify-write from two processes, and a lost
+  update there would report a running server as stopped, which is the exact state the interlock exists
+  to refuse. Liveness is OBSERVED (`process.kill(pid, 0)`, `EPERM` counts as alive) and the observation
+  writes nothing — a crashed holder must not brick recovery at the one moment it is needed, and
+  rewriting another process's lock file to make a restore possible would be fabricating the fact.
+- **2026-08-09: An id minted unconditionally and emitted conditionally is a citation to nothing
+  (D187).** `buildRunEvidenceReceipt` minted a `verificationId` for EVERY node but pushed the
+  verification row only for a terminal dependency or a not-run node, while a downstream derived fact
+  cites its upstream nodes by that same mint. `assertEvidenceRefsResolve` correctly refused the whole
+  receipt — and the surface whose entire job is to explain a run answered HTTP 500. The state is
+  reachable in production, not only in fixtures: doc 02 §5.4's `startAt` resume with
+  `envelope.injected` (the Edit Data path) gives a downstream node its upstream VALUE with no upstream
+  checkpoint. Every record-less node now emits `unknown`, which is the honest verdict and exactly what
+  the verification section is for; `mandatory` still tracks the terminal dependency set, so confidence
+  is unchanged for every receipt that could already be derived.
+- **2026-08-09: An inventory that gates cutover must not be milestoned by guesswork (D184/D188).**
+  `config/legacy-capabilities.json` had 73 of 78 entries `open`, 53 of them owned by milestones that
+  had already shipped — a claim nobody could act on, and one the guard could not see because it only
+  checked path coverage. Re-dispositioning against the as-built closed 27 with real targets and moved
+  the rest to the milestone that will genuinely build them, and the guard now refuses an entry that is
+  `open` at or before the runtime's own `completedThrough`, a `native`/`replaced` target that does not
+  resolve, and evidence that only says "the legacy file still exists". The same rot had reached the
+  guard inventory: six guards sat `planned` since Phase 0 with the literal invariant "Planned Phase 1+
+  guard: <name>." and the milestone `phase-1-or-later`, three of them contradicting doc 09's own
+  MET-live record. Four retired into the guards that already execute them; two kept, re-owned, with a
+  trigger that names a commit somebody will write.
 
 - **2026-08-09: An archive is DATA, and the only way to prove it is to delete the code (D179).**
   Charter §25's whole claim is that reading an archived run needs no old-version code, and the only

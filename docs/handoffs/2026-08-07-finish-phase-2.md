@@ -1,26 +1,42 @@
-# Handoff — finish Phase 2 (rest of 2h, then 2i and 2j)
+# Handoff — finish Phase 2 (rest of 2h, then 2i and 2j) — **CLOSED**
 
 **Date:** 2026-08-07, extended 2026-08-08 and 2026-08-09
-**Paused at:** **2i-E (the intake surface) CLOSED 2026-08-09 with D170–D173** — the durable session,
-the enqueue, and the grid UI over person-lookup's first real intake projection. Resume at **2i-F,
-the capture surface**. Everything below about 2h remains true.
+**Status: CLOSED 2026-08-09. PHASE 2 IS COMPLETE.** Tail 2j landed as D181–D189 and the runtime now
+reports `completedThrough: "2j"` / `active: "3-workflow-migration"`. There is nothing left in this
+brief to resume; the next session starts a **Phase 3 workflow migration** (doc 07 §3.1's loop,
+§3.3's order — the operator picks which workflow goes first).
 
-**ALL OF TAIL 2h IS COMPLETE (D146–D167, closed 2026-08-08).** The 2026-08-08
-session landed D162–D167 in six commits: executor/worker provider+artifact wiring with the guard
-relaxation, the roster store (tiers verbatim, scoring redesigned), the stable-keyed artifact
-projector with the xlsx-retention sink, the normalization advice store + geocode adapters + the
-rotation pool, the Edit Data core (CAS-against-resume-fence save + replay consume), and durable
-capture (sessions as rows, the stable-keyed finalize outbox, restart/duplicate fixtures). The
-runtime phase marker reports `completedThrough: "2h"` / `active: "2i"`. **2i is underway: 2i-A
-(trust surfaces), 2i-B (notification bell + inbox), 2i-C (the Edit Data rail, D168), and 2i-D
-(Settings + storage health/doctor + the live backup cadence, D169) are DONE 2026-08-08.** Resume
-at **2i-E, the intake UI** — docs 03 + 06 are primary; the checklist below names the remaining 2i
-slices, and the 2h as-builts in doc 06 name every seam 2i must still wire (the ai advisory arm,
-the capture phone surface + PDF bundler + intake enqueue, the capture-durability-and-scope
-guard).
+**What 2j closed, item by item:** the full scenario corpus (D185 — the corpus's own layout is now
+structural, and one cross-slice integration walk joins intake → runs → receipt → archive →
+relaunch); the corruption → read-only degraded → checksummed-backup restore → projection rebuild
+drill, in fixtures AND once live on a copy of the standing authority database (D181); doc 05 §7.1's
+executed concurrency matrix, ten rows, with `multi-worker-overlap` and `worker-teardown-soak`
+activated (D182); a bounded 3-worker × 30-run soak with the whole-database invariant sweep clean
+(D182); the redaction surface scan — a declaration audit over 27 surfaces and 263 dispositioned
+leaves plus a canary sweep through the real producers (D183); capability-inventory validation, which
+re-dispositioned 27 entries closed and moved the rest to a milestone that will actually build them
+(D184); the planned-guard backlog dispositioned (D188); and every owning doc brought to as-built.
 
-**Supersedes** `2026-08-05-phase2-tail-2h.md` for scope — that brief covers only 2h. Read it for the
-D146–D159 detail; read this one for what remains of the whole phase.
+**Three defects the gate found, all fixed:** the run-detail panel was two pixels wide at every
+viewport since 1i-spine while the a11y tree reported all of it; every `paper-ink` parity reference
+had been photographed dark; and `buildRunEvidenceReceipt` refused to derive for a run whose upstream
+node has no checkpoint, answering HTTP 500 on the trust surface (all D187). Plus the restore command
+that could not have worked (D181).
+
+**Two things left Phase 2 by explicit disposition — read these before planning Phase 3:**
+- **D186** — the Workflow Explorer's EDIT half (doc 12 §5.3) is REASSIGNED, not waived. Trigger: the
+  second production workflow whose presentation/notification preference/allowlisted policy value an
+  operator wants to change without a code change.
+- **D189** — the production BFF **serves no frontend bytes** (doc 13 §6.9). `rebuild:dashboard:prod`
+  names a mode the runtime never parsed, and 2i-F's token-scoped phone capture surface therefore has
+  no delivery path in production. Owner: the first migration that needs the phone, building the
+  static handler AND the ngrok tunnel launcher (D175) together, plus a guard arm that the file
+  handler cannot serve anything outside the capture allow-list to a phone-origin request.
+
+**Everything below this line is the historical record of the session that carried 2h/2i/2j.** It is
+kept because its as-built notes name seams a Phase-3 migration will need; it is no longer a plan.
+
+---
 
 ## Task summary
 
@@ -380,25 +396,28 @@ The BFF serves 7 endpoints today; each slice names what it adds.
         guard #4 holds by construction, refusing a missing range rather than defaulting one.
         Durations report their unmeasured runs beside their median; a retired workflow's runs count
         and say they are unregistered. Surface at `?activity=<from>..<to>`.
-  - [ ] **Explorer Phase B** (doc 12 §5.3/§5.4) — the closed presentation/policy edit union, the
-        stale-base apply refusal, the code-change brief. Not started; it is the other half of doc
-        07's explorer exit criterion.
+  - [x] ~~**Explorer Phase B** (doc 12 §5.3/§5.4)~~ — **REASSIGNED OUT OF PHASE 2 (D186,
+        2026-08-09).** Not built, and that is a decision: an editor exists to avoid a code change
+        per tweak across MANY workflows, and this tree has one. Doc 12 §5.3 names the trigger.
 - [x] ~~The three presentation defects deferred from Phase 1~~ — **STALE ITEM: all three were
       fixed 2026-08-04** (D123 skipped-arm, D124 terminal duration, D126 accessible-name
       collision) per doc 03 §"Phase 1g/1i-spine as-built presentation deltas" and doc 07's
       Phase-1 exit block ("ALL THREE FIXED"). Nothing remains.
 
-### Remaining — 2j (integration / restore / soak / docs gate)
+### ~~Remaining~~ — 2j (integration / restore / soak / docs gate) — **ALL DONE 2026-08-09**
 
-- [ ] Full scenario corpus
-- [ ] Corruption → read-only degraded → checksummed-backup restore → projection rebuild drill
-- [ ] Dependency / control / capture concurrency matrix
-- [ ] Worker teardown + multi-worker soak
-- [ ] Redaction scan
-- [ ] Capability-inventory validation
-- [ ] Update every owning doc to as-built (including doc 02 §8)
+- [x] Full scenario corpus — **D185**
+- [x] Corruption → read-only degraded → checksummed-backup restore → projection rebuild drill — **D181**
+- [x] Dependency / control / capture concurrency matrix — **D182** (doc 05 §7.1, ten executed rows)
+- [x] Worker teardown + multi-worker soak — **D182** (3 workers x 30 runs, invariants clean after)
+- [x] Redaction scan — **D183** (doc 10 §3.14)
+- [x] Capability-inventory validation — **D184**, plus the guard backlog at **D188**
+- [x] Update every owning doc to as-built (including doc 02 §8, now §8.1)
 
-### Phase 2 exit criteria not yet met (doc 07 §"Hard exit criteria")
+### ~~Phase 2 exit criteria not yet met~~ — **ALL DISPOSITIONED 2026-08-09** (doc 07 §"Hard exit criteria")
+
+The two still open at the start of 2j are struck below; the two that left by explicit disposition
+(D186 explorer edit half, D189 BFF static bytes) are recorded in doc 07's exit block and above.
 
 - [x] ~~**Archive model (D80) proven**~~ — **MET 2026-08-09 (2i-G, D179).** Five clauses, five
       fixtures in `tests/unit/archive-model.test.ts` over the real authority database and the real
@@ -409,7 +428,9 @@ The BFF serves 7 endpoints today; each slice names what it adds.
       2026-08-09 (2i-G, D176)**, proved by `workflow-editor-compile-integrity` over the real
       registry plus three parity states. The EDIT half of doc 07's same bullet is Phase B and
       remains open.
-- [ ] Capture fixtures prove restart survival + no duplicate photos/handoffs (2h-F)
+- [x] ~~Capture fixtures prove restart survival + no duplicate photos/handoffs (2h-F)~~ — **MET**
+      (2h-F D167 + 2i-F D174/D175; `capture-durability-and-scope` active, and 2j's C9/C10 add the
+      two-caller kernel race and the two-projector race over one pending outbox).
 - [x] ~~AI-advisory fixtures prove redaction, strict output, provider exhaustion, zero authority
       edge (2i)~~ — **MET 2026-08-09 (2i-G, D178).** One fixture per arm:
       `tests/unit/advisory-redaction.test.ts` (a classified leaf never reaches the prepared
@@ -419,7 +440,11 @@ The BFF serves 7 endpoints today; each slice names what it adds.
       a REAL authority database), `advisory-zero-authority.test.ts` (a produced/refused/unavailable
       round trip leaves every authority family except provider admission byte-identical), plus the
       structural guard `ai-advisory-no-authority`.
-- [ ] Real-shaped copied authority DB survives corruption → restore → rebuild (2j)
+- [x] ~~Real-shaped copied authority DB survives corruption → restore → rebuild (2j)~~ — **MET
+      2026-08-09 (D181).** Drilled in fixtures through `composeStorageCommand` and ONCE live on a
+      copy of the standing authority database: corruption named read-only in 0.92 s, restore in
+      0.99 s, doctor healthy in 0.71 s, 14 runs / 2 checkpoints / 2 write intents / 2 outbox rows
+      preserved. Measured numbers: doc 03 §2.5 D181.
 
 ## Deviations from the plan already made — do not re-litigate
 
