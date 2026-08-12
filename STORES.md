@@ -81,6 +81,35 @@ factory-defined stores, and that no listed store goes unused (`auditWorkflowModu
    entry, live selector verification, and only then tasks. Check §4 for which migration order owns it
    before starting.
 
+**The extraction-width rule (D194, 2026-08-12 — normative text in doc 01 §2.8).** Once you know
+which store you are in, this decides how wide the new read task is:
+
+- **A read task's identity is a PAGE VISIT, not a caller's field list.** One task navigates to one
+  page (or proves one page state) and returns the **full useful surface** that page carries — not
+  only the fields today's first consumer needs. Two genuinely different page visits stay two tasks.
+- **The output schema is FIXED and strict, never a function of a runtime argument.** `read(fields…)`
+  is banned: a contract has one output schema and one schema hash, and runs, checkpoints, terminal
+  results and evidence receipts all bind that hash (D110/D114/D82).
+- **Consumers project, they never re-scrape.** A later workflow wanting one more field from that page
+  writes a `bind` (or a pure mini-store fold), not a new driver operation. That is the whole point of
+  the convention: extraction code is written once per page, ever.
+- **Two obligations come with the width**, both one-time and both already proven in this tree: an
+  explicit `{state:"absent", reason}` arm for every field that can legitimately be blank (provenance
+  is validated to cover *every* canonical output leaf on every run, so a rich field with no absent arm
+  can fail a workflow that never needed it), and a declared redaction classification per leaf (doc 12
+  §D140 — an undeclared leaf fails loud).
+- **Scope:** all **new** tasks from 2026-08-12, and every task a migration authors from order 8
+  (separations) onward. **Existing tasks are not rewritten on the strength of this decision** — a
+  store merges its duplicate extractions when it is next touched for other reasons, because
+  re-authoring a shipped output schema moves a hash that existing run records already bind.
+- **The first known merge target is `crm`.** `crm/read-onboarding-record` and
+  `crm/read-onboarding-dates` are not two pages: they share the identical search, drill-in and
+  `/hr/ONB_ViewOnboarding` record page, and that shared page already reads `First Day of Service` —
+  the *record* task holds it and drops it from its output, and the *dates* task re-runs the whole
+  search and drill-in to read the same cell again. Under D194 they merge into one record-page task
+  with `startsOn` folded downstream. The CRM **history** page (`/hr/ONB_ShowOnboardingHistory`) is a
+  second visit and stays its own task either way.
+
 ---
 
 ## 2 · Per-store catalog
@@ -117,6 +146,10 @@ login recipe (`crmLoginRecipe`, `src/stores/crm/session.ts`) · **2 tasks**. Wir
 the SSO form, matches by option **value** (not label; the same `#ssousername` field wears three
 different labels per realm), and refuses to submit unless Active Directory is confirmed
 (2026-08-03 finding). Cold live login ~11.8s.
+
+**Pending under D194 (§1's extraction-width rule):** these two tasks share one page visit and
+duplicate the `First Day of Service` read. They merge into one record-page task the next time this
+store is touched for other reasons — not before; the merge moves an output schema hash.
 
 ---
 

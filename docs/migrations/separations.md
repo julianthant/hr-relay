@@ -147,13 +147,14 @@ compute, all unit-testable with `fakeCtx`, none of it touching a browser. The sh
 `workflow:person-lookup/read-active-status` (`STORES.md` §2) — a sessionless, artifact-free,
 provider-free fold over prior node outputs.
 
-### 2.6 The rich-extraction store convention — PROPOSAL, awaiting operator confirmation
+### 2.6 The rich-extraction store convention — RATIFIED as D194
 
-> **Status: proposed by the operator 2026-08-12. NOT ratified, no D-number claimed.** If the operator
-> confirms, it becomes **D194** and its normative text lands in **doc 01** (task contracts) and
-> **doc 06** (data), with the derived view updated in `STORES.md` §1 "How stores work" — in the same
-> commit that records the decision, per the repo rule that a decision is not ratified until it lands
-> in its owning doc.
+> **Status: ANSWERED 2026-08-12 — Option A adopted, ratified as D194.** The normative text lives in
+> **doc 01 §2.8** (task contracts owns "how wide a read task's output is", the same way §2.7 owns
+> "how much a task owes"); the derived view is `STORES.md` §1 "How stores work"; the pointer row is
+> doc 04 round 48. Doc 06 is **not** an owner — it owns intake (column mapping, roster, capture), and
+> this is a task-authoring rule, so putting it there would have split one contract across two docs.
+> The options below are kept as the record of what was chosen from.
 
 **The proposal, in the operator's words.** A store task should extract *everything useful* from a
 page visit, so a later workflow that wants one more field from that page never writes extraction
@@ -252,7 +253,7 @@ The consumer names the fields it wants; the task reads and returns exactly those
   broken field is `absent` **with a reason** rather than a hard failure of an unrelated workflow —
   and never a silent blank.
 - Each such task declares its per-leaf redaction classification at authoring time (doc 12 §D140).
-- The convention is then ratified as **D194** in doc 01/06 + `STORES.md` §1, and later migrations
+- The convention is then ratified as **D194** in doc 01 §2.8 + `STORES.md` §1, and later migrations
   inherit it.
 
 **Recommendation: Option A.** It delivers the operator's stated goal exactly (consumers never write
@@ -260,7 +261,23 @@ extraction code), it is the only option that keeps the fixed-schema identity the
 evidence machinery depends on, and it has a working precedent in this tree for both halves — the
 rich read with per-field absent arms, and the pure downstream fold.
 
-`ANSWER (operator) — adopt the rich-extraction convention as D194?`
+`ANSWER (operator), 2026-08-12` — **Option A. Adopted and ratified as D194.**
+
+One task per page visit, extracting the full useful surface into one **fixed strict** schema;
+consumers project downstream and never re-scrape. The literal `read(fields…)` parameterization
+(Option B) is rejected for the reason B's own analysis gives — an output shape that is a function of
+a runtime argument cannot carry the fixed schema hash that runs, checkpoints, terminal results and
+receipts bind. Both authoring costs are accepted: an explicit `{state:"absent", reason}` arm on every
+field that can legitimately be blank, and a declared redaction classification per leaf.
+
+**Scope, stated so it is not over-read: existing tasks are NOT rewritten now.** The convention binds
+every **new** task from today and every task this migration authors; a store merges its duplicate
+extractions when it is next touched for other reasons, because re-authoring a shipped output schema
+moves a hash existing run records already bind. The `crm` record/dates pair is the first known merge
+target — one shared page visit, one duplicated `First Day of Service` read — and the CRM **history**
+page stays its own task either way, because it is a genuinely second visit.
+
+Where it landed: **doc 01 §2.8** (normative), `STORES.md` §1 (derived), doc 04 round 48 (pointer).
 
 ---
 
@@ -1006,7 +1023,7 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 - [ ] `identity-gate-before-separation-commit` green — every commit is graph-reachable only through the gate node (doc 09 §14.6 guard #2; the structural half of §4d)
 - [ ] D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved
 - [ ] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated
-- [ ] If §2.6 is confirmed: **D194** recorded in doc 01/06 with the pointer in doc 04, and `STORES.md` §1 updated in the same commit
+- [x] **§2.6 confirmed and ratified: D194 recorded in doc 01 §2.8, pointer in doc 04 round 48, `STORES.md` §1 updated** (2026-08-12) — every new read task this migration authors is authored under it
 
 ---
 

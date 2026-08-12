@@ -3,9 +3,10 @@
 Status: **Binding design with the Phase 1b domain foundation implemented 2026-07-31 —
 2026-07-22 whole-plan/legacy-code corrections integrated;
 amended 2026-07-26 (Round 8, §2.7 — the three-tier authoring floor + scaffold generators, D79f),
-2026-07-31 (Round 10 — isolated copy/port with legacy preservation, D88/D90), and 2026-07-31
+2026-07-31 (Round 10 — isolated copy/port with legacy preservation, D88/D90), 2026-07-31
 (Round 11 — standalone rebuild repo, D93: the rebuild lives in its own `hr-automation-rebuild`
-repo at plain `src/`, so isolation is physical and the same-tree guards it required are retired).**
+repo at plain `src/`, so isolation is physical and the same-tree guards it required are retired),
+and 2026-08-12 (Round 48, §2.8 — the rich-extraction convention, one task per page visit, D194).**
 Conforms to `00-charter.md` and the binding reconciliation memo `04-reconciliation.md`. The
 abandoned Step-0 spike is evidence only and has been deleted; all three effect overloads must be
 re-proved.
@@ -18,6 +19,7 @@ re-proved.
 | Error taxonomy (`TaskError`, declared `errorCodes`) |
 | Effect classes + dry-run mechanics (D6/D7), `freshness` + provenance contract fields (D8/D34), and the content-addressed read-artifact boundary (D45) |
 | Strict runtime-schema rules, branded domain scalar/id policy, absence semantics, and the task-side subject-binding declaration (D46/D47) |
+| The **read-extraction width** convention — one task per page visit, one fixed strict output, consumers project downstream (§2.8, D194) |
 | Retry policy |
 | Decoration (`decorateTask`, hook semantics, error-propagation rule) |
 | Task stores—browser, service, and pure workflow mini-stores (D4/D42), session providers + the single login signature, shared leaf-code homes (`stores/common/`) |
@@ -852,6 +854,55 @@ previously promised a generator, and the read-only explorer (D55) does not emit 
 declaration toil is only acceptable if the boilerplate is *generated* — contract skeleton, impl
 stub, example, scenario stubs, and store registration, each with `TODO` markers that fail their
 guards until filled. This is the concrete answer to "will workflows #2–#10 be pleasant to write."
+
+---
+
+### 2.8 The rich-extraction convention — one task per PAGE VISIT (D194, ratified 2026-08-12)
+
+§2.7 answers *how much a task owes*. This answers the neighbouring question the store libraries
+forced open at the order-8 separations migration: **how wide a read task's output should be.** The
+operator ratified the rich-extraction convention on 2026-08-12; the options it was chosen from, and
+the measured duplication that motivated it, are recorded in `docs/migrations/separations.md` §2.6.
+
+**The convention.** A read task's identity is **"I visited this page and read what it has"** — not
+"a caller asked me for these fields."
+
+1. **One task per page visit.** A task navigates to one page (or proves one page state) and returns
+   the **full useful surface** that page carries, not only the fields today's first consumer needs.
+   Two genuinely different page visits stay two tasks: the convention groups by visit, it never
+   merges a second navigation into the first.
+2. **The output schema is FIXED and strict, and is never a function of a runtime argument.** A
+   contract has one output schema and one schema hash, and runs, checkpoints, terminal results and
+   evidence receipts all bind that hash plus the produced value's digest (D110/D114/D82). A
+   `read(fields…)` shape — where the caller names the fields and the output shape follows — is
+   therefore **banned**: satisfying a variable field set means either one wide all-optional record
+   (which no longer proves what was actually read, and would not survive `strict-boundary-schemas`)
+   or a separate contract per field set. It also conflates *which page do I visit* with *which
+   fields do I want*, so a caller could change navigation by editing a field list.
+3. **Consumers project; they never re-scrape.** A downstream node that wants one field binds the
+   field path out of a prior node's output, or folds it in a pure workflow mini-store task (§3.5).
+   Adding a field to a later workflow must be a `bind`, not a new driver operation.
+4. **Every field that can legitimately be blank declares an explicit absent arm** — the proven
+   `{state:"absent", reason}` shape — reported only *after* the page state and the subject are
+   proven, and a malformed non-blank value still throws (§2.1.1's absence rules, unchanged). This is
+   load-bearing, not decorative: the executor validates that provenance covers **every** canonical
+   output leaf on every run, so a rich field with no absent arm can fail a workflow that never
+   needed it. Absence is reported as data; it is never a silent blank.
+5. **Every leaf declares its redaction classification at authoring time** (doc 12 §D140 — an
+   undeclared leaf fails loud). A wider read owes a wider classification table up front; that is the
+   one-time authoring cost the convention accepts.
+6. **The tier does not change.** A rich read is still a §2.7 **Standard**-tier task; what grows is
+   the per-leaf obligation inside it, not the artifact list around it.
+
+**Scope, and what this decision does NOT do.** The convention binds every **new** task from
+2026-08-12 and every task authored by a migration from order 8 onward. It does **not** trigger a
+rewrite of existing tasks: a store merges its duplicate extractions when it is next touched for
+other reasons, because re-authoring a shipped task's output schema moves a schema hash that existing
+run records, checkpoints and receipts already bind. The first known merge target is `crm` —
+`crm/read-onboarding-record` and `crm/read-onboarding-dates` share an entire page visit (the same
+search, drill-in and record page) and the record page already holds `First Day of Service`, which
+the record task drops from its output and the dates task re-runs the whole search to read again. The
+CRM **history** page is a second visit and stays its own task under this convention.
 
 ---
 
