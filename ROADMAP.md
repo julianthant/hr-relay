@@ -87,6 +87,14 @@ it cheaper. Separations still owes every exit criterion, **questionnaire first**
 target (a UCPath termination + Kuali finalization you approve) is yours to name at step 5; none has
 been invented.
 
+**How it gets built (your directive, recorded in that doc's §2):** bottom-up, not one slice — store
+tasks first, then one small provable sub-workflow per system interaction (the Kronos timecard read,
+the Kuali doc read, the UCPath termination write, the Kuali finalization write — the two writes each
+following the proven `kuali-timekeeper-annotation` single-transaction-node shape), then composed
+together. One honest note recorded there: composing by **real child runs** would mean wiring the
+`child-run` seam, which exists typed but is **not wired** in production today — so the default
+composition is one descriptor over the reused tasks, and going the other way is questionnaire item 10.
+
 ### Migration order (doc 07 §3.3) — the 13 remaining legacy workflows
 
 | Order | Workflow | Class | What it does for you | Blocking gaps |
