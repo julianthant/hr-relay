@@ -646,6 +646,8 @@ export function TopBar({
   actorId,
   storage,
   settingsSections,
+  settingsOpen,
+  onSettingsOpen,
   day,
   today,
   monthCounts,
@@ -660,6 +662,13 @@ export function TopBar({
   /** the bootstrap's storage health summary — the gear's attention dot (2i-D) */
   storage: StorageHealthSummary;
   settingsSections: readonly SettingsSection[];
+  /**
+   * The Settings dialog is CONTROLLED by the app: the storage banner above
+   * every view opens the same dialog this gear does, and two triggers cannot
+   * share a state the dialog holds privately.
+   */
+  settingsOpen: boolean;
+  onSettingsOpen: (open: boolean) => void;
   /** the day partition the whole app is reading */
   day: string;
   today: string;
@@ -698,7 +707,12 @@ export function TopBar({
 
       <span className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-hair)]">
         <NotificationBell notifications={notifications} actorId={actorId} />
-        <SettingsControl storage={storage} sections={settingsSections} />
+        <SettingsControl
+          storage={storage}
+          sections={settingsSections}
+          open={settingsOpen}
+          onOpenChange={onSettingsOpen}
+        />
         <ShortcutsPopover onOpenHelp={onOpenHelp} />
         {/* The theme pair. One control, and its LABEL names the destination
             ("Switch to Paper Ink"), because a lone sun/moon glyph never says
