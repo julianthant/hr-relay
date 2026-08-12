@@ -20,12 +20,14 @@ import type {
 } from "../../domain/dashboard/bootstrap.js";
 import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
 import {
+  Banner,
   Button,
   Dialog,
   DialogBody,
   DialogContent,
   DialogTrigger,
   IconButton,
+  MetaLine,
   SectionLabel,
   StatusDot,
   dsIcon,
@@ -41,9 +43,7 @@ export type SettingsSection = z.infer<typeof SettingsSectionPrimitiveSchema>;
 
 /** The at-rest indicator tones; the words themselves render beside the dots. */
 function authorityStatusOf(authority: StorageHealthSummary["authority"]): DsStatus {
-  if (authority === "healthy") return "verifiedDone";
-  if (authority === "degraded") return "waiting";
-  return "failed";
+  return authority === "healthy" ? "verifiedDone" : "failed";
 }
 
 function backupStatusOf(backup: StorageHealthSummary["backup"]): DsStatus {
@@ -55,6 +55,81 @@ function backupStatusOf(backup: StorageHealthSummary["backup"]): DsStatus {
 /** True when the top-bar gear should carry the attention dot. */
 export function storageNeedsAttention(storage: StorageHealthSummary): boolean {
   return storage.authority !== "healthy" || storage.backup !== "current";
+}
+
+/**
+ * A degraded dashboard says so on EVERY view, not only on the page that
+ * explains it — so this is mounted above the takeover switch, and the queue,
+ * the intake workspace, the archive, the explorer, the catalog and the
+ * activity report all carry it.
+ *
+ * Ported in SHAPE from legacy
+ * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+ * `src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx` (`DemoStorageBanner`).
+ * The COPY is not ported. The demo's banner disclosed two lists — what still
+ * works and what is blocked — authored against a demo's `StorageMode`, and
+ * every line of them would have been a claim about a system nobody had asked.
+ * What this one says is derived from the three facts the bootstrap actually
+ * serves (`authority`, `backup`, `checkedAt`) and nothing else.
+ *
+ * It is a HAZARD, which is one of D24's two exemptions from "a professional
+ * dashboard does not explain itself": it names the state, the one consequence
+ * that changes what the operator should do next, and the route to the doctor.
+ * There is no third sentence, no disclosure, and no defence of the design.
+ *
+ * The two hazards are deliberately not the same volume. An unreachable
+ * authority stops the work; a stale or missing backup does not, and saying so
+ * in the same breath is the whole point — an operator who cannot tell them
+ * apart either stops when they did not need to or keeps filing real HR
+ * transactions when they should not.
+ */
+const AUTHORITY_HAZARD = "Nothing durable can be read or recorded.";
+const BACKUP_HAZARD: Record<Exclude<StorageHealthSummary["backup"], "current">, string> = {
+  stale: "Runs and writes are unaffected; the newest verified backup is older than the backup cadence allows.",
+  missing: "Runs and writes are unaffected; no verified backup was found, so there is no restore point.",
+};
+
+export function StorageBanner({
+  storage,
+  onOpenSettings,
+  className,
+}: {
+  storage: StorageHealthSummary;
+  onOpenSettings: () => void;
+  /** the shell's own edge — the band does not know where it is mounted */
+  className?: string;
+}) {
+  if (!storageNeedsAttention(storage)) return null;
+  const stopped = storage.authority !== "healthy";
+  const backupHazard = storage.backup === "current" ? undefined : BACKUP_HAZARD[storage.backup];
+  return (
+    <Banner
+      className={cn("shrink-0", className)}
+      tone={stopped ? "danger" : "warning"}
+      title={
+        stopped
+          ? "Authority storage is unavailable"
+          : storage.backup === "stale"
+            ? "The newest backup is stale"
+            : "Storage has no restore point"
+      }
+      action={
+        <Button size="sm" variant="secondary" onClick={onOpenSettings}>
+          Storage health
+        </Button>
+      }
+    >
+      <span className="flex flex-col gap-[var(--ds-space-tight)]">
+        <span>
+          {stopped ? AUTHORITY_HAZARD : backupHazard}
+          {/* Both facts, when both are true. The authority sentence leads
+              because it is the one that changes what happens next. */}
+          {stopped && backupHazard !== undefined ? ` ${backupHazard}` : ""}
+        </span>
+        <MetaLine items={[`checked ${fmtClock(storage.checkedAt)}`]} />
+      </span>
+    </Banner>
+  );
 }
 
 function fmtAge(ageMs: number): string {
@@ -220,18 +295,30 @@ function StorageSection({ storage }: { storage: StorageHealthSummary }) {
   );
 }
 
+/**
+ * The gear, and the one dialog Settings has.
+ *
+ * `open` is CONTROLLED by the app rather than held here, because the dialog is
+ * now reachable from two places — the gear, and the storage banner mounted
+ * above every view — and a component's own `useState` cannot be opened by a
+ * sibling. Radix still owns focus return: the trigger it returns focus to is
+ * the gear, which is on screen in every view the banner is.
+ */
 export function SettingsControl({
   storage,
   sections,
+  open,
+  onOpenChange,
 }: {
   storage: StorageHealthSummary;
   sections: readonly SettingsSection[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const attention = storageNeedsAttention(storage);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <IconButton
           size="sm"

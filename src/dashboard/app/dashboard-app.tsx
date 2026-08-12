@@ -48,6 +48,7 @@ import {
   useWorkflowPanelMode,
   type StatusBucket,
 } from "../surfaces/shell.js";
+import { StorageBanner } from "../surfaces/settings.js";
 import { TopBar, serverLocalDay } from "../surfaces/top-bar.js";
 import { usePanelSections } from "./use-panel-sections.js";
 import {
@@ -223,6 +224,14 @@ function LoadedApp({
   const categories = useMemo(() => parseWorkflowCategories(boot.workflowCategories), [boot.workflowCategories]);
   const [activeWorkflowId, setActiveWorkflowId] = useState<string>(() => workflows[0]?.id ?? "");
   const [startOpen, setStartOpen] = useState(route.start);
+  /**
+   * The Settings dialog has TWO triggers — the top bar's gear and the storage
+   * banner's route — so its open state is held here rather than inside the
+   * control. It is client UI state, not route state: nothing about a run or a
+   * day changes when it opens, so putting it in the URL would make every
+   * shared link carry a dialog somebody else had open.
+   */
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const dayWire = dayResource.state === "loaded" ? dayResource.value : undefined;
   const workflowLabelOf = useCallback(
@@ -317,6 +326,8 @@ function LoadedApp({
         // this array from zod parts so it infers as `unknown[]`; re-parsing is
         // the check bootstrap's own refinement makes, not a cast past one.
         settingsSections={SettingsSectionPrimitiveSchema.array().parse(boot.settingsSections)}
+        settingsOpen={settingsOpen}
+        onSettingsOpen={setSettingsOpen}
         day={day}
         today={today}
         monthCounts={dayWire?.monthCounts ?? []}
@@ -340,6 +351,27 @@ function LoadedApp({
         )}
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {/*
+            A DEGRADED DASHBOARD SAYS SO ON EVERY VIEW.
+
+            Mounted here — above the takeover switch, inside `main` so it hangs
+            off the one `--ds-shell-inset` edge — rather than inside Settings,
+            because Settings is the page that EXPLAINS the state and an
+            operator filing transactions is not in it. Every takeover below
+            (intake, archive, explorer, catalog, activity) replaces the queue
+            and inherits this band unchanged.
+
+            It renders nothing at all when storage is healthy, which is why it
+            costs the shell no fixed height: an empty band held open for a
+            state that is almost never true is the decoration this product
+            spends its density on avoiding.
+          */}
+          <StorageBanner
+            storage={boot.storage}
+            onOpenSettings={() => setSettingsOpen(true)}
+            className="mx-[var(--ds-shell-inset)] mt-[var(--ds-space-tight)]"
+          />
+
           <div className="flex shrink-0 items-center gap-[var(--ds-space-base)] px-[var(--ds-shell-inset)] py-[var(--ds-space-tight)]">
             <WorkflowPanelToggle
               mode={panelMode.mode}
