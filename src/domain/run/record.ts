@@ -36,7 +36,6 @@ import {
   WriteIntentIdSchema,
 } from "../ids.js";
 import { AppVersionSchema } from "../dashboard/primitives.js";
-import { WriteIntentParkCodeSchema } from "../write-safety-primitives.js";
 import { SchemaBoundCanonicalValueSchema } from "../schema-bound-value.js";
 import { VerdictKeySchema } from "../workflow/presentation.js";
 import { RunEnvelopeSchema } from "./envelope.js";
@@ -105,7 +104,7 @@ export const RunLifecycleSchema = z.discriminatedUnion("state", [
     intentGeneration: PositiveIntSchema,
     parkedAt: IsoInstantSchema,
     /** Doc 09 §4 park codes; there is no generic Done/Retry from here. */
-    code: WriteIntentParkCodeSchema,
+    code: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]),
     message: z.string().min(1),
   }),
   z.strictObject({

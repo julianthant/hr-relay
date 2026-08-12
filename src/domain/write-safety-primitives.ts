@@ -1,6 +1,5 @@
 import { z } from "zod";
 import {
-  ArtifactIdSchema,
   EvidenceRefSchema,
   FingerprintSchema,
   IsoInstantSchema,
@@ -32,58 +31,6 @@ export function probeVerdictSchema<ProofSchema extends z.ZodType>(proofSchema: P
     z.strictObject({ state: z.literal("unknown"), reason: z.string().min(1), observedAt: IsoInstantSchema }),
   ]);
 }
-
-/**
- * WHO a fenced write is bound to (doc 09 §2.1's subject binding).
- *
- * It is display-safe BY CONSTRUCTION and always has been: a person travels as
- * a binding DIGEST plus a bounded suffix, never as an identifier, and the other
- * two arms name a branded artifact id or a closed catalog key. That is what
- * lets an operator wire serve it verbatim instead of re-projecting it — a
- * second projection could only lose the digest that makes it checkable.
- *
- * It lives in the browser-safe half for the same reason `TransactionOutcome`
- * does: `write-safety.ts` imports `node:crypto`, and the parked-write section
- * of the run-detail wire is in the dashboard bundle's reach.
- */
-export const SubjectEvidenceSchema = z.discriminatedUnion("kind", [
-  z.strictObject({
-    kind: z.literal("person"),
-    identifierKind: z.enum(["eid", "kuali-id", "email"]),
-    bindingDigest: FingerprintSchema,
-    displaySuffix: z.string().regex(/^[A-Za-z0-9*@._-]{2,32}$/),
-  }),
-  z.strictObject({
-    kind: z.literal("artifact"),
-    artifactId: ArtifactIdSchema,
-    bindingDigest: FingerprintSchema,
-  }),
-  z.strictObject({
-    kind: z.literal("catalog"),
-    catalogKey: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-    bindingDigest: FingerprintSchema,
-  }),
-]);
-
-/**
- * The closed doc 09 §4 park vocabulary — WHY a fenced write stopped needing a
- * human. It lives in the browser-safe half because three layers each need it
- * and they must not drift: the durable `write_intents` row (`write-safety.ts`),
- * the run lifecycle's `parked-write` arm (`run/record.ts`), and the operator
- * wire that renders the park (`dashboard/run-detail.ts`) are one vocabulary, so
- * a code added for the store has to reach the surface in the same edit.
- *
- * There is deliberately no `resolved`/`forced` member: doc 09 §4.1's two typed
- * resolutions leave the park by CHANGING the intent status, never by adding a
- * park code that means "no longer parked".
- */
-export const WriteIntentParkCodeSchema = z.enum([
-  "unknown",
-  "ambiguous",
-  "present-proof-invalid",
-  "binding-invalid",
-  "operator-required",
-]);
 
 export const NegativeSettlementPolicySchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -130,6 +77,4 @@ export const TransactionOutcomeSchema = z.discriminatedUnion("disposition", [
 
 export type ProbeVerdict<ProofSchema extends z.ZodType> = z.output<ReturnType<typeof probeVerdictSchema<ProofSchema>>>;
 export type NegativeSettlementPolicy = z.infer<typeof NegativeSettlementPolicySchema>;
-export type WriteIntentParkCode = z.infer<typeof WriteIntentParkCodeSchema>;
-export type SubjectEvidence = z.infer<typeof SubjectEvidenceSchema>;
 export type TransactionOutcome = z.infer<typeof TransactionOutcomeSchema>;

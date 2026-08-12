@@ -4,6 +4,7 @@ import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Clock } from "./clock.js";
 import {
   ActorIdSchema,
+  ArtifactIdSchema,
   BrowserSystemIdSchema,
   EvidenceRefSchema,
   FingerprintSchema,
@@ -30,15 +31,11 @@ export {
 import {
   AbsentEvidenceSchema,
   NegativeSettlementPolicySchema,
-  SubjectEvidenceSchema,
-  WriteIntentParkCodeSchema,
   probeVerdictSchema,
 } from "./write-safety-primitives.js";
 export {
   AbsentEvidenceSchema,
   NegativeSettlementPolicySchema,
-  SubjectEvidenceSchema,
-  WriteIntentParkCodeSchema,
   probeVerdictSchema,
   // The durable transaction settlement lives in the browser-safe half so a
   // descriptor closure can hash it (D144); doc 09's module stays its address.
@@ -55,6 +52,24 @@ export const SpanPathSchema = z.string().regex(
   "span path must be slash-delimited kebab-case",
 );
 
+export const SubjectEvidenceSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("person"),
+    identifierKind: z.enum(["eid", "kuali-id", "email"]),
+    bindingDigest: FingerprintSchema,
+    displaySuffix: z.string().regex(/^[A-Za-z0-9*@._-]{2,32}$/),
+  }),
+  z.strictObject({
+    kind: z.literal("artifact"),
+    artifactId: ArtifactIdSchema,
+    bindingDigest: FingerprintSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("catalog"),
+    catalogKey: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    bindingDigest: FingerprintSchema,
+  }),
+]);
 
 export const SubjectProofSchema = z.strictObject({
   kind: z.literal("subject-match"),
@@ -342,7 +357,7 @@ const RetryableWriteIntentRecordSchema = z.strictObject({
 const ParkedWriteIntentRecordSchema = z.strictObject({
   ...WriteIntentAttemptFields,
   status: z.literal("parked"),
-  parkedCode: WriteIntentParkCodeSchema,
+  parkedCode: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]),
   message: z.string().min(1),
 });
 

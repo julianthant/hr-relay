@@ -15,7 +15,6 @@ import {
   WriteAttemptRecordSchema,
   WriteIntentRecordSchema,
 } from "../../domain/write-safety.js";
-import { WriteIntentParkCodeSchema } from "../../domain/write-safety-primitives.js";
 import { RunClaimTokenSchema } from "./run-store-contracts.js";
 
 export const WriteFenceInputSchema = z.strictObject({
@@ -187,12 +186,14 @@ export const AtomicWriteCommitReportSchema = z.strictObject({
 
 /* ── Phase-1f intent state transitions (doc 09 §4/§4.1; D111/D118) ────────── */
 
-/**
- * Doc 09 §4.3 park codes. RE-EXPORTED from the browser-safe domain half, not
- * re-declared: this used to be a hand-written copy of the same five members,
- * and a mirror is only a mirror until someone edits one side.
- */
-export { WriteIntentParkCodeSchema };
+/** Doc 09 §4.3 park codes — mirrors the parked intent/run vocabulary exactly. */
+export const WriteIntentParkCodeSchema = z.enum([
+  "unknown",
+  "ambiguous",
+  "present-proof-invalid",
+  "binding-invalid",
+  "operator-required",
+]);
 
 /** CAS an `attempting` intent (and its current attempt) to `parked`. */
 export const WriteIntentParkRequestSchema = z.strictObject({

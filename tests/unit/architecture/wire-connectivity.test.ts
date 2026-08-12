@@ -34,10 +34,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
+import { z } from "zod";
 import { ActionCommandKeySchema } from "../../../src/domain/dashboard/actions.js";
-import { RunDetailSectionResponseSchema } from "../../../src/domain/dashboard/run-detail.js";
+import {
+  ParkedWriteDetailWireSchema,
+  ParkedWriteSubjectEvidenceSchema,
+  RunDetailSectionResponseSchema,
+} from "../../../src/domain/dashboard/run-detail.js";
 import { CommandRequestSchema } from "../../../src/domain/commands.js";
 import { RunOutcomeSchema, RunRecordSchema, RunStateSchema, type RunRecord } from "../../../src/domain/run/record.js";
+import { SubjectEvidenceSchema, WriteIntentRecordSchema } from "../../../src/domain/write-safety.js";
 import { availableSections } from "../../../src/server/dashboard/queries/run-detail.js";
 import {
   makeWorld,
@@ -48,6 +54,7 @@ import {
 } from "../server/helpers/dashboard-harness.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 import {
+  armField,
   clientRouteReferences,
   discriminantValues,
   normalizeClientPath,
@@ -367,6 +374,43 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     assert.ok(!routeMatches("/api/v1/runs/:runId", "/api/v1/runs/abc/logs"));
     assert.ok(!routeMatches("/api/v1/runs/:runId/:section", "/api/v1/runs/abc"));
     assert.ok(!routeMatches("/api/v1/archive", "/api/v1/explorer"));
+  });
+
+  it("keeps every wire mirror of a durable vocabulary member-for-member identical", () => {
+    /*
+     * A mirror is the fourth joint, and the one with no import to keep it
+     * honest. `run-detail.ts` re-declares doc 09's park codes and subject
+     * evidence because `write-safety.ts` imports `node:crypto` and this module
+     * is in the dashboard bundle's reach — the copy is forced by doc 13 §8.13,
+     * so the equality has to be asserted somewhere or it is only a comment.
+     *
+     * `z.toJSONSchema` is the comparison rather than a hand-listed member set:
+     * a member ADDED to either side, a regex loosened on one, or a branded id
+     * swapped for a bare string all show up, and none of them would if this
+     * test enumerated what it already believed.
+     */
+    const mirrors = [
+      {
+        name: "parked-write park codes",
+        durable: armField(WriteIntentRecordSchema, "status", "parked", "parkedCode"),
+        wire: ParkedWriteDetailWireSchema.shape.parkedCode,
+      },
+      {
+        name: "parked-write subject evidence",
+        durable: SubjectEvidenceSchema,
+        wire: ParkedWriteSubjectEvidenceSchema,
+      },
+    ] as const;
+
+    for (const mirror of mirrors) {
+      assert.deepEqual(
+        z.toJSONSchema(mirror.wire, { io: "output" }),
+        z.toJSONSchema(mirror.durable, { io: "output" }),
+        `${mirror.name}: the wire copy in src/domain/dashboard/run-detail.ts has drifted from its `
+        + "durable original in src/domain/write-safety.ts — the copy exists only because a "
+        + "descriptor-closure edit moves contractFingerprint, not because the two may differ",
+      );
+    }
   });
 
   it("keeps the manifest itself parseable, unique, and non-empty of reasons", () => {

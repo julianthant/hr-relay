@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   ActorIdSchema,
+  ArtifactIdSchema,
   BrowserSystemIdSchema,
   DiagnosticBundleIdSchema,
   ElementIdSchema,
@@ -24,10 +25,6 @@ import {
   WriteIntentIdSchema,
 } from "../ids.js";
 import { UnscopedCommitReasonIdSchema } from "../unscoped-commit.js";
-import {
-  SubjectEvidenceSchema,
-  WriteIntentParkCodeSchema,
-} from "../write-safety-primitives.js";
 import { ContractFieldPathSchema } from "../contracts/base.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
 import {
@@ -354,6 +351,52 @@ export const FailureDetailWireSchema = z.strictObject({
 
 const CaptureListSchema = z.strictObject({ runId: RunIdSchema, artifacts: z.array(ArtifactResourceWireSchema) });
 
+/* ── the parked-write vocabulary, mirrored across the browser boundary ────── */
+
+/**
+ * Doc 09's park codes and subject-binding evidence, RE-DECLARED here rather
+ * than imported, and pinned to the durable originals by `wire-connectivity`.
+ *
+ * The import would be the obvious move and it is not available: both live in
+ * `write-safety.ts`, which imports `node:crypto`, and this module is in the
+ * dashboard bundle's reach — a `node:*` binding several modules deep is the
+ * exact defect doc 13 §8.13 exists for. Hoisting them into the browser-safe
+ * `write-safety-primitives.ts` is the structurally right fix and is
+ * deliberately NOT taken here: that file is inside every workflow descriptor's
+ * source closure, so editing it moves `contractFingerprint`, which the
+ * Workflow Explorer and archive surfaces RENDER — the parity corpus drifts on
+ * a hash even though not one pixel of layout moves. That is a real finding
+ * about the corpus, not a licence to re-freeze it, so the copy stays and the
+ * guard makes it provable instead of hopeful: a member added to either
+ * original and not to its mirror fails.
+ */
+const ParkedWriteCodeSchema = z.enum([
+  "unknown",
+  "ambiguous",
+  "present-proof-invalid",
+  "binding-invalid",
+  "operator-required",
+]);
+
+export const ParkedWriteSubjectEvidenceSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("person"),
+    identifierKind: z.enum(["eid", "kuali-id", "email"]),
+    bindingDigest: FingerprintSchema,
+    displaySuffix: z.string().regex(/^[A-Za-z0-9*@._-]{2,32}$/),
+  }),
+  z.strictObject({
+    kind: z.literal("artifact"),
+    artifactId: ArtifactIdSchema,
+    bindingDigest: FingerprintSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("catalog"),
+    catalogKey: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    bindingDigest: FingerprintSchema,
+  }),
+]);
+
 /**
  * WHO the fenced write was bound to, in the only form a surface may see it.
  *
@@ -362,12 +405,13 @@ const CaptureListSchema = z.strictObject({ runId: RunIdSchema, artifacts: z.arra
  * halves differ — so projecting ONE value is not a shortcut, it is the whole
  * fact: the proof exists precisely because the two agreed.
  *
- * The evidence is served as the DURABLE `SubjectEvidenceSchema`, not a second
- * projection of it. That schema is display-safe by construction — a binding
- * digest plus a bounded suffix, a branded artifact id, or a closed catalog key
- * — so re-shaping it into `{ digest, displayRedacted }` would claim a redaction
- * this projection did not perform and would drop the digest that makes the
- * value checkable against the failure panel's copy.
+ * The evidence is served in the DURABLE `SubjectEvidence` shape, member for
+ * member, not as a second projection of it. That shape is display-safe by
+ * construction — a binding digest plus a bounded suffix, a branded artifact
+ * id, or a closed catalog key — so re-shaping it into `{ digest,
+ * displayRedacted }` would claim a redaction this projection did not perform
+ * and would drop the digest that makes the value checkable against the
+ * failure panel's copy.
  *
  * The `unscoped` arm is doc 09's reviewed no-subject commit. It has no subject
  * to redact and must not pretend to one: it names the reviewed reason id from
@@ -379,7 +423,7 @@ export const ParkedWriteSubjectWireSchema = z.discriminatedUnion("state", [
     proofId: WriteBindingProofIdSchema,
     observedAt: IsoInstantSchema,
     /** `expected` and `observed`, which the proof schema pins as identical. */
-    evidence: SubjectEvidenceSchema,
+    evidence: ParkedWriteSubjectEvidenceSchema,
   }),
   z.strictObject({
     state: z.literal("unscoped"),
@@ -428,7 +472,7 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   idempotencyKeyDigest: FingerprintSchema,
   fencedAt: IsoInstantSchema,
   parkedAt: IsoInstantSchema,
-  parkedCode: WriteIntentParkCodeSchema,
+  parkedCode: ParkedWriteCodeSchema,
   /**
    * The park message as the kernel composed it. It is `external-text`, not
    * repository-authored: doc 09 §4's `park()` interpolates a thrown driver
