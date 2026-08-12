@@ -1,0 +1,11 @@
+{
+  "stateId": "queue-day",
+  "viewport": "1440x900",
+  "theme": "graphite-warm",
+  "adapter": "fixture",
+  "fixtureId": "queue-day",
+  "descriptorHash": "ceb5bb8474683b81b96efcdc6ed9f5d4eebe4cfad336c9370e961876fb99d1bb",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-08-03",
+  "variant": "panel-dismissed"
+}

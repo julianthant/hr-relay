@@ -49,6 +49,15 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   { id: "run-running", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.runningRun } },
   { id: "run-done", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.doneRun } },
   { id: "run-queued", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.queuedRun } },
+  /*
+    The parked write (W2, doc 09 §4.1). The corpus has photographed this run's
+    `blocked` QUEUE ROW since it was written and had never once opened it — so
+    the panel behind the one lifecycle the kernel refuses generic retry for was
+    unphotographed while its two typed resolutions sat implemented, tested and
+    unreachable. This is the reference that makes the resolution copy, the
+    served fence facts and the `resolve-write-present` refusal all readable.
+  */
+  { id: "run-parked-write", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.parkedRun } },
   // groupOf13 is the group the corpus gives a `group` panel detail to; the
   // smaller groups exist to exercise the QUEUE's well sizing, not the panel.
   { id: "run-group", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.groupOf13 } },
@@ -145,6 +154,38 @@ async function dismissWorkflowWindow(page: import("@playwright/test").Page): Pro
   await page.waitForTimeout(120);
 }
 
+/**
+ * Dismiss the window on a QUEUE view — where `y=100` is a live control.
+ *
+ * On a takeover the queue and its bands are gone, so the press above lands in
+ * empty chrome. On the queue view it lands on the STATUS FILTER ROW, and the
+ * first `panel-dismissed` reference minted with it photographed the queue
+ * filtered to `Done 2` while claiming to be the day queue — a harness that
+ * changed the state it was supposed to reveal. (`run-receipt-populated` already
+ * found this once and worked around it locally; this is the same finding with a
+ * post-condition attached so it cannot happen a third time.)
+ *
+ * The press goes into the panel region instead, which is inert on both views:
+ * the `No run open` empty state with nothing selected, the log stream with a
+ * run open. And it ASSERTS its own post-condition — the window gone AND the
+ * status filter untouched — because a dismissal that quietly changes the
+ * subject is exactly the check that cannot fail.
+ */
+async function dismissWorkflowWindowOverQueue(page: import("@playwright/test").Page): Promise<void> {
+  const filters = page.getByRole("group", { name: "Filter the queue by status" });
+  const pressedBefore = await filters.getByRole("button", { pressed: true }).allInnerTexts();
+  await page.mouse.click(500, 500);
+  await page.waitForTimeout(120);
+  await expect(
+    page.getByRole("region", { name: "Workflow Panel" }),
+    "the workflow window is still on screen; the reference would photograph it",
+  ).toHaveCount(0);
+  expect(
+    await filters.getByRole("button", { pressed: true }).allInnerTexts(),
+    "dismissing the window changed the queue's status filter — the reference would show a different queue",
+  ).toEqual(pressedBefore);
+}
+
 /** A page that logged an uncaught error did not render the state under test. */
 function failOnPageErrors(page: import("@playwright/test").Page): string[] {
   const errors: string[] = [];
@@ -202,6 +243,116 @@ for (const viewport of PARITY_VIEWPORTS) {
     });
   }
 }
+
+/**
+ * THE QUEUE, UNOCCLUDED (W2).
+ *
+ * Every `queue-*` and `run-*` reference above keeps the floating Workflow
+ * Panel, and at every reference viewport that window sits OVER the queue
+ * column. That is the right default — the queue is what the window is FOR, and
+ * a reference that dismissed it would document a state the operator only
+ * reaches by clicking away. But it means the queue's own rows have never been
+ * photographed with nothing on top of them: their status clusters, their
+ * wrapping footers and the group wells behind the window are, in the corpus as
+ * it stands, covered pixels. A defect there is invisible to the pixel half and
+ * agreed with by the a11y half, which is the exact shape D187 and D195 each
+ * found once.
+ *
+ * So this ADDS a second photograph of two states rather than moving either
+ * one: the day queue at rest, and a queue with a run open beside it. One
+ * viewport, both themes — the occlusion is a function of the layout, not of
+ * the width, and 1440x900 is the width the window overlaps most.
+ */
+test.describe("panel dismissed", () => {
+  const DISMISSED: readonly { id: string; route: AppRoute }[] = [
+    { id: "queue-day", route: { day: FIXTURE_DAY } },
+    { id: "run-running", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.runningRun } },
+  ];
+  for (const theme of PARITY_THEMES) {
+    for (const state of DISMISSED) {
+      test(`${state.id} @ ${theme.name}`, async ({ page }) => {
+        const errors = failOnPageErrors(page);
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await installTheme(page, theme satisfies ParityTheme);
+        await gotoAppState(page, server.baseUrl, state.route);
+        await dismissWorkflowWindowOverQueue(page);
+        await assertThemeApplied(page, theme satisfies ParityTheme);
+        await page.waitForTimeout(120);
+
+        // The region must still tile with the window GONE. A hole that the
+        // floating panel was covering is still a hole (D195).
+        await assertShellGeometry(page, `${state.id} panel-dismissed @ 1440x900 ${theme.name}`);
+        expect(errors, `page errors while rendering ${state.id} with the panel dismissed`).toEqual([]);
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: state.id,
+          viewport: "1440x900",
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: state.id,
+          descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "panel-dismissed",
+        });
+      });
+    }
+  }
+});
+
+/**
+ * THE TWO TYPED RESOLUTIONS, OPEN (W2, doc 09 §4.1).
+ *
+ * The `run-parked-write` reference above photographs the record; the copy that
+ * decides a real HR write lives one click further in, in the confirm block the
+ * SERVER authored. A dialog nobody photographs is a dialog whose wording is
+ * reviewed once, by whoever wrote it.
+ *
+ * Both arms, because they are not two skins of one screen. `absent` carries the
+ * evidence note the kernel requires and is genuinely sendable; `present` carries
+ * a REFUSAL, because its payload needs a proof bound to the commit contract's
+ * own schema and this wire serves no proof schema identity — so the surface
+ * offers it disabled with its reason rather than a control that does nothing.
+ *
+ * One viewport and one theme apiece: these are about the copy and the refusal,
+ * which are the same pixels at every width.
+ */
+test.describe("park resolutions", () => {
+  const ARMS: readonly { variant: string; label: string }[] = [
+    { variant: "resolve-absent", label: "I confirmed it is NOT there" },
+    { variant: "resolve-present", label: "I confirmed it IS there" },
+  ];
+  for (const arm of ARMS) {
+    test(`run-parked-write ${arm.variant}`, async ({ page }) => {
+      const errors = failOnPageErrors(page);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await installTheme(page, PARITY_THEMES[0]);
+      await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.parkedRun });
+      await assertThemeApplied(page, PARITY_THEMES[0]);
+
+      // The record's own control, by its SERVED label — a rename on the server
+      // must fail this test rather than silently re-photograph a new word.
+      await page.getByRole("button", { name: arm.label, exact: true }).click();
+      // Radix moves focus into the dialog on open; wait for the surface itself
+      // rather than a duration, so the capture is never of a half-mounted box.
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.waitForTimeout(250);
+      expect(errors, `page errors while opening ${arm.variant}`).toEqual([]);
+
+      await captureParityPair(page, REFERENCES, {
+        stateId: "run-parked-write",
+        viewport: "1440x900",
+        theme: PARITY_THEMES[0].name,
+        adapter: "fixture",
+        fixtureId: "run-parked-write",
+        descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+        appVersion: FIXTURE_APP_VERSION,
+        capturedAt: FIXTURE_DAY,
+        variant: arm.variant,
+      });
+    });
+  }
+});
 
 /**
  * The two access variants doc 13 §7.1 names. Both are captured at one viewport

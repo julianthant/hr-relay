@@ -23,6 +23,11 @@ function sectionsWanted(detail: RunDetailWire, tab: PanelTab): string[] {
   // The inline failure record lives in the Logs stream, so the pointer is
   // needed whenever the run failed — not only when a "failure" tab is open.
   if (advertised.has("failure")) wanted.add("failure");
+  // The parked write is the OTHER surface that renders inline in the stream
+  // (DESIGN.md names `Waiting on you` and `Write parked` as the two decisions),
+  // so it is fetched for the same reason and on the same terms: whenever the
+  // run advertises it, never only when some tab is open.
+  if (advertised.has("parked-write")) wanted.add("parked-write");
   return [...wanted];
 }
 
@@ -40,6 +45,8 @@ function merge(into: PanelSections, response: RunDetailSectionResponse): PanelSe
       return { ...into, "context-evidence": response.payload };
     case "context-attempts":
       return { ...into, "context-attempts": response.payload };
+    case "parked-write":
+      return { ...into, "parked-write": response.payload };
     default:
       // A section the server serves and this build does not know how to place
       // is dropped rather than guessed at — but it must not be silent.

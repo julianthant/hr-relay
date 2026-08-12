@@ -36,6 +36,7 @@ import {
   SUBJECT_PROOF,
   UNSCOPED_PROOF,
 } from "../fixtures/phase1c-contract-fixtures.js";
+import { FIXTURE_PARKED_WRITE } from "../../parity/helpers/fixture-day.js";
 import {
   makeWorld,
   queuedEventOf,
@@ -309,6 +310,32 @@ describe("the parked-write run-detail section (doc 09 §4.1)", () => {
     });
     seed(w, { intent: foreign });
     assert.throws(() => parkedSection(w), /but that intent belongs to run/);
+  });
+
+  /**
+   * The parity corpus's adapter #1 AUTHORS this section — it holds no authority
+   * rows to derive one from — so its two resolution descriptors are a COPY of
+   * the ones this query builds. A copy nobody compares is a reference that
+   * documents last month's copy, so this compares them: everything but the
+   * identities the two adapters legitimately differ on (the intent id, the run
+   * id, the run version, and the ids interpolated into the confirm body).
+   */
+  it("pins the parity fixture's resolution descriptors to the ones this query builds", () => {
+    const w = world();
+    seed(w);
+    const served = parkedSection(w);
+
+    const normalize = (payload: { writeIntentId: string; actions: readonly unknown[] }): unknown =>
+      JSON.parse(
+        JSON.stringify(payload.actions)
+          .replaceAll(payload.writeIntentId, "<intent>")
+          // The version each adapter's own run row is at; the SHAPE is what is
+          // being compared, and a fixture pinned to `4` would be pinned to this
+          // suite's seed rather than to the server's copy.
+          .replaceAll(/"expectedVersion":\d+/gu, '"expectedVersion":0'),
+      ) as unknown;
+
+    assert.deepEqual(normalize(FIXTURE_PARKED_WRITE), normalize(served));
   });
 
   it("re-reads the intent per request rather than folding it into the projection", () => {

@@ -25,6 +25,10 @@ import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
+import {
+  deriveIdempotencyKeyDigest,
+  deriveWriteBindingProofDigest,
+} from "../../../src/domain/write-safety.js";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import { RunTerminalOutboxRecordSchema } from "../../../src/domain/run/terminal-outbox.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
@@ -264,6 +268,91 @@ function claimOf(run: RunRecord): { workerId: string; claimGeneration: number } 
   return { workerId: run.lifecycle.workerId, claimGeneration: run.claimGeneration };
 }
 
+/**
+ * Fence a permanent write against this run and park it — the doc 09 §4 shape,
+ * through the production repository's own CAS pair.
+ *
+ * The binding proof is a `subject-match`, which is the arm the operator surface
+ * has the most to render: it pins `expected` and `observed` as canonically
+ * identical (its own `superRefine` refuses a proof where they differ), so the
+ * served subject is a whole fact rather than half of one.
+ */
+function fenceAndParkWrite(world: SeedWorld, run: RunRecord): void {
+  const runId = run.envelope.runId;
+  const idempotencyKey = "10555121|termination|2026-08-03";
+  const bindingProof = {
+    kind: "subject-match",
+    version: 1,
+    proofId: uuidOf(907),
+    runId,
+    attempt: run.envelope.attempt,
+    leaseId: uuidOf(908),
+    taskId: "ucpath/terminate-person",
+    observationId: "ucpath.termination.subject",
+    pageStateId: "ucpath.termination-ready",
+    expected: {
+      kind: "person",
+      identifierKind: "eid",
+      bindingDigest: "3".repeat(64),
+      displaySuffix: "5121",
+    },
+    observed: {
+      kind: "person",
+      identifierKind: "eid",
+      bindingDigest: "3".repeat(64),
+      displaySuffix: "5121",
+    },
+    match: "match",
+    observedAt: SEEDED_NOW,
+    afterPrepareSpanPath: "terminate/prepare",
+  };
+  const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
+  const fenced = world.database.authority.writeIntents.fenceAttempt({
+    intent: {
+      writeIntentId: uuidOf(906),
+      workflowId: WORKFLOW_ID,
+      itemId: run.envelope.itemId,
+      taskId: "ucpath/terminate-person",
+      system: "ucpath",
+      idempotencyKey,
+      idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", idempotencyKey),
+      currentAttemptId: uuidOf(909),
+      generation: 1,
+      runId,
+      runAttempt: run.envelope.attempt,
+      bindingProof,
+      bindingProofDigest,
+      fencedAt: SEEDED_NOW,
+      status: "attempting",
+      version: 1,
+      createdAt: SEEDED_NOW,
+      updatedAt: SEEDED_NOW,
+    },
+    attempt: {
+      writeAttemptId: uuidOf(909),
+      writeIntentId: uuidOf(906),
+      generation: 1,
+      runId,
+      runAttempt: run.envelope.attempt,
+      leaseId: uuidOf(908),
+      bindingProof,
+      bindingProofDigest,
+      fencedAt: SEEDED_NOW,
+      outcome: { state: "attempting" },
+      recordedAt: SEEDED_NOW,
+    },
+  });
+  if (fenced.state !== "fenced") throw new Error(`the seeded write fence answered ${fenced.state}`);
+  world.database.authority.writeIntents.parkAttempt({
+    writeIntentId: uuidOf(906),
+    generation: 1,
+    expectedVersion: fenced.intent.version,
+    code: "unknown",
+    message: "the UCPath write outcome could not be observed",
+    now: SEEDED_NOW,
+  });
+}
+
 /** The real D110/D114 atomic failure terminalization. */
 function terminalizeFailed(world: SeedWorld, run: RunRecord, failureId: string): void {
   const summary = "CRM onboarding dates were unavailable";
@@ -438,9 +527,22 @@ function seed(world: SeedWorld): Record<string, string> {
     gate: "identity-review",
   });
 
-  // blocked — a real parked-write lifecycle transition.
+  // blocked — a real parked-write lifecycle transition, over a real fenced
+  // and parked `write_intents` row.
+  //
+  // THE ROW IS NOT OPTIONAL, and its absence was a live defect (W2). This
+  // adapter has transitioned run 6 to `parked-write` since the seed was
+  // written, and `availableSections` advertises the parked-write section from
+  // that lifecycle alone — but the serving arm re-reads the intent the park
+  // NAMES and throws by design when authority does not hold it (doc 09 §4.1: a
+  // parked run with no intent is a lie, not an empty panel). Nothing had ever
+  // opened this run, so nobody had met the 500. It goes through the production
+  // repository's own `fenceAttempt` → `parkAttempt` CAS pair rather than an
+  // INSERT, because a hand-written row would be exactly the "adapter #2 fakes
+  // a state the machinery cannot reach" this file exists to refuse.
   const parked = startRunning(world, { seed: 6, title: "EID 10555121" }, "person-lookup-worker-4", "cross-verify");
   taskSpan(world, parked, "searching", "done");
+  fenceAndParkWrite(world, parked);
   const parkedTransition = world.database.authority.runs.transition({
     runId: parked.envelope.runId,
     expectedVersion: parked.version,

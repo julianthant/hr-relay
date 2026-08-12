@@ -576,7 +576,23 @@ type EditableScalar = string | number | boolean;
 type ContextDataEditing =
   | { state: "editable"; expectedVersion: number }
   | { state: "locked"; reason: string };
-type ContextDataEntry = {
+/**
+ * The three provenance leaves the Data section serves (doc 02 §5.6).
+ *
+ * They are OMITTED, never nulled: the wire's members are optional and an absent
+ * one says "this build cannot date this value". A checkpoint that recorded no
+ * covering provenance point, an entry with no field identity, and a step that
+ * never checkpointed all land here, and all three mean the same thing to the
+ * rail — which is why they render identically rather than through three arms
+ * the operator would have to tell apart.
+ */
+type FactProvenanceWire = {
+  observedAt?: string;
+  source?: "live" | "derived" | "operator";
+  correctedAt?: string;
+};
+
+type ContextDataEntry = FactProvenanceWire & {
   label: string;
   valueRedacted: string;
   edit:
@@ -682,6 +698,39 @@ function pendingCorrectionOf(
 }
 
 /**
+ * The provenance point that DATES a leaf, off the checkpoint that produced it.
+ *
+ * Exact path first, then the longest COVERING PREFIX. The prefix arm is not a
+ * convenience: `task-provenance.ts` records at leaf granularity but a wrapper
+ * value is dated through the prefix that covers it — D82's evidence receipt
+ * resolves a transaction commit's output leaves the same way, through the
+ * `output`/`proof` wrapper the checkpoint actually recorded. Longest wins so a
+ * point recorded for `startsOn.value` beats one recorded for `startsOn`, which
+ * is the more specific and therefore the more truthful observation.
+ *
+ * A path is a prefix only at a SEGMENT boundary: `starts` must never cover
+ * `startsOn.value`, or a leaf would inherit a date from an unrelated field
+ * whose name it merely begins with.
+ */
+function provenanceFor(
+  stored: RunCheckpointRecord,
+  fieldPath: string,
+): FactProvenanceWire {
+  let best: RunCheckpointRecord["provenance"][number] | undefined;
+  for (const point of stored.provenance) {
+    const path = String(point.path);
+    if (path !== fieldPath && !fieldPath.startsWith(`${path}.`)) continue;
+    if (best === undefined || path.length > String(best.path).length) best = point;
+  }
+  if (best === undefined) return {};
+  return {
+    observedAt: best.observedAt,
+    source: best.source,
+    ...(best.correctedAt === undefined ? {} : { correctedAt: best.correctedAt }),
+  };
+}
+
+/**
  * One entry for a correctable field: the raw recorded scalar from the latest
  * compatible checkpoint plus any pending injected correction. `display` is
  * the already-projected detail value when the field also backs a detail —
@@ -710,6 +759,10 @@ function editableEntryOf(
       },
     };
   }
+  // Dated once, for EVERY arm below: a locked row is as much a recorded fact
+  // as an editable one, and "when was this observed" is the question the lock
+  // makes more pressing rather than less.
+  const provenance = provenanceFor(stored, source.fieldPath);
   const lookup = scalarAtPath(stored.output.value, source.fieldPath);
   if (lookup.kind === "absent") {
     return {
@@ -719,6 +772,7 @@ function editableEntryOf(
         state: "locked",
         reason: `the recorded outcome carries no ${source.fieldPath} — there is no stored value to correct`,
       },
+      ...provenance,
     };
   }
   if (lookup.kind === "not-scalar") {
@@ -729,6 +783,7 @@ function editableEntryOf(
         state: "locked",
         reason: "not a single text/number value; structured output is corrected by a new run, not a field edit",
       },
+      ...provenance,
     };
   }
   const pending = pendingCorrectionOf(authority, source);
@@ -740,6 +795,7 @@ function editableEntryOf(
         state: "locked",
         reason: "a pending correction holds a structured value; it applies when the run resumes",
       },
+      ...provenance,
     };
   }
   return {
@@ -752,6 +808,7 @@ function editableEntryOf(
       value: lookup.value,
       pendingCorrection: pending,
     },
+    ...provenance,
   };
 }
 
@@ -791,10 +848,20 @@ function buildContextDataPayload(
     }
     const identity = `${String(spec.source.nodeId)}\0${spec.source.fieldPath}`;
     if (!editByIdentity.has(identity)) {
+      // Uneditable, and still DATED: this row has a real field identity, so
+      // the checkpoint that produced it can date it. "You may not change this"
+      // and "nobody knows when this was read" are unrelated facts, and the
+      // rail must not imply the first causes the second.
+      const stored = deps.authority.latestCheckpoint(
+        row.queued.workflow,
+        authority.envelope.itemId,
+        String(spec.source.nodeId),
+      );
       entries.push({
         label: spec.label,
         valueRedacted: display,
         edit: { state: "locked", reason: "not declared correctable by this workflow" },
+        ...(stored === undefined ? {} : provenanceFor(stored, spec.source.fieldPath)),
       });
       continue;
     }

@@ -62,7 +62,10 @@ function depsOf(w: DashboardWorld, view: unknown = DATE_FIELDS_VIEW) {
   };
 }
 
-function crmDatesCheckpoint(seed: number) {
+const OBSERVED_AT = "2026-08-03T16:58:00.000Z";
+const CORRECTED_AT = "2026-08-03T17:04:00.000Z";
+
+function crmDatesCheckpoint(seed: number, provenance: readonly unknown[] = []) {
   return RunCheckpointRecordSchema.parse({
     workflowId: "person-lookup",
     itemId: uuidOf(seed + 5000),
@@ -81,7 +84,7 @@ function crmDatesCheckpoint(seed: number) {
     descriptorVersion: 1,
     contractFingerprint: HASH_A,
     implFingerprint: HASH_B,
-    provenance: [],
+    provenance,
     writtenAt: NOW,
   });
 }
@@ -262,5 +265,156 @@ describe("context-data edit projection (2i-C)", () => {
     w.authority.put(runRecordOf({ seed: 1 }));
 
     assert.deepEqual(contextData(w).entries, []);
+  });
+
+  /*
+    W2: the observation clock and the fact's own source, projected from the
+    producing checkpoint's `FactProvenance` — the record this query has read
+    since 2i-C and thrown away. Every arm is read forward (D133): a checkpoint
+    that carries no covering point serves no clock rather than a fabricated one.
+  */
+  describe("fact provenance on the served entries (W2)", () => {
+    it("dates a value from the exact provenance point, and carries its source", () => {
+      const w = world();
+      queuedEventOf(w, { seed: 1 });
+      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
+      w.authority.putCheckpoint(crmDatesCheckpoint(1, [
+        { path: "invitedOn.value", source: "live", observedAt: OBSERVED_AT, originalObservedAt: OBSERVED_AT },
+        {
+          path: "startsOn.value",
+          source: "operator",
+          observedAt: CORRECTED_AT,
+          originalObservedAt: OBSERVED_AT,
+          correctedAt: CORRECTED_AT,
+        },
+      ]));
+
+      const entries = contextData(w).entries;
+      const invited = entries.find((entry) => entry.label === "Invited on");
+      assert.ok(invited);
+      assert.equal(invited.observedAt, OBSERVED_AT);
+      assert.equal(invited.source, "live");
+      assert.equal(invited.correctedAt, undefined);
+
+      // An operator correction carries its own instant — the rail's `corrected`
+      // badge is drawn from exactly this and from nothing it inferred.
+      const starts = entries.find((entry) => entry.label === "Starts on");
+      assert.ok(starts);
+      assert.equal(starts.source, "operator");
+      assert.equal(starts.correctedAt, CORRECTED_AT);
+    });
+
+    it("dates a leaf through the LONGEST covering prefix, never through a name it merely starts with", () => {
+      const w = world();
+      queuedEventOf(w, { seed: 1 });
+      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
+      w.authority.putCheckpoint(crmDatesCheckpoint(1, [
+        // The wrapper covers the leaf; the more specific point wins over it.
+        { path: "invitedOn", source: "derived", observedAt: NOW, originalObservedAt: NOW },
+        { path: "invitedOn.value", source: "live", observedAt: OBSERVED_AT, originalObservedAt: OBSERVED_AT },
+        // Covers `startsOn` only by prefix of the STRING — never by path.
+        { path: "starts", source: "operator", observedAt: CORRECTED_AT, originalObservedAt: NOW },
+      ]));
+
+      const entries = contextData(w).entries;
+      const invited = entries.find((entry) => entry.label === "Invited on");
+      assert.ok(invited);
+      assert.equal(invited.observedAt, OBSERVED_AT, "the exact leaf beats the wrapper covering it");
+      assert.equal(invited.source, "live");
+
+      const starts = entries.find((entry) => entry.label === "Starts on");
+      assert.ok(starts);
+      assert.equal(starts.observedAt, undefined, "`starts` is not a segment prefix of `startsOn.value`");
+      assert.equal(starts.source, undefined);
+    });
+
+    it("dates a wrapper's leaf through the wrapper, the way a commit output is dated", () => {
+      const w = world();
+      queuedEventOf(w, { seed: 1 });
+      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
+      w.authority.putCheckpoint(crmDatesCheckpoint(1, [
+        { path: "startsOn", source: "derived", observedAt: OBSERVED_AT, originalObservedAt: NOW },
+      ]));
+
+      const starts = contextData(w).entries.find((entry) => entry.label === "Starts on");
+      assert.ok(starts);
+      assert.equal(starts.observedAt, OBSERVED_AT);
+      assert.equal(starts.source, "derived");
+    });
+
+    it("dates a LOCKED row too — uneditable and undated are unrelated facts", () => {
+      const w = world();
+      queuedEventOf(w, { seed: 1 });
+      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
+      w.authority.putCheckpoint(crmDatesCheckpoint(1, [
+        // `completedOn.value` is ABSENT on the outcome, so its row is locked.
+        { path: "completedOn", source: "live", observedAt: OBSERVED_AT, originalObservedAt: OBSERVED_AT },
+      ]));
+
+      const completed = contextData(w).entries.find((entry) => entry.label === "Completed on");
+      assert.ok(completed);
+      assert.equal(completed.edit.state, "locked");
+      assert.equal(completed.observedAt, OBSERVED_AT);
+    });
+
+    it("dates a row the workflow does not declare correctable — it still has a field identity", () => {
+      const w = world();
+      queuedEventOf(w, { seed: 1 });
+      w.writer.emit({
+        t: "span.patched",
+        ts: w.clock.now().toISOString(),
+        workflow: "person-lookup",
+        runId: uuidOf(1),
+        attempt: 1,
+        traceId: traceOf(1),
+        spanPath: traceOf(1),
+        updates: [{ key: "selection-status", value: "resolved" }],
+      });
+      w.authority.put(runRecordOf({ seed: 1, version: 2 }));
+      w.authority.putCheckpoint(RunCheckpointRecordSchema.parse({
+        workflowId: "person-lookup",
+        itemId: uuidOf(5001),
+        nodeId: "searching",
+        attempt: 1,
+        runId: uuidOf(1),
+        output: { schemaHash: HASH_A, value: { selection: { status: "resolved" } } },
+        descriptorVersion: 1,
+        contractFingerprint: HASH_A,
+        implFingerprint: HASH_B,
+        provenance: [
+          { path: "selection.status", source: "live", observedAt: OBSERVED_AT, originalObservedAt: OBSERVED_AT },
+        ],
+        writtenAt: NOW,
+      }));
+
+      const payload = contextData(w, {
+        details: [{
+          key: "selection-status",
+          label: "Selection",
+          source: { nodeId: "searching", fieldPath: "selection.status" },
+        }],
+        capabilities: { editData: true },
+      });
+      const selection = payload.entries[0];
+      assert.ok(selection);
+      assert.equal(selection.edit.state, "locked");
+      assert.equal(selection.observedAt, OBSERVED_AT);
+      assert.equal(selection.source, "live");
+    });
+
+    it("serves no clock at all when the checkpoint recorded no covering point (D133)", () => {
+      const w = world();
+      queuedEventOf(w, { seed: 1 });
+      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
+      // A pre-provenance checkpoint. Its `writtenAt` is a real instant and is
+      // NOT substituted: it dates the ROW, not the fact.
+      w.authority.putCheckpoint(crmDatesCheckpoint(1));
+
+      for (const entry of contextData(w).entries) {
+        assert.equal(entry.observedAt, undefined);
+        assert.equal(entry.source, undefined);
+        assert.equal(entry.correctedAt, undefined);
+      }
+    });
   });
 });
