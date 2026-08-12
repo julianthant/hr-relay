@@ -48,6 +48,19 @@
  * receipt describes the run AS OF the instant its evidence closed. Nothing
  * about the run changes after that, so a wall-clock "when was this rendered"
  * stamp would carry no information and would destroy determinism.
+ *
+ * ## Bound to what it consumes, not to a closure hash (D199)
+ *
+ * "Re-deriving one run yields the same bytes" only holds if the derivation
+ * survives the tree moving around it. It did not: `descriptorFingerprint` was
+ * stamped from the CURRENT build's `descriptor.contractFingerprint`, so any
+ * edit anywhere in a ~31-file descriptor closure changed a settled run's
+ * receipt and the immutable insert refused it. That value is now the run's OWN
+ * retained `envelope.contractFingerprint` — a fact about the run, read from
+ * authority like everything else here — and resolvability is checked directly
+ * against the surfaces this builder consumes. See
+ * `receipt-derivation-binding.ts` for the check table and why a closure hash is
+ * neither necessary NOR sufficient for a receipt.
  */
 import { z } from "zod";
 import {
@@ -88,6 +101,11 @@ import {
   type EvidenceObligationSource,
 } from "../domain/trust/evidence-obligations.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../domain/trust/evidence.js";
+import {
+  evaluateReceiptDerivationBinding,
+  evaluateReceiptRederivation,
+  type ReceiptBindingCheckResult,
+} from "./receipt-derivation-binding.js";
 import { FailureRecordSchema, type FailureRecord } from "../domain/trust/failure.js";
 import type { RuntimeFlowNode } from "../domain/workflow/graph.js";
 import {
@@ -257,6 +275,19 @@ function pickCheckpoint(
 }
 
 export function buildRunEvidenceReceipt(input: ReceiptBuildInput): RunEvidenceReceipt {
+  return deriveRunEvidenceReceipt(input).receipt;
+}
+
+/**
+ * The same derivation, returning the D199 binding table beside the receipt.
+ * `ensureRunEvidenceReceipt` needs the held rows to print a legible refusal
+ * when the stored receipt no longer re-derives, and evaluating the table twice
+ * would let the two answers drift.
+ */
+export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
+  receipt: RunEvidenceReceipt;
+  checks: readonly ReceiptBindingCheckResult[];
+}> {
   const { descriptor } = input;
   const run = RunRecordSchema.parse(input.run);
   const { envelope, lifecycle } = run;
@@ -270,12 +301,6 @@ export function buildRunEvidenceReceipt(input: ReceiptBuildInput): RunEvidenceRe
     throw new Error(
       `run ${envelope.runId} ended interrupted; doc-09 recovery will requeue or settle it, and a `
       + "receipt may not name a verdict recovery has not reached",
-    );
-  }
-  if (envelope.workflow !== descriptor.id) {
-    throw new Error(
-      `run ${envelope.runId} is workflow ${envelope.workflow} and the supplied descriptor is `
-      + `${descriptor.id}; refusing to explain a run with another workflow's graph`,
     );
   }
   const result: RunResultRecord | undefined = input.result === undefined
@@ -309,6 +334,20 @@ export function buildRunEvidenceReceipt(input: ReceiptBuildInput): RunEvidenceRe
     intent: WriteIntentRecordSchema.parse(entry.intent),
     attempts: entry.attempts.map((attempt) => WriteAttemptRecordSchema.parse(attempt)),
   }));
+
+  /*
+   * D199: before describing the run at all, prove this build still owns every
+   * semantic surface the description consumes. The workflow-identity refusal
+   * that used to sit inline is the table's first row.
+   */
+  const binding = evaluateReceiptDerivationBinding({
+    descriptor,
+    run,
+    ...(result === undefined ? {} : { result }),
+    checkpoints,
+    writes: writes.map((entry) => entry.intent),
+  });
+  if (binding.state === "incompatible") throw new Error(binding.message);
 
   const receiptId = deriveEvidenceReceiptId(envelope.runId, envelope.attempt);
   const generatedAt = lifecycle.endedAt;
@@ -687,7 +726,14 @@ export function buildRunEvidenceReceipt(input: ReceiptBuildInput): RunEvidenceRe
     workflowId: envelope.workflow,
     attempt: envelope.attempt,
     generatedAt,
-    descriptorFingerprint: descriptor.contractFingerprint,
+    /*
+     * D199: the closure the RUN executed under, retained on its own envelope —
+     * never the current build's. Stamping `descriptor.contractFingerprint` here
+     * made the receipt claim the run ran under whatever closure happens to be
+     * checked out, which is both a false statement and the reason every settled
+     * receipt was stranded by an unrelated edit.
+     */
+    descriptorFingerprint: envelope.contractFingerprint,
     configFingerprint: envelope.configFingerprint,
     retryOf: envelope.retryOf === undefined
       ? { state: "absent" }
@@ -707,7 +753,7 @@ export function buildRunEvidenceReceipt(input: ReceiptBuildInput): RunEvidenceRe
     result: receiptResult,
   });
   assertEvidenceRefsResolve(receipt);
-  return receipt;
+  return Object.freeze({ receipt, checks: binding.checks });
 }
 
 /**
@@ -783,6 +829,12 @@ export type EnsureReceiptOutcome = Readonly<{
  * disagrees with authority cannot be served quietly, and a stored receipt that
  * a later builder can no longer reproduce is a loud, visible fact rather than
  * an invisible one.
+ *
+ * D199 adds the missing half of "loud": when a stored receipt no longer
+ * re-derives, the refusal NAMES the declaration that moved instead of saying
+ * only that the bytes differ. `insertReceipt`'s check stays underneath as the
+ * backstop for any caller that does not come through here — this path never
+ * skips it.
  */
 export function ensureRunEvidenceReceipt(
   store: EvidenceReceiptStore,
@@ -794,7 +846,7 @@ export function ensureRunEvidenceReceipt(
   if (lifecycle.state !== "terminal") {
     throw new Error(`run ${runId} is ${lifecycle.state}; only a terminal run has a receipt`);
   }
-  const derived = buildRunEvidenceReceipt({
+  const { receipt: derived, checks } = deriveRunEvidenceReceipt({
     descriptor,
     run,
     ...(lifecycle.outcome === "done" ? { result: store.getResult(runId) } : {}),
@@ -802,6 +854,17 @@ export function ensureRunEvidenceReceipt(
     checkpoints: store.listCheckpointsByRun(runId),
     writes: store.listWritesByRun(runId),
   });
+  const existing: unknown = store.findReceiptByRun(runId);
+  if (existing !== undefined && existing !== null) {
+    const rederivation = evaluateReceiptRederivation({
+      run,
+      descriptor,
+      stored: RunEvidenceReceiptSchema.parse(existing),
+      derived,
+      checks,
+    });
+    if (rederivation.state === "incompatible") throw new Error(rederivation.message);
+  }
   const stored = store.insertReceipt(derived);
   return Object.freeze({
     state: stored.state === "inserted" ? "derived" : "existing",

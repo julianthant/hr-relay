@@ -310,6 +310,23 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-12: A durable record must be stamped with a fact about ITSELF, and a hash that can be
+  equal when the answer moved is not a binding (D199).** The evidence receipt stamped
+  `descriptorFingerprint` from the CURRENT build's `descriptor.contractFingerprint` — a value about
+  the process doing the reading, not about the run being described. That is a false statement on an
+  operator-facing record, and it is why one raw-control-byte fix stranded all five of chunk 2's
+  live-proof `separations-kuali-read` receipts behind `already exists with different content`, with
+  no re-run available (a read workflow whose identity is the thing it reads runs once per subject).
+  The honest value was always sitting on the run: `envelope.contractFingerprint`, retained at plan
+  time. D136 had already shown the closure hash is not NECESSARY; a receipt shows it is not
+  SUFFICIENT either, because the declared redaction table and the declared cross-source obligations
+  live outside every descriptor's import closure and move with `contractFingerprint` byte-identical
+  — D197 moved one and two receipts changed content under a frozen hash. So the check table's last
+  row, `declared-evidence`, takes the STORED RECEIPT ROW as its baseline, which is the only way to
+  see a declaration the closure cannot describe; it attributes each divergent path to the one
+  declaration that owns it, so a refusal says *what* moved. The immutable insert stays underneath as
+  the backstop and is never skipped, and there is no waiver arm: the three receipts whose only
+  change was the closure came back, and the two whose content genuinely moved stay frozen by design.
 - **2026-08-09: An accessibility tree that reports content is not evidence the operator can SEE it,
   and a harness that sets a state without verifying it has only expressed a preference (D187).** 2j's
   parity work found three defects with one shape. The lane stamped `data-demo-theme` on

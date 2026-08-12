@@ -26,6 +26,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
+import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { seedPersonLookupExitRun } from "../fixtures/receipt-run-fixtures.js";
@@ -119,7 +120,14 @@ describe("evidence receipt — strictness", () => {
 
   it("carries the graph, config, and input fingerprints a run is bound to", () => {
     const receipt = kualiReceipt();
-    assert.equal(receipt.descriptorFingerprint, kualiTimekeeperAnnotationDescriptor.contractFingerprint);
+    // D199: the closure the RUN executed under, read from its own envelope. It
+    // equals the current build's here only because the fixture run was planned
+    // under this build — a receipt that takes `descriptor.contractFingerprint`
+    // instead strands every settled run on the next unrelated edit.
+    assert.equal(
+      receipt.descriptorFingerprint,
+      RunRecordSchema.parse(kualiReceiptEvidence().run).envelope.contractFingerprint,
+    );
     assert.match(receipt.configFingerprint, /^[0-9a-f]{64}$/);
     for (const fact of receipt.input) {
       assert.equal(fact.source.kind, "input");
@@ -236,6 +244,40 @@ describe("evidence receipt — strictness", () => {
 
   it("is a pure function of authority — one run, one byte-identical receipt", () => {
     assert.equal(JSON.stringify(kualiReceipt()), JSON.stringify(kualiReceipt()));
+  });
+
+  /**
+   * D199. The purity above is worth nothing if it only holds within one commit:
+   * a receipt is read months later, and the descriptor's ~31-file closure moves
+   * constantly. `receipt-derivation-binding.test.ts` owns the full check table;
+   * this arm keeps the guard from silently re-pinning the old, closure-bound
+   * behaviour.
+   */
+  it("survives a moved contract closure, and refuses a moved semantic surface", () => {
+    const evidence = kualiReceiptEvidence();
+    const run = RunRecordSchema.parse(evidence.run);
+    const movedClosure = "9".repeat(64);
+    const underMovedClosure = (patch: Record<string, unknown> = {}) => ({
+      ...evidence,
+      run: {
+        ...run,
+        envelope: { ...run.envelope, contractFingerprint: movedClosure, ...patch },
+      },
+    });
+    const rederived = buildRunEvidenceReceipt({
+      descriptor: kualiTimekeeperAnnotationDescriptor,
+      ...underMovedClosure(),
+    });
+    assert.equal(rederived.descriptorFingerprint, movedClosure);
+    assert.equal(
+      JSON.stringify({ ...rederived, descriptorFingerprint: null }),
+      JSON.stringify({ ...kualiReceipt(), descriptorFingerprint: null }),
+      "a closure move changed a fact about the run",
+    );
+    assert.throws(() => buildRunEvidenceReceipt({
+      descriptor: kualiTimekeeperAnnotationDescriptor,
+      ...underMovedClosure({ descriptorVersion: 2 }),
+    }), /descriptor-version moved/);
   });
 });
 

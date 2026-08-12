@@ -2058,6 +2058,14 @@ Two platform items fall out, neither owned by this chunk:
    named SEMANTIC surfaces rather than to the closure hash, precisely because "a park waits for a
    human, so expiring it on an edit to `src/domain/ids.ts` is not a recovery path". A receipt is the
    same shape of promise and has not been given the same treatment.
+
+   **CLOSED 2026-08-12 by D199** (doc 12 §D199). `descriptorFingerprint` is now the run's own
+   retained `envelope.contractFingerprint`, and resolvability is a named check table. Verified
+   against this repository's live authority database: `sd-140917-2b9e`, `sd-140921-3385` and
+   `sd-140921-c0af` re-derive **byte-identically** and `explain run` serves all three. The other
+   two, `sd-140241-ca44` and `sd-140505-28ff`, stay frozen — correctly, because their content really
+   did change with D197's classification fix — and the refusal now NAMES `declared-evidence` /
+   `declared-redaction` with the moved paths instead of saying only that the bytes differ.
 2. **A checkpoint keyed without the run id makes a read workflow single-use per subject.** The key is
    right for its purpose (replay across attempts of one item), and the refusal is right (a differing
    observation under the same identity is a real conflict). What is missing is a way for an operator

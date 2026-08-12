@@ -333,6 +333,65 @@ as "nothing happened" says why instead. `--bundle` **refuses**: exporting a diag
 missing the capture evidence its manifest claims is worse than refusing, because the recipient
 cannot tell.
 
+### D199 — the receipt binds to the surfaces its derivation consumes, not to the descriptor's closure
+
+**D141's "re-deriving one run yields the same bytes" was true only within one commit.**
+`buildRunEvidenceReceipt` stamped `descriptorFingerprint` from the CURRENT build's
+`descriptor.contractFingerprint`, so any edit anywhere in a ~31-file descriptor closure changed every
+already-settled run's derived receipt and `evidenceReceipts.insert` correctly refused it. Chunk 2's
+five live-proof `separations-kuali-read` receipts (`sd-140241-ca44`, `sd-140505-28ff`,
+`sd-140917-2b9e`, `sd-140921-3385`, `sd-140921-c0af`) were stranded exactly this way by a
+raw-control-byte fix that changed no semantics at all, and `explain run` answered
+`evidence receipt … already exists with different content` for all five. Re-running the documents was
+not available either: a read workflow whose identity is the thing it reads runs once per subject
+(`docs/migrations/separations.md` §"the re-run wall").
+
+Stamping the current build was also a **false statement** in its own right — the receipt claimed the
+run executed under whatever tree happened to be checked out. `descriptorFingerprint` is now the run's
+OWN retained `envelope.contractFingerprint`: a fact about the run, read from authority like
+everything else in a receipt.
+
+**The closure hash is neither necessary nor sufficient here, and that is the whole finding.** D136
+established the "not necessary" half for parked writes — nearly every edit in a closure leaves every
+consumed surface intact. A receipt adds the other direction: the declared redaction table
+(`src/domain/trust/evidence-classification.ts`) and the declared cross-source obligations live
+OUTSIDE every descriptor's import closure, so they move with `contractFingerprint` byte-identical.
+D197 moved one and two receipts changed content under a frozen hash. A hash that can be equal when
+the answer moved is not a binding.
+
+So resolvability is stated directly, one named check at a time, against exactly what
+`buildRunEvidenceReceipt` reads — the workflow id, the descriptor version, the runtime node walk,
+`descriptor.details`, the terminal execution's `dependsOn`, the declared obligations, and the declared
+redaction. Everything else it reads is a durable authority row, which is immutable and cannot move.
+
+| check | baseline | what a move means |
+|---|---|---|
+| `workflow-identity` | `run.envelope.workflow` | this descriptor is not the run's graph |
+| `descriptor-version` | `run.envelope.descriptorVersion` | the author declared that semantics moved |
+| `canonical-input` | `run.input.parsed.schemaHash` | the input facts would be redacted under a declaration authored for a different shape |
+| `evidence-graph` | checkpoint / terminal-dependency / write-intent rows | a node the run's evidence names left the graph |
+| `terminal-dependency-set` | the stored `RunResultRecord` | the mandatory-evidence set would move |
+| `declared-evidence` | **the stored receipt row** | the redaction, detail or obligation declaration this receipt was written under has changed |
+
+`declared-evidence` is the only check whose baseline is the receipt itself, and it is the only one
+that can see a declaration living outside the closure. It runs on re-derivation, attributes every
+divergent path to the ONE declaration that owns it (`declared-redaction`, `declared-details`,
+`declared-obligations`, `terminal-dependency-set`, `run-identity`, `receipt-composition`), and
+refuses — so a genuinely moved declaration reads as *what* moved instead of "the bytes differ".
+`evidenceReceipts.insert`'s immutable check stays underneath as the backstop for any caller that does
+not come through `ensureRunEvidenceReceipt`; this path never skips it.
+
+A refusal prints the whole check table with both fingerprints, `[held]`/`[MOVED]`/`[skip]` distinct
+and an unevaluated check never reported as held. **There is no waiver, override, or force arm.** A
+settled run's receipt is an operator-facing record of a real HR transaction; when a declaration truly
+moved, the honest outcomes are to restore it or to accept that the receipt is frozen — never to
+overwrite it with a newer story about what happened. Chunk 2's own five split exactly that way: the
+three whose only change was the closure re-derive byte-identically, and the two that also crossed
+D197's classification fix stay frozen and now say so by name.
+
+Owned by `src/core/receipt-derivation-binding.ts`; pinned by
+`tests/unit/receipt-derivation-binding.test.ts` and the `evidence-receipt` guard.
+
 ### Named gap: a transaction node cannot yet be a terminal dependency — CLOSED by D144
 
 **Closed 2026-08-04 (D144, doc 09 §3.1).** The gap was real: the sequencer stored a transaction
