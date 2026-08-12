@@ -1,17 +1,17 @@
 # Migration plan — `separations` (order 8, the Phase-3 entry)
 
-> **STATUS: BLOCKED ON ONE RESIDUAL — §5 item 5's freshness VALUES (5A the four `maxAge`s, 5B the
-> override column on the date fields).** Everything else the questionnaire asks was answered by the
-> operator on **2026-08-12**: §2.6 (ratified as **D194**), §4a, §4b, §4c, §4d, §4e, §4f1–§4f4, §4g,
-> and the §3 build-strategy directive. Every §5 item now carries a **verdict line** saying whether it
-> was answered, whether its draft stands as design work, or whether it still needs the operator —
-> item 5 is the only one in the last class.
+> **STATUS: READY TO BUILD — the §5 questionnaire is fully answered.** §5 item 5's freshness VALUES
+> (5A the four `maxAge`s, 5B the override column on the date fields) were the one remaining residual
+> and were answered by the operator on **2026-08-12**, alongside everything else the questionnaire
+> asks: §2.6 (ratified as **D194**), §4a, §4b, §4c, §4d, §4e, §4f1–§4f4, §4g, and the §3
+> build-strategy directive. Every §5 item now carries a **verdict line** of ANSWERED — none remain in
+> the STILL NEEDS OPERATOR class.
 >
 > Doc 07 §3.1 step 1 is explicit: the operator questionnaire is asked and answered **BEFORE**
-> building. Item 5's values are not a formality for chunk 1 — a read contract's `freshness` is a
-> mandatory field (doc 01 §2.1.1 / D8), so `new-kronos/read-separation-timecard` cannot be authored
-> without the timecard `maxAge`. **Chunk 1 (the `new-kronos` store + the timecard-read sub-workflow)
-> starts the moment 5A/5B carry answers.**
+> building. With 5A/5B answered, a read contract's `freshness` (doc 01 §2.1.1 / D8) is now a
+> satisfiable field, so `new-kronos/read-separation-timecard` can be authored. **Chunk 1 — the
+> `new-kronos` store plus the `separations-kronos-timecard` timecard-read sub-workflow, authored rich
+> under D194 — starts now.**
 
 **What this doc is.** The first Phase-3 migration doc, and therefore the convention every later one
 follows (doc 07 §0.1: migration docs are **children** of the master plan — they answer §3.4 and
@@ -35,7 +35,7 @@ sibling doc `separations-legacy-behavior.md`; this doc cites its S-numbers rathe
 | **2** | Stores — what exists today, what this migration mints, and the proposed rich-extraction convention |
 | **3** | Build strategy — the bottom-up "lego" decomposition and what composition can actually use |
 | **4** | **Open decisions** — one entry per genuinely open item, each as options + pros/cons + a recommendation, each now carrying the operator's 2026-08-12 answer |
-| **5** | The §b questionnaire (doc 07 §3.4) — twelve items, each with a **verdict line**, its draft, and either the recorded answer or the residual still owed |
+| **5** | The §b questionnaire (doc 07 §3.4) — twelve items, each with a **verdict line**, its draft, and the recorded answer |
 | **6** | Exit criteria (doc 07 §3.2) |
 | **7** | Open items that are NOT for this questionnaire |
 | **8** | Cross-references |
@@ -84,8 +84,10 @@ the key was derived from the wrong person.
 separation, both separation types, **no auto-approve-on-match** (operator ratification 2026-07-24,
 D77). This is a deliberate **widening** of legacy, which gates only on the `different` tier and lets
 `same`/`similar` proceed silently (**S14/S15/S16/S17**). Two values are explicitly left to this
-questionnaire by doc 09 §14.7: the **approval freshness limit** (item 5 — **still open**, residual
-5A) and whether **I-9 separations** show a different candidate packet than Kuali separations
+questionnaire by doc 09 §14.7: the **approval freshness limit** (item 5, residual **5A** —
+**answered 2026-08-12: kept at the drafted 4 hours, because D8/doc 09 §14.7 make `Infinity` illegal
+for identity facts — see §5 residual 5A**) and whether **I-9 separations** show a different candidate
+packet than Kuali separations
 (**answered 2026-08-12: separations does not involve the I-9 packet at all, so the question resolves
 out of scope for this workflow** — §4f1). §4d then settles the other half in this workflow's favour:
 the gate holds in **every** run mode, with no preset, prefill or resume path able to disable it. Also note doc
@@ -990,9 +992,10 @@ of three classes, and only the last class is work for the operator:
 | **DRAFT STANDS** | The draft is derived from legacy plus the owning docs and needs no operator judgement — it is design work. It is recorded as the answer. |
 | **STILL NEEDS OPERATOR** | A genuine residual. Presented in the full §4 format — context → options with pros/cons → recommendation → `ANSWER` slot. |
 
-**Exactly one item is in the last class: item 5 (freshness `maxAge` values), as two residuals 5A and
-5B.** Every other item is answered or standing. Each item keeps its
-`DRAFT — operator to confirm/correct` line as the record of what was derived.
+**Item 5 (freshness `maxAge` values, as two residuals 5A and 5B) was the one item in the last
+class — and it was answered by the operator on 2026-08-12 (see item 5 below).** As of that date, no
+item remains in the STILL NEEDS OPERATOR class; every item is answered or standing. Each item keeps
+its `DRAFT — operator to confirm/correct` line as the record of what was derived.
 
 ### 1. Real commits — which actions mutate the external system?
 
@@ -1123,10 +1126,14 @@ logged. The two legacy dry-run writes (timekeeper name, `similar`-tier name rewr
 
 ### 5. Freshness maxAges — justify the *value*, not just its presence
 
-> **VERDICT: STILL NEEDS OPERATOR — the only one.** Two residuals, both in the full §4 format below:
-> **5A** the four `maxAge` values, **5B** the override column on the date fields. §4d answered *that*
-> the gate result has a freshness limit and that it is never overridable; nobody has yet said *what
-> the number is*. **§4e made this item more load-bearing, not less** — reading everything into
+> **VERDICT: ANSWERED — both residuals recorded 2026-08-12.** **5A** the four `maxAge` values: the
+> Kuali document, UCPath Job Summary, and New Kronos timecard reads all take the argued-unbounded arm
+> — no automatic freshness refresh in separations (see the residual below for the rationale); the
+> identity-approval gate result keeps its drafted 4-hour bound because D8/doc 09 §14.7 forbid
+> `Infinity` there. **5B** the override column: every non-forbidden payload field (dates, department,
+> titles) is `audited`, never `forbidden` — Option A, not the recommended Option B. §4d answered
+> *that* the gate result has a freshness limit and that it is never overridable; **5A now answers
+> *what the number is*.** **§4e made this item more load-bearing, not less** — reading everything into
 > variables first and writing at the very end deliberately widens the gap these values bound.
 
 *What the answer determines:* per-read staleness limits on everything feeding a write, plus
@@ -1200,7 +1207,31 @@ Two facts from the answers above set the shape of the choice:
 matter are both true: nothing stale can reach the write, and the gate is not asked twice for one
 decision.
 
-`ANSWER (operator) — 5A:`
+`ANSWER (operator), 2026-08-12 — 5A:` **None of the three drafted options. NO automatic freshness
+refresh in separations — the Kuali document, UCPath Job Summary, and New Kronos timecard reads all
+take the argued-unbounded arm (`maxAgeMs: Infinity`, justified per doc 01/02/07's "`Infinity` must be
+argued in a comment" provision); the identity-approval gate result keeps a real bound because D8/
+doc 09 §14.5/§14.7 forbid `Infinity` for identity facts categorically.**
+
+- **The rationale, in the operator's words.** The Kuali separation document is a SAVED, stable
+  artifact — once the department saved it, the data does not churn, so an age-triggered re-read buys
+  nothing here. The same reasoning extends to the Job Summary and the timecard reads this workflow
+  stages: under **§4e** every one of them is read once into a variable at the start of the run and
+  never re-derived mid-run, so an internal age check on a value the run itself is about to write back
+  adds cost without adding safety.
+- **Refresh is deliberate, never automatic.** Freshness in separations comes from an explicit
+  operator RE-RUN — including a re-run with operator-supplied values via the Edit Data path
+  (D166/D168) — never from an age check silently triggering a re-read mid-run. This replaces the
+  drafted 10 min / 10 min / 30 min values outright; none of Option A, B, or C above is adopted as
+  written.
+- **The identity-approval gate result is excluded from this answer, structurally, not by oversight.**
+  doc 09 §14.5/§14.7 and D8 already make `Infinity` illegal for the gate result — it bounds a human
+  judgement's shelf life, not a document's staleness, and none of 5A's own three options ever proposed
+  `Infinity` for it either. It keeps the drafted **4 hours** ("hours, not days," per §14.7) — the one
+  number this re-scoping does not touch.
+- **Scope, stated so it is not over-read.** This answer is **separations-only**. A submit-immediately
+  workflow — one with no save step between an operator edit and this workflow's read — has no "saved,
+  stable artifact" to point to, and sets its own real, bounded windows in its own §b questionnaire.
 
 ---
 
@@ -1247,7 +1278,28 @@ becomes the **termination effective date**.
 answer that matches what the operator already decided in §4b: the dates are the payload, and a payload
 the run could not freshly establish is a run that stops.
 
-`ANSWER (operator) — 5B:`
+`ANSWER (operator), 2026-08-12 — 5B:` **Option A, not the recommended Option B — every non-forbidden
+payload field is `audited`: the dates (last day worked / separation date) AND department/titles.**
+
+- **The override, precisely.** `audited` means an override exists ONLY via explicit operator
+  confirmation in the freshness dialog (doc 02 §5.5), and it is always durably recorded — the value
+  seen, its age, the limit, the consuming write node, and who confirmed. It is never automatic, never
+  a fallback, and never persisted onto the item beyond the single resume attempt it confirms.
+- **Why this does not reopen §4b.** §4b's hard-fail is about a FAILED or unreachable Kronos read — no
+  card, no signal, wrong subject — and that path stays banned from ever substituting a value; nothing
+  here changes it. 5B's `audited` override only ever fires on a **stale but successfully read**
+  checkpoint the operator explicitly confirms — a human action, not a failure path, fallback, or
+  automatic mechanism. That distinction is what keeps this answer consistent with §4b rather than
+  reopening it.
+- **The structural `forbidden` set stays untouched.** Identity/person selection, idempotency-key
+  inputs, and write proof stay `forbidden` by guard and cannot be marked otherwise by anyone — this
+  answer only ever concerns the dates/department/titles group.
+- **The derived fact, recorded so it is not mistaken for a contradiction.** Under **5A**'s unbounded
+  windows, a Kuali document / Job Summary / timecard checkpoint essentially never goes stale relative
+  to the run that read it, so this audited confirmation dialog will **rarely-to-never fire** in
+  separations in practice. The policy is still recorded in full — for the override machinery's own
+  completeness, and because a future workflow that sets real, bounded §b windows inherits this same
+  `audited` policy and will see the dialog fire for real.
 
 ---
 
@@ -1535,7 +1587,7 @@ every selector, the packet composition, the freshness limits and the graph itsel
 
 Repeated here so the checklist is in one place; the master plan owns the normative text.
 
-- [ ] **§5 questionnaire answered and recorded above, and every §4 decision answered** — §4a–§4g and eleven of the twelve §5 items landed 2026-08-12; ← **the remaining blocker is item 5's residuals 5A/5B (the freshness values and the date fields' override column)**, and `new-kronos/read-separation-timecard` cannot be authored without 5A's timecard value
+- [x] **§5 questionnaire answered and recorded above, and every §4 decision answered** — §4a–§4g and all twelve §5 items landed 2026-08-12, including item 5's residuals 5A/5B (the freshness values and the date fields' override column) — `new-kronos/read-separation-timecard` can now be authored against a real `freshness` field
 - [ ] `typecheck` + `lint` + `test:coverage` green (D191); the descriptor passes `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing
 - [ ] Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id, and subject observation resolves; no raw Page/Locator/selector outside the system driver
 - [ ] **Live dry-run green** against Kuali, UCPath, and New Kronos (submit-free, zero durable write rows asserted) — and, per §4f3, the UCPath preparation interval measured on that run

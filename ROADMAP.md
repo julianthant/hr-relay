@@ -16,7 +16,7 @@
 | **Scope** | **Solo, local, never hosted** (D193) — one operator, one machine; "production" = the day this replaces legacy as your daily **local** tool. *Later, unplanned:* package it as a locally-run app ("web app → real app"); a cooperation/multi-user mode built **on top of** solo, if ever |
 | Runtime phase marker | `completedThrough: "2j"` · `active: "3-workflow-migration"` |
 | Phases complete | 0, 1 (a–e, f, g-spine, i-spine), 2 (proof + 2g + 2h + 2i + 2j) |
-| Active phase | **Phase 3 — per-workflow migration**; **entry chosen: separations (order 8)** (D193) |
+| Active phase | **Phase 3 — per-workflow migration**; **building separations chunk 1** — the `new-kronos` store + timecard-read sub-workflow, order 8 (D193), questionnaire fully answered 2026-08-12 |
 | After Phase 3 | The one all-at-once cutover (D89/D93), then rollback-window closure |
 | Decisions ratified | D1–D193 (D131 is a permanent gap — never reused) |
 | Authority schema | v13 (released migrations SHA-pinned, immutable) |
@@ -82,11 +82,13 @@ read + finalization write family, and the **new-kronos** driver, login recipe, a
 that do not exist at all today — so one migration mints what every later workflow reuses, instead of
 trickling the same stores in through small reads. The order table below is **not** re-sequenced: it
 stays the risk-proof ordering, so this entry buys the deepest write proof first rather than making
-it cheaper. Separations still owes every exit criterion, **questionnaire first** —
-`docs/migrations/separations.md` holds it, and as of **2026-08-12 it is answered except for two
-numbers**: §5 item 5's freshness values (residuals **5A** and **5B**). Its controlled-commit target (a
-UCPath termination + Kuali finalization you approve) is yours to name at step 5; none has been
-invented.
+it cheaper. Separations still owes every exit criterion other than the questionnaire —
+`docs/migrations/separations.md` holds it, and as of **2026-08-12 the questionnaire is fully
+answered**, including §5 item 5's freshness values (residuals **5A** and **5B**); the doc's status
+flipped from BLOCKED to **READY TO BUILD**, and chunk 1 (the `new-kronos` store + the
+`separations-kronos-timecard` timecard-read sub-workflow) is now underway. Its controlled-commit
+target (a UCPath termination + Kuali finalization you approve) is still yours to name at step 5; none
+has been invented.
 
 **How it gets built (your directive, recorded in that doc's §3):** bottom-up, not one slice — store
 tasks first, then one small provable sub-workflow per system interaction (the Kronos timecard read,
@@ -135,14 +137,16 @@ explicit authorization.
 
 ### Needed from you right now
 
-| # | Item | Context | Where it lives |
-|---|---|---|---|
-| 1 | **Confirm TWO freshness numbers — separations §5 item 5, residuals 5A and 5B** | The rest of the questionnaire is **answered** (2026-08-12): §2.6 ratified as D194, §4a–§4g answered, and eleven of the twelve §5 items now carry a verdict line saying they need nothing from you. What is left is **5A** — the four `maxAge` values (recommended: Kuali doc 10 min · Job Summary 10 min · Kronos timecard 30 min · identity approval 4 h) — and **5B** — whether the separation DATES may be operator-overridden when stale (recommended: no, `forbidden`; department/titles stay `audited`). Both are presented as options with pros/cons and a recommendation, so it is a confirmation, not composition. **Chunk 1 (new-kronos store + timecard-read sub-workflow) starts the moment these land** — a read contract's `freshness` is mandatory, so the timecard task cannot be authored without 5A. | `docs/migrations/separations.md` §5 item 5 |
+**Nothing right now.** Separations' §5 questionnaire — including the last residual, item 5's
+freshness values (5A and 5B) — was answered 2026-08-12 (see *Decided* below); the questionnaire is
+now fully answered and `docs/migrations/separations.md`'s status flipped to **READY TO BUILD**. Next
+operator input due is step 5's controlled-commit target naming (a UCPath termination + Kuali
+finalization to approve), owed later in the build, not now.
 
 ### Decided
 
 - **Read tasks are authored RICH: one task per page visit, one fixed strict output, consumers project downstream — the `read(fields…)` shape is banned** — **D194**, 2026-08-12 (doc 01 §2.8, `STORES.md` §1). Applies to all new tasks; existing tasks are not rewritten, and `crm`'s duplicate record/dates page visit merges the next time that store is touched.
-- **Separations answers landed (2026-08-12), all but two numbers** — `docs/migrations/separations.md`: unmapped termination type **fails loud** plus a live capture of the whole Kuali dropdown (§4a) · an unavailable or unreadable **Kronos hard-fails the whole run** (§4b) · a UCPath-filed / Kuali-unfinalized run **parks** with the transaction number durable (§4c) · **ALWAYS-GATE in every run mode**, no preset or resume can disable identity approval (§4d) · Kuali writes are **staged from variables, one pass, one save, one reload read-back** (§4e) · **no I-9 packet** in this workflow (§4f1) · production **canary** for the commit proof, target named by you at the time (§4f2) · `probeToFenceMaxMs` **measured**, never guessed (§4f3) · the scenario inventory stays open with a **MAP-EVERYTHING** directive on every build chunk (§4f4) · the final-pay radio stays **hardcoded** as your ratified business assertion (§4g) · and scenario variability is served by **lego recomposition**, never by branches inside one workflow (§3.1).
+- **Separations questionnaire fully answered (2026-08-12) — READY TO BUILD** — `docs/migrations/separations.md`: unmapped termination type **fails loud** plus a live capture of the whole Kuali dropdown (§4a) · an unavailable or unreadable **Kronos hard-fails the whole run** (§4b) · a UCPath-filed / Kuali-unfinalized run **parks** with the transaction number durable (§4c) · **ALWAYS-GATE in every run mode**, no preset or resume can disable identity approval (§4d) · Kuali writes are **staged from variables, one pass, one save, one reload read-back** (§4e) · **no I-9 packet** in this workflow (§4f1) · production **canary** for the commit proof, target named by you at the time (§4f2) · `probeToFenceMaxMs` **measured**, never guessed (§4f3) · the scenario inventory stays open with a **MAP-EVERYTHING** directive on every build chunk (§4f4) · the final-pay radio stays **hardcoded** as your ratified business assertion (§4g) · scenario variability is served by **lego recomposition**, never by branches inside one workflow (§3.1) · and the last residual, **item 5's freshness values**: **5A** — no automatic freshness refresh in separations, the Kuali document/Job Summary/timecard reads all take the argued-unbounded arm (a saved, stable artifact does not churn; refresh only on an explicit operator re-run, including via Edit Data) while the identity-approval gate result keeps its drafted 4-hour bound (`Infinity` is illegal there, D8) · **5B** — every non-forbidden payload field (dates, department, titles) is `audited`, overridable only by explicit operator confirmation and never automatically; identity/person-selection/idempotency-key/write-proof stay `forbidden` for everyone. **Chunk 1 — the `new-kronos` store + the `separations-kronos-timecard` sub-workflow — starts now.**
 - **Scope: solo, local, never hosted; local-app packaging and any cooperation mode are LATER and unplanned** — D193, 2026-08-12 (doc 00 §Non-negotiables, doc 12 §7)
 - **Storage is done for this scope: manual `.tracker-rebuild/` folder copies (app stopped) are an acceptable backup; retention-sweep scheduling and the artifact refcount are `wont-build-unless-asked`** — D193, 2026-08-12 (doc 12 §D137, doc 03 §2.5). *Why:* this DB stores records of **completions**, not primary records — the real record of a completed transaction lives in UCPath/Kuali and is checkable there; these rows show *how* and *whether* something completed and mean little once it is completed and approved. (Unchanged: the fence rows are still load-bearing **during** a write.)
 - **Phase 3 enters at separations (order 8)** — D193, 2026-08-12 (doc 07 §3.1) — chosen to force the store task libraries into existence; §3.3's ordering is unchanged
