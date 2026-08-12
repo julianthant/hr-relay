@@ -6,7 +6,8 @@ amended 2026-07-26 (Round 8, §2.7 — the three-tier authoring floor + scaffold
 2026-07-31 (Round 10 — isolated copy/port with legacy preservation, D88/D90), 2026-07-31
 (Round 11 — standalone rebuild repo, D93: the rebuild lives in its own `hr-automation-rebuild`
 repo at plain `src/`, so isolation is physical and the same-tree guards it required are retired),
-and 2026-08-12 (Round 48, §2.8 — the rich-extraction convention, one task per page visit, D194).**
+2026-08-12 (Round 48, §2.8 — the rich-extraction convention, one task per page visit, D194), and
+2026-08-12 (Round 49, §2.10 — the first store CUSTOMIZED under §2.8, D197).**
 Conforms to `00-charter.md` and the binding reconciliation memo `04-reconciliation.md`. The
 abandoned Step-0 spike is evidence only and has been deleted; all three effect overloads must be
 re-proved.
@@ -19,7 +20,7 @@ re-proved.
 | Error taxonomy (`TaskError`, declared `errorCodes`) |
 | Effect classes + dry-run mechanics (D6/D7), `freshness` + provenance contract fields (D8/D34), and the content-addressed read-artifact boundary (D45) |
 | Strict runtime-schema rules, branded domain scalar/id policy, absence semantics, and the task-side subject-binding declaration (D46/D47) |
-| The **read-extraction width** convention — one task per page visit, one fixed strict output, consumers project downstream (§2.8, D194) |
+| The **read-extraction width** convention — one task per page visit, one fixed strict output, consumers project downstream (§2.8, D194), plus the as-built rules the first store BUILT (§2.9, D196) and the first store CUSTOMIZED (§2.10, D197) under it settled |
 | Retry policy |
 | Decoration (`decorateTask`, hook semantics, error-propagation rule) |
 | Task stores—browser, service, and pure workflow mini-stores (D4/D42), session providers + the single login signature, shared leaf-code homes (`stores/common/`) |
@@ -963,6 +964,54 @@ sign-on host.
 **The store is structurally read-only.** No `commit` operation, no `MutationCapability` in its import
 graph, and the UI-registry audit refuses an `external-commit` element by name. A later write slice
 adds the capability deliberately; it cannot be inherited.
+
+---
+
+### 2.10 The first store CUSTOMIZED under §2.8 — `kuali` as-built (D197, 2026-08-12)
+
+§2.9 settled what a store BUILT whole owes. Separations chunk 2 is the other case `STORES.md` §1
+distinguishes — a **CUSTOMIZE** of an existing semantic-ready store — and it settles five more rules
+that are normative for every store slice that extends one rather than creating one.
+
+**A sibling task family extends the ONE driver declaration; it never mints a second.** The Kuali
+store already had a `DriverDeclaration<KualiRrssDocumentDriver>` bound by four write-family tasks.
+The separation read is a fifth task on that SAME declaration, and its operation is added to the same
+driver schema. `defineTask(driver, contract, impl)` binds the store's exact invariant declaration
+(the `task-driver-boundary` rule), so a second declaration for one store is not a style choice — it
+is the thing that boundary exists to refuse. Where the new surface is much wider than the old, the
+SCHEMAS may live in their own module; the DECLARATION may not.
+
+**A read surface and a write surface on one page share a screen, so catalog attribution splits by
+FACT, not by screen.** `new-kronos` could attribute per screen because its two tasks visit two
+pages. Kuali's read and write stand on the same document: three facts are genuinely shared (the EID
+field and its observation, the timekeeper field and its observation), fourteen belong to the read
+alone, and the Save button still belongs to the commit task alone — because the catalog is what an
+operator reads to answer "what can click this?", and naming a read task there would be a lie.
+
+**A registry invariant meets a second legitimate case by becoming PER-KIND, not by being relaxed.**
+Kuali's audit required "exactly one subject-authoritative observation" — correct when the store's
+only binding was the write's PERSON subject. The separation read's subject is the DOCUMENT (§2.1's
+`artifact` kind with `identity:"document-id"`), because the run names a document and DISCOVERS the
+person. The rule is now exactly one PER SUBJECT IDENTITY: one `eid` observation and at most one
+`document-number` observation. Widening it to "at least one" would have made both unprovable.
+
+**A control the live page carries and legacy has no key for stays DRIVER-INTERNAL.** This is
+§2.9's rule applied in the harder direction: it is tempting, when fourteen of eighteen controls port
+cleanly, to publish the other four with an invented provenance row. Four fields (Division, Employee
+Type, Student Title Code, the optional comments box) and three of four Final Pay radios are read
+through their exact live accessible names in the driver, listed together in one named block, and
+each re-asserts the exactly-one count on every read. A fabricated port row is worse than an
+unpublished element.
+
+**A person field's ARM DISCRIMINATOR is not the person (D140 refinement).** A rich read's fields are
+`{state, value}` / `{state, reason}` unions, and declaring the whole field `direct-identifier`
+pushes `state` through `last4`. The live proof run on real document 4502 produced a receipt reading
+`employee.name.state = "sent"` and `employee.name.reason = "alue"` — not redaction, but a receipt
+telling the operator something false. Only the `value` leaf carries the identifier; `state` and
+`reason` describe the READ, which is a transaction fact. The general consequence is worth stating
+because it is a migration hazard: **changing the evidence classification table moves receipt BYTES
+for every already-settled run**, and `evidenceReceipts.insert` correctly refuses the divergent
+rebuild by name — so a classification fix strands the receipts of runs settled before it.
 
 ---
 

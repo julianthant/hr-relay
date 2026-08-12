@@ -16,7 +16,7 @@
 | **Scope** | **Solo, local, never hosted** (D193) — one operator, one machine; "production" = the day this replaces legacy as your daily **local** tool. *Later, unplanned:* package it as a locally-run app ("web app → real app"); a cooperation/multi-user mode built **on top of** solo, if ever |
 | Runtime phase marker | `completedThrough: "2j"` · `active: "3-workflow-migration"` |
 | Phases complete | 0, 1 (a–e, f, g-spine, i-spine), 2 (proof + 2g + 2h + 2i + 2j) |
-| Active phase | **Phase 3 — per-workflow migration**; separations **chunk 1 LANDED** (the `new-kronos` store + timecard-read sub-workflow, D196) — next is chunk 2, `separations-kuali-read` |
+| Active phase | **Phase 3 — per-workflow migration**; separations **chunks 1 and 2 LANDED** (the `new-kronos` store + timecard-read sub-workflow, D196; the `kuali` separation-document read + the `separations` mini-store + §4a's live-captured exhaustive termination-type map, D197 — five live runs, all terminal `done`) — next is chunk 3, `separations-ucpath-termination` |
 | After Phase 3 | The one all-at-once cutover (D89/D93), then rollback-window closure |
 | Decisions ratified | D1–D193 (D131 is a permanent gap — never reused) |
 | Authority schema | v13 (released migrations SHA-pinned, immutable) |
@@ -91,9 +91,15 @@ selectors live-re-verified) with two page-visit read tasks, and the `separations
 sub-workflow is registered and read-only. **Its live proof is NOT met**: thirteen real runs found
 and fixed seven defects no fixture could reach, and the last one ran the whole path before correctly
 refusing on a pay-period overhang whose fix is test-pinned but not yet live-verified — see
-`docs/migrations/separations.md` §9.2. Its controlled-commit
-target (a UCPath termination + Kuali finalization you approve) is still yours to name at step 5; none
-has been invented.
+`docs/migrations/separations.md` §9.2. **Chunk 2 LANDED 2026-08-12 (D197)** — the `kuali` store gained
+a separation-document READ family beside its write family (a fifth task on the SAME driver
+declaration, fourteen more legacy selectors live-re-verified), the `separations` pure mini-store
+exists, and §4a is settled with data: the complete `Type of Termination` dropdown was captured live
+from three real documents at two workflow steps (**16 options plus Kuali's blank sentinel, identical
+on all three**) and the map is exact-match-only with no default arm. **Its live proof IS met** —
+five real runs, all terminal `done` on attempt 1, three with verified evidence receipts over real
+documents (§9.4). Its controlled-commit target (a UCPath termination + Kuali finalization you
+approve) is still yours to name at step 5; none has been invented.
 
 **How it gets built (your directive, recorded in that doc's §3):** bottom-up, not one slice — store
 tasks first, then one small provable sub-workflow per system interaction (the Kronos timecard read,
@@ -150,6 +156,7 @@ finalization to approve), owed later in the build, not now.
 
 ### Decided
 
+- **Separations chunk 2 landed — the Kuali separation-document read, and §4a is now settled with real data** — **D197**, 2026-08-12 (doc 01 §2.10, `docs/migrations/separations.md` §9.3/§9.4). One task reads the WHOLE RRSS form in one page visit; the `Type of Termination` dropdown was captured live and the map refuses anything it does not carry, by name. Three findings you should see: **`Death` is not an option on that form at all** (§4a's worked example cannot arise from it) · **`Never Started Employment` is genuinely unmapped and legacy misfiles it** — involuntary template, voluntary default reason code — and it now REFUSES pending your reason code · **S13 was never an optional field**: legacy asks for `"Location  *"` and the live name is `"Location*"`, so it matched zero nodes on every document and its `catch` reported that as absent. Five live runs, all `done`.
 - **Read tasks are authored RICH: one task per page visit, one fixed strict output, consumers project downstream — the `read(fields…)` shape is banned** — **D194**, 2026-08-12 (doc 01 §2.8, `STORES.md` §1). Applies to all new tasks; existing tasks are not rewritten, and `crm`'s duplicate record/dates page visit merges the next time that store is touched.
 - **Separations questionnaire fully answered (2026-08-12) — READY TO BUILD** — `docs/migrations/separations.md`: unmapped termination type **fails loud** plus a live capture of the whole Kuali dropdown (§4a) · an unavailable or unreadable **Kronos hard-fails the whole run** (§4b) · a UCPath-filed / Kuali-unfinalized run **parks** with the transaction number durable (§4c) · **ALWAYS-GATE in every run mode**, no preset or resume can disable identity approval (§4d) · Kuali writes are **staged from variables, one pass, one save, one reload read-back** (§4e) · **no I-9 packet** in this workflow (§4f1) · production **canary** for the commit proof, target named by you at the time (§4f2) · `probeToFenceMaxMs` **measured**, never guessed (§4f3) · the scenario inventory stays open with a **MAP-EVERYTHING** directive on every build chunk (§4f4) · the final-pay radio stays **hardcoded** as your ratified business assertion (§4g) · scenario variability is served by **lego recomposition**, never by branches inside one workflow (§3.1) · and the last residual, **item 5's freshness values**: **5A** — no automatic freshness refresh in separations, the Kuali document/Job Summary/timecard reads all take the argued-unbounded arm (a saved, stable artifact does not churn; refresh only on an explicit operator re-run, including via Edit Data) while the identity-approval gate result keeps its drafted 4-hour bound (`Infinity` is illegal there, D8) · **5B** — every non-forbidden payload field (dates, department, titles) is `audited`, overridable only by explicit operator confirmation and never automatically; identity/person-selection/idempotency-key/write-proof stay `forbidden` for everyone. **Chunk 1 — the `new-kronos` store + the `separations-kronos-timecard` sub-workflow — starts now.**
 - **Scope: solo, local, never hosted; local-app packaging and any cooperation mode are LATER and unplanned** — D193, 2026-08-12 (doc 00 §Non-negotiables, doc 12 §7)

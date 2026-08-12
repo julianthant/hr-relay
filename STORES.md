@@ -153,17 +153,24 @@ store is touched for other reasons — not before; the merge moves an output sch
 
 ---
 
-### `kuali` — browser store, real (Phase 2's transaction proof)
+### `kuali` — browser store, real (Phase 2's transaction proof + separations' document read)
 
 **Status:** driver `semantic-ready` (`KualiRrssDocumentDriver`, `src/domain/ui/kuali-rrss-document.ts`)
-· real login recipe (`kualiLoginRecipe`, `src/stores/kuali/session.ts`) · **4 tasks**, including the
+· real login recipe (`kualiLoginRecipe`, `src/stores/kuali/session.ts`) · **5 tasks**, including the
 tree's **only** `effect:"commit"` contract. Wired into `BROWSER_SYSTEM_BINDINGS`.
+
+This is the tree's first **CUSTOMIZE** of a semantic-ready store (§1 step 2), and the shape it
+settled is normative (D197): separations chunk 2 added a read family as **sibling tasks on the SAME
+driver declaration**, extending `KualiRrssDocumentDriver` with one operation rather than minting a
+second declaration — which `defineTask(driver, …)` would refuse anyway. The read's much wider schemas
+live in their own module (`src/domain/ui/kuali-separation-document.ts`); the declaration does not.
 
 | Item | Kind | Contract id | What it does | Reuse notes |
 |---|---|---|---|---|
 | `readTimekeeperAnnotationTask` | task | `kuali/read-timekeeper-annotation` (read) | Beat ① pre-fence probe: opens the document fresh and checks whether it already carries this exact `Timekeeper Name` value (idempotency). | `sessions:[{kuali, read}]`. Re-opens the document rather than trusting page state; a wrong-EID read is `subject-mismatch`, never absence. |
 | `verifyTimekeeperAnnotationTask` | task | `kuali/verify-timekeeper-annotation` (read) | Beat ⑥ **the only landing proof**: reloads the retained page and reads the field back after `save` returns. | Kuali's save is UI-silent and its HTTP `200`/`Form saved` is a **proven false positive** (measured live 2026-08-04) — never reintroduce banner-based success detection. Anything but `present` parks the run. |
 | `fillTimekeeperAnnotationTask` | task | `kuali/fill-timekeeper-annotation` (**prepare**) | Beat ②: opens the document, stages the value via the driver, proves the field read it back. Zero save — closing here leaves Kuali byte-identical (the dry-run stop point). | `sessions:[{kuali, transaction}]`. The EID check here is defence-in-depth only; the load-bearing subject binding is the kernel's own beat-③ re-observation on this same page. |
+| `readSeparationDocumentTask` | task | `kuali/read-separation-document` (read) | **ONE visit to the RRSS separation form, returning the WHOLE form** (D194): employee identity, both separation dates raw AND parsed, the termination type verbatim, location, division, employee type, student title code, the Timekeeper Tasks and Final Transactions sections, the Final Pay group, and every dropdown's COMPLETE option list. | `sessions:[{kuali, read}]`. Subject is the **DOCUMENT** (`artifact`/`document-id`), not the person — the run names a document and DISCOVERS the EID. Six distinct error codes; S2 is refused BY NAME off the page title before a field is read. Strictly read-only: no fill, no save, no draft (S61 is legacy's defect). |
 | `saveTimekeeperAnnotationTask` | task | `kuali/save-timekeeper-annotation` (**commit**) | Beat ⑤: the tree's one external write. Clicks `Save` via `ctx.driver.commit(KUALI_RRSS_SAVE_BUTTON, ctx.mutation)`. | `sessions:[{kuali, transaction}]`. `ctx.mutation` only exists inside a fence the write sequencer minted — this task cannot fire outside it even if mis-authored. Reports only that it clicked, **never** that the save landed; beat ⑥ is the proof. |
 
 **Driver notes.** The commit contract's own schema names its `verify`/`probe` task ids
@@ -171,7 +178,9 @@ tree's **only** `effect:"commit"` contract. Wired into `BROWSER_SYSTEM_BINDINGS`
 invoke them without the workflow wiring a fourth binding. `Send Back` and `Mark Complete` — the
 buttons that actually advance a real separation — are **not addressable through this store at all**
 (see §4, kuali separation family). Live-proven end-to-end 2026-08-04 on real doc 4489: fence → click →
-reload read-back → settle in 16.45s, idempotent re-run 2ms with no browser.
+reload read-back → settle in 16.45s, idempotent re-run 2ms with no browser. The read family was
+live-proven 2026-08-12 on real documents 4510 / 4502 / 4495 — five runs, all terminal `done` on
+attempt 1, three with verified receipts (`docs/migrations/separations.md` §9.4).
 
 ---
 
@@ -302,6 +311,23 @@ a service store.
 
 ---
 
+### `separations` — workflow mini-store, real
+
+**Status:** `defineWorkflowStore("separations", …)`, sessionless, **1 task**. Namespace is
+`workflow:separations`. Same shape as `person-lookup`: a pure, artifact/provider-free fold over prior
+node outputs, with no browser anywhere in its import graph.
+
+| Item | Kind | Contract id | What it does | Reuse notes |
+|---|---|---|---|---|
+| `matchTerminationTypeTask` | task | `workflow:separations/match-termination-type` (read) | §4a's refusal, executed: exact-match the Kuali termination type against the live-captured map, returning `{classification, template, reasonCode}` or failing with one of four distinct codes. | `replay:"checkpoint"`. It checks the OPTION LIST first — a republished control makes every answer suspect, including the ones that still match. There is no substring tier and no default arm; the map lives in `src/domain/separations/termination-type.ts`. |
+
+The migration doc's §2.5 sketches this mini-store as also owning date reconciliation, the comment
+builders, the Kronos window computation and the name-similarity classification. Those land with the
+chunks that need them; the termination-type resolution came first because §4a's refusal has to exist
+before anything can consume a separation document.
+
+---
+
 ### `src/infra/providers` — provider adapters (not a `TASK_STORES` entry)
 
 Provider adapters are not registered in `src/stores/index.ts`; they are composed directly into
@@ -319,7 +345,7 @@ Provider adapters are not registered in `src/stores/index.ts`; they are composed
 
 ---
 
-## 3 · Worked examples — how the two live workflows consume stores
+## 3 · Worked examples — how the live workflows consume stores
 
 ### `person-lookup` (`src/workflows/person-lookup/`)
 
@@ -369,10 +395,12 @@ easy to miss:
   is read-only (`searchPersonOrg`); the SS Smart HR **receipt** screen is already live-verified in
   `driver/ui-registry.ts` (2026-08-04) but has no task reading it, and no write task exists at all.
   Minted at **order 8** (separations — UCPath term) and **order 9** (onboarding — UCPath hire).
-- **The kuali separation read/finalization family** (`Send Back`, `Mark Complete` — the controls that
-  actually advance or finalize a real separation) is explicitly **not addressable** through the
-  current `kualiStore`; only the benign `Timekeeper Name` annotation is. Minted at **order 8**
-  (separations), under doc 09 §14's ALWAYS-GATE identity-approval — the operator ratified manual
+- **The kuali separation READ landed 2026-08-12** (chunk 2, D197): `kuali/read-separation-document`
+  reads the whole RRSS form, and fourteen more legacy selector keys moved candidate→ported. What is
+  still missing is the **finalization WRITE family** (`Send Back`, `Mark Complete` — the controls that
+  actually advance or finalize a real separation), which stays explicitly **not addressable** through
+  `kualiStore`; only the benign `Timekeeper Name` annotation can be written today. Minted at
+  **order 8** (separations), under doc 09 §14's ALWAYS-GATE identity-approval — the operator ratified manual
   approval on every separation with no auto-approve-on-match.
 
 Not a gap, for the record: `ai.advisory` (`createGeminiAdvisoryAdapter`) is wired in the DASHBOARD

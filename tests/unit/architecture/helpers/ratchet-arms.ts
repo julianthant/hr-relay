@@ -351,11 +351,25 @@ function auditLayering(files: readonly string[], root: string): string[] {
   return violations;
 }
 
+/*
+  Raw control bytes make a SOURCE file invisible to the tools that audit it:
+  one literal NUL and git/grep/rg classify the file as binary and silently skip
+  it — every in-tree search stops seeing it, diffs render as "Bin", and a guard
+  that greps its text matches nothing. Found live three times in one day
+  (context-rail.tsx, then two fresh helpers that inherited the idiom), each a
+  string literal typed as the actual byte instead of the escape. Tab, CR and LF
+  are the only control bytes with any business in source.
+*/
+const RAW_CONTROL_BYTE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/;
+
 function auditConventions(files: readonly string[], root: string): string[] {
   const violations: string[] = [];
   for (const file of files) {
     const path = normalize(relative(root, file));
     const name = basename(file, extname(file));
+    if (RAW_CONTROL_BYTE.test(readFileSync(file, "utf8"))) {
+      violations.push(`${path}: raw control byte — write the "\\u0000"-style escape so the file stays text to git and grep`);
+    }
     if (!path.startsWith("src/dashboard/") && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) {
       violations.push(`${path}: filename is not kebab-case`);
     }

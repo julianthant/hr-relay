@@ -300,7 +300,7 @@ function ContextSection({
 // the Data section — the merged Data / Edit Data surface (doc 03 §1.1(c))
 // ---------------------------------------------------------------------------
 
-const FIELD_KEY_SEPARATOR = " ";
+const FIELD_KEY_SEPARATOR = "\u0000";
 
 function fieldKeyOf(policy: { nodeId: string; fieldPath: string }): string {
   return `${policy.nodeId}${FIELD_KEY_SEPARATOR}${policy.fieldPath}`;

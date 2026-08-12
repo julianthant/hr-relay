@@ -1801,3 +1801,234 @@ pay-period overhang is the only untested code left on the path, and every earlie
 fixed and re-proved past. The measured leg timings are in §9.1.
 
 ---
+
+### 9.3 Chunk 2 — Kuali RRSS Separation Request Form, observed 2026-08-12
+
+Read-only, one session, Duo cleared hands-off by Duo Autopilot. Subjects: the operator's **entire
+Action List** — three real separation documents, **4510** (action `6a7a33b2ac106d428b3217e0`, step
+*Task 1 - Jan*, fully processed), **4502** (`6a766ae6f0549046f7f0dc06`, same step, unprocessed) and
+**4495** (`6a73abda824c9a5388e0ceaa`, step *Task 1 - Kristina & TES*, partly processed).
+
+**Entry and enumeration.** The space URL `…/build/space/5e47518b90adda9474c14adb` →
+`menuitem "Action List"` → `…/actions`. The Action List is a `table` whose columns are
+**Document Type · Document # · Document Title · Submitted By · Workflow Step · Created On · Action
+Requested**, and every cell in a row links to the same `…/actions/<actionId>` deep link. **The
+document TYPE is a column** — all three rows read `RRSS Separation Request Form` — so the Action
+List itself can answer S2 before a document is opened. Search chrome: `textbox "Search"` +
+`button "GO"`.
+
+**Client-side paint, measured.** On an in-app route change: no level-1 headings at ~7 ms; at
+~258 ms `["Action List", "", "Action"]` — the document heading present and EMPTY; at **~1.77 s** the
+real number, the `Form - … - Kuali` title and the form controls together. (A cold open measured
+~3.0 s on 2026-08-04.) This is the same three-stage shape D128 recorded and the reason the heading
+recipe matches on the VALUE's shape rather than on position.
+
+**The form-type proof (S2).** `document.title` is `Form - <form name> - Kuali` — here
+`Form - RRSS Separation Request Form - Kuali`. It is the only unambiguous read of the form's name on
+the page: the same string also renders as a link in the space's app list and in every Action-List
+row, so a page-wide text match resolves several nodes on a page that is not even showing a document.
+
+**Document chrome.** `heading "<number>" [level=1]` · a submitted stamp
+(`Submitted Aug 10, 2026 · 1:25 PM`) · a status chip (`In Progress` on all three) ·
+`button "Workflow Status"` · an instructions block (`PLEASE REVIEW AND COMPLETE CHECKLIST - Task 1`)
+· `Submitted By`. The stamp, chip and instructions are **observed but NOT read** — they have no
+stable role-addressable anchor, and publishing a recipe this chunk could not count at exactly one
+node would be fabricated verification.
+
+**Sections.** `heading "Employee Information" [level=2]` → `heading "Tasks" [level=2]` →
+`heading "Timekeeper Tasks - Step 1" [level=3]` → `heading "Final Transactions" [level=4]`. Action
+bar: `Send Back` · `Save` · `Mark Complete`, exactly one each — unchanged from 2026-08-04.
+
+**Every control, with its exact live accessible name.** All eighteen counted at **exactly one node**
+on the live tree.
+
+| Accessible name | Role | Legacy key | Disposition |
+|---|---|---|---|
+| `Division*` | combobox | — | driver-internal (no legacy key) |
+| `Type of Termination*` | combobox | `separationForm.terminationType()` | ported |
+| `Location*` | textbox | `separationForm.location()` | ported, **name corrected** |
+| `Employee Type*` | combobox | — | driver-internal |
+| `Student Title Code*` | combobox | — | driver-internal |
+| `Employee Last Name, First Name*` | textbox | `separationForm.employeeName()` | ported |
+| `EID*` | textbox | `separationForm.eid()` | already ported (2026-08-04) |
+| `Last Day Worked*` | textbox | `separationForm.lastDayWorked()` | ported |
+| `Separation Date (Last day actively employed)*` | textbox | `separationForm.separationDate()` | ported, **narrowed** |
+| `Additional Separation Comments (Optional)` | textbox | — | driver-internal |
+| `Request Acknowledged - In Progress` | checkbox | `timekeeperTasks.requestAcknowledgedCheckbox()` | ported |
+| `Timekeeper Name:*` | textbox | `timekeeperTasks.timekeeperName()` | already ported (2026-08-04) |
+| `Termination Effective Date*` | textbox | `finalTransactions.terminationEffDate()` | ported |
+| `Department*` | combobox | `finalTransactions.department()` | ported |
+| `Payroll Title Code*` | textbox | `finalTransactions.payrollTitleCode()` | ported |
+| `Payroll Title*` | textbox | `finalTransactions.payrollTitle()` | ported |
+| `Submitted Termination Template` | checkbox | `transactionResults.submittedTemplateCheckbox()` | ported |
+| `Transaction Number:*` | textbox | `transactionResults.transactionNumber()` | ported |
+| `Does not need Final Pay (student employee)` | radio | `transactionResults.doesNotNeedFinalPayRadio()` | ported |
+| `Submitted Final Pay Request` · `Does not need Final Pay (transfer employee)` · `Other` | radio | — | driver-internal |
+| `Timekeeper/Approver Comments:` | textbox | `timekeeperTasks.timekeeperComments()` | ported |
+
+Group labels observed beside the controls: `Timekeeper Acknowledgement:*`, `UCPath Transactions*`
+(which also carries a link to the UCPath Termination Template), `Final Pay Transactions*`.
+
+**S13 is a BROKEN SELECTOR, not an optional field.** Legacy asks for the accessible name
+`"Location  *"` — a space before the asterisk — and the live name is `"Location*"` with none, so its
+recipe matched **zero nodes on every document**. Its `catch { location = "" }` then reported that as
+an absent optional field. Legacy has never once read this field; all three live documents have it
+populated, and it is marked required.
+
+---
+
+#### The §4a deliverable — the COMPLETE `Type of Termination` option list
+
+Captured verbatim from all three documents at two different workflow steps. **All three served the
+identical 17-option list** (16 real options plus Kuali's `- - -` blank sentinel), so the list is
+document- and step-independent and the map can be exhaustive.
+
+| # | Option (verbatim) | Classification | UCPath template | UCPath reason code |
+|---|---|---|---|---|
+| 0 | `- - -` | — | — | **REFUSES** — `blank-termination-type`; the form is unset |
+| 1 | `Accepted Another Job` | voluntary | `UC_VOL_TERM` | `Resign - Accept Another Job` |
+| 2 | `Attend School` | voluntary | `UC_VOL_TERM` | `Resign - Attend School` |
+| 3 | `Dissatisfied w/Job` | voluntary | `UC_VOL_TERM` | `Resign - Dissatisfied w/ Job` |
+| 4 | `Look for Another Job` | voluntary | `UC_VOL_TERM` | `Resign - Look For Another Job` |
+| 5 | `Military Service` | voluntary | `UC_VOL_TERM` | `Resign - Military Service` |
+| 6 | `Move out of Area` | voluntary | `UC_VOL_TERM` | `Resign - Moved out of Area` |
+| 7 | `Never Started Employment` | *(legacy: involuntary)* | — | **REFUSES** — `unmapped-termination-type`, see below |
+| 8 | `No Reason Given` | voluntary | `UC_VOL_TERM` | `Resign - No Reason Given` |
+| 9 | `Personal Reasons` | voluntary | `UC_VOL_TERM` | `Resign - Personal Reasons` |
+| 10 | `Quit without Notice` | voluntary | `UC_VOL_TERM` | `Resign - Quit Without Notice` |
+| 11 | `Retirement` | voluntary | `UC_VOL_TERM` | `Voluntary Separation Program` |
+| 12 | `Self-Employment` | voluntary | `UC_VOL_TERM` | `Resign - Self Employment` |
+| 13 | `Transferring to a different UCSD department (outside of RRSS)` | voluntary | `UC_VOL_TERM` | `Transfer - Intra Location` |
+| 14 | `Transferring to another UC Campus (outside of UCSD)` | voluntary | `UC_VOL_TERM` | `Interlocation (BU) Transfer` |
+| 15 | `Graduated/No longer a Student` | involuntary | `UC_INVOL_TERM` | `No Longer Student` |
+| 16 | `Appointment Expired` | involuntary | `UC_INVOL_TERM` | `Appointment Expired` |
+
+Seeded in `src/domain/separations/termination-type.ts`; `auditTerminationTypeMapCoverage` proves the
+map and the capture agree **in both directions**, and every run compares the option list it actually
+observed against this capture (`termination-type-options-drifted`), so §4a's accepted operational
+cost fires on the first run that stands in front of a changed control rather than on the first run
+that happens to select a new option — a pure REORDER counts, because it means the control was
+republished.
+
+**Three findings from comparing the capture with legacy's map.**
+
+1. **`Death` is not an option on this form at all.** §4a's worked example — `Death` filed as a
+   voluntary `Resign - No Reason Given` — cannot arise from this dropdown. The hazard was real in
+   shape and absent in fact.
+2. **`Never Started Employment` is genuinely unmapped, and legacy misfiles it.** It is in legacy's
+   three-entry `INVOLUNTARY_TYPES` but NOT in its fifteen-entry `REASON_CODE_MAP`, and no fuzzy tier
+   matches it (checked: no map key is a substring of it or vice versa) — so legacy files
+   `UC_INVOL_TERM` with the **voluntary** default `Resign - No Reason Given`. UCPath's own INVOL_TERM
+   list does carry a `Never Started Employment` reason code (per legacy's comment block), but that
+   pairing has never been verified against the live UCPath control by this repository and §4a forbids
+   inventing one. **This is an OPERATOR ITEM** — see the chunk-2 return.
+3. **The fuzzy tier's damage on the LIVE option set is exactly one option.** Every other captured
+   option has an exact map entry, so legacy's substring tier is only reachable for
+   `Never Started Employment` today. That does not make it safe — it makes it a latent trap that
+   fires the day Kuali adds an option — but it is the honest scope of the live exposure.
+4. **`Retirement` IS mapped** (`Voluntary Separation Program`), so §4f4's "retiree" case is not an
+   unmapped type. Rehire, deceased and LOA are not options on this form at all.
+
+---
+
+#### Every other dropdown, captured whole (§3.2)
+
+**`Division*` (18 incl. sentinel):** `- - -` · Building and Custodial Services · Campus Dining and
+Retail · Conference Services · Early Childhood Education Center · Facilities and Building Services ·
+Finance, Marketing and Communication · Human Resources · Logistics · Marketing & Client Experience ·
+Payables, Travel and Campus Partnerships · Residential Services and Child Care Solutions ·
+Residential Services · Retail, Procurement and Partnership · Strategic Procurement · Technology
+Program Management · Triton Print & Digital Media · UC San Diego Bookstore.
+
+**`Employee Type*` (5):** `- - -` · Career/Contract · Limited · Student ·
+Contingent Worker (volunteer).
+
+**`Student Title Code*` (6):** `- - -` · 4921 - STDT 2 · 4920 - STDT 3 · 4919 - STDT 4 ·
+4331 - ELECTED OFCR STDT GOVT · 4944 - STDT RSDNC HALLS.
+
+**`Department*` (6) — the S55 list:** `- - -` · 000141 - Early Childhood Education Center ·
+000412 - Housing/Dining/Hospitality · 000414 - Bookstore · 000422 - Triton Print & Digital Media ·
+000719 - Supply Chain Services. Note the option text is `<6-digit code> - <description>`, so S55's
+"code-match tier first" has a code to match on directly.
+
+**`Final Pay Transactions*` (4 radios, no sentinel):** `Submitted Final Pay Request` ·
+`Does not need Final Pay (student employee)` · `Does not need Final Pay (transfer employee)` ·
+`Other`. §4g ratified the second as an unconditional business assertion; the read returns which one
+the document already carries, and doc 4510 carried exactly that one while 4502 and 4495 carried none.
+
+---
+
+#### States, values and shapes the three documents encountered
+
+| Fact | 4510 | 4502 | 4495 |
+|---|---|---|---|
+| Workflow step | Task 1 - Jan | Task 1 - Jan | Task 1 - Kristina & TES |
+| Type of Termination | Graduated/No longer a Student | Appointment Expired | Appointment Expired |
+| Last Day Worked / Separation Date | 06/10/2026 both | 03/31/2026 both | **09/02/2026** both |
+| Timekeeper Name | populated | **blank** | populated |
+| Request Acknowledged | checked | **unchecked** | checked |
+| Termination Effective Date | 06/11/2026 | **blank** | **blank** |
+| Department | 000412 - HDH | **`- - -`** | 000412 - HDH |
+| Payroll Title Code / Title | 004921 / STDT 2 | **blank / blank** | 004920 / STDT 3 |
+| Submitted Termination Template | checked | **unchecked** | **unchecked** |
+| Transaction Number | T002209631 | **blank** | **blank** |
+| Final Pay radio | student employee | **none selected** | **none selected** |
+| Timekeeper/Approver Comments | blank | populated | blank |
+
+**This table is why the absent arms exist.** An unprocessed separation document is blank in five
+fields and sits on the blank sentinel in a sixth; a rich read without explicit absent arms would fail
+every document the department has not yet worked. Two shape notes: values arrive
+whitespace-padded (`"Clisea, Fleina "`, `"Hospitality Information "`), and **doc 4495's dates are in
+the FUTURE** relative to the read — a department legitimately files a separation in advance, so the
+read reports the parsed date and S7's refusal stays a precondition of *filing a termination*, not of
+*reading a form*.
+
+---
+
+### 9.4 Chunk 2 — the live proof: **PASSED**, five runs, 2026-08-12
+
+Doc 07 §3.1 step 4 (the live dry-run for this chunk) is **MET**. Five runs were started through the
+real start-plan → command → worker path against the real Kuali production space; **all five reached
+terminal `done` on attempt 1**, and the last three hold verified evidence receipts over real data.
+
+| Trace | Document | Result | `document` node | Queued → terminal |
+|---|---|---|---|---|
+| `sd-140241-ca44` | 4510 (processed) | done (receipt frozen, see below) | 26.90 s | 32.95 s |
+| `sd-140505-28ff` | 4502 (unprocessed) | done (receipt frozen, see below) | 5.37 s | 6.43 s |
+| `sd-140917-2b9e` | 4510 | **done, receipt `verified`** | — | 8.68 s |
+| `sd-140921-3385` | 4502 | **done, receipt `verified`** | — | 5.01 s |
+| `sd-140921-c0af` | 4495 (future-dated) | **done, receipt `verified`** | 5.64 s | 10.59 s |
+
+**Measured legs.** Browser launch + Kuali login (cold profile, Duo cleared hands-off) → session ready
+**23.5 s**; the whole-form read on top of a ready session **3.42 s**; a warm-profile document node
+end to end **5.4–5.6 s**; the pure `termination-type` fold **2 ms**. The read is one navigation and
+~20 control reads, and it costs about as much as a single Kuali document open — which is the
+argument for reading the whole surface while standing on the page.
+
+**What the live lane proved that no fixture could.** The receipt for doc 4502 carried every absent
+arm as durable evidence with its reason (`Department` on the `- - -` sentinel, blank transaction
+number, no Final Pay radio selected), and the complete 17-option `Type of Termination` list travelled
+into the receipt as a fact of that run. Doc 4495 proved a future-dated separation reads cleanly.
+
+**What the live lane CAUGHT — one real defect, on the first receipt.** The separation read's person
+fields were declared `direct-identifier` on every arm leaf, so `last4` ran over the arm
+DISCRIMINATOR: the receipt an operator would read said `employee.name.state = "sent"` (the last four
+characters of `"present"`) and `employee.name.reason = "alue"`. That is not redaction; it is a
+receipt stating something false. Only the `value` leaf is the identifier. Fixed, and the general
+rule is recorded as D197.
+
+**Its honest cost, recorded rather than hidden.** An evidence-classification change moves receipt
+BYTES for every already-settled run, and D82's `evidenceReceipts.insert` correctly refuses the
+divergent rebuild by name. The two runs that FOUND the defect (`sd-140241-ca44`, `sd-140505-28ff`)
+are therefore permanently frozen at their pre-fix derivation and now answer
+`evidence receipt … already exists with different content` when re-read. They are left as they are:
+the fix was re-proved on three fresh runs rather than by rewriting authority.
+
+**What was NOT observed, stated honestly.** The operator's Action List held only RRSS Separation
+Request Forms, so **S2's refusal has never been exercised against a real non-separation document** —
+it is proved against the deterministic driver and against the live fact that the form type is
+readable and compared by value. Likewise no live document carried an unmapped termination type, an
+unparseable date, or a stale action id, so those three refusals are test-pinned rather than
+live-verified.
+
+---
