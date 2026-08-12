@@ -129,7 +129,8 @@ after ANY edit under a descriptor's import closure (which includes `src/base/**`
 `src/domain/**`) — `descriptor-coverage` regenerates and fails on a diff, so a stale manifest is a
 red gate, not a silent drift.
 
-The gate family is deliberately plain (`typecheck`/`lint`/`test`/`test:architecture`); the old
+The gate family is deliberately plain (`typecheck`/`lint`/`test:coverage`, D191 — `test:coverage` is
+a strict superset of the earlier `test`+`test:architecture` pair and measured faster); the old
 `*:rebuild` names retired with D93. The **runtime** commands stay `rebuild:`-prefixed on purpose —
 see "Operational isolation" below.
 
@@ -763,10 +764,11 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## After changes
 
-Run `npm run typecheck && npm run lint && npm run test && npm run test:architecture` before
-committing. Add a new guard file **and** its `docs/rebuild/guard-inventory.json` entry in the same
-commit — `guard-manifest.test.ts` checks both directions. Retiring a guard requires an explicit
-`retired` entry naming the deciding decision and where the invariant went; a guard that simply
-disappears is indistinguishable from an accident.
+Run `npm run typecheck && npm run lint && npm run test:coverage` before committing (D191 —
+`test:coverage` REPLACES the earlier `test` + `test:architecture` pair as the per-commit gate; both
+scripts stay available for a targeted run). Add a new guard file **and** its
+`docs/rebuild/guard-inventory.json` entry in the same commit — `guard-manifest.test.ts` checks both
+directions. Retiring a guard requires an explicit `retired` entry naming the deciding decision and
+where the invariant went; a guard that simply disappears is indistinguishable from an accident.
 
 Never push to any remote without explicit instruction.

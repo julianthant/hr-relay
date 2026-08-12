@@ -1057,6 +1057,21 @@ else. **The change is NOT applied here.** What runs before every commit is a rul
 program works, so it is recorded as a named, measured recommendation for the operator rather than
 slipped in behind a coverage fix.
 
+#### D191 — the recommendation is adopted: `test:coverage` becomes the per-commit gate (operator decision, 2026-08-12)
+
+**The measurement above is now the rule.** The operator adopted the D190 recommendation as written:
+the per-commit gate family is `npm run typecheck && npm run lint && npm run test:coverage`,
+REPLACING the separate `npm run test && npm run test:architecture` pair. `test:coverage` runs every
+Vitest project `test` runs (`tests/unit/architecture` is inside the `unit` project's glob) plus the
+lines/statements/functions floors, and it measured faster — **28.2 s against `test` 21.5 s +
+`test:architecture` 17.4 s ≈ 39 s** — so the floors are a saving, not a cost. `test` and
+`test:architecture` stay available as scripts for a targeted run; `test:parity` and
+`build:manifest --check` are unchanged obligations, unaffected by this decision. Root `CLAUDE.md`'s
+"After changes" section and its `## Commands` gate-family note both carry the new command. The
+objection D190 raised — a mid-slice commit can honestly dip a coverage floor — stays true and stays
+the operator's to accept case by case; nothing here waives a floor, it only moves WHEN the floor is
+checked, from "the slice will check at the end" (the assumption that just failed) to every commit.
+
 ### 3.12 D71 executable contract/type-budget suite
 
 The Phase-0 disposable spike is converted—not copied blindly—into committed tests against the real
