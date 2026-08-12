@@ -1,0 +1,261 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "live-read-only",
+  "system": "kuali",
+  "screens": [
+    "kuali.rrss-document"
+  ],
+  "verifiedAt": "2026-08-12",
+  "method": "playwright-cli-duo-autopilot",
+  "assertions": [
+    {
+      "semanticId": "kuali.rrss-document.employee-name-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.employeeName()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.last-day-worked-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.lastDayWorked()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.separation-date-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.separationDate()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.termination-type-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.terminationType()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.location-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.location()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.request-acknowledged-checkbox",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "timekeeperTasks.requestAcknowledgedCheckbox()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.timekeeper-comments-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "timekeeperTasks.timekeeperComments()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.termination-effective-date-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "finalTransactions.terminationEffDate()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.department-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "finalTransactions.department()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.payroll-title-code-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "finalTransactions.payrollTitleCode()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.payroll-title-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "finalTransactions.payrollTitle()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.submitted-template-checkbox",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "transactionResults.submittedTemplateCheckbox()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.transaction-number-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "transactionResults.transactionNumber()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.final-pay-student-radio",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "transactionResults.doesNotNeedFinalPayRadio()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.separation-ready",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.employeeName()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.displayed-number",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.employeeName()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.displayed-form-type",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.terminationType()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    }
+  ],
+  "rejectedCandidates": [
+    {
+      "legacyKey": "separationForm.location()",
+      "candidateDescription": "role=textbox name=\"Location  *\" (legacy spells the accessible name with a space before the asterisk)",
+      "reason": "zero-live-matches",
+      "matchedCount": 0,
+      "replacementSemanticId": "kuali.rrss-document.location-field"
+    }
+  ],
+  "externalWriteAttempted": false,
+  "sanitized": true
+}

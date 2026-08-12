@@ -143,6 +143,10 @@ describe("Phase 1f Person Lookup task implementations", () => {
         // Phase 2's Kuali transaction pair and its two reads share the one
         // runtime index; a second workflow does not get a second registry.
         "kuali/fill-timekeeper-annotation",
+        // Separations chunk 2's Kuali passage: ONE task for the whole
+        // separation form (D194), a sibling of the write family on the SAME
+        // driver declaration rather than a second store.
+        "kuali/read-separation-document",
         "kuali/read-timekeeper-annotation",
         "kuali/save-timekeeper-annotation",
         "kuali/verify-timekeeper-annotation",
@@ -161,6 +165,9 @@ describe("Phase 1f Person Lookup task implementations", () => {
         "roster/match-spreadsheet",
         "ucpath/search-person-org",
         "workflow:person-lookup/read-active-status",
+        // The `separations` pure workflow mini-store's first task: §4a's
+        // termination-type refusal, sessionless and browser-free.
+        "workflow:separations/match-termination-type",
       ],
     );
   });

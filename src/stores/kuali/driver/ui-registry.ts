@@ -59,6 +59,26 @@ import {
   KUALI_RRSS_TIMEKEEPER_FIELD,
   KUALI_RRSS_TIMEKEEPER_STAGED,
 } from "../../../domain/ui/kuali-rrss-document.js";
+import {
+  KUALI_RRSS_DEPARTMENT_FIELD,
+  KUALI_RRSS_DISPLAYED_FORM_TYPE,
+  KUALI_RRSS_DISPLAYED_NUMBER,
+  KUALI_RRSS_EMPLOYEE_NAME_FIELD,
+  KUALI_RRSS_FINAL_PAY_STUDENT_RADIO,
+  KUALI_RRSS_LAST_DAY_WORKED_FIELD,
+  KUALI_RRSS_LOCATION_FIELD,
+  KUALI_RRSS_PAYROLL_TITLE_CODE_FIELD,
+  KUALI_RRSS_PAYROLL_TITLE_FIELD,
+  KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX,
+  KUALI_RRSS_SEPARATION_DATE_FIELD,
+  KUALI_RRSS_SEPARATION_READY,
+  KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX,
+  KUALI_RRSS_TERMINATION_EFF_DATE_FIELD,
+  KUALI_RRSS_TERMINATION_TYPE_FIELD,
+  KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD,
+  KUALI_RRSS_TRANSACTION_NUMBER_FIELD,
+  KUALI_SEPARATION_FORM_TYPE,
+} from "../../../domain/ui/kuali-separation-document.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../domain/trust/preflight-scenarios.js";
 
 const LEGACY_COMMIT = "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc";
@@ -68,11 +88,23 @@ const LIVE_EVIDENCE = "evidence/ui/kuali/rrss-document.live.json";
 const IDENTITY_SCENARIO = "ui/kuali-rrss-document-identity";
 const WRITE_SURFACE_SCENARIO = "ui/kuali-rrss-timekeeper-write-surface";
 
+/**
+ * The separation READ surface carries its own evidence pair and its own
+ * verification date, because a manifest states ONE `verifiedAt` and the audit
+ * compares it per fact. The write's three elements were live-verified
+ * 2026-08-04; the fourteen read elements below were live-verified 2026-08-12.
+ * Folding both into one manifest would have to lie about one of them.
+ */
+const READ_FIXTURE_EVIDENCE = "evidence/ui/kuali/separation-document.fixture.json";
+const READ_LIVE_EVIDENCE = "evidence/ui/kuali/separation-document.live.json";
+const READ_SURFACE_SCENARIO = "ui/kuali-separation-document-read-surface";
+
 const EID_PORT_KEY = "separationForm.eid()";
 const TIMEKEEPER_PORT_KEY = "timekeeperTasks.timekeeperName()";
 const SAVE_PORT_KEY = "save.navbarSaveButton()";
 
 const VERIFIED_AT = "2026-08-04";
+const READ_VERIFIED_AT = "2026-08-12";
 
 const GitBlobSchema = z.string().regex(/^[0-9a-f]{40}$/u);
 const LegacySelectorProvenanceSchema = z.strictObject({
@@ -98,7 +130,7 @@ const LegacySelectorProvenanceSchema = z.strictObject({
  */
 export const KualiLocatorRecipeSchema = z.strictObject({
   kind: z.literal("role-exact-name"),
-  role: z.enum(["textbox", "button"]),
+  role: z.enum(["textbox", "button", "combobox", "checkbox", "radio"]),
   name: z.string().min(1),
   exact: z.literal(true),
 });
@@ -109,16 +141,39 @@ export const KualiStateEvidenceRuleSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("action-view-url"), space: z.string().regex(/^[0-9a-f]{24}$/u) }),
   /** The level-1 heading is the document number; it is how we prove identity. */
   z.strictObject({ kind: z.literal("document-number-heading"), level: z.literal(1) }),
+  /**
+   * Kuali's document route names the FORM in the page title
+   * (`Form - <form name> - Kuali`, live 2026-08-12). It is the only
+   * unambiguous read of the form type on the page: the same string also appears
+   * in the space's app list and in the Action List dialog's rows, so a
+   * page-wide text match would resolve several nodes on a document that is not
+   * even open (S2).
+   */
+  z.strictObject({ kind: z.literal("document-title-form-name"), formName: z.string().min(1) }),
   z.strictObject({ kind: z.literal("element"), element: ElementIdSchema }),
 ]);
 
-export const KualiObservationRecipeSchema = z.strictObject({
-  kind: z.literal("input-value"),
-  element: ElementIdSchema,
-  /** Kuali inputs return whitespace-padded values (legacy LESSONS.md:49-54). */
-  trim: z.literal(true),
-  valueType: z.enum(["eid", "text"]),
-});
+export const KualiObservationRecipeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("input-value"),
+    element: ElementIdSchema,
+    /** Kuali inputs return whitespace-padded values (legacy LESSONS.md:49-54). */
+    trim: z.literal(true),
+    valueType: z.enum(["eid", "text"]),
+  }),
+  /** Read off the page, not off a form control — the document's own identity. */
+  z.strictObject({
+    kind: z.literal("document-number-heading"),
+    level: z.literal(1),
+    trim: z.literal(true),
+    valueType: z.literal("document-number"),
+  }),
+  z.strictObject({
+    kind: z.literal("document-title-form-name"),
+    trim: z.literal(true),
+    valueType: z.literal("form-type"),
+  }),
+]);
 
 const ScreenDefinitionSchema = z.strictObject({
   id: ScreenIdSchema,
@@ -164,7 +219,7 @@ const ObservationDefinitionSchema = z.strictObject({
   label: z.string().min(1),
   searchTerms: z.array(z.string().min(1)).min(1),
   sensitivity: UiSensitivitySchema,
-  valueType: z.enum(["eid", "text"]),
+  valueType: z.enum(["eid", "text", "document-number", "form-type"]),
   read: KualiObservationRecipeSchema,
   authoritativeFor: z.array(z.enum(["subject", "completion", "page-state"])).min(1),
   verification: UiVerificationSchema,
@@ -219,6 +274,49 @@ function provenance(key: string, sourceLine: number, narrowedFromLegacy?: string
     sourceLine,
     blob: KUALI_SELECTOR_BLOB,
     ...(narrowedFromLegacy === undefined ? {} : { narrowedFromLegacy }),
+  };
+}
+
+/** The 2026-08-12 read-surface verification, against its own evidence pair. */
+function readVerification(legacyKey: string) {
+  return {
+    verifiedAt: DateOnlySchema.parse(READ_VERIFIED_AT),
+    fixtureEvidenceRef: READ_FIXTURE_EVIDENCE,
+    liveReadOnlyEvidenceRef: READ_LIVE_EVIDENCE,
+    scenarios: [ScenarioIdSchema.parse(READ_SURFACE_SCENARIO)],
+    portMapRows: [{ system: "kuali" as const, legacyKey }],
+  };
+}
+
+/**
+ * One read-surface element: a legacy port, live re-verified 2026-08-12 to
+ * resolve to EXACTLY ONE node on real documents 4510 / 4502 / 4495.
+ */
+function readElement(input: Readonly<{
+  id: typeof KUALI_RRSS_EID_FIELD;
+  label: string;
+  searchTerms: readonly string[];
+  role: "textbox" | "combobox" | "checkbox" | "radio";
+  name: string;
+  sensitivity: "public" | "hr" | "restricted";
+  legacyKey: string;
+  sourceLine: number;
+  narrowedFromLegacy?: string;
+}>) {
+  return {
+    id: input.id,
+    system: "kuali" as const,
+    screen: KUALI_RRSS_DOCUMENT_SCREEN,
+    label: input.label,
+    searchTerms: input.searchTerms,
+    role: "field" as const,
+    effect: "observe" as const,
+    sensitivity: input.sensitivity,
+    locator: { kind: "role-exact-name", role: input.role, name: input.name, exact: true },
+    requiredStates: [KUALI_RRSS_SEPARATION_READY],
+    verification: readVerification(input.legacyKey),
+    provenance: provenance(input.legacyKey, input.sourceLine, input.narrowedFromLegacy),
+    supersedes: [],
   };
 }
 
@@ -287,6 +385,155 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       ),
       supersedes: [],
     },
+    /* ── The separation READ surface (2i chunk 2, live-verified 2026-08-12) ── */
+    readElement({
+      id: KUALI_RRSS_EMPLOYEE_NAME_FIELD,
+      label: "RRSS document employee name field",
+      searchTerms: ["kuali rrss document employee name field"],
+      role: "textbox",
+      name: "Employee Last Name, First Name*",
+      sensitivity: "hr",
+      legacyKey: "separationForm.employeeName()",
+      sourceLine: 90,
+    }),
+    readElement({
+      id: KUALI_RRSS_LAST_DAY_WORKED_FIELD,
+      label: "RRSS document last day worked field",
+      searchTerms: ["kuali rrss document last day worked field"],
+      role: "textbox",
+      name: "Last Day Worked*",
+      sensitivity: "hr",
+      legacyKey: "separationForm.lastDayWorked()",
+      sourceLine: 102,
+    }),
+    readElement({
+      id: KUALI_RRSS_SEPARATION_DATE_FIELD,
+      label: "RRSS document separation date field",
+      searchTerms: ["kuali rrss document separation date field"],
+      role: "textbox",
+      name: "Separation Date (Last day actively employed)*",
+      sensitivity: "hr",
+      legacyKey: "separationForm.separationDate()",
+      sourceLine: 108,
+      narrowedFromLegacy: "legacy matches the loose regex /Separation Date/; the live accessible name is "
+        + "the full literal \"Separation Date (Last day actively employed)*\", and this document also "
+        + "renders a helper paragraph containing the words \"separation date\" — so the regex is a "
+        + "substring match on a page that has more than one place to hit. The port uses the exact name",
+    }),
+    readElement({
+      id: KUALI_RRSS_TERMINATION_TYPE_FIELD,
+      label: "RRSS document type of termination select",
+      searchTerms: ["kuali rrss document type of termination select"],
+      role: "combobox",
+      name: "Type of Termination*",
+      sensitivity: "hr",
+      legacyKey: "separationForm.terminationType()",
+      sourceLine: 114,
+    }),
+    readElement({
+      id: KUALI_RRSS_LOCATION_FIELD,
+      label: "RRSS document location field",
+      searchTerms: ["kuali rrss document location field"],
+      role: "textbox",
+      name: "Location*",
+      sensitivity: "public",
+      legacyKey: "separationForm.location()",
+      sourceLine: 120,
+      narrowedFromLegacy: "legacy asks for the accessible name \"Location  *\" (a space before the "
+        + "asterisk) and the live name is \"Location*\" with none, so legacy's recipe matched ZERO nodes "
+        + "on every document — which its own catch turned into location=\"\" (S13). The corrected name "
+        + "resolves to exactly one node; S13 is a broken selector, not an optional field",
+    }),
+    readElement({
+      id: KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX,
+      label: "RRSS document request acknowledged checkbox",
+      searchTerms: ["kuali rrss document request acknowledged checkbox"],
+      role: "checkbox",
+      name: "Request Acknowledged - In Progress",
+      sensitivity: "public",
+      legacyKey: "timekeeperTasks.requestAcknowledgedCheckbox()",
+      sourceLine: 131,
+    }),
+    readElement({
+      id: KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD,
+      label: "RRSS document timekeeper approver comments field",
+      searchTerms: ["kuali rrss document timekeeper approver comments field"],
+      role: "textbox",
+      name: "Timekeeper/Approver Comments:",
+      sensitivity: "hr",
+      legacyKey: "timekeeperTasks.timekeeperComments()",
+      sourceLine: 145,
+    }),
+    readElement({
+      id: KUALI_RRSS_TERMINATION_EFF_DATE_FIELD,
+      label: "RRSS document termination effective date field",
+      searchTerms: ["kuali rrss document termination effective date field"],
+      role: "textbox",
+      name: "Termination Effective Date*",
+      sensitivity: "hr",
+      legacyKey: "finalTransactions.terminationEffDate()",
+      sourceLine: 156,
+    }),
+    readElement({
+      id: KUALI_RRSS_DEPARTMENT_FIELD,
+      label: "RRSS document department select",
+      searchTerms: ["kuali rrss document department select"],
+      role: "combobox",
+      name: "Department*",
+      sensitivity: "public",
+      legacyKey: "finalTransactions.department()",
+      sourceLine: 163,
+    }),
+    readElement({
+      id: KUALI_RRSS_PAYROLL_TITLE_CODE_FIELD,
+      label: "RRSS document payroll title code field",
+      searchTerms: ["kuali rrss document payroll title code field"],
+      role: "textbox",
+      name: "Payroll Title Code*",
+      sensitivity: "public",
+      legacyKey: "finalTransactions.payrollTitleCode()",
+      sourceLine: 170,
+    }),
+    readElement({
+      id: KUALI_RRSS_PAYROLL_TITLE_FIELD,
+      label: "RRSS document payroll title field",
+      searchTerms: ["kuali rrss document payroll title field"],
+      role: "textbox",
+      name: "Payroll Title*",
+      sensitivity: "public",
+      legacyKey: "finalTransactions.payrollTitle()",
+      sourceLine: 177,
+    }),
+    readElement({
+      id: KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX,
+      label: "RRSS document submitted termination template checkbox",
+      searchTerms: ["kuali rrss document submitted termination template checkbox"],
+      role: "checkbox",
+      name: "Submitted Termination Template",
+      sensitivity: "public",
+      legacyKey: "transactionResults.submittedTemplateCheckbox()",
+      sourceLine: 188,
+    }),
+    readElement({
+      id: KUALI_RRSS_TRANSACTION_NUMBER_FIELD,
+      label: "RRSS document transaction number field",
+      searchTerms: ["kuali rrss document transaction number field"],
+      role: "textbox",
+      name: "Transaction Number:*",
+      sensitivity: "restricted",
+      legacyKey: "transactionResults.transactionNumber()",
+      sourceLine: 195,
+    }),
+    readElement({
+      id: KUALI_RRSS_FINAL_PAY_STUDENT_RADIO,
+      label: "RRSS document does-not-need-final-pay student radio",
+      searchTerms: ["kuali rrss document final pay student employee radio"],
+      role: "radio",
+      name: "Does not need Final Pay (student employee)",
+      sensitivity: "public",
+      legacyKey: "transactionResults.doesNotNeedFinalPayRadio()",
+      sourceLine: 202,
+    }),
   ],
   states: [
     {
@@ -325,6 +572,35 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       timeoutMs: 30_000,
       verification: verification(WRITE_SURFACE_SCENARIO, TIMEKEEPER_PORT_KEY),
     },
+    {
+      id: KUALI_RRSS_SEPARATION_READY,
+      system: "kuali",
+      screen: KUALI_RRSS_DOCUMENT_SCREEN,
+      label: "RRSS separation document loaded and proved to be a separation form",
+      searchTerms: ["kuali rrss separation document ready state"],
+      sensitivity: "restricted",
+      /**
+       * Strictly stronger than `…ready`: the same URL and document-number
+       * heading PLUS the form's own name off the document title (S2). A
+       * non-separation document reaches `…ready` and never reaches this.
+       */
+      evidence: [
+        { kind: "action-view-url", space: KUALI_RRSS_SPACE_ID },
+        { kind: "document-number-heading", level: 1 },
+        { kind: "document-title-form-name", formName: KUALI_SEPARATION_FORM_TYPE },
+        { kind: "element", element: KUALI_RRSS_EID_FIELD },
+        { kind: "element", element: KUALI_RRSS_TERMINATION_TYPE_FIELD },
+      ],
+      /**
+       * The document route paints client-side in stages, measured live
+       * 2026-08-12 on a warm SPA: no headings at ~7ms, an EMPTY document
+       * heading at ~258ms, and the real number + the `Form - … - Kuali` title
+       * + the form controls together at ~1.77s. A cold open measured ~3.0s on
+       * 2026-08-04. 30s is the same budget the write surface carries.
+       */
+      timeoutMs: 30_000,
+      verification: readVerification("separationForm.employeeName()"),
+    },
   ],
   observations: [
     {
@@ -351,6 +627,37 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       authoritativeFor: ["completion"],
       verification: verification(WRITE_SURFACE_SCENARIO, TIMEKEEPER_PORT_KEY),
     },
+    {
+      id: KUALI_RRSS_DISPLAYED_NUMBER,
+      system: "kuali",
+      screen: KUALI_RRSS_DOCUMENT_SCREEN,
+      label: "Displayed RRSS document number",
+      searchTerms: ["authoritative kuali rrss displayed document number"],
+      sensitivity: "public",
+      valueType: "document-number",
+      read: { kind: "document-number-heading", level: 1, trim: true, valueType: "document-number" },
+      /**
+       * The ARTIFACT subject of the separation read: the run names a document
+       * and DISCOVERS the person, so the document number is what the read's
+       * subject binding is proved against. The person-subject observation
+       * beside it (`displayed-eid`) is unchanged and still the write's binding.
+       */
+      authoritativeFor: ["subject"],
+      verification: readVerification("separationForm.employeeName()"),
+    },
+    {
+      id: KUALI_RRSS_DISPLAYED_FORM_TYPE,
+      system: "kuali",
+      screen: KUALI_RRSS_DOCUMENT_SCREEN,
+      label: "Displayed RRSS document form type",
+      searchTerms: ["authoritative kuali rrss displayed form type"],
+      sensitivity: "public",
+      valueType: "form-type",
+      read: { kind: "document-title-form-name", trim: true, valueType: "form-type" },
+      /** S2's proof: it is what promotes `…ready` to `…separation-ready`. */
+      authoritativeFor: ["page-state"],
+      verification: readVerification("separationForm.terminationType()"),
+    },
   ],
   scenarios: [
     {
@@ -376,6 +683,34 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       ],
       fixtureEvidenceRef: FIXTURE_EVIDENCE,
       liveReadOnlyEvidenceRef: LIVE_EVIDENCE,
+      assertions: ["recipe-resolves", "exactly-one-visible"],
+    },
+    {
+      id: READ_SURFACE_SCENARIO,
+      kind: "ui-verification",
+      title: "The Kuali separation-document read surface resolves to exactly one node per field",
+      system: "kuali",
+      semanticIds: [
+        KUALI_RRSS_EMPLOYEE_NAME_FIELD,
+        KUALI_RRSS_LAST_DAY_WORKED_FIELD,
+        KUALI_RRSS_SEPARATION_DATE_FIELD,
+        KUALI_RRSS_TERMINATION_TYPE_FIELD,
+        KUALI_RRSS_LOCATION_FIELD,
+        KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX,
+        KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD,
+        KUALI_RRSS_TERMINATION_EFF_DATE_FIELD,
+        KUALI_RRSS_DEPARTMENT_FIELD,
+        KUALI_RRSS_PAYROLL_TITLE_CODE_FIELD,
+        KUALI_RRSS_PAYROLL_TITLE_FIELD,
+        KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX,
+        KUALI_RRSS_TRANSACTION_NUMBER_FIELD,
+        KUALI_RRSS_FINAL_PAY_STUDENT_RADIO,
+        KUALI_RRSS_SEPARATION_READY,
+        KUALI_RRSS_DISPLAYED_NUMBER,
+        KUALI_RRSS_DISPLAYED_FORM_TYPE,
+      ],
+      fixtureEvidenceRef: READ_FIXTURE_EVIDENCE,
+      liveReadOnlyEvidenceRef: READ_LIVE_EVIDENCE,
       assertions: ["recipe-resolves", "exactly-one-visible"],
     },
   ],
@@ -437,12 +772,35 @@ export function auditKualiUiRegistry(registryInput: unknown = KUALI_UI_REGISTRY)
     }
   }
   for (const observation of registry.observations) {
-    if (!elements.has(observation.read.element)) issues.push(`${observation.id} reads an unknown Kuali element`);
+    if (observation.read.kind === "input-value" && !elements.has(observation.read.element)) {
+      issues.push(`${observation.id} reads an unknown Kuali element`);
+    }
   }
+  /**
+   * ONE subject-authoritative observation per SUBJECT IDENTITY, not one
+   * overall.
+   *
+   * The original rule ("exactly one") was written when this store had one
+   * binding: the write's PERSON subject, the displayed EID. The separation read
+   * introduced a second, genuinely different subject — doc 01's `artifact` kind
+   * with `identity:"document-id"`, because that read names a document and
+   * DISCOVERS the person. Both must still be unambiguous, so the rule becomes
+   * per-identity rather than being relaxed: exactly one `eid` subject
+   * observation (the write's binding, unchanged) and at most one
+   * `document-number` subject observation.
+   */
   const subjectObservations = registry.observations.filter(({ authoritativeFor }) =>
     authoritativeFor.includes("subject"));
-  if (subjectObservations.length !== 1) {
-    issues.push("Kuali must expose exactly one subject-authoritative observation for the write binding");
+  const personSubjects = subjectObservations.filter(({ valueType }) => valueType === "eid");
+  if (personSubjects.length !== 1) {
+    issues.push("Kuali must expose exactly one person subject-authoritative observation for the write binding");
+  }
+  const documentSubjects = subjectObservations.filter(({ valueType }) => valueType === "document-number");
+  if (documentSubjects.length > 1) {
+    issues.push("Kuali must expose at most one document subject-authoritative observation");
+  }
+  if (subjectObservations.length !== personSubjects.length + documentSubjects.length) {
+    issues.push("a Kuali subject-authoritative observation must be a person or a document identity");
   }
   const globalScenarioIds = [
     ...PREFLIGHT_SCENARIO_MANIFESTS.map(({ id }) => ScenarioIdSchema.parse(id)),

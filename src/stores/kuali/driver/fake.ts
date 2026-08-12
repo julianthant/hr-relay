@@ -41,6 +41,77 @@ import type {
   KualiTimekeeperReadBack,
   KualiTimekeeperStaging,
 } from "../../../domain/ui/kuali-rrss-document.js";
+import {
+  KUALI_BLANK_OPTION_TEXT,
+  KUALI_RRSS_SEPARATION_READY,
+  KUALI_SEPARATION_FORM_TYPE,
+  KualiSeparationDocumentReadSchema,
+  KualiSeparationDocumentSchema,
+  KualiTransactionNumberSchema,
+  parseKualiFormDate,
+} from "../../../domain/ui/kuali-separation-document.js";
+import type {
+  KualiDateField,
+  KualiFinalPayChoice,
+  KualiOptionField,
+  KualiSeparationDocumentRead,
+  KualiTextField,
+  KualiTransactionNumberField,
+} from "../../../domain/ui/kuali-separation-document.js";
+import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../domain/separations/termination-type.js";
+
+/**
+ * The option lists the live 2026-08-12 form rendered, so a fixture that does
+ * not care about a dropdown still produces a document that looks like the real
+ * one. `KUALI_TERMINATION_TYPE_OPTIONS` is deliberately the SAME constant the
+ * map is built from — a fake with its own copy would pass an option-list drift
+ * check that the live page would fail.
+ */
+const KUALI_FAKE_DIVISION_OPTIONS: readonly string[] = Object.freeze([
+  "- - -",
+  "Building and Custodial Services",
+  "Campus Dining and Retail",
+  "Conference Services",
+  "Early Childhood Education Center",
+  "Facilities and Building Services",
+  "Finance, Marketing and Communication",
+  "Human Resources",
+  "Logistics",
+  "Marketing & Client Experience",
+  "Payables, Travel and Campus Partnerships",
+  "Residential Services and Child Care Solutions",
+  "Residential Services",
+  "Retail, Procurement and Partnership",
+  "Strategic Procurement",
+  "Technology Program Management",
+  "Triton Print & Digital Media",
+  "UC San Diego Bookstore",
+]);
+const KUALI_FAKE_EMPLOYEE_TYPE_OPTIONS: readonly string[] = Object.freeze([
+  "- - -", "Career/Contract", "Limited", "Student", "Contingent Worker (volunteer)",
+]);
+const KUALI_FAKE_STUDENT_TITLE_CODE_OPTIONS: readonly string[] = Object.freeze([
+  "- - -",
+  "4921 - STDT 2",
+  "4920 - STDT 3",
+  "4919 - STDT 4",
+  "4331 - ELECTED OFCR STDT GOVT",
+  "4944 - STDT RSDNC HALLS",
+]);
+const KUALI_FAKE_DEPARTMENT_OPTIONS: readonly string[] = Object.freeze([
+  "- - -",
+  "000141 - Early Childhood Education Center",
+  "000412 - Housing/Dining/Hospitality",
+  "000414 - Bookstore",
+  "000422 - Triton Print & Digital Media",
+  "000719 - Supply Chain Services",
+]);
+const KUALI_FAKE_FINAL_PAY_OPTIONS: readonly string[] = Object.freeze([
+  "Submitted Final Pay Request",
+  "Does not need Final Pay (student employee)",
+  "Does not need Final Pay (transfer employee)",
+  "Other",
+]);
 
 export interface KualiFakeWorld {
   /** Ordered call log: `open:<doc>`, `stage:<value>`, `read:<observation>`, `commit:<element>`. */
@@ -93,6 +164,54 @@ export interface KualiFakeWorld {
   readBackThrows?: Error;
   /** The exact capability the last commit received. */
   lastCapability?: unknown;
+  /**
+   * The separation form this document carries, as `readSeparationDocument`
+   * would read it off the page. Unset means the fake is a write-only fixture
+   * and the read refuses loudly rather than inventing a form.
+   */
+  separationForm?: KualiFakeSeparationForm;
+}
+
+/**
+ * The RAW page values a separation document shows — strings exactly as the
+ * controls hold them, NOT the parsed output.
+ *
+ * The fake models the page, not the schema: a fixture sets `lastDayWorked` to
+ * `"31/06/2026"` or `eid` to `"pending"` and the SAME parsing/refusal path the
+ * live driver runs decides what that means. A fake that accepted pre-parsed
+ * values could never exercise `unparseable-date` at all.
+ */
+export interface KualiFakeSeparationForm {
+  /** `Form - <name> - Kuali`'s middle segment. Set it to drive S2. */
+  formType: string;
+  employeeName: string;
+  eid: string;
+  employeeType: string;
+  studentTitleCode: string;
+  division: string;
+  location: string;
+  terminationType: string;
+  lastDayWorked: string;
+  separationDate: string;
+  additionalComments: string;
+  requestAcknowledged: boolean;
+  timekeeperName: string;
+  timekeeperComments: string;
+  terminationEffectiveDate: string;
+  department: string;
+  payrollTitleCode: string;
+  payrollTitle: string;
+  submittedTerminationTemplate: boolean;
+  transactionNumber: string;
+  finalPay: KualiFinalPayChoice | null;
+  /** The option lists the selects render, verbatim. Defaults to the live capture. */
+  terminationTypeOptions?: readonly string[];
+  departmentOptions?: readonly string[];
+  divisionOptions?: readonly string[];
+  employeeTypeOptions?: readonly string[];
+  studentTitleCodeOptions?: readonly string[];
+  /** When set, the document route never renders a document-number heading. */
+  headingAbsent?: boolean;
 }
 
 export function createKualiFakeWorld(input: Readonly<{
@@ -248,6 +367,168 @@ export function createDeterministicKualiDriver(
     }
   }
 
+  const textField = (value: string): KualiTextField => (value.trim().length === 0
+    ? { state: "absent", reason: "the control is present on the form and holds no value" }
+    : { state: "present", value: value.trim() });
+
+  const optionField = (value: string): KualiOptionField => {
+    const trimmed = value.trim();
+    return trimmed === KUALI_BLANK_OPTION_TEXT || trimmed.length === 0
+      ? {
+        state: "absent",
+        reason: `the select sits on Kuali's blank sentinel ${JSON.stringify(KUALI_BLANK_OPTION_TEXT)}`,
+      }
+      : { state: "present", value: trimmed };
+  };
+
+  async function readSeparationDocument(input: Readonly<{
+    actionId: string;
+    documentNumber: string;
+  }>): Promise<KualiSeparationDocumentRead> {
+    world.events.push(`read-separation:${input.documentNumber}`);
+    if (world.openThrows !== undefined) throw world.openThrows;
+    const form = world.separationForm;
+    if (form === undefined) {
+      throw new Error(
+        `Kuali fake holds no separation form for document ${world.documentNumber}; a fixture that reads `
+        + "one must declare it rather than have the driver invent a page",
+      );
+    }
+    if (form.headingAbsent === true) {
+      return KualiSeparationDocumentReadSchema.parse({
+        state: "document-unavailable",
+        actionId: input.actionId,
+        observedUrl: `https://ucsd.kualibuild.com/build/space/x/actions/${input.actionId}/view`,
+        reason: `Kuali action ${input.actionId} did not render a document-number heading`,
+        observedAt: now(),
+      });
+    }
+    if (world.documentNumber !== input.documentNumber) {
+      return KualiSeparationDocumentReadSchema.parse({
+        state: "document-number-mismatch",
+        actionId: input.actionId,
+        expectedNumber: input.documentNumber,
+        observedNumber: world.documentNumber,
+        observedAt: now(),
+      });
+    }
+    if (form.formType !== KUALI_SEPARATION_FORM_TYPE) {
+      return KualiSeparationDocumentReadSchema.parse({
+        state: "not-a-separation-document",
+        actionId: input.actionId,
+        documentNumber: world.documentNumber,
+        observedFormType: form.formType,
+        observedAt: now(),
+      });
+    }
+    const rawEid = form.eid.trim();
+    const parsedEid = rawEid.length === 0 ? undefined : EidSchema.safeParse(rawEid);
+    if (parsedEid !== undefined && !parsedEid.success) {
+      return KualiSeparationDocumentReadSchema.parse({
+        state: "unreadable-eid",
+        actionId: input.actionId,
+        documentNumber: world.documentNumber,
+        raw: rawEid,
+        observedAt: now(),
+      });
+    }
+    const dates: readonly (readonly ["lastDayWorked" | "separationDate" | "terminationEffectiveDate", string])[] = [
+      ["lastDayWorked", form.lastDayWorked.trim()],
+      ["separationDate", form.separationDate.trim()],
+      ["terminationEffectiveDate", form.terminationEffectiveDate.trim()],
+    ];
+    const parsedDates = new Map<string, KualiDateField>();
+    for (const [field, raw] of dates) {
+      if (raw.length === 0) {
+        parsedDates.set(field, {
+          state: "absent",
+          reason: "the date control is present on the form and holds no value",
+        });
+        continue;
+      }
+      const value = parseKualiFormDate(raw);
+      if (value === null) {
+        return KualiSeparationDocumentReadSchema.parse({
+          state: "unparseable-date",
+          actionId: input.actionId,
+          documentNumber: world.documentNumber,
+          field,
+          raw,
+          observedAt: now(),
+        });
+      }
+      parsedDates.set(field, { state: "present", raw, value });
+    }
+    const dateField = (field: string): KualiDateField => {
+      const value = parsedDates.get(field);
+      if (value === undefined) throw new Error(`Kuali fake did not visit date field ${field}`);
+      return value;
+    };
+    const rawTransaction = form.transactionNumber.trim();
+    const transactionNumber: KualiTransactionNumberField = rawTransaction.length === 0
+      ? { state: "absent", reason: "the transaction-number control is present on the form and holds no value" }
+      : KualiTransactionNumberSchema.safeParse(rawTransaction).success
+        ? { state: "present", value: rawTransaction }
+        : {
+          state: "unrecognized",
+          raw: rawTransaction,
+          reason: "the value is not a UCPath transaction number (T followed by 6-12 digits); it is kept "
+            + "verbatim rather than reported as empty, because 'the field holds something we do not "
+            + "recognise' and 'the field is empty' are different facts",
+        };
+
+    return KualiSeparationDocumentReadSchema.parse({
+      state: "read",
+      document: KualiSeparationDocumentSchema.parse({
+        pageStateId: KUALI_RRSS_SEPARATION_READY,
+        actionId: input.actionId,
+        documentNumber: world.documentNumber,
+        formType: { observed: form.formType, matches: true },
+        employee: {
+          name: textField(form.employeeName),
+          eid: parsedEid === undefined || !parsedEid.success
+            ? { state: "absent", reason: "the EID control is present on the form and holds no value" }
+            : { state: "present", value: parsedEid.data },
+          employeeType: optionField(form.employeeType),
+          studentTitleCode: optionField(form.studentTitleCode),
+          division: optionField(form.division),
+          location: textField(form.location),
+        },
+        separation: {
+          terminationType: optionField(form.terminationType),
+          lastDayWorked: dateField("lastDayWorked"),
+          separationDate: dateField("separationDate"),
+          additionalComments: textField(form.additionalComments),
+        },
+        timekeeper: {
+          requestAcknowledged: form.requestAcknowledged,
+          name: textField(form.timekeeperName),
+          comments: textField(form.timekeeperComments),
+        },
+        finalTransactions: {
+          terminationEffectiveDate: dateField("terminationEffectiveDate"),
+          department: optionField(form.department),
+          payrollTitleCode: textField(form.payrollTitleCode),
+          payrollTitle: textField(form.payrollTitle),
+          submittedTerminationTemplate: form.submittedTerminationTemplate,
+          transactionNumber,
+          finalPay: form.finalPay === null
+            ? { state: "absent", reason: "no Final Pay radio in the group is selected" }
+            : { state: "present", value: form.finalPay },
+        },
+        options: {
+          terminationType: form.terminationTypeOptions ?? KUALI_TERMINATION_TYPE_OPTIONS,
+          division: form.divisionOptions ?? KUALI_FAKE_DIVISION_OPTIONS,
+          employeeType: form.employeeTypeOptions ?? KUALI_FAKE_EMPLOYEE_TYPE_OPTIONS,
+          studentTitleCode: form.studentTitleCodeOptions ?? KUALI_FAKE_STUDENT_TITLE_CODE_OPTIONS,
+          department: form.departmentOptions ?? KUALI_FAKE_DEPARTMENT_OPTIONS,
+          finalPay: KUALI_FAKE_FINAL_PAY_OPTIONS,
+        },
+        observedAt: now(),
+      }),
+    });
+  }
+
   async function read(id: ObservationId): Promise<string> {
     world.events.push(`read:${id}`);
     if (id === KUALI_RRSS_DISPLAYED_EID) return readEid();
@@ -296,6 +577,7 @@ export function createDeterministicKualiDriver(
     system: "kuali" as const,
     read,
     openDocument,
+    readSeparationDocument,
     stageTimekeeperName,
     readSavedTimekeeper,
     commit,

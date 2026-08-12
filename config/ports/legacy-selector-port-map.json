@@ -1258,9 +1258,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/separation-form.employee-name"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.employee-name-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1303,9 +1308,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/separation-form.last-day-worked"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.last-day-worked-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1321,9 +1331,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/separation-form.separation-date"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.separation-date-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1340,9 +1355,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/separation-form.termination-type"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.termination-type-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1358,9 +1378,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/separation-form.location"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.location-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1377,9 +1402,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/timekeeper-tasks.request-acknowledged-checkbox"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.request-acknowledged-checkbox",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1419,9 +1449,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/timekeeper-tasks.timekeeper-comments"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.timekeeper-comments-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1439,9 +1474,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/final-transactions.termination-eff-date"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.termination-effective-date-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1457,9 +1497,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/final-transactions.department"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.department-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1477,9 +1522,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/final-transactions.payroll-title-code"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.payroll-title-code-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1496,9 +1546,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/final-transactions.payroll-title"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.payroll-title-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1516,9 +1571,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/transaction-results.submitted-template-checkbox"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.submitted-template-checkbox",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1534,9 +1594,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/transaction-results.transaction-number"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.transaction-number-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1554,9 +1619,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/transaction-results.does-not-need-final-pay-radio"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.final-pay-student-radio",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json"
+      }
     },
     {
       "system": "kuali",

@@ -972,7 +972,8 @@
         "kuali/read-timekeeper-annotation",
         "kuali/verify-timekeeper-annotation",
         "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation"
+        "kuali/save-timekeeper-annotation",
+        "kuali/read-separation-document"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "screen",
@@ -997,7 +998,8 @@
         "kuali/read-timekeeper-annotation",
         "kuali/verify-timekeeper-annotation",
         "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation"
+        "kuali/save-timekeeper-annotation",
+        "kuali/read-separation-document"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1024,7 +1026,8 @@
       "taskUses": [
         "kuali/read-timekeeper-annotation",
         "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation"
+        "kuali/fill-timekeeper-annotation",
+        "kuali/read-separation-document"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1060,6 +1063,356 @@
     },
     {
       "system": "kuali",
+      "label": "RRSS document employee name field",
+      "searchTerms": [
+        "kuali rrss document employee name field"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.employee-name-field",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document last day worked field",
+      "searchTerms": [
+        "kuali rrss document last day worked field"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.last-day-worked-field",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document separation date field",
+      "searchTerms": [
+        "kuali rrss document separation date field"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.separation-date-field",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document type of termination select",
+      "searchTerms": [
+        "kuali rrss document type of termination select"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.termination-type-field",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document location field",
+      "searchTerms": [
+        "kuali rrss document location field"
+      ],
+      "sensitivity": "public",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.location-field",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document request acknowledged checkbox",
+      "searchTerms": [
+        "kuali rrss document request acknowledged checkbox"
+      ],
+      "sensitivity": "public",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.request-acknowledged-checkbox",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document timekeeper approver comments field",
+      "searchTerms": [
+        "kuali rrss document timekeeper approver comments field"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.timekeeper-comments-field",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document termination effective date field",
+      "searchTerms": [
+        "kuali rrss document termination effective date field"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.termination-effective-date-field",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document department select",
+      "searchTerms": [
+        "kuali rrss document department select"
+      ],
+      "sensitivity": "public",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.department-field",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document payroll title code field",
+      "searchTerms": [
+        "kuali rrss document payroll title code field"
+      ],
+      "sensitivity": "public",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.payroll-title-code-field",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document payroll title field",
+      "searchTerms": [
+        "kuali rrss document payroll title field"
+      ],
+      "sensitivity": "public",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.payroll-title-field",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document submitted termination template checkbox",
+      "searchTerms": [
+        "kuali rrss document submitted termination template checkbox"
+      ],
+      "sensitivity": "public",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.submitted-template-checkbox",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document transaction number field",
+      "searchTerms": [
+        "kuali rrss document transaction number field"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.transaction-number-field",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "RRSS document does-not-need-final-pay student radio",
+      "searchTerms": [
+        "kuali rrss document final pay student employee radio"
+      ],
+      "sensitivity": "public",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.rrss-document.final-pay-student-radio",
+      "screen": "kuali.rrss-document",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
       "label": "RRSS document loaded and identifiable",
       "searchTerms": [
         "kuali rrss document ready state"
@@ -1077,7 +1430,8 @@
         "kuali/read-timekeeper-annotation",
         "kuali/verify-timekeeper-annotation",
         "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation"
+        "kuali/save-timekeeper-annotation",
+        "kuali/read-separation-document"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "page-state",
@@ -1110,6 +1464,29 @@
     },
     {
       "system": "kuali",
+      "label": "RRSS separation document loaded and proved to be a separation form",
+      "searchTerms": [
+        "kuali rrss separation document ready state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "kuali.rrss-document.separation-ready",
+      "screen": "kuali.rrss-document"
+    },
+    {
+      "system": "kuali",
       "label": "Displayed RRSS document EID",
       "searchTerms": [
         "authoritative kuali rrss displayed eid"
@@ -1127,7 +1504,8 @@
         "kuali/read-timekeeper-annotation",
         "kuali/verify-timekeeper-annotation",
         "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation"
+        "kuali/save-timekeeper-annotation",
+        "kuali/read-separation-document"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "observation",
@@ -1155,7 +1533,8 @@
       "taskUses": [
         "kuali/read-timekeeper-annotation",
         "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation"
+        "kuali/fill-timekeeper-annotation",
+        "kuali/read-separation-document"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "observation",
@@ -1163,6 +1542,58 @@
       "screen": "kuali.rrss-document",
       "authoritativeFor": [
         "completion"
+      ]
+    },
+    {
+      "system": "kuali",
+      "label": "Displayed RRSS document number",
+      "searchTerms": [
+        "authoritative kuali rrss displayed document number"
+      ],
+      "sensitivity": "public",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "observation",
+      "id": "kuali.rrss-document.displayed-number",
+      "screen": "kuali.rrss-document",
+      "authoritativeFor": [
+        "subject"
+      ]
+    },
+    {
+      "system": "kuali",
+      "label": "Displayed RRSS document form type",
+      "searchTerms": [
+        "authoritative kuali rrss displayed form type"
+      ],
+      "sensitivity": "public",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-separation-document-read-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "observation",
+      "id": "kuali.rrss-document.displayed-form-type",
+      "screen": "kuali.rrss-document",
+      "authoritativeFor": [
+        "page-state"
       ]
     },
     {

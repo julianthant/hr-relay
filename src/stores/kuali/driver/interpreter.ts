@@ -63,6 +63,37 @@ import type {
   KualiTimekeeperReadBack,
   KualiTimekeeperStaging,
 } from "../../../domain/ui/kuali-rrss-document.js";
+import {
+  KUALI_BLANK_OPTION_TEXT,
+  KUALI_RRSS_DEPARTMENT_FIELD,
+  KUALI_RRSS_EMPLOYEE_NAME_FIELD,
+  KUALI_RRSS_FINAL_PAY_STUDENT_RADIO,
+  KUALI_RRSS_LAST_DAY_WORKED_FIELD,
+  KUALI_RRSS_LOCATION_FIELD,
+  KUALI_RRSS_PAYROLL_TITLE_CODE_FIELD,
+  KUALI_RRSS_PAYROLL_TITLE_FIELD,
+  KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX,
+  KUALI_RRSS_SEPARATION_DATE_FIELD,
+  KUALI_RRSS_SEPARATION_READY,
+  KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX,
+  KUALI_RRSS_TERMINATION_EFF_DATE_FIELD,
+  KUALI_RRSS_TERMINATION_TYPE_FIELD,
+  KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD,
+  KUALI_RRSS_TRANSACTION_NUMBER_FIELD,
+  KUALI_SEPARATION_FORM_TYPE,
+  KualiSeparationDocumentReadSchema,
+  KualiSeparationDocumentSchema,
+  KualiTransactionNumberSchema,
+  parseKualiFormDate,
+} from "../../../domain/ui/kuali-separation-document.js";
+import type {
+  KualiDateField,
+  KualiFinalPayChoice,
+  KualiOptionField,
+  KualiSeparationDocumentRead,
+  KualiTextField,
+  KualiTransactionNumberField,
+} from "../../../domain/ui/kuali-separation-document.js";
 import { KUALI_RRSS_SPACE_ID, KUALI_UI_REGISTRY } from "./ui-registry.js";
 
 const KUALI_HOST = "ucsd.kualibuild.com";
@@ -90,6 +121,49 @@ const SUBMIT_OBSERVE_TIMEOUT_MS = 30_000;
 
 /** The private marker the model-commit barrier stamps on the staged control. */
 const STAGED_PROPS_MARKER = "__hrautoStagedProps";
+
+/**
+ * DRIVER-INTERNAL controls: live-verified 2026-08-12, and deliberately NOT
+ * registry elements.
+ *
+ * Every one of these is a real control on the live separation form that legacy
+ * has **no selector key for** — `separationForm` stops at six fields and never
+ * grew Division, Employee Type, Student Title Code, the optional comments box,
+ * or three of the four Final Pay radios. Publishing them in the UI registry
+ * would mean inventing a `provenance` row that names a legacy key, blob and
+ * line that do not exist, and a fabricated port row is worse than an
+ * unpublished one. `new-kronos` set this rule for `#combo_inptxt` and the
+ * timecard grid; this follows it.
+ *
+ * They are listed together rather than inline so a future porter finds the
+ * whole set in one place, and each is resolved through `exactlyOneInternal`,
+ * which re-asserts the exactly-one count on every read — the same discipline
+ * the registry elements get.
+ *
+ * All names are the EXACT live accessible names, counted at one node each on
+ * documents 4510 / 4502 / 4495.
+ */
+const INTERNAL_DIVISION_FIELD = "Division*";
+const INTERNAL_EMPLOYEE_TYPE_FIELD = "Employee Type*";
+const INTERNAL_STUDENT_TITLE_CODE_FIELD = "Student Title Code*";
+const INTERNAL_ADDITIONAL_COMMENTS_FIELD = "Additional Separation Comments (Optional)";
+const INTERNAL_FINAL_PAY_SUBMITTED = "Submitted Final Pay Request";
+const INTERNAL_FINAL_PAY_TRANSFER = "Does not need Final Pay (transfer employee)";
+const INTERNAL_FINAL_PAY_OTHER = "Other";
+
+/**
+ * The Final Pay group's COMPLETE option list, in DOM order (§3.2). It is a
+ * constant rather than a live read because a radio group has no option list to
+ * enumerate — the four labels ARE the four controls, each of which is resolved
+ * and read on every visit, so a fifth option would surface as a run that reads
+ * four radios on a form that renders five.
+ */
+const FINAL_PAY_OPTION_LABELS: readonly string[] = Object.freeze([
+  INTERNAL_FINAL_PAY_SUBMITTED,
+  "Does not need Final Pay (student employee)",
+  INTERNAL_FINAL_PAY_TRANSFER,
+  INTERNAL_FINAL_PAY_OTHER,
+]);
 
 function elementRecipe(id: ElementId) {
   const element = KUALI_UI_REGISTRY.elements.find((candidate) => candidate.id === id);
@@ -170,7 +244,17 @@ function assertExactKualiDocumentUrl(rawUrl: string, actionId: string): void {
  */
 const DOCUMENT_NUMBER_HEADING_NAME = /^\s*\d{3,8}\s*$/u;
 
-async function readDocumentNumberHeading(page: Page, actionId: string): Promise<string> {
+type DocumentNumberProbe =
+  | { readonly state: "read"; readonly documentNumber: string }
+  | { readonly state: "unavailable"; readonly reason: string };
+
+/**
+ * Probe the document-number heading. Every negative is a stated REASON, so both
+ * callers can decide what to do with it: `openDocument` throws (its callers are
+ * mid-write and must not continue), and the separation read reports
+ * `document-unavailable` as data so a failed run records WHY.
+ */
+async function probeDocumentNumberHeading(page: Page, actionId: string): Promise<DocumentNumberProbe> {
   const heading = page.getByRole("heading", { level: 1, name: DOCUMENT_NUMBER_HEADING_NAME });
   // A BOUNDED WAIT FOR THE SAME FACT, not a fallback: when no document-number
   // heading renders inside the bound, the identical refusal below still fires.
@@ -182,25 +266,36 @@ async function readDocumentNumberHeading(page: Page, actionId: string): Promise<
   }
   const count = await heading.count();
   if (count === 0) {
-    throw new Error(
-      `Kuali action ${actionId} did not render a document-number heading within ${String(STATE_TIMEOUT_MS)}ms; `
-      + "the action id may be stale (a completed step redirects to the Action List) — refusing to "
-      + "treat this page as a document",
-    );
+    return {
+      state: "unavailable",
+      reason: `Kuali action ${actionId} did not render a document-number heading within `
+        + `${String(STATE_TIMEOUT_MS)}ms; the action id may be stale (a completed step redirects to the `
+        + "Action List) — refusing to treat this page as a document",
+    };
   }
   if (count !== 1) {
-    throw new Error(
-      `Kuali action ${actionId} rendered ${String(count)} document-number headings; exactly one is `
-      + "required and there is no fallback — refusing to identify an ambiguous page",
-    );
+    return {
+      state: "unavailable",
+      reason: `Kuali action ${actionId} rendered ${String(count)} document-number headings; exactly one is `
+        + "required and there is no fallback — refusing to identify an ambiguous page",
+    };
   }
   const raw = await heading.textContent({ timeout: STATE_TIMEOUT_MS });
   const trimmed = (raw ?? "").trim();
   const parsed = KualiDocumentNumberSchema.safeParse(trimmed);
   if (!parsed.success) {
-    throw new Error(`Kuali action ${actionId} heading "${trimmed}" is not a document number`);
+    return {
+      state: "unavailable",
+      reason: `Kuali action ${actionId} heading "${trimmed}" is not a document number`,
+    };
   }
-  return parsed.data;
+  return { state: "read", documentNumber: parsed.data };
+}
+
+async function readDocumentNumberHeading(page: Page, actionId: string): Promise<string> {
+  const probe = await probeDocumentNumberHeading(page, actionId);
+  if (probe.state === "unavailable") throw new Error(probe.reason);
+  return probe.documentNumber;
 }
 
 /**
@@ -427,6 +522,48 @@ async function assertSubmitNotRefused(response: Response, documentNumber: string
   }
 }
 
+/**
+ * Kuali's document route sets `document.title` to `Form - <form name> - Kuali`
+ * (live 2026-08-12, docs 4510/4502/4495). It is the ONLY unambiguous read of
+ * the form's own name on this page: the same string also renders in the space's
+ * app list and in every Action-List row, so a page-wide text match would hit
+ * several nodes on a page that is not even showing a document.
+ */
+const DOCUMENT_TITLE_FORM_NAME = /^Form - (.+) - Kuali$/u;
+
+/**
+ * Read the form's name off the document title, bounded.
+ *
+ * A BOUNDED WAIT FOR THE SAME FACT, never a fallback: the title arrives with
+ * the rest of the route (measured 2026-08-12 — no headings at ~7ms, an EMPTY
+ * document heading at ~258ms, the real number AND the title AND the form
+ * controls together at ~1.77s), so sampling once races the paint. When it never
+ * takes the shape, this returns the title verbatim and the caller refuses with
+ * it quoted — it never proceeds on an unknown page.
+ */
+async function readDocumentFormType(page: Page): Promise<
+  { readonly state: "read"; readonly formType: string }
+  | { readonly state: "unreadable"; readonly observedTitle: string }
+> {
+  try {
+    await page.waitForFunction(
+      (pattern: string) => new RegExp(pattern, "u").test(document.title),
+      DOCUMENT_TITLE_FORM_NAME.source,
+      { timeout: STATE_TIMEOUT_MS, polling: 100 },
+    );
+  } catch {
+    // Not a swallow: the timeout IS the observation, and the check below turns
+    // it into a refusal that quotes whatever the page actually titled itself.
+  }
+  const title = await page.title();
+  const matched = DOCUMENT_TITLE_FORM_NAME.exec(title);
+  const formType = matched?.[1]?.trim();
+  if (formType === undefined || formType.length === 0) {
+    return { state: "unreadable", observedTitle: title };
+  }
+  return { state: "read", formType };
+}
+
 async function waitForDocumentReady(page: Page, actionId: string): Promise<string> {
   assertExactKualiDocumentUrl(page.url(), actionId);
   const documentNumber = await readDocumentNumberHeading(page, actionId);
@@ -476,6 +613,306 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       observedEid: await readDisplayedEid(page),
       currentTimekeeperName: await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_FIELD),
       observedAt: now(),
+    });
+  }
+
+  /* ── The separation-document read (2i chunk 2) ─────────────────────────── */
+
+  /** A `<select>`: its selected option text and its COMPLETE option list (§3.2). */
+  async function readSelect(id: ElementId): Promise<{
+    readonly selected: string;
+    readonly options: readonly string[];
+  }> {
+    const locator = await exactlyOne(page, id);
+    const read = await locator.evaluate((node) => {
+      const select = node as HTMLSelectElement;
+      const options = Array.from(select.options).map((option) => option.text);
+      const selected = select.options[select.selectedIndex]?.text;
+      return { selected, options };
+    });
+    if (read.selected === undefined) {
+      // Legacy refuses here too (S12) and that refusal is worth keeping: a
+      // select whose selectedIndex names no option is a control we cannot read,
+      // and guessing "the first one" would file a reason code nobody chose.
+      throw new Error(
+        `Kuali ${id} has no option text at its selected index; refusing to guess which option is chosen`,
+      );
+    }
+    return { selected: read.selected.trim(), options: read.options.map((option) => option.trim()) };
+  }
+
+  async function readCheckbox(id: ElementId): Promise<boolean> {
+    const locator = await exactlyOne(page, id);
+    return locator.isChecked({ timeout: FIELD_TIMEOUT_MS });
+  }
+
+  /**
+   * A driver-internal control: one the live form carries and legacy has NO
+   * selector key for, so publishing it as a registry element would fabricate
+   * provenance (the rule `new-kronos` set for `#combo_inptxt`). Each name below
+   * was counted at EXACTLY ONE node on the live 2026-08-12 accessibility tree
+   * of documents 4510/4502/4495, and the count is re-asserted here per read.
+   */
+  async function exactlyOneInternal(
+    role: "textbox" | "combobox" | "radio",
+    name: string,
+  ): Promise<Locator> {
+    const locator = page.getByRole(role, { name, exact: true });
+    try {
+      await locator.first().waitFor({ state: "attached", timeout: FIELD_TIMEOUT_MS });
+    } catch (error) {
+      throw new Error(
+        `Kuali driver-internal control role="${role}" name="${name}" never attached within `
+        + `${String(FIELD_TIMEOUT_MS)}ms; refusing to read a document that does not show it`,
+        { cause: error },
+      );
+    }
+    const count = await locator.count();
+    if (count !== 1) {
+      throw new Error(
+        `Kuali driver-internal control role="${role}" name="${name}" resolved ${String(count)} nodes; `
+        + "exactly one is required and there is no fallback",
+      );
+    }
+    return locator;
+  }
+
+  async function readInternalText(name: string): Promise<string> {
+    const locator = await exactlyOneInternal("textbox", name);
+    return (await locator.inputValue({ timeout: FIELD_TIMEOUT_MS })).trim();
+  }
+
+  async function readInternalSelect(name: string): Promise<{
+    readonly selected: string;
+    readonly options: readonly string[];
+  }> {
+    const locator = await exactlyOneInternal("combobox", name);
+    const read = await locator.evaluate((node) => {
+      const select = node as HTMLSelectElement;
+      return {
+        selected: select.options[select.selectedIndex]?.text,
+        options: Array.from(select.options).map((option) => option.text),
+      };
+    });
+    if (read.selected === undefined) {
+      throw new Error(
+        `Kuali driver-internal select "${name}" has no option text at its selected index; `
+        + "refusing to guess which option is chosen",
+      );
+    }
+    return { selected: read.selected.trim(), options: read.options.map((option) => option.trim()) };
+  }
+
+  const textField = (value: string): KualiTextField => (value.length === 0
+    ? { state: "absent", reason: "the control is present on the form and holds no value" }
+    : { state: "present", value });
+
+  const optionField = (value: string): KualiOptionField => (
+    value === KUALI_BLANK_OPTION_TEXT || value.length === 0
+      ? {
+        state: "absent",
+        reason: `the select sits on Kuali's blank sentinel ${JSON.stringify(KUALI_BLANK_OPTION_TEXT)}`,
+      }
+      : { state: "present", value });
+
+  async function readSeparationDocument(input: Readonly<{
+    actionId: string;
+    documentNumber: string;
+  }>): Promise<KualiSeparationDocumentRead> {
+    const actionId = KualiActionIdSchema.parse(input.actionId);
+    const expectedNumber = KualiDocumentNumberSchema.parse(input.documentNumber);
+    // A navigation discards Kuali's in-page form model; nothing this read does
+    // may leave a staging behind that a later `commit` could click on.
+    staged = undefined;
+    await page.goto(documentUrl(actionId), {
+      waitUntil: "domcontentloaded",
+      timeout: NAVIGATION_TIMEOUT_MS,
+    });
+    assertExactKualiDocumentUrl(page.url(), actionId);
+
+    const heading = await probeDocumentNumberHeading(page, actionId);
+    if (heading.state === "unavailable") {
+      return KualiSeparationDocumentReadSchema.parse({
+        state: "document-unavailable",
+        actionId,
+        observedUrl: page.url(),
+        reason: heading.reason,
+        observedAt: now(),
+      });
+    }
+    if (heading.documentNumber !== expectedNumber) {
+      return KualiSeparationDocumentReadSchema.parse({
+        state: "document-number-mismatch",
+        actionId,
+        expectedNumber,
+        observedNumber: heading.documentNumber,
+        observedAt: now(),
+      });
+    }
+
+    // S2, answered BEFORE a single field is read: legacy discovers a
+    // non-separation document as a 5s locator timeout on the employee-name
+    // field, which is indistinguishable from a slow page.
+    const formType = await readDocumentFormType(page);
+    if (formType.state === "unreadable") {
+      return KualiSeparationDocumentReadSchema.parse({
+        state: "document-unavailable",
+        actionId,
+        observedUrl: page.url(),
+        reason: `Kuali document ${heading.documentNumber} never titled itself `
+          + `${JSON.stringify(DOCUMENT_TITLE_FORM_NAME.source)} within ${String(STATE_TIMEOUT_MS)}ms `
+          + `(observed title ${JSON.stringify(formType.observedTitle)}); the form's own type cannot be read`,
+        observedAt: now(),
+      });
+    }
+    if (formType.formType !== KUALI_SEPARATION_FORM_TYPE) {
+      return KualiSeparationDocumentReadSchema.parse({
+        state: "not-a-separation-document",
+        actionId,
+        documentNumber: heading.documentNumber,
+        observedFormType: formType.formType,
+        observedAt: now(),
+      });
+    }
+
+    const rawEid = await readTrimmedInput(page, KUALI_RRSS_EID_FIELD);
+    const parsedEid = rawEid.length === 0 ? undefined : EidSchema.safeParse(rawEid);
+    if (parsedEid !== undefined && !parsedEid.success) {
+      return KualiSeparationDocumentReadSchema.parse({
+        state: "unreadable-eid",
+        actionId,
+        documentNumber: heading.documentNumber,
+        raw: rawEid,
+        observedAt: now(),
+      });
+    }
+
+    const dates: { field: "lastDayWorked" | "separationDate" | "terminationEffectiveDate"; raw: string }[] = [
+      { field: "lastDayWorked", raw: await readTrimmedInput(page, KUALI_RRSS_LAST_DAY_WORKED_FIELD) },
+      { field: "separationDate", raw: await readTrimmedInput(page, KUALI_RRSS_SEPARATION_DATE_FIELD) },
+      {
+        field: "terminationEffectiveDate",
+        raw: await readTrimmedInput(page, KUALI_RRSS_TERMINATION_EFF_DATE_FIELD),
+      },
+    ];
+    const parsedDates = new Map<string, KualiDateField>();
+    for (const { field, raw } of dates) {
+      if (raw.length === 0) {
+        parsedDates.set(field, {
+          state: "absent",
+          reason: "the date control is present on the form and holds no value",
+        });
+        continue;
+      }
+      const value = parseKualiFormDate(raw);
+      if (value === null) {
+        // S8, kept verbatim: a non-blank date we cannot read is a refusal that
+        // names the field and the value, never a blank and never a guess.
+        return KualiSeparationDocumentReadSchema.parse({
+          state: "unparseable-date",
+          actionId,
+          documentNumber: heading.documentNumber,
+          field,
+          raw,
+          observedAt: now(),
+        });
+      }
+      parsedDates.set(field, { state: "present", raw, value });
+    }
+    const dateField = (field: string): KualiDateField => {
+      const value = parsedDates.get(field);
+      if (value === undefined) throw new Error(`Kuali separation read did not visit date field ${field}`);
+      return value;
+    };
+
+    const terminationType = await readSelect(KUALI_RRSS_TERMINATION_TYPE_FIELD);
+    const department = await readSelect(KUALI_RRSS_DEPARTMENT_FIELD);
+    const division = await readInternalSelect(INTERNAL_DIVISION_FIELD);
+    const employeeType = await readInternalSelect(INTERNAL_EMPLOYEE_TYPE_FIELD);
+    const studentTitleCode = await readInternalSelect(INTERNAL_STUDENT_TITLE_CODE_FIELD);
+
+    const rawTransactionNumber = await readTrimmedInput(page, KUALI_RRSS_TRANSACTION_NUMBER_FIELD);
+    const transactionNumber: KualiTransactionNumberField = rawTransactionNumber.length === 0
+      ? { state: "absent", reason: "the transaction-number control is present on the form and holds no value" }
+      : KualiTransactionNumberSchema.safeParse(rawTransactionNumber).success
+        ? { state: "present", value: rawTransactionNumber }
+        : {
+          state: "unrecognized",
+          raw: rawTransactionNumber,
+          reason: "the value is not a UCPath transaction number (T followed by 6-12 digits); it is kept "
+            + "verbatim rather than reported as empty, because 'the field holds something we do not "
+            + "recognise' and 'the field is empty' are different facts",
+        };
+
+    // The final-pay group: ONE registry element (the only radio legacy has a
+    // key for) plus its three live siblings, read driver-internally.
+    const finalPayChecks: readonly (readonly [KualiFinalPayChoice, boolean])[] = [
+      ["submitted-final-pay-request",
+        await (await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_SUBMITTED)).isChecked({ timeout: FIELD_TIMEOUT_MS })],
+      ["does-not-need-final-pay-student", await readCheckbox(KUALI_RRSS_FINAL_PAY_STUDENT_RADIO)],
+      ["does-not-need-final-pay-transfer",
+        await (await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_TRANSFER)).isChecked({ timeout: FIELD_TIMEOUT_MS })],
+      ["other",
+        await (await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_OTHER)).isChecked({ timeout: FIELD_TIMEOUT_MS })],
+    ];
+    const selectedFinalPay = finalPayChecks.filter(([, checked]) => checked);
+    if (selectedFinalPay.length > 1) {
+      throw new Error(
+        `Kuali document ${heading.documentNumber} reports ${String(selectedFinalPay.length)} Final Pay `
+        + "radios checked at once; a radio group with two selections is a page we cannot describe",
+      );
+    }
+    const finalPayChoice = selectedFinalPay[0]?.[0];
+
+    return KualiSeparationDocumentReadSchema.parse({
+      state: "read",
+      document: KualiSeparationDocumentSchema.parse({
+        pageStateId: KUALI_RRSS_SEPARATION_READY,
+        actionId,
+        documentNumber: heading.documentNumber,
+        formType: { observed: formType.formType, matches: true },
+        employee: {
+          name: textField(await readTrimmedInput(page, KUALI_RRSS_EMPLOYEE_NAME_FIELD)),
+          eid: parsedEid === undefined || !parsedEid.success
+            ? { state: "absent", reason: "the EID control is present on the form and holds no value" }
+            : { state: "present", value: parsedEid.data },
+          employeeType: optionField(employeeType.selected),
+          studentTitleCode: optionField(studentTitleCode.selected),
+          division: optionField(division.selected),
+          location: textField(await readTrimmedInput(page, KUALI_RRSS_LOCATION_FIELD)),
+        },
+        separation: {
+          terminationType: optionField(terminationType.selected),
+          lastDayWorked: dateField("lastDayWorked"),
+          separationDate: dateField("separationDate"),
+          additionalComments: textField(await readInternalText(INTERNAL_ADDITIONAL_COMMENTS_FIELD)),
+        },
+        timekeeper: {
+          requestAcknowledged: await readCheckbox(KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX),
+          name: textField(await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_FIELD)),
+          comments: textField(await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD)),
+        },
+        finalTransactions: {
+          terminationEffectiveDate: dateField("terminationEffectiveDate"),
+          department: optionField(department.selected),
+          payrollTitleCode: textField(await readTrimmedInput(page, KUALI_RRSS_PAYROLL_TITLE_CODE_FIELD)),
+          payrollTitle: textField(await readTrimmedInput(page, KUALI_RRSS_PAYROLL_TITLE_FIELD)),
+          submittedTerminationTemplate: await readCheckbox(KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX),
+          transactionNumber,
+          finalPay: finalPayChoice === undefined
+            ? { state: "absent", reason: "no Final Pay radio in the group is selected" }
+            : { state: "present", value: finalPayChoice },
+        },
+        options: {
+          terminationType: terminationType.options,
+          division: division.options,
+          employeeType: employeeType.options,
+          studentTitleCode: studentTitleCode.options,
+          department: department.options,
+          finalPay: FINAL_PAY_OPTION_LABELS,
+        },
+        observedAt: now(),
+      }),
     });
   }
 
@@ -646,6 +1083,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     system: "kuali" as const,
     read,
     openDocument,
+    readSeparationDocument,
     stageTimekeeperName,
     readSavedTimekeeper,
     commit,

@@ -76,10 +76,23 @@ export const KUALI_TIMEKEEPER_CLAIMS: readonly ScenarioCoverageClaim[] = Object.
 export const SEPARATIONS_KRONOS_TIMECARD_CLAIMS: readonly ScenarioCoverageClaim[] =
   Object.freeze([]);
 
+/**
+ * separations-kuali-read is the same shape for the same reason: one browser
+ * read plus one pure fold, no branch, no gate, no delegation, no transaction —
+ * so the graph derives ZERO coverage points and an empty claim list is the
+ * correct answer. Its five scenarios falsify CONTRACT behaviour (S2's form-type
+ * refusal, S8's unparseable date, §4a's unmapped type, and the absent arms a
+ * live unprocessed document actually produced), which a coverage point cannot
+ * express.
+ */
+export const SEPARATIONS_KUALI_READ_CLAIMS: readonly ScenarioCoverageClaim[] =
+  Object.freeze([]);
+
 export const SCENARIO_COVERAGE_CLAIMS: Readonly<Record<string, readonly ScenarioCoverageClaim[]>> =
   Object.freeze({
     "person-lookup": PERSON_LOOKUP_CLAIMS,
     "fixture-graph": FIXTURE_GRAPH_CLAIMS,
     "kuali-timekeeper-annotation": KUALI_TIMEKEEPER_CLAIMS,
     "separations-kronos-timecard": SEPARATIONS_KRONOS_TIMECARD_CLAIMS,
+    "separations-kuali-read": SEPARATIONS_KUALI_READ_CLAIMS,
   });

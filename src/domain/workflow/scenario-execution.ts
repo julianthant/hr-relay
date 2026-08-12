@@ -143,6 +143,26 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
     scenarioId: "separations-kronos-timecard/wrong-employee-timecard",
     file: "tests/scenario/separations-kronos-timecard.scenario.test.ts",
   },
+  {
+    scenarioId: "separations-kuali-read/reads-a-real-separation-document",
+    file: "tests/scenario/separations-kuali-read.scenario.test.ts",
+  },
+  {
+    scenarioId: "separations-kuali-read/unprocessed-document-absent-arms",
+    file: "tests/scenario/separations-kuali-read.scenario.test.ts",
+  },
+  {
+    scenarioId: "separations-kuali-read/non-separation-document",
+    file: "tests/scenario/separations-kuali-read.scenario.test.ts",
+  },
+  {
+    scenarioId: "separations-kuali-read/unparseable-separation-date",
+    file: "tests/scenario/separations-kuali-read.scenario.test.ts",
+  },
+  {
+    scenarioId: "separations-kuali-read/unmapped-termination-type",
+    file: "tests/scenario/separations-kuali-read.scenario.test.ts",
+  },
 ]));
 
 export const EXECUTABLE_SCENARIO_IDS: readonly ScenarioId[] = Object.freeze(

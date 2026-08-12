@@ -141,6 +141,64 @@ const KRONOS_TIMECARD_INPUT = workflowInput("separations-kronos-timecard");
 const KRONOS_TIMECARD_RESULT = workflowResult("separations-kronos-timecard");
 const KRONOS_SEARCH = taskOutput("new-kronos/search-employee");
 const KRONOS_TIMECARD = taskOutput("new-kronos/read-separation-timecard");
+const KUALI_READ_INPUT = workflowInput("separations-kuali-read");
+const KUALI_READ_RESULT = workflowResult("separations-kuali-read");
+const KUALI_SEPARATION = taskOutput("kuali/read-separation-document");
+const TERMINATION_TYPE = taskOutput("workflow:separations/match-termination-type");
+
+/**
+ * Every leaf of the Kuali separation-document read, relative to a prefix.
+ *
+ * The read is a WIDE fixed schema whose fields carry `present`/`absent` arms,
+ * so each field contributes up to four paths (`state`, `value`, `raw`,
+ * `reason`) and the arm a run takes decides which ones exist. Declaring them
+ * from one list is what keeps the task output and the terminal result — which
+ * carries the identical shape under `document.` — from drifting apart: an
+ * undeclared leaf fails loud at receipt time, and two hand-written copies of a
+ * 60-path table would drift on the first field anybody added.
+ */
+function separationDocumentLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
+  const arms = (path: string, extra: readonly string[]): string[] =>
+    ["state", "reason", ...extra].map((leaf) => at(`${path}.${leaf}`));
+  const text = (path: string): string[] => arms(path, ["value"]);
+  const date = (path: string): string[] => arms(path, ["value", "raw"]);
+  return [
+    // Transaction facts: the document's identity, the page state, the instant,
+    // and the form-type proof. None of them describes a person.
+    ...open(scope, at("pageStateId"), at("actionId"), at("documentNumber"), at("observedAt"),
+      at("formType.observed"), at("formType.matches")),
+    // The PERSON. `name` and `eid` are `direct-identifier`; the transform doc 11
+    // permits for one is `last4`, on every arm the field can take.
+    ...person(scope, ...text("employee.name"), ...text("employee.eid")),
+    // Everything else about the appointment describes the TRANSACTION: a title
+    // code, a division, a work location, a department. The operator already
+    // sees these on the queue row.
+    ...open(scope,
+      ...text("employee.employeeType"), ...text("employee.studentTitleCode"),
+      ...text("employee.division"), ...text("employee.location"),
+      ...text("separation.terminationType"),
+      ...date("separation.lastDayWorked"), ...date("separation.separationDate"),
+      ...text("separation.additionalComments"),
+      at("timekeeper.requestAcknowledged"),
+      ...text("timekeeper.comments"),
+      ...date("finalTransactions.terminationEffectiveDate"),
+      ...text("finalTransactions.department"),
+      ...text("finalTransactions.payrollTitleCode"), ...text("finalTransactions.payrollTitle"),
+      at("finalTransactions.submittedTerminationTemplate"),
+      ...arms("finalTransactions.transactionNumber", ["value", "raw"]),
+      ...text("finalTransactions.finalPay"),
+      // Option lists are ARRAYS, hence single leaves each.
+      at("options.terminationType"), at("options.division"), at("options.employeeType"),
+      at("options.studentTitleCode"), at("options.department"), at("options.finalPay")),
+    /**
+     * `timekeeper.name` is `direct-identifier` because `src/domain/secrets.ts`
+     * already classifies the `TIMEKEEPER_NAME` environment value that way, and
+     * one field cannot carry two classifications.
+     */
+    ...person(scope, ...text("timekeeper.name")),
+  ];
+}
 
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
   /* person-lookup ingress */
@@ -232,6 +290,24 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "timecard.holidayDates", "timecard.payCodeDays", "timecard.unclassifiedPayCodes",
     "derived.lastPunchDate", "derived.latestLeaveDate", "derived.separationDateCandidate",
     "derived.hasPunches", "search.totalCount", "search.panelContext"),
+
+  /* separations-kuali-read ingress. A document number and an action id name a
+     DOCUMENT, not a person, so both are open. */
+  ...open(KUALI_READ_INPUT, "actionId", "documentNumber"),
+
+  /* kuali/read-separation-document — the whole form, one declaration. */
+  ...separationDocumentLeaves(KUALI_SEPARATION, ""),
+
+  /* workflow:separations/match-termination-type. A template and a reason code
+     describe the TRANSACTION being filed, not the person it is filed about. */
+  ...open(TERMINATION_TYPE, "terminationType", "classification", "template", "reasonCode",
+    "observedOptionCount"),
+
+  /* separations-kuali-read terminal result: the same form under `document.`,
+     plus the resolution under `termination.`. */
+  ...separationDocumentLeaves(KUALI_READ_RESULT, "document"),
+  ...open(KUALI_READ_RESULT, "termination.terminationType", "termination.classification",
+    "termination.template", "termination.reasonCode", "termination.observedOptionCount"),
 ].map((entry) => Object.freeze(EvidenceFieldClassificationSchema.parse(entry))));
 
 const BY_SCOPE_AND_PATH = new Map<string, EvidenceFieldClassification>();

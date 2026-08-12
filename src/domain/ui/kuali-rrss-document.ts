@@ -41,6 +41,8 @@ import {
   ScreenIdSchema,
 } from "../ids.js";
 import type { ElementId, ObservationId } from "../ids.js";
+import { KualiActionIdSchema, KualiDocumentNumberSchema } from "./kuali-document-identity.js";
+import { ReadSeparationDocumentOperationSchema } from "./kuali-separation-document.js";
 import type { MutationCapability, UiActionProof } from "./driver.js";
 
 export const KUALI_RRSS_DOCUMENT_SCREEN = ScreenIdSchema.parse("kuali.rrss-document");
@@ -85,18 +87,12 @@ export const KUALI_RRSS_DISPLAYED_TIMEKEEPER = ObservationIdSchema.parse(
 );
 
 /**
- * The opaque 24-hex Action-List action id in the document deep link
- * `…/build/space/<space>/actions/<actionId>` (it redirects to `…/view`).
- *
- * It is NOT the document number, there is no query-param form, and it is NOT
- * stable across workflow steps: doc 4453's 2026-07-23 action id
- * (`6a613869d3863ae06c634407`) no longer resolved to a form on 2026-08-04 — it
- * redirected to the Action List. A run therefore carries BOTH the action id and
- * the document number, and the driver refuses when the opened document's
- * displayed number is not the expected one.
+ * The document identifiers, re-exported so every existing importer of this
+ * module keeps its one import site. They are DEFINED in
+ * `kuali-document-identity.ts` because the separation-read module needs them
+ * too, and this module names that module's operation schema.
  */
-export const KualiActionIdSchema = z.string().regex(/^[0-9a-f]{24}$/, "Kuali action id must be 24 hex characters");
-export const KualiDocumentNumberSchema = z.string().regex(/^\d{3,8}$/, "Kuali document number must be 3-8 digits");
+export { KualiActionIdSchema, KualiDocumentNumberSchema } from "./kuali-document-identity.js";
 
 /**
  * A Kuali timekeeper value the automation may write.
@@ -203,6 +199,18 @@ const ReadObservationOperationSchema = z.custom<(
   id: ObservationId,
 ) => Promise<string>>((value) => typeof value === "function");
 
+/**
+ * The separation-document read (2i chunk 2). It is declared HERE, on the one
+ * driver declaration the whole store binds, because a second
+ * `DriverDeclaration` for the same store is exactly what the task/driver
+ * boundary forbids: `defineTask(driver, …)` binds the store's exact invariant
+ * declaration, so a sibling task family extends this surface rather than
+ * minting its own. The schemas it returns live in `kuali-separation-document.ts`
+ * — a separate module because the read surface is an order of magnitude wider
+ * than the write's three fields, not because it is a separate driver.
+ */
+const ReadSeparationDocumentOperation = ReadSeparationDocumentOperationSchema;
+
 const CommitOperationSchema = z.custom<(
   id: ElementId,
   capability: MutationCapability,
@@ -220,6 +228,7 @@ export const KualiRrssDocumentDriverSchema = z.strictObject({
   system: z.literal("kuali"),
   read: ReadObservationOperationSchema,
   openDocument: OpenDocumentOperationSchema,
+  readSeparationDocument: ReadSeparationDocumentOperation,
   stageTimekeeperName: StageTimekeeperOperationSchema,
   readSavedTimekeeper: ReadSavedTimekeeperOperationSchema,
   commit: CommitOperationSchema,

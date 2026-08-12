@@ -33,6 +33,46 @@ const KUALI_FILL_TASK = TaskIdSchema.parse("kuali/fill-timekeeper-annotation");
 const KUALI_SAVE_TASK = TaskIdSchema.parse("kuali/save-timekeeper-annotation");
 const KUALI_ALL_TASKS = [KUALI_PROBE_TASK, KUALI_VERIFY_TASK, KUALI_FILL_TASK, KUALI_SAVE_TASK];
 /**
+ * The separation READ shares one screen with the write surface, so Kuali's
+ * attribution cannot split by screen the way New Kronos's does — it splits by
+ * FACT. Three of the write surface's facts are genuinely shared (the EID field
+ * and its observation, which the read reports as the document's subject, and
+ * the timekeeper field and its observation, which the read reports as the form
+ * state); the fourteen fields the read added belong to it alone; and the Save
+ * button still belongs to the commit task alone, because the catalog is what an
+ * operator reads to answer "what can click this?".
+ */
+const KUALI_READ_TASK = TaskIdSchema.parse("kuali/read-separation-document");
+const KUALI_READ_ONLY_FACTS: readonly string[] = [
+  "kuali.rrss-document.employee-name-field",
+  "kuali.rrss-document.last-day-worked-field",
+  "kuali.rrss-document.separation-date-field",
+  "kuali.rrss-document.termination-type-field",
+  "kuali.rrss-document.location-field",
+  "kuali.rrss-document.request-acknowledged-checkbox",
+  "kuali.rrss-document.timekeeper-comments-field",
+  "kuali.rrss-document.termination-effective-date-field",
+  "kuali.rrss-document.department-field",
+  "kuali.rrss-document.payroll-title-code-field",
+  "kuali.rrss-document.payroll-title-field",
+  "kuali.rrss-document.submitted-template-checkbox",
+  "kuali.rrss-document.transaction-number-field",
+  "kuali.rrss-document.final-pay-student-radio",
+  "kuali.rrss-document.separation-ready",
+  "kuali.rrss-document.displayed-number",
+  "kuali.rrss-document.displayed-form-type",
+];
+
+function kualiTaskUses(id: string): TaskId[] {
+  if (KUALI_READ_ONLY_FACTS.includes(id)) return [KUALI_READ_TASK];
+  if (id === "kuali.rrss-document.save-button") return [KUALI_SAVE_TASK];
+  if (id === "kuali.rrss-document.timekeeper-staged") return [KUALI_FILL_TASK, KUALI_SAVE_TASK];
+  if (id === "kuali.rrss-document.timekeeper-field" || id === "kuali.rrss-document.displayed-timekeeper") {
+    return [KUALI_PROBE_TASK, KUALI_VERIFY_TASK, KUALI_FILL_TASK, KUALI_READ_TASK];
+  }
+  return [...KUALI_ALL_TASKS, KUALI_READ_TASK];
+}
+/**
  * New Kronos is read-only, and its two screens split cleanly by task: the search
  * panel belongs to the employee search, the timecard to the separation-timecard
  * read. Attribution is per SCREEN rather than per fact because nothing on the
@@ -170,7 +210,7 @@ export function buildSafeUiCatalog(): UiCatalog {
       searchTerms: screen.searchTerms,
       sensitivity: screen.sensitivity,
       verification: safeVerification(screen.verification),
-      taskUses: KUALI_ALL_TASKS,
+      taskUses: kualiTaskUses(screen.id),
       sourceLink: KUALI_SOURCE_LINK,
     })),
     ...KUALI_UI_REGISTRY.elements.map((element) => ({
@@ -184,11 +224,7 @@ export function buildSafeUiCatalog(): UiCatalog {
       effect: element.effect,
       sensitivity: element.sensitivity,
       verification: safeVerification(element.verification),
-      taskUses: element.id === "kuali.rrss-document.save-button"
-        ? [KUALI_SAVE_TASK]
-        : element.id === "kuali.rrss-document.timekeeper-field"
-          ? [KUALI_PROBE_TASK, KUALI_VERIFY_TASK, KUALI_FILL_TASK]
-          : KUALI_ALL_TASKS,
+      taskUses: kualiTaskUses(element.id),
       sourceLink: KUALI_SOURCE_LINK,
     })),
     ...KUALI_UI_REGISTRY.states.map((state) => ({
@@ -200,9 +236,7 @@ export function buildSafeUiCatalog(): UiCatalog {
       searchTerms: state.searchTerms,
       sensitivity: state.sensitivity,
       verification: safeVerification(state.verification),
-      taskUses: state.id === "kuali.rrss-document.timekeeper-staged"
-        ? [KUALI_FILL_TASK, KUALI_SAVE_TASK]
-        : KUALI_ALL_TASKS,
+      taskUses: kualiTaskUses(state.id),
       sourceLink: KUALI_SOURCE_LINK,
     })),
     ...KUALI_UI_REGISTRY.observations.map((observation) => ({
@@ -214,9 +248,7 @@ export function buildSafeUiCatalog(): UiCatalog {
       searchTerms: observation.searchTerms,
       sensitivity: observation.sensitivity,
       verification: safeVerification(observation.verification),
-      taskUses: observation.id === "kuali.rrss-document.displayed-timekeeper"
-        ? [KUALI_PROBE_TASK, KUALI_VERIFY_TASK, KUALI_FILL_TASK]
-        : KUALI_ALL_TASKS,
+      taskUses: kualiTaskUses(observation.id),
       sourceLink: KUALI_SOURCE_LINK,
       authoritativeFor: observation.authoritativeFor,
     })),
