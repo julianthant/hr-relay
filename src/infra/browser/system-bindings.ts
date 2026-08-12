@@ -15,6 +15,11 @@ import { createCrmOnboardingDriver } from "../../stores/crm/driver/interpreter.j
 import { createKualiRrssDocumentDriver } from "../../stores/kuali/driver/interpreter.js";
 import { kualiLoginRecipe, verifyKualiAuthenticatedApplication } from "../../stores/kuali/session.js";
 import { crmLoginRecipe, verifyCrmAuthenticatedApplication } from "../../stores/crm/session.js";
+import { createNewKronosTimecardDriver } from "../../stores/new-kronos/driver/interpreter.js";
+import {
+  newKronosLoginRecipe,
+  verifyNewKronosAuthenticatedApplication,
+} from "../../stores/new-kronos/session.js";
 import { createUcpathPersonOrgDriver } from "../../stores/ucpath/driver/interpreter.js";
 import { ucpathLoginRecipe, verifyUcpathAuthenticatedApplication } from "../../stores/ucpath/session.js";
 import type { Page } from "playwright";
@@ -67,5 +72,12 @@ export const BROWSER_SYSTEM_BINDINGS: BrowserSystemBindings = Object.freeze({
       createKualiRrssDocumentDriver(page, clock),
     login: kualiLoginRecipe,
     verifyAuthenticated: verifyKualiAuthenticatedApplication,
+  }),
+  "new-kronos": Object.freeze({
+    system: "new-kronos",
+    createDriver: (page: Page, clock: Clock): BrowserDriver =>
+      createNewKronosTimecardDriver(page, clock),
+    login: newKronosLoginRecipe,
+    verifyAuthenticated: verifyNewKronosAuthenticatedApplication,
   }),
 } as const satisfies BrowserSystemBindings);

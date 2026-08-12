@@ -117,7 +117,7 @@ export type SeparationTimecardFold = z.infer<typeof SeparationTimecardFoldSchema
  * Live header row 2026-08-12 (`.ui-grid-header-cell`, data viewport):
  * `Schedule · In · Out · Transfer · Pay code · Amount · Shift · Daily · Period · Absence`.
  */
-export const TIMECARD_DATA_COLUMNS = Object.freeze([
+export const TimecardDataColumnSchema = z.enum([
   "Schedule",
   "In",
   "Out",
@@ -128,8 +128,11 @@ export const TIMECARD_DATA_COLUMNS = Object.freeze([
   "Daily",
   "Period",
   "Absence",
-] as const);
-export type TimecardDataColumn = (typeof TIMECARD_DATA_COLUMNS)[number];
+]);
+export type TimecardDataColumn = z.infer<typeof TimecardDataColumnSchema>;
+export const TIMECARD_DATA_COLUMNS: readonly TimecardDataColumn[] = Object.freeze(
+  TimecardDataColumnSchema.options,
+);
 
 /** Header text carries a sort-order suffix (`"In 1"`); strip it before matching. */
 function normalizeHeader(raw: string): string {
@@ -148,7 +151,7 @@ export function resolveTimecardColumns(
   headers: readonly string[],
 ): Readonly<Record<TimecardDataColumn, number>> {
   const normalized = headers.map(normalizeHeader);
-  const resolved: Partial<Record<TimecardDataColumn, number>> = {};
+  const resolved = new Map<TimecardDataColumn, number>();
   const missing: string[] = [];
   const ambiguous: string[] = [];
   for (const column of TIMECARD_DATA_COLUMNS) {
@@ -157,7 +160,7 @@ export function resolveTimecardColumns(
     const [only] = hits;
     if (hits.length === 0 || only === undefined) missing.push(column);
     else if (hits.length > 1) ambiguous.push(`${column} (${String(hits.length)}x)`);
-    else resolved[column] = only;
+    else resolved.set(column, only);
   }
   if (missing.length > 0 || ambiguous.length > 0) {
     throw new Error(
@@ -167,7 +170,26 @@ export function resolveTimecardColumns(
       + ` — observed headers ${JSON.stringify(headers)}`,
     );
   }
-  return Object.freeze(resolved as Record<TimecardDataColumn, number>);
+  // Written out key by key so the record is complete BY CONSTRUCTION — no cast,
+  // and a column added to the schema is a compile error here rather than a
+  // silently absent index at runtime.
+  const at = (column: TimecardDataColumn): number => {
+    const index = resolved.get(column);
+    if (index === undefined) throw new Error(`[new-kronos] timecard column ${column} was not resolved`);
+    return index;
+  };
+  return Object.freeze({
+    Schedule: at("Schedule"),
+    In: at("In"),
+    Out: at("Out"),
+    Transfer: at("Transfer"),
+    "Pay code": at("Pay code"),
+    Amount: at("Amount"),
+    Shift: at("Shift"),
+    Daily: at("Daily"),
+    Period: at("Period"),
+    Absence: at("Absence"),
+  });
 }
 
 function startOfDay(at: Date): number {

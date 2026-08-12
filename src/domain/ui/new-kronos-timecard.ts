@@ -186,10 +186,13 @@ export type NewKronosSearchCandidate = z.infer<typeof NewKronosSearchCandidateSc
 /**
  * What one visit to the Employee Search results panel yields.
  *
- * Three states, deliberately distinct (S34/S35): `resolved` — the queried EID
- * is among the rendered rows; `no-results` — WFD's own sentinel rendered, a
- * REAL negative; `no-signal` — neither surfaced inside the bound, which is "the
- * check could not run" and never "this person is not timekept here".
+ * FOUR states, deliberately distinct (S34/S35 — "the day the operator flags a
+ * real special case, those are the values the new composition will be selected
+ * on"): `resolved` — the queried EID is among the rendered rows; `no-match` —
+ * rows rendered but none of them is this person; `no-results` — WFD's own
+ * sentinel rendered, a REAL negative; `no-signal` — neither surfaced inside the
+ * bound, which is "the check could not run" and never "this person is not
+ * timekept here".
  */
 export const NewKronosSearchReadSchema = z.discriminatedUnion("state", [
   z.strictObject({
@@ -204,6 +207,15 @@ export const NewKronosSearchReadSchema = z.discriminatedUnion("state", [
     /** WFD's `Selected [N]` counter AFTER the pick; the Go To enable proof. */
     selectedCount: z.number().int().positive(),
     /** Which context rendered the panel on this visit. */
+    panelContext: z.enum(["portal-frame", "top-level"]),
+    observedAt: IsoInstantSchema,
+  }),
+  z.strictObject({
+    state: z.literal("no-match"),
+    query: z.string().min(1),
+    totalCount: z.number().int().positive(),
+    /** Every row WFD did render, so the operator can see WHO it offered instead. */
+    candidates: z.array(NewKronosSearchCandidateSchema).min(1),
     panelContext: z.enum(["portal-frame", "top-level"]),
     observedAt: IsoInstantSchema,
   }),

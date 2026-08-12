@@ -110,7 +110,12 @@ describe("authentication is never concluded from a URL", () => {
       readFileSync(join(REPO_ROOT, path), "utf8").includes("LoginRecipe"));
     assert.deepEqual(
       withRecipes.sort(),
-      ["src/stores/crm/session.ts", "src/stores/kuali/session.ts", "src/stores/ucpath/session.ts"],
+      [
+        "src/stores/crm/session.ts",
+        "src/stores/kuali/session.ts",
+        "src/stores/new-kronos/session.ts",
+        "src/stores/ucpath/session.ts",
+      ],
       "a landed login recipe must be scanned by this guard",
     );
   });
