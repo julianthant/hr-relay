@@ -83,17 +83,23 @@ that do not exist at all today — so one migration mints what every later workf
 trickling the same stores in through small reads. The order table below is **not** re-sequenced: it
 stays the risk-proof ordering, so this entry buys the deepest write proof first rather than making
 it cheaper. Separations still owes every exit criterion, **questionnaire first** —
-`docs/migrations/separations.md` holds it and is BLOCKED on your 12 answers. Its controlled-commit
-target (a UCPath termination + Kuali finalization you approve) is yours to name at step 5; none has
-been invented.
+`docs/migrations/separations.md` holds it, and as of **2026-08-12 it is answered except for two
+numbers**: §5 item 5's freshness values (residuals **5A** and **5B**). Its controlled-commit target (a
+UCPath termination + Kuali finalization you approve) is yours to name at step 5; none has been
+invented.
 
-**How it gets built (your directive, recorded in that doc's §2):** bottom-up, not one slice — store
+**How it gets built (your directive, recorded in that doc's §3):** bottom-up, not one slice — store
 tasks first, then one small provable sub-workflow per system interaction (the Kronos timecard read,
 the Kuali doc read, the UCPath termination write, the Kuali finalization write — the two writes each
 following the proven `kuali-timekeeper-annotation` single-transaction-node shape), then composed
-together. One honest note recorded there: composing by **real child runs** would mean wiring the
-`child-run` seam, which exists typed but is **not wired** in production today — so the default
-composition is one descriptor over the reused tasks, and going the other way is questionnaire item 10.
+together. Two directives sit on top of that (§3.1, §3.2): **scenario variability is served by lego
+recomposition** — moving and swapping chunks and customizing store items, never growing conditional
+branches inside one monolithic workflow — and **every chunk maps exhaustively what it touches** (full
+dropdown option lists, every status and branch it meets), so later scenario work finds its raw
+material already captured. One honest note recorded there: composing by **real child runs** would mean
+wiring the `child-run` seam, which exists typed but is **not wired** in production today — so the
+default composition is one descriptor over the reused tasks, and questionnaire item 10 keeps it that
+way (lego recomposition is descriptor assembly, not delegation).
 
 ### Migration order (doc 07 §3.3) — the 13 remaining legacy workflows
 
@@ -131,10 +137,12 @@ explicit authorization.
 
 | # | Item | Context | Where it lives |
 |---|---|---|---|
-| 1 | **Answer the separations §b questionnaire — 12 items** | Nothing builds before it (doc 07 §3.1 step 1). Each item carries a DRAFT answer prefilled from the legacy source and these docs; you confirm or correct it. A handful genuinely have no basis in legacy and need you outright — they are marked. | `docs/migrations/separations.md` |
+| 1 | **Confirm TWO freshness numbers — separations §5 item 5, residuals 5A and 5B** | The rest of the questionnaire is **answered** (2026-08-12): §2.6 ratified as D194, §4a–§4g answered, and eleven of the twelve §5 items now carry a verdict line saying they need nothing from you. What is left is **5A** — the four `maxAge` values (recommended: Kuali doc 10 min · Job Summary 10 min · Kronos timecard 30 min · identity approval 4 h) — and **5B** — whether the separation DATES may be operator-overridden when stale (recommended: no, `forbidden`; department/titles stay `audited`). Both are presented as options with pros/cons and a recommendation, so it is a confirmation, not composition. **Chunk 1 (new-kronos store + timecard-read sub-workflow) starts the moment these land** — a read contract's `freshness` is mandatory, so the timecard task cannot be authored without 5A. | `docs/migrations/separations.md` §5 item 5 |
 
 ### Decided
 
+- **Read tasks are authored RICH: one task per page visit, one fixed strict output, consumers project downstream — the `read(fields…)` shape is banned** — **D194**, 2026-08-12 (doc 01 §2.8, `STORES.md` §1). Applies to all new tasks; existing tasks are not rewritten, and `crm`'s duplicate record/dates page visit merges the next time that store is touched.
+- **Separations answers landed (2026-08-12), all but two numbers** — `docs/migrations/separations.md`: unmapped termination type **fails loud** plus a live capture of the whole Kuali dropdown (§4a) · an unavailable or unreadable **Kronos hard-fails the whole run** (§4b) · a UCPath-filed / Kuali-unfinalized run **parks** with the transaction number durable (§4c) · **ALWAYS-GATE in every run mode**, no preset or resume can disable identity approval (§4d) · Kuali writes are **staged from variables, one pass, one save, one reload read-back** (§4e) · **no I-9 packet** in this workflow (§4f1) · production **canary** for the commit proof, target named by you at the time (§4f2) · `probeToFenceMaxMs` **measured**, never guessed (§4f3) · the scenario inventory stays open with a **MAP-EVERYTHING** directive on every build chunk (§4f4) · the final-pay radio stays **hardcoded** as your ratified business assertion (§4g) · and scenario variability is served by **lego recomposition**, never by branches inside one workflow (§3.1).
 - **Scope: solo, local, never hosted; local-app packaging and any cooperation mode are LATER and unplanned** — D193, 2026-08-12 (doc 00 §Non-negotiables, doc 12 §7)
 - **Storage is done for this scope: manual `.tracker-rebuild/` folder copies (app stopped) are an acceptable backup; retention-sweep scheduling and the artifact refcount are `wont-build-unless-asked`** — D193, 2026-08-12 (doc 12 §D137, doc 03 §2.5). *Why:* this DB stores records of **completions**, not primary records — the real record of a completed transaction lives in UCPath/Kuali and is checkable there; these rows show *how* and *whether* something completed and mean little once it is completed and approved. (Unchanged: the fence rows are still load-bearing **during** a write.)
 - **Phase 3 enters at separations (order 8)** — D193, 2026-08-12 (doc 07 §3.1) — chosen to force the store task libraries into existence; §3.3's ordering is unchanged

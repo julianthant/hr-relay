@@ -1,13 +1,17 @@
 # Migration plan — `separations` (order 8, the Phase-3 entry)
 
-> **STATUS: BLOCKED — the §b questionnaire below is unanswered.**
+> **STATUS: BLOCKED ON ONE RESIDUAL — §5 item 5's freshness VALUES (5A the four `maxAge`s, 5B the
+> override column on the date fields).** Everything else the questionnaire asks was answered by the
+> operator on **2026-08-12**: §2.6 (ratified as **D194**), §4a, §4b, §4c, §4d, §4e, §4f1–§4f4, §4g,
+> and the §3 build-strategy directive. Every §5 item now carries a **verdict line** saying whether it
+> was answered, whether its draft stands as design work, or whether it still needs the operator —
+> item 5 is the only one in the last class.
+>
 > Doc 07 §3.1 step 1 is explicit: the operator questionnaire is asked and answered **BEFORE**
-> building. Nothing in this migration gets built — not a contract, not a task, not a descriptor —
-> until §4's open decisions and the twelve §5 `ANSWER (operator):` slots below carry answers. Every
-> open decision is presented as options with pros and cons plus a recommendation, and every item ships with a
-> `DRAFT — operator to confirm/correct` line derived from the legacy source and the rebuild's owning
-> docs, so the work is confirmation rather than composition; where legacy gives **no** basis for a
-> draft this doc says so instead of inventing one.
+> building. Item 5's values are not a formality for chunk 1 — a read contract's `freshness` is a
+> mandatory field (doc 01 §2.1.1 / D8), so `new-kronos/read-separation-timecard` cannot be authored
+> without the timecard `maxAge`. **Chunk 1 (the `new-kronos` store + the timecard-read sub-workflow)
+> starts the moment 5A/5B carry answers.**
 
 **What this doc is.** The first Phase-3 migration doc, and therefore the convention every later one
 follows (doc 07 §0.1: migration docs are **children** of the master plan — they answer §3.4 and
@@ -30,8 +34,8 @@ sibling doc `separations-legacy-behavior.md`; this doc cites its S-numbers rathe
 | **1** | Overview — what the workflow does, the `T002173685` incident, the ALWAYS-GATE |
 | **2** | Stores — what exists today, what this migration mints, and the proposed rich-extraction convention |
 | **3** | Build strategy — the bottom-up "lego" decomposition and what composition can actually use |
-| **4** | **Open decisions** — one entry per genuinely open item, each as options + pros/cons + a recommendation |
-| **5** | The §b questionnaire (doc 07 §3.4) — twelve items, drafts, and the `ANSWER (operator):` slots |
+| **4** | **Open decisions** — one entry per genuinely open item, each as options + pros/cons + a recommendation, each now carrying the operator's 2026-08-12 answer |
+| **5** | The §b questionnaire (doc 07 §3.4) — twelve items, each with a **verdict line**, its draft, and either the recorded answer or the residual still owed |
 | **6** | Exit criteria (doc 07 §3.2) |
 | **7** | Open items that are NOT for this questionnaire |
 | **8** | Cross-references |
@@ -80,8 +84,11 @@ the key was derived from the wrong person.
 separation, both separation types, **no auto-approve-on-match** (operator ratification 2026-07-24,
 D77). This is a deliberate **widening** of legacy, which gates only on the `different` tier and lets
 `same`/`similar` proceed silently (**S14/S15/S16/S17**). Two values are explicitly left to this
-questionnaire by doc 09 §14.7: the **approval freshness limit** (item 5) and whether **I-9
-separations** show a different candidate packet than Kuali separations (item 6, §4f1). Also note doc
+questionnaire by doc 09 §14.7: the **approval freshness limit** (item 5 — **still open**, residual
+5A) and whether **I-9 separations** show a different candidate packet than Kuali separations
+(**answered 2026-08-12: separations does not involve the I-9 packet at all, so the question resolves
+out of scope for this workflow** — §4f1). §4d then settles the other half in this workflow's favour:
+the gate holds in **every** run mode, with no preset, prefill or resume path able to disable it. Also note doc
 09 §14.6 risk #1: an always-gate's dominant failure is rubber-stamping, which is why the packet leads
 with **disconfirming** evidence and why an ambiguous decision must not be dispatchable by the same
 click as an unambiguous one. The behavior review's **S25/S26** show the other half of the risk —
@@ -337,6 +344,57 @@ automatically "no delegation".
 proof. A chunk that cannot be proved alone is a sign the decomposition is wrong, not a reason to
 compose early.
 
+### 3.1 Scenario variability is handled by LEGO RECOMPOSITION, never by branches (operator directive, 2026-08-12)
+
+**The directive, plainly.** Different real-world situations are served by **moving and swapping
+sub-workflow chunks and customizing store items** — not by growing conditional branches inside one
+monolithic workflow. When a case needs a different shape (a separation whose dates come from
+somewhere other than a Kronos timecard, a type that files under a different template, a variant that
+skips a system entirely), the answer is a **different composition over the same proven chunks**, not
+an `if` inside `separations`.
+
+**Why this is a design rule and not a preference.** A branch inside a live write workflow multiplies
+what every guard, scenario and controlled-commit proof has to cover, and doc 02 §5.5's freshness walk
+must conservatively union **every reachable branch** until its discriminator is a validated value —
+so each added branch widens the safety envelope of runs that never take it. Recomposition keeps each
+composition's graph small enough to prove, and keeps the chunks themselves single-purpose.
+
+**What it binds concretely.**
+
+- The §3 chunks are the lego bricks: they are authored to be recomposable, not to be one workflow's
+  private steps. A chunk's contract is the store task family it uses, not the descriptor that first
+  consumed it.
+- Two answers below are expressed through this rule rather than through a branch: §4b's
+  "special cases where the Kuali-carried date alone would suffice" (those fail today; when one
+  surfaces, it becomes a **composition** without the timecard chunk, designed then), and §4f4's
+  not-in-legacy types (a type needing a different template or effective-date rule becomes its own
+  composition, not a branch inside this one).
+- It does **not** mean real child runs. Delegation is item 10 and stays unwired (§3's table);
+  recomposition here means assembling a **descriptor** from proven tasks, which is the mechanism this
+  tree already has.
+
+### 3.2 MAP EVERYTHING as you build (operator directive, 2026-08-12)
+
+**The directive.** The operator cannot enumerate every real-world scenario up front (§4f4), so the
+scenario inventory stays deliberately open — and the substitute is that **every build chunk maps
+exhaustively everything it touches**, whether or not this migration needs it:
+
+- **Every dropdown's complete option list** — not only the options the current mapping uses. §4a's
+  Kuali *Type of Termination* capture is the first instance and the reason the map can be made
+  exhaustive at all; the department dropdown (**S55**) and the reason-code list get the same
+  treatment.
+- **Every status, type, state and branch the chunk encounters** on the pages it visits — recorded
+  with its live-observation date, the same way a selector is.
+- **Every field the page carries**, which is exactly what **§2.6/D194** already requires of the read
+  tasks: one task per page visit returning the full useful surface. The mapping directive and the
+  extraction convention are the same instinct at two altitudes — capture the whole surface once,
+  while you are standing on the page.
+
+**What it buys.** Later scenario work (and later migrations against the same pages) finds its raw
+material already captured, so nothing is re-mapped and no scenario is invented from memory. Captures
+are **read-only** page observations, standing pre-authorized by the charter's live-verification
+clause, and they cost one page visit each inside work the chunk is already doing.
+
 ---
 
 ## 4. Open decisions
@@ -401,7 +459,25 @@ of the dropdown that produces the exhaustive `terminationType → {template, rea
 capture is also the prerequisite for §4f4 (rehire/deceased/retiree/LOA) — none of those can be scoped
 without the option list.
 
-`ANSWER (operator):`
+`ANSWER (operator), 2026-08-12` — **Option A. Fail loud on ANY unmapped termination type, and
+live-capture the complete Kuali dropdown option list so the map is exhaustive.**
+
+- **The refusal.** An unmapped or blank *Type of Termination* refuses **by name**, before any staging.
+  Legacy's three-tier fall-through — exact hit → bidirectional substring fuzzy → the constant
+  `"Resign - No Reason Given"` — does **not** port at any tier; the fuzzy tier is deleted outright
+  (it is what makes `"Other"` file as *Accepted Another Job*). The type is modeled as ONE closed enum
+  with ONE `{template, reasonCode}` mapping, which kills **S11**'s divergent-constant class
+  structurally rather than by discipline.
+- **The capture.** The complete option list is captured live, read-only, **during chunk work** — it
+  belongs to the `separations-kuali-read` chunk, not to answering this questionnaire. It is
+  pre-authorized by the charter's live-verification clause and costs one page visit. Its output is
+  the exhaustive `terminationType → {template, reasonCode}` table, recorded with its observation date
+  like any other live fact.
+- **The operational cost is accepted explicitly.** If Kuali later adds or renames a dropdown option,
+  runs on that option **fail** until the map is extended. That is the intended cost of A, and it is
+  the whole point: a wrong reason code on a filed HR termination is invisible to everyone downstream.
+- **This is the first instance of §3.2's MAP-EVERYTHING directive**, not a one-off: the same chunk
+  captures the department dropdown (**S55**) and every other option list it stands in front of.
 
 ---
 
@@ -469,7 +545,36 @@ is not optional: a search **timeout must never be reported as `found:false`** (S
 check could not run" and "the check found nothing" are different values, and the tree already
 forbids conflating them.
 
-`ANSWER (operator):`
+`ANSWER (operator), 2026-08-12` — **Option C. HARD-FAIL, always. The operator's words: "if kronos is
+not available, the entire thing fails."**
+
+Any unreachable Kronos, any failed search, any timecard that will not open, any wrong-subject
+timecard, any unreadable card — the run **terminalizes `failed`**. It does not park (A is not
+adopted), and it does not proceed on the Kuali dates (B is not adopted).
+
+- **The recorded nuance.** Special cases may exist where the **Kuali-carried date alone would
+  suffice**. Those **also fail for now.** The operator will flag a real case when one surfaces, and
+  the arm gets **designed then** — as a **§3.1 recomposition** (a composition without the timecard
+  chunk), never as a conditional branch bolted into this workflow.
+- **What this retires from the draft:** §4b Option B's "closed non-HDH exception" is **not** adopted,
+  so legacy's **S32** department gate does **not** port as a proceed-without-timecard arm. There is
+  today **no** path through this workflow that files a termination without a read timecard. Item 6's
+  department-gate bullet and item 9's non-HDH/unknown-department scenarios are corrected to match, and
+  §4d's parenthetical ("a preset may skip Kronos") is void — **no run mode changes the graph at all.**
+- **The cost is accepted, and it is Option C's own con:** a transient Kronos outage discards the run's
+  completed work — the Kuali read, the existing-termination probe, and the identity-gate approval —
+  and the operator restarts from zero, re-approving the gate. That is the price of never filing a
+  termination on a date nobody read.
+- **Why hard-fail here but PARK in §4c**, and the rule behind both: this failure is **pre-write** —
+  nothing external has been filed, so failing costs only work. §4c's failure is **post-write** — a
+  real termination exists, so failing would abandon a half-finished external state and parking is the
+  only honest outcome. Fail before the fence, park after it.
+- **Non-negotiable regardless of option, and it stands:** a search **timeout is never `found:false`**
+  (**S35** / pattern D5). "The check could not run" is its own value and terminalizes `failed` with
+  that reason; it is never collapsed into "this person is not timekept here". Same for **S34/S38** —
+  "no card", "card empty" and "card unreadable" stay three distinct values in the data model even
+  though all three currently fail, because the day the operator flags a real special case, those are
+  the values the new composition will be selected on.
 
 ---
 
@@ -525,7 +630,30 @@ same answer: with the receipt pair required *before* finalization (item 2's draf
 form blank for manual entry" cannot arise — the finalization transaction is never entered without a
 receipt, so legacy's deliberate half-finished document goes away. Confirm that is wanted.
 
-`ANSWER (operator):`
+`ANSWER (operator), 2026-08-12` — **Option A. A PARKED run, resumable by the operator, with the
+transaction number carried DURABLY.**
+
+- **Parked, not failed.** The termination is real and irreversible, so the run parks at the Kuali
+  finalization transaction instead of terminalizing. (Contrast §4b: that failure is pre-write, this
+  one is post-write — fail before the fence, park after it.)
+- **The transaction number is durable authority, not a remembered fact.** The receipt **pair**
+  `(transactionNumber, approvalStatus)` is on the run record before finalization is ever entered, so
+  the operator does not reconstruct it from a log line or their memory.
+- **Resume re-enters only the Kuali finalization node**, under its own permanent key. Resume
+  **cannot** re-file the termination: the UCPath node's permanent key already fenced and settled, and
+  doc 09's same-key mutex refuses a second fence.
+- **Resume does NOT inherit legacy's skip-everything semantics.** It re-proves the document identity
+  and it keeps the identity gate (**§4d**) — a prefilled field silently disabling the wrong-person
+  control is **S26/D7** verbatim and does not port.
+- **On Option B:** not part of the answer. A bounded retry of the *same* operation inside the
+  finalization node stays a permitted implementation detail (retrying the same operation is
+  explicitly not a fallback under this tree's rules), and it never substitutes for the park — it
+  covers a dropped session, not **S55**'s unmatched department option or **S56**'s unreadable
+  comments, which re-refuse identically.
+- **S57 is settled structurally, not by preference.** With the receipt pair required *before*
+  finalization (item 2), the finalization transaction is never entered without a number, so legacy's
+  deliberate "save the Kuali form blank for manual entry" half-finished document cannot arise. It is
+  not a rejected option; it is an unreachable state.
 
 ---
 
@@ -581,7 +709,24 @@ it was granted on.
 read** (a preset may skip Kronos, per §4b's closed non-HDH case) — never the identity node. That is
 also the behavior review's own recommendation at S26.
 
-`ANSWER (operator):`
+`ANSWER (operator), 2026-08-12` — **Option A. ALWAYS-GATE in EVERY run mode. No preset, no prefill,
+no resume path, and no run mode of any kind can disable identity approval.**
+
+- Every separation, both separation types, every mode, every resume: manual identity approval, no
+  auto-approve-on-match. This ratifies doc 09 §14 / D77 for this migration with no exception carved
+  anywhere.
+- Legacy's derivation chain — `txnNumberPrefilled || lastDayWorkedPrefilled || presetSkippedKronos`
+  ⇒ no Job Summary, no name comparison, no gate — does **not** port in any form. Pattern **D7** dies
+  structurally: the guard `identity-gate-before-separation-commit` (§6) proves every commit is
+  graph-reachable **only** through the gate node, so a later edit cannot reintroduce the skip.
+- **S25** becomes well-formed: an approval binds to an evidence digest and is re-checked on resume —
+  an identical digest inside the freshness limit proceeds; a changed candidate re-opens the gate
+  regardless. (The freshness limit itself is item 5's residual **5A**.)
+- **Amended by §4b's answer:** the recommendation's one carve-out above — "a preset may skip
+  Kronos" — is **void**. With the timecard read hard-failing rather than skipping, **no run mode
+  changes the graph at all** in this workflow. A future "Kuali dates only" case is a §3.1
+  **recomposition**, which is a different descriptor with its own gate node, not a mode that edits
+  this one.
 
 ---
 
@@ -625,7 +770,49 @@ code: `kuali/verify-timekeeper-annotation`, the reload read-back that is the *on
 **Recommendation: A.** The operator's real choice here is item 1D — one Kuali transaction node means
 one read-back; two nodes mean two.
 
-`ANSWER (operator):`
+`ANSWER (operator), 2026-08-12` — **the STAGED-VARIABLES model: read everything into variables first,
+stage every Kuali field in ONE pass at the end, ONE save, ONE reload read-back that verifies every
+written field against the exact staged variables.**
+
+The four beats, in the operator's order:
+
+1. **All reads land first as typed checkpoints — "variables".** The Kuali separation document, the
+   UCPath Job Summary, the existing-termination probe, the New Kronos timecard, and the reconciled
+   dates are each a node output the run holds. Nothing is written to Kuali while the run is still
+   reading.
+2. **`kuali/fill-separation-finalization` stages EVERY field in one pass, from those variables**, at
+   the end of the run. Department, payroll title code, payroll title, timekeeper tasks/name,
+   termination effective date, `Submitted Termination Template`, `Transaction Number`, the final-pay
+   radio (§4g) and the appended comments are all staged from stored variables — never re-read off the
+   page, never recomputed at fill time.
+3. **ONE save.**
+4. **ONE reload read-back**, verifying **every** written field against the **exact staged variables**
+   it was given — not against a fresh derivation, and not against the page's own echo.
+
+**This answers item 1D as well: mutations C and D collapse into ONE Kuali transaction node.** Legacy's
+early org-data write (step 4, before Kronos and UCPath) does **not** port as a separate save; it is
+staged with everything else at the end. Note what this is and is not: it is Option **A**'s rule — one
+reload read-back per commit node — applied to a graph that has exactly **one** Kuali commit node. It
+is **not** Option B, which stays rejected for B's own reason: a trailing verify covering several
+fences cannot say which fence landed, and a post-fence absence would park an ambiguous set of intents
+instead of one.
+
+**The read-back is non-negotiable.** D128 is the standing proof on this exact system: a Kuali save can
+answer HTTP `200` with a rendered `Form saved` and persist **nothing**. A positive save signal is
+worth nothing; the reload read-back is the only landing proof.
+
+**Caveat, recorded rather than assumed away.** Kuali serializes only the **current workflow step's
+section** (D128/D135). If the finalization fields turn out to span sections owned by **different**
+workflow steps, then one save cannot carry them and the structure forces **one save + one read-back
+per step** — each its own fence, each its own permanent key, per Option A's rule. That is a fact to be
+**discovered at the first live dry-run** of `separations-kuali-finalization`, not designed around now
+and not assumed false. The staged-variables model is unchanged either way: the variables are still
+read first and staged in one pass; only the number of (save, read-back) pairs can grow.
+
+**One consequence to carry into item 5.** Reading everything first and writing at the end deliberately
+**widens the gap** between each read and the write it feeds — and the identity gate sits inside that
+gap as a human wait. The per-read `maxAge` values are what bound that gap, which is exactly why item
+5's values are the one residual left open.
 
 ---
 
@@ -692,7 +879,43 @@ rather than a draft.
 confirms it maps to an existing template with no rule change. §4a's dropdown capture is the
 prerequisite either way — the map cannot be made exhaustive without it.
 
-`ANSWER (operator) — 4f1 / 4f2 / 4f3 / 4f4:`
+`ANSWER (operator), 2026-08-12 — 4f1 / 4f2 / 4f3 / 4f4:`
+
+**4f1 — separations does NOT involve the I-9 packet. "i9 and kuali separations is very different."**
+There is **no I-9 branch** in this workflow: an I-9 separation is a different thing, not a variant of
+this one. Doc 09 §14.7's deferred question resolves as **out of scope for this migration**. In
+practice the gate therefore shows **one** packet composition — option (i)'s outcome — but for a
+stronger reason than (i) offered: it is not that both types share a packet, it is that this workflow
+has only one type. Nothing here is a claim about what an I-9 separation needs; if one is ever
+automated it is its own migration with its own questionnaire (and, per §3.1, its own composition).
+
+**4f2 — option (ii): an operator-approved PRODUCTION canary.** No test instance is used for the
+commit proof. One named separation the operator accepts will be filed for real, with the approval
+recorded — exactly how D128 and D135 were done, and the only thing that satisfies doc 07 §3.1 step 5.
+**The specific canary target is named by the operator when the controlled-commit step is reached, and
+is never invented here** (§7's first bullet stands unchanged).
+
+**4f3 — option (i): measure `probeToFenceMaxMs` on the first live dry-run. No guessed constant.** The
+first `separations-ucpath-termination` live dry-run records probe-complete → prepare-complete off the
+run's own per-beat spans; the interval is read from `explain run`; the bound is set at a stated
+multiple of the measured worst case, with the measurement cited in the descriptor beside the constant.
+The descriptor lands with that measurement as a **blocking follow-up**, not with a placeholder — (ii)
+and (iii) are both rejected, (ii) because it guesses and (iii) because a bound that cannot fire is not
+a bound.
+
+**4f4 — the scenario inventory stays OPEN, and the substitute is the MAP-EVERYTHING directive (§3.2).**
+The operator cannot enumerate every real-world scenario now, and would rather not pretend to: instead,
+**every build chunk maps exhaustively everything it touches** — full dropdown option lists, every
+status, type and branch it encounters — so that later scenario work finds its raw material already
+captured and **nothing gets re-mapped**. This is deliberately not a choice among (i)/(ii)/(iii):
+rehire, deceased, retiree and LOA are not being declared in or out of scope by fiat. What *is* settled
+is the behavior in the meantime, and it comes from **§4a**, not from here: any type the exhaustive map
+does not carry **fails loud and names itself**, so the first landing behaves as (i) without the
+inventory being closed. Promotion of a named type happens when the operator flags it, against the
+captured option list. Cross-links: **§4a** (the dropdown capture that supplies the raw material),
+**§2.6/D194** (the same instinct at task level — capture the page's whole surface while standing on
+it), **§3.1** (a type needing a different template or date rule becomes its own composition, not a
+branch here).
 
 ---
 
@@ -731,16 +954,51 @@ decided rather than inherited.
 the code and in item 6's answer.** What is not acceptable is carrying the constant forward silently —
 that is exactly S58's verdict.
 
-`ANSWER (operator):`
+`ANSWER (operator), 2026-08-12` — **Option B. Keep the final-pay radio HARDCODED, exactly as legacy
+does.**
+
+Stated plainly, because it is a business assertion and not a derivation: **the operator asserts that
+*Does not need Final Pay (student employee)* is the correct answer on every RRSS separation this
+workflow files — it is written on every doc.** The value is therefore selected unconditionally, with
+no reference to job code, title, or anything the run read. Option A is not adopted: there is no rule
+to derive it from, because there is nothing to derive.
+
+What B requires and what this answer accepts:
+
+- The constant is recorded in the code as an **operator-ratified business assertion**, dated, citing
+  this answer — so the next reader finds a ratification, not an inherited magic value. That is the one
+  thing S58 actually objected to: legacy carries it with no comment and no test asserting it is right.
+- The residual risk is named rather than hidden: if an RRSS separation ever reaches this workflow for
+  someone the assertion does not cover, it writes that answer silently and nothing in the run would
+  show it. The operator accepts that, and the correction path is the same as everywhere else here —
+  flag the case, and it is designed then (§3.1).
 
 ---
 
 ## 5. The §b questionnaire (doc 07 §3.4 — twelve items)
 
-Each item keeps its `DRAFT — operator to confirm/correct` line. Where an item is genuinely open, the
-options and pros/cons live in **§4** and the item points there rather than repeating them.
+**Read this first — the operator asked for exactly one thing from this section.** *"Rephrase those
+questions like §4 and ask me in the same format if I still have to answer them — I'm not sure if they
+are the same questions you asked in §4."* They largely **are** the same questions: §4 is where the
+genuinely open decisions were pulled out and given options, and §5's items are the doc 07 §3.4
+template those decisions came from. So every item below now opens with a **one-line verdict** in one
+of three classes, and only the last class is work for the operator:
+
+| Verdict | Meaning |
+|---|---|
+| **ANSWERED via §4x / §2.6** | The operator already answered it on 2026-08-12 under a §4 heading. Nothing more is owed; the cross-reference names where. |
+| **DRAFT STANDS** | The draft is derived from legacy plus the owning docs and needs no operator judgement — it is design work. It is recorded as the answer. |
+| **STILL NEEDS OPERATOR** | A genuine residual. Presented in the full §4 format — context → options with pros/cons → recommendation → `ANSWER` slot. |
+
+**Exactly one item is in the last class: item 5 (freshness `maxAge` values), as two residuals 5A and
+5B.** Every other item is answered or standing. Each item keeps its
+`DRAFT — operator to confirm/correct` line as the record of what was derived.
 
 ### 1. Real commits — which actions mutate the external system?
+
+> **VERDICT: ANSWERED via §4e (C+D collapse into one Kuali node), §4g (D's final-pay value) and §4c
+> (A's post-commit failure policy) — no further operator input.** The five-mutation list itself is
+> DRAFT STANDS: A/B/E are derived from legacy plus doc 09 §13, and E's refusal follows from §4d.
 
 *What the answer determines:* every mutating action needs a prepare contract, a commit contract, one
 transaction lease scope, a stable idempotency key, an expected subject, a post-prepare semantic
@@ -757,11 +1015,25 @@ whole write-safety kernel is instantiated from.
 | D | **Write org data into the Kuali doc** (department, payroll title code, payroll title) and the **timekeeper name** | Kuali | Draft: a **second Kuali transaction node**, not a free-floating write. It is benign and restorable, but it is still a save on a real document and the rebuild has no "small write" category. How many Kuali nodes there are is the same choice as **§4e** |
 | E | **Rewrite the employee NAME on the Kuali doc** on the `similar` tier | Kuali | **Draft: do NOT port.** Legacy does this even in dry-run (`legacy:.../workflow.ts:634-649`), and `KRONOS-SELECTORS.md:83-84` documents that field as read-only. Rewriting an identity field on the source document to make a match succeed is the wrong direction for a wrong-person control (**S15**, pattern D8) |
 
-`ANSWER (operator):`
+**RECORDED ANSWER (2026-08-12).** The draft stands, with one structural amendment from **§4e**:
+**C and D are ONE Kuali transaction node, not two.** Every Kuali field — org data, payroll titles,
+timekeeper tasks/name, term-eff date, template checkbox, transaction number, final-pay radio,
+comments — is staged in one pass from stored variables at the end of the run, saved once, and proved
+by one reload read-back (§4e's caveat about step-owned sections is the one thing that could split it,
+and it is a live-dry-run finding, not a design choice). Legacy's early org-data write does not port as
+a separate save. **A** and **B** stand as drafted (B keyed `<eid>|pending-sweep|<runId>`, its own
+fenced node before the create, per doc 09 §13 item 5). **E** stands refused — the `similar`-tier name
+rewrite does not port, which §4d independently requires: an identity field on the source document is
+not something a wrong-person control may edit to make itself pass. **D**'s final-pay value is §4g
+(hardcoded, operator-ratified).
 
 ---
 
 ### 2. Completion check per submit
+
+> **VERDICT: ANSWERED via §4e (how many read-backs, and against what) and §4c (partial completion) —
+> no further operator input.** The per-mutation arms (`receipt` / typed sweep outcome / `save-verify`)
+> are DRAFT STANDS: they are doc 09 §2's own vocabulary applied to the D130 finding.
 
 *What the answer determines:* which of doc 09 §2's three completion arms each commit declares —
 `receipt`, `save-verify`, or `upload-verify`/argued `unverifiableByPage`. Getting this wrong is how a
@@ -779,11 +1051,23 @@ inline. Legacy says it **cannot** be read from the dialog and re-navigates
 (`legacy:src/workflows/separations/CLAUDE.md:147`), and doc 09 §13 item 6 records that as ported
 legacy knowledge, **not** rebuild-verified. Settling it needs one real submit (§7).
 
-`ANSWER (operator):`
+**RECORDED ANSWER (2026-08-12).** The draft stands. **A** → `receipt`, and the receipt is the **pair**
+`(transactionNumber, approvalStatus)` — never the number alone, because D130 proved a **Denied**
+transaction carries a perfectly well-formed `T…`. **B** → its own typed outcome (a re-read showing
+zero pending `TER` rows), and legacy's refusal to collapse a thrown sweep into `0` ports. **C+D** →
+`save-verify` with **one** reload read-back over **one** Kuali commit node, verifying every written
+field against the exact staged variables (**§4e**). Partial completion → parked and resumable
+(**§4c**). The one genuinely unsettled fact — whether the post-submit confirmation dialog renders the
+`T…` inline — is **live-observation work at the controlled commit**, already routed to §7; it is not a
+questionnaire answer and never was.
 
 ---
 
 ### 3. Double-submit probe policy and age budget per transaction
+
+> **VERDICT: ANSWERED via §4f3 (the UCPath `probeToFenceMaxMs` is measured on the first live dry-run)
+> — no further operator input.** `"always"` on every transaction is DRAFT STANDS; the Kuali 45 s value
+> stands on D78's measurement.
 
 *What the answer determines:* `"always"` or `"retries-and-recovery-only"` per transaction — required,
 no default (doc 09 §5 / D17) — plus a justified `probeToFenceMaxMs` bounding preparation after the
@@ -798,11 +1082,22 @@ the UCPath termination node is **not drafted** — its preparation is a multi-st
 effective date → create → Empl ID → reason code → continue → comments → LDW override), and no
 rebuild measurement of that sequence exists yet. **The measurement plan and its alternatives: §4f3.**
 
-`ANSWER (operator):`
+**RECORDED ANSWER (2026-08-12).** `"always"` for every transaction, as drafted — separations files a
+real, hard-to-reverse termination, and a probe is one page read against a page the run is already on.
+`probeToFenceMaxMs`: **45 s** for the Kuali write (D78's measured cycle), and the UCPath termination's
+bound is **measured on the first live dry-run and set from that measurement** (**§4f3** option i) — no
+provisional constant, no generous placeholder. Note the count changed with **§4e**: there is **one**
+Kuali transaction node, so one Kuali bound, unless the live dry-run finds the finalization fields span
+sections owned by different workflow steps.
 
 ---
 
 ### 4. Dry-run preview
+
+> **VERDICT: DRAFT STANDS — design work, no operator input needed.** `commit` is structurally absent
+> in dry-run (D6, kernel envelope state), so the only authored choice is `stop-after-prepare`, which
+> §4f3's measurement plan also depends on. §4e's staged-variables model makes the preview strictly
+> richer: the staged values ARE the variables.
 
 *What the answer determines:* what prepare evidence the operator sees, and where the run stops.
 `commit` is structurally absent in dry-run (D6, kernel envelope state) — this item is about what the
@@ -818,11 +1113,21 @@ legacy's own safety argument for that ("an abandoned draft discards its edits") 
 verified** (behavior review §5 item 2). A dry run in this tree leaves no durable external footprint at
 all, which makes the unverified assumption irrelevant rather than merely unlikely.
 
-`ANSWER (operator):`
+**RECORDED ANSWER (2026-08-12).** The draft stands, sharpened by **§4e**: because every Kuali field is
+staged in one pass from stored variables, a dry run previews the **complete** set of values that would
+be written, side by side with the variables they came from — which is also the run that measures
+§4f3's bound. Zero write intents, checkpoints, ledger rows or outbox rows, asserted rather than
+logged. The two legacy dry-run writes (timekeeper name, `similar`-tier name rewrite) do not port.
 
 ---
 
 ### 5. Freshness maxAges — justify the *value*, not just its presence
+
+> **VERDICT: STILL NEEDS OPERATOR — the only one.** Two residuals, both in the full §4 format below:
+> **5A** the four `maxAge` values, **5B** the override column on the date fields. §4d answered *that*
+> the gate result has a freshness limit and that it is never overridable; nobody has yet said *what
+> the number is*. **§4e made this item more load-bearing, not less** — reading everything into
+> variables first and writing at the very end deliberately widens the gap these values bound.
 
 *What the answer determines:* per-read staleness limits on everything feeding a write, plus
 `forbidden|audited` override status per non-identity field. The guard only checks the field is
@@ -842,11 +1147,116 @@ staleness risk:
 | Existing-termination probe | **`probeToFenceMaxMs`, not a maxAge** | — | Doc 09 §5 already bounds probe→fence; a second window here would be two answers to one question |
 | **Identity-approval gate result** (doc 09 §14.5/§14.7) | **DRAFT: 4 hours** — "hours, not days", and `Infinity` is illegal here | never overridable | §14.7 explicitly leaves this value to this questionnaire. On resume the candidate is re-read: identical digest within limit proceeds, a changed candidate re-opens the gate regardless — which is also what makes **§4d** work on a resumed run |
 
-`ANSWER (operator):`
+---
+
+#### RESIDUAL 5A — the four `maxAge` values
+
+**Context.** Legacy has **no** freshness model at all, so there is nothing to port and nothing to
+confirm against: these are rebuild-new numbers. What makes them real rather than decorative is doc 02
+§5.5: when a replayed read can reach a commit node in this run and
+`now − observedAt > limit`, the kernel **refuses loudly** and names the re-run as the fix. So a
+`maxAge` is not a warning threshold — it is the line at which the run re-reads instead of writing.
+
+Two facts from the answers above set the shape of the choice:
+
+- **The ALWAYS-GATE (§4d) is a human wait sitting between the early reads and every write.** Whatever
+  number is chosen for the Kuali document and the Job Summary, an approval that takes longer than it
+  means those reads re-run when the run resumes. That is a cost *and* a property: the values the write
+  uses were then read **after** the human decision, not before it.
+- **§4e widened the gap on purpose.** Every Kuali field is now staged and saved at the *end* of the
+  run from variables read at the *start*. These limits are what bound that distance.
+
+**Options.**
+
+**Option A — adopt the drafted values: Kuali document 10 min · UCPath Job Summary 10 min · New Kronos timecard 30 min · identity-approval gate 4 hours. ★ recommended**
+- *Pros:* each value is short relative to how fast that data can actually change — the separation
+  document is operator-editable between runs, so a 10-minute bound means the run essentially always
+  writes what it just read. A re-read is cheap and always safe (~6 s for a cold Kuali document open,
+  one Job Summary read); a stale write is neither. The 4-hour gate is exactly doc 09 §14.7's "hours,
+  not days": long enough that an approval given before lunch survives it, short enough that yesterday's
+  approval can never be reused. And the re-read after a long gate is a **feature** — the dates the
+  termination is filed on were read after the operator approved the person.
+- *Cons:* in practice most gated runs will re-read the Kuali document and the Job Summary, because
+  human approvals routinely take more than 10 minutes. That is one document open plus one Job Summary
+  read per gated run. The Kronos read sits after the gate, so its 30 minutes will rarely bind.
+
+**Option B — one number everywhere: 4 hours for every read, matching the gate.**
+- *Pros:* one value to remember; a run whose approval arrives inside the gate's own window never
+  re-reads anything, so it is the fastest possible run.
+- *Cons:* it makes the write's **payload** exactly as stale-tolerant as the human **decision**, which
+  is the wrong asymmetry — an approval ages slowly (it is a judgement about a person), while the dates
+  age as fast as somebody can edit the Kuali form. A 4-hour-old read of a document edited 3 hours ago
+  files yesterday's dates on a live termination, and §4e's end-of-run write is precisely the shape that
+  lets that happen quietly.
+
+**Option C — tighter: Kuali 5 min · Job Summary 5 min · Kronos 15 min · gate 1 hour.**
+- *Pros:* the strongest possible guarantee on the data.
+- *Cons:* buys very little over A (A already re-reads after most gates) and costs a lot at the gate: a
+  1-hour approval window means a lunch break invalidates an approval and re-asks the same question.
+  Re-asking a question the operator already answered is what produces **rubber-stamping**, which doc 09
+  §14.6 names as risk #1 — the dominant failure mode of an always-gate.
+
+**Recommendation: A** — the drafted values, unchanged. They are the only set where the two things that
+matter are both true: nothing stale can reach the write, and the gate is not asked twice for one
+decision.
+
+`ANSWER (operator) — 5A:`
+
+---
+
+#### RESIDUAL 5B — the override column on the DATE fields
+
+**Context.** Doc 02 §5.5 lets a field be marked `override:"audited"`, which means a stale value can be
+**confirmed** by the operator instead of re-read. It is not a silent bypass: the dashboard shows the
+checkpoint, its age, the limit and the consuming write node, the confirmation is explicit, it is
+scoped to that single resume attempt, it is never persisted onto the item, and it lands in the span
+stream as an audited note. Identity, person selection, idempotency-key inputs and write proof are
+`forbidden` **by guard** and cannot be marked otherwise — so this question is only about the
+**non-identity** fields, and really only about one group of them.
+
+The question: **may the operator confirm a stale LAST-DAY-WORKED / separation date into the write?**
+Those dates are the write's payload — the last punch becomes the LDW and the derived separation date
+becomes the **termination effective date**.
+
+**Options.**
+
+**Option A — as drafted: dates `audited`, department/titles `audited`, identity and the gate result `forbidden`.**
+- *Pros:* an override exists for the annoying case — a run whose timecard read went stale by a couple
+  of minutes can be finished instead of restarted, with a full audit trail.
+- *Cons:* it lets a human wave through exactly the value the run exists to compute. Under **§4b** the
+  operator already chose that an unreadable timecard **fails** rather than falling back to the
+  Kuali-carried date; permitting a stale-date override is a quieter version of the same substitution,
+  arriving through a dialog instead of a code path.
+
+**Option B — dates `forbidden`; department/titles stay `audited`. ★ recommended**
+- *Pros:* consistent with §4b's own posture — no path in this workflow files a termination on a date
+  the run did not freshly establish, whether the shortcut comes from a fallback or from a
+  confirmation. The fields that stay overridable are the org-data fields, which land on the Kuali
+  document where they are visible and correctable, not in the UCPath transaction.
+- *Cons:* a run whose timecard read is 31 minutes old must re-run the Kronos read rather than be
+  confirmed through. That is one extra timecard read — the same cost §4b already accepted wholesale.
+
+**Option C — everything `forbidden`; no overrides anywhere in this workflow.**
+- *Pros:* simplest rule; nothing in a live termination is ever waved through.
+- *Cons:* it also removes the one genuinely benign case (a slightly stale department or payroll title),
+  forcing a Job Summary re-read for a field whose staleness is visible on the document afterwards. Small
+  cost, but it leaves the override machinery entirely unused here, so the next workflow that wants it
+  re-litigates the principle from zero.
+
+**Recommendation: B.** Make the dates `forbidden` and keep department/titles `audited`. It is the
+answer that matches what the operator already decided in §4b: the dates are the payload, and a payload
+the run could not freshly establish is a run that stops.
+
+`ANSWER (operator) — 5B:`
 
 ---
 
 ### 6. Workflow-specific gates and data
+
+> **VERDICT: ANSWERED via §4d (gate always), §4f1 (no I-9 packet), §4f2 (canary), §4a (reason-code
+> refusal + dropdown capture), §4g (final-pay radio) and §4b (which CORRECTS the department-gate
+> bullet) — no further operator input.** The intake-none and future-date-preflight bullets are DRAFT
+> STANDS.
 
 *What the answer determines:* which gates the graph carries, and whether any intake/roster/capture
 machinery is involved.
@@ -862,11 +1272,35 @@ machinery is involved.
 - **Reason-code default — the one drafted REFUSAL.** Legacy's `mapReasonCode` falls back to **`"Resign - No Reason Given"`** for an unmapped or blank termination type (`legacy:src/workflows/separations/schema.ts:200-223`), and a documented type (`Death`) has no map entry and would land on it. That is a plausible-but-wrong value on a live HR transaction — the exact pattern this tree bans. **Draft: fail loud naming the unmapped type**, and require the map to be extended. **Options, and the dropdown capture that makes the map exhaustive: §4a.**
 - **The final-pay radio.** Legacy asserts *Does not need Final Pay (student employee)* unconditionally (**S58**). **No draft — options: §4g.**
 
-`ANSWER (operator):`
+**RECORDED ANSWER (2026-08-12), bullet by bullet.**
+
+- **Identity-approval gate:** YES, ALWAYS, in **every** run mode — no preset, prefill or resume path
+  can disable it (**§4d**).
+- **Two separation types:** does not apply here. **Separations as built does not involve the I-9
+  packet** — "i9 and kuali separations is very different" — so there is no I-9 branch and no packet
+  variant; doc 09 §14.7's question resolves **out of scope for this migration** (**§4f1**).
+- **Intake:** none, as drafted. One typed Kuali document number; doc 06 is not involved.
+- **Instance:** an **operator-approved production canary** for the commit proof, target named by the
+  operator at doc 07 §3.1 step 5 (**§4f2**).
+- **Department gate (HDH) — CORRECTED by §4b.** It does **not** port as a proceed-without-timecard
+  arm. §4b's answer is hard-fail on any unavailable or unreadable Kronos, and the recorded nuance
+  covers exactly this case ("special cases where the Kuali-carried date alone would suffice… those
+  also fail for now"). So **no** department determination lets a run skip the timecard today. When the
+  operator flags a real case, it is designed then as a **§3.1 recomposition**, not as a branch here.
+- **Future-date preflight:** port as drafted — a future-dated LDW or separation date is a validation
+  refusal (**S7**).
+- **Reason-code default:** the drafted **refusal** is adopted, with the fuzzy tier deleted outright and
+  the map made exhaustive by a live dropdown capture during chunk work (**§4a**).
+- **Final-pay radio:** **hardcoded**, as legacy does — the operator's accepted business assertion,
+  written on every doc, recorded in the code as an operator-ratified constant (**§4g**).
 
 ---
 
 ### 7. Reuse map — which tasks are reused, which are new
+
+> **VERDICT: ANSWERED via §2.6/D194 (how wide every new read task is) — no further operator input.**
+> The §2.2–§2.5 inventory itself is DRAFT STANDS: it is derived from the code, and `STORES.md` §1's
+> REUSE/CUSTOMIZE/BUILD rule decides each row.
 
 *What the answer determines:* the actual §2 inventory above, and for each new task, its
 reusable-base design plus the workflow-specific customization (charter §3/§8).
@@ -881,11 +1315,25 @@ Kronos adapter [closes] at order 8", so its `SemanticTimecardDriver` seam is a *
 design. **How wide each new read task's output should be — the rich-extraction convention — is §2.6,
 and it changes how every one of these tasks is authored.**
 
-`ANSWER (operator):`
+**RECORDED ANSWER (2026-08-12).** The §2.2–§2.5 inventory stands, authored under **D194**: every new
+read task is **one task per page visit returning that page's full useful surface** into one fixed
+strict schema, with an explicit `{state:"absent", reason}` arm on every field that can legitimately be
+blank and a declared redaction classification per leaf. Concretely —
+`kuali/read-separation-document` returns the whole useful separation-form surface (not only the six
+fields step 1 needs), `ucpath/read-job-summary` returns the whole effective-dated row surface, and
+`new-kronos/read-separation-timecard` returns the whole parsed timecard surface it can prove. That is
+the same instinct as §3.2's MAP-EVERYTHING directive, applied to the task's output instead of the
+build chunk's notes. `new-kronos` is still built whole here, and `src/stores/common/timecard.ts`'s
+`SemanticTimecardDriver` seam is a reuse.
 
 ---
 
 ### 8. Local artifact effects
+
+> **VERDICT: DRAFT STANDS — design work, no operator input needed.** "Neither" follows from the legacy
+> source (screenshots only, no downloads, no workbook). The draft's one open phrasing — the Kronos
+> audit capture being "required or explicitly optional" — is settled **required** by item 11's own
+> draft, which owes `explain run` "which grid the punch was read from".
 
 *What the answer determines:* whether a read downloads immutable bytes (content-addressed writer) or
 the workflow updates a **mutable** local file — the latter requires a stable-keyed blocking outbox
@@ -901,11 +1349,21 @@ punch the grid showed. Note legacy takes it best-effort inside a swallowing `try
 (`legacy:.../workflow.ts:1002-1014`, pattern D11), so losing the evidence is silent; in this tree the
 capture is either required or explicitly optional, never silently dropped.
 
-`ANSWER (operator):`
+**RECORDED ANSWER (2026-08-12).** The draft stands: **neither** a mutable local target nor a
+downloaded-bytes read — screenshots only, to the content-addressed artifact writer as immutable bytes,
+so no outbox projection is owed. The one open phrasing is settled: the New Kronos **viewport** capture
+centred on the chosen last-worked row is **REQUIRED**, not best-effort. Item 11 obliges `explain run`
+to answer "which punch date the write used and which grid it was read from", and an evidence artifact
+that can vanish inside a swallowing `try/catch` (legacy's pattern D11) cannot answer it. A failed
+capture fails the node.
 
 ---
 
 ### 9. Scenario inventory
+
+> **VERDICT: ANSWERED via §4f4 — the inventory stays deliberately OPEN, with §3.2's MAP-EVERYTHING
+> directive as the substitute; the timecard-failure policy is §4b, which also CORRECTS two rows below.
+> No further operator input now** — the corpus grows from captured material as each chunk lands.
 
 *What the answer determines:* the executable scenario corpus (doc 12 §3), which `scenario-coverage`
 audits against the graph. Truly impossible variants must be named as impossible, with the reason.
@@ -951,11 +1409,34 @@ rehire lives in onboarding), deceased/retiree/LOA as distinct paths (only reason
 multi-person-per-run (legacy is one doc = one person; multi-doc runs are **sequential batches**, not
 fan-out). **Options for the first three: §4f4.**
 
-`ANSWER (operator):`
+**RECORDED ANSWER (2026-08-12).** The inventory **stays open by decision**, not by omission: the
+operator cannot enumerate every real-world scenario up front and declines to pretend otherwise. In its
+place, **§3.2's MAP-EVERYTHING directive** binds every build chunk to exhaustively capture what it
+touches — full dropdown option lists, every status/type/branch encountered — so the scenario corpus is
+written later from **captured** material rather than from memory, and nothing is re-mapped. The
+drafted scenarios above all stand as scenarios; three rows change **outcome** under **§4b**:
+
+- *"not found in New Kronos → fall back to the Kuali LDW" (**S34**)* — no longer a fallback. It
+  **fails**, with "no card" / "card empty" / "card unreadable" / "search timed out" kept as four
+  **distinct** values in the data model even though all four currently fail, because those are the
+  values a future composition would be selected on.
+- *"non-HDH department → skip Kronos" (**S32**)* and *"unknown department → still run Kronos"
+  (**S33**)* — the skip arm does not port at all, so both now run Kronos and both fail if it cannot be
+  read. They stay in the corpus as the legacy behavior this migration deliberately departs from.
+
+The not-in-legacy list (rehire, deceased/retiree/LOA) is neither adopted nor refused by fiat: an
+unmapped type **fails loud and names itself** at §4a's exhaustive map, and each is promoted when the
+operator flags it — as its own composition if it needs a different template or date rule (**§3.1**).
+Multi-person-per-run stays out: one document, one person, one run (item 10).
 
 ---
 
 ### 10. Delegation and queue policy
+
+> **VERDICT: DRAFT STANDS — design work, no operator input needed; reinforced by §3.1's lego
+> directive, and bound by §4c (resume) and §4d (no resume skips the gate).** Lego recomposition is
+> assembling a **descriptor** from proven chunks, which this tree already does; it is not the unwired
+> `child-run` seam, so **no delegation is wired by this migration**.
 
 *What the answer determines:* enqueue policy, standard actions, and for every child edge the stable
 item id, typed result, cardinality/join, child-failure policy, cancel, child retry/parent resume, and
@@ -969,11 +1450,23 @@ visibility (doc 02 §3.2). **It also decides the §3 composition question.**
 - **If the operator wants real sub-workflow composition instead** (§3's "lego" as actual child runs), this item is where that is decided, and this migration then also owns wiring `ChildRunExecutor` through `composeWorkerRuntime` plus the enqueue/join transaction and the fan-out manifest. That is a real slice; it is not free.
 - **Resume/retry actions** must respect **§4c** (a partial completion resumes into finalization only) and **§4d** (no resume path may skip the identity gate).
 
-`ANSWER (operator):`
+**RECORDED ANSWER (2026-08-12).** The draft stands whole. `reject-active` per document number;
+`single` surface shape; **no delegation** — candidates are resolved inline and handed to the
+ALWAYS-GATE packet, which under §4d the operator sees on every run anyway, so a child run would buy
+presentation the gate already owes at the price of wiring an unwired seam. The operator's **§3.1 lego
+directive does not change this**: recomposition there means composing a **descriptor** from proven
+chunks and store tasks — the mechanism this tree has built and proved — not real child runs. The
+`ChildRunExecutor` seam stays unwired and this migration does not own wiring it. Resume/retry actions
+are bound by **§4c** (a post-commit failure parks and resumes into the Kuali finalization only, under
+its own permanent key) and **§4d** (no resume path may skip the identity gate).
 
 ---
 
 ### 11. Trust contract
+
+> **VERDICT: ANSWERED via §4c (`partial` and the park), §4e (what the read-back proves) and §4d (the
+> approval on the receipt) — no further operator input.** The redaction/notification/`explain run`
+> bullets are DRAFT STANDS, widened by §2.6/D194's per-leaf classification tables.
 
 *What the answer determines:* what makes each terminal outcome `verified|partial|unknown`, which
 artifacts/proofs are required, what is redacted, which failures/notifications fire, and how
@@ -988,11 +1481,32 @@ artifacts/proofs are required, what is redacted, which failures/notifications fi
 - **Notifications:** the gate opening is the one that matters daily (an open operator gate is already a base trigger), plus run failure, subject mismatch, and unknown write outcome. Triggers carry ids/codes/counts only — never free text — so no captured form contents can leak (D138).
 - **`explain run`** must answer, without archaeology: which person was approved and by whom, which candidates were shown, which punch date the write used and which grid it was read from, the exact staged values, the receipt pair, and what the Kuali read-back saw. Contrast **the legacy signal table** (`separations-legacy-behavior.md` §3, "What the operator actually sees"): three failure classes there terminate **`done`**, two of them having produced wrong or unverified real-world effects.
 
-`ANSWER (operator):`
+**RECORDED ANSWER (2026-08-12).** The draft stands, reconciled with §4c and §4e:
+
+- **`verified`** is unchanged: the gate's `IdentityApprovalResult` (`approvedBy`/`approvedAt`/
+  `evidenceDigest`) **and** the UCPath receipt **pair** **and** the Kuali reload read-back proving
+  **every** staged field against its exact staged variable (**§4e**).
+- **`partial`** is the terminal disposition for "UCPath filed, Kuali document not finalized" — but the
+  run reaches it only by an operator resolution, because **§4c** makes that state **park** first. A
+  partial-completion run does not terminalize on its own; it waits, holding the durable receipt pair,
+  and resumes into the finalization node.
+- **`unknown` parks**, unchanged (post-fence absence, unreadable receipt, disagreeing read-back);
+  only proof-of-presence or an operator-confirmed absence releases it, never a generic retry.
+- **A Kronos failure is none of these** — under **§4b** it terminalizes **`failed`** before any fence,
+  which is why it needs no trust arm: nothing external happened.
+- **Redaction:** per-leaf classification on every evidence leaf, undeclared leaf fails loud — and
+  under **D194** the tables are **wider per task** and are authored *with* the task, not retrofitted.
+- **Notifications and `explain run`:** as drafted. `explain run` additionally owes the staged-variable
+  correspondence §4e creates: which variable each written Kuali field came from, and what the
+  read-back saw for it.
 
 ---
 
 ### 12. Authoring boundary
+
+> **VERDICT: DRAFT STANDS — design work, no operator input needed.** The boundary is fixed by D79a
+> (selectors, schemas, bindings, proof and graph structure are always code) and D60/charter §23 (an
+> advisory can never resolve a gate); §4d and §4g only narrow it further.
 
 *What the answer determines:* which edits the workflow editor may apply as closed
 presentation/policy changes, and which requests must become a code-change brief. Selectors, schemas,
@@ -1007,7 +1521,13 @@ probe policy, and the graph itself. Doc 12 §4.4's **record-sanity-check advisor
 D192) renders as prose beside the gate and is explicitly **never** an authority: it cannot resolve a
 gate (charter §23 / D60) and its suggestions are separately labelled from deterministic findings.
 
-`ANSWER (operator):`
+**RECORDED ANSWER (2026-08-12).** The draft stands. The editable surface is labels, ordering and
+presentation of the gate packet's non-decisive fields, plus notification/severity presentation —
+nothing else. Two of today's answers are explicitly **code, never editable**: the identity gate's
+presence in the graph (**§4d** — the `identity-gate-before-separation-commit` guard is what enforces
+it) and the final-pay constant (**§4g** — an operator-ratified value in code with its reason, not a
+presentation setting). The reason-code map, the date-reconciliation rules, the `+1 day` derivation,
+every selector, the packet composition, the freshness limits and the graph itself all stay code.
 
 ---
 
@@ -1015,7 +1535,7 @@ gate (charter §23 / D60) and its suggestions are separately labelled from deter
 
 Repeated here so the checklist is in one place; the master plan owns the normative text.
 
-- [ ] **§5 questionnaire answered and recorded above, and every §4 decision answered** ← the current blocker
+- [ ] **§5 questionnaire answered and recorded above, and every §4 decision answered** — §4a–§4g and eleven of the twelve §5 items landed 2026-08-12; ← **the remaining blocker is item 5's residuals 5A/5B (the freshness values and the date fields' override column)**, and `new-kronos/read-separation-timecard` cannot be authored without 5A's timecard value
 - [ ] `typecheck` + `lint` + `test:coverage` green (D191); the descriptor passes `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing
 - [ ] Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id, and subject observation resolves; no raw Page/Locator/selector outside the system driver
 - [ ] **Live dry-run green** against Kuali, UCPath, and New Kronos (submit-free, zero durable write rows asserted) — and, per §4f3, the UCPath preparation interval measured on that run
@@ -1032,7 +1552,7 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 - **The controlled-commit target.** A UCPath termination and a Kuali finalization the operator approves. None is invented here; naming one is operator work at doc 07 §3.1 step 5 (the *shape* of that choice is §4f2).
 - **Two UCPath facts that need one real submit** (doc 09 §13 item 6): whether the confirmation dialog renders the `T…` inline, and the propagation window between submit and searchability. Both are currently **ported legacy knowledge**, not rebuild-verified.
 - **`recoveryAbsence` for the UCPath termination.** Until a propagation window is measured, a post-fence absence is `operator-only`; inventing a `minSinceFenceMs` is the banned unverified constant (D128's standing rule).
-- **The behavior review's own `unknown — needs live observation` list** (`separations-legacy-behavior.md` §5) — seven items the legacy source cannot answer. Three of them are already routed into decisions above (the Kuali dropdown option list → §4a; whether an abandoned Kuali draft discards its edits → moot under item 4's draft; whether a "successful" save persisted → settled by §4e). The remaining four are live-observation work at build time, not questionnaire answers: whether UCPath auto-redirects for an already-terminated single-record employee (**S22** — the case where the all-terminated guard never runs), the SS Smart HR *search* results-grid scan (live-verified only for the in-progress grid), whether filling the Kuali department first survives the later timekeeper and date writes, and whether `T002173685` has been reversed and student `10833507` ever separated.
+- **The behavior review's own `unknown — needs live observation` list** (`separations-legacy-behavior.md` §5) — seven items the legacy source cannot answer. Three of them are already routed into decisions above (the Kuali dropdown option list → §4a, whose answer **schedules that capture into the `separations-kuali-read` chunk** as the first instance of §3.2's MAP-EVERYTHING directive; whether an abandoned Kuali draft discards its edits → moot under item 4's draft; whether a "successful" save persisted → settled by §4e). **§4e adds one to the list:** whether the finalization fields all belong to ONE workflow step's section — if not, one save cannot carry them and the node splits, which is a first-live-dry-run finding. The remaining four are live-observation work at build time, not questionnaire answers: whether UCPath auto-redirects for an already-terminated single-record employee (**S22** — the case where the all-terminated guard never runs), the SS Smart HR *search* results-grid scan (live-verified only for the in-progress grid), whether filling the Kuali department first survives the later timekeeper and date writes, and whether `T002173685` has been reversed and student `10833507` ever separated.
 
 ---
 
