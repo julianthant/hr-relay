@@ -196,10 +196,40 @@ start, not retrofit it. See §4 for migration order.
 
 **Status:** driver `unwired` · session provider stub, no `system-bindings.ts` entry · **0 tasks**. See §4.
 
-### `new-kronos` — browser store, declaration-only
+### `new-kronos` — browser store, real
 
-**Status:** driver `unwired` · session provider stub, no `system-bindings.ts` entry · **0 tasks**. A
-shared semantic helper already exists for this store to bind to — see `common/timecard.ts` below. See §4.
+**Status:** driver `semantic-ready` (`NewKronosTimecardDriver`,
+`src/domain/ui/new-kronos-timecard.ts`) · real login recipe (`newKronosLoginRecipe`,
+`src/stores/new-kronos/session.ts`) · `system-bindings.ts` entry · **2 tasks**. Wired into
+`separations-kronos-timecard` (separations chunk 1). Live-verified read-only **2026-08-12**; the full
+observation record is `docs/migrations/separations.md` §9.1 and the store's own `CLAUDE.md`.
+
+**Structurally read-only.** No `commit` operation, no `MutationCapability` in its import graph, and
+`auditNewKronosUiRegistry` refuses an `external-commit` element by name. A write slice adds the
+capability deliberately; it cannot be inherited.
+
+| Task | Effect | Page visit | Output width (D194) |
+|---|---|---|---|
+| `new-kronos/search-employee` | read | the Employee Search results panel | WFD's own `Total [N]`, EVERY rendered candidate as `{displayName, employeeId}`, the matched row, `Selected [N]`, and which of the two render contexts served the panel |
+| `new-kronos/read-separation-timecard` | read | the Timecard | the subject the page displays (EID + name), the window it is PROVED to be showing, and the whole grid — last punch, every punch day, sick and holiday days, every raw pay-code row, the pay codes the classifier did not recognise, plus the header row and scroll/coverage counters |
+
+**REUSE notes for the next migration that touches this store.**
+
+- `kronos-pay-rule` (order 6) wants the **People** page, which is a THIRD page visit
+  (`Go To → People`, `managePeople`) and therefore a third task — not a widening of either of these.
+  The Go To menu's complete option list is already mapped (`Timecard`, `Schedule`, `People`,
+  `Reports`), and `goToMenu.peopleItem()` is still a `candidate` row in the port map.
+- Anything that wants MORE from the timecard page — hours, the Amount column, the Absence column,
+  the schedule — is already there: `payCodeDays` carries the raw cells and `columnHeaders` records
+  what the grid offered. **Project it downstream; do not add a driver operation.**
+- `common/timecard.ts`'s `SemanticTimecardDriver` is **not** bound by this store. That helper is
+  built around the pay-period SWITCH (current → previous) and its `readLastDate` returns one date;
+  the separations read applies an explicit window and needs the full grid, so binding it would have
+  meant two ways to read one page. It stays available for `old-kronos` (order 2) and for any
+  pay-period-relative read.
+- The whole legacy moment-picker calendar path is deliberately unported: real keystrokes stick where
+  `fill()` does not, so a future range-setting need should reuse `setRangeField`'s shape rather than
+  re-porting the calendar.
 
 ### `old-kronos` — browser store, declaration-only
 
@@ -317,7 +347,7 @@ Module binds exactly `[kualiStore]`. ONE transaction node, `annotate-timekeeper`
 
 ## 4 · Gaps at a glance
 
-Six of the nine browser stores are declaration-only (`unwired` driver, stub session provider, 0
+Five of the nine browser stores are declaration-only (`unwired` driver, stub session provider, 0
 tasks, no `system-bindings.ts` entry). Building one is genuinely BUILD work, not CUSTOMIZE — see §1
 step 3. Migration order is doc 07 §3.3's table:
 
@@ -326,7 +356,7 @@ step 3. Migration order is doc 07 §3.3's table:
 | `i9` | **1** | `i9-lookup` (signer lookup) | Pure UCPath-shaped read, same risk class as `person-lookup`. |
 | `sharepoint` | **2** | `sharepoint-download` | Single-system download; low risk. |
 | `old-kronos` | **2** | `old-kronos-reports` | `common/timecard.ts` is the shared helper already waiting for this driver. |
-| `new-kronos` | **6** | `kronos-pay-rule` | Same `common/timecard.ts` helper; first workflow-specific production commit class. |
+| ~~`new-kronos`~~ | ~~6~~ | — | **CLOSED 2026-08-12** by separations chunk 1: the store is `semantic-ready` with 2 read tasks. `kronos-pay-rule` (order 6) still adds the **People** page as a third page visit and the first commit-effect task in this store. |
 | `onbase` | **7** | `onbase` (with ServiceNow) | Uniquely requires `session.exclusive:true` — design the exclusive lease into the login recipe from the start. |
 | `servicenow` | **7** | `oath-upload` | Proves a `receipt`-style completion. |
 

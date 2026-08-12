@@ -906,6 +906,66 @@ CRM **history** page is a second visit and stays its own task under this convent
 
 ---
 
+### 2.9 The first store authored under §2.8 — `new-kronos` as-built (D196, 2026-08-12)
+
+Separations chunk 1 (`docs/migrations/separations.md` §3) is the first slice authored under the
+rich-extraction convention and the first new browser store since the platform was built, so what it
+settled is normative for every store slice after it.
+
+**Two tasks, because two page visits.** `new-kronos/search-employee` is the Employee Search results
+panel; `new-kronos/read-separation-timecard` is the Timecard. The migration doc's §2.4 inventory
+sketches FIVE tasks (`open-timecard`, `verify-timecard-subject`, `set-timecard-range`,
+`read-separation-timecard`) — that table predates §2.8, which was ratified later in the same
+document. Go To, the subject proof, the range apply and the grid read are one visit to one page and
+cannot be re-entered independently; a separate "set the range" task would hand the next task a page
+it could not prove it was still standing on. **The rule this settles: a navigation-plus-state-change
+sequence on ONE page is ONE task, and the split is at the page boundary, never at the step
+boundary.**
+
+**A rich read owes an INVARIANT over its completeness, not just a wider schema.** The WFD timecard
+grid is virtualized: a 73-day window renders 51 date rows at `scrollTop: 0`, so a single DOM read
+returns a plausible, wrongly-truncated timecard. The task therefore accumulates across scroll and
+then asserts a property the complete set must satisfy — WFD renders one row per calendar day, so a
+complete read holds every day in the applied window — and refuses when it does not. Generalise it:
+**when a page virtualizes, a wide read must state what the complete set must contain and assert
+that, rather than trusting the loop that gathered it.** §2.8's obligations (absent arms, declared
+classification) are about each leaf; this one is about the SET, and it is the same class of
+obligation.
+
+**A rich read binds its columns by NAME.** Legacy addressed the grid by fixed cell index; a column
+inserted upstream would silently re-point "Pay code" at "Transfer". The task resolves the live
+header row and fails loud naming the missing or ambiguous header. A positional read is exactly the
+substitution `no-positional-identity` bans one level up.
+
+**The page's own subject is an OUTPUT, not an internal check.** The timecard read returns the EID and
+the display name the timecard itself showed, beside the ones the run expected. The wrong-person
+control is still the contract's `subject` binding, which fails the run — but the receipt carries what
+was observed, which is what lets an operator finish the double-check without opening UKG.
+
+**A value the classifier does not recognise is REPORTED, never dropped.** The ported sick/holiday
+rules are two regexes; the live window carried two pay codes neither matches. They surface as
+`unclassifiedPayCodes`. A rich read that silently discards what it could not classify is narrower
+than it looks, and here the discarded value could move a real termination's effective date.
+
+**Distinct negatives are distinct ERROR CODES.** Where a migration's answer is "all of these fail"
+(separations §4b) but the values must stay distinguishable, the distinct durable value is
+`FailureRecord.code`: `employee-not-found`, `search-returned-no-match` and `search-no-signal` are
+three codes, not one boolean. A timeout is never a negative.
+
+**Session facts** (doc 05 §4.1 owns the contract; recorded here because they were settled in this
+slice): New Kronos does **not** hop through `a5.ucsd.edu` — its SSO chain lands on ForgeRock under
+`*.prd.mykronos.com`, serving the same UCSD credential form. D120's two independent facts are the
+application-issued `kronosAuthToken` on the WFD host plus the absence of both the UCSD SSO form and
+ForgeRock's XUI login shell. The IDP's own JWT was rejected as the positive fact: it proves the
+identity provider authenticated somebody, and it is scoped to a parent domain that includes the
+sign-on host.
+
+**The store is structurally read-only.** No `commit` operation, no `MutationCapability` in its import
+graph, and the UI-registry audit refuses an `external-commit` element by name. A later write slice
+adds the capability deliberately; it cannot be inherited.
+
+---
+
 ## 3. Task stores per system plus pure workflow mini-stores
 
 ### 3.1 Layout in the rebuild repo's `src/`

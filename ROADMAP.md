@@ -16,7 +16,7 @@
 | **Scope** | **Solo, local, never hosted** (D193) — one operator, one machine; "production" = the day this replaces legacy as your daily **local** tool. *Later, unplanned:* package it as a locally-run app ("web app → real app"); a cooperation/multi-user mode built **on top of** solo, if ever |
 | Runtime phase marker | `completedThrough: "2j"` · `active: "3-workflow-migration"` |
 | Phases complete | 0, 1 (a–e, f, g-spine, i-spine), 2 (proof + 2g + 2h + 2i + 2j) |
-| Active phase | **Phase 3 — per-workflow migration**; **building separations chunk 1** — the `new-kronos` store + timecard-read sub-workflow, order 8 (D193), questionnaire fully answered 2026-08-12 |
+| Active phase | **Phase 3 — per-workflow migration**; separations **chunk 1 LANDED** (the `new-kronos` store + timecard-read sub-workflow, D196) — next is chunk 2, `separations-kuali-read` |
 | After Phase 3 | The one all-at-once cutover (D89/D93), then rollback-window closure |
 | Decisions ratified | D1–D193 (D131 is a permanent gap — never reused) |
 | Authority schema | v13 (released migrations SHA-pinned, immutable) |
@@ -85,8 +85,10 @@ stays the risk-proof ordering, so this entry buys the deepest write proof first 
 it cheaper. Separations still owes every exit criterion other than the questionnaire —
 `docs/migrations/separations.md` holds it, and as of **2026-08-12 the questionnaire is fully
 answered**, including §5 item 5's freshness values (residuals **5A** and **5B**); the doc's status
-flipped from BLOCKED to **READY TO BUILD**, and chunk 1 (the `new-kronos` store + the
-`separations-kronos-timecard` timecard-read sub-workflow) is now underway. Its controlled-commit
+flipped from BLOCKED to **READY TO BUILD**, and **chunk 1 LANDED 2026-08-12 (D196)** — the
+`new-kronos` store is `semantic-ready` (real driver, login recipe, published UI registry, 16 ported
+selectors live-re-verified) with two page-visit read tasks, and the `separations-kronos-timecard`
+sub-workflow is registered and read-only. Its controlled-commit
 target (a UCPath termination + Kuali finalization you approve) is still yours to name at step 5; none
 has been invented.
 

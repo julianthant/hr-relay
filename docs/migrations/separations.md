@@ -346,6 +346,26 @@ automatically "no delegation".
 proof. A chunk that cannot be proved alone is a sign the decomposition is wrong, not a reason to
 compose early.
 
+**NO FRONTEND WORK IN ANY CHUNK — BUT EXPOSE EVERYTHING THE FRONTEND WILL NEED (operator directive,
+2026-08-12).** No chunk of this migration builds UI: no components, no surfaces, no dashboard `.tsx`.
+Every chunk instead makes its workflow fully operable through the machinery that already exists —
+the start-plan and command endpoints, and the queue/run-detail wires, which render a registered
+workflow off the registry automatically (**verify that; do not build it**). What a chunk DOES owe is
+the server side of everything a frontend will later need: wire schemas, BFF endpoints, command arms
+and projection state. **If a fact the frontend will need is not yet served, serve it on the wire
+behind a strict schema — and stop there.**
+
+Concretely, for the chunks where this is easiest to get wrong:
+
+- **Chunk 3 (the UCPath termination write)** — doc 09 §14's ALWAYS-GATE identity approval becomes a
+  **command arm plus wire state ONLY**. The approval UI comes later; the gate's packet, its
+  freshness bound and its resolution command are all server-side facts served on the wire.
+- **Chunk 6 (composition)** — exposes start / approve / resume endpoints. No surfaces.
+- **Parity** — a chunk may re-freeze references only for a MECHANICAL delta (a registry stamp, a
+  toolbar entry, a catalog count) that the corpus genuinely demands, and must verify the diff is
+  exactly that delta before accepting it. A mechanical refreeze is not frontend work; authoring a
+  reference for a new surface would be.
+
 ### 3.1 Scenario variability is handled by LEGO RECOMPOSITION, never by branches (operator directive, 2026-08-12)
 
 **The directive, plainly.** Different real-world situations are served by **moving and swapping
@@ -1609,7 +1629,6 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 ---
 
 ## 8. Cross-references
-
 | Document | What it owns, relative to this doc |
 |---|---|
 | `docs/migrations/separations-legacy-behavior.md` | The traced legacy account: the happy path end to end, the **S1–S63 scenario table** (§2), per-scenario detail with source quotations (§3), the eleven dangerous patterns (§4), and the `unknown — needs live observation` list (§5). Every S-number cited above resolves there. |
@@ -1618,3 +1637,106 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 | `docs/rebuild/09-write-safety.md` | §2 completion arms, §4/§4.1 recovery and operator resolutions, §5 probe policy, §12 the worked two-transaction separations example, §13 the beat structure, **§14 the ALWAYS-GATE** (and §14.7's two values left to this questionnaire). |
 | `docs/rebuild/04-reconciliation.md` | The decision index — **D193** (separations as the Phase-3 entry) and, if §2.6 is confirmed, **D194**. A pointer index only; never implement from it. |
 
+---
+
+## 9. The mapping appendix — everything each chunk observed live (§3.2 MAP EVERYTHING)
+
+One section per chunk, appended as the chunk is built. Every entry carries its live-observation date
+the way a selector does. Captures are **read-only** page observations, standing pre-authorized by the
+charter's live-verification clause.
+
+### 9.1 Chunk 1 — New Kronos (UKG Dimensions / WFD), observed 2026-08-12
+
+Read-only, Duo cleared hands-off by Duo Autopilot. Subject: EID `10776990`, window
+`06/01/2026`–`08/12/2026`, plus a nonexistent EID (`99999999`) and a common-surname search
+(`Nguyen`) to map the negative and multi-result shapes.
+
+**Authentication chain.** Entry `https://ucsd-sso.prd.mykronos.com/wfd/home` redirects to
+`https://cust01-prd07-ath01.prd.mykronos.com/authn/XUI/?realm=ucsd_prd_01&service=30847CustomerIDPChain&goto=…`
+— **ForgeRock, not TritON**. Heading `Signing on using: Active Directory`. **No login-type picker**
+(CRM's realm hazard cannot occur here). Fields are the standard UCSD ones: `input#ssousername`
+(`name="urn:mace:ucsd.edu:sso:username"`), `input#ssopassword`, submit
+`button[name="_eventId_proceed"]` labelled `Login`. Duo at `api-*.duosecurity.com`. Landing
+`…/wfd/home`, title `Home`.
+
+**Measured timings.** Entry → SSO form ≈ 1.5 s · credential submit → landing **3.32 s** ·
+browser launch → home ≈ 33 s · Go To → Timecard **6.2 s** · Apply → grid repaint **6.1 s** ·
+genuine no-results sentinel **548 ms**.
+
+**Session artifacts** (application host `ucsd-sso.prd.mykronos.com`): `kronosAuthToken`,
+`securityToken`, `widgetToken`, `falconAuthCookie`, `ssologin`, `_csrf`, `kronosCookie`, `allTokens`.
+(Domain `.prd.mykronos.com`: `AUTHN_TOKEN` — an RS256 JWT whose `sub` is the signed-in person number
+— plus `AUTHZ_TOKEN`, `TENANT_AUTHORIZATION`, `authn_ssid`, `VANITY_URL`.)
+
+**Render contexts.** The Employee Search panel renders in **two** places: inside
+`iframe[name^="portal-frame-"]` on a fresh home load (suffix is session-scoped —
+`portal-frame-172554836363` and `portal-frame-227531434843` observed minutes apart), and **top-level**
+after a timecard navigation, where the page has **no named frames at all**.
+
+**Employee Search panel structure.** `heading "Employee Search" [level=1]` ·
+`textbox "Search by Employee Name or ID"` · `button "Search"` (disabled until non-empty) ·
+`button "Clear Search"` · `button "Advanced Settings"` · `button "Cancel"` ·
+`button "Employee Search Close"`. Enter in the textbox submits.
+
+**Search-results structure.** `button "Show Search Results for \"<query>\""` +
+`generic: Results for "<query>"` (collapsed search) · two `p.totals-counter` paragraphs rendering
+`Total [N]` and `Selected [N]` · a `menu` whose children are one `menuitemradio` per result, each
+carrying `aria-label="Name <name> ID <eid>"` and containing `checkbox "Select Item"` and
+`button "Name <name> ID <eid>"` · a live region `Search results: N items`. **No results**: the text
+`There are no items to display.`, zero slats, and **no** `.totals-counter` paragraphs at all.
+Multi-result observed: `Nguyen` → `Total [12]`, 12 slats.
+
+**Go To.** `#goToDropdownButton`, exactly one node in whichever context hosts the panel;
+`ng-disabled` until a slat is selected (verified moving `Selected [0]` → `Selected [1]`).
+**Complete option list: `Timecard`, `Schedule`, `People`, `Reports`** (role=option, panel context
+only). Timecard lands on `https://ucsd-sso.prd.mykronos.com/timekeeping#/timecard`.
+
+**Timecard identity.** `.emp-nav-id` (exactly one) = the EID · `#combo_inptxt`
+(`input[role=combobox]`, `title`/`aria-label`/value) = the displayed name, `"Last, First M"`. The
+surrounding chrome is `.emp-nav-visible` › `.emp-nav-wrapper` › `.emp-nav-list` /
+`.emp-nav-info-btn-group`.
+
+**Pay-period control.** Trigger `button.select-timeframe-button` (icon-only,
+`aria-labelledby="quickFindTimeFrameSelectorLabel _timeFrame"`) — exactly one. Label `#_timeFrame`
+(class `selected-timeframe`) — exactly one, and **also a button**, which is why legacy's name-regex
+recipe matched two nodes and `.first()` was masking it.
+**Complete pay-period option list (24):** Previous Pay Period · Current Pay Period · Next Pay Period ·
+Previous Schedule Period · Current Schedule Period · Next Schedule Period · Next Schedule Period + 1 ·
+Next Schedule Period + 2 · Today · Yesterday · Tomorrow · Week to Date · Month to Date · Last Week ·
+Yesterday, Today, Tomorrow · Yesterday Plus 6 Days · Yesterday Minus 13 Days · Last 7 Days ·
+Last 30 Days · Current Week · Last 4 Weeks · Last 3 Months · Last 90 Days · Last 4 Quarters. Plus
+`button "Select range"`.
+
+**Custom range.** `#startDateTimeInput` / `#endDateTimeInput`, both
+`ng-attr-type="{{rangeInput.useNativeDateInput ? 'date' : 'text'}}"` — observed in **text** mode,
+rendering values with inconsistent padding (`08/12/2026` beside `6/01/2026`). `button "Apply"`
+(`.btn.btn-primary`). After Apply the period label reads back the applied window
+(`6/01/2026 - 8/12/2026`), which is what makes S40 a value comparison. **`fill()` is silently
+reverted by the Angular digest** (6 samples over 2.4 s all read the pre-fill value); **real
+keystrokes stick** (5 samples over 2 s).
+
+**Timecard grid.** Two `.ui-grid-viewport`s. Pinned columns `. · . · Date`; data columns
+`Schedule · In · Out · Transfer · Pay code · Amount · Shift · Daily · Period · Absence` (read from
+`.ui-grid-header-cell`; header text carries a sort-order suffix, `"In 1"`). Rows are `[role=row]`
+with `[role=gridcell]`. **The grid is VIRTUALIZED**: the 73-day window rendered **51** date rows at
+`scrollTop: 0` (06/01 … 07/20); scrolling the pinned viewport in `clientHeight × 0.8` steps and
+accumulating yielded all **73** days in **9** steps. One calendar day can own multiple data rows and
+the date cell renders once, so the date carries forward.
+
+**Pay codes observed in one 73-day window:** `Holiday - Hourly` (amount `4.00`),
+`Juneteenth Observed` (`0.00`), `Independence Day Observed` (`0.00`). **Only the first matches the
+ported `/holiday/i` rule** — see the open item below. No sick rows were present.
+
+**Statuses/branches encountered:** search → `resolved` | `no-match` | `no-results` | `no-signal`;
+timecard → loaded-and-identifiable, window-applied, and the empty-window case (the subject's current
+pay period 08/02–08/15 carried zero populated rows, which is S38's real outcome).
+
+**Open item for the operator — the unrecognised holiday pay codes.** `Juneteenth Observed` and
+`Independence Day Observed` are real holiday days that the ported classifier does not count, and one
+of them (07/03) fell **after** the last counted holiday. Since the separation date is
+`max(LDW, last sick, last holiday)`, counting them would move a real termination's effective date.
+The chunk-1 behaviour is deliberately **legacy-identical plus visible**: the two regexes are ported
+verbatim and every unmatched pay code is surfaced as `unclassifiedPayCodes` rather than dropped.
+Options are recorded in the return of the chunk-1 build; nothing is decided here.
+
+---
