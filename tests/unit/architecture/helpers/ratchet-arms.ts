@@ -95,8 +95,15 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
   "code-conventions": {
     roots: ["src"],
     fixture: {
-      files: { "src/core/Bad_name.ts": "const value = true; export default value;\n" },
-      expected: /default export|filename/,
+      // The second file carries a REAL NUL byte (the escape below evaluates to
+      // one before the fixture is written), because the control-byte arm's whole
+      // subject is bytes that make a file invisible to text tooling — a fixture
+      // spelled with the escape would test nothing.
+      files: {
+        "src/core/Bad_name.ts": "const value = true; export default value;\n",
+        "src/core/nul-carrier.ts": "export const separator = \"\u0000\";\n",
+      },
+      expected: /(?=[\s\S]*(?:default export|filename))(?=[\s\S]*raw control byte)/,
     },
   },
   "frontend-tailwind-compliance": {
@@ -360,14 +367,35 @@ function auditLayering(files: readonly string[], root: string): string[] {
   string literal typed as the actual byte instead of the escape. Tab, CR and LF
   are the only control bytes with any business in source.
 */
-const RAW_CONTROL_BYTE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/;
+function hasRawControlByte(text: string): boolean {
+  for (const character of text) {
+    const code = character.codePointAt(0) ?? 0;
+    // 9 = tab, 10 = LF, 13 = CR - the only control bytes source may carry.
+    if (code < 32 && code !== 9 && code !== 10 && code !== 13) return true;
+  }
+  return false;
+}
+
+/*
+  The five committed carriers found the day the check landed (2026-08-12) were
+  PINNED for one afternoon rather than fixed in the same commit, because four
+  sit inside descriptor source closures: fixing their bytes moves
+  contractFingerprints, which regenerates generated-build-manifest.ts and drifts
+  every a11y reference that renders a fingerprint - and the manifest was
+  carrying another session's uncommitted work at the time. That debt was PAID by
+  separations chunk 2 (the closure edit, `build:manifest`, and the deliberate
+  parity re-freeze in one unit), so the pin set is gone and this is a plain
+  invariant again: NO source file carries a raw control byte, full stop. Do not
+  reintroduce a pin list - a carrier that cannot be fixed today is a carrier
+  that hides the file from every audit today.
+*/
 
 function auditConventions(files: readonly string[], root: string): string[] {
   const violations: string[] = [];
   for (const file of files) {
     const path = normalize(relative(root, file));
     const name = basename(file, extname(file));
-    if (RAW_CONTROL_BYTE.test(readFileSync(file, "utf8"))) {
+    if (hasRawControlByte(readFileSync(file, "utf8"))) {
       violations.push(`${path}: raw control byte — write the "\\u0000"-style escape so the file stays text to git and grep`);
     }
     if (!path.startsWith("src/dashboard/") && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) {
