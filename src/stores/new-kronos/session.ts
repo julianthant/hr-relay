@@ -43,10 +43,12 @@ import {
   probeSessionCookie,
 } from "../../infra/browser/authenticated-application.js";
 import { BrowserLoginError } from "../../infra/browser/login-contract.js";
+import type { ObservedFact } from "../../infra/browser/authenticated-application.js";
 import type {
   AuthenticatedApplicationVerifier,
   AuthenticationProbe,
 } from "../../infra/browser/login-contract.js";
+import type { Page } from "playwright";
 import {
   abortIfCancelled,
   fillSsoCredentials,
@@ -78,6 +80,27 @@ const NEW_KRONOS_APP_PATH = "/wfd";
 const NEW_KRONOS_SESSION_COOKIE = "kronosAuthToken";
 const NEW_KRONOS_COOKIE_DOMAIN = "ucsd-sso.prd.mykronos.com";
 /**
+ * How long the application may take to issue its own session cookie before its
+ * absence counts as a refusal (80 polls, 250ms apart = 20s).
+ *
+ * WFD is a client-rendered SPA and `kronosAuthToken` is issued by the
+ * APPLICATION's own bootstrap, not by the SSO redirect that lands the URL. The
+ * landing wait resolves on the URL, so a single immediate sample races that
+ * bootstrap — measured on the first live run (`sk-123452-7b1e`, 2026-08-12): the
+ * URL was `…/wfd/home` and the context already held `AUTHN_TOKEN`,
+ * `iPlanetDirectoryPro`, `authn_ssid` and `XSRF-TOKEN`, but not yet
+ * `kronosAuthToken`, and the login refused a session that was in fact
+ * authenticating. This is the same shape as Kuali's late-painting menubar.
+ *
+ * This is a bounded wait for the SAME fact, not a fallback: if the cookie never
+ * arrives inside the bound the probe still reports `holds:false` and the login
+ * still refuses, naming the cookie and listing what the context did hold. It costs nothing on the unauthenticated paths, because
+ * `verifyUcsdAuthenticatedApplication` short-circuits on the URL first.
+ */
+const NEW_KRONOS_SESSION_COOKIE_POLL_MS = 250;
+/** 80 x 250ms = a 20s bound on the application's own bootstrap. */
+const NEW_KRONOS_SESSION_COOKIE_POLLS = 80;
+/**
  * Both sign-in surfaces that can appear on the way in: the UCSD credential form
  * (rendered by ForgeRock here, not TritON) and ForgeRock's own XUI login shell.
  * If either is on screen we are not in the application, whatever the URL says.
@@ -100,6 +123,32 @@ export function isAuthenticatedNewKronosUrl(rawUrl: string): boolean {
     && !url.startsWith("chrome-error");
 }
 
+/**
+ * The positive fact, sampled repeatedly until the application issues it or the
+ * bound elapses. The LAST observation is what the probe reports, so a refusal
+ * still names the cookie and lists what the context actually held.
+ */
+async function probeIssuedSessionCookie(page: Page): Promise<ObservedFact> {
+  // Bounded by a POLL COUNT rather than a wall-clock deadline: a verifier's
+  // context carries no `Clock`, and `clock-single-source` rightly refuses a
+  // second time source in a store. 80 polls x 250ms is the same 20s bound.
+  let observed: ObservedFact = { holds: false, detail: "the session-cookie probe never ran" };
+  for (let poll = 0; poll < NEW_KRONOS_SESSION_COOKIE_POLLS; poll++) {
+    observed = await probeSessionCookie(page, {
+      name: NEW_KRONOS_SESSION_COOKIE,
+      domainSuffix: NEW_KRONOS_COOKIE_DOMAIN,
+      issuer: "UKG Dimensions (WFD)",
+    });
+    if (observed.holds) return observed;
+    await new Promise<void>((resolve) => { setTimeout(resolve, NEW_KRONOS_SESSION_COOKIE_POLL_MS); });
+  }
+  return {
+    holds: false,
+    detail: `${observed.detail} across ${String(NEW_KRONOS_SESSION_COOKIE_POLLS)} polls `
+      + `${String(NEW_KRONOS_SESSION_COOKIE_POLL_MS)}ms apart after landing`,
+  };
+}
+
 /** The two-fact proof: WFD's own session cookie, and no sign-in form. */
 export const verifyNewKronosAuthenticatedApplication: AuthenticatedApplicationVerifier = async (
   context,
@@ -107,11 +156,7 @@ export const verifyNewKronosAuthenticatedApplication: AuthenticatedApplicationVe
   urlIsApplication: isAuthenticatedNewKronosUrl,
   urlRefusal:
     "the observed URL is not the UKG Dimensions (WFD) application; the ForgeRock sign-on host shares the mykronos.com domain and is refused here",
-  positive: async () => probeSessionCookie(context.page, {
-    name: NEW_KRONOS_SESSION_COOKIE,
-    domainSuffix: NEW_KRONOS_COOKIE_DOMAIN,
-    issuer: "UKG Dimensions (WFD)",
-  }),
+  positive: async () => probeIssuedSessionCookie(context.page),
   additionalAbsences: [
     async () => probeAbsentControl(context.page, {
       selector: SSO_FORM_SELECTOR,

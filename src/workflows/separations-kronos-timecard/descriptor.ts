@@ -184,7 +184,24 @@ const separationsKronosTimecardFlow = flow(SeparationsKronosTimecardInput)
   .step("search", NewKronosSearchEmployee, {
     label: "Employee Search",
     dependsOn: [],
-    replay: "checkpoint",
+    /**
+     * `always-rerun`, and this is the load-bearing choice in the graph.
+     *
+     * The search's OUTPUT is durable, but its POINT is a side effect that is
+     * not: it leaves the employee selected in the WFD search panel, which is
+     * the only thing that enables Go To. Replaying the checkpoint restores the
+     * output into a FRESH browser that has never opened the panel, so the
+     * timecard node then refuses — observed live on run `sk-124132-9beb`
+     * (2026-08-12), which replayed the previous attempt's search checkpoint and
+     * failed at Go To with an empty panel.
+     *
+     * The general rule this settles: **a node whose real product is BROWSER
+     * state may not be `replay: "checkpoint"`.** Doc 02 §5.3 replay restores
+     * values, never page state, so a downstream task whose precondition is a
+     * live page must be preceded by a node that actually runs. The search is a
+     * ~2s read; re-running it is strictly cheaper than the failure mode.
+     */
+    replay: "always-rerun",
     bind: ({ input }) => ({ emplId: input.emplId, searchTimeoutMs: input.searchTimeoutMs }),
   })
   .step("timecard", NewKronosReadSeparationTimecard, {

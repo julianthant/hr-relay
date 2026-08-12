@@ -108,6 +108,20 @@ const RANGE_FIELD_SETTLE_TIMEOUT_MS = 8_000;
 /** Angular enables Go To within a frame of the checkbox commit. */
 const SELECTION_TIMEOUT_MS = 10_000;
 const POLL_INTERVAL_MS = 200;
+/**
+ * How many CONSECUTIVE polls must show WFD's no-results sentinel, with no
+ * result row anywhere, before the absence is reported as a real negative.
+ * 15 x 200ms = 3s of stillness — comfortably above the 548ms in which a genuine
+ * negative rendered live, and above the window in which a real hit was still
+ * resolving behind the same sentinel.
+ */
+const NO_RESULTS_STABLE_POLLS = 15;
+/**
+ * The search bound the TIMECARD visit uses for its own navigation prelude. The
+ * task-facing search contract carries the operator's bound; this one is the
+ * driver's internal reach-the-page step and is not a caller's choice.
+ */
+const PANEL_SEARCH_TIMEOUT_MS = 20_000;
 
 type PanelRoot = FrameLocator | Page;
 type PanelContext = "portal-frame" | "top-level";
@@ -148,13 +162,31 @@ function resolveRecipe(root: PanelRoot, id: ElementId): Locator {
   }
 }
 
-/** Resolve to EXACTLY one node, or refuse naming the element and the count. */
-async function exactlyOne(root: PanelRoot, id: ElementId): Promise<Locator> {
+/**
+ * Resolve to EXACTLY one node, or refuse naming the element and the count.
+ *
+ * This is a BOUNDED WAIT for the count to be one, not a single sample. WFD is a
+ * client-rendered SPA and its chrome paints after the route settles — measured
+ * live 2026-08-12 on run `sk-123704-7551`, where the navbar's `Employee Search`
+ * button resolved to ZERO nodes on an authenticated `…/wfd/home` immediately
+ * after landing. A sampled-once count is an observation of the render, not of
+ * the page; the same defect took two live runs to surface in Kuali.
+ *
+ * A count of TWO short-circuits immediately: ambiguity does not resolve itself
+ * by waiting, and returning `.first()` is exactly what this refusal exists to
+ * prevent.
+ */
+async function exactlyOne(clock: Clock, root: PanelRoot, id: ElementId): Promise<Locator> {
   const candidates = resolveRecipe(root, id);
-  const count = await candidates.count();
-  if (count === 1) return candidates;
+  const settled = await pollUntil(clock, CONTROL_TIMEOUT_MS, async () => {
+    const count = await candidates.count();
+    return count === 0 ? null : count;
+  });
+  if (settled.value === 1) return candidates;
+  const observed = settled.value === null ? 0 : settled.value;
   throw new NewKronosDriverError(
-    `semantic element ${id} resolved to ${String(count)} nodes, expected exactly 1 — refusing to guess which one`,
+    `semantic element ${id} resolved to ${String(observed)} nodes after ${String(settled.waitedMs)}ms, `
+    + "expected exactly 1 — refusing to guess which one",
   );
 }
 
@@ -188,7 +220,18 @@ function createDriverInternals(page: Page, clock: Clock) {
   const nowIso = (): string => IsoInstantSchema.parse(clock.now().toISOString());
 
   /**
-   * Which context currently hosts the Employee Search panel.
+   * Which context currently hosts the Employee Search panel, probed through an
+   * ANCHOR the caller names.
+   *
+   * The anchor is a parameter because the panel has two states and they do not
+   * share a control: before a search it renders the query field; AFTER one it
+   * collapses to `Show Search` and the query field is GONE, while the Go To
+   * button is present. Legacy records this exact trap
+   * (`navigate.ts:323-340` — "`resolveSearchRoot` (which probes the input) can
+   * mis-detect the context here"), and the first live run of this workflow
+   * (`sk-123940-ab25`, 2026-08-12) reproduced it: the search node succeeded and
+   * the timecard node then refused because it probed for a field the successful
+   * search had just collapsed.
    *
    * Live 2026-08-12: a fresh home load renders it inside
    * `iframe[name^="portal-frame-"]` (the suffix is session-scoped), and after a
@@ -196,21 +239,24 @@ function createDriverInternals(page: Page, clock: Clock) {
    * at all. Probing the panel's own query field is what decides; there is no
    * default, and failing to find it in either context is a loud refusal.
    */
-  const resolvePanelRoot = async (): Promise<{ root: PanelRoot; context: PanelContext }> => {
+  const resolvePanelRoot = async (
+    anchor: ElementId,
+  ): Promise<{ root: PanelRoot; context: PanelContext }> => {
     const probe = await pollUntil(clock, PANEL_CONTEXT_TIMEOUT_MS, async () => {
       const frame = page.frameLocator(NEW_KRONOS_PORTAL_FRAME_SELECTOR);
-      if (await resolveRecipe(frame, NEW_KRONOS_SEARCH_QUERY_FIELD).count() > 0) {
+      if (await resolveRecipe(frame, anchor).count() > 0) {
         return { root: frame as PanelRoot, context: "portal-frame" as PanelContext };
       }
-      if (await resolveRecipe(page, NEW_KRONOS_SEARCH_QUERY_FIELD).count() > 0) {
+      if (await resolveRecipe(page, anchor).count() > 0) {
         return { root: page as PanelRoot, context: "top-level" as PanelContext };
       }
       return null;
     });
     if (probe.value === null) {
       throw new NewKronosDriverError(
-        `the Employee Search query field rendered in neither the ${NEW_KRONOS_PORTAL_FRAME_SELECTOR} context `
-        + `nor top-level within ${String(PANEL_CONTEXT_TIMEOUT_MS)}ms — the search panel did not open`,
+        `the Employee Search panel's ${anchor} rendered in neither the `
+        + `${NEW_KRONOS_PORTAL_FRAME_SELECTOR} context nor top-level within `
+        + `${String(PANEL_CONTEXT_TIMEOUT_MS)}ms — the panel is not in the state this step needs`,
       );
     }
     return probe.value;
@@ -258,6 +304,26 @@ function createDriverInternals(page: Page, clock: Clock) {
     return candidates;
   };
 
+  /**
+   * Open the panel, search for `employeeId`, and select the matching row.
+   * Returns the panel root and context, or throws naming what went wrong.
+   * Shared by both operations so neither depends on the other having run.
+   */
+  const selectEmployeeInPanel = async (
+    employeeId: string,
+  ): Promise<{ root: PanelRoot; context: PanelContext }> => {
+    const read = await searchEmployee({ employeeId, searchTimeoutMs: PANEL_SEARCH_TIMEOUT_MS });
+    if (read.state !== "resolved") {
+      throw new NewKronosDriverError(
+        `could not select EID ${employeeId} in the Employee Search panel before opening the timecard: `
+        + `the search answered ${read.state} — this is a navigation failure, not an empty timecard`,
+      );
+    }
+    // After a search the panel's query field collapses into `Show Search`, so
+    // the Go To button is what proves the context from here on.
+    return resolvePanelRoot(NEW_KRONOS_SEARCH_GO_TO_BUTTON);
+  };
+
   const searchEmployee = async (
     input: Readonly<{ employeeId: string; searchTimeoutMs: number }>,
   ): Promise<NewKronosSearchRead> => {
@@ -266,19 +332,32 @@ function createDriverInternals(page: Page, clock: Clock) {
     // proved by `resolvePanelRoot`. This is the one swallow in this file.
     await closeSearchPanel();
 
-    const openButton = await exactlyOne(page, NEW_KRONOS_SEARCH_OPEN_BUTTON);
+    const openButton = await exactlyOne(clock, page, NEW_KRONOS_SEARCH_OPEN_BUTTON);
     await openButton.click({ timeout: CONTROL_TIMEOUT_MS });
 
-    const { root, context } = await resolvePanelRoot();
-    const queryField = await exactlyOne(root, NEW_KRONOS_SEARCH_QUERY_FIELD);
+    const { root, context } = await resolvePanelRoot(NEW_KRONOS_SEARCH_QUERY_FIELD);
+    const queryField = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_QUERY_FIELD);
     await queryField.fill(input.employeeId, { timeout: CONTROL_TIMEOUT_MS });
-    const submit = await exactlyOne(root, NEW_KRONOS_SEARCH_SUBMIT_BUTTON);
+    const submit = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_SUBMIT_BUTTON);
     await submit.click({ timeout: CONTROL_TIMEOUT_MS });
 
     // legacy navigate.ts:142-178 — poll BOTH contexts and let a found signal
     // beat the sentinel: WFD renders both briefly while the grid loads (legacy
     // live 2026-07-06, and the reason a Promise.race mis-resolved a real hit).
     const roots: PanelRoot[] = [page.frameLocator(NEW_KRONOS_PORTAL_FRAME_SELECTOR), page];
+    // A POSITIVE result is accepted on sight; the SENTINEL must hold across
+    // consecutive polls before it counts.
+    //
+    // WFD renders its empty-grid sentinel while the search is still resolving,
+    // so a sentinel sampled once is not "no such employee" — it is "not yet".
+    // Live run `sk-124821-5956` (2026-08-12) proved the cost: EID 10776990,
+    // which had resolved minutes earlier in the same session AND in run
+    // `ab258c43`, came back `employee-not-found` on a first-sight sentinel. §4b
+    // makes that failure terminal, so a false negative fails a real separation.
+    // Stabilizing a negative observation is the same discipline doc 09 applies
+    // post-fence: a `present` reading is evidence immediately, an `absent` one
+    // has to hold still.
+    let sentinelStreak = 0;
     const outcome = await pollUntil(clock, input.searchTimeoutMs, async () => {
       for (const candidateRoot of roots) {
         if (await resolveRecipe(candidateRoot, NEW_KRONOS_SEARCH_RESULT_SLAT).count() > 0) {
@@ -287,9 +366,14 @@ function createDriverInternals(page: Page, clock: Clock) {
       }
       for (const candidateRoot of roots) {
         if (await resolveRecipe(candidateRoot, NEW_KRONOS_SEARCH_NO_RESULTS_TEXT).count() > 0) {
-          return { kind: "sentinel" as const, root: candidateRoot };
+          sentinelStreak++;
+          return sentinelStreak >= NO_RESULTS_STABLE_POLLS
+            ? { kind: "sentinel" as const, root: candidateRoot }
+            : null;
         }
       }
+      // The sentinel disappearing resets the streak: it was the loading state.
+      sentinelStreak = 0;
       return null;
     });
 
@@ -405,7 +489,7 @@ function createDriverInternals(page: Page, clock: Clock) {
 
   /** Set one range field by REAL keystrokes and poll it back, or refuse. */
   const setRangeField = async (id: ElementId, value: string, label: string): Promise<void> => {
-    const field = await exactlyOne(page, id);
+    const field = await exactlyOne(clock, page, id);
     await field.click({ timeout: CONTROL_TIMEOUT_MS });
     await field.press("ControlOrMeta+a", { timeout: CONTROL_TIMEOUT_MS });
     // `fill()` is silently reverted by WFD's Angular digest in text mode
@@ -436,7 +520,7 @@ function createDriverInternals(page: Page, clock: Clock) {
   };
 
   const readPeriodLabel = async (): Promise<string> => {
-    const label = await exactlyOne(page, NEW_KRONOS_TIMECARD_PERIOD_LABEL);
+    const label = await exactlyOne(clock, page, NEW_KRONOS_TIMECARD_PERIOD_LABEL);
     const text = await label.textContent();
     if (text === null) {
       throw new NewKronosDriverError(
@@ -461,83 +545,116 @@ function createDriverInternals(page: Page, clock: Clock) {
     headers: string[];
     scrollSteps: number;
   }> => {
-    const harvest = await page.evaluate(async (pollMs: number) => {
+    // NOTE: everything below runs the page-side read as SMALL ANONYMOUS
+    // callbacks with no inner named bindings, and keeps the loop on the Node
+    // side. `tsx` compiles this file with esbuild's `keepNames`, which wraps a
+    // named function or a function assigned to a `const` in a `__name(...)`
+    // helper — a helper the BROWSER does not have. Live run `sk-125229-f0c8`
+    // (2026-08-12) died with `ReferenceError: __name is not defined` inside
+    // `page.evaluate` for exactly that reason, and the shape of the fix is
+    // general: an evaluated callback may not declare functions.
+    const harvestOnce = async (): Promise<{
+      rows: readonly { month: number; day: number; rawDateCell: string; cells: readonly string[] }[];
+      headers: readonly string[];
+      viewportCount: number;
+      topRow: string;
+      scrollTop: number;
+      scrollHeight: number;
+      clientHeight: number;
+    }> => page.evaluate(() => {
       const viewports = [...document.querySelectorAll(".ui-grid-viewport")];
       const dateViewport = viewports[0];
       const dataViewport = viewports[viewports.length - 1];
       if (dateViewport === undefined || dataViewport === undefined || viewports.length < 2) {
-        return { rows: [], headers: [], scrollSteps: 0, viewportCount: viewports.length };
+        return {
+          rows: [], headers: [], viewportCount: viewports.length,
+          topRow: "", scrollTop: 0, scrollHeight: 0, clientHeight: 0,
+        };
       }
       const headers = [...document.querySelectorAll(".ui-grid-header-cell")]
         .map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim())
         .filter((text) => text.length > 0 && text !== ".");
-      const seen = new Map<string, { month: number; day: number; rawDateCell: string; cells: string[] }>();
-      const collect = (): string => {
-        const dateRows = [...dateViewport.querySelectorAll("[role=row]")];
-        const dataRows = [...dataViewport.querySelectorAll("[role=row]")];
-        let carried: { month: number; day: number; rawDateCell: string } | null = null;
-        for (let index = 0; index < Math.max(dateRows.length, dataRows.length); index++) {
-          const dateRow = dateRows[index];
-          const raw = dateRow === undefined ? "" : (dateRow.textContent ?? "").replace(/\s+/g, " ").trim();
-          const match = /([A-Za-z]{3})\s+(\d{1,2})\/(\d{1,2})/.exec(raw);
-          if (match !== null) {
-            carried = { month: Number(match[2]), day: Number(match[3]), rawDateCell: raw };
-          }
-          if (carried === null) continue;
-          const dataRow = dataRows[index];
-          const cells = dataRow === undefined
-            ? []
-            : [...dataRow.querySelectorAll("[role=gridcell]")]
-              .map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim());
-          seen.set(`${String(carried.month)}/${String(carried.day)}|${cells.join(" ")}`, {
-            month: carried.month,
-            day: carried.day,
-            rawDateCell: match === null ? "" : carried.rawDateCell,
-            cells,
-          });
+      const dateRows = [...dateViewport.querySelectorAll("[role=row]")];
+      const dataRows = [...dataViewport.querySelectorAll("[role=row]")];
+      const rows: { month: number; day: number; rawDateCell: string; cells: string[] }[] = [];
+      let carriedMonth = 0;
+      let carriedDay = 0;
+      let carriedCell = "";
+      for (let index = 0; index < Math.max(dateRows.length, dataRows.length); index++) {
+        const dateRow = dateRows[index];
+        const raw = dateRow === undefined ? "" : (dateRow.textContent ?? "").replace(/\s+/g, " ").trim();
+        const match = /([A-Za-z]{3})\s+(\d{1,2})\/(\d{1,2})/.exec(raw);
+        if (match !== null) {
+          carriedMonth = Number(match[2]);
+          carriedDay = Number(match[3]);
+          carriedCell = raw;
         }
-        const first = dateRows[0];
-        return first === undefined ? "" : (first.textContent ?? "").trim();
-      };
-
-      dateViewport.scrollTop = 0;
-      // Wait for the reset to render before the first harvest: the CONDITION is
-      // the top row settling, not a fixed delay.
-      for (let attempt = 0; attempt < 20 && dateViewport.scrollTop !== 0; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, pollMs));
+        if (carriedMonth === 0) continue;
+        const dataRow = dataRows[index];
+        const cells = dataRow === undefined
+          ? []
+          : [...dataRow.querySelectorAll("[role=gridcell]")]
+            .map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim());
+        rows.push({
+          month: carriedMonth,
+          day: carriedDay,
+          rawDateCell: match === null ? "" : carriedCell,
+          cells,
+        });
       }
-      let anchor = collect();
-      let scrollSteps = 0;
-      for (let step = 0; step < 200; step++) {
-        const before = dateViewport.scrollTop;
-        dateViewport.scrollTop = before + Math.max(1, Math.floor(dateViewport.clientHeight * 0.8));
-        if (dateViewport.scrollTop === before) break;
-        scrollSteps++;
-        for (let attempt = 0; attempt < 20; attempt++) {
-          const observed = collect();
-          if (observed !== anchor) { anchor = observed; break; }
-          await new Promise((resolve) => setTimeout(resolve, pollMs));
-        }
-      }
-      collect();
+      const first = dateRows[0];
       return {
-        rows: [...seen.values()],
+        rows,
         headers,
-        scrollSteps,
         viewportCount: viewports.length,
+        topRow: first === undefined ? "" : (first.textContent ?? "").trim(),
+        scrollTop: dateViewport.scrollTop,
+        scrollHeight: dateViewport.scrollHeight,
+        clientHeight: dateViewport.clientHeight,
       };
-    }, POLL_INTERVAL_MS);
+    });
 
-    if (harvest.viewportCount < 2) {
+    const scrollBy = async (fraction: number): Promise<number> => page.evaluate((step: number) => {
+      const viewport = document.querySelectorAll(".ui-grid-viewport")[0];
+      if (viewport === undefined) return -1;
+      viewport.scrollTop = step < 0 ? 0 : viewport.scrollTop + Math.max(1, Math.floor(viewport.clientHeight * step));
+      return viewport.scrollTop;
+    }, fraction);
+
+    await scrollBy(-1);
+    const seen = new Map<string, { month: number; day: number; rawDateCell: string; cells: readonly string[] }>();
+    let harvest = await harvestOnce();
+    const headers = harvest.headers;
+    const viewportCount = harvest.viewportCount;
+    let scrollSteps = 0;
+    for (let step = 0; step <= 200; step++) {
+      for (const row of harvest.rows) {
+        seen.set(`${String(row.month)}/${String(row.day)}|${row.cells.join(" ")}`, row);
+      }
+      const before = harvest.scrollTop;
+      const after = await scrollBy(0.8);
+      if (after <= before) break;
+      scrollSteps++;
+      // Wait for the virtualized grid to REPAINT — the condition is the top row
+      // changing, not a fixed delay.
+      const anchor = harvest.topRow;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        harvest = await harvestOnce();
+        if (harvest.topRow !== anchor) break;
+        await tick(POLL_INTERVAL_MS);
+      }
+    }
+
+    if (viewportCount < 2) {
       throw new NewKronosDriverError(
-        `the timecard grid rendered ${String(harvest.viewportCount)} viewports, expected the pinned date column `
+        `the timecard grid rendered ${String(viewportCount)} viewports, expected the pinned date column `
         + "plus the data column — the timecard did not load",
       );
     }
-    const columns = resolveTimecardColumns(harvest.headers);
+    const columns = resolveTimecardColumns(headers);
     const cellAt = (cells: readonly string[], column: keyof typeof columns): string =>
       cells[columns[column]] ?? "";
-    const rows: TimecardGridRow[] = harvest.rows.map((row) => ({
+    const rows: TimecardGridRow[] = [...seen.values()].map((row) => ({
       month: row.month,
       day: row.day,
       rawDateCell: row.rawDateCell,
@@ -552,18 +669,32 @@ function createDriverInternals(page: Page, clock: Clock) {
       period: cellAt(row.cells, "Period"),
       absence: cellAt(row.cells, "Absence"),
     }));
-    return { rows, headers: harvest.headers, scrollSteps: harvest.scrollSteps };
+    return { rows, headers: [...headers], scrollSteps };
   };
 
   const readSeparationTimecard = async (
     input: Readonly<{ employeeId: string; rangeStart: string; rangeEnd: string }>,
   ): Promise<NewKronosTimecardRead> => {
-    const { root } = await resolvePanelRoot();
+    // The timecard visit establishes its OWN precondition.
+    //
+    // A task may not inherit page state from the task before it: the worker
+    // releases and re-verifies a browser session between leases (doc 05 §4),
+    // which re-navigates to the system's neutral entry route — so the selection
+    // the search task left in the panel is gone by the time this one runs.
+    // Observed live on run `sk-125031-54c5` (2026-08-12): the search node
+    // succeeded and this node then found no Go To control at all.
+    //
+    // This does NOT collapse the two tasks into one. D194 groups by PAGE VISIT,
+    // and the panel navigation is how you REACH the timecard — the same way
+    // legacy's `runNewKronosTimecard` reaches it. The search task still exists
+    // for the search-results page's own extraction surface (the candidate list
+    // and WFD's counters), which a later composition can want on its own.
+    const { root } = await selectEmployeeInPanel(input.employeeId);
 
     // legacy navigate.ts:445-470 — Go To must be visible AND ENABLED. A failure
     // here is MECHANICAL and must throw; it is never "this person has no card"
     // (S36).
-    const goTo = await exactlyOne(root, NEW_KRONOS_SEARCH_GO_TO_BUTTON);
+    const goTo = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_GO_TO_BUTTON);
     if (!(await goTo.isEnabled())) {
       throw new NewKronosDriverError(
         `the Go To control is disabled for EID ${input.employeeId} — no employee is selected in the search `
@@ -580,7 +711,7 @@ function createDriverInternals(page: Page, clock: Clock) {
         + `for EID ${input.employeeId} — the timecard could not be opened`,
       );
     }
-    const option = await exactlyOne(root, NEW_KRONOS_SEARCH_GO_TO_TIMECARD_OPTION);
+    const option = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_GO_TO_TIMECARD_OPTION);
     await option.click({ timeout: CONTROL_TIMEOUT_MS });
 
     const landed = await pollUntil(clock, TIMECARD_NAVIGATION_TIMEOUT_MS, async () => {
@@ -601,7 +732,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     // as right (S37).
     await closeSearchPanel();
 
-    const idNode = await exactlyOne(page, NEW_KRONOS_TIMECARD_EMPLOYEE_ID);
+    const idNode = await exactlyOne(clock, page, NEW_KRONOS_TIMECARD_EMPLOYEE_ID);
     const idText = await idNode.textContent();
     const observedEmployeeId = idText === null ? "" : idText.trim();
 
@@ -633,16 +764,16 @@ function createDriverInternals(page: Page, clock: Clock) {
     } as const;
 
     // Apply the window. Everything below runs on the SAME page visit.
-    const trigger = await exactlyOne(page, NEW_KRONOS_TIMECARD_PERIOD_TRIGGER);
+    const trigger = await exactlyOne(clock, page, NEW_KRONOS_TIMECARD_PERIOD_TRIGGER);
     await trigger.click({ timeout: CONTROL_TIMEOUT_MS });
-    const selectRange = await exactlyOne(page, NEW_KRONOS_TIMECARD_SELECT_RANGE_BUTTON);
+    const selectRange = await exactlyOne(clock, page, NEW_KRONOS_TIMECARD_SELECT_RANGE_BUTTON);
     await selectRange.click({ timeout: CONTROL_TIMEOUT_MS });
     await setRangeField(NEW_KRONOS_TIMECARD_RANGE_START_FIELD, input.rangeStart, "start");
     await setRangeField(NEW_KRONOS_TIMECARD_RANGE_END_FIELD, input.rangeEnd, "end");
     // Setting the end can nudge the start (the widget auto-advances between the
     // two tabs), so the start is re-proved before Apply.
     await setRangeField(NEW_KRONOS_TIMECARD_RANGE_START_FIELD, input.rangeStart, "start (re-proof)");
-    const apply = await exactlyOne(page, NEW_KRONOS_TIMECARD_RANGE_APPLY_BUTTON);
+    const apply = await exactlyOne(clock, page, NEW_KRONOS_TIMECARD_RANGE_APPLY_BUTTON);
     await apply.click({ timeout: CONTROL_TIMEOUT_MS });
 
     const requested = {

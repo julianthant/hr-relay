@@ -132,6 +132,27 @@ hit the search box's own echo of the query), and the `loadingOverlay` CSS union 
   navigation — and in the second case the page has no named frames at all, so a frame-scoped locator
   does not fail loudly, it just resolves to nothing. Probe the context, never assume it, and make
   "found in neither" a refusal that names both.
+- **2026-08-12: the first live run refused a session that was authenticating, and the second refused a
+  page that was still painting — WFD bootstraps AFTER the URL lands.** `kronosAuthToken` is issued by
+  the APPLICATION, not by the SSO redirect, so a probe sampled at the instant `…/wfd/home` resolves
+  sees `AUTHN_TOKEN`, `iPlanetDirectoryPro`, `authn_ssid` and `XSRF-TOKEN` but not the app's own
+  cookie. One step later the navbar's `Employee Search` button resolved to ZERO nodes on that same
+  authenticated page. Both are the identical shape as Kuali's late-painting menubar, and both fixes
+  are the same: a BOUNDED WAIT for the SAME fact, never a widened locator or a weaker fact.
+  `exactlyOne` is therefore a wait for the count to become one — with a count of TWO short-circuiting
+  immediately, because ambiguity does not resolve itself by waiting.
+- **2026-08-12: the panel has two states and they share no control, so the context probe takes an
+  ANCHOR.** Before a search the panel renders the query field; after one it collapses to
+  `Show Search` and the query field is gone while Go To appears. Probing for the query field to find
+  the context — which is what legacy's `resolveSearchRoot` does, and what it warns about in a comment
+  — made the timecard step refuse immediately after a SUCCESSFUL search (live run `sk-123940-ab25`).
+  The caller now names the anchor that proves the state it needs.
+- **2026-08-12: a node whose real product is BROWSER state may not be `replay: "checkpoint"`.** The
+  search node's output is durable, but its POINT is the selection it leaves in the panel. Replaying
+  the checkpoint restored the output into a fresh browser that had never opened the panel, and Go To
+  refused on an empty selection (live run `sk-124132-9beb`). Doc 02 §5.3 replay restores VALUES,
+  never page state. The search node is `always-rerun` for exactly that reason, and the rule
+  generalises to every store slice after this one.
 - **2026-08-12: a positive count is evidence; a click is not.** `#goToDropdownButton` is
   `ng-disabled` until Angular registers the slat selection, and WFD publishes its own
   `Total [N]` / `Selected [N]` counters. The driver reads the counter rather than inferring the

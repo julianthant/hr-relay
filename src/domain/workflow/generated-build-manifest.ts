@@ -283,7 +283,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "0ca1c338c51b69fc5ba690969bfc614a4b5c63723c7e83e63bd0eafb61ce544c",
+      "fingerprint": "ebb088d7b1302e2e913b04054a3c9b11781c8b5cd46dbf2b394fca6c1b018803",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -431,7 +431,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations-kronos-timecard/descriptor.ts",
-          "sha256": "219c81bb18ae1463b2484168030a588a14cf98d490ecf9c99248e02dac577208"
+          "sha256": "1b06814bbee24fb74f8d9ebc9802945b07ce050ad1f760189bdcd63d7fedc253"
         }
       ],
       "id": "separations-kronos-timecard"
@@ -1671,7 +1671,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-timekeeper-annotation"
     },
     {
-      "fingerprint": "988f6835d4ce67e32ec0e61d8a47da417f3a95048392410aceb32a139f77a584",
+      "fingerprint": "fac368bbf525fc4c1667f48c5f8268a7fb86edf7630c8ebd9ee1af58b1c6403a",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1815,7 +1815,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/new-kronos/driver/interpreter.ts",
-          "sha256": "dc982cfab626f1cf7923eea95c683e7110c824bef0b81d2fc5913a93aa4bbaac"
+          "sha256": "ddf27b5ba12d152100a27d7378a7ecc1f605d3ed34e4b05b405cfde0bcb1253f"
         },
         {
           "path": "src/stores/new-kronos/driver/ui-registry.ts",
@@ -1833,7 +1833,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "7cf944846948a2f338b600ca4d6eb92b9a6cf8c1316a531eb44b5b44eadafe82",
+      "fingerprint": "c313a14680a61cbaade15113985fb7bc0656508299aff32c1bd0bd439d274be5",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1977,7 +1977,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/new-kronos/driver/interpreter.ts",
-          "sha256": "dc982cfab626f1cf7923eea95c683e7110c824bef0b81d2fc5913a93aa4bbaac"
+          "sha256": "ddf27b5ba12d152100a27d7378a7ecc1f605d3ed34e4b05b405cfde0bcb1253f"
         },
         {
           "path": "src/stores/new-kronos/driver/ui-registry.ts",
