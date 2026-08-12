@@ -1989,7 +1989,9 @@ read reports the parsed date and S7's refusal stays a precondition of *filing a 
 
 Doc 07 §3.1 step 4 (the live dry-run for this chunk) is **MET**. Five runs were started through the
 real start-plan → command → worker path against the real Kuali production space; **all five reached
-terminal `done` on attempt 1**, and the last three hold verified evidence receipts over real data.
+terminal `done` on attempt 1**, and the last three held `verified` evidence receipts over real data
+at settlement. Two later attempts to re-prove the same three documents against the final tree
+**failed for a platform reason, not a chunk reason** — see *The re-run wall* below.
 
 | Trace | Document | Result | `document` node | Queued → terminal |
 |---|---|---|---|---|
@@ -2030,5 +2032,35 @@ it is proved against the deterministic driver and against the live fact that the
 readable and compared by value. Likewise no live document carried an unmapped termination type, an
 unparseable date, or a stale action id, so those three refusals are test-pinned rather than
 live-verified.
+
+**The re-run wall — a platform gap this chunk hit in a sharper form than chunk 1 did.** After the
+raw-control-byte debt was paid (a NUL separator inside `termination-type.ts`, which sits in this
+descriptor's source closure), the descriptor's `contractFingerprint` moved — so the five proof runs'
+receipts, which bind it, now refuse re-derivation with
+`evidence receipt … already exists with different content`. The obvious response, re-running the
+three documents against the final tree, **is not available**: a run checkpoint is keyed by
+`(workflow, itemId, node, attempt)` with **no run id**, and this workflow's `matchKey` is the
+document number — so a second run of document 4510 is the same ITEM, replays the first run's
+checkpoint, and then refuses with
+`run checkpoint separations-kuali-read … document 1 already exists with different content`. All
+three re-runs failed identically (`sd-143658-296a`, `sd-143703-a532`, `sd-143704-6e22`).
+
+Chunk 1 recorded this as "a proving harness cannot simply be re-run" and worked around it by varying
+the Kronos window by a day. **There is no equivalent variation here**: the input IS the document, and
+the output carries a live `observedAt`, so every re-read of the same document differs by
+construction. Stated generally, and it is the sharper form: **a read workflow whose identity is the
+thing it reads can be run exactly once per subject, ever.**
+
+Two platform items fall out, neither owned by this chunk:
+
+1. **A settled run's receipt should not be stranded by an unrelated edit inside its descriptor's
+   31-file closure.** D136 solved exactly this class for parked writes — resolvability binds to six
+   named SEMANTIC surfaces rather than to the closure hash, precisely because "a park waits for a
+   human, so expiring it on an edit to `src/domain/ids.ts` is not a recovery path". A receipt is the
+   same shape of promise and has not been given the same treatment.
+2. **A checkpoint keyed without the run id makes a read workflow single-use per subject.** The key is
+   right for its purpose (replay across attempts of one item), and the refusal is right (a differing
+   observation under the same identity is a real conflict). What is missing is a way for an operator
+   to say "read it again" — which for a read-only workflow is a completely ordinary request.
 
 ---

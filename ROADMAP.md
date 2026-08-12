@@ -97,8 +97,12 @@ declaration, fourteen more legacy selectors live-re-verified), the `separations`
 exists, and §4a is settled with data: the complete `Type of Termination` dropdown was captured live
 from three real documents at two workflow steps (**16 options plus Kuali's blank sentinel, identical
 on all three**) and the map is exact-match-only with no default arm. **Its live proof IS met** —
-five real runs, all terminal `done` on attempt 1, three with verified evidence receipts over real
-documents (§9.4). Its controlled-commit target (a UCPath termination + Kuali finalization you
+five real runs, all terminal `done` on attempt 1, three with `verified` evidence receipts over real
+documents (§9.4). Two platform items surfaced there and are **yours to schedule, not chunk 2's**: a
+settled run's receipt is stranded by any edit inside its descriptor's 31-file closure (D136 already
+solved this shape for parked writes and the receipt did not get the same treatment), and a read
+workflow whose identity is the thing it reads can be run **exactly once per subject** because a
+checkpoint is keyed without the run id. Its controlled-commit target (a UCPath termination + Kuali finalization you
 approve) is still yours to name at step 5; none has been invented.
 
 **How it gets built (your directive, recorded in that doc's §3):** bottom-up, not one slice — store

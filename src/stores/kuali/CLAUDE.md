@@ -154,6 +154,15 @@ reached a document through the Action List search box; the deep link is live-ver
   makes a broken selector indistinguishable from an empty field**, and the two have opposite
   meanings — which is why every absent arm in the read family is produced only AFTER the control was
   resolved at exactly one node.
+- **2026-08-12: a read workflow whose identity is the thing it reads can be run exactly once per
+  subject.** A run checkpoint is keyed by `(workflow, itemId, node, attempt)` with no run id, and
+  `separations-kuali-read`'s `matchKey` is the document number — so a second run of document 4510 is
+  the same ITEM, replays the first run's checkpoint, and then refuses with
+  `run checkpoint … already exists with different content`, because the read's `observedAt` differs by
+  construction. Chunk 1 hit the same wall and worked around it by varying the Kronos window; there is
+  nothing to vary here. Recorded in `docs/migrations/separations.md` §9.4 as a platform item, not a
+  chunk defect — the key is right for its purpose and the refusal is right; what is missing is a way
+  to say "read it again".
 - **2026-08-12: a person field's ARM DISCRIMINATOR is not the person.** The first live receipt read
   `employee.name.state = "sent"` and `employee.name.reason = "alue"` — the `last4` transform applied
   to `"present"` and to a reason string — because the whole `{state, value}` union was declared
