@@ -5,7 +5,7 @@
 > changelog is `docs/rebuild/04-reconciliation.md`. If this file ever disagrees with those, **they
 > win**. Sessions: regenerate the status sections of this file at every slice boundary.
 >
-> **Last updated:** 2026-08-12 · Phase 2 closed · decisions through **D190** · schema **v13**
+> **Last updated:** 2026-08-12 · Phase 2 closed · decisions through **D192** · schema **v13**
 
 ---
 
@@ -17,12 +17,12 @@
 | Phases complete | 0, 1 (a–e, f, g-spine, i-spine), 2 (proof + 2g + 2h + 2i + 2j) |
 | Active phase | **Phase 3 — per-workflow migration** (orders 0–9, operator picks the start) |
 | After Phase 3 | The one all-at-once cutover (D89/D93), then rollback-window closure |
-| Decisions ratified | D1–D190 (D131 is a permanent gap — never reused) |
+| Decisions ratified | D1–D192 (D131 is a permanent gap — never reused) |
 | Authority schema | v13 (released migrations SHA-pinned, immutable) |
 | Guards | **60 active** / 8 retired / 2 planned (`one-time-import-offline`, `preflight-coverage`) |
 | Tests | 1602 unit+scenario · 431 architecture · 134 parity · coverage gate green (87.1% lines) |
 | Workflows registered | 2 — `person-lookup` (live-proven), `kuali-timekeeper-annotation` (controlled-commit-proven) |
-| Legacy capability register | 78 entries: **50 open · 20 replaced · 7 native · 1 retired** — cutover requires zero open |
+| Legacy capability register | 78 entries: **48 open · 20 replaced · 7 native · 3 retired** — cutover requires zero open |
 | Production writes proven | Kuali controlled commit on real doc 4489 (D135): fence → click → read-back → settle, idempotent re-run 2 ms |
 
 **Roadmap position, honestly framed:** the *platform* is finished and proven (execution kernel,
@@ -109,10 +109,13 @@ explicit authorization.
 
 | # | Decision | Context | Where recorded |
 |---|---|---|---|
-| 1 | **Adopt `test:coverage` as the per-commit gate?** | Measured: it is a strict superset AND faster (28.2 s vs ~39 s) than `test` + `test:architecture`. Deliberately not auto-adopted — a mid-slice commit can honestly dip a floor. | doc 10 §3.14 (D190) |
-| 2 | **Which workflow starts Phase 3?** | §3.3 orders them; the operator picks the entry point. Order 1–2 (reads) are the natural ramp; order 3 (OCR pipeline) unlocks the paper-form family. | doc 07 §3.1 |
-| 3 | **Build-or-retire: 3 AI advisory tools** | run-summary, record-sanity-check, selector-suggestion existed in legacy; each is an explicit per-tool decision (deterministic paths stay primary). | D178/D184, doc 12 §4.4 |
-| 4 | **When to build the production byte path** (D189) | BFF serves no frontend bytes; phone capture has no production delivery path. Bundled owner: static handler + ngrok launcher + guard arm. Fine to defer until the first migration that needs the phone in production (order 3–4). | doc 13 §6.9 |
+| 1 | **Which workflow starts Phase 3?** | §3.3 orders them; the operator picks the entry point. Order 1–2 (reads) are the natural ramp; order 3 (OCR pipeline) unlocks the paper-form family. | doc 07 §3.1 |
+
+### Decided
+
+- **`test:coverage` becomes the per-commit gate** — D191, 2026-08-12 (doc 10 §3.14)
+- **AI advisory tools dispositioned: run-summary and selector-suggestion retire; record-sanity-check stays open, deferred to order-8 separations** — D192, 2026-08-12 (doc 12 §4.4)
+- **Production byte path timing confirmed: builds at the first phone-consuming migration (orders 3–4), not earlier, not at cutover** — D189 timing confirmed 2026-08-12 (doc 13 §6.9)
 
 ### Named to you at specific future gates
 
@@ -135,7 +138,7 @@ explicit authorization.
 | Use the phone page in production / run the dashboard without the dev server | BFF static byte serving + tunnel launcher (`rebuild:dashboard:prod` names a mode nothing parses) | **D189** | First migration needing the phone in production; explicitly named a **cutover blocker** |
 | See a capture-started run on the queue instantly | `run.queued` span from projector-enqueued runs | 2i-F note | Same day the capture binding lands ("close this first") |
 | Edit a workflow's presentation/policy without a code change (legacy: n8n-style graph editor) | Workflow Explorer **edit half** (Phase B) | D186 | The **second** production workflow whose policy an operator wants to change — an editor shaped by a sample of one would be wrong |
-| Get an AI run summary / record sanity check / selector suggestion (legacy had all three) | 3 of 5 advisory adapters | D178/D184 | **Your build-or-retire call** (decision #3 above) |
+| Get a record-sanity-check advisory panel (legacy had one; run summary and selector suggestion are **retired**, D192 — the receipt/explain surface and the deterministic catalog already cover them) | The record-sanity-check advisory arm — deterministic schema/rule issues stay authoritative, model issues are separately-labelled suggestions | D178/D192 | Order 8 (separations) — renders as prose beside the doc 09 §14 ALWAYS-GATE identity approval |
 | Edit settings in the dashboard (legacy: 11 editable sections) | `apply-settings` command family — rebuild settings are read-only, "nothing here pretends to save" | D169/D184 | Phase 3 milestone, no single trigger |
 | Set a run-wide constant (e.g. work-study `effectiveDate`) / unbind a mapped column | Intake grid constants entry + unbind arm — no command arms exist yet, and a control that pretends would be worse | D172/D173 | Order 6 (work-study), the first workflow needing a non-column field |
 | One-click QR without pasting an HTTPS URL | on-demand ngrok launcher (refuses `ingress-not-built` rather than serving a loopback QR that scans and then dies) | D174/D175 | Bundled with D189's owner |
@@ -177,9 +180,10 @@ its own controlled-commit proof.
 
 OCR review/approve UI · screenshots gallery + artifact-bytes route · cross-date search · Excel
 exports (3 writers incl. the master I-9 retention workbook) · workflow graph editor + data bank ·
-editable settings · run-summary/sanity-check/selector-suggest AI tools · production phone-capture
-delivery path · LAN mode · setup wizard · `test-login` · **six system drivers** (onbase,
-servicenow, i9, new-kronos, old-kronos, sharepoint — declaration-only in the rebuild).
+editable settings · the record-sanity-check AI tool (deferred to order-8; run-summary and
+selector-suggest are **retired**, D192 — not gaps, decided) · production phone-capture delivery
+path · LAN mode · setup wizard · `test-login` · **six system drivers** (onbase, servicenow, i9,
+new-kronos, old-kronos, sharepoint — declaration-only in the rebuild).
 
 ### What the rebuild will never do, by design
 
@@ -198,16 +202,15 @@ servicenow, i9, new-kronos, old-kronos, sharepoint — declaration-only in the r
 
 ```bash
 npm run rebuild:cli phase        # completedThrough 2j · active 3-workflow-migration
-npm run typecheck && npm run lint
-npm run test                     # 1602
-npm run test:architecture        # 431 (60 guards)
+npm run typecheck && npm run lint && npm run test:coverage   # the per-commit gate (D191): 1602 tests + 60 guards + floors
+npm run test                     # 1602 — available for a targeted run
+npm run test:architecture        # 431 (60 guards) — available for a targeted run
 npm run test:parity              # 134
-npm run test:coverage            # floors + suite-size report
 npm run rebuild:cli storage doctor
-git log --oneline master         # D170–D190 landed 2026-08-08 → 2026-08-09, never pushed
+git log --oneline master         # D170–D192 landed 2026-08-08 → 2026-08-12, never pushed
 ```
 
 Primary references: `docs/rebuild/07-master-plan.md` (plan + exit criteria) ·
-`docs/rebuild/04-reconciliation.md` (D1–D190 index) · `docs/rebuild/09-write-safety.md`
+`docs/rebuild/04-reconciliation.md` (D1–D192 index) · `docs/rebuild/09-write-safety.md`
 (controlled-commit as-built) · `config/legacy-capabilities.json` (the 78-entry cutover register) ·
 `docs/handoffs/2026-08-07-finish-phase-2.md` (the closed Phase 2 handoff).

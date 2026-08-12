@@ -940,3 +940,4 @@ changing those bytes, and later schema work must append v10.
 | # | Decision | Owner (normative text) |
 |---|---|---|
 | **D191** | **`test:coverage` REPLACES `test` + `test:architecture` AS THE PER-COMMIT GATE — THE D190 RECOMMENDATION IS ADOPTED.** | doc 10 §3.14 D191 as-built (primary); root `CLAUDE.md` |
+| **D192** | **THE THREE PRODUCERLESS ADVISORY TOOLS GET THEIR DISPOSITIONS: RUN SUMMARY AND SELECTOR SUGGESTION RETIRE, RECORD SANITY CHECK STAYS OPEN, DEFERRED TO ORDER-8 SEPARATIONS.** | doc 12 §4.4 as-built (primary); `config/legacy-capabilities.json` (`legacy-tool-ops-summarize-run`, `legacy-tool-ops-selector-suggest`, `legacy-tool-ops-sanity-check-record`) |

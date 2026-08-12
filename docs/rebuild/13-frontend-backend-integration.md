@@ -698,6 +698,11 @@ the file handler cannot serve anything outside the capture allow-list to a phone
 `--prod` starts meaning what its script name says. Until then the operator path is the dev server
 beside the BFF, which is what has always actually run.
 
+**Timing confirmed (operator, 2026-08-12).** The operator confirmed the byte path — static handler,
+`capture.html`, ngrok launcher, and the guard arm above — builds at the first phone-consuming
+migration (orders 3–4), not earlier and not held to cutover. No new decision number: this is D189's
+owner and trigger as already recorded, now explicitly confirmed rather than merely proposed.
+
 ## 7. Exact visual-parity and contract verification
 
 ### 7.1 Reference route matrix

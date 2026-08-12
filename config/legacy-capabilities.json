@@ -1266,7 +1266,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "D178 records that record sanity check remains WITHOUT a producer and carries no surface arm. AdvisorySurfaceIdSchema is a closed two-value enum, and an advisory surface needs a declared per-leaf redaction classification plus a template before it can exist. Doc 07 s3.6 calls the advisory adapters OPTIONAL, so this closes as a build-or-retire decision at the plan's explicit non-workflow capability closure."
+        "reason": "D192 (operator, 2026-08-12): stays open, deferred to the order-8 separations migration (doc 07 §3.3) rather than a build-or-retire call. Its value arrives with separations/onboarding — the wrong-person/duplicate-person incidents record sanity check exists to catch — where it renders as prose observations beside the doc 09 §14 ALWAYS-GATE identity approval, never a pass/fail verdict chip that could be mistaken for authority. AdvisorySurfaceIdSchema stays closed at its D178 two-value shape until that migration adds the surface arm."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1285,18 +1285,22 @@
         "tool:src/scripts/ops/selector-suggest.ts"
       ],
       "disposition": {
-        "kind": "open",
+        "kind": "retired",
         "milestone": "phase-3-workflow-migration",
-        "reason": "The DETERMINISTIC half is closed: `npm run selector:search` resolves operator language against the generated catalog and fails loud on a stale catalog or zero matches (see legacy-tool-selectors-search). The LLM suggestion half has no producer — D178 records it, and AdvisorySurfaceIdSchema is closed. Doc 07 s3.6 keeps the deterministic catalog primary and the adapter optional, so this closes as a build-or-retire decision at non-workflow capability closure."
+        "evidence": [
+          "legacy-source-present:src/scripts/ops/selector-suggest.ts",
+          "scripts/search-ui.ts",
+          "npm run selector:search"
+        ],
+        "reason": "D192 (operator, 2026-08-12): retired as an OPERATOR surface. An operator-facing LLM selector suggestion is an unverified selector reaching a live driver — the exact fail-loud, no-unverified-fallback pattern this repo bans — so it never becomes a runtime surface. The DETERMINISTIC catalog half stays primary and closed (`npm run selector:search`, see legacy-tool-selectors-search); selector discovery and repair remain the dev-time live-verification loop root `CLAUDE.md`'s 'Live verification' section pre-authorizes. AdvisorySurfaceIdSchema stays closed at its D178 two-value shape; no surface arm is added."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/selector-suggest.ts",
         "scripts/search-ui.ts",
-        "src/domain/trust/advisory.ts",
         "npm run selector:search"
       ],
-      "status": "open"
+      "status": "retired"
     },
     {
       "id": "legacy-tool-ops-setup",
@@ -1330,18 +1334,23 @@
         "tool:src/scripts/ops/summarize-run.ts"
       ],
       "disposition": {
-        "kind": "open",
+        "kind": "retired",
         "milestone": "phase-3-workflow-migration",
-        "reason": "`rebuild:cli explain run <traceId|runId>` is the DETERMINISTIC analogue and is derived from authority through the same derivation the run-detail receipt uses (D82/D144), with no model in the path. The LLM run summary itself has no producer — D178 records it — and AdvisorySurfaceIdSchema is closed. Doc 07 s3.6 keeps deterministic explain primary and the adapter optional, so this closes as a build-or-retire decision at non-workflow capability closure."
+        "evidence": [
+          "legacy-source-present:src/scripts/ops/summarize-run.ts",
+          "src/core/evidence-receipt.ts",
+          "src/server/explain/explain-run.ts"
+        ],
+        "reason": "D192 (operator, 2026-08-12): retired rather than built. `RunEvidenceReceipt` (D141/D144) is already the run's structured, byte-reproducible, per-field-redaction-declared summary, derived from authority and served by both `cli explain run <traceId|runId>` and the run-detail receipt section — an LLM digest over the same facts would duplicate it and reintroduce paraphrase risk on the exact surface D141 built to eliminate. AdvisorySurfaceIdSchema stays closed at its D178 two-value shape; no surface arm is added."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/summarize-run.ts",
+        "src/core/evidence-receipt.ts",
         "src/server/explain/explain-run.ts",
-        "src/domain/trust/advisory.ts",
         "npm run rebuild:cli"
       ],
-      "status": "open"
+      "status": "retired"
     },
     {
       "id": "legacy-tool-ops-triage-failure",

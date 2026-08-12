@@ -891,18 +891,45 @@ at all. `createTimeoutDeadlineScheduler` moved out of the worker composition roo
 `src/server/scheduling/` for the same reason — two roots needing one timer is how a second ad-hoc
 `setTimeout` gets born, and a bound armed on one of those is invisible to the kernel.
 
-**Still deferred, explicitly.** §4.4's table names five adapters; two landed (failure triage, and
-doc 06 §4.2's contact normalization). Run summary over a `RunEvidenceReceipt`, the record sanity
-check and the development-only selector-suggestion brief have no producer yet, and
-`AdvisorySurfaceIdSchema` carries no arm for them — a surface nothing can answer is a dead
-vocabulary. `evidenceRefs` on the recorded invocation is served as the wire's `failureId` beside the
-outcome rather than a separate list; a receipt-scoped advisory will need the fuller form.
+**Deferred at D178, dispositioned at D192.** §4.4's table names five adapters; two landed (failure
+triage, and doc 06 §4.2's contact normalization). Of the remaining three, run summary and the
+development-only selector-suggestion brief are now **retired** (D192, below); the record sanity
+check stays **open**, deferred to order-8. `AdvisorySurfaceIdSchema` carries no arm for any of them
+— a surface nothing can answer is a dead vocabulary, and retirement keeps it that way rather than
+adding one later only to delete it. `evidenceRefs` on the recorded invocation is served as the
+wire's `failureId` beside the outcome rather than a separate list; a receipt-scoped advisory will
+need the fuller form.
 
 **Proof:** `tests/unit/advisory-redaction.test.ts`, `tests/unit/advisory-strict-output.test.ts`,
 `tests/unit/advisory-provider-exhaustion.test.ts`, `tests/unit/advisory-zero-authority.test.ts`,
 `tests/unit/architecture/ai-advisory-no-authority.test.ts`, and the two new executable scenarios in
 `tests/scenario/normalization-contact.scenario.test.ts`. No test contacts a live provider: the
 production adapter takes its `fetch` by injection precisely so these can exist.
+
+---
+
+**As-built (D192, operator decision 2026-08-12) — the three producerless adapters get their
+dispositions.**
+
+- **Run summary → RETIRED.** `RunEvidenceReceipt` (D141/D144) is already the run's structured,
+  byte-reproducible, per-field-redaction-declared summary, derived from authority and served by both
+  `cli explain run <traceId|runId>` and the run-detail receipt section. An LLM digest over the same
+  facts would duplicate it and reintroduce paraphrase risk on the exact surface D141 built to
+  eliminate.
+- **Selector suggestion → RETIRED as an operator surface.** An operator-facing LLM selector
+  suggestion is an unverified selector reaching a live driver — the fail-loud, no-unverified-fallback
+  pattern root `CLAUDE.md` bans outright. The deterministic catalog half (`npm run selector:search`)
+  stays primary and is unaffected; selector discovery/repair remains the dev-time live-verification
+  loop the charter already pre-authorizes.
+- **Record sanity check → STAYS OPEN, deferred to the order-8 separations migration** (doc 07 §3.3).
+  Its value arrives with separations/onboarding — the wrong-person/duplicate-person incidents it
+  exists to catch — where it will render as prose observations beside the doc 09 §14 ALWAYS-GATE
+  identity approval, never a pass/fail verdict chip that could be mistaken for authority.
+
+`config/legacy-capabilities.json` carries all three dispositions (`legacy-tool-ops-summarize-run` and
+`legacy-tool-ops-selector-suggest` now `retired`; `legacy-tool-ops-sanity-check-record` still `open`
+with the updated reason), and the `legacy-capability-disposition` guard (D184) re-validated green
+against the new shapes.
 
 ---
 
