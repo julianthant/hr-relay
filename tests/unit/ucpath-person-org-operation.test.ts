@@ -3,6 +3,7 @@ import { describe, it } from "vitest";
 import { EidSchema } from "../../src/domain/ids.js";
 import type { Eid } from "../../src/domain/ids.js";
 import {
+  assignmentDetailsToCells,
   buildLastFirstSearchNames,
   buildPersonOrgNameSearchAttempts,
   deriveAssignmentDetailsFromCells,
@@ -45,7 +46,12 @@ function detail(
   displayedName: string,
   overrides: Partial<PersonOrgAssignmentDetails> = {},
 ): PersonOrgDetail {
-  return { observedEid, displayedName, assignment: assignment(overrides) };
+  return {
+    observedEid,
+    displayedName,
+    cells: [[...assignmentDetailsToCells(assignment(overrides))]],
+    employmentInstances: "already-complete",
+  };
 }
 
 function pageHarness(input: Readonly<{

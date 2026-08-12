@@ -15,6 +15,7 @@ import {
 } from "../../src/domain/ui/ucpath-person-org.js";
 import { assertSafeUiCatalogFresh, buildSafeUiCatalog } from "../../src/stores/ucpath/driver/catalog.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
+import { systemClock } from "../../src/domain/clock.js";
 import { createUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/interpreter.js";
 import { UCPATH_UI_REGISTRY, auditUcpathUiRegistry } from "../../src/stores/ucpath/driver/ui-registry.js";
 
@@ -111,8 +112,9 @@ describe("semantic UI registry", () => {
 
   it("enforces element states immediately and uses the one verified display locator", async () => {
     const events: string[] = [];
-    const driver = createUcpathPersonOrgDriver(recordingPage(events), {
+    const driver = createUcpathPersonOrgDriver(recordingPage(events), systemClock, {
       searchPersonOrg: () => Promise.reject(new Error("semantic search is outside this primitive-driver test")),
+      readJobSummary: () => Promise.reject(new Error("the semantic job-summary read is outside this primitive-driver test")),
     });
     await driver.fill(UCPATH_PERSON_ORG_EID_INPUT, parseUcpathPersonOrgEid("10800000"));
     assert.equal(events.findIndex((event) => event.startsWith("wait:"))

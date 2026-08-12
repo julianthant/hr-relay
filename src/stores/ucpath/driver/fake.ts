@@ -3,6 +3,8 @@ import { SearchPersonOrgOutputSchema } from "../../../domain/contracts/ucpath/se
 import type { SearchPersonOrgOutput } from "../../../domain/contracts/ucpath/search-person-org.js";
 import { PageStateProofSchema, UiActionProofSchema } from "../../../domain/ui/driver.js";
 import type { UiActionProof } from "../../../domain/ui/driver.js";
+import { UcpathJobSummaryReadSchema } from "../../../domain/ui/ucpath-job-summary.js";
+import type { UcpathJobSummaryRead } from "../../../domain/ui/ucpath-job-summary.js";
 import {
   UCPATH_PERSON_ORG_DETAIL_READY,
   UCPATH_PERSON_ORG_DETAIL_SCREEN,
@@ -15,11 +17,27 @@ import type { UcpathPersonOrgDriver, UcpathPersonOrgScreens } from "../../../dom
 
 export function createDeterministicUcpathPersonOrgDriver(
   result?: SearchPersonOrgOutput,
+  jobSummary?: UcpathJobSummaryRead,
 ): UcpathPersonOrgDriver {
   let screen: UcpathPersonOrgScreens = UCPATH_PERSON_ORG_SEARCH_SCREEN;
   let eid: ReturnType<typeof EidSchema.parse> | undefined;
   return {
     system: "ucpath",
+    async readJobSummary(input) {
+      if (jobSummary === undefined) {
+        throw new Error(
+          "deterministic UCPath driver requires an explicit job summary; a fabricated employment grid "
+          + "would make every S21–S24 arm agree with whatever the fixture wanted",
+        );
+      }
+      const parsed = UcpathJobSummaryReadSchema.parse(jobSummary);
+      if (parsed.state === "read" && parsed.summary.emplId !== input.emplId) {
+        throw new Error(
+          `deterministic UCPath job summary is for ${parsed.summary.emplId}, not ${input.emplId}`,
+        );
+      }
+      return parsed;
+    },
     async searchPersonOrg(input) {
       if (result !== undefined) return SearchPersonOrgOutputSchema.parse(result);
       if (input.kind !== "by-eid") {

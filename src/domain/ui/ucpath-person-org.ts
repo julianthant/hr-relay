@@ -6,6 +6,7 @@ import type {
 import { EidSchema } from "../ids.js";
 import type { Eid } from "../ids.js";
 import type { SystemDriver } from "./driver.js";
+import type { UcpathJobSummaryRead } from "./ucpath-job-summary.js";
 
 export const UcpathPersonOrgSearchScreenSchema = z.literal("ucpath.person-org.search").brand<"ScreenId">();
 export const UcpathPersonOrgDetailScreenSchema = z.literal("ucpath.person-org.detail").brand<"ScreenId">();
@@ -81,6 +82,17 @@ export type UcpathPersonOrgDriver = SystemDriver<
   searchPersonOrg(
     input: z.output<typeof SearchPersonOrgInputSchema>,
   ): Promise<SearchPersonOrgOutput>;
+  /**
+   * D194's rich read of the SAME page family: the detail page's whole
+   * *Employment Instances* grid for a person the run already names.
+   *
+   * It is a second semantic operation rather than a widened `searchPersonOrg`
+   * because the two answer different questions — "which human is this?" versus
+   * "what jobs does this human have?" — and because `searchPersonOrg`'s output
+   * schema is bound into shipped run records, checkpoints and receipts
+   * (D110/D114/D82). Widening it would move a hash existing rows carry.
+   */
+  readJobSummary(input: Readonly<{ emplId: Eid }>): Promise<UcpathJobSummaryRead>;
 }>;
 
 export function parseUcpathPersonOrgEid(input: string): Eid {

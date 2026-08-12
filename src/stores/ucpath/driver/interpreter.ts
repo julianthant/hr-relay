@@ -22,7 +22,12 @@ import type {
   SearchPersonOrgOutput,
 } from "../../../domain/contracts/ucpath/search-person-org.js";
 import type { z } from "zod";
-import { searchPersonOrgOnPage } from "./person-org-operation.js";
+import { IsoInstantSchema } from "../../../domain/ids.js";
+import type { Eid } from "../../../domain/ids.js";
+import type { Clock } from "../../../domain/clock.js";
+import { systemClock } from "../../../domain/clock.js";
+import type { UcpathJobSummaryRead } from "../../../domain/ui/ucpath-job-summary.js";
+import { readJobSummaryOnPage, searchPersonOrgOnPage } from "./person-org-operation.js";
 import {
   resolveUcpathElement,
   ucpathElementById,
@@ -35,20 +40,34 @@ export interface UcpathPersonOrgOperations {
     page: Page,
     input: z.output<typeof SearchPersonOrgInputSchema>,
   ) => Promise<SearchPersonOrgOutput>;
+  readonly readJobSummary: (
+    page: Page,
+    input: Readonly<{ emplId: Eid }>,
+    observedAt: string,
+  ) => Promise<UcpathJobSummaryRead>;
 }
 
 export const ucpathPersonOrgOperations: UcpathPersonOrgOperations = Object.freeze({
   searchPersonOrg: searchPersonOrgOnPage,
+  readJobSummary: readJobSummaryOnPage,
 });
 
 export function createUcpathPersonOrgDriver(
   page: Page,
+  clock: Clock = systemClock,
   operations: UcpathPersonOrgOperations = ucpathPersonOrgOperations,
 ): UcpathPersonOrgDriver {
   return {
     system: "ucpath",
     async searchPersonOrg(input) {
       return operations.searchPersonOrg(page, input);
+    },
+    async readJobSummary(input) {
+      return operations.readJobSummary(
+        page,
+        input,
+        IsoInstantSchema.parse(clock.now().toISOString()),
+      );
     },
     async goto(screen) {
       if (screen !== UCPATH_PERSON_ORG_SEARCH_SCREEN && screen !== UCPATH_PERSON_ORG_DETAIL_SCREEN) {

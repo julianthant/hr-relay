@@ -1,0 +1,65 @@
+import { defineTask } from "../../../base/task.js";
+import {
+  MatchIdentityOutputSchema,
+  SeparationsMatchIdentity,
+} from "../../../domain/contracts/separations/match-identity.js";
+import {
+  buildIdentityEvidencePacket,
+  deriveIdentityEvidenceDigest,
+} from "../../../domain/separations/identity-evidence.js";
+
+/**
+ * The decision packet, executed.
+ *
+ * The two refusals are both about the fold's own INPUTS being coherent, never
+ * about what they say. A packet whose job summary is for a different person than
+ * the run checked would present one person's employment as another's — the
+ * `T002173685` shape, one layer in — and an `emplIdSource` that disagrees with
+ * the document's own EID field would make the gate's `eid` comparison a lie.
+ * Everything else the fold finds (a different name, no active job, two active
+ * jobs, an unreadable department) is DATA and travels to the operator.
+ */
+export const matchIdentityTask = defineTask(SeparationsMatchIdentity, {
+  sessions: [],
+  async run({ input, ctx }) {
+    if (input.jobSummary.emplId !== input.emplId) {
+      return ctx.fail(
+        "identity-subject-mismatch",
+        `the run checked EID ${input.emplId} and the job summary it holds was read for `
+        + `${input.jobSummary.emplId}; refusing to present one person's employment grid as another's.`,
+      );
+    }
+    const documentEidValue = input.documentEid.state === "present" ? input.documentEid.value : undefined;
+    const documentEidPresent = documentEidValue !== undefined;
+    if (input.emplIdSource === "document-eid" && documentEidValue !== input.emplId) {
+      return ctx.fail(
+        "identity-source-inconsistent",
+        `the run claims EID ${input.emplId} came from separation document ${input.documentNumber}, whose `
+        + `EID field ${documentEidPresent ? `holds ${String(documentEidValue)}` : "is blank"}. `
+        + "S18/S19's fork — did the document supply this identity, or did a name search? — is what the "
+        + "gate shows the operator, so a run may not misstate it.",
+      );
+    }
+
+    const packet = buildIdentityEvidencePacket({
+      documentNumber: input.documentNumber,
+      documentName: input.documentName,
+      documentEidText: documentEidPresent
+        ? String(documentEidValue)
+        : `blank (${input.documentEid.state === "absent" ? input.documentEid.reason : "no reason recorded"})`,
+      emplIdSource: input.emplIdSource,
+      documentEidConflicts: documentEidPresent && documentEidValue !== input.emplId,
+      jobSummary: input.jobSummary,
+      nameSelection: input.nameSelection,
+    });
+    const output = MatchIdentityOutputSchema.parse({
+      packet,
+      evidenceDigest: deriveIdentityEvidenceDigest(packet),
+    });
+    ctx.recordData([
+      { direction: "read", field: "packet", value: output.packet },
+      { direction: "read", field: "evidenceDigest", value: output.evidenceDigest },
+    ]);
+    return output;
+  },
+});

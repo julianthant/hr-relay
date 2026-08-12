@@ -56,7 +56,8 @@ export type BrowserSystemBindings = Readonly<Partial<Record<BrowserSystemId, Bro
 export const BROWSER_SYSTEM_BINDINGS: BrowserSystemBindings = Object.freeze({
   ucpath: Object.freeze({
     system: "ucpath",
-    createDriver: (page: Page): BrowserDriver => createUcpathPersonOrgDriver(page),
+    createDriver: (page: Page, clock: Clock): BrowserDriver =>
+      createUcpathPersonOrgDriver(page, clock),
     login: ucpathLoginRecipe,
     verifyAuthenticated: verifyUcpathAuthenticatedApplication,
   }),

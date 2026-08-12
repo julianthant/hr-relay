@@ -27,6 +27,7 @@ import {
 import { taskStoreRegistry } from "../stores/index.js";
 import { kualiTimekeeperAnnotationModule } from "../workflows/kuali-timekeeper-annotation/module.js";
 import { personLookupModule } from "../workflows/person-lookup/module.js";
+import { separationsIdentityCheckModule } from "../workflows/separations-identity-check/module.js";
 import { separationsKronosTimecardModule } from "../workflows/separations-kronos-timecard/module.js";
 import { separationsKualiReadModule } from "../workflows/separations-kuali-read/module.js";
 
@@ -35,6 +36,7 @@ export const WORKFLOW_MODULES = Object.freeze([
   kualiTimekeeperAnnotationModule,
   separationsKronosTimecardModule,
   separationsKualiReadModule,
+  separationsIdentityCheckModule,
 ]);
 
 export const DESCRIPTORS: readonly AnyWorkflowDescriptor[] = Object.freeze(

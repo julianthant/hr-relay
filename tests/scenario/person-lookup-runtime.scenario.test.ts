@@ -97,20 +97,11 @@ describe("person-lookup runtime scenarios", () => {
     const staleDetail: PersonOrgDetail = {
       observedEid: wrongEid,
       displayedName: "Different Person",
-      assignment: {
-        emplRecord: "0",
-        effectiveDate: "08/01/2026",
-        hrStatus: "Active",
-        businessUnit: "SDCMP",
-        positionNumber: "40000000",
-        deptId: "000412",
-        department: "HOUSING/DINING/HOSPITALITY",
-        jobCode: "004921",
-        jobCodeDescription: "Dining Assistant",
-        expectedJobEndDate: "",
-        fte: "0.50",
-        emplClass: "Student",
-      },
+      cells: [[
+        "0", "08/01/2026", "Active", "SDCMP", "40000000", "000412",
+        "HOUSING/DINING/HOSPITALITY", "004921", "Dining Assistant", "", "0.50", "Student",
+      ]],
+      employmentInstances: "already-complete",
     };
     const page: PersonOrgPagePort = {
       search: async () => ({ kind: "grid", rows }),

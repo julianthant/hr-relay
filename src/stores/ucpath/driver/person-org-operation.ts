@@ -25,6 +25,15 @@ import type {
 import { EidSchema } from "../../../domain/ids.js";
 import type { Eid, ElementId } from "../../../domain/ids.js";
 import {
+  UCPATH_JOB_SUMMARY_PAGE_STATE,
+  UcpathJobRowSchema,
+  UcpathJobSummaryReadSchema,
+} from "../../../domain/ui/ucpath-job-summary.js";
+import type {
+  UcpathJobRow,
+  UcpathJobSummaryRead,
+} from "../../../domain/ui/ucpath-job-summary.js";
+import {
   UCPATH_PERSON_ORG_ASSIGNMENTS_GRID,
   UCPATH_PERSON_ORG_EID_DISPLAY,
   UCPATH_PERSON_ORG_EID_INPUT,
@@ -85,12 +94,27 @@ export type PersonOrgAssignmentDetails = z.infer<typeof AssignmentDetailsSchema>
 const PersonOrgDetailSchema = z.strictObject({
   observedEid: EidSchema,
   displayedName: z.string().min(1),
-  assignment: AssignmentDetailsSchema,
+  /**
+   * Every Employment Instances row's cells, verbatim, from the ONE extraction.
+   *
+   * The detail deliberately does NOT carry a parsed `assignment` any more.
+   * `searchPersonOrg` still selects its preferred row (through
+   * `deriveAssignmentDetailsFromCells` + `selectPreferredAssignmentDetails`,
+   * both unchanged), but that derivation REFUSES a blank department or job
+   * description — correct for a candidate, and wrong for the job-summary read,
+   * where S24's unreadable cell is data with a reason. Parsing eagerly here
+   * would have made a blank department fail an identity check that never uses
+   * the department. One extraction, two parses, each strict about its own
+   * needs.
+   */
+  cells: z.array(z.array(z.string())).min(1),
+  /** Whether `View All` had to be driven, or the grid was already complete. */
+  employmentInstances: z.enum(["already-complete", "expanded"]),
 });
 export type PersonOrgDetail = z.infer<typeof PersonOrgDetailSchema>;
 
 export type PersonOrgSearchPageOutcome =
-  | Readonly<{ kind: "not-found" }>
+  | Readonly<{ kind: "not-found"; marker: string }>
   | Readonly<{ kind: "detail"; detail: PersonOrgDetail }>
   | Readonly<{ kind: "grid"; rows: readonly PersonOrgResultGridRow[] }>;
 
@@ -124,17 +148,17 @@ function assertEnabledViewToggleHref(href: string | null, label: string): void {
 export async function ensurePersonOrgViewAllExpanded(
   port: PersonOrgViewTogglePort,
   label: string,
-): Promise<void> {
+): Promise<"already-complete" | "expanded"> {
   const count = await port.count();
   if (count !== 1) throw new Error(`${label} requires exactly one View All state control; found ${String(count)}`);
   const text = (await port.readText()).trim();
   const href = await port.readHref();
   if (/^View [1-9]\d*$/u.test(text)) {
     assertEnabledViewToggleHref(href, label);
-    return;
+    return "already-complete";
   }
   if (text !== "View All") throw new Error(`${label} has unknown View All state ${JSON.stringify(text)}`);
-  if (href === null) return;
+  if (href === null) return "already-complete";
   assertEnabledViewToggleHref(href, label);
   await port.click();
   await port.waitForExpanded();
@@ -147,6 +171,7 @@ export async function ensurePersonOrgViewAllExpanded(
     throw new Error(`${label} View All did not transition to a complete View N state`);
   }
   assertEnabledViewToggleHref(await port.readHref(), label);
+  return "expanded";
 }
 
 export interface PersonOrgNameSearchAttempt {
@@ -321,6 +346,23 @@ function comparePreferredAssignment(
   return 0;
 }
 
+/**
+ * The inverse of `deriveAssignmentDetailsFromCells`, for fixtures and fakes.
+ *
+ * A fixture that authors a `PersonOrgAssignmentDetails` and hands it to the port
+ * as `cells` exercises the REAL parse on the way back in, which is the point —
+ * a fixture that skipped the parse would agree with a broken one.
+ */
+export function assignmentDetailsToCells(
+  details: PersonOrgAssignmentDetails,
+): readonly string[] {
+  return [
+    details.emplRecord, details.effectiveDate, details.hrStatus, details.businessUnit,
+    details.positionNumber, details.deptId, details.department, details.jobCode,
+    details.jobCodeDescription, details.expectedJobEndDate, details.fte, details.emplClass,
+  ];
+}
+
 export function selectPreferredAssignmentDetails(
   assignments: readonly PersonOrgAssignmentDetails[],
 ): PersonOrgAssignmentDetails {
@@ -353,14 +395,21 @@ function toLastFirstName(fullName: string, lastName: string): string {
   return displayPersonName(`${normalizedLast}, ${givenNames}`);
 }
 
+export function preferredAssignmentOf(detail: PersonOrgDetail): PersonOrgAssignmentDetails {
+  return selectPreferredAssignmentDetails(
+    detail.cells.map((cells) => deriveAssignmentDetailsFromCells(cells)),
+  );
+}
+
 function candidateFromDetail(detail: PersonOrgDetail, expectedLastName: string): UcpathCandidate {
+  const assignment = preferredAssignmentOf(detail);
   return UcpathCandidateSchema.parse({
     emplId: detail.observedEid,
     name: toLastFirstName(detail.displayedName, expectedLastName),
-    department: detail.assignment.department,
-    jobTitle: detail.assignment.jobCodeDescription,
-    employeeStatus: employeeStatus(detail.assignment.hrStatus),
-    hdh: isAcceptedHdhDepartment(detail.assignment.department),
+    department: assignment.department,
+    jobTitle: assignment.jobCodeDescription,
+    employeeStatus: employeeStatus(assignment.hrStatus),
+    hdh: isAcceptedHdhDepartment(assignment.department),
   });
 }
 
@@ -540,8 +589,141 @@ async function ensureResultsExpanded(page: Page): Promise<void> {
   );
 }
 
-async function ensureEmploymentInstancesExpanded(page: Page): Promise<void> {
-  await ensurePersonOrgViewAllExpanded(
+/**
+ * Legacy provenance for the CELL LAYOUT this reads (unchanged from the port at
+ * `deriveAssignmentDetailsFromCells`): twelve columns, in this order, from the
+ * Person Org Employment Instances grid. The job-summary read parses the same
+ * twelve — it differs only in which of them may legitimately be blank.
+ */
+const JOB_ROW_CELL_COUNT = 12;
+
+function jobCell(raw: string | undefined, label: string): { state: "present"; value: string }
+  | { state: "absent"; reason: string } {
+  const value = (raw ?? "").trim();
+  return value.length === 0
+    ? {
+      state: "absent",
+      reason: `the Person Org Employment Instances grid rendered ${label} as an empty cell`,
+    }
+    : { state: "present", value };
+}
+
+/**
+ * One grid row → one `UcpathJobRow`.
+ *
+ * Empl record, HR status and business unit are STRUCTURAL and refuse a blank:
+ * a rendered employment row always carries all three, so a blank one means the
+ * extraction read something that is not an employment row (the header-row check
+ * below is the same instinct). Everything else is an absent arm with a reason —
+ * S24's unreadable department is data here, and the consumer that needs a
+ * department is the one that refuses.
+ */
+export function deriveJobRowFromCells(cells: readonly string[], rowIndex: number): UcpathJobRow {
+  if (cells.length < JOB_ROW_CELL_COUNT) {
+    throw new Error(
+      `Person Org job row ${String(rowIndex)} has ${String(cells.length)} cells; expected at least `
+      + String(JOB_ROW_CELL_COUNT),
+    );
+  }
+  const values = cells.map((cell) => cell.trim());
+  if (values[6] === "Department Description") {
+    throw new Error("Person Org job-summary extraction reached a header row instead of data");
+  }
+  return UcpathJobRowSchema.parse({
+    rowIndex,
+    emplRecord: values[0],
+    hrStatus: values[2],
+    businessUnit: values[3],
+    effectiveDate: jobCell(values[1], "Effective Date"),
+    positionNumber: jobCell(values[4], "Position Number"),
+    deptId: jobCell(values[5], "Dept ID"),
+    department: jobCell(values[6], "Department Description"),
+    jobCode: jobCell(values[7], "Job Code"),
+    jobTitle: jobCell(values[8], "Job Code Description"),
+    expectedJobEndDate: jobCell(values[9], "Expected Job End Date"),
+    fte: jobCell(values[10], "FTE"),
+    emplClass: jobCell(values[11], "Empl Class"),
+  });
+}
+
+/**
+ * D194's read, over the SAME page port `searchPersonOrg` drives.
+ *
+ * The run already names the person, so this is not a resolution: it searches by
+ * EID, reaches the detail page (auto-redirect, or one drill-in from the grid),
+ * PROVES the displayed EID equals the requested one, and returns the whole
+ * grid. Every negative it can answer is an outcome; anything mechanical throws.
+ */
+export async function readJobSummaryWithPagePort(
+  pagePort: PersonOrgPagePort,
+  input: Readonly<{ emplId: Eid }>,
+  observedAt: string,
+): Promise<UcpathJobSummaryRead> {
+  const emplId = EidSchema.parse(input.emplId);
+  const outcome = await pagePort.search({ kind: "by-eid", eid: emplId });
+  if (outcome.kind === "not-found") {
+    return UcpathJobSummaryReadSchema.parse({
+      state: "employee-not-found",
+      emplId,
+      observedMarker: outcome.marker,
+    });
+  }
+  let detail: PersonOrgDetail;
+  let entry: "auto-detail" | "drilled-from-grid";
+  let searchResultRows: number;
+  if (outcome.kind === "detail") {
+    detail = outcome.detail;
+    entry = "auto-detail";
+    searchResultRows = 0;
+  } else {
+    // A by-EID search that grids renders one row per employment instance, all
+    // for the same person; drilling ANY of them reaches the same detail page,
+    // whose own grid is the authority. Row 0 is chosen and then PROVED, rather
+    // than a row being picked for its status — picking by status is exactly the
+    // legacy shape that made S22 unobservable.
+    const foreign = outcome.rows.filter(({ emplId: rowEid }) => rowEid !== emplId);
+    if (foreign.length > 0) {
+      throw new Error(
+        `Person Org EID ${emplId} returned a results grid carrying ${String(foreign.length)} row(s) for `
+        + `other people (${[...new Set(foreign.map(({ emplId: rowEid }) => rowEid))].join(", ")})`,
+      );
+    }
+    const first = outcome.rows[0];
+    if (first === undefined) throw new Error(`Person Org EID ${emplId} returned an empty results grid`);
+    detail = await pagePort.drill(first.rowIndex);
+    entry = "drilled-from-grid";
+    searchResultRows = outcome.rows.length;
+  }
+  if (detail.observedEid !== emplId) {
+    return UcpathJobSummaryReadSchema.parse({
+      state: "subject-mismatch",
+      expectedEid: emplId,
+      observedEid: detail.observedEid,
+    });
+  }
+  const jobRows = detail.cells.map((cells, rowIndex) => deriveJobRowFromCells(cells, rowIndex));
+  return UcpathJobSummaryReadSchema.parse({
+    state: "read",
+    summary: {
+      pageStateId: UCPATH_JOB_SUMMARY_PAGE_STATE,
+      emplId,
+      displayedName: detail.displayedName,
+      jobRows,
+      rowCount: jobRows.length,
+      renderContext: {
+        entry,
+        searchResultRows,
+        employmentInstances: detail.employmentInstances,
+      },
+      observedAt,
+    },
+  });
+}
+
+async function ensureEmploymentInstancesExpanded(
+  page: Page,
+): Promise<"already-complete" | "expanded"> {
+  return ensurePersonOrgViewAllExpanded(
     playwrightViewTogglePort(
       page,
       UCPATH_PERSON_ORG_EMPLOYMENT_VIEW_TOGGLE,
@@ -560,17 +742,17 @@ async function extractDetail(page: Page): Promise<PersonOrgDetail> {
     resolveUcpathElement(page, UCPATH_PERSON_ORG_NAME_DISPLAY),
     `displayed name for EID ${eid}`,
   );
-  await ensureEmploymentInstancesExpanded(page);
+  const employmentInstances = await ensureEmploymentInstancesExpanded(page);
   const rows = await resolveUcpathElement(page, UCPATH_PERSON_ORG_ASSIGNMENTS_GRID)
     .locator("tr")
     .evaluateAll((elements) => elements.map((row) =>
       Array.from((row as HTMLTableRowElement).cells).map((cell) => cell.textContent?.trim() ?? "")
     ));
-  const assignments = rows.map((cells) => deriveAssignmentDetailsFromCells(cells));
   return PersonOrgDetailSchema.parse({
     observedEid: eid,
     displayedName,
-    assignment: selectPreferredAssignmentDetails(assignments),
+    cells: rows,
+    employmentInstances,
   });
 }
 
@@ -625,7 +807,7 @@ function createPlaywrightPersonOrgPage(page: Page): PersonOrgPagePort {
         if (!text.includes(NO_RESULTS_TEXT)) {
           throw new Error(`Person Org no-results status contained unexpected text ${JSON.stringify(text)}`);
         }
-        return { kind: "not-found" };
+        return { kind: "not-found", marker: text };
       }
       if (states[1] === true) return { kind: "detail", detail: await extractDetail(page) };
       await ensureResultsExpanded(page);
@@ -654,6 +836,14 @@ export async function searchPersonOrgOnPage(
   input: z.output<typeof SearchPersonOrgInputSchema>,
 ): Promise<SearchPersonOrgOutput> {
   return searchPersonOrgWithPagePort(createPlaywrightPersonOrgPage(page), input);
+}
+
+export async function readJobSummaryOnPage(
+  page: Page,
+  input: Readonly<{ emplId: Eid }>,
+  observedAt: string,
+): Promise<UcpathJobSummaryRead> {
+  return readJobSummaryWithPagePort(createPlaywrightPersonOrgPage(page), input, observedAt);
 }
 
 export const UCPATH_PERSON_ORG_OPERATION_ELEMENTS: readonly ElementId[] = Object.freeze([

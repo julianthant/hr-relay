@@ -1,0 +1,188 @@
+/**
+ * The ALWAYS-GATE identity approval's typed result, and the fold that consumes
+ * it — doc 09 §14.4/§14.5, implemented.
+ *
+ * ## What the payload carries, and what it deliberately does NOT
+ *
+ * §14.4 draws the result with `approvedBy: ActorId` and `approvedAt: Instant`
+ * on the payload. **They are not on the payload here, and the control is
+ * STRONGER for it.** The command kernel writes a `GateResultRecord` whose
+ * `resolvedBy` is `request.requestedBy` and whose `resolvedAt` is the kernel's
+ * own `now`, in the same transaction that stores the result and resumes the run
+ * (`src/core/command-kernel.ts`, `executeResolveGate`). A caller-supplied
+ * `approvedBy` would be a CLAIM sitting next to that authority — schema-valid,
+ * unverifiable, and free to disagree with it. D110/D114 settled this shape
+ * already: "a schema-valid caller-built result is not authority." §14.6 risk 6
+ * ("who approved is lost") is answered by the durable row, which is where
+ * `explain run` and the receipt read it from.
+ *
+ * What the payload MUST carry is the thing only the approver knows: which EID
+ * they chose, where they chose it from, and **the digest of the exact packet
+ * they were looking at** (§14.5). That digest is the whole staleness mechanism.
+ *
+ * ## Rejection is a terminal failure, not a quiet stop
+ *
+ * §14.4: "`rejected` terminalizes the run; it never falls through to a write."
+ * Here the rejection arm becomes a `FailureRecord` whose message names what the
+ * operator saw — the packet's disagreements — because a rejection with no
+ * reason recorded is indistinguishable from a run that died.
+ */
+import { z } from "zod";
+import { EidSchema, FingerprintSchema } from "../ids.js";
+import {
+  IdentityEvidencePacketSchema,
+  deriveIdentityEvidenceDigest,
+} from "./identity-evidence.js";
+import type { IdentityEvidencePacket } from "./identity-evidence.js";
+
+export const IdentityApprovalChoiceSchema = z.enum([
+  /** The EID the run checked — the document's own, or the one it was given. */
+  "checked",
+  /** The EID the document's NAME resolves to, when that is a different person. */
+  "name-search",
+  /** An EID the approver typed. It must still be one the packet SHOWED. */
+  "manual",
+]);
+export type IdentityApprovalChoice = z.infer<typeof IdentityApprovalChoiceSchema>;
+
+export const IdentityApprovalResultSchema = z.discriminatedUnion("decision", [
+  z.strictObject({
+    decision: z.literal("approved"),
+    eid: EidSchema,
+    chosenFrom: IdentityApprovalChoiceSchema,
+    evidenceDigest: FingerprintSchema,
+  }),
+  z.strictObject({
+    decision: z.literal("rejected"),
+    reason: z.string().min(1),
+    evidenceDigest: FingerprintSchema,
+  }),
+]);
+export type IdentityApprovalResult = z.infer<typeof IdentityApprovalResultSchema>;
+
+export const ApprovedIdentitySubjectSchema = z.strictObject({
+  emplId: EidSchema,
+  chosenFrom: IdentityApprovalChoiceSchema,
+  /** The packet the approval was granted on, re-derived and proved identical. */
+  evidenceDigest: FingerprintSchema,
+  /** The name UCPath displayed for the checked EID, carried onto the receipt. */
+  ucpathName: z.string().min(1),
+  nameTier: z.enum(["same", "similar", "different"]),
+  approvalShape: z.enum(["one-click", "choose-a-candidate", "type-the-eid"]),
+});
+export type ApprovedIdentitySubject = z.infer<typeof ApprovedIdentitySubjectSchema>;
+
+/**
+ * The literal tuple a contract's `errorCodes` needs, and the schema derived
+ * FROM it — one source, both shapes. Written this way round because
+ * `defineTaskContract` binds an exact readonly tuple, while every runtime check
+ * wants the enum; deriving the tuple from the enum loses the literal types.
+ */
+export const IDENTITY_APPROVAL_REFUSAL_CODES = [
+  "identity-approval-rejected",
+  "identity-approval-evidence-moved",
+  "identity-approval-eid-not-shown",
+  "identity-approval-choice-mismatch",
+] as const;
+export const IdentityApprovalRefusalCodeSchema = z.enum(IDENTITY_APPROVAL_REFUSAL_CODES);
+export type IdentityApprovalRefusalCode = z.infer<typeof IdentityApprovalRefusalCodeSchema>;
+
+export const IdentityApprovalVerificationSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("approved"), subject: ApprovedIdentitySubjectSchema }),
+  z.strictObject({
+    state: z.literal("refused"),
+    code: IdentityApprovalRefusalCodeSchema,
+    reason: z.string().min(1),
+  }),
+]);
+export type IdentityApprovalVerification = z.infer<typeof IdentityApprovalVerificationSchema>;
+
+function choiceFor(packet: IdentityEvidencePacket, eid: string): IdentityApprovalChoice | undefined {
+  if (eid === packet.emplId) return "checked";
+  if (packet.nameSearch.status === "resolved" && eid === packet.nameSearch.candidate.eid) {
+    return "name-search";
+  }
+  return packet.approvableEids.includes(EidSchema.parse(eid)) ? "manual" : undefined;
+}
+
+/**
+ * The post-gate check, run as a real node so every refusal has a durable code.
+ *
+ * Four things are checked and none of them is ceremony:
+ *
+ * 1. **The decision.** `rejected` refuses, naming the operator's reason and the
+ *    disagreements the packet led with.
+ * 2. **The digest** (§14.5). The packet is re-derived from the run's own stored
+ *    outputs; an approval bound to different bytes approved something else.
+ * 3. **The EID was SHOWN.** §14.4 allows a manually typed EID only when it has
+ *    been "re-validated against a live read" — this chunk performs no second
+ *    live read, so an EID the packet never displayed cannot be approved here.
+ *    That is a narrower rule than §14.4's, and it is narrow in the safe
+ *    direction: it refuses rather than filing against an unread person.
+ * 4. **`chosenFrom` agrees with where the EID actually came from.** A label the
+ *    packet contradicts would make the receipt state something false — the exact
+ *    defect D197 found on the first live receipt.
+ */
+export function verifyIdentityApproval(
+  packet: IdentityEvidencePacket,
+  result: IdentityApprovalResult,
+  reDerivedDigest = deriveIdentityEvidenceDigest(IdentityEvidencePacketSchema.parse(packet)),
+): IdentityApprovalVerification {
+  if (result.evidenceDigest !== reDerivedDigest) {
+    return IdentityApprovalVerificationSchema.parse({
+      state: "refused",
+      code: "identity-approval-evidence-moved",
+      reason: `the approval is bound to evidence ${result.evidenceDigest.slice(0, 12)}…, and this run's `
+        + `identity evidence re-derives to ${reDerivedDigest.slice(0, 12)}…. An approval is an `
+        + "observation of a specific packet (doc 09 §14.5); it never survives the disappearance of "
+        + "what it approved.",
+    });
+  }
+  if (result.decision === "rejected") {
+    const disagreements = packet.comparisons.filter(({ agrees }) => !agrees);
+    return IdentityApprovalVerificationSchema.parse({
+      state: "refused",
+      code: "identity-approval-rejected",
+      reason: `an operator rejected the identity for separation document ${packet.documentNumber}: `
+        + `${result.reason}. What they were shown: ${
+          disagreements.length === 0
+            ? "every compared field agreed"
+            : disagreements
+              .map(({ field, documentValue, ucpathValue }) =>
+                `${field} — document ${JSON.stringify(documentValue)} vs UCPath ${JSON.stringify(ucpathValue)}`)
+              .join("; ")
+        }.`,
+    });
+  }
+  const actual = choiceFor(packet, result.eid);
+  if (actual === undefined) {
+    return IdentityApprovalVerificationSchema.parse({
+      state: "refused",
+      code: "identity-approval-eid-not-shown",
+      reason: `EID ${result.eid} was approved for separation document ${packet.documentNumber}, and the `
+        + `identity packet never showed it (it showed ${packet.approvableEids.join(", ")}). A typed EID `
+        + "is an assertion, not evidence: nothing in this run read that person, so there is nothing to "
+        + "approve.",
+    });
+  }
+  if (actual !== result.chosenFrom) {
+    return IdentityApprovalVerificationSchema.parse({
+      state: "refused",
+      code: "identity-approval-choice-mismatch",
+      reason: `the approval labels EID ${result.eid} as "${result.chosenFrom}", and on this packet it is `
+        + `"${actual}". A receipt that mislabels where an approved identity came from states something `
+        + "false about the human decision it records.",
+    });
+  }
+  return IdentityApprovalVerificationSchema.parse({
+    state: "approved",
+    subject: ApprovedIdentitySubjectSchema.parse({
+      emplId: result.eid,
+      chosenFrom: result.chosenFrom,
+      evidenceDigest: result.evidenceDigest,
+      ucpathName: packet.ucpathName,
+      nameTier: packet.nameTier,
+      approvalShape: packet.approvalShape,
+    }),
+  });
+}

@@ -88,6 +88,21 @@ export const SEPARATIONS_KRONOS_TIMECARD_CLAIMS: readonly ScenarioCoverageClaim[
 export const SEPARATIONS_KUALI_READ_CLAIMS: readonly ScenarioCoverageClaim[] =
   Object.freeze([]);
 
+/**
+ * separations-identity-check is the FIRST production descriptor in this tree
+ * with a gate node, so it is the first whose graph derives gate coverage points
+ * at all. Both are claimed by the single-active-job walk, and the scenario file
+ * asserts the claim against what the walk observed — the gate's `opened` and
+ * `resolved` points are properties of reaching and resolving the gate, so any
+ * path through this graph produces exactly them.
+ */
+export const SEPARATIONS_IDENTITY_CHECK_CLAIMS: readonly ScenarioCoverageClaim[] = Object.freeze([
+  claim("separations-identity-check/single-active-job", [
+    "gate:identity-approval/opened",
+    "gate:identity-approval/resolved",
+  ]),
+]);
+
 export const SCENARIO_COVERAGE_CLAIMS: Readonly<Record<string, readonly ScenarioCoverageClaim[]>> =
   Object.freeze({
     "person-lookup": PERSON_LOOKUP_CLAIMS,
@@ -95,4 +110,5 @@ export const SCENARIO_COVERAGE_CLAIMS: Readonly<Record<string, readonly Scenario
     "kuali-timekeeper-annotation": KUALI_TIMEKEEPER_CLAIMS,
     "separations-kronos-timecard": SEPARATIONS_KRONOS_TIMECARD_CLAIMS,
     "separations-kuali-read": SEPARATIONS_KUALI_READ_CLAIMS,
+    "separations-identity-check": SEPARATIONS_IDENTITY_CHECK_CLAIMS,
   });

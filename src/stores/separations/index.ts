@@ -1,5 +1,7 @@
 import { defineWorkflowStore } from "../../base/store.js";
+import { matchIdentityTask } from "./tasks/match-identity.js";
 import { matchTerminationTypeTask } from "./tasks/match-termination-type.js";
+import { verifyIdentityApprovalTask } from "./tasks/verify-identity-approval.js";
 
 /**
  * The `separations` pure workflow mini-store (`separations.md` §2.5):
@@ -11,4 +13,6 @@ import { matchTerminationTypeTask } from "./tasks/match-termination-type.js";
  */
 export const separationsStore = defineWorkflowStore("separations", {
   resolveTerminationType: matchTerminationTypeTask,
+  matchIdentity: matchIdentityTask,
+  verifyIdentityApproval: verifyIdentityApprovalTask,
 });

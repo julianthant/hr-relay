@@ -145,6 +145,11 @@ const KUALI_READ_INPUT = workflowInput("separations-kuali-read");
 const KUALI_READ_RESULT = workflowResult("separations-kuali-read");
 const KUALI_SEPARATION = taskOutput("kuali/read-separation-document");
 const TERMINATION_TYPE = taskOutput("workflow:separations/match-termination-type");
+const IDENTITY_CHECK_INPUT = workflowInput("separations-identity-check");
+const IDENTITY_CHECK_RESULT = workflowResult("separations-identity-check");
+const JOB_SUMMARY = taskOutput("ucpath/read-job-summary");
+const MATCH_IDENTITY = taskOutput("workflow:separations/match-identity");
+const VERIFY_IDENTITY_APPROVAL = taskOutput("workflow:separations/verify-identity-approval");
 
 /**
  * Every leaf of the Kuali separation-document read, relative to a prefix.
@@ -210,6 +215,55 @@ function separationDocumentLeaves(scope: EvidenceValueScope, prefix: string): un
       // Option lists are ARRAYS, hence single leaves each.
       at("options.terminationType"), at("options.division"), at("options.employeeType"),
       at("options.studentTitleCode"), at("options.department"), at("options.finalPay")),
+  ];
+}
+
+/**
+ * The job-summary CLASSIFICATION fold's leaves, relative to a prefix.
+ *
+ * `rows` is an array and therefore one leaf, and it is `sensitive-hr`/`count`
+ * rather than open: the classified rows restate a person's whole employment
+ * history with department and title per row, and "how many rows" is the fact a
+ * receipt owes. `unreadableCells` is likewise one array leaf — it names CELLS,
+ * not people, but it is only meaningful beside the rows it describes.
+ */
+function jobClassificationLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
+  return [
+    ...open(scope, at("disposition"), at("rowCount"), at("activeRowCount"),
+      at("inactiveRowCount"), at("unknownRowCount"), at("unreadableCells")),
+    ...population(scope, at("rows")),
+  ];
+}
+
+/**
+ * The identity decision packet's leaves.
+ *
+ * Names and EIDs are the person; the tiers, the shape, the disposition and the
+ * comparison table describe the DECISION. `comparisons` is an array leaf whose
+ * members restate the two names verbatim, so it is `sensitive-hr` with a count —
+ * a receipt says "four fields were compared, two disagreed" through the counts
+ * around it rather than reprinting both people's names.
+ */
+function identityPacketLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
+  return [
+    ...person(scope, at("emplId"), at("documentEidText"), at("documentName"), at("ucpathName"),
+      at("nameSearch.candidate.eid"), at("nameSearch.candidate.name")),
+    ...population(scope, at("comparisons"), at("approvableEids"), at("nameSearch.candidateEids")),
+    ...open(scope, at("documentNumber"), at("emplIdSource"), at("nameTier"), at("approvalShape"),
+      at("observedAt"), at("nameSearch.status"), at("nameSearch.candidate.department"),
+      at("nameSearch.candidate.jobTitle"), at("nameSearch.candidate.employeeStatus")),
+    ...jobClassificationLeaves(scope, at("jobs")),
+  ];
+}
+
+/** The approved subject: one EID, one displayed name, and three decision facts. */
+function approvedSubjectLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
+  return [
+    ...person(scope, at("emplId"), at("ucpathName")),
+    ...open(scope, at("chosenFrom"), at("evidenceDigest"), at("nameTier"), at("approvalShape")),
   ];
 }
 
@@ -321,6 +375,37 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...separationDocumentLeaves(KUALI_READ_RESULT, "document"),
   ...open(KUALI_READ_RESULT, "termination.terminationType", "termination.classification",
     "termination.template", "termination.reasonCode", "termination.observedOptionCount"),
+
+  /* separations-identity-check ingress (chunk 3). The document's name and both
+     EIDs are the PERSON; the document number, the source fork and the absent
+     arm's own reason describe the READ. D197's rule applies verbatim: an arm
+     DISCRIMINATOR is not the person, so `documentEid.state`/`.reason` are open
+     and only `documentEid.value` is an identifier. */
+  ...person(IDENTITY_CHECK_INPUT, "employeeName", "emplId", "documentEid.value"),
+  ...open(IDENTITY_CHECK_INPUT, "documentNumber", "emplIdSource", "documentEid.state",
+    "documentEid.reason"),
+
+  /* ucpath/read-job-summary — D194's whole-grid read. `jobRows` is an ARRAY and
+     therefore one leaf; it carries a person's whole employment history, so it is
+     `sensitive-hr` with a count rather than a redacted dump. Everything else on
+     the read describes the PAGE VISIT. */
+  ...person(JOB_SUMMARY, "emplId", "displayedName"),
+  ...population(JOB_SUMMARY, "jobRows"),
+  ...open(JOB_SUMMARY, "pageStateId", "rowCount", "observedAt",
+    "renderContext.entry", "renderContext.searchResultRows",
+    "renderContext.employmentInstances"),
+
+  /* workflow:separations/match-identity — the gate's decision packet. */
+  ...identityPacketLeaves(MATCH_IDENTITY, "packet"),
+  ...open(MATCH_IDENTITY, "evidenceDigest"),
+
+  /* workflow:separations/verify-identity-approval — the approved subject. */
+  ...approvedSubjectLeaves(VERIFY_IDENTITY_APPROVAL, ""),
+
+  /* separations-identity-check terminal result */
+  ...open(IDENTITY_CHECK_RESULT, "documentNumber"),
+  ...approvedSubjectLeaves(IDENTITY_CHECK_RESULT, "approved"),
+  ...jobClassificationLeaves(IDENTITY_CHECK_RESULT, "jobs"),
 ].map((entry) => Object.freeze(EvidenceFieldClassificationSchema.parse(entry))));
 
 const BY_SCOPE_AND_PATH = new Map<string, EvidenceFieldClassification>();

@@ -33,6 +33,9 @@ export type ExecutableScenarioSpec = z.infer<typeof ExecutableScenarioSpecSchema
  * descriptors may reference only these ids; the architecture lane separately
  * proves each row is an actual `it("<scenario-id> …")` in the named file.
  */
+/** Chunk 3 registers eleven rows against one file; naming it once keeps them aligned. */
+const SEPARATIONS_IDENTITY_CHECK_FILE = "tests/scenario/separations-identity-check.scenario.test.ts";
+
 export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
   { scenarioId: "person-lookup/happy-by-eid", file: "tests/scenario/person-lookup.scenario.test.ts" },
   { scenarioId: "person-lookup/happy-by-eid-with-dates", file: "tests/scenario/person-lookup.scenario.test.ts" },
@@ -163,6 +166,17 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
     scenarioId: "separations-kuali-read/unmapped-termination-type",
     file: "tests/scenario/separations-kuali-read.scenario.test.ts",
   },
+  { scenarioId: "separations-identity-check/single-active-job", file: SEPARATIONS_IDENTITY_CHECK_FILE },
+  { scenarioId: "separations-identity-check/similar-name-never-auto-proceeds", file: SEPARATIONS_IDENTITY_CHECK_FILE },
+  { scenarioId: "separations-identity-check/different-name-two-candidates", file: SEPARATIONS_IDENTITY_CHECK_FILE },
+  { scenarioId: "separations-identity-check/already-terminated-single-row", file: SEPARATIONS_IDENTITY_CHECK_FILE },
+  { scenarioId: "separations-identity-check/already-terminated-multi-row", file: SEPARATIONS_IDENTITY_CHECK_FILE },
+  { scenarioId: "separations-identity-check/concurrent-active-jobs", file: SEPARATIONS_IDENTITY_CHECK_FILE },
+  { scenarioId: "separations-identity-check/unreadable-department", file: SEPARATIONS_IDENTITY_CHECK_FILE },
+  { scenarioId: "separations-identity-check/job-summary-not-found", file: SEPARATIONS_IDENTITY_CHECK_FILE },
+  { scenarioId: "separations-identity-check/gate-approved", file: SEPARATIONS_IDENTITY_CHECK_FILE },
+  { scenarioId: "separations-identity-check/gate-rejected", file: SEPARATIONS_IDENTITY_CHECK_FILE },
+  { scenarioId: "separations-identity-check/gate-evidence-moved", file: SEPARATIONS_IDENTITY_CHECK_FILE },
 ]));
 
 export const EXECUTABLE_SCENARIO_IDS: readonly ScenarioId[] = Object.freeze(

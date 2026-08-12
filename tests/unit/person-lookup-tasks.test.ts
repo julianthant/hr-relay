@@ -163,11 +163,17 @@ describe("Phase 1f Person Lookup task implementations", () => {
         "ocr/extract-form-page",
         // The roster service store (D163) lands before any descriptor consumes it.
         "roster/match-spreadsheet",
+        // D194's rich Person Org read: the whole Employment Instances grid,
+        // one page visit (separations chunk 3).
+        "ucpath/read-job-summary",
         "ucpath/search-person-org",
         "workflow:person-lookup/read-active-status",
-        // The `separations` pure workflow mini-store's first task: §4a's
-        // termination-type refusal, sessionless and browser-free.
+        // The `separations` pure workflow mini-store: §4a's termination-type
+        // refusal, plus chunk 3's identity comparison and post-gate check — all
+        // sessionless and browser-free.
+        "workflow:separations/match-identity",
         "workflow:separations/match-termination-type",
+        "workflow:separations/verify-identity-approval",
       ],
     );
   });
