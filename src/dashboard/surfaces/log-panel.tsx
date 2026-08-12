@@ -42,12 +42,14 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import {
   ClipboardList,
   CornerDownRight,
   FileText,
   Info,
+  PauseCircle,
   ReceiptText,
   ScrollText,
   TriangleAlert,
@@ -69,6 +71,7 @@ import {
   StatusDot,
   StatusPill,
   Tooltip,
+  dsStatusText,
   dsBorder,
   dsClip,
   dsFocus,
@@ -87,6 +90,13 @@ import type {
 import type { RunDetailSectionSchema } from "../../domain/dashboard/primitives.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import { BannerActions, OutcomeActionButton, type DashboardActionHandler } from "./actions.js";
+import {
+  InlineParkedWrite,
+  ParkResolveDialog,
+  parkResolutionArm,
+  type ParkResolveTarget,
+  type ParkedWritePayload,
+} from "./park-resolve.js";
 import {
   ContextRail,
   ContextRailSpine,
@@ -153,6 +163,13 @@ export interface PanelSections extends ContextSections {
   logs?: NotePage;
   receipt?: ReceiptSectionPayload;
   failure?: FailurePayload;
+  /**
+   * Doc 09 §4.1's parked write. It has NO tab, deliberately: DESIGN.md names
+   * `Write parked` a DECISION, and a decision's surface renders inline in the
+   * stream at the line that produced it — the same placement the failure record
+   * gets and for the same reason.
+   */
+  "parked-write"?: ParkedWritePayload;
 }
 
 const TAB_META: Record<PanelTab, { label: string; icon: typeof ScrollText }> = {
@@ -529,17 +546,56 @@ function InlineFailureRecord({
  * the panel, never portalled, and on the far edge from the app-level toast
  * stack. Neither surface's position may be a function of the other's presence
  * (DESIGN.md); geometry, not arbitration.
+ *
+ * It serves BOTH decisions, because DESIGN.md names both: an open gate and a
+ * parked write. They differ only in the word, the glyph and the instant they
+ * count from, so the second one is arguments to this component rather than a
+ * second copy of it — two floating notices with independent geometry is exactly
+ * how the "these 2 should not be affecting each other" defect gets re-derived.
  */
+/**
+ * The two decision tones, as LITERAL class strings.
+ *
+ * A token interpolated into a class name is one Tailwind cannot see — it emits
+ * no rule and the notice paints nothing, which is the same class of defect as
+ * the hand-rolled status span DESIGN.md bans.
+ */
+type DecisionTone = "waiting" | "parked";
+const DECISION_TONE: Record<DecisionTone, { border: string; bg: string; fg: string }> = {
+  waiting: {
+    border: "border-[color:var(--ds-status-waiting-border)]",
+    bg: "bg-[var(--ds-status-waiting-bg)]",
+    fg: "text-[color:var(--ds-status-waiting-fg)]",
+  },
+  parked: {
+    border: "border-[color:var(--ds-status-parked-border)]",
+    bg: "bg-[var(--ds-status-parked-bg)]",
+    fg: "text-[color:var(--ds-status-parked-fg)]",
+  },
+};
+
 function DecisionNotice({
-  gate,
+  label,
+  since,
+  icon,
+  goLabel,
+  dismissLabel,
   onGo,
   onDismiss,
+  tone,
 }: {
-  gate: Extract<RunDetailWire["gate"], { state: "open" }>;
+  label: string;
+  /** the instant the decision started waiting on a human */
+  since: string;
+  icon: ReactNode;
+  goLabel: string;
+  dismissLabel: string;
   onGo: () => void;
   onDismiss: () => void;
+  tone: DecisionTone;
 }) {
   const entering = useDsEnterTransition();
+  const paint = DECISION_TONE[tone];
   return (
     <FloatingSurface
       role="status"
@@ -552,15 +608,12 @@ function DecisionNotice({
         // are both tokens, and the preference zeroes both.
         dsMotion.enter,
         "data-[demo-enter=from]:translate-y-[var(--ds-travel-md)] data-[demo-enter=from]:opacity-0",
-        "border-[color:var(--ds-status-waiting-border)]",
+        paint.border,
       )}
       {...entering}
     >
       <div
-        className={cn(
-          "flex items-start gap-[var(--ds-space-tight)] p-[var(--ds-space-snug)]",
-          "bg-[var(--ds-status-waiting-bg)]",
-        )}
+        className={cn("flex items-start gap-[var(--ds-space-tight)] p-[var(--ds-space-snug)]", paint.bg)}
       >
         <button
           type="button"
@@ -577,30 +630,31 @@ function DecisionNotice({
             className={cn(
               dsText.meta,
               dsText.flush,
-              "flex min-w-0 items-center gap-[var(--ds-space-tight)] font-semibold text-[color:var(--ds-status-waiting-fg)]",
+              "flex min-w-0 items-center gap-[var(--ds-space-tight)] font-semibold",
+              paint.fg,
             )}
           >
-            <UserRoundSearch aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
-            <span className="min-w-0 truncate">{gate.label}</span>
+            {icon}
+            <span className="min-w-0 truncate">{label}</span>
           </span>
           <span className={cn(dsText.micro, "flex min-w-0 items-center gap-[var(--ds-space-base)]")}>
             <span
               className={cn(
                 "inline-flex min-w-0 items-center gap-[var(--ds-space-hair)] truncate font-semibold",
-                "text-[color:var(--ds-status-waiting-fg)]",
+                paint.fg,
               )}
             >
               <CornerDownRight aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
-              Go to the decision
+              {goLabel}
             </span>
             <span className={cn(dsText.nums, "ml-auto shrink-0 text-[color:var(--ds-fg-muted)]")}>
-              {`since ${fmtClock(gate.openedAt)}`}
+              {`since ${fmtClock(since)}`}
             </span>
           </span>
         </button>
         <IconButton
           size="xs"
-          label="Dismiss this reminder — the decision stays open"
+          label={dismissLabel}
           onClick={onDismiss}
           icon={<X aria-hidden className={dsIcon.sm} />}
         />
@@ -694,10 +748,13 @@ function LogsTab({
   detail,
   notes,
   failure,
+  parked,
   gateActions,
   onAction,
+  onResolvePark,
   decisionRef,
   failureRef,
+  parkedRef,
   surface,
   workflowLabel,
   currentAppVersion,
@@ -707,10 +764,13 @@ function LogsTab({
   detail: RunDetailWire;
   notes: NotePage | undefined;
   failure: FailurePayload | undefined;
+  parked: ParkedWritePayload | undefined;
   gateActions: readonly ActionDescriptorWire[];
   onAction: DashboardActionHandler;
+  onResolvePark: DashboardActionHandler;
   decisionRef: (node: HTMLElement | null) => void;
   failureRef: (node: HTMLElement | null) => void;
+  parkedRef: (node: HTMLElement | null) => void;
   surface?: QueueSurfaceWire;
   workflowLabel: string;
   currentAppVersion: string;
@@ -735,6 +795,9 @@ function LogsTab({
     failure !== undefined && detail.outcome.state === "terminal" && detail.outcome.result === "failed"
       ? anchorIndex(lines, detail.outcome.completedAt)
       : undefined;
+  // The park's own instant, off the served section — the run stopped when the
+  // kernel parked it, which is not the same moment as any line in the stream.
+  const parkedAt = parked === undefined ? undefined : anchorIndex(lines, parked.parkedAt);
   const errorNotes = lines.filter((note) => note.level === "error");
 
   const decision =
@@ -758,6 +821,10 @@ function LogsTab({
         aiAdvisory={aiAdvisory}
       />
     ) : null;
+  const parkedRecord =
+    parked !== undefined ? (
+      <InlineParkedWrite parked={parked} onResolve={onResolvePark} anchorRef={parkedRef} />
+    ) : null;
 
   return (
     <>
@@ -766,6 +833,7 @@ function LogsTab({
       <div className="flex flex-1 flex-col pb-[var(--ds-space-base)] pt-[var(--ds-space-tight)]">
         {decisionAt === -1 && decision}
         {failureAt === -1 && failureRecord}
+        {parkedAt === -1 && parkedRecord}
         {lines.length === 0 ? (
           <EmptyState
             icon={<FileText aria-hidden className={dsIcon.lg} />}
@@ -810,6 +878,7 @@ function LogsTab({
                 </div>
                 {decisionAt === index && decision}
                 {failureAt === index && failureRecord}
+                {parkedAt === index && parkedRecord}
               </div>
             );
           })
@@ -948,9 +1017,23 @@ export function LogPanel({
     sections.failure !== undefined,
     "nearest",
   );
+  const parked = sections["parked-write"];
+  const {
+    setNode: setParkedNode,
+    inView: parkedInView,
+    seek: seekParked,
+  } = useSeekAnchor(parked !== undefined);
   const [noticeDismissed, setNoticeDismissed] = useState(false);
   const [decisionSeek, setDecisionSeek] = useState(0);
   const [failureSeek, setFailureSeek] = useState(0);
+  const [parkedSeek, setParkedSeek] = useState(0);
+  /**
+   * The resolution the operator opened, held BY THE PANEL rather than by the
+   * inline record: the record unmounts on a tab change and on every section
+   * refetch, and a dialog that unmounts mid-answer discards what was typed.
+   */
+  const [parkTarget, setParkTarget] = useState<ParkResolveTarget | null>(null);
+  useEffect(() => setParkTarget(null), [detail.runId]);
 
   useEffect(() => setNoticeDismissed(false), [detail.runId, effectiveTab]);
 
@@ -966,6 +1049,10 @@ export function LogPanel({
     if (failureSeek === 0) return;
     seekFailure();
   }, [failureSeek, seekFailure]);
+  useEffect(() => {
+    if (parkedSeek === 0) return;
+    seekParked();
+  }, [parkedSeek, seekParked]);
 
   const goToDecision = useCallback(() => {
     if (effectiveTab !== "logs") onTab("logs");
@@ -975,6 +1062,28 @@ export function LogPanel({
     if (effectiveTab !== "logs") onTab("logs");
     setFailureSeek((nonce) => nonce + 1);
   }, [effectiveTab, onTab]);
+  const goToPark = useCallback(() => {
+    if (effectiveTab !== "logs") onTab("logs");
+    setParkedSeek((nonce) => nonce + 1);
+  }, [effectiveTab, onTab]);
+
+  /**
+   * A served resolution descriptor opens its dialog; it is never dispatched
+   * from the inline record. Both resolutions settle a real HR write, so both
+   * carry a `confirm` block, and the dialog is where that block is READ.
+   */
+  const handleParkResolution = useCallback<DashboardActionHandler>(
+    (action) => {
+      if (parked === undefined) return;
+      if (parkResolutionArm(action) === undefined || action.kind !== "command") {
+        throw new Error(
+          `the parked-write section served ${action.key}, which is not a doc 09 §4.1 resolution`,
+        );
+      }
+      setParkTarget({ parked, action });
+    },
+    [parked],
+  );
 
   /**
    * The outcome bar's `Review` / `Open failure` are NAVIGATION to something in
@@ -1030,7 +1139,21 @@ export function LogPanel({
       : gate.state === "open"
         ? gate.label
         : outcome.reason;
+  /**
+   * At most ONE notice, and the gate wins.
+   *
+   * A run can only be parked on a write while no gate is open, so the pair is
+   * mutually exclusive in practice — but two floating surfaces sharing one
+   * corner is a geometry both of them would have to know about, which DESIGN.md
+   * refuses outright. The precedence is stated here so it can never become an
+   * arbitration between two elements later.
+   */
   const noticeShown = gateOpen && !noticeDismissed && !decisionInView;
+  const parkNoticeShown = !noticeShown
+    && !gateOpen
+    && parked !== undefined
+    && !noticeDismissed
+    && !parkedInView;
 
   /**
    * Is this region drawing three columns? Measured, not inferred (doc 03 §Shell).
@@ -1290,10 +1413,13 @@ export function LogPanel({
               detail={detail}
               notes={sections.logs}
               failure={sections.failure}
+              parked={parked}
               gateActions={actions}
               onAction={handleAction}
+              onResolvePark={handleParkResolution}
               decisionRef={setDecisionNode}
               failureRef={setFailureNode}
+              parkedRef={setParkedNode}
               surface={surface}
               workflowLabel={workflowLabel}
               currentAppVersion={currentAppVersion}
@@ -1318,8 +1444,25 @@ export function LogPanel({
 
         {noticeShown && gate.state === "open" && (
           <DecisionNotice
-            gate={gate}
+            tone="waiting"
+            label={gate.label}
+            since={gate.openedAt}
+            icon={<UserRoundSearch aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}
+            goLabel="Go to the decision"
+            dismissLabel="Dismiss this reminder — the decision stays open"
             onGo={goToDecision}
+            onDismiss={() => setNoticeDismissed(true)}
+          />
+        )}
+        {parkNoticeShown && parked !== undefined && (
+          <DecisionNotice
+            tone="parked"
+            label={dsStatusText("parked")}
+            since={parked.parkedAt}
+            icon={<PauseCircle aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}
+            goLabel="Go to the parked write"
+            dismissLabel="Dismiss this reminder — the write stays parked"
+            onGo={goToPark}
             onDismiss={() => setNoticeDismissed(true)}
           />
         )}
@@ -1350,6 +1493,21 @@ export function LogPanel({
           )}
         />
       )}
+
+      {/*
+        THE RESOLUTION DIALOG, mounted at the REGION rather than beside the
+        record it was opened from. It is reachable from anywhere on this
+        surface, so its answer has to be visible from anywhere on it
+        (DESIGN.md) — and it is keyed to the run through `parkTarget`, which is
+        cleared whenever the open run changes, so a stale answer can never sit
+        over a different write claiming to be about it.
+      */}
+      <ParkResolveDialog
+        target={parkTarget}
+        actorId={actorId}
+        onClose={() => setParkTarget(null)}
+        onResolved={onDetailEdited}
+      />
     </div>
     </div>
   );
