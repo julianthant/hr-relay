@@ -310,6 +310,23 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-12: "answered durably" and "answered in evidence" are two different claims, and a trust
+  surface only honours the second (D204).** D202 put the approver into authority and D203 taught the
+  KERNEL to read a `gate_results` row as a dependency's evidence — and the RECEIPT, which is the
+  artifact an operator actually reads months later, still derived from checkpoints alone. So chunk
+  3's settled live run listed `node.identity-approval` as `unknown` while `resolvedBy` sat in the
+  database, and doc 09 §14.6 risk 6 looked closed from the kernel's side and was open from the
+  operator's. The fix is D144's shape a third time — the reader moves, nothing fabricates a
+  checkpoint — plus one rule that generalises past gates: **a closed enum fed from an
+  author-controlled payload needs a DECLARED mapping, never a field-name sniff.**
+  `DecisionEvidence.outcome` has five arms and a gate's payload is authored per gate, so
+  `gate-decisions.ts` declares the decision leaf, each stored value's outcome and the bound-evidence
+  leaf per `(workflow, gate)`; an unlisted arm value fails loud instead of landing on an HR record as
+  `approved`. Two gotchas worth keeping: a gate needs its OWN `EvidenceSource` arm and its own
+  redaction scope (`gate-result`, scoped by `(workflow, gate)`) because it owns no task contract, so
+  reusing `system`/`task-output` would have required inventing a task id; and a receipt stored before
+  a derivation change correctly refuses to re-derive, which is D199 working — the repair is to drop
+  and re-derive the ROW as a recorded data decision, never to add a waiver arm to the check table.
 - **2026-08-12: a GATE's durable record is not a checkpoint, and the first live gated run is what
   found it (D203).** A task's read-completion validation resolves its declared `dependsOn` against
   whole authority checkpoints. A gate has none and never will — its record is an operator DECISION in

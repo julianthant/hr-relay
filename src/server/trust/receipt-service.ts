@@ -71,6 +71,9 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
         intent,
         attempts: authority.writeAttempts.listByIntent(intent.writeIntentId),
       })),
+    // D204: the gate's own durable row. A run with no gate node reads an empty
+    // list, which is the same answer as "this workflow asks no human anything".
+    listGateResultsByRun: (runId: string) => authority.gateResults.listByRun(runId),
     findReceiptByRun: (runId: string) => authority.evidenceReceipts.findByRun(runId),
     insertReceipt: (receipt: unknown) => authority.evidenceReceipts.insert(receipt),
   });

@@ -2213,12 +2213,18 @@ forward instead, so the workflow's whole product is a post-approval fact.
   token-for-token and both name searches resolved the same person the document's EID did, so the
   `type-the-eid` shape and the second candidate are test-pinned.
 - **No live absent cell (S24).** Both grids were complete.
-- **The receipt cannot yet attribute the approver.** The settled receipt lists
-  `node.identity-approval` as **`unknown`**, because a receipt derives from checkpoints and a gate has
-  none. Doc 09 §14.6 risk 6 ("who approved is lost") is answered durably — `gate_results.resolvedBy`
-  holds `local-operator` under the run's identity — but it does not yet reach the receipt or
-  `explain run`. That is a real open item for the composition chunk, not a claim this chunk gets to
-  make.
+- **~~The receipt cannot yet attribute the approver.~~ CLOSED 2026-08-12 by D204 (doc 12).** The
+  settled receipt used to list `node.identity-approval` as **`unknown`**, because a receipt derived
+  from checkpoints and a gate has none. `buildRunEvidenceReceipt` now reads `gate_results` beside
+  the checkpoints: run `si-161551-774c` re-derives with `node.identity-approval` **`verified`** and a
+  `gate/approved` decision reading *"an operator approved this identity at the ALWAYS-GATE: gate
+  "identity-approval" was resolved `approved` by local-operator at 2026-08-12T23:16:43.985Z through
+  command 4928fee1-…, bound to the identity evidence it was granted on (evidenceDigest fd112d6f…)"*,
+  with the approved EID redacted to its `last4`. All five of D199's semantic checks hold on that
+  re-derivation. **The two receipts this session minted were dropped from the standing authority
+  database and re-derived**, because a receipt stored before D204 cannot re-derive under it and D199
+  has no waiver arm — an explicit operator repair on a pre-production database, recorded in doc 12's
+  D204 note.
 - **The run-detail wire's top-level `gate` field still read "this run declares no operator gate"**
   while the run was parked, because that field folds the `gate.opened` SPAN and the dashboard
   process's projection had not tailed the worker's stream. The `identity-gate` section, which reads

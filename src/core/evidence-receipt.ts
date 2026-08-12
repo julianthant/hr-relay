@@ -61,6 +61,20 @@
  * against the surfaces this builder consumes. See
  * `receipt-derivation-binding.ts` for the check table and why a closure hash is
  * neither necessary NOR sufficient for a receipt.
+ *
+ * ## A gate's evidence is a `gate_results` row, not a checkpoint (D204)
+ *
+ * D203 taught the provenance collector that; the receipt still derived from
+ * checkpoints alone, so a settled gated run listed its gate node `unknown` and
+ * the approver — the whole point of doc 09 §14.6 risk 6 — reached authority and
+ * stopped there. The reader moves again, for the same reason D144 gave: a
+ * durable record must not be fabricated into the shape its reader expected.
+ *
+ * A gate contributes its stored payload's leaves as observation facts sourced
+ * `gate-result` (carrying the kernel's own `resolvedBy`/`resolvedAt`), ONE
+ * `kind: "gate"` decision whose outcome comes from the declared arm table in
+ * `src/domain/trust/gate-decisions.ts`, and a `verified` obligation. Nothing
+ * about the human decision is sniffed out of the payload's field names.
  */
 import { z } from "zod";
 import {
@@ -95,6 +109,11 @@ import {
   deriveEvidenceReceiptId,
   evidenceEntryRef,
 } from "../domain/trust/evidence-identity.js";
+import {
+  gateDecisionArm,
+  gateDecisionFor,
+} from "../domain/trust/gate-decisions.js";
+import { GateResultRecordSchema, type GateResultRecord } from "../domain/gates.js";
 import {
   obligationsFor,
   type EvidenceObligation,
@@ -140,6 +159,12 @@ export interface ReceiptBuildInput {
   readonly checkpoints: readonly unknown[];
   /** Every write intent this run fenced, with its attempt rows. */
   readonly writes?: readonly ReceiptWriteEvidence[];
+  /**
+   * Every `gate_results` row this run resolved (D204). Absent and empty are the
+   * same answer — a run with no gate node truthfully has none — but a gate node
+   * whose row is missing stays `unknown` rather than being invented.
+   */
+  readonly gateResults?: readonly unknown[];
 }
 
 /* ── node helpers ────────────────────────────────────────────────────────── */
@@ -334,6 +359,21 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
     intent: WriteIntentRecordSchema.parse(entry.intent),
     attempts: entry.attempts.map((attempt) => WriteAttemptRecordSchema.parse(attempt)),
   }));
+  const gateResults = (input.gateResults ?? []).map((row) => GateResultRecordSchema.parse(row));
+  for (const row of gateResults) {
+    // A gate row is keyed `(runId, gateId)` in authority, so a foreign one here
+    // is a supply bug, not a fact about this run. It says who approved WHAT —
+    // attributing another run's approval to this one is the exact wrong-subject
+    // failure the gate exists to prevent.
+    if (row.runId !== envelope.runId) {
+      throw new Error(
+        `gate result for "${row.gateId}" belongs to run ${row.runId}, not to run ${envelope.runId}; `
+        + "refusing to attribute another run's operator decision to this one",
+      );
+    }
+  }
+  const gateResultsByNode = new Map<string, GateResultRecord>();
+  for (const row of gateResults) gateResultsByNode.set(String(row.gateId), row);
 
   /*
    * D199: before describing the run at all, prove this build still owns every
@@ -346,6 +386,7 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
     ...(result === undefined ? {} : { result }),
     checkpoints,
     writes: writes.map((entry) => entry.intent),
+    gateResults,
   });
   if (binding.state === "incompatible") throw new Error(binding.message);
 
@@ -418,6 +459,33 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
     if (evidence === undefined) continue;
     const { record } = evidence;
     const contract = contractOf(node);
+
+    /*
+     * D204: a GATE's durable evidence is its `gate_results` row. It is read
+     * before the record-less arms below because a gate never has a checkpoint
+     * and never will — falling through would report `unknown` for a decision
+     * authority holds in full. A gate node with no row DOES fall through: the
+     * run never resolved it, and `unknown` is then the honest verdict.
+     */
+    if (node.kind === "gate") {
+      const stored = gateResultsByNode.get(id);
+      if (stored !== undefined) {
+        emitGateEvidence({
+          stored,
+          nodeId: id,
+          workflowId: descriptor.id,
+          verificationId: evidence.verificationId,
+          mandatory: terminalDependencies.has(id),
+          declaredDetails,
+          entryId,
+          evidence,
+          observations,
+          decisions,
+          verification,
+        });
+        continue;
+      }
+    }
 
     if (record === undefined) {
       const reason = evidence.notRun;
@@ -809,6 +877,8 @@ export interface EvidenceReceiptStore {
   getFailure(failureId: string): unknown;
   listCheckpointsByRun(runId: string): readonly unknown[];
   listWritesByRun(runId: string): readonly ReceiptWriteEvidence[];
+  /** Every `gate_results` row this run resolved (D204). */
+  listGateResultsByRun(runId: string): readonly unknown[];
   findReceiptByRun(runId: string): unknown;
   insertReceipt(receipt: unknown): Readonly<{ state: "inserted" | "existing"; record: RunEvidenceReceipt }>;
 }
@@ -853,6 +923,7 @@ export function ensureRunEvidenceReceipt(
     ...(lifecycle.failureId === undefined ? {} : { failure: store.getFailure(lifecycle.failureId) }),
     checkpoints: store.listCheckpointsByRun(runId),
     writes: store.listWritesByRun(runId),
+    gateResults: store.listGateResultsByRun(runId),
   });
   const existing: unknown = store.findReceiptByRun(runId);
   if (existing !== undefined && existing !== null) {
@@ -869,6 +940,113 @@ export function ensureRunEvidenceReceipt(
   return Object.freeze({
     state: stored.state === "inserted" ? "derived" : "existing",
     receipt: stored.record,
+  });
+}
+
+/* ── gate evidence (D204) ────────────────────────────────────────────────── */
+
+interface GateEvidenceInput {
+  readonly stored: GateResultRecord;
+  readonly nodeId: string;
+  readonly workflowId: AnyWorkflowDescriptor["id"];
+  readonly verificationId: EvidenceEntryId;
+  readonly mandatory: boolean;
+  readonly declaredDetails: ReadonlySet<string>;
+  readonly entryId: (kind: Parameters<typeof deriveEvidenceEntryId>[1], key: string) => EvidenceEntryId;
+  readonly evidence: NodeEvidence;
+  readonly observations: Fact[];
+  readonly decisions: Decision[];
+  readonly verification: Verification[];
+}
+
+/**
+ * One resolved gate, as receipt rows: its payload's leaves as facts sourced
+ * from the operator decision, ONE `gate` decision, and a `verified` obligation.
+ *
+ * The three values that answer §14.6 risk 6 — WHO, WHEN, and on WHAT evidence —
+ * come from three different places on purpose. `resolvedBy` and `resolvedAt`
+ * are the kernel's own columns on the durable row and are stamped onto every
+ * fact's source; the decision arm and the bound-evidence digest are payload
+ * leaves, resolved through the DECLARED table rather than by field name.
+ */
+function emitGateEvidence(input: GateEvidenceInput): void {
+  const { stored, nodeId, entryId, evidence } = input;
+  const declaration = gateDecisionFor(input.workflowId, nodeId);
+  const scope: EvidenceValueScope = {
+    kind: "gate-result",
+    workflowId: input.workflowId,
+    gateId: stored.gateId,
+  };
+  const source = {
+    kind: "gate-result" as const,
+    gateId: stored.gateId,
+    resolvedBy: stored.resolvedBy,
+    resolvedAt: stored.resolvedAt,
+  };
+
+  const leaves = evidenceLeaves(stored.result.value);
+  for (const leaf of leaves) {
+    const factId = entryId("observation", `${nodeId}.${leaf.path}`);
+    evidence.factIds.set(leaf.path, factId);
+    evidence.values.set(leaf.path, leaf.value);
+    input.observations.push({
+      id: factId,
+      field: leaf.field,
+      mandatory: input.declaredDetails.has(`${nodeId}\u0000${leaf.path}`),
+      source,
+      state: "satisfied",
+      value: redactEvidenceLeaf(scope, leaf),
+    });
+  }
+
+  const decided = leaves.find((leaf) => leaf.path === declaration.decisionPath);
+  if (decided === undefined) {
+    throw new Error(
+      `gate "${nodeId}" of ${input.workflowId} stored no leaf at the declared decision path `
+      + `"${declaration.decisionPath}" (it stored: ${leaves.map((leaf) => leaf.path).join(", ")}); `
+      + "the declaration and the gate's result schema disagree",
+    );
+  }
+  const arm = gateDecisionArm(declaration, decided.value);
+  const boundLeaf = declaration.boundEvidencePath === undefined
+    ? undefined
+    : leaves.find((leaf) => leaf.path === declaration.boundEvidencePath);
+  // A bound-evidence leaf names WHAT was approved, so it has to be a value an
+  // operator can compare by eye against the packet's own digest. A structure
+  // there is a declaration error, not something to stringify into the reason.
+  if (boundLeaf !== undefined && typeof boundLeaf.value !== "string") {
+    throw new Error(
+      `gate "${nodeId}" of ${input.workflowId} declares "${String(declaration.boundEvidencePath)}" as its `
+      + `bound evidence and stored ${canonicalJsonStringify(boundLeaf.value)} there; a bound-evidence leaf `
+      + "must be a single comparable identity",
+    );
+  }
+  const bound: string | undefined = typeof boundLeaf?.value === "string" ? boundLeaf.value : undefined;
+  const decisionId = entryId("decision", `gate.${nodeId}`);
+  input.decisions.push({
+    id: decisionId,
+    kind: "gate",
+    outcome: arm.outcome,
+    reason: `${arm.summary}: gate "${nodeId}" was resolved \`${arm.value}\` by `
+      + `${stored.resolvedBy} at ${stored.resolvedAt} through command ${stored.commandId}`
+      + (bound === undefined
+        ? ""
+        : `, bound to the identity evidence it was granted on `
+          + `(${String(declaration.boundEvidencePath)} ${bound})`)
+      + ". The approver and the instant are authority's own columns on the `gate_results` row, not "
+      + "values the resolving payload claimed",
+    evidence: [
+      evidenceEntryRef(input.verificationId),
+      ...[...evidence.factIds.values()].map(evidenceEntryRef),
+    ],
+  });
+
+  input.verification.push({
+    id: input.verificationId,
+    obligation: `node.${nodeId}`,
+    mandatory: input.mandatory,
+    verdict: "verified",
+    evidence: [...evidence.factIds.values()].map(evidenceEntryRef),
   });
 }
 

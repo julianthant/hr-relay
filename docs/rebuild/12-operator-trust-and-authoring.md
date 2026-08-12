@@ -392,6 +392,67 @@ D197's classification fix stay frozen and now say so by name.
 Owned by `src/core/receipt-derivation-binding.ts`; pinned by
 `tests/unit/receipt-derivation-binding.test.ts` and the `evidence-receipt` guard.
 
+### D204 — a gate's evidence is a `gate_results` row, so the approver reaches the receipt
+
+**Ratified 2026-08-12.** D202 built the ALWAYS-GATE and put the answer to doc 09 §14.6 risk 6 ("who
+approved is lost") into authority: the command kernel writes `resolvedBy`/`resolvedAt` onto the
+`gate_results` row inside the same transaction that stores the result and resumes the run, and a
+caller-supplied `approvedBy` beside that would be a claim sitting next to authority. D203 then taught
+the KERNEL that a gate dependency's durable evidence is that row rather than a checkpoint. **The
+receipt was not taught the same thing**, and it derives from checkpoints — so chunk 3's settled live
+run `si-161551-774c` listed `node.identity-approval` as `unknown` and carried no decision row at all.
+Risk 6 was answered durably and not in evidence, which on a trust surface is the same as unanswered:
+the receipt is the artifact an operator reads months later to see the human in the loop.
+
+**The reader moves, for the third time and for D144's reason.** A gate has no checkpoint and never
+will — fabricating one would make a durable record claim a shape it does not have. So
+`buildRunEvidenceReceipt` takes `gateResults` beside `checkpoints`, and a resolved gate node emits:
+
+- **its payload's leaves as observation facts**, sourced through a new `gate-result` arm of
+  `EvidenceSource` carrying the gate id and authority's own `resolvedBy`/`resolvedAt`. The source arm
+  is separate from `system` because a gate owns no task contract: what it dates is a DECISION, not an
+  observation of a page.
+- **one `kind: "gate"` decision**, whose outcome comes from a DECLARED arm table and whose reason
+  names the approver, the instant, the resolving command, and the evidence digest the approval was
+  bound to (doc 09 §14.5 — an approval is an observation of a specific packet).
+- **a `verified` obligation** for the node, replacing the `unknown` that used to stand for
+  "authority holds nothing", which was false.
+
+**Why the decision arm is declared and not sniffed.** `DecisionEvidence.outcome` is a closed
+five-value enum and a gate's result payload is authored per gate, so mapping one to the other by
+looking for a field called `decision` would put a plausible-but-wrong word on a record of a human
+decision — a payload arm this build did not recognise would land as `approved` or vanish.
+`src/domain/trust/gate-decisions.ts` declares, per `(workflow, gate)`, the decision leaf, each stored
+value's outcome and operator-facing summary, and the bound-evidence leaf. An undeclared gate and an
+unlisted arm value both fail LOUD, exactly as `classifyEvidenceLeaf` does for an undeclared leaf, and
+the `evidence-receipt` guard fails when a registered descriptor grows a gate node without one.
+
+Redaction extends the same way rather than gaining a hole: `EvidenceValueScope` gains a
+`gate-result` arm scoped by `(workflow, gate)` — not by a task id, which a gate does not have — and
+the identity gate's four leaves are declared there. The approved `eid` is a `direct-identifier`
+taking `last4` like every other identifier on a receipt; the decision, the choice, the digest and the
+operator's own rejection reason are the DECISION and are shown, because a receipt whose job is to
+display the human in the loop cannot redact the human's reasoning out of it.
+
+The D199 check table gains no new check. `evidence-graph` grows one row-source: a gate result whose
+node left the graph, or whose node is no longer a gate, is a graph gap named as such — the second
+case is the stronger break, since the row would otherwise read as a decision about a step that no
+longer asks a human anything.
+
+**One consequence, recorded rather than waived.** A receipt stored BEFORE this decision cannot
+re-derive under it — `declared-evidence` moves, correctly, naming `receipt-composition` (four new
+observation rows) and `declared-obligations` (`verification[3].verdict: "unknown" → "verified"`).
+D199 has no waiver arm and gains none here. The two `separations-identity-check` receipts the chunk-3
+proof session minted were dropped from the standing authority database as an explicit operator
+repair — both describe read-only identity checks, both were minted under a build that structurally
+could not see the gate row, and §14.9 had already recorded that incompleteness as an open defect —
+and then re-derived under D204. That is a data decision about a pre-production database, taken and
+written down; it is not a code path, and no code path exists to take it.
+
+Owned by `src/core/evidence-receipt.ts` and `src/domain/trust/gate-decisions.ts`; pinned by the
+`evidence-receipt` guard against the REAL gated descriptor, with a foreign gate row, a gate that left
+the graph, and an undeclared arm value as negative controls.
+
 ### Named gap: a transaction node cannot yet be a terminal dependency — CLOSED by D144
 
 **Closed 2026-08-04 (D144, doc 09 §3.1).** The gap was real: the sequencer stored a transaction

@@ -1677,9 +1677,11 @@ is the kernel's own `now`, in the SAME transaction that stores the result and re
 authority — schema-valid, unverifiable, and free to disagree with it — which D110/D114 already
 settled ("a schema-valid caller-built result is not authority"). What the payload carries is what only
 the approver knows: the EID, where it came from, and the evidence digest. **§14.6 risk 6's honest
-status:** the durable row answers "who approved", and the receipt does NOT yet show it — a settled
-receipt lists the gate node as `unknown` because a receipt derives from checkpoints and a gate has
-none. Carrying the approver onto the receipt is open for the composition chunk.
+status:** CLOSED on both halves as of **D204** (doc 12). The durable row answers "who approved", and
+the receipt now shows it — a resolved gate emits its payload's leaves as `gate-result`-sourced facts
+carrying authority's own `resolvedBy`/`resolvedAt`, one `kind: "gate"` decision naming the approver,
+the instant, the resolving command and the bound evidence digest, and a `verified` obligation in
+place of the `unknown` a checkpoint-only derivation used to report.
 
 **2. A manually typed EID that the packet never SHOWED cannot be approved here.** §14.4 admits manual
 entry "re-validated against a live read before it can be approved". This chunk performs no second live

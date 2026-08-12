@@ -40,9 +40,10 @@
  * descriptor version; the runtime node walk (node ids, kinds, `dependsOn`, and
  * each node's task contract id / effect / freshness bound / subject binding);
  * `descriptor.details` (which leaves are mandatory); the terminal execution's
- * `dependsOn` set; the declared obligations for the workflow; and the declared
- * redaction for every scope it redacts through. Everything else it reads is a
- * durable authority row, which is immutable and cannot move.
+ * `dependsOn` set; the declared obligations for the workflow; the declared gate
+ * decisions for every gate node it describes (D204); and the declared redaction
+ * for every scope it redacts through. Everything else it reads is a durable
+ * authority row, which is immutable and cannot move.
  *
  * **May change** — anything in the closure that leaves the checks below held:
  * an unrelated module in the same import graph, comments, formatting, a control
@@ -51,7 +52,8 @@
  *
  * **May not change** — the workflow id; the descriptor version; the presence of
  * every node the run's durable evidence names, still owning the same task
- * contract; the canonical-input schema the stored input snapshot is bound to;
+ * contract — and, for a node a `gate_results` row names, still BEING a gate;
+ * the canonical-input schema the stored input snapshot is bound to;
  * the terminal dependency set the stored result was built against; and, for a
  * run whose receipt is already stored, the declared evidence itself — the
  * redaction verdict, the mandatory declaration and the obligation set the
@@ -72,6 +74,7 @@ import {
 import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import type { RunRecord } from "../domain/run/record.js";
 import type { RunResultRecord } from "../domain/run/result.js";
+import type { GateResultRecord } from "../domain/gates.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
 import type { RunEvidenceReceipt } from "../domain/trust/evidence.js";
 import type { RunCheckpointRecord } from "../domain/workflow/checkpoint.js";
@@ -146,6 +149,8 @@ export interface ReceiptDerivationBindingInput {
   readonly checkpoints: readonly RunCheckpointRecord[];
   /** Every write intent this run fenced. */
   readonly writes?: readonly WriteIntentRecord[];
+  /** Every `gate_results` row this run resolved (D204). */
+  readonly gateResults?: readonly GateResultRecord[];
 }
 
 /* ── rendering ───────────────────────────────────────────────────────────── */
@@ -229,12 +234,27 @@ export function evaluateReceiptDerivationBinding(
 
   const nodes = descriptorRuntimeNodes(descriptor);
   const nodeIds = new Set(nodes.map((node) => String(node.id)));
+  const gateNodeIds = new Set(nodes.flatMap((node) => (node.kind === "gate" ? [String(node.id)] : [])));
   const commitTaskIds = new Set(nodes.flatMap((node) =>
     node.kind === "transaction" ? [String(node.commit.uses.id)] : []));
   const graphGaps: string[] = [];
   for (const record of input.checkpoints) {
     if (!nodeIds.has(String(record.nodeId))) {
       graphGaps.push(`checkpoint node "${record.nodeId}" left the graph`);
+    }
+  }
+  /*
+   * D204: a gate row's node must still BE a gate. A node that stopped being one
+   * is a stronger break than a node that vanished — the row would otherwise be
+   * read as a decision about a step that no longer asks a human anything.
+   */
+  for (const row of input.gateResults ?? []) {
+    if (!gateNodeIds.has(String(row.gateId))) {
+      graphGaps.push(
+        nodeIds.has(String(row.gateId))
+          ? `gate result node "${row.gateId}" is no longer a gate in this build`
+          : `gate result node "${row.gateId}" left the graph`,
+      );
     }
   }
   for (const dependency of result?.dependencies ?? []) {
@@ -252,7 +272,8 @@ export function evaluateReceiptDerivationBinding(
       "evidence-graph",
       `every node this run's durable evidence names still resolves in this build `
       + `(${String(input.checkpoints.length)} checkpoint(s), ${String((result?.dependencies ?? []).length)} `
-      + `terminal dependency/ies, ${String((input.writes ?? []).length)} write intent(s))`,
+      + `terminal dependency/ies, ${String((input.writes ?? []).length)} write intent(s), `
+      + `${String((input.gateResults ?? []).length)} gate result(s))`,
     )
     : moved("evidence-graph", `this build cannot interpret the run's durable evidence: ${graphGaps.join("; ")}`));
 

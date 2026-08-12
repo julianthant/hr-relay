@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  ActorIdSchema,
   ArtifactIdSchema,
   ErrorCodeSchema,
   EvidenceEntryIdSchema,
@@ -7,6 +8,7 @@ import {
   EvidenceRefSchema,
   FailureIdSchema,
   FingerprintSchema,
+  GateIdSchema,
   IsoInstantSchema,
   PositiveIntSchema,
   RunIdSchema,
@@ -22,6 +24,23 @@ const EvidenceSourceSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("input"), inputFingerprint: FingerprintSchema }),
   z.strictObject({ kind: z.literal("system"), taskId: TaskIdSchema, observedAt: IsoInstantSchema }),
   z.strictObject({ kind: z.literal("checkpoint"), taskId: TaskIdSchema, checkpointFingerprint: FingerprintSchema, observedAt: IsoInstantSchema }),
+  /**
+   * A GATE's fact: it came from a human, through the typed `resolve-gate`
+   * command, and authority — not the payload — says who and when (D202/D204).
+   *
+   * It is its own arm rather than a `system` fact with a task id, because a
+   * gate owns no task contract and never will: what it dates is a DECISION,
+   * not an observation of a page. `resolvedBy`/`resolvedAt` are the kernel's
+   * own values off the `gate_results` row, which is the whole point — a
+   * caller-supplied approver beside them would be a claim sitting next to
+   * authority.
+   */
+  z.strictObject({
+    kind: z.literal("gate-result"),
+    gateId: GateIdSchema,
+    resolvedBy: ActorIdSchema,
+    resolvedAt: IsoInstantSchema,
+  }),
   z.strictObject({ kind: z.literal("operator-correction"), supersedes: EvidenceEntryIdSchema }),
   z.strictObject({ kind: z.literal("derived"), evidence: z.array(EvidenceRefSchema).min(1) }),
 ]);

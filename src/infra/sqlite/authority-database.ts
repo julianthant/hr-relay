@@ -693,7 +693,10 @@ export type AuthorityRepositories = Readonly<{
   commandAudits: CommandAuditRepository;
   dependencies: DependencyRepository;
   delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
-  gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>>;
+  gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>> & Readonly<{
+    /** Every gate this run resolved, oldest first — the D204 receipt read. */
+    listByRun(runId: string): readonly z.infer<typeof GateResultRecordSchema>[];
+  }>;
   runCheckpoints: RunCheckpointRepository;
   notifications: NotificationRepository;
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
@@ -3020,6 +3023,17 @@ export class AuthorityDatabase implements Disposable {
           return this.#insertSimpleRecord("checkpoint_payloads", `${record.runId}:${record.gateId}`, record, GateResultRecordSchema, record.resolvedAt);
         },
         get: (recordKey: string) => this.#readRecord("checkpoint_payloads", recordKey, GateResultRecordSchema),
+        listByRun: (runId: string) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM checkpoint_payloads
+            WHERE json_extract(record_json, '$.runId') = ?
+            ORDER BY created_at, record_key
+          `).all(RunIdSchema.parse(runId));
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            GateResultRecordSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
       }),
       runCheckpoints: Object.freeze({
         insert: (input: unknown) => {

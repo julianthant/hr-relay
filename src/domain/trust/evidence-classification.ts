@@ -56,7 +56,7 @@
  */
 import { z } from "zod";
 import { JsonValueSchema } from "../canonical-json.js";
-import { TaskIdSchema, WorkflowIdSchema } from "../ids.js";
+import { GateIdSchema, TaskIdSchema, WorkflowIdSchema } from "../ids.js";
 import {
   DataClassificationSchema,
   EvidenceTransformSchema,
@@ -70,6 +70,17 @@ export const EvidenceValueScopeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("workflow-input"), workflowId: WorkflowIdSchema }),
   z.strictObject({ kind: z.literal("workflow-result"), workflowId: WorkflowIdSchema }),
   z.strictObject({ kind: z.literal("task-output"), taskId: TaskIdSchema }),
+  /**
+   * A gate's stored result payload (D204). It is scoped by `(workflow, gate)`
+   * and NOT by a task id, because a gate owns no contract: its result schema is
+   * declared on the gate node itself, so two workflows can name a gate the same
+   * thing and mean different payloads.
+   */
+  z.strictObject({
+    kind: z.literal("gate-result"),
+    workflowId: WorkflowIdSchema,
+    gateId: GateIdSchema,
+  }),
 ]);
 export type EvidenceValueScope = z.infer<typeof EvidenceValueScopeSchema>;
 
@@ -100,9 +111,9 @@ export const EvidenceFieldClassificationSchema = z.strictObject({
 export type EvidenceFieldClassification = z.infer<typeof EvidenceFieldClassificationSchema>;
 
 export function evidenceScopeKey(scope: EvidenceValueScope): string {
-  return scope.kind === "task-output"
-    ? `task-output:${scope.taskId}`
-    : `${scope.kind}:${scope.workflowId}`;
+  if (scope.kind === "task-output") return `task-output:${scope.taskId}`;
+  if (scope.kind === "gate-result") return `gate-result:${scope.workflowId}/${scope.gateId}`;
+  return `${scope.kind}:${scope.workflowId}`;
 }
 
 /** `safe-diagnostic` + `allow` — a value about the transaction, not the person. */
@@ -126,6 +137,11 @@ const workflowResult = (id: string): EvidenceValueScope =>
   ({ kind: "workflow-result", workflowId: WorkflowIdSchema.parse(id) });
 const taskOutput = (id: string): EvidenceValueScope =>
   ({ kind: "task-output", taskId: TaskIdSchema.parse(id) });
+const gateResult = (workflowId: string, gateId: string): EvidenceValueScope => ({
+  kind: "gate-result",
+  workflowId: WorkflowIdSchema.parse(workflowId),
+  gateId: GateIdSchema.parse(gateId),
+});
 
 const PERSON_LOOKUP_INPUT = workflowInput("person-lookup");
 const PERSON_LOOKUP_RESULT = workflowResult("person-lookup");
@@ -150,6 +166,7 @@ const IDENTITY_CHECK_RESULT = workflowResult("separations-identity-check");
 const JOB_SUMMARY = taskOutput("ucpath/read-job-summary");
 const MATCH_IDENTITY = taskOutput("workflow:separations/match-identity");
 const VERIFY_IDENTITY_APPROVAL = taskOutput("workflow:separations/verify-identity-approval");
+const IDENTITY_APPROVAL_GATE = gateResult("separations-identity-check", "identity-approval");
 
 /**
  * Every leaf of the Kuali separation-document read, relative to a prefix.
@@ -405,6 +422,19 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(VERIFY_IDENTITY_APPROVAL, "documentNumber"),
   ...approvedSubjectLeaves(VERIFY_IDENTITY_APPROVAL, "approved"),
   ...jobClassificationLeaves(VERIFY_IDENTITY_APPROVAL, "jobs"),
+
+  /* separations-identity-check / identity-approval — the ALWAYS-GATE's stored
+     operator decision (D204). Both arms of `IdentityApprovalResultSchema` are
+     declared, because which arm a run took is decided at the gate and a receipt
+     may not depend on that choice to be classifiable.
+
+     `eid` is the approved person and takes `last4` like every other identifier
+     here. Everything else describes the DECISION — which arm, where the EID was
+     chosen from, the digest of the exact packet the approver was looking at, and
+     the operator's own rejection reason — and a receipt whose whole job is to
+     show the human in the loop cannot redact the human's reasoning out of it. */
+  ...person(IDENTITY_APPROVAL_GATE, "eid"),
+  ...open(IDENTITY_APPROVAL_GATE, "decision", "chosenFrom", "evidenceDigest", "reason"),
 
   /* separations-identity-check terminal result */
   ...open(IDENTITY_CHECK_RESULT, "documentNumber"),

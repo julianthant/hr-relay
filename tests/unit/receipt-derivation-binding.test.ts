@@ -205,6 +205,7 @@ function seededStore(): Readonly<{ store: EvidenceReceiptStore; runId: string }>
       getFailure: (failureId: string) => authority.failures.get(failureId),
       listCheckpointsByRun: () => seeded.checkpoints,
       listWritesByRun: (): readonly ReceiptWriteEvidence[] => [],
+      listGateResultsByRun: () => authority.gateResults.listByRun(runId),
       findReceiptByRun: () => authority.evidenceReceipts.findByRun(runId),
       insertReceipt: (receipt: unknown) => authority.evidenceReceipts.insert(receipt),
     }),

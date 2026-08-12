@@ -49,6 +49,13 @@ import {
   KualiTimekeeperAnnotationCanonicalInput,
   kualiTimekeeperAnnotationDescriptor,
 } from "../../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
+import {
+  SeparationsIdentityCheckCanonicalInput,
+  separationsIdentityCheckDescriptor,
+} from "../../../src/workflows/separations-identity-check/descriptor.js";
+import { SeparationsVerifyIdentityApproval } from "../../../src/domain/contracts/separations/verify-identity-approval.js";
+import { IdentityApprovalResultSchema } from "../../../src/domain/separations/identity-approval.js";
+import { GateResultRecordSchema } from "../../../src/domain/gates.js";
 
 /* ── person-lookup: the live Phase-1 exit run ────────────────────────────── */
 
@@ -499,3 +506,150 @@ const RUNNING_LIFECYCLE = Object.freeze({
   heartbeatAt: KUALI_CONFIRMED_AT,
   currentNodeId: "annotate-timekeeper",
 });
+
+/* ── separations-identity-check: the gated run (D204) ────────────────────── */
+
+/** The live chunk-3 approval, at the ids and instants that run actually had. */
+export const GATE_RUN_ID = "774cb34c-c684-44d7-9c43-b4d460c8a51c";
+export const GATE_TRACE_ID = "si-161551-774c";
+export const GATE_ITEM_ID = "45104510-4510-4510-8510-451045104510";
+export const GATE_COMMAND_ID = "4928fee1-d93c-43f7-bb25-e225f4e5aca5";
+export const GATE_RESOLVED_BY = "local-operator";
+export const GATE_RESOLVED_AT = "2026-08-12T23:16:43.985Z";
+export const GATE_APPROVAL_AT = "2026-08-12T23:16:44.500Z";
+export const GATE_TERMINAL_AT = "2026-08-12T23:16:45.000Z";
+
+export interface IdentityGateReceiptEvidence {
+  readonly run: unknown;
+  readonly result: unknown;
+  readonly checkpoints: readonly unknown[];
+  readonly gateResults: readonly unknown[];
+  /** The exact evidence digest the approval was bound to. */
+  readonly evidenceDigest: string;
+}
+
+/**
+ * A settled `separations-identity-check` run whose ALWAYS-GATE was resolved by
+ * a real operator — the shape doc 09 §14.6 risk 6 is about.
+ *
+ * The gate's payload and the post-gate node's output are bound to each other
+ * the way a real run binds them: the approval's `evidenceDigest` is the one the
+ * `approval` node carried forward, so a receipt that printed one without the
+ * other would be visibly wrong here. The post-gate output is the CONTRACT's own
+ * sealed example, so a contract that grows a field grows this fixture with it
+ * rather than drifting away from it.
+ *
+ * Only the `approval` node has a checkpoint. That is not a shortcut: it is the
+ * only terminal dependency, and it makes this fixture also cover the arm where
+ * a gate is the ONLY evidence a receipt has for the middle of the graph.
+ */
+export function identityGateReceiptEvidence(): IdentityGateReceiptEvidence {
+  const descriptor = separationsIdentityCheckDescriptor;
+  const approvalOutput = SeparationsVerifyIdentityApproval.example;
+  const evidenceDigest = approvalOutput.approved.evidenceDigest;
+
+  const approvalCheckpoint = RunCheckpointRecordSchema.parse({
+    workflowId: descriptor.id,
+    itemId: GATE_ITEM_ID,
+    nodeId: "approval",
+    attempt: 1,
+    runId: GATE_RUN_ID,
+    output: {
+      schemaHash: deriveSchemaHash(SeparationsVerifyIdentityApproval.output, "output"),
+      value: approvalOutput,
+    },
+    descriptorVersion: descriptor.version,
+    contractFingerprint: descriptor.contractFingerprint,
+    implFingerprint: IMPL_FINGERPRINT,
+    provenance: provenance(
+      ["documentNumber", "approved", "jobs"],
+      "derived",
+      GATE_APPROVAL_AT,
+    ),
+    writtenAt: GATE_APPROVAL_AT,
+  });
+
+  const gateResult = GateResultRecordSchema.parse({
+    runId: GATE_RUN_ID,
+    gateId: "identity-approval",
+    commandId: GATE_COMMAND_ID,
+    expectedVersion: 17,
+    resolvedBy: GATE_RESOLVED_BY,
+    resolvedAt: GATE_RESOLVED_AT,
+    checkpointFingerprint: IMPL_FINGERPRINT,
+    result: {
+      schemaHash: deriveSchemaHash(IdentityApprovalResultSchema, "output"),
+      value: {
+        decision: "approved",
+        eid: approvalOutput.approved.emplId,
+        chosenFrom: approvalOutput.approved.chosenFrom,
+        evidenceDigest,
+      },
+    },
+  });
+
+  const canonicalInput = {
+    documentNumber: approvalOutput.documentNumber,
+    employeeName: approvalOutput.approved.ucpathName,
+    emplId: approvalOutput.approved.emplId,
+    emplIdSource: "document-eid",
+    documentEid: { state: "present", value: approvalOutput.approved.emplId },
+  };
+  const run = {
+    envelope: {
+      runId: GATE_RUN_ID,
+      workflow: descriptor.id,
+      itemId: GATE_ITEM_ID,
+      traceId: GATE_TRACE_ID,
+      descriptorVersion: descriptor.version,
+      contractFingerprint: descriptor.contractFingerprint,
+      resolvedInstance: { ucpath: "prod" },
+      configFingerprint: CONFIG_FINGERPRINT,
+      configSnapshotId: CONFIG_SNAPSHOT_ID,
+      shape: "single",
+      priority: "interactive",
+      dryRun: false,
+      attempt: 1,
+      enqueuedAt: GATE_RESOLVED_AT,
+    },
+    input: {
+      raw: canonicalInput,
+      parsed: {
+        schemaHash: deriveSchemaHash(SeparationsIdentityCheckCanonicalInput, "output"),
+        value: canonicalInput,
+      },
+      ingressSchemaHash: INGRESS_SCHEMA_HASH,
+    },
+    lifecycle: { state: "terminal", outcome: "done", endedAt: GATE_TERMINAL_AT },
+    claimGeneration: 1,
+    hidden: false,
+    version: 18,
+    createdAt: GATE_RESOLVED_AT,
+    updatedAt: GATE_TERMINAL_AT,
+  };
+
+  const built = buildRunResult(
+    descriptor,
+    {
+      ...run,
+      lifecycle: {
+        state: "running",
+        workerId: "identity-check-worker-1",
+        claimedAt: GATE_RESOLVED_AT,
+        heartbeatAt: GATE_APPROVAL_AT,
+        currentNodeId: "approval",
+      },
+      version: 17,
+    },
+    [{ state: "resolved", nodeId: "approval", checkpoint: approvalCheckpoint }],
+    manualClock(new Date(GATE_TERMINAL_AT)),
+  );
+
+  return {
+    run,
+    result: built.record,
+    checkpoints: [approvalCheckpoint],
+    gateResults: [gateResult],
+    evidenceDigest,
+  };
+}

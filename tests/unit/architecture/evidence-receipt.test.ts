@@ -51,7 +51,17 @@ import { SECRET_SPECS } from "../../../src/domain/secrets.js";
 import { buildRunEvidenceReceipt } from "../../../src/core/evidence-receipt.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { kualiTimekeeperAnnotationDescriptor } from "../../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
-import { kualiReceiptEvidence } from "../fixtures/receipt-run-fixtures.js";
+import { separationsIdentityCheckDescriptor } from "../../../src/workflows/separations-identity-check/descriptor.js";
+import {
+  GATE_RESOLVED_AT,
+  GATE_RESOLVED_BY,
+  identityGateReceiptEvidence,
+  kualiReceiptEvidence,
+} from "../fixtures/receipt-run-fixtures.js";
+import {
+  GATE_DECISIONS,
+  gateDecisionFor,
+} from "../../../src/domain/trust/gate-decisions.js";
 
 function kualiReceipt() {
   const evidence = kualiReceiptEvidence();
@@ -247,6 +257,97 @@ describe("evidence receipt — strictness", () => {
   });
 
   /**
+   * D204 — doc 09 §14.6 risk 6, closed on the evidence side.
+   *
+   * A gate has no checkpoint and never will, so a receipt derived from
+   * checkpoints alone listed the ALWAYS-GATE node `unknown` and dropped the one
+   * fact the whole gate exists to record: which human decided, and when. The
+   * approver is authority's own column on the `gate_results` row — never a
+   * value the resolving payload claimed — so the assertions below read it off
+   * the stored row, not out of the result value.
+   */
+  it("carries a resolved gate's decision, approver and instant instead of `unknown`", () => {
+    const evidence = identityGateReceiptEvidence();
+    const receipt = buildRunEvidenceReceipt({
+      descriptor: separationsIdentityCheckDescriptor,
+      ...evidence,
+    });
+
+    const gateObligation = receipt.verification.find((row) => row.obligation === "node.identity-approval");
+    assert.ok(gateObligation !== undefined, "the gate node emitted no obligation at all");
+    assert.equal(gateObligation.verdict, "verified", "a resolved gate is still reported unknown");
+    assert.ok(gateObligation.evidence.length > 0, "a verified gate obligation cites nothing");
+
+    const decision = receipt.decisions.find((row) => row.kind === "gate");
+    assert.ok(decision !== undefined, "the receipt carries no gate decision");
+    assert.equal(decision.outcome, "approved");
+    assert.match(decision.reason, /identity-approval/);
+    assert.ok(
+      decision.reason.includes(GATE_RESOLVED_BY),
+      `the gate decision does not name the approver: ${decision.reason}`,
+    );
+    assert.ok(
+      decision.reason.includes(GATE_RESOLVED_AT),
+      `the gate decision does not name the instant: ${decision.reason}`,
+    );
+    assert.ok(
+      decision.reason.includes(evidence.evidenceDigest),
+      "the gate decision does not name the evidence the approval was bound to",
+    );
+
+    // Every fact the gate contributed is sourced from the operator decision,
+    // dated by authority's instant — not by a checkpoint that does not exist.
+    const gateFacts = receipt.observations.filter((fact) => fact.source.kind === "gate-result");
+    assert.ok(gateFacts.length >= 4, "the gate payload contributed no facts");
+    for (const fact of gateFacts) {
+      assert.equal(fact.source.kind, "gate-result");
+      if (fact.source.kind !== "gate-result") continue;
+      assert.equal(fact.source.resolvedBy, GATE_RESOLVED_BY);
+      assert.equal(fact.source.resolvedAt, GATE_RESOLVED_AT);
+    }
+
+    // The approved EID is a person, and it reaches the receipt redacted — the
+    // gate scope is not a hole in the declared redaction table.
+    const eid = gateFacts.find((fact) => fact.field === "eid");
+    assert.ok(eid !== undefined && eid.state === "satisfied");
+    assert.equal(eid.value.state, "transformed");
+    const approvedEid = String(
+      (evidence.gateResults[0] as { result: { value: { eid: string } } }).result.value.eid,
+    );
+    assert.ok(
+      !JSON.stringify(receipt).includes(approvedEid),
+      "the raw approved EID reached the receipt through the gate payload",
+    );
+  });
+
+  it("refuses a foreign gate row, an undeclared arm, and a gate that left the graph", () => {
+    const evidence = identityGateReceiptEvidence();
+    const stored = evidence.gateResults[0] as Record<string, unknown>;
+
+    assert.throws(() => buildRunEvidenceReceipt({
+      descriptor: separationsIdentityCheckDescriptor,
+      ...evidence,
+      gateResults: [{ ...stored, runId: "00000000-0000-4000-8000-000000000001" }],
+    }), /refusing to attribute another run's operator decision/);
+
+    assert.throws(() => buildRunEvidenceReceipt({
+      descriptor: separationsIdentityCheckDescriptor,
+      ...evidence,
+      gateResults: [{ ...stored, gateId: "not-a-node" }],
+    }), /gate result node "not-a-node" left the graph/);
+
+    const payload = stored.result as { schemaHash: string; value: Record<string, unknown> };
+    assert.throws(() => buildRunEvidenceReceipt({
+      descriptor: separationsIdentityCheckDescriptor,
+      ...evidence,
+      gateResults: [{
+        ...stored,
+        result: { ...payload, value: { ...payload.value, decision: "deferred" } },
+      }],
+    }), /no declared arm matches it|refusing to describe a human decision/);
+  });
+
+  /**
    * D199. The purity above is worth nothing if it only holds within one commit:
    * a receipt is read months later, and the descriptor's ~31-file closure moves
    * constantly. `receipt-derivation-binding.test.ts` owns the full check table;
@@ -391,13 +492,56 @@ describe("evidence receipt — declared classification coverage", () => {
     }
   });
 
+  /**
+   * D204. A gate that reaches the graph without a declaration would derive a
+   * receipt that says `unknown` about a decision authority holds in full —
+   * which is the exact defect this decision closed, re-introduced by omission.
+   */
+  it("declares a decision and a classification for every registered gate node", () => {
+    let gateNodes = 0;
+    for (const descriptor of WORKFLOW_DESCRIPTORS) {
+      for (const node of descriptor.nodes) {
+        if (node.kind !== "gate") continue;
+        gateNodes++;
+        const declaration = gateDecisionFor(String(descriptor.id), String(node.id));
+        const scope: EvidenceValueScope = EvidenceValueScopeSchema.parse({
+          kind: "gate-result",
+          workflowId: descriptor.id,
+          gateId: node.id,
+        });
+        // The declared paths must classify, or the very leaves the decision is
+        // read from could not be shown beside it.
+        classifyEvidenceLeaf(scope, declaration.decisionPath);
+        if (declaration.boundEvidencePath !== undefined) {
+          classifyEvidenceLeaf(scope, declaration.boundEvidencePath);
+        }
+      }
+    }
+    assert.ok(gateNodes > 0, "no registered descriptor has a gate node to cover");
+  });
+
   it("has no orphan classification or obligation", () => {
+    const gateNodeKeys = new Set(WORKFLOW_DESCRIPTORS.flatMap((descriptor) =>
+      descriptor.nodes
+        .filter((node) => node.kind === "gate")
+        .map((node) => `${String(descriptor.id)} ${String(node.id)}`)));
+    for (const declaration of GATE_DECISIONS) {
+      assert.ok(
+        gateNodeKeys.has(`${String(declaration.workflowId)} ${String(declaration.gateId)}`),
+        `orphan gate decision ${declaration.workflowId}/${declaration.gateId}`,
+      );
+    }
     const workflowIds = new Set(WORKFLOW_DESCRIPTORS.map(({ id }) => String(id)));
     const taskIds = new Set(WORKFLOW_DESCRIPTORS.flatMap((descriptor) =>
       workflowProjections(descriptor).contracts.map((contract) => String(contract.id))));
     for (const entry of EVIDENCE_FIELD_CLASSIFICATIONS) {
       if (entry.scope.kind === "task-output") {
         assert.ok(taskIds.has(String(entry.scope.taskId)), `orphan classification scope ${evidenceScopeKey(entry.scope)}`);
+      } else if (entry.scope.kind === "gate-result") {
+        assert.ok(
+          gateNodeKeys.has(`${String(entry.scope.workflowId)} ${String(entry.scope.gateId)}`),
+          `orphan classification scope ${evidenceScopeKey(entry.scope)}`,
+        );
       } else {
         assert.ok(workflowIds.has(String(entry.scope.workflowId)), `orphan classification scope ${evidenceScopeKey(entry.scope)}`);
       }
