@@ -25,6 +25,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { REPO_ROOT, gitVisibleFiles } from "./helpers/guard-files.js";
+import { unclaimedSpans } from "../../parity/helpers/geometry.js";
 import {
   assertOrUpdateParityReference,
   captureName,
@@ -372,5 +373,100 @@ describe("parity lane reference authority (D132)", () => {
       assert.ok(raw.startsWith("# "), `${path} must carry its provenance header`);
       assert.ok(raw.endsWith("\n"), `${path} must end with exactly one newline`);
     }
+  });
+
+  /*
+    The geometry half (D195). These run the SAME function the lane calls, over
+    synthetic regions, for the reason every mechanical arm in this tree is
+    executed against a violating fixture: an assertion nobody has watched fail
+    is indistinguishable from one that cannot.
+
+    Both violating cases are reconstructions of defects that shipped and that
+    the pixel and a11y halves were both green over.
+  */
+  describe("shell geometry (D195)", () => {
+    const region = { regionLeft: 0, regionRight: 1440, padding: 12 } as const;
+
+    it("passes the region the grid actually tiles", () => {
+      const spans = unclaimedSpans({
+        ...region,
+        panels: [
+          { label: "Queue", left: 12, right: 388, width: 376, height: 758 },
+          { label: "Run detail", left: 400, right: 1428, width: 1028, height: 758 },
+        ],
+      });
+      assert.deepEqual(spans, [], "a tiled region must report no unclaimed span");
+    });
+
+    it("catches D195 — the detail track holding nothing", () => {
+      // No run open, so the second child was never rendered. This is the exact
+      // shape measured at 1440x900 before the fix.
+      const spans = unclaimedSpans({
+        ...region,
+        panels: [{ label: "Queue", left: 12, right: 482, width: 470, height: 758 }],
+      });
+      assert.equal(spans.length, 1);
+      assert.ok(
+        spans[0] !== undefined && spans[0].width > 900,
+        `expected the ~950px void to be reported, got ${JSON.stringify(spans)}`,
+      );
+    });
+
+    it("catches D187 — a panel collapsed to a sliver", () => {
+      // `LogPanel`'s root sized to content, so the detail column was two pixels
+      // and the rest of its track was empty. The a11y tree still read every
+      // word of it, which is exactly why review after review passed over it.
+      const spans = unclaimedSpans({
+        ...region,
+        panels: [
+          { label: "Queue", left: 12, right: 388, width: 376, height: 758 },
+          { label: "Run detail", left: 400, right: 402, width: 2, height: 758 },
+        ],
+      });
+      assert.ok(spans.length > 0, "a two-pixel panel must leave its track reported as unclaimed");
+    });
+
+    it("tolerates one grid gap, and treats an overlapping panel as covering", () => {
+      const gapped = unclaimedSpans({
+        ...region,
+        panels: [
+          { label: "Queue", left: 12, right: 388, width: 376, height: 758 },
+          { label: "Run detail", left: 400, right: 1428, width: 1028, height: 758 },
+        ],
+      });
+      assert.deepEqual(gapped, [], "the 12px shell inset between tracks is not a hole");
+
+      // The floating Workflow Panel sits OVER the queue. An operator looking at
+      // an overlapped pixel is looking at something, so overlap must cover
+      // rather than double-count — otherwise the sweep would invent a void
+      // behind every floating window.
+      const overlapped = unclaimedSpans({
+        ...region,
+        panels: [
+          { label: "Workflow Panel", left: 12, right: 212, width: 200, height: 758 },
+          { label: "Queue", left: 12, right: 388, width: 376, height: 758 },
+          { label: "Run detail", left: 400, right: 1428, width: 1028, height: 758 },
+        ],
+      });
+      assert.deepEqual(overlapped, [], "an overlapping panel must not open a span behind it");
+    });
+
+    it("is wired into the lane's own capture path, not merely available", () => {
+      const spec = readFileSync(join(REPO_ROOT, "tests/parity/dashboard-reference.spec.ts"), "utf8");
+      assert.match(
+        spec,
+        /assertShellGeometry\(page,/,
+        "the reference spec must call the geometry assertion, or it guards nothing",
+      );
+      // The CALL SITE, not the import — `indexOf("captureParityPair")` finds
+      // the import block first and would pass no matter where the assertion ran.
+      const capturePos = spec.indexOf("captureParityPair(page");
+      const geometryPos = spec.indexOf("assertShellGeometry(page,");
+      assert.ok(
+        geometryPos > 0 && geometryPos < capturePos,
+        "the geometry assertion must run BEFORE the capture; a reference minted from a broken "
+        + "region records the defect and then passes forever",
+      );
+    });
   });
 });

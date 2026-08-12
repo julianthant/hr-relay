@@ -30,6 +30,7 @@ import {
   installTheme,
   type ParityTheme,
 } from "./helpers/capture.js";
+import { assertShellGeometry } from "./helpers/geometry.js";
 import { FIXTURE_INTAKE_IDS } from "./helpers/fixture-intake.js";
 import {
   FIXTURE_CATALOG_QUERY,
@@ -177,6 +178,11 @@ for (const viewport of PARITY_VIEWPORTS) {
           ) await dismissWorkflowWindow(page);
           await assertThemeApplied(page, theme satisfies ParityTheme);
           await page.waitForTimeout(120);
+
+          // The third representation (D195). Runs BEFORE the capture, because a
+          // reference minted from a region with a hole in it records the bug
+          // and then passes forever.
+          await assertShellGeometry(page, `${state.id} @ ${viewport.name} ${theme.name}`);
 
           expect(errors, `page errors while rendering ${state.id}`).toEqual([]);
 
