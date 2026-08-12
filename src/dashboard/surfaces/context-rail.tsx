@@ -250,14 +250,23 @@ function parseDraft(
  * WHEN a value was established, and by WHAT — the demo's Data-ledger axis, in
  * exactly the arms this wire now serves (W2).
  *
- * The clock is the least load-bearing thing on the row, so it is the FIRST to
- * fold away in the resting 376px rail and the first to return when the rail
- * widens to edit in — the demo's own `@min-[26rem]:` rule, on the rail's own
- * container. It reads `-muted` rather than `-faint`: `-faint` is the
- * disabled/placeholder step and a real observation is neither.
+ * It reads `-muted` rather than `-faint`: `-faint` is the disabled/placeholder
+ * step and a real observation is neither.
  *
- * The badges do NOT fold. `corrected` says a human overrode what the run read,
- * and a hazard is never disclosed behind a width.
+ * THE DEMO'S `@min-[26rem]:` FOLD DOES NOT PORT, and that is a decision rather
+ * than an omission. There, the clock was the THIRD thing competing for the
+ * sub-step line — a direction arrow and a `SystemChip` sat ahead of it — so it
+ * was rightly the first to give way at 376px and the first back when the rail
+ * widened to 520px to edit in. Neither of those two is served by this wire, so
+ * the line has room the demo's did not, and a threshold carried across
+ * unexamined would hide the clock at EVERY width the product ever draws the
+ * rail at (it is 376 at rest and 520 only mid-edit) — which is a field served,
+ * projected and never seen. The LABEL gives way instead: it truncates, and it
+ * is recoverable from its own `title` and from the value printed under it,
+ * while a clipped clock is unreadable.
+ *
+ * The badges do not give way at all. `corrected` says a human overrode what the
+ * run read, and a hazard is never disclosed behind a width.
  */
 function ProvenanceMarks({ entry }: { entry: ContextDataEntry }) {
   const { observedAt, source, correctedAt } = entry;
@@ -287,11 +296,7 @@ function ProvenanceMarks({ entry }: { entry: ContextDataEntry }) {
       {observedAt !== undefined && (
         <span
           title={observedAt}
-          className={cn(
-            dsText.micro,
-            dsText.nums,
-            "hidden shrink-0 text-[color:var(--ds-fg-muted)] @min-[26rem]:inline",
-          )}
+          className={cn(dsText.micro, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}
         >
           {fmtClock(observedAt)}
         </span>

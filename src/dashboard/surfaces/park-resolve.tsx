@@ -54,8 +54,10 @@ import {
   Textarea,
   Well,
   dsIcon,
+  dsMotion,
   dsRadius,
   dsText,
+  useDsEnterTransition,
 } from "../ds/ui.js";
 import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
@@ -267,6 +269,40 @@ function ProofUnserved() {
   );
 }
 
+/**
+ * The server's refusal, ARRIVING.
+ *
+ * This is the one moment in the flow the operator is watching hardest — they
+ * pressed a verb that settles a real HR write and this is the answer. An
+ * element that simply exists on the next frame reads as a render fault, so it
+ * comes from somewhere: the house `enter` pair, which is a TRANSITION off a
+ * mounted state rather than a key-frame, so it is interruptible and so
+ * `prefers-reduced-motion` removes it by zeroing both tokens at once — the
+ * clock AND the travel. No reduced-motion branch, on purpose: zeroing only the
+ * clock would still slide it 8px in one frame, which is a jump.
+ *
+ * The refusal is the LAST element in the dialog body, so nothing below it
+ * moves; the standing `min-h` above keeps the block's own presence stable
+ * rather than letting the body jump by a line.
+ */
+function RefusedNotice({ message }: { message: string }) {
+  const entering = useDsEnterTransition();
+  return (
+    <Refusal
+      title="Nothing was recorded"
+      code="command-refused"
+      outcome="the write is still parked · your answer below is untouched"
+      className={cn(
+        dsMotion.enter,
+        "data-[demo-enter=from]:translate-y-[var(--ds-travel-md)] data-[demo-enter=from]:opacity-0",
+      )}
+      {...entering}
+    >
+      <span role="alert">{message}</span>
+    </Refusal>
+  );
+}
+
 /** What the operator's answer produced. `idle` reserves the space it will need. */
 type Outcome =
   | { state: "idle" }
@@ -418,15 +454,7 @@ export function ParkResolveDialog({
             is already travelling toward it.
           */}
           <div className="min-h-[var(--ds-h-lg)]">
-            {outcome.state === "refused" && (
-              <Refusal
-                title="Nothing was recorded"
-                code="command-refused"
-                outcome="the write is still parked · your answer below is untouched"
-              >
-                <span role="alert">{outcome.message}</span>
-              </Refusal>
-            )}
+            {outcome.state === "refused" && <RefusedNotice message={outcome.message} />}
           </div>
         </DialogBody>
 
