@@ -16,11 +16,11 @@ verifier's reload read-back + both outbox rows + the terminal span, and an idemp
 answering `already-present` in 2 ms with no browser. The propagation window was measured over four
 write/restore cycles on doc **4490**, moving `recoveryAbsence` from `operator-only` to `stabilized`;
 both documents were restored to their captured original `""` with each restore proved by reload
-read-back. *(The same-day D128 conclusion — that the operator's documents sat at a step which does
+read-back. _(The same-day D128 conclusion — that the operator's documents sat at a step which does
 not own the field — was WRONG and is withdrawn. Kuali's own `ActionPage` query reports that step's
 `sectionSettings` as `edit`; the two real causes were defects in THIS repository's driver: a ~700 ms
 Kuali gadget debounce the run fenced inside, and a `commit` that returned at request time so the
-verifier's reload cancelled the in-flight save.)* Write-heavy workflow migration is no longer
+verifier's reload cancelled the in-flight save.)_ Write-heavy workflow migration is no longer
 blocked; each workflow still owes its own §3.2 controlled-commit proof. Evidence, measured numbers
 and durable row ids: `docs/rebuild/09-write-safety.md` §Phase-2 controlled-commit as-built.
 
@@ -69,8 +69,8 @@ test passed: run `4ebf7275-0158-49af-a78f-1f37948efb27` (trace `pl-000619-4ebf`)
 against real UCPath + CRM on the new executor, recovered a dead CRM session mid-run, terminalized
 `done` at attempt 2 with a correct result, and rendered all four parity surfaces from the ONE
 projection. The three presentation defects that run exposed were all FIXED the same day (D123
-skipped-arm, D124 terminal duration, D126 accessible-name collision) — see doc 03's *Phase 1g/
-1i-spine as-built presentation deltas* and doc 07 §Phase 1's exit-criteria block. Doc 02 §8.1 is the
+skipped-arm, D124 terminal duration, D126 accessible-name collision) — see doc 03's _Phase 1g/
+1i-spine as-built presentation deltas_ and doc 07 §Phase 1's exit-criteria block. Doc 02 §8.1 is the
 worked example's as-built and records the five deltas the live run forced. What Phase 1f itself landed, for context on the contracts below:
 registry/task-binding corrections, worker-owned browser-session lifecycle, and mandatory task
 provenance collection landed 2026-08-02. D109's start-plan ingress authority now retains exact raw
@@ -135,17 +135,18 @@ see "Operational isolation" below.
 
 ## What lives where
 
-| Path | Contents |
-|---|---|
-| `src/` | the rebuild runtime (`domain` → `infra`/`services`/`stores` → `core` → `control`/`workflows`) |
-| `src/workflows/<id>/` | `descriptor.ts` (bundle-safe) + `module.ts` (server composition value) |
-| `src/control/workflow-registry.ts` | the composition root: the ONE `WORKFLOW_MODULES` tuple every registry derives from |
-| `tests/unit/` | domain unit tests |
-| `tests/unit/architecture/` | the guard suite; every file registered in `docs/rebuild/guard-inventory.json` |
-| `tests/scenario/` | executable scenarios; each reports the coverage points it walked, and `scenario-coverage` audits that corpus against the graph |
-| `config/` | `legacy-change-accounting.json`, `legacy-capabilities.json`, `legacy-test-disposition.json`, `runtime-isolation.json`, `pending-impl-bindings.json` |
-| `docs/rebuild/` | the plan SSOT — kept at this exact path so every cross-doc link still resolves |
-| `duo-autopilot/` | the Duo MFA WebAuthn extension (vendored; credentials are gitignored) |
+| Path                               | Contents                                                                                                                                            |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/`                             | the rebuild runtime (`domain` → `infra`/`services`/`stores` → `core` → `control`/`workflows`)                                                       |
+| `src/workflows/<id>/`              | `descriptor.ts` (bundle-safe) + `module.ts` (server composition value)                                                                              |
+| `src/control/workflow-registry.ts` | the composition root: the ONE `WORKFLOW_MODULES` tuple every registry derives from                                                                  |
+| `tests/unit/`                      | domain unit tests                                                                                                                                   |
+| `tests/unit/architecture/`         | the guard suite; every file registered in `docs/rebuild/guard-inventory.json`                                                                       |
+| `tests/scenario/`                  | executable scenarios; each reports the coverage points it walked, and `scenario-coverage` audits that corpus against the graph                      |
+| `config/`                          | `legacy-change-accounting.json`, `legacy-capabilities.json`, `legacy-test-disposition.json`, `runtime-isolation.json`, `pending-impl-bindings.json` |
+| `docs/rebuild/`                    | the plan SSOT — kept at this exact path so every cross-doc link still resolves                                                                      |
+| `ROADMAP.md`                       | DERIVED operator tracking view (progress, migration order, deferrals, legacy diff); regenerate its status sections at slice boundaries — doc 07 wins on any disagreement |
+| `duo-autopilot/`                   | the Duo MFA WebAuthn extension (vendored; credentials are gitignored)                                                                               |
 
 ## Fail loud — no unverified silent fallbacks
 
@@ -163,6 +164,7 @@ legible message naming the offending value / EID / field**, so the error surface
 at the source.
 
 **A fallback is acceptable only when BOTH hold:**
+
 1. The fallback path is itself **verified correct** for the exact case it handles (live-verified for
    selectors and page state; test-pinned for pure logic) — and its verification is recorded (a
    `// verified <date>` comment, a lesson, or a test), AND
@@ -171,9 +173,9 @@ at the source.
 
 If you cannot satisfy both, **fail loud**. When in doubt, throw.
 
-**Not a fallback (these are fine):** retrying the *same* operation on a transient error — that
+**Not a fallback (these are fine):** retrying the _same_ operation on a transient error — that
 re-runs the operation, it does not substitute data. Swallowing an error is fine only when the
-*action itself* is genuinely optional AND the caller does not treat the result as load-bearing.
+_action itself_ is genuinely optional AND the caller does not treat the result as load-bearing.
 
 **When you catch, don't swallow:** a `catch` that returns a default / empty / `{}` / `null` / `0` /
 `true` and lets execution continue must instead re-throw (or at minimum log AND propagate a
@@ -191,7 +193,7 @@ enforcement.
 
 ## Cross-repo rules (D93/D94)
 
-**The legacy repo is a frozen production reference, not a dependency.**
+**The legacy repo is a frozen production reference, not a dependency.**s
 
 - **Never import, invoke, proxy, or read the legacy repo's live state from `src/`.** Two
   repositories share no module graph — this is now structural, not merely banned. The only code
@@ -222,14 +224,14 @@ enforcement.
 A repository boundary does not separate two runtimes on **one machine**. `config/runtime-isolation.json`
 pins what must differ, and `operational-isolation.test.ts` proves it:
 
-| | legacy | rebuild |
-|---|---|---|
-| state root | `.tracker` | `.tracker-rebuild` |
-| artifact root | `.tracker` | `.tracker-rebuild/artifacts` |
-| backend / frontend port | 3838 / 5173 | 3938 / 5174 |
-| process locks | `.tracker/daemons` | `.tracker-rebuild/locks` |
-| browser profile / session | `.auth` / `hrauto-legacy` | `.auth-rebuild` / `hrauto-rebuild` |
-| launch commands | `dashboard`, `dashboard:prod`, `dashboard:watch` | `rebuild:dashboard`, `rebuild:dashboard:prod`, `rebuild:cli` |
+|                           | legacy                                           | rebuild                                                      |
+| ------------------------- | ------------------------------------------------ | ------------------------------------------------------------ |
+| state root                | `.tracker`                                       | `.tracker-rebuild`                                           |
+| artifact root             | `.tracker`                                       | `.tracker-rebuild/artifacts`                                 |
+| backend / frontend port   | 3838 / 5173                                      | 3938 / 5174                                                  |
+| process locks             | `.tracker/daemons`                               | `.tracker-rebuild/locks`                                     |
+| browser profile / session | `.auth` / `hrauto-legacy`                        | `.auth-rebuild` / `hrauto-rebuild`                           |
+| launch commands           | `dashboard`, `dashboard:prod`, `dashboard:watch` | `rebuild:dashboard`, `rebuild:dashboard:prod`, `rebuild:cli` |
 
 The runtime command names stay distinct across both repos so a muscle-memory `npm run dashboard` in
 the wrong checkout can never start the wrong runtime. Isolation values reach the runtime through one
@@ -243,7 +245,7 @@ Never ask whether live access is up, whether to spend the live session, or to co
 assume yes and proceed.** This covers the whole range: a read-only selector `snapshot`, a login smoke
 check, a live collector, and a full live workflow dry-run against real UCPath / CRM / Kuali /
 ServiceNow / I-9. Duo is cleared hands-off by Duo Autopilot on every verification path, so there is
-no phone-approval step and nothing to sign off. The safety boundary for a live *workflow* run is
+no phone-approval step and nothing to sign off. The safety boundary for a live _workflow_ run is
 `dryRun=true` (no UCPath transaction, no Kuali finalization) — that, not gated access, is what keeps
 a live run safe. If one system is genuinely down, skip it and proceed with the rest.
 
@@ -271,7 +273,7 @@ enrollment.
 **Always** `close` the session when done and sweep orphans (`playwright-cli list` →
 `playwright-cli close-all`) — these are real Chromium processes.
 
-Until this repo grows its own driver layer, live *selector* work still happens against the legacy
+Until this repo grows its own driver layer, live _selector_ work still happens against the legacy
 repo's registry; port what you verify with provenance (see cross-repo rules above).
 
 ## Environment
@@ -535,7 +537,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   drops legacy's three-deep `.or()` fallback chain entirely.
 - **2026-08-04: the live exit test found three classes of defect no fixture could — and each one was
   green on every gate.** D74's whole argument is that a real run falsifies contracts a fixture
-  cannot; here is what it actually caught, so the next live gate is read as a *test*, not a demo.
+  cannot; here is what it actually caught, so the next live gate is read as a _test_, not a demo.
   **(1) Identity must carry the WHOLE span identity, because only a real failure re-runs a node.**
   `cross-verify` died on a poisoned CRM session, the run re-attempted, and the node ran again at the
   same `spanPath` — so the projector's `spanPath` fold key and the timeline's
@@ -547,7 +549,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   dev reports as a crash and prod reports as a warning.** `typecheck`, `lint` and the whole unit
   suite passed with `node:path` six modules deep under `src/dashboard`'s reach. Dev threw at module
   evaluation (a blank page before any component rendered); the prod build only warned and shipped a
-  bundle that would fail later, if at all — so the two environments fail *differently* and neither
+  bundle that would fail later, if at all — so the two environments fail _differently_ and neither
   is trustworthy alone. Never resolve it with an alias, polyfill, or browser stub: a stubbed
   `resolve()` returns a plausible-but-wrong absolute path. See the entry below for the structural
   fix and its guard.
@@ -658,7 +660,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   Its five durable facts are ordered lease → reconcile → assign `seq` + line digest → append + fsync
   → mark appended/projected. Assigning first is what makes the append window repairable: the line's
   bytes are a pure function of the stored outbox payload and its stored `seq`, so recovery
-  re-derives *the same* line and compares the digest rather than composing a replacement; a crash
+  re-derives _the same_ line and compares the digest rather than composing a replacement; a crash
   after the append re-marks without re-appending. The partition comes from the entry's own
   `confirmedAt` in UTC — never wall-clock now — so a restart days later reconciles into the same
   file. A duplicate, gap, out-of-order line, torn tail, digest mismatch, or unrecorded line stops
