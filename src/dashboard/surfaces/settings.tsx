@@ -41,9 +41,7 @@ export type SettingsSection = z.infer<typeof SettingsSectionPrimitiveSchema>;
 
 /** The at-rest indicator tones; the words themselves render beside the dots. */
 function authorityStatusOf(authority: StorageHealthSummary["authority"]): DsStatus {
-  if (authority === "healthy") return "verifiedDone";
-  if (authority === "degraded") return "waiting";
-  return "failed";
+  return authority === "healthy" ? "verifiedDone" : "failed";
 }
 
 function backupStatusOf(backup: StorageHealthSummary["backup"]): DsStatus {

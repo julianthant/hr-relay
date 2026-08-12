@@ -20,8 +20,33 @@ export const ServerClockWireSchema = z.strictObject({
   now: IsoInstantSchema,
   zone: z.literal("America/Los_Angeles"),
 });
+/**
+ * The at-rest storage indicator (doc 03 §2.5).
+ *
+ * `authority` HAD a third arm, `degraded`, and nothing could emit it — the
+ * D181 shape, one level smaller. `buildBootstrap` decides this by calling
+ * `authorityMeta()`, which either answers or throws, and the dashboard
+ * composition opens the store with `AuthorityDatabase.open`, which throws
+ * rather than returning a reduced handle. There is no third outcome to read.
+ *
+ * The tempting repair was to wire `AuthorityBootStore`, whose report carries a
+ * `degraded-read-only` state — but that state holds NO database at all
+ * (`authority-boot.ts`: the degraded constructor passes `undefined`, and only
+ * `requireWritable` exists). Nothing durable can be read there either, which
+ * is what this wire's `unavailable` already says. Emitting `degraded` from it
+ * would have been a finer word for the same fact.
+ *
+ * Degradation is not lost, and it did not need this arm to be reported: the
+ * storage DOCTOR (`domain/dashboard/storage.ts`) carries
+ * `authority: { state: "degraded", cause }` with the closed cause code and its
+ * one-line summary, which is strictly more than a bare word, and the Settings
+ * surface already renders it. **What would bring the arm back** is a
+ * composition that genuinely serves reads it cannot serve writes for — a
+ * read-only dashboard over a `degraded-read-only` boot report. Add the arm in
+ * the commit that adds that composition, never before it.
+ */
 export const StorageHealthSummaryWireSchema = z.strictObject({
-  authority: z.enum(["healthy", "degraded", "unavailable"]),
+  authority: z.enum(["healthy", "unavailable"]),
   backup: z.enum(["current", "stale", "missing"]),
   checkedAt: IsoInstantSchema,
 });
