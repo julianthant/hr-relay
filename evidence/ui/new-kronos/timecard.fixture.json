@@ -1,0 +1,337 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "deterministic-fixture",
+  "system": "new-kronos",
+  "screens": [
+    "new-kronos.employee-search",
+    "new-kronos.timecard"
+  ],
+  "verifiedAt": "2026-08-12",
+  "method": "deterministic-driver",
+  "assertions": [
+    {
+      "semanticId": "new-kronos.employee-search",
+      "screen": "new-kronos.employee-search",
+      "scenarioId": "ui/new-kronos-employee-search",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "navbar.employeeSearchButton()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.timecard",
+      "screen": "new-kronos.timecard",
+      "scenarioId": "ui/new-kronos-timecard-read",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "timecard.loadedEmployeeId()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.employee-search.open-button",
+      "screen": "new-kronos.employee-search",
+      "scenarioId": "ui/new-kronos-employee-search",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "navbar.employeeSearchButton()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.employee-search.query-field",
+      "screen": "new-kronos.employee-search",
+      "scenarioId": "ui/new-kronos-employee-search",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "search.searchInput()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.employee-search.submit-button",
+      "screen": "new-kronos.employee-search",
+      "scenarioId": "ui/new-kronos-employee-search",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "search.searchSubmitButton()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.employee-search.no-results-text",
+      "screen": "new-kronos.employee-search",
+      "scenarioId": "ui/new-kronos-employee-search",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "search.noResultsText()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.employee-search.result-slat",
+      "screen": "new-kronos.employee-search",
+      "scenarioId": "ui/new-kronos-employee-search",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "search.firstResultSlat()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.employee-search.result-select-checkbox",
+      "screen": "new-kronos.employee-search",
+      "scenarioId": "ui/new-kronos-employee-search",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "search.firstResultCheckbox()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.employee-search.close-button",
+      "screen": "new-kronos.employee-search",
+      "scenarioId": "ui/new-kronos-employee-search",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "search.closeButton()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.employee-search.go-to-button",
+      "screen": "new-kronos.employee-search",
+      "scenarioId": "ui/new-kronos-employee-search",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "goToMenu.goToButtonOnPage()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.employee-search.go-to-timecard-option",
+      "screen": "new-kronos.employee-search",
+      "scenarioId": "ui/new-kronos-employee-search",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "goToMenu.timecardItem()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.timecard.employee-id",
+      "screen": "new-kronos.timecard",
+      "scenarioId": "ui/new-kronos-timecard-read",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "timecard.loadedEmployeeId()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.timecard.period-trigger-button",
+      "screen": "new-kronos.timecard",
+      "scenarioId": "ui/new-kronos-timecard-read",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "timecard.payPeriodTriggerButton()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.timecard.period-label",
+      "screen": "new-kronos.timecard",
+      "scenarioId": "ui/new-kronos-timecard-read",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "timecard.payPeriodLabel()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.timecard.select-range-button",
+      "screen": "new-kronos.timecard",
+      "scenarioId": "ui/new-kronos-timecard-read",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "timecard.selectRangeButton()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.timecard.range-start-field",
+      "screen": "new-kronos.timecard",
+      "scenarioId": "ui/new-kronos-timecard-read",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "timecard.startDateInput()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.timecard.range-end-field",
+      "screen": "new-kronos.timecard",
+      "scenarioId": "ui/new-kronos-timecard-read",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "timecard.endDateInput()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.timecard.range-apply-button",
+      "screen": "new-kronos.timecard",
+      "scenarioId": "ui/new-kronos-timecard-read",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "timecard.applyButton()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.employee-search.results-ready",
+      "screen": "new-kronos.employee-search",
+      "scenarioId": "ui/new-kronos-employee-search",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "search.firstResultSlat()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.employee-search.no-results",
+      "screen": "new-kronos.employee-search",
+      "scenarioId": "ui/new-kronos-employee-search",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "search.noResultsText()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.timecard.ready",
+      "screen": "new-kronos.timecard",
+      "scenarioId": "ui/new-kronos-timecard-read",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "timecard.loadedEmployeeId()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.timecard.range-applied",
+      "screen": "new-kronos.timecard",
+      "scenarioId": "ui/new-kronos-timecard-read",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "timecard.payPeriodLabel()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "new-kronos.timecard.displayed-eid",
+      "screen": "new-kronos.timecard",
+      "scenarioId": "ui/new-kronos-timecard-read",
+      "portMapRows": [
+        {
+          "system": "new-kronos",
+          "legacyKey": "timecard.loadedEmployeeId()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    }
+  ],
+  "externalWriteAttempted": false,
+  "sanitized": true
+}

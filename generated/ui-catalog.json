@@ -1164,6 +1164,568 @@
       "authoritativeFor": [
         "completion"
       ]
+    },
+    {
+      "system": "new-kronos",
+      "label": "New Kronos Employee Search panel",
+      "searchTerms": [
+        "new kronos employee search panel screen"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-employee-search"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/search-employee"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "screen",
+      "id": "new-kronos.employee-search"
+    },
+    {
+      "system": "new-kronos",
+      "label": "New Kronos employee timecard",
+      "searchTerms": [
+        "new kronos employee timecard screen"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-timecard-read"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/read-separation-timecard"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "screen",
+      "id": "new-kronos.timecard"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Employee Search navbar button",
+      "searchTerms": [
+        "new kronos employee search navbar button"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-employee-search"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/search-employee"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.employee-search.open-button",
+      "screen": "new-kronos.employee-search",
+      "role": "button",
+      "effect": "navigate"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Employee search query field",
+      "searchTerms": [
+        "new kronos employee search query field"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-employee-search"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/search-employee"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.employee-search.query-field",
+      "screen": "new-kronos.employee-search",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Employee search submit button",
+      "searchTerms": [
+        "new kronos employee search submit button"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-employee-search"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/search-employee"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.employee-search.submit-button",
+      "screen": "new-kronos.employee-search",
+      "role": "button",
+      "effect": "navigate"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Employee search no-results sentinel",
+      "searchTerms": [
+        "new kronos employee search no results sentinel"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-employee-search"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/search-employee"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.employee-search.no-results-text",
+      "screen": "new-kronos.employee-search",
+      "role": "display",
+      "effect": "observe"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Employee search result row",
+      "searchTerms": [
+        "new kronos employee search result row slat"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-employee-search"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/search-employee"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.employee-search.result-slat",
+      "screen": "new-kronos.employee-search",
+      "role": "row",
+      "effect": "observe"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Employee search result Select Item checkbox",
+      "searchTerms": [
+        "new kronos employee search select item checkbox"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-employee-search"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/search-employee"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.employee-search.result-select-checkbox",
+      "screen": "new-kronos.employee-search",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Employee Search close button",
+      "searchTerms": [
+        "new kronos employee search close button"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-employee-search"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/search-employee"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.employee-search.close-button",
+      "screen": "new-kronos.employee-search",
+      "role": "button",
+      "effect": "navigate"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Employee search Go To dropdown button",
+      "searchTerms": [
+        "new kronos employee search go to dropdown button"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-employee-search"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/search-employee"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.employee-search.go-to-button",
+      "screen": "new-kronos.employee-search",
+      "role": "button",
+      "effect": "navigate"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Go To menu Timecard option",
+      "searchTerms": [
+        "new kronos go to menu timecard option"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-employee-search"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/search-employee"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.employee-search.go-to-timecard-option",
+      "screen": "new-kronos.employee-search",
+      "role": "button",
+      "effect": "navigate"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Timecard displayed employee id",
+      "searchTerms": [
+        "new kronos timecard displayed employee id header"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-timecard-read"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/read-separation-timecard"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.timecard.employee-id",
+      "screen": "new-kronos.timecard",
+      "role": "display",
+      "effect": "observe"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Timecard pay-period trigger button",
+      "searchTerms": [
+        "new kronos timecard pay period trigger button"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-timecard-read"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/read-separation-timecard"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.timecard.period-trigger-button",
+      "screen": "new-kronos.timecard",
+      "role": "button",
+      "effect": "navigate"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Timecard active-period label",
+      "searchTerms": [
+        "new kronos timecard active period label"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-timecard-read"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/read-separation-timecard"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.timecard.period-label",
+      "screen": "new-kronos.timecard",
+      "role": "display",
+      "effect": "observe"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Timecard Select range button",
+      "searchTerms": [
+        "new kronos timecard select range button"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-timecard-read"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/read-separation-timecard"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.timecard.select-range-button",
+      "screen": "new-kronos.timecard",
+      "role": "button",
+      "effect": "navigate"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Timecard custom-range start date field",
+      "searchTerms": [
+        "new kronos timecard range start date field"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-timecard-read"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/read-separation-timecard"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.timecard.range-start-field",
+      "screen": "new-kronos.timecard",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Timecard custom-range end date field",
+      "searchTerms": [
+        "new kronos timecard range end date field"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-timecard-read"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/read-separation-timecard"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.timecard.range-end-field",
+      "screen": "new-kronos.timecard",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Timecard custom-range Apply button",
+      "searchTerms": [
+        "new kronos timecard range apply button"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-timecard-read"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/read-separation-timecard"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "element",
+      "id": "new-kronos.timecard.range-apply-button",
+      "screen": "new-kronos.timecard",
+      "role": "button",
+      "effect": "navigate"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Employee search rendered at least one result row",
+      "searchTerms": [
+        "new kronos employee search results ready state"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-employee-search"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/search-employee"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "new-kronos.employee-search.results-ready",
+      "screen": "new-kronos.employee-search"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Employee search rendered WFD's own no-results sentinel",
+      "searchTerms": [
+        "new kronos employee search no results state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-employee-search"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/search-employee"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "new-kronos.employee-search.no-results",
+      "screen": "new-kronos.employee-search"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Timecard loaded and identifiable",
+      "searchTerms": [
+        "new kronos timecard ready state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-timecard-read"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/read-separation-timecard"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "new-kronos.timecard.ready",
+      "screen": "new-kronos.timecard"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Timecard showing an explicit custom date range",
+      "searchTerms": [
+        "new kronos timecard range applied state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-timecard-read"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/read-separation-timecard"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "new-kronos.timecard.range-applied",
+      "screen": "new-kronos.timecard"
+    },
+    {
+      "system": "new-kronos",
+      "label": "Displayed timecard employee id",
+      "searchTerms": [
+        "authoritative new kronos timecard displayed employee id"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json",
+        "scenarios": [
+          "ui/new-kronos-timecard-read"
+        ]
+      },
+      "taskUses": [
+        "new-kronos/read-separation-timecard"
+      ],
+      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "kind": "observation",
+      "id": "new-kronos.timecard.displayed-eid",
+      "screen": "new-kronos.timecard",
+      "authoritativeFor": [
+        "subject"
+      ]
     }
   ]
 }

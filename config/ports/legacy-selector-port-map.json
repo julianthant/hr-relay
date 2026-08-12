@@ -1639,9 +1639,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/navbar.employee-search-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.open-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -1660,9 +1665,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/search.search-input"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.query-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -1678,9 +1688,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/search.search-submit-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.submit-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -1698,9 +1713,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/search.no-results-text"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.no-results-text",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -1718,9 +1738,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/search.first-result-checkbox"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.result-select-checkbox",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -1761,9 +1786,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/search.first-result-slat"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.result-slat",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -1801,9 +1831,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/search.close-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.close-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -1823,9 +1858,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/go-to-menu.go-to-button-on-page"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.go-to-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -1865,9 +1905,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/go-to-menu.timecard-item"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.go-to-timecard-option",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -1905,9 +1950,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/timecard.loaded-employee-id"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.employee-id",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -1925,9 +1975,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/timecard.pay-period-trigger-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.period-trigger-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -1946,9 +2001,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/timecard.pay-period-label"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.period-label",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -1987,9 +2047,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/timecard.select-range-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.select-range-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -2008,9 +2073,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/timecard.start-date-input"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.range-start-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -2029,9 +2099,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/timecard.end-date-input"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.range-end-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",
@@ -2131,9 +2206,14 @@
       "sourceBlob": "4143290c85acf70d0730ad4c1c97b243bbd74208",
       "catalogPath": "src/systems/new-kronos/SELECTORS.md",
       "catalogBlob": "6645bab491b9157b8958a479c354c6607ae77a0e",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:new-kronos/timecard.apply-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.range-apply-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/new-kronos/timecard.live.json"
+      }
     },
     {
       "system": "new-kronos",

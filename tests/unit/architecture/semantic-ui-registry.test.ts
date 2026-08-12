@@ -18,6 +18,11 @@ import {
   auditCrmUiRegistry,
 } from "../../../src/stores/crm/driver/ui-registry.js";
 import {
+  NEW_KRONOS_UI_REGISTRY,
+  auditNewKronosUiEvidenceBindings,
+  auditNewKronosUiRegistry,
+} from "../../../src/stores/new-kronos/driver/ui-registry.js";
+import {
   UCPATH_UI_REGISTRY,
   auditUcpathUiEvidenceBindings,
   auditUcpathUiRegistry,
@@ -93,10 +98,35 @@ function crmEvidenceBindingInput(): unknown {
   };
 }
 
+function newKronosEvidenceBindingInput(): unknown {
+  const portMap = LegacySelectorPortMapSchema.parse(readJson("config/ports/legacy-selector-port-map.json"));
+  return {
+    evidenceByRef: {
+      "evidence/ui/new-kronos/timecard.fixture.json": readJson("evidence/ui/new-kronos/timecard.fixture.json"),
+      "evidence/ui/new-kronos/timecard.live.json": readJson("evidence/ui/new-kronos/timecard.live.json"),
+    },
+    portBindings: portMap.entries.flatMap((entry) => {
+      if (entry.system !== "new-kronos"
+        || entry.disposition !== "ported"
+        || entry.semanticKind !== "element"
+        || !("canonicalId" in entry)) return [];
+      return [{
+        system: entry.system,
+        legacyKey: entry.legacyKey,
+        disposition: entry.disposition,
+        semanticKind: entry.semanticKind,
+        canonicalId: entry.canonicalId,
+        evidence: entry.evidence,
+      }];
+    }),
+  };
+}
+
 describe("semantic UI registry architecture", () => {
   it("keeps the registry closed, dependency-complete, collision-free, and scenario-backed", () => {
     assert.deepEqual(auditUcpathUiRegistry(), []);
     assert.deepEqual(auditCrmUiRegistry(), []);
+    assert.deepEqual(auditNewKronosUiRegistry(), []);
     assert.equal(UCPATH_UI_REGISTRY.screens.length > 0, true);
     assert.equal(UCPATH_UI_REGISTRY.elements.length > 0, true);
     assert.equal(UCPATH_UI_REGISTRY.states.length > 0, true);
@@ -104,6 +134,10 @@ describe("semantic UI registry architecture", () => {
     assert.equal(CRM_UI_REGISTRY.elements.length, 5);
     assert.equal(CRM_UI_REGISTRY.states.length, 4);
     assert.equal(CRM_UI_REGISTRY.observations.length, 1);
+    assert.equal(NEW_KRONOS_UI_REGISTRY.screens.length, 2);
+    assert.equal(NEW_KRONOS_UI_REGISTRY.elements.length, 16);
+    assert.equal(NEW_KRONOS_UI_REGISTRY.states.length, 4);
+    assert.equal(NEW_KRONOS_UI_REGISTRY.observations.length, 1);
     const ids = [
       ...UCPATH_UI_REGISTRY.screens,
       ...UCPATH_UI_REGISTRY.elements,
@@ -113,6 +147,10 @@ describe("semantic UI registry architecture", () => {
       ...CRM_UI_REGISTRY.elements,
       ...CRM_UI_REGISTRY.states,
       ...CRM_UI_REGISTRY.observations,
+      ...NEW_KRONOS_UI_REGISTRY.screens,
+      ...NEW_KRONOS_UI_REGISTRY.elements,
+      ...NEW_KRONOS_UI_REGISTRY.states,
+      ...NEW_KRONOS_UI_REGISTRY.observations,
     ].map(({ id }) => id);
     assert.equal(new Set(ids).size, ids.length);
   });
@@ -200,6 +238,7 @@ describe("semantic UI registry architecture", () => {
   it("binds every published fact to exact evidence and exact port-map provenance", () => {
     assert.deepEqual(auditUcpathUiEvidenceBindings(evidenceBindingInput()), []);
     assert.deepEqual(auditCrmUiEvidenceBindings(crmEvidenceBindingInput()), []);
+    assert.deepEqual(auditNewKronosUiEvidenceBindings(newKronosEvidenceBindingInput()), []);
 
     const wrongScreen = structuredClone(evidenceBindingInput()) as {
       evidenceByRef: Record<string, { assertions: { screen: string }[] }>;
@@ -258,6 +297,47 @@ describe("semantic UI registry architecture", () => {
     if (assertion === undefined) throw new Error("CRM displayed-EID fixture assertion missing");
     assertion.portMapRows = [{ system: "crm", legacyKey: "search.resultRows()" }];
     assert.match(auditCrmUiEvidenceBindings(wrongPortRow).join("\n"), /assertion port-map rows drifted/);
+  });
+
+  it("rejects New Kronos evidence whose timecard fact is rebound to the search screen or a search port", () => {
+    // Both halves of a New Kronos assertion are load-bearing, and each is
+    // asserted through the SAME entry point the green arm uses: the screen names
+    // which surface was actually observed, and the port-map rows name which
+    // legacy key the observation discharges. The timecard's subject observation
+    // is the one that matters most — it is the wrong-person control — so it is
+    // the fact both negative controls mutate.
+    const wrongScreen = structuredClone(newKronosEvidenceBindingInput()) as {
+      evidenceByRef: Record<string, { assertions: { semanticId: string; screen: string }[] }>;
+    };
+    const screenAssertion = wrongScreen.evidenceByRef["evidence/ui/new-kronos/timecard.live.json"]
+      ?.assertions.find(({ semanticId }) => semanticId === "new-kronos.timecard.displayed-eid");
+    if (screenAssertion === undefined) throw new Error("New Kronos displayed-EID live assertion missing");
+    screenAssertion.screen = "new-kronos.employee-search";
+    assert.match(auditNewKronosUiEvidenceBindings(wrongScreen).join("\n"), /assertion screen drifted/);
+
+    const wrongPortRow = structuredClone(newKronosEvidenceBindingInput()) as {
+      evidenceByRef: Record<string, {
+        assertions: { semanticId: string; portMapRows: { system: string; legacyKey: string }[] }[];
+      }>;
+    };
+    const portAssertion = wrongPortRow.evidenceByRef["evidence/ui/new-kronos/timecard.fixture.json"]
+      ?.assertions.find(({ semanticId }) => semanticId === "new-kronos.timecard.displayed-eid");
+    if (portAssertion === undefined) throw new Error("New Kronos displayed-EID fixture assertion missing");
+    portAssertion.portMapRows = [{ system: "new-kronos", legacyKey: "search.firstResultSlat()" }];
+    assert.match(auditNewKronosUiEvidenceBindings(wrongPortRow).join("\n"), /assertion port-map rows drifted/);
+
+    // And a ported row whose canonical id is dropped must refuse rather than
+    // leave the element silently unbound.
+    const missingBinding = structuredClone(newKronosEvidenceBindingInput()) as {
+      portBindings: { legacyKey: string }[];
+    };
+    missingBinding.portBindings = missingBinding.portBindings.filter(({ legacyKey }) =>
+      legacyKey !== "timecard.loadedEmployeeId()"
+    );
+    assert.match(
+      auditNewKronosUiEvidenceBindings(missingBinding).join("\n"),
+      /does not resolve to its exact New Kronos ported row/,
+    );
   });
 
   it("catches duplicate ids, search collisions, unresolved dependencies, and cross-system entries", () => {
