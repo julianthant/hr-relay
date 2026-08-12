@@ -14,8 +14,10 @@
  */
 import { kualiTimekeeperAnnotationDescriptor } from "./kuali-timekeeper-annotation/descriptor.js";
 import { personLookupDescriptor } from "./person-lookup/descriptor.js";
+import { separationsKronosTimecardDescriptor } from "./separations-kronos-timecard/descriptor.js";
 
 export const WORKFLOW_DESCRIPTORS = Object.freeze([
   personLookupDescriptor,
   kualiTimekeeperAnnotationDescriptor,
+  separationsKronosTimecardDescriptor,
 ] as const);

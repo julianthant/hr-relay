@@ -146,6 +146,11 @@ describe("Phase 1f Person Lookup task implementations", () => {
         "kuali/read-timekeeper-annotation",
         "kuali/save-timekeeper-annotation",
         "kuali/verify-timekeeper-annotation",
+        // Separations chunk 1's New Kronos passage: one task per PAGE VISIT
+        // (D194), which is why the timecard's navigate/subject/range/read are
+        // one entry and not four.
+        "new-kronos/read-separation-timecard",
+        "new-kronos/search-employee",
         // The normalization service store (D165) lands before any descriptor
         // consumes it.
         "normalization/read-contact-advice",

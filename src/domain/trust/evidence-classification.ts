@@ -137,6 +137,10 @@ const CRM_DATES = taskOutput("crm/read-onboarding-dates");
 const ACTIVE_STATUS = taskOutput("workflow:person-lookup/read-active-status");
 const KUALI_FILL = taskOutput("kuali/fill-timekeeper-annotation");
 const KUALI_SAVE = taskOutput("kuali/save-timekeeper-annotation");
+const KRONOS_TIMECARD_INPUT = workflowInput("separations-kronos-timecard");
+const KRONOS_TIMECARD_RESULT = workflowResult("separations-kronos-timecard");
+const KRONOS_SEARCH = taskOutput("new-kronos/search-employee");
+const KRONOS_TIMECARD = taskOutput("new-kronos/read-separation-timecard");
 
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
   /* person-lookup ingress */
@@ -191,6 +195,43 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(KUALI_RESULT, "disposition", "saved.kind", "saved.actionId", "saved.documentNumber",
     "saved.source"),
   ...person(KUALI_RESULT, "saved.timekeeperName", "saved.observedEid"),
+
+  /* separations-kronos-timecard ingress. The window bounds are dates ABOUT the
+     read, not about the person, so they are open; the EID and the expected
+     name are the person. */
+  ...person(KRONOS_TIMECARD_INPUT, "emplId", "expectedName"),
+  ...open(KRONOS_TIMECARD_INPUT, "rangeStart", "rangeEnd", "searchTimeoutMs"),
+
+  /* new-kronos/search-employee. `candidates` is a LIST OF PEOPLE — "twelve rows
+     matched" is the fact that decides whether the search was unambiguous, and
+     it is answerable without naming anyone who was not selected. */
+  ...person(KRONOS_SEARCH, "query", "matched.displayName", "matched.employeeId"),
+  ...population(KRONOS_SEARCH, "candidates"),
+  ...open(KRONOS_SEARCH, "totalCount", "selectedCount", "panelContext"),
+
+  /* new-kronos/read-separation-timecard. Every date, count and label describes
+     the TRANSACTION; only the two identities and the displayed name are the
+     person. `payCodeDays` and the date arrays are arrays, hence single leaves. */
+  ...person(KRONOS_TIMECARD, "subject.expectedEid", "subject.observedEmployeeId",
+    "subject.observedDisplayName"),
+  ...open(KRONOS_TIMECARD, "subject.observationId", "subject.matches",
+    "range.requestedStart", "range.requestedEnd", "range.observedLabel",
+    "range.observedStart", "range.observedEnd", "range.applied",
+    "grid.columnHeaders", "grid.scrollSteps", "grid.daysCovered", "grid.populatedRows",
+    "grid.lastPunchDate", "grid.punchDates", "grid.sickDates", "grid.holidayDates",
+    "grid.payCodeDays", "grid.unclassifiedPayCodes"),
+
+  /* separations-kronos-timecard terminal result */
+  ...person(KRONOS_TIMECARD_RESULT, "subject.expectedEid", "subject.observedEmployeeId",
+    "subject.expectedName", "subject.observedDisplayName"),
+  ...population(KRONOS_TIMECARD_RESULT, "search.candidates"),
+  ...open(KRONOS_TIMECARD_RESULT, "subject.nameSimilarity",
+    "window.requestedStart", "window.requestedEnd", "window.observedStart",
+    "window.observedEnd", "window.observedLabel", "window.daysCovered",
+    "timecard.lastPunchDate", "timecard.punchDates", "timecard.sickDates",
+    "timecard.holidayDates", "timecard.payCodeDays", "timecard.unclassifiedPayCodes",
+    "derived.lastPunchDate", "derived.latestLeaveDate", "derived.separationDateCandidate",
+    "derived.hasPunches", "search.totalCount", "search.panelContext"),
 ].map((entry) => Object.freeze(EvidenceFieldClassificationSchema.parse(entry))));
 
 const BY_SCOPE_AND_PATH = new Map<string, EvidenceFieldClassification>();

@@ -27,8 +27,13 @@ import {
 import { taskStoreRegistry } from "../stores/index.js";
 import { kualiTimekeeperAnnotationModule } from "../workflows/kuali-timekeeper-annotation/module.js";
 import { personLookupModule } from "../workflows/person-lookup/module.js";
+import { separationsKronosTimecardModule } from "../workflows/separations-kronos-timecard/module.js";
 
-export const WORKFLOW_MODULES = Object.freeze([personLookupModule, kualiTimekeeperAnnotationModule]);
+export const WORKFLOW_MODULES = Object.freeze([
+  personLookupModule,
+  kualiTimekeeperAnnotationModule,
+  separationsKronosTimecardModule,
+]);
 
 export const DESCRIPTORS: readonly AnyWorkflowDescriptor[] = Object.freeze(
   WORKFLOW_MODULES.map((module) => module.descriptor),

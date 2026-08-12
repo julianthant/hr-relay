@@ -66,9 +66,20 @@ export const KUALI_TIMEKEEPER_CLAIMS: readonly ScenarioCoverageClaim[] = Object.
   ]),
 ]);
 
+/**
+ * separations-kronos-timecard is two read steps with no branch, no gate, no
+ * delegation and no transaction, so the graph derives ZERO coverage points —
+ * and an empty claim list is the correct answer, not a missing one. The
+ * scenarios still exist and still run: what they falsify is the CONTRACT
+ * behaviour (S34/S35/S37/S38/S40), which a coverage point cannot express.
+ */
+export const SEPARATIONS_KRONOS_TIMECARD_CLAIMS: readonly ScenarioCoverageClaim[] =
+  Object.freeze([]);
+
 export const SCENARIO_COVERAGE_CLAIMS: Readonly<Record<string, readonly ScenarioCoverageClaim[]>> =
   Object.freeze({
     "person-lookup": PERSON_LOOKUP_CLAIMS,
     "fixture-graph": FIXTURE_GRAPH_CLAIMS,
     "kuali-timekeeper-annotation": KUALI_TIMEKEEPER_CLAIMS,
+    "separations-kronos-timecard": SEPARATIONS_KRONOS_TIMECARD_CLAIMS,
   });

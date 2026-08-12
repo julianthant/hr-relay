@@ -123,6 +123,26 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
     scenarioId: "kuali-timekeeper-annotation/already-present",
     file: "tests/scenario/kuali-timekeeper-annotation.scenario.test.ts",
   },
+  {
+    scenarioId: "separations-kronos-timecard/reads-a-real-timecard",
+    file: "tests/scenario/separations-kronos-timecard.scenario.test.ts",
+  },
+  {
+    scenarioId: "separations-kronos-timecard/timecard-without-punches",
+    file: "tests/scenario/separations-kronos-timecard.scenario.test.ts",
+  },
+  {
+    scenarioId: "separations-kronos-timecard/employee-not-found",
+    file: "tests/scenario/separations-kronos-timecard.scenario.test.ts",
+  },
+  {
+    scenarioId: "separations-kronos-timecard/search-no-signal",
+    file: "tests/scenario/separations-kronos-timecard.scenario.test.ts",
+  },
+  {
+    scenarioId: "separations-kronos-timecard/wrong-employee-timecard",
+    file: "tests/scenario/separations-kronos-timecard.scenario.test.ts",
+  },
 ]));
 
 export const EXECUTABLE_SCENARIO_IDS: readonly ScenarioId[] = Object.freeze(
