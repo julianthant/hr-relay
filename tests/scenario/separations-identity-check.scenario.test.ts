@@ -285,8 +285,8 @@ describe("separations-identity-check scenarios", () => {
         approval: { ...mislabelled, chosenFrom: "name-search" as const },
       },
       ctx: taskCtx,
-    }) as { emplId: string };
-    assert.equal(approved.emplId, OTHER_EID);
+    }) as { approved: { emplId: string } };
+    assert.equal(approved.approved.emplId, OTHER_EID);
   });
 
   it("separations-identity-check/already-terminated-single-row — S22's silent risk, closed", async () => {
@@ -384,8 +384,8 @@ describe("separations-identity-check scenarios", () => {
         },
       },
       ctx: taskCtx,
-    }) as { emplId: string; evidenceDigest: string };
-    assert.equal(approved.evidenceDigest, comparison.evidenceDigest);
+    }) as { approved: { evidenceDigest: string } };
+    assert.equal(approved.approved.evidenceDigest, comparison.evidenceDigest);
   });
 
   it("separations-identity-check/gate-rejected — a rejection names what the operator saw", async () => {

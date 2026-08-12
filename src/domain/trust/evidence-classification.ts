@@ -399,8 +399,12 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...identityPacketLeaves(MATCH_IDENTITY, "packet"),
   ...open(MATCH_IDENTITY, "evidenceDigest"),
 
-  /* workflow:separations/verify-identity-approval — the approved subject. */
-  ...approvedSubjectLeaves(VERIFY_IDENTITY_APPROVAL, ""),
+  /* workflow:separations/verify-identity-approval — the run's whole product,
+     carried forward past the gate so the terminal result has no pre-gate
+     ancestry (doc 09 §14.6 #2). */
+  ...open(VERIFY_IDENTITY_APPROVAL, "documentNumber"),
+  ...approvedSubjectLeaves(VERIFY_IDENTITY_APPROVAL, "approved"),
+  ...jobClassificationLeaves(VERIFY_IDENTITY_APPROVAL, "jobs"),
 
   /* separations-identity-check terminal result */
   ...open(IDENTITY_CHECK_RESULT, "documentNumber"),

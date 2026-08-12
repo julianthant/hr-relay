@@ -40,6 +40,7 @@ import {
   WORKFLOW_MODULES,
   readPendingImplBindings,
 } from "../../control/workflow-registry.js";
+import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../base/workflow.js";
 import { createCommandKernel, type WorkerRuntimeExecutor, type WriteResolutionExecutor } from "../../core/command-kernel.js";
 import { createPhase1WorkerRuntimeExecutor, type WorkerProcessSupervisor } from "../../core/worker-loop.js";
 import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
@@ -93,6 +94,33 @@ import { optionalSecretFamily, providerModelChain } from "../../domain/secrets.j
 import type { AdvisoryQueryDeps } from "./queries/advisory.js";
 import { createArchiveSnapshotSource, type ArchiveQueryDeps } from "./queries/archive.js";
 import type { RunDetailQueryDeps } from "./queries/run-detail.js";
+
+
+/**
+ * The gate nodes of a descriptor, in the shape the identity-gate section reads.
+ *
+ * `resultSchemaHash` is `deriveSchemaHash(node.result, "output")` — byte for
+ * byte the value `executeResolveGate` compares an incoming payload against, so a
+ * surface that echoes it back cannot be refused for naming a schema this build
+ * does not have.
+ */
+function gateNodeViewsOf(descriptor: AnyWorkflowDescriptor): readonly Readonly<{
+  nodeId: string;
+  label: string;
+  dependsOn: readonly string[];
+  resultSchemaHash: string;
+}>[] {
+  return descriptorRuntimeNodes(descriptor).flatMap((node) => (
+    node.kind === "gate"
+      ? [{
+        nodeId: String(node.id),
+        label: node.label,
+        dependsOn: node.dependsOn.map(String),
+        resultSchemaHash: deriveSchemaHash(node.result, "output"),
+      }]
+      : []
+  ));
+}
 
 export interface DashboardRuntime {
   readonly port: number;
@@ -339,7 +367,19 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       getWriteIntent: (writeIntentId) => database.authority.writeIntents.get(writeIntentId),
     },
     descriptors: {
-      resolve: (workflowId) => DESCRIPTORS.find((descriptor) => descriptor.id === workflowId),
+      /**
+       * The descriptor itself, plus the gate view the identity-gate section
+       * needs. The gate facts are DERIVED from the runtime graph here rather
+       * than in the query, for the same reason the receipt service lives here:
+       * `src/server/dashboard/queries` never reaches the descriptor builders,
+       * and a query that re-derived a schema hash would be a second copy of the
+       * descriptor's identity.
+       */
+      resolve: (workflowId) => {
+        const descriptor = DESCRIPTORS.find((candidate) => candidate.id === workflowId);
+        if (descriptor === undefined) return undefined;
+        return { ...descriptor, gateNodes: gateNodeViewsOf(descriptor) };
+      },
     },
     // D140/D142: the receipt and failure sections serve CONTENT through the
     // one authority-backed derivation, the same one `explain run` reads.

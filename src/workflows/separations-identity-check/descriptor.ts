@@ -234,14 +234,17 @@ const separationsIdentityCheckFlow = flow(SeparationsIdentityCheckInput)
       approval: outputs["identity-approval"],
     }),
   })
+  /**
+   * `dependsOn: ["approval"]` and NOTHING else — the guard caught the first
+   * draft, which read the document number and the employment picture straight
+   * off the PRE-gate comparison node and therefore had two ancestry paths to a
+   * root that never crossed the gate. The post-gate node carries those facts
+   * forward instead, so the run's whole product is a post-approval fact.
+   */
   .build({
     schema: SeparationsIdentityCheckResultSchema,
-    dependsOn: ["job-summary", "comparison", "approval"],
-    derive: ({ outputs }) => ({
-      documentNumber: outputs.comparison.packet.documentNumber,
-      approved: outputs.approval,
-      jobs: outputs.comparison.packet.jobs,
-    }),
+    dependsOn: ["approval"],
+    derive: ({ outputs }) => outputs.approval,
   });
 
 export const separationsIdentityCheckDescriptor = defineWorkflowDescriptor({

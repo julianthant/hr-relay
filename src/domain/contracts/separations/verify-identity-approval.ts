@@ -22,10 +22,28 @@ import {
   IdentityApprovalResultSchema,
 } from "../../separations/identity-approval.js";
 import { IdentityEvidencePacketSchema } from "../../separations/identity-evidence.js";
+import { JobSummaryClassificationSchema } from "../../separations/job-summary-classification.js";
 import { FingerprintSchema } from "../../ids.js";
 import { defineTaskContract } from "../base.js";
 
-export const VerifyIdentityApprovalOutputSchema = ApprovedIdentitySubjectSchema;
+/**
+ * The run's PRODUCT, and it is deliberately the whole thing rather than just the
+ * subject.
+ *
+ * `identity-gate-before-separation-commit` (doc 09 §14.6 #2) requires the
+ * terminal result to be graph-reachable only through the gate — and it caught a
+ * real defect here: a terminal result that read the document number and the
+ * employment picture straight off the PRE-gate comparison node had two ancestry
+ * paths to the root that never crossed the gate. So the post-gate node carries
+ * them forward instead. The rule generalises: in a gated graph, whatever the run
+ * PRODUCES has to be a post-approval fact, or the gate dominates the decision
+ * without dominating the output.
+ */
+export const VerifyIdentityApprovalOutputSchema = z.strictObject({
+  documentNumber: z.string().min(1),
+  approved: ApprovedIdentitySubjectSchema,
+  jobs: JobSummaryClassificationSchema,
+});
 export type VerifyIdentityApprovalOutput = z.infer<typeof VerifyIdentityApprovalOutputSchema>;
 
 export const SeparationsVerifyIdentityApproval = defineTaskContract({
@@ -53,11 +71,31 @@ export const SeparationsVerifyIdentityApproval = defineTaskContract({
     "separations-identity-check/gate-evidence-moved",
   ],
   example: {
-    emplId: "10873698",
-    chosenFrom: "checked",
-    evidenceDigest: "0".repeat(64),
-    ucpathName: "Battistessa, Johnnie",
-    nameTier: "same",
-    approvalShape: "one-click",
+    documentNumber: "4510",
+    approved: {
+      emplId: "10873698",
+      chosenFrom: "checked",
+      evidenceDigest: "0".repeat(64),
+      ucpathName: "Battistessa, Johnnie",
+      nameTier: "same",
+      approvalShape: "one-click",
+    },
+    jobs: {
+      disposition: "single-active-job",
+      rowCount: 1,
+      activeRowCount: 1,
+      inactiveRowCount: 0,
+      unknownRowCount: 0,
+      rows: [{
+        rowIndex: 0,
+        emplRecord: "0",
+        hrStatus: "Active",
+        tier: "active",
+        department: "Housing Dining Hospitality",
+        jobTitle: "Dining Assistant",
+        effectiveDate: "07/01/2025",
+      }],
+      unreadableCells: [],
+    },
   },
 });

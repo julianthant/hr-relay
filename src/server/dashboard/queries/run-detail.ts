@@ -27,8 +27,11 @@
 import { z } from "zod";
 import type { JsonValue } from "../../../domain/canonical-json.js";
 import { localDatePart } from "../../../domain/clock.js";
+import { MatchIdentityOutputSchema } from "../../../domain/contracts/separations/match-identity.js";
+import type { IdentityEvidencePacket } from "../../../domain/separations/identity-evidence.js";
 import {
   FailureDetailWireSchema,
+  IdentityGateDetailWireSchema,
   ParkedWriteDetailWireSchema,
   RunDetailSectionResponseSchema,
   RunDetailWireSchema,
@@ -69,12 +72,31 @@ export interface RunDetailTrustDeps {
  * unbranded, so both the registry's broad descriptor view and a test fixture
  * satisfy it.
  */
+/**
+ * The gate facts the identity-gate section needs, derived from the descriptor by
+ * the composition rather than re-derived here.
+ *
+ * `dependsOn` is what locates the packet: the gate's evidence is the stored
+ * output of the node the gate WAITS ON, which is a graph fact, so nothing here
+ * hard-codes a node name. `resultSchemaHash` is the descriptor's own gate-schema
+ * identity — the exact value the kernel will demand on a `resolve-gate` payload
+ * — served so a surface never computes it.
+ */
+export interface RunDetailGateNodeView {
+  readonly nodeId: string;
+  readonly label: string;
+  readonly dependsOn: readonly string[];
+  readonly resultSchemaHash: string;
+}
+
 export interface RunDetailDescriptorView {
   readonly details: readonly Readonly<{
     key: string;
     label: string;
     source: Readonly<{ nodeId: string; fieldPath: string }>;
   }>[];
+  /** Absent for a descriptor with no gate node; empty is the same answer. */
+  readonly gateNodes?: readonly RunDetailGateNodeView[];
   readonly capabilities?: Readonly<{
     editData?:
       | boolean
@@ -159,7 +181,7 @@ export function availableSections(
   _row: RunFoldRecord,
   authority: RunRecord,
   trust?: RunDetailTrustDeps,
-): readonly ("logs" | "receipt" | "context-data" | "context-attempts" | "failure" | "parked-write")[] {
+): readonly ("logs" | "receipt" | "context-data" | "context-attempts" | "failure" | "parked-write" | "identity-gate")[] {
   const { lifecycle } = authority;
   const terminal = lifecycle.state === "terminal";
   const settled = terminal && lifecycle.outcome !== "interrupted";
@@ -172,6 +194,16 @@ export function availableSections(
       ? (["failure"] as const)
       : []),
     ...(lifecycle.state === "parked-write" ? (["parked-write"] as const) : []),
+    /*
+     * Every `parked-gate` run advertises the section, and the payload is a wire
+     * RESOURCE: a run parked on a gate whose evidence node stored no identity
+     * packet answers `missing` with the reason, exactly as `receipt` does for a
+     * composition without the trust seam. Advertising only for gates this query
+     * can fully serve would need the descriptor here, and would make "no gate
+     * section" indistinguishable from "the packet is gone" — which is the
+     * absence-versus-failure conflation this program bans.
+     */
+    ...(lifecycle.state === "parked-gate" ? (["identity-gate"] as const) : []),
   ];
 }
 
@@ -292,7 +324,7 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
 
 const SectionNameSchema = z.enum([
   "logs", "receipt", "review", "people", "context-data", "context-evidence", "context-attempts", "failure", "captures",
-  "parked-write",
+  "parked-write", "identity-gate",
 ]);
 
 const LEVEL_MAP = { error: "error", warn: "warning", waiting: "warning", step: "info", success: "info", debug: "info" } as const;
@@ -391,6 +423,13 @@ export function buildRunSection(
     return RunDetailSectionResponseSchema.parse({
       section,
       payload: buildParkedWritePayload(deps, authority),
+    });
+  }
+
+  if (section === "identity-gate") {
+    return RunDetailSectionResponseSchema.parse({
+      section,
+      payload: buildIdentityGatePayload(deps, row, authority),
     });
   }
 
@@ -510,6 +549,152 @@ function parkedWriteActions(
         tone: "destructive",
       },
       writeTarget,
+    },
+  ];
+}
+
+/**
+ * The identity-approval gate section (doc 09 §14.4).
+ *
+ * Everything is DERIVED and nothing is minted. The packet is the stored output
+ * of the node the gate waits on — located through the descriptor's `dependsOn`,
+ * so no node name is hard-coded — and the digest is the one that node stored
+ * beside it, which is the value an approval must carry. `missing` is a real
+ * answer with a reason: a run parked on a gate this composition cannot describe
+ * says so rather than serving a half panel an operator could act on.
+ */
+function buildIdentityGatePayload(
+  deps: RunDetailQueryDeps,
+  row: RunFoldRecord,
+  authority: RunRecord,
+): unknown {
+  const { lifecycle } = authority;
+  const runId = authority.envelope.runId;
+  if (lifecycle.state !== "parked-gate") {
+    throw new Error(`run ${runId} advertises an identity-gate section while it is ${lifecycle.state}`);
+  }
+  const missing = (reason: string): unknown => ({ state: "missing", reason });
+  const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
+  if (descriptor === undefined) {
+    return missing(`workflow ${authority.envelope.workflow} has no registered descriptor in this build`);
+  }
+  const gate = (descriptor.gateNodes ?? [])
+    .find(({ nodeId }) => nodeId === String(lifecycle.gateId));
+  if (gate === undefined) {
+    return missing(
+      `${authority.envelope.workflow} declares no gate "${String(lifecycle.gateId)}"; this build cannot `
+      + "describe the decision this run is parked on",
+    );
+  }
+  const evidence = gate.dependsOn
+    .map((nodeId) => deps.authority.latestCheckpoint(row.queued.workflow, authority.envelope.itemId, nodeId))
+    .flatMap((stored) => {
+      if (stored === undefined) return [];
+      // `stored.output` is the schema-BOUND envelope; the packet is its value.
+      const parsed = MatchIdentityOutputSchema.safeParse(stored.output.value);
+      return parsed.success ? [parsed.data] : [];
+    });
+  if (evidence.length !== 1) {
+    return missing(
+      `gate "${gate.nodeId}" waits on ${String(gate.dependsOn.length)} node(s), and `
+      + `${String(evidence.length)} of them hold an identity decision packet; exactly one must, or the `
+      + "packet this gate is about is not identifiable",
+    );
+  }
+  const found = evidence[0];
+  if (found === undefined) throw new Error(`gate "${gate.nodeId}" evidence disappeared mid-projection`);
+  const { packet, evidenceDigest } = found;
+  const nameSearchEid = packet.nameSearch.status === "resolved" ? packet.nameSearch.candidate.eid : undefined;
+  const options = packet.approvableEids.map((eid) => ({
+    eid,
+    chosenFrom: eid === packet.emplId ? "checked" : eid === nameSearchEid ? "name-search" : "manual",
+    displayName: eid === packet.emplId
+      ? packet.ucpathName
+      : eid === nameSearchEid && packet.nameSearch.status === "resolved"
+        ? packet.nameSearch.candidate.name
+        : `EID ${eid}`,
+    origin: eid === packet.emplId
+      ? `the EID this run checked (${packet.emplIdSource})`
+      : eid === nameSearchEid
+        ? `a UCPath search on the document's name "${packet.documentName}" resolved this person`
+        : `a UCPath search on the document's name "${packet.documentName}" listed this EID among its candidates`,
+  }));
+  return {
+    state: "available",
+    value: IdentityGateDetailWireSchema.parse({
+      runId,
+      gateId: gate.nodeId,
+      label: gate.label,
+      parkedAt: lifecycle.parkedAt,
+      resumeAt: lifecycle.resumeAt,
+      expectedVersion: authority.version,
+      resultSchemaHash: gate.resultSchemaHash,
+      evidenceDigest,
+      packet,
+      options,
+      approvalShape: packet.approvalShape,
+      actions: identityGateActions(authority, packet),
+    }),
+  };
+}
+
+/**
+ * The two typed resolutions, always both served.
+ *
+ * Which one is right is a question only the operator's look at the evidence can
+ * answer, so hiding either would be this wire pre-deciding it — the same
+ * argument the parked-write section makes. What DOES change with the risk is
+ * the ceremony: `approvalShape` says whether approval is one click or an
+ * explicit choice, and the approve action's `confirm` block names the
+ * disagreements the operator is approving over.
+ */
+function identityGateActions(authority: RunRecord, packet: IdentityEvidencePacket): unknown[] {
+  const disagreements = packet.comparisons.filter(({ agrees }) => !agrees);
+  return [
+    {
+      key: "resolve-gate-approved",
+      label: packet.approvalShape === "one-click" ? "Approve this person" : "Approve the chosen EID",
+      detail: packet.approvalShape === "type-the-eid"
+        ? "This decision is ambiguous: the EID must be typed, not selected."
+        : packet.approvalShape === "choose-a-candidate"
+          ? "Choose which candidate the separation document means."
+          : "One unambiguous candidate, one active job, and the names agree.",
+      intent: "primary",
+      icon: "resolve",
+      placement: ["banner", "footer"],
+      kind: "command",
+      command: "resolve-gate",
+      expectedVersion: authority.version,
+      resolution: "approved",
+      confirm: {
+        title: "Approve this identity",
+        body: disagreements.length === 0
+          ? `Every compared field agreed for ${packet.documentName} on separation document `
+            + `${packet.documentNumber}. Approving binds the rest of this separation to this person.`
+          : `${String(disagreements.length)} field(s) DISAGREE: ${
+            disagreements.map(({ field }) => field).join(", ")
+          }. Approving files the rest of this separation against this person anyway.`,
+        confirmLabel: "Approve",
+        tone: disagreements.length === 0 ? "neutral" : "destructive",
+      },
+    },
+    {
+      key: "resolve-gate-rejected",
+      label: "Reject — this is not the right person",
+      detail: "Ends the run with the reason recorded. Nothing downstream runs.",
+      intent: "destructive",
+      icon: "resolve",
+      placement: ["banner", "footer"],
+      kind: "command",
+      command: "resolve-gate",
+      expectedVersion: authority.version,
+      resolution: "rejected",
+      confirm: {
+        title: "Reject this identity",
+        body: `The run ends and records why. Separation document ${packet.documentNumber} stays untouched.`,
+        confirmLabel: "Reject",
+        tone: "neutral",
+      },
     },
   ];
 }

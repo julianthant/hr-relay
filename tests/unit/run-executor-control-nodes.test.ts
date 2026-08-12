@@ -223,6 +223,55 @@ function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): 
 const SIGNAL = new AbortController().signal;
 
 describe("branch + gate dispatch", () => {
+  /**
+   * Doc 09 §14 / separations §4d: **no run mode can disable a gate.**
+   *
+   * `dryRun` is the only run-level mode this envelope carries, and it is the one
+   * an operator would most plausibly expect to "just preview". It does not touch
+   * the gate arm at all — the executor's `dryRun` reaches exactly one place, the
+   * write sequencer — so a dry run parks identically. Legacy's whole D7 defect
+   * was a MODE deriving its way into skipping the identity check; the property
+   * that makes that unreachable here is that the gate arm reads nothing off the
+   * envelope, and this is the executable statement of it.
+   */
+  it("parks at the gate under dryRun exactly as it does under a real run", async () => {
+    const harness = controlHarness(gateBranchDescriptor);
+    const { database } = harness.authority;
+    const queued = controlQueuedRun(gateBranchDescriptor, "left");
+    database.authority.runs.enqueue({
+      ...queued,
+      envelope: { ...queued.envelope, dryRun: true },
+    });
+    const claimed = claim(database, gateBranchDescriptor);
+    assert.equal(claimed.run.envelope.dryRun, true);
+
+    const parked = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
+    assert.deepEqual(parked, { state: "parked-gate", runId: RUN_ID, gateId: "left-gate" });
+    // And a resume past an UNRESOLVED gate is impossible: validation refuses by
+    // name rather than treating the missing decision as an implicit approval.
+    const parkedRun = database.authority.runs.get(RUN_ID);
+    assert.ok(parkedRun && parkedRun.lifecycle.state === "parked-gate");
+    const resumeAt = parkedRun.lifecycle.state === "parked-gate" ? parkedRun.lifecycle.resumeAt : undefined;
+    assert.ok(resumeAt);
+    const resumed = database.authority.runs.resume({
+      runId: RUN_ID,
+      expectedVersion: parkedRun.version,
+      startAt: resumeAt,
+      now: harness.authority.clock.now().toISOString(),
+    });
+    assert.equal(resumed.state, "applied");
+    const second = claim(database, gateBranchDescriptor);
+    const outcome = await executeClaimedRun(harness.deps, { ...second, signal: SIGNAL });
+    assert.equal(outcome.state, "failed");
+    const failure = database.authority.failures.get(
+      outcome.state === "failed" ? outcome.failureId : "",
+    );
+    assert.match(
+      `${failure?.summary ?? ""} ${(failure?.causeChain ?? []).map(({ summary }) => summary).join(" ")}`,
+      /gate "left-gate" has no stored result; a resume past an unresolved gate is impossible/,
+    );
+  });
+
   it("selects a branch case, parks on the reached gate, and resumes through the stored result", async () => {
     const harness = controlHarness(gateBranchDescriptor);
     const { database } = harness.authority;

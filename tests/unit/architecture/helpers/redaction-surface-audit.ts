@@ -671,6 +671,50 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.actions[].navigate.runId", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.parkedMessage", origin: "external-text" },
 
+  /*
+   * The identity-approval gate section (doc 09 §14.4, separations chunk 3).
+   *
+   * This is the one loopback payload that carries a person's identity in the
+   * CLEAR, and the disposition is the review of exactly that: §14.4's acceptance
+   * standard is that the operator decides who is being separated *without
+   * leaving the dashboard*, so names, EIDs, departments and titles are the
+   * decision rather than incidental detail. Every one of them is
+   * `captured-hr-value` — read off UCPath or off the separation document — and
+   * loopback is the only egress that may carry them. Nothing here may be
+   * re-exported to a wider surface without re-deciding this table's rows.
+   *
+   * The split is the same one D197 settled on the Kuali read: a value the PAGE
+   * showed is `captured-hr-value`; a sentence this repository composed ABOUT
+   * that value (a comparison's `note`, an option's `origin`, an action's copy)
+   * is `repository-authored`, even when it interpolates a captured value.
+   */
+  { surface: "wire/run-detail-section", path: "payload.value.label", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.actions[].confirm.body", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.actions[].confirm.confirmLabel", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.actions[].confirm.title", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.actions[].detail", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.actions[].key", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.actions[].label", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.actions[].navigate.runId", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.options[].displayName", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.options[].origin", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.documentNumber", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.documentName", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.documentEidText", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.ucpathName", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.comparisons[].documentValue", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.comparisons[].ucpathValue", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.comparisons[].note", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.nameSearch.candidate.name", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.nameSearch.candidate.department", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.nameSearch.candidate.jobTitle", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.jobs.rows[].emplRecord", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.jobs.rows[].hrStatus", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.jobs.rows[].department", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.jobs.rows[].jobTitle", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.jobs.rows[].effectiveDate", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.jobs.unreadableCells[]", origin: "repository-authored" },
+
   { surface: "wire/queue-surface", path: "appVersion.reason", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "endedAt.reason", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "liveMessage.reason", origin: "repository-authored" },

@@ -291,7 +291,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "b925e670a60d4b4c05e0cf71a3e4ebfe1a34fb6953662cdc221b28998ec4b0af",
+      "fingerprint": "d4040792777df44e1ac5935be377edb1ad26a73d635320ada256e49c2b7895d1",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -315,7 +315,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/separations/verify-identity-approval.ts",
-          "sha256": "e9fa2abcb1358369cb0ccb0f81d1d3657e212363e8bc3004f3be2a32788418a5"
+          "sha256": "e4e4b726d6034ad9a4d3f1f1e6f488868520d7ff18fb4776d141ee9bd9fce5f5"
         },
         {
           "path": "src/domain/contracts/ucpath/read-job-summary.ts",
@@ -443,7 +443,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations-identity-check/descriptor.ts",
-          "sha256": "0df827780e16775b1e2e5caa9479c1e5692a096ff6c4a6e39e91244c195a51bf"
+          "sha256": "253e162f5121c7225828e1d2597a24f6a6a9f2a54f51a1780ee0ae018aa18483"
         }
       ],
       "id": "separations-identity-check"
@@ -3669,7 +3669,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-termination-type"
     },
     {
-      "fingerprint": "e4b282ddc8c11437806aecb4fac55527e94cb35b2dbc115dd3e286715a10412a",
+      "fingerprint": "f59b97cf57e763008544b0d3407cc5e657bfe60a44f844a9bce9219d39d13b4d",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3705,7 +3705,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/separations/verify-identity-approval.ts",
-          "sha256": "e9fa2abcb1358369cb0ccb0f81d1d3657e212363e8bc3004f3be2a32788418a5"
+          "sha256": "e4e4b726d6034ad9a4d3f1f1e6f488868520d7ff18fb4776d141ee9bd9fce5f5"
         },
         {
           "path": "src/domain/contracts/ucpath/search-person-org.ts",
@@ -3801,7 +3801,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/separations/tasks/verify-identity-approval.ts",
-          "sha256": "2130215e30835f751d13f0a9c95826ed821768c2243e1811a0d03f68cf2f21cf"
+          "sha256": "5e036c0ef9bc5b4e3db2dfae3dfa165a5c5bd894bcce69054cbda43188fbf0f1"
         },
         {
           "path": "src/validation/contract-boundary.ts",

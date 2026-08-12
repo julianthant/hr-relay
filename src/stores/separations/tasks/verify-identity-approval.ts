@@ -22,14 +22,15 @@ export const verifyIdentityApprovalTask = defineTask(SeparationsVerifyIdentityAp
     const verification = verifyIdentityApproval(input.packet, input.approval, input.evidenceDigest);
     if (verification.state === "refused") return ctx.fail(verification.code, verification.reason);
 
-    const output = VerifyIdentityApprovalOutputSchema.parse(verification.subject);
+    const output = VerifyIdentityApprovalOutputSchema.parse({
+      documentNumber: input.packet.documentNumber,
+      approved: verification.subject,
+      jobs: input.packet.jobs,
+    });
     ctx.recordData([
-      { direction: "read", field: "emplId", value: output.emplId },
-      { direction: "read", field: "chosenFrom", value: output.chosenFrom },
-      { direction: "read", field: "evidenceDigest", value: output.evidenceDigest },
-      { direction: "read", field: "ucpathName", value: output.ucpathName },
-      { direction: "read", field: "nameTier", value: output.nameTier },
-      { direction: "read", field: "approvalShape", value: output.approvalShape },
+      { direction: "read", field: "documentNumber", value: output.documentNumber },
+      { direction: "read", field: "approved", value: output.approved },
+      { direction: "read", field: "jobs", value: output.jobs },
     ]);
     return output;
   },

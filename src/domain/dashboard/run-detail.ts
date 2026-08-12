@@ -25,6 +25,7 @@ import {
   WriteIntentIdSchema,
 } from "../ids.js";
 import { UnscopedCommitReasonIdSchema } from "../unscoped-commit.js";
+import { IdentityEvidencePacketSchema } from "../separations/identity-evidence.js";
 import { ContractFieldPathSchema } from "../contracts/base.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
 import {
@@ -539,6 +540,90 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   }
 });
 
+/**
+ * The identity-approval gate section (doc 09 §14.4, separations §3's chunk-3
+ * directive: "a command arm plus wire state ONLY").
+ *
+ * This is the whole server side of the approval UI a later slice will build.
+ * Every fact a surface needs to render the decision and compose a legal
+ * `resolve-gate` command is here, because the alternative — a client that knows
+ * how to build a gate payload — would put the gate's contract in two places.
+ *
+ * **The packet is served WHOLE and unredacted, and that is deliberate.** Every
+ * other person-bearing wire in this tree redacts (the parked-write subject
+ * serves a digest and a bounded suffix). This one cannot: §14.4's acceptance
+ * standard is that the operator decides *without leaving the dashboard*, and a
+ * wrong-person control whose evidence is redacted is a control that cannot be
+ * exercised. The names, EIDs, departments and titles ARE the decision.
+ *
+ * **`resultSchemaHash` is served rather than derived by the caller.** The kernel
+ * refuses a `resolve-gate` payload whose `result.schemaHash` is not the
+ * descriptor's exact gate schema hash; a client computing that hash would be a
+ * second implementation of the descriptor's identity. The server states it.
+ *
+ * **`options` is the checkable half of `chosenFrom`.** Each entry pairs an EID
+ * the packet actually showed with the label the post-gate node will verify, so a
+ * surface cannot invent a label and cannot offer an EID the run never read.
+ */
+export const IdentityGateOptionWireSchema = z.strictObject({
+  eid: z.string().regex(/^\d{8}$/),
+  /** The label a `resolve-gate` payload must carry for this EID. */
+  chosenFrom: z.enum(["checked", "name-search", "manual"]),
+  /** The name UCPath displayed for this EID, when the packet carried one. */
+  displayName: z.string().min(1),
+  /** Why this EID is on the list, in the operator's terms. */
+  origin: z.string().min(1),
+});
+
+export const IdentityGateDetailWireSchema = z.strictObject({
+  runId: RunIdSchema,
+  gateId: NodeIdSchema,
+  label: z.string().min(1),
+  parkedAt: IsoInstantSchema,
+  /** The node the run resumes at once the gate resolves. */
+  resumeAt: NodeIdSchema,
+  /** The run version a `resolve-gate` command must CAS against. */
+  expectedVersion: z.number().int().positive(),
+  /** The descriptor's exact gate-result schema hash the kernel will require. */
+  resultSchemaHash: FingerprintSchema,
+  /** The digest an approval or rejection must carry (doc 09 §14.5). */
+  evidenceDigest: FingerprintSchema,
+  packet: IdentityEvidencePacketSchema,
+  options: z.array(IdentityGateOptionWireSchema).min(1),
+  /**
+   * §14.6 risk 1: the SERVER decides how much ceremony the decision costs, so a
+   * surface cannot quietly turn a risky approval into one click.
+   */
+  approvalShape: z.enum(["one-click", "choose-a-candidate", "type-the-eid"]),
+  /** Doc 13 §8.5: an interactive control exists only because the server said so. */
+  actions: z.array(ActionDescriptorWireSchema).min(1),
+}).superRefine((gate, context) => {
+  const eids = gate.options.map(({ eid }) => eid);
+  if (new Set(eids).size !== eids.length) {
+    context.addIssue({ code: "custom", path: ["options"], message: "gate options must be unique by EID" });
+  }
+  for (const [index, option] of gate.options.entries()) {
+    if (!gate.packet.approvableEids.map(String).includes(option.eid)) {
+      context.addIssue({
+        code: "custom",
+        path: ["options", index, "eid"],
+        message: `option ${option.eid} is not one the packet showed`,
+      });
+    }
+  }
+  const targeted = gate.actions.filter((action) => action.kind === "command"
+    && action.command === "resolve-gate"
+    && action.expectedVersion === gate.expectedVersion);
+  if (targeted.length !== gate.actions.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["actions"],
+      message: "every identity-gate action must be a resolve-gate at this exact run version",
+    });
+  }
+});
+export type IdentityGateDetailWire = z.infer<typeof IdentityGateDetailWireSchema>;
+
 export const RunDetailSectionResponseSchema = z.discriminatedUnion("section", [
   z.strictObject({ section: z.literal("logs"), payload: NotePageSchema }),
   z.strictObject({ section: z.literal("receipt"), payload: wireResourceSchema(ReceiptSectionSchema) }),
@@ -550,6 +635,7 @@ export const RunDetailSectionResponseSchema = z.discriminatedUnion("section", [
   z.strictObject({ section: z.literal("failure"), payload: wireResourceSchema(FailureDetailWireSchema) }),
   z.strictObject({ section: z.literal("captures"), payload: CaptureListSchema }),
   z.strictObject({ section: z.literal("parked-write"), payload: ParkedWriteDetailWireSchema }),
+  z.strictObject({ section: z.literal("identity-gate"), payload: wireResourceSchema(IdentityGateDetailWireSchema) }),
 ]);
 
 export type ParkedWriteDetailWire = z.infer<typeof ParkedWriteDetailWireSchema>;
