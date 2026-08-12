@@ -195,6 +195,99 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
     assert.equal(reclaim.state, "claimed");
   });
 
+  /* ── D200: the same sweeper, scoped to one worker id ───────────────────── */
+
+  /** A second queued run on its own logical item, for a sibling worker. */
+  const SIBLING_RUN = {
+    ...QUEUED_RUN,
+    envelope: {
+      ...QUEUED_RUN.envelope,
+      runId: "77777777-7777-4777-8777-777777777777",
+      itemId: "88888888-8888-4888-8888-888888888888",
+      traceId: "pl-170001-7777",
+    },
+  };
+
+  it("releases only the named worker's rows, leaving a live sibling's fresh claim alone", () => {
+    const database = openDatabase();
+    claimAndRun(database, "running");
+    database.authority.runs.enqueue(SIBLING_RUN);
+    const sibling = database.authority.runs.claimNext({
+      workflow: WORKFLOW_ID,
+      workerId: "worker-2",
+      now: NOW,
+    });
+    assert.equal(sibling.state, "claimed");
+
+    /*
+     * A restarted worker sweeps its OWN id with `staleBefore: now` — every row
+     * still under an id whose lease it just won is orphaned regardless of the
+     * heartbeat. Widening `staleBefore` globally instead would have swept
+     * worker-2's live claim, which is why the scope is the worker id.
+     */
+    const swept = database.authority.runs.sweepExpiredClaims({
+      workerId: WORKER_ID,
+      now: NOW,
+    });
+    assert.equal(swept.length, 1);
+    assert.equal(swept[0]?.state, "requeued");
+    assert.equal(swept[0]?.run.envelope.runId, RUN_ID);
+
+    const siblingRun = database.authority.runs.get(SIBLING_RUN.envelope.runId);
+    assert.equal(siblingRun?.lifecycle.state, "claimed", "a live sibling worker's claim was swept");
+  });
+
+  it("parks — never requeues — the named worker's running row that holds an attempting intent", () => {
+    const database = openDatabase();
+    claimAndRun(database, "running");
+    database.authority.writeIntents.fenceAttempt({
+      intent: PERSON_LOOKUP_ATTEMPTING_INTENT,
+      attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
+    });
+
+    // The D118 gate is the sweeper's, so scoping to a worker id cannot bypass
+    // it: this is the SAME code path, pointed at one owner.
+    const swept = database.authority.runs.sweepExpiredClaims({
+      workerId: WORKER_ID,
+      now: NOW,
+    });
+    assert.equal(swept.length, 1);
+    const outcome = swept[0];
+    assert.ok(outcome && outcome.state === "recovery-required");
+    if (outcome.state !== "recovery-required") return;
+    assert.equal(outcome.parked, true);
+
+    const run = database.authority.runs.get(RUN_ID);
+    assert.equal(run?.lifecycle.state, "parked-write");
+    assert.equal(run?.envelope.attempt, 1, "a parked run must not take a new attempt");
+    assert.equal(
+      database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: LATER }).state,
+      "idle",
+      "the parked row must not be claimable, but it must no longer wedge the worker id",
+    );
+  });
+
+  it("leaves the named worker's CLAIMED row with an attempting intent held, and says so", () => {
+    const database = openDatabase();
+    claimAndRun(database, "claimed");
+    database.authority.writeIntents.fenceAttempt({
+      intent: PERSON_LOOKUP_ATTEMPTING_INTENT,
+      attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
+    });
+
+    const swept = database.authority.runs.sweepExpiredClaims({
+      workerId: WORKER_ID,
+      now: NOW,
+    });
+    assert.equal(swept.length, 1);
+    assert.equal(swept[0]?.state, "recovery-required");
+    // Still owned: a claimed row has no legal parked-write edge, so the worker
+    // id stays wedged until a doc 09 §4.1 resolution settles the intent. The
+    // composition reports THAT rather than letting the first poll throw.
+    assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "claimed");
+    assert.equal(database.authority.runs.listByWorker(WORKER_ID).length, 1);
+  });
+
   it("does not gate a run in a DIFFERENT workflow/item on this item's intent", () => {
     const database = openDatabase();
     claimAndRun(database, "running");

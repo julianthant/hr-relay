@@ -28,7 +28,7 @@ import {
   lineTaskLogger,
   parseWorkerArguments,
 } from "../../src/server/worker/compose.js";
-import { UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
+import { UUID_7, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "./fixtures/phase1c-contract-fixtures.js";
 import {
   EXECUTOR_WORKER_ID,
   happySessionHarness,
@@ -37,7 +37,7 @@ import {
   sessionFactoryHarness,
   type SessionFactoryHarness,
 } from "./fixtures/phase1f-executor-harness.js";
-import { sequentialIdFactory, RUN_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
+import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
 
@@ -207,6 +207,99 @@ describe("composed worker runtime", () => {
     const lease = seed.authority.workerLeases.get(workerId);
     assert.ok(lease && lease.leaseGeneration === 2 && lease.processId === 4242);
     assert.ok(lines.some((line) => line.includes("stale worker lease reclaimed before start")));
+  });
+
+  /**
+   * D200. A worker whose loop throws settles its LEASE (`crashed`) on the way
+   * out and leaves its claimed run row exactly where it was. The next process
+   * therefore wins the lease and then finds `claimNext` refusing —
+   * `worker … already holds active run …` — because the row it left behind is
+   * still owned by this worker id. The maintenance boot sweep cannot help: the
+   * row's heartbeat is seconds old, far inside the 60s staleness gate. Before
+   * this, the only ways out were starting a DIFFERENT workflow's worker or
+   * cancelling the run.
+   */
+  it("sweeps its own orphaned claim at startup and then claims it, same workflow", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const workerId = phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID));
+    const crashed = reopen(stateRoot, clock);
+    const claimed = crashed.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: NOW });
+    assert.equal(claimed.state, "claimed", "the crashed process must actually own the row");
+    // The clock barely moves: the heartbeat this row carries is FRESH, which is
+    // precisely why the staleness-gated boot sweep skips it.
+    clock.advanceWall(2_000);
+    clock.advanceMonotonic(2_000);
+
+    const lines: string[] = [];
+    const report = await composeWorkerRuntime(composeInput({
+      repoRoot, clock, sessions: happySessionHarness(), lines,
+    }));
+    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
+    assert.ok(
+      lines.some((line) => line.includes("orphaned claim released before the first poll")),
+      "the startup self-sweep did not report releasing the row",
+    );
+    const run = crashed.authority.runs.get(RUN_ID);
+    assert.ok(run && run.lifecycle.state === "terminal");
+    assert.equal(run.lifecycle.outcome, "done");
+    assert.equal(run.envelope.attempt, 2, "a swept claim takes a fresh attempt");
+  });
+
+  /**
+   * D200 reuses the D118 sweeper rather than forking it, so the startup pass
+   * inherits the gate: a run whose logical item holds an unfinished
+   * `attempting` write intent PARKS and is never requeued. A startup path that
+   * reimplemented "release my own rows" would have handed a possibly-landed
+   * real HR write straight back to the executor.
+   */
+  it("parks — never requeues — its own orphaned claim that holds an attempting write intent", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const workerId = phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID));
+    const crashed = reopen(stateRoot, clock);
+    const claimed = crashed.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: NOW });
+    assert.ok(claimed.state === "claimed");
+    const validating = crashed.authority.runs.transition({
+      runId: RUN_ID,
+      expectedVersion: claimed.run.version,
+      claim: { workerId, claimGeneration: 1 },
+      lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW },
+      now: NOW,
+    });
+    assert.ok(validating.state === "applied");
+    const running = crashed.authority.runs.transition({
+      runId: RUN_ID,
+      expectedVersion: validating.run.version,
+      claim: { workerId, claimGeneration: 1 },
+      lifecycle: { state: "running", workerId, claimedAt: NOW, heartbeatAt: NOW, currentNodeId: "searching" },
+      now: NOW,
+    });
+    assert.ok(running.state === "applied");
+    crashed.authority.writeIntents.fenceAttempt({
+      intent: { ...WRITE_INTENT_ATTEMPTING, workflowId: WORKFLOW_ID, itemId: ITEM_ID },
+      attempt: WRITE_ATTEMPT,
+    });
+    clock.advanceWall(2_000);
+    clock.advanceMonotonic(2_000);
+
+    const lines: string[] = [];
+    const report = await composeWorkerRuntime(composeInput({
+      repoRoot, clock, sessions: happySessionHarness(), lines,
+    }));
+    // Nothing was claimable, so the drain reports idle with no outcomes at all.
+    assert.deepEqual(report.outcomes, []);
+    assert.equal(report.stopped, "idle");
+    assert.ok(
+      lines.some((line) => line.includes("orphaned claim routed to doc 09 recovery")),
+      "the startup self-sweep did not report the recovery routing",
+    );
+    const run = crashed.authority.runs.get(RUN_ID);
+    assert.ok(run && run.lifecycle.state === "parked-write");
+    assert.equal(run.lifecycle.writeIntentId, WRITE_INTENT_ATTEMPTING.writeIntentId);
+    assert.equal(run.envelope.attempt, 1, "a parked write must never take a new attempt");
   });
 
   it("stops gracefully mid-run: the run is abandoned, never terminalized over a lost claim", async () => {

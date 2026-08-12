@@ -152,12 +152,38 @@ export const RunUpdateOutcomeSchema = z.discriminatedUnion("state", [
 ]);
 export type RunUpdateOutcome = z.infer<typeof RunUpdateOutcomeSchema>;
 
+/**
+ * A sweep names EXACTLY ONE proof that the claims it releases are dead, and
+ * D200 is why there are two of them.
+ *
+ * - `staleBefore` — the heartbeat expired. The periodic sweep's evidence: it
+ *   knows nothing about who owns a row, only that nobody has renewed it.
+ * - `workerId` — the CALLER holds that worker id's lease, so every row still
+ *   under that id belongs to a process that is gone, whatever its heartbeat
+ *   says. Strictly stronger evidence, and available only about ONESELF.
+ *
+ * They are mutually exclusive on purpose. Merging them would mean either a
+ * `staleBefore` the scoped scan quietly ignores (a lying field) or a startup
+ * sweep that has to widen `staleBefore` globally to reach its own fresh row —
+ * which would release every live sibling worker's claim at the same instant.
+ */
 export const RunClaimSweepRequestSchema = z.strictObject({
   /** All workflows when absent — recovery is not workflow-scoped by nature. */
   workflow: WorkflowIdSchema.optional(),
+  /** D200: the startup self-sweep's scope. See the note above. */
+  workerId: WorkerIdSchema.optional(),
   /** A claim whose heartbeat predates this instant is treated as dead. */
-  staleBefore: IsoInstantSchema,
+  staleBefore: IsoInstantSchema.optional(),
   now: IsoInstantSchema,
+}).superRefine((request, context) => {
+  if ((request.staleBefore === undefined) === (request.workerId === undefined)) {
+    context.addIssue({
+      code: "custom",
+      message: "a claim sweep names exactly one proof that the claim is dead: `staleBefore` (the "
+        + "heartbeat expired) or `workerId` (the caller holds that id's lease, so every row still "
+        + "under it is orphaned)",
+    });
+  }
 });
 
 /**

@@ -3990,17 +3990,34 @@ export class AuthorityDatabase implements Disposable {
       sweepExpiredClaims: (input: unknown) => {
         const request = RunClaimSweepRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
-          const rows = request.workflow === undefined
-            ? this.#database.prepare(`
-              SELECT record_json FROM tasks
-              WHERE state IN ('claimed', 'validating', 'running') AND heartbeat_at < ?
-              ORDER BY heartbeat_at, record_key
-            `).all(request.staleBefore)
-            : this.#database.prepare(`
-              SELECT record_json FROM tasks
-              WHERE state IN ('claimed', 'validating', 'running') AND heartbeat_at < ? AND workflow = ?
-              ORDER BY heartbeat_at, record_key
-            `).all(request.staleBefore, request.workflow);
+          /*
+           * The request's schema already refused everything but exactly one
+           * proof of death (D200), so the scan differs ONLY in that predicate.
+           * Everything after it — the D118 write-intent gate, the park/requeue
+           * routing, the transition legality check — is one code path for both,
+           * which is the point: a startup self-sweep is the ordinary sweep
+           * pointed at one worker id, not a second recovery path.
+           */
+          const clauses: string[] = [];
+          const bindings: string[] = [];
+          if (request.staleBefore !== undefined) {
+            clauses.push("heartbeat_at < ?");
+            bindings.push(request.staleBefore);
+          }
+          if (request.workerId !== undefined) {
+            clauses.push("owner_worker_id = ?");
+            bindings.push(request.workerId);
+          }
+          if (request.workflow !== undefined) {
+            clauses.push("workflow = ?");
+            bindings.push(request.workflow);
+          }
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM tasks
+            WHERE state IN ('claimed', 'validating', 'running')
+              ${clauses.map((clause) => `AND ${clause}`).join(" ")}
+            ORDER BY heartbeat_at, record_key
+          `).all(...bindings);
           const outcomes: z.infer<typeof RunClaimSweepOutcomeSchema>[] = [];
           for (const row of rows) {
             const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);

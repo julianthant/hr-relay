@@ -96,6 +96,12 @@ import { taskStoreRegistry } from "../../stores/index.js";
  * - a claim or lease whose heartbeat is 60s old (12 missed beats) is dead;
  * - the D118 sweep runs on a 30s cadence AND once at boot, BEFORE the first
  *   claim, because recovery has scheduling priority over claim expiry.
+ *
+ * D200: the boot beat is staleness-gated like every other, so it cannot reach a
+ * row this worker id owns with a heartbeat younger than 60s — a crash-restart
+ * inside that window. The startup SELF-sweep beside the lease start covers
+ * exactly that gap and is not a cadence question at all: it fires once, scoped
+ * to this worker id, on the strength of the lease this process just won.
  */
 export const WORKER_HEARTBEAT_INTERVAL_MS = 5_000;
 export const WORKER_CLAIM_STALE_AFTER_MS = 60_000;
@@ -469,6 +475,72 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       );
     }
     const leaseGeneration = started.lease.leaseGeneration;
+
+    /**
+     * D200 — the startup SELF-sweep, before the first claim.
+     *
+     * `claimNext` refuses while this worker id still owns a non-terminal run
+     * (doc 05 §0.3, "one worker, one active item"), and the D118 sweep that
+     * would release it lives inside the maintenance ticker of a RUNNING worker.
+     * That ticker's first beat already runs before the loop starts, but it is
+     * staleness-gated: a worker that dies and restarts inside
+     * `claimStaleAfterMs` leaves its own row with a heartbeat NEWER than
+     * `staleBefore`, the sweep skips it, and the first poll throws
+     * `worker … already holds active run …`. Today that clears only by starting
+     * a different workflow's worker or cancelling the run — neither of which is
+     * a recovery path.
+     *
+     * The lease `start` above is what licenses the stronger predicate. It
+     * succeeded, so no other process holds this worker id: any row still under
+     * it belongs to a process that is gone, whatever its heartbeat says. That
+     * is a fact about THIS worker id only, which is why the scope is the
+     * request's `workerId` rather than a widened `staleBefore` — widening the
+     * threshold would sweep live sibling workers' fresh claims.
+     *
+     * It is the SAME sweeper, so D118 routing is not re-implemented: a run with
+     * an unfinished `attempting` write intent parks (`parked-write`) or stays
+     * unclaimable, and NEVER requeues.
+     */
+    for (const outcome of database.authority.runs.sweepExpiredClaims({ workerId, now })) {
+      if (outcome.state === "requeued") {
+        log.warn("orphaned claim released before the first poll; its worker never settled", {
+          workerId,
+          runId: outcome.run.envelope.runId,
+          workflow: outcome.run.envelope.workflow,
+        });
+        continue;
+      }
+      log.warn("orphaned claim routed to doc 09 recovery before the first poll", {
+        workerId,
+        runId: outcome.run.envelope.runId,
+        writeIntentId: outcome.writeIntentId,
+        parked: outcome.parked,
+        // NOT `message`: `lineTaskLogger` spreads fields over the log line, so a
+        // field named `message` silently replaces the line's own text.
+        reason: outcome.message,
+      });
+    }
+    /*
+     * A `claimed`/`validating` row holding an attempting intent has no legal
+     * parked-write edge, so no sweep may release it — only doc 09 §4.1's typed
+     * operator resolutions can. Say so HERE, naming the run, instead of letting
+     * the first poll throw `already holds active run` with no reason attached.
+     */
+    const stillHeld = database.authority.runs.listByWorker(workerId)
+      .filter(({ lifecycle }) => lifecycle.state === "claimed"
+        || lifecycle.state === "validating"
+        || lifecycle.state === "running");
+    const wedged = stillHeld[0];
+    if (wedged !== undefined) {
+      throw new Error(
+        `worker ${workerId} cannot start: the startup sweep could not release run `
+        + `${wedged.envelope.runId} (${wedged.envelope.workflow}), which is still ${wedged.lifecycle.state} `
+        + "under this worker id. A run holding an unfinished `attempting` write intent has no legal "
+        + "release edge from that state — doc 09 §4.1's typed operator resolutions "
+        + "(resolve-write-present / resolve-write-absent) are the only paths out, and they need a human "
+        + "to look in the target system first",
+      );
+    }
 
     // Recovery has scheduling priority over claim expiry (doc 09 §4): one
     // D118-aware sweep runs BEFORE the first claim, then rides the cadence.

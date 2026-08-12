@@ -310,6 +310,25 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-12: A recovery mechanism that lives inside the thing it recovers cannot recover the
+  thing it lives inside (D200).** `claimNext` throws while a worker id still owns a non-terminal
+  run, and the D118 sweep that releases such a row runs in the maintenance ticker of a RUNNING
+  worker. Its boot beat does precede the first claim — but it is staleness-gated, so a worker whose
+  loop threw (lease settled on the way out, claimed row left behind) restarts, wins the lease
+  seconds later, and inherits a row whose heartbeat is far inside the 60s threshold. Wedged, with
+  the only exits being "start a different workflow's worker" or "cancel the run". The fix is not a
+  shorter timer: **the lease is the evidence.** `workerLeases.start` succeeding proves no other
+  process answers to this id, so every row still under it is orphaned regardless of heartbeat — a
+  claim a process may make about ITSELF and nobody else. That is why the sweep request grew a
+  `workerId` scope rather than a widened `staleBefore`, which would have released every live sibling
+  worker's fresh claim; `RunClaimSweepRequestSchema` now admits exactly one proof of death, because
+  a `staleBefore` the scoped scan ignored would be a lying field. Reuse the sweeper, never fork it:
+  only the scan predicate differs, so the D118 gate still parks a run holding an `attempting` intent
+  instead of handing a possibly-landed real HR write back to the executor. And what no sweep may
+  release — a `claimed` row with an attempting intent, which has no legal parked-write edge — is
+  refused at startup naming that run and doc 09 §4.1, not endured as an unexplained first-poll
+  throw. Side lesson from the same slice: `lineTaskLogger` spreads its fields over the log line, so
+  a field named `message` silently replaces the line's own text.
 - **2026-08-12: A durable record must be stamped with a fact about ITSELF, and a hash that can be
   equal when the answer moved is not a binding (D199).** The evidence receipt stamped
   `descriptorFingerprint` from the CURRENT build's `descriptor.contractFingerprint` — a value about

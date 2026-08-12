@@ -229,6 +229,42 @@ export async function runWorker(config: WorkerConfig): Promise<void> {
   terminal/new-generation path. An unavailable or inconsistent intent lookup parks/refuses; it
   never means “no unfinished write.”
 
+### 3.0 A worker sweeps its OWN id before its first claim (D200)
+
+`claimNext` refuses while a worker id still owns a non-terminal run — §0.3's "one worker, one active
+item", enforced as a throw, not a typed outcome. The D118 sweep that would release such a row lives
+in the maintenance ticker of a RUNNING worker, whose first beat already fires before the loop's first
+claim. **That beat is staleness-gated, and the gap is exactly there.** A worker whose loop throws
+settles its LEASE on the way out and leaves its claimed row where it was; the next process wins the
+lease seconds later, and the row it inherits carries a heartbeat far younger than the 60s threshold,
+so the sweep skips it and the first poll throws `worker … already holds active run …`. Before this,
+the only ways out were starting a DIFFERENT workflow's worker or cancelling the run — neither of
+which is a recovery path.
+
+So the composition runs one **self-sweep** immediately after `workerLeases.start` succeeds, before
+the loop. Three properties make it safe and keep it from becoming a second recovery path:
+
+1. **The lease is the evidence, not a timer.** `start` succeeded, therefore no other process answers
+   to this worker id, therefore every row still under it belongs to a process that is gone —
+   regardless of heartbeat. That is a claim a process may make about ITSELF and about nobody else,
+   which is why the sweep request carries a `workerId` scope rather than a widened `staleBefore`.
+   Widening the threshold instead would release every live sibling worker's fresh claim at the same
+   instant. `RunClaimSweepRequestSchema` therefore admits **exactly one** proof of death —
+   `staleBefore` or `workerId`, never both and never neither.
+2. **It is the SAME sweeper.** Only the scan predicate differs; the D118 write-intent gate, the
+   park/requeue routing and the transition legality check are one code path. A run whose logical item
+   holds an unfinished `attempting` intent parks (`parked-write`) or stays held, and NEVER requeues.
+   A startup path that re-implemented "release my own rows" would hand a possibly-landed real HR
+   write straight back to the executor.
+3. **What no sweep may release is reported, not endured.** A `claimed`/`validating` row holding an
+   attempting intent has no legal parked-write edge, so it stays owned and the worker id stays
+   wedged. Startup refuses with that run named and doc 09 §4.1's typed operator resolutions named as
+   the way out, instead of letting the first poll throw `already holds active run` with no reason
+   attached.
+
+The sweep is not a cadence question and does not change the ticker: the periodic sweep stays global
+and staleness-gated, because it knows nothing about who owns a row.
+
 ### 3.1 Dispatch and fairness
 
 Within a workflow queue, claim order is priority then FIFO. Interactive work may be server-stamped
