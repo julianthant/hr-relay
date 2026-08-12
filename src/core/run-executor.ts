@@ -46,6 +46,7 @@ import type { JsonValue } from "../domain/canonical-json.js";
 import { TransactionOutcomeSchema } from "../domain/write-safety-primitives.js";
 import type { Clock } from "../domain/clock.js";
 import type { AnyReadTaskContract } from "../domain/contracts/base.js";
+import type { GateResultRecord } from "../domain/gates.js";
 import type { IdFactory } from "../domain/identifiers.js";
 import {
   GateIdSchema,
@@ -793,6 +794,17 @@ export async function executeClaimedRun(
       });
     };
 
+    /**
+     * The stored operator decision for a GATE dependency, or `undefined` when
+     * the node is not a gate this run has resolved. It reads the same row the
+     * `replay-gate` arm reads, under this run's identity.
+     */
+    const gateResultFor = (nodeId: string): GateResultRecord | undefined => {
+      const gateNode = nodes.find((candidate) => String(candidate.id) === nodeId);
+      if (gateNode?.kind !== "gate") return undefined;
+      return deps.authority.authority.gateResults.get(`${runId}:${nodeId}`);
+    };
+
     const invokeTask = async (
       node: TaskRuntimeNode,
       task: AnyTask,
@@ -813,16 +825,28 @@ export async function executeClaimedRun(
           nodeId: String(node.id),
           taskId: contract.id,
         },
+        /*
+         * A dependency's durable evidence is a CHECKPOINT for a task node and a
+         * `gate_results` row for a gate node — two different tables, because a
+         * gate records an operator decision rather than an observation. Handing
+         * the collector a fabricated checkpoint for a gate would make a durable
+         * record claim a shape it does not have (D144's refusal); handing it
+         * nothing made the post-gate node unrunnable, which is what the first
+         * live chunk-3 run found.
+         */
         upstreamEvidence: {
-          checkpoints: node.dependsOn.map((dependency) => {
+          checkpoints: node.dependsOn.flatMap((dependency) => {
             const record = checkpointRecords.get(String(dependency));
-            if (record === undefined) {
-              throw new Error(
-                `task ${contract.id} declared dependency "${dependency}" has no checkpoint record to hand `
-                + "to the provenance collector",
-              );
-            }
-            return record;
+            if (record !== undefined) return [record];
+            if (gateResultFor(String(dependency)) !== undefined) return [];
+            throw new Error(
+              `task ${contract.id} declared dependency "${dependency}" has no checkpoint record to hand `
+              + "to the provenance collector",
+            );
+          }),
+          gateResults: node.dependsOn.flatMap((dependency) => {
+            const stored = gateResultFor(String(dependency));
+            return stored === undefined ? [] : [stored];
           }),
         },
         clock,

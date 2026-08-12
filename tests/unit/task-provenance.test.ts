@@ -24,7 +24,14 @@ import type {
   FactProvenance,
   RunCheckpointRecord,
 } from "../../src/domain/workflow/checkpoint.js";
+import { MatchIdentityOutputSchema } from "../../src/domain/contracts/separations/match-identity.js";
+import { SeparationsVerifyIdentityApproval } from "../../src/domain/contracts/separations/verify-identity-approval.js";
+import {
+  buildIdentityEvidencePacket,
+  deriveIdentityEvidenceDigest,
+} from "../../src/domain/separations/identity-evidence.js";
 import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
+import { separationsIdentityCheckDescriptor } from "../../src/workflows/separations-identity-check/descriptor.js";
 import {
   FixtureStage,
   fixtureDescriptor,
@@ -70,6 +77,94 @@ function execution(nodeId: string, taskId: string) {
     nodeId,
     taskId,
   };
+}
+
+
+/* ── the gated-descriptor fixture (separations chunk 3) ──────────────────── */
+
+const IDENTITY_PACKET = buildIdentityEvidencePacket({
+  documentNumber: "4510",
+  documentName: "Battistessa, Johnnie",
+  documentEidText: "10873698",
+  emplIdSource: "document-eid",
+  documentEidConflicts: false,
+  jobSummary: {
+    pageStateId: "ucpath.person-org.detail-ready",
+    emplId: candidate.emplId,
+    displayedName: "Battistessa, Johnnie",
+    jobRows: [{
+      rowIndex: 0,
+      emplRecord: "0",
+      hrStatus: "Active",
+      businessUnit: "SDCMP",
+      effectiveDate: { state: "present", value: "07/01/2025" },
+      positionNumber: { state: "present", value: "40012345" },
+      deptId: { state: "present", value: "000414" },
+      department: { state: "present", value: "Housing Dining Hospitality" },
+      jobCode: { state: "present", value: "004920" },
+      jobTitle: { state: "present", value: "Dining Assistant" },
+      expectedJobEndDate: { state: "absent", reason: "the grid rendered this cell empty" },
+      fte: { state: "present", value: "0.500000" },
+      emplClass: { state: "present", value: "Career" },
+    }],
+    rowCount: 1,
+    renderContext: { entry: "auto-detail", searchResultRows: 0, employmentInstances: "already-complete" },
+    observedAt: EARLIER,
+  } as never,
+  nameSelection: person.selection,
+});
+
+const IDENTITY_JOBS = {
+  disposition: "single-active-job",
+  rowCount: 1,
+  activeRowCount: 1,
+  inactiveRowCount: 0,
+  unknownRowCount: 0,
+  rows: [{
+    rowIndex: 0,
+    emplRecord: "0",
+    hrStatus: "Active",
+    tier: "active",
+    department: "Housing Dining Hospitality",
+    jobTitle: "Dining Assistant",
+    effectiveDate: "07/01/2025",
+  }],
+  unreadableCells: [],
+} as const;
+
+/**
+ * The comparison node's checkpoint, with provenance for every output leaf.
+ *
+ * The leaf rule is the collector's own (an array is a leaf, an object recurses),
+ * so the provenance is DERIVED from the value rather than hand-listed — a
+ * hand-listed table would drift on the first field the packet gained.
+ */
+function identityComparisonCheckpoint(): RunCheckpointRecord {
+  const value = JsonValueSchema.parse(MatchIdentityOutputSchema.parse({
+    packet: IDENTITY_PACKET,
+    evidenceDigest: deriveIdentityEvidenceDigest(IDENTITY_PACKET),
+  }));
+  const leaves = (node: unknown, prefix: string): string[] => {
+    if (Array.isArray(node) || node === null || typeof node !== "object") return [prefix];
+    const entries = Object.entries(node as Record<string, unknown>);
+    if (entries.length === 0) return [prefix];
+    return entries.flatMap(([key, child]) => leaves(child, prefix.length === 0 ? key : `${prefix}.${key}`));
+  };
+  return RunCheckpointRecordSchema.parse({
+    ...checkpointFrom(
+      "comparison",
+      MatchIdentityOutputSchema,
+      value,
+      leaves(value, "").map((path) => FactProvenanceSchema.parse({
+        path: ContractFieldPathSchema.parse(path),
+        source: "derived",
+        observedAt: EARLIER,
+        originalObservedAt: EARLIER,
+      })),
+      EARLIER,
+    ),
+    workflowId: separationsIdentityCheckDescriptor.id,
+  });
 }
 
 function collector(
@@ -155,6 +250,86 @@ describe("task provenance collector", () => {
     assert.deepEqual(result.points[0]?.execution, execution("searching", SearchPersonOrg.id));
   });
 
+  /**
+   * A GATE dependency's evidence is a `gate_results` row, and there is no
+   * checkpoint for it — ever. The first live chunk-3 run found that the hard
+   * way: the post-gate node refused with "declared dependency has no checkpoint
+   * record", a true statement about a record that cannot exist. The collector
+   * now admits the gate row as its own kind of upstream evidence, and this runs
+   * against the REAL gated descriptor rather than a fixture, because the shape
+   * that broke is a real descriptor's shape.
+   */
+  it("accepts a gate result as a declared dependency's upstream evidence, and only a declared one", () => {
+    const gateNow = "2026-08-02T19:00:00.000Z";
+    const gateResult = {
+      runId: RUN_ID,
+      gateId: "identity-approval",
+      commandId: "cccccccc-0001-4000-8000-000100000000",
+      expectedVersion: 3,
+      resolvedBy: "local-operator",
+      resolvedAt: gateNow,
+      checkpointFingerprint: HASH_B,
+      result: { schemaHash: HASH_A, value: { decision: "rejected", reason: "n/a", evidenceDigest: HASH_A } },
+    };
+    const comparison = identityComparisonCheckpoint();
+    const gatedExecution = {
+      runId: RUN_ID,
+      traceId: "si-000001-aaaa",
+      attempt: 1,
+      workflowId: separationsIdentityCheckDescriptor.id,
+      nodeId: "approval",
+      taskId: SeparationsVerifyIdentityApproval.id,
+    };
+    const gated = createTaskProvenanceCollector({
+      descriptor: separationsIdentityCheckDescriptor,
+      execution: gatedExecution,
+      upstreamEvidence: { checkpoints: [comparison], gateResults: [gateResult] },
+      clock: manualClock(new Date(NOW)),
+    });
+    const output = {
+      documentNumber: "4510",
+      approved: {
+        emplId: "10873698",
+        chosenFrom: "checked",
+        evidenceDigest: HASH_A,
+        ucpathName: "Battistessa, Johnnie",
+        nameTier: "same",
+        approvalShape: "one-click",
+      },
+      jobs: IDENTITY_JOBS,
+    };
+    gated.recordData([
+      { direction: "read", field: "documentNumber", value: output.documentNumber },
+      { direction: "read", field: "approved", value: output.approved },
+      { direction: "read", field: "jobs", value: output.jobs },
+    ]);
+    const result = gated.finalizeRead(output);
+    // The derived leaves keep the OLDEST original observation, which is the
+    // comparison's live read — an approval is always at least as new as the
+    // evidence it was granted on, so a gate can never make an output look
+    // fresher than the facts under it.
+    assert.equal(result.provenance.every(({ originalObservedAt }) => originalObservedAt === EARLIER), true);
+
+    // Without the gate row the node is unrunnable — which is exactly the live
+    // failure, kept as the negative control.
+    assert.throws(() => createTaskProvenanceCollector({
+      descriptor: separationsIdentityCheckDescriptor,
+      execution: gatedExecution,
+      upstreamEvidence: { checkpoints: [comparison], gateResults: [] },
+      clock: manualClock(new Date(NOW)),
+    }), /declared dependency identity-approval has no upstream provenance/);
+
+    assert.throws(() => createTaskProvenanceCollector({
+      descriptor: separationsIdentityCheckDescriptor,
+      execution: gatedExecution,
+      upstreamEvidence: {
+        checkpoints: [comparison],
+        gateResults: [gateResult, { ...gateResult, gateId: "not-declared" }],
+      },
+      clock: manualClock(new Date(NOW)),
+    }), /received undeclared upstream gate result not-declared/);
+  });
+
   it("refuses missing, duplicate, wrong-direction, contradictory, and extra points", () => {
     const contradictory = collector("searching", SearchPersonOrg.id, []);
     contradictory.recordData({ direction: "read", field: "results", value: [] });
@@ -205,7 +380,7 @@ describe("task provenance collector", () => {
       "active-status",
       ReadActiveStatus.id,
       [dependencies.search],
-    ), /declared dependency cross-verify has no checkpoint provenance/);
+    ), /declared dependency cross-verify has no upstream provenance/);
 
     assert.throws(() => collector(
       "searching",

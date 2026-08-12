@@ -126,15 +126,23 @@ function validateCheckpointSet(
   evidence: z.output<typeof TaskUpstreamCheckpointEvidenceSchema>,
 ): void {
   const expected = new Set(expectedDependencies);
-  const actual = new Set<string>(evidence.checkpoints.map(({ nodeId }) => nodeId));
+  const actual = new Set<string>([
+    ...evidence.checkpoints.map(({ nodeId }) => nodeId),
+    ...evidence.gateResults.map(({ gateId }) => gateId),
+  ]);
   for (const checkpoint of evidence.checkpoints) {
     if (!expected.has(checkpoint.nodeId)) {
       throw new Error(`task ${taskId} received undeclared upstream checkpoint ${checkpoint.nodeId}`);
     }
   }
+  for (const gate of evidence.gateResults) {
+    if (!expected.has(gate.gateId)) {
+      throw new Error(`task ${taskId} received undeclared upstream gate result ${gate.gateId}`);
+    }
+  }
   for (const nodeId of expectedDependencies) {
     if (!actual.has(nodeId)) {
-      throw new Error(`task ${taskId} declared dependency ${nodeId} has no checkpoint provenance`);
+      throw new Error(`task ${taskId} declared dependency ${nodeId} has no upstream provenance`);
     }
   }
 }
@@ -164,8 +172,24 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
   }
   const evidence = TaskUpstreamCheckpointEvidenceSchema.parse(input.upstreamEvidence);
   validateCheckpointSet(execution.taskId, node.dependsOn, evidence);
-  const upstream = Object.freeze(evidence.checkpoints.flatMap((checkpoint) =>
-    validateCheckpointFacts(execution.workflowId, checkpoint)));
+  const upstream = Object.freeze([
+    ...evidence.checkpoints.flatMap((checkpoint) =>
+      validateCheckpointFacts(execution.workflowId, checkpoint)),
+    /*
+     * A gate contributes exactly ONE fact and no output leaves: what a gate
+     * dates is the DECISION, at the instant authority recorded it, attributed
+     * `operator` — the arm `FactProvenance` already carries. It cannot make a
+     * derived output look fresher than its live inputs, because the derived
+     * leaf takes the OLDEST original observation and an approval is always at
+     * least as new as the evidence it was granted on.
+     */
+    ...evidence.gateResults.map((gate) => FactProvenanceSchema.parse({
+      path: "gateResult",
+      source: "operator",
+      observedAt: gate.resolvedAt,
+      originalObservedAt: gate.resolvedAt,
+    })),
+  ]);
   const points = new Map<string, RecordedDataPoint>();
   let finalized = false;
 

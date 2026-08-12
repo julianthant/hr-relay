@@ -19,6 +19,7 @@ import {
   TraceIdSchema,
   WorkflowIdSchema,
 } from "./ids.js";
+import { GateResultRecordSchema } from "./gates.js";
 import {
   FactProvenanceSchema,
   RunCheckpointRecordSchema,
@@ -62,6 +63,25 @@ export type TaskProvenanceResult = z.infer<typeof TaskProvenanceResultSchema>;
  */
 export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
   checkpoints: z.array(RunCheckpointRecordSchema),
+  /**
+   * A GATE dependency's durable evidence, which is not a checkpoint and never
+   * will be.
+   *
+   * A gate produces a `gate_results` row — an operator decision under the run's
+   * identity — not a `run_checkpoints` row, so a task that declares a gate as a
+   * dependency could not satisfy read-completion validation at all. The live
+   * chunk-3 run found that: the post-gate node refused with "declared dependency
+   * has no checkpoint record to hand to the provenance collector", which is a
+   * true statement about a record that cannot exist.
+   *
+   * The fix is D144's shape read again: the READER moves. A gate's row is
+   * admitted as its own kind of upstream evidence, contributing exactly one
+   * `operator`-sourced fact dated at `resolvedAt`. It contributes no output
+   * leaves, because a gate has none to date — what it dates is the DECISION.
+   * Fabricating a checkpoint row for it would have made a durable record claim
+   * a shape it does not have, which is what D144 refused.
+   */
+  gateResults: z.array(GateResultRecordSchema).default([]),
 }).superRefine((evidence, context) => {
   const checkpointNodes = new Set<string>();
   for (const [index, checkpoint] of evidence.checkpoints.entries()) {
@@ -73,6 +93,17 @@ export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
       });
     }
     checkpointNodes.add(checkpoint.nodeId);
+  }
+  const gateNodes = new Set<string>();
+  for (const [index, gate] of evidence.gateResults.entries()) {
+    if (gateNodes.has(gate.gateId) || checkpointNodes.has(gate.gateId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["gateResults", index, "gateId"],
+        message: `duplicate upstream evidence for node ${gate.gateId}`,
+      });
+    }
+    gateNodes.add(gate.gateId);
   }
 });
 export type TaskUpstreamCheckpointEvidence = z.infer<typeof TaskUpstreamCheckpointEvidenceSchema>;
