@@ -683,6 +683,33 @@ capability milestones only; legacy source/tests remain production and rollback a
    Update affected D58 capability entries and the legacy-change-accounting map; preserve old source
    and tests; update the nearest CLAUDE.md + owning docs.
 
+**PHASE 3 ENTRY — SEPARATIONS (order 8). Operator choice, 2026-08-12 (D193).** This loop has always
+left *which workflow goes first* to the operator; the choice is now made and it is **separations**.
+
+**The operator's reasoning, recorded because it is the part that generalizes.** A big multi-system
+workflow **forces the store task libraries into existence**. Separations touches UCPath (the
+termination write), Kuali (the separation document read plus the finalization write), and
+**new-kronos** (a driver, a login recipe, and timecard reads that do not exist at all today), so
+one migration mints the write family, the read family, and a whole new system store in one pass —
+and every later migration draws from them. Entering through the small reads instead would trickle
+the same stores in a task at a time, spending the same total effort with the reuse arriving last
+rather than first. The trade is taken with eyes open: separations is also the **deepest**
+write-safety proof (§3.3 order 8), so the entry is deliberately the hard one.
+
+**What this does NOT change.** §3.3 is **not re-sequenced** — it remains the risk-proof ordering,
+and its reasoning about why the highest-stakes writes sit at 8–9 is still the honest read of the
+risk. Entering there is a decision about *which proof is bought first*, not a claim that the proof
+is cheaper. Every workflow still owes its own §3.2 exit criteria in full, separations included:
+§b questionnaire first (step 1 — **nothing is built before it is answered**), live dry-run, and a
+**controlled-commit proof on an operator-approved target**. No such target exists for a UCPath
+termination or a Kuali finalization today and **none is invented here** — naming one is operator
+work at the point the migration reaches step 5, the same standing rule as ServiceNow/OnBase in
+§3.8.
+
+**Where its questionnaire lives:** `docs/migrations/separations.md` — the first Phase-3 migration
+doc, and therefore the convention every later one follows (§0.1: migration docs are children of
+this plan; they answer §3.4 and record reuse/additions, and never re-order the program).
+
 #### 3.2 Exit criteria (per workflow)
 
 - §b questionnaire answered + recorded in the workflow's migration doc.
@@ -720,6 +747,13 @@ the separations identity-approval gate (doc
 09 §14) is designed in Phase 0 rather than at order 8, so nothing about that workflow is
 discovered late. If a dependency or evidence target becomes the binding constraint, this order is
 the thing to revisit.
+
+**Read this table beside the entry choice (D193, 2026-08-12).** The operator entered Phase 3 at
+**order 8, separations** — see §3.1's entry block for the store-population reasoning. The table is
+deliberately **not** re-sequenced: it is the risk-proof ordering and its argument above still holds,
+so the entry buys the deepest proof first rather than making it cheaper. Nothing here is waived —
+separations owes every §3.2 criterion, and the remaining orders keep their relative sequence for
+whatever is taken up next.
 
 Read-only and simple first (populate the read stores, low blast radius); OCR/approval flows next
 (exercise the completion union + gates); write-heavy last (the write-safety contract's real test),

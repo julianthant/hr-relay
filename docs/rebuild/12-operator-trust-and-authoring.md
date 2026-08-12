@@ -166,6 +166,32 @@ second bundle, or a scenario fixture may still hold exactly those bytes; the swe
 now-unreferenced artifact ids and reclaiming them needs a reference count the artifact store does
 not keep. That is a named residual, not an oversight.
 
+**Disposition, operator 2026-08-12 (D193): both storage remainders are `wont-build-unless-asked`.**
+The two open items in this area — **scheduling** the 14/8/5 retention sweep (the sweep function
+above is built and tested; nothing in the running system calls it on a cadence) and the
+**content-store refcount** that would let those unreferenced artifact bytes be reclaimed — move off
+"deferred with an owner" and onto **nobody's milestone**. They are not planned, not owed by any
+slice, and no future gate is blocked on them.
+
+**The operator's reasoning, recorded because it is the part that generalizes: this authority
+database stores records of COMPLETIONS, not primary records.** The real record of a completed HR
+transaction lives in **the external system itself** — the UCPath transaction, the Kuali document —
+and can be checked there, in more than one way. What the rows here carry is **how** a thing was
+completed and **whether** it completed; once a thing is completed and approved, those rows mean
+little going forward. That is why backup is **non-critical at this scope**, and why a manual folder
+copy of `.tracker-rebuild/` taken with the app stopped is an acceptable backup for one person on
+one machine — and why disk growth is not a problem worth a durable reference count.
+
+**What that reasoning does not say.** It is about the standing value of *old* rows, not about
+durability *during* a write: a `write_intents` fence, its binding proof, and the parked-intent rows
+are load-bearing for the run that is in flight, and the fail-closed guarantees in doc 09 rest on
+them being durable at the instant they are written. Nothing here weakens that. Equally, **nothing
+already built is removed** — capture, capture-time redaction, the pin/purge invariants, the
+`purgeAfter` derivation from the bundle's own instant, and the sweep's own refusals stay exactly as
+designed, so scheduling it remains a small addition the day the operator asks. The decision is about
+*further investment*, not about what exists: **no further storage/retention work happens unless the
+operator asks for it.**
+
 **Named seams.** The interpreter terminalizes after its driver lease has closed, so it holds no page:
 screenshots and accessibility excerpts arrive through an injected `attachmentsFor` seam that the
 system-driver layer fills in. Absent, the bundle carries structured evidence only — never a
@@ -1207,6 +1233,17 @@ the enforcement cost.
 Not built now: user accounts/RBAC, tenant separation, remote/cloud deployment, distributed
 consensus, external audit signing, high availability, public API compatibility, or enterprise
 plugin ecosystems.
+
+**Reaffirmed 2026-08-12 (D193) — solo is the shape; cooperation is a LATER layer on top of it, if
+ever.** The operator restated the scope in its sharpest form: the system is fully local to the one
+person using it, solo-operator only, and is **never hosted**. That does not retire the four seams —
+they are already built, they cost nothing to keep, and they are exactly what keeps a later
+cooperation mode a configuration rather than a second rebuild — but it does settle their
+*direction*: multi-user is built **over** the solo system later, so **no slice designs for it now**
+and none may claim scope, ceremony, or abstraction in its name. The charter's Non-negotiables carry
+the normative statement, including the second named future item (packaging the local system as a
+locally-run app) and the reading rule that "production" in these plans means the D89 local cutover,
+never a hosting platform.
 
 Still mandatory:
 

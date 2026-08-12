@@ -290,6 +290,26 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
   doc 06's short-lived token-scoped mobile-capture ingress is the sole exception. Secret/SSN/
   HR-data redaction, reliable backups, strict validation, and fail-closed write/identity behavior
   remain mandatory because the tool handles real employee data and transactions.
+
+  **Reaffirmed and sharpened by the operator 2026-08-12 (D193) — SOLO, LOCAL, NEVER HOSTED.** The
+  system is and stays **fully local to the one person using it**, solo-operator only. It is
+  **never** deployed to a hosting platform — no cloud, no shared server, no tenant, no hosted
+  "environment". This is not a new constraint; it is the existing one stated in the form that
+  settles the ambiguity these plans carry: **where the plans say "production" they mean the day
+  this repo replaces legacy as the operator's daily LOCAL tool** (the D89 all-at-once cutover) and
+  nothing else. A reader who takes "production" as "hosted" is reading it wrong, and any slice that
+  quietly assumes a hosting platform is out of scope on its face. Two future items are named here
+  so they are not re-derived later — **neither is planned work now, and neither has an owner, a
+  slice, or a design**:
+  - **LATER — package it as a locally-run app ("web app → real app").** The same local system
+    launched as an application instead of a dev server beside a browser tab. When it is taken up it
+    is a *delivery* change, not an architecture change, precisely because nothing in the system
+    assumes a host.
+  - **LATER — a cooperation / multi-user mode is built ON TOP OF the solo mode, if ever.** The four
+    seams above are the whole of the investment made toward it, and they were already cheap and are
+    already built. **Nothing is designed for multi-user now**; no slice may add scope, ceremony, or
+    abstraction in its name. Solo is the shape the system is built for, and a later cooperation
+    layer sits over it rather than replacing it.
 - **Build speed is the top optimization target (2026-07-24).** Where two designs are both
   correct and both safe, the one that ships sooner wins. This is the tie-breaker behind the
   Phase-1 restructure and the ratified ceremony trims (doc 07 §2.1/§3.7). It never overrides a

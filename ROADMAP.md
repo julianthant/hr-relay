@@ -5,7 +5,7 @@
 > changelog is `docs/rebuild/04-reconciliation.md`. If this file ever disagrees with those, **they
 > win**. Sessions: regenerate the status sections of this file at every slice boundary.
 >
-> **Last updated:** 2026-08-12 · Phase 2 closed · decisions through **D192** · schema **v13**
+> **Last updated:** 2026-08-12 · Phase 2 closed · decisions through **D193** · schema **v13**
 
 ---
 
@@ -13,11 +13,12 @@
 
 | Fact | Value |
 |---|---|
+| **Scope** | **Solo, local, never hosted** (D193) — one operator, one machine; "production" = the day this replaces legacy as your daily **local** tool. *Later, unplanned:* package it as a locally-run app ("web app → real app"); a cooperation/multi-user mode built **on top of** solo, if ever |
 | Runtime phase marker | `completedThrough: "2j"` · `active: "3-workflow-migration"` |
 | Phases complete | 0, 1 (a–e, f, g-spine, i-spine), 2 (proof + 2g + 2h + 2i + 2j) |
-| Active phase | **Phase 3 — per-workflow migration** (orders 0–9, operator picks the start) |
+| Active phase | **Phase 3 — per-workflow migration**; **entry chosen: separations (order 8)** (D193) |
 | After Phase 3 | The one all-at-once cutover (D89/D93), then rollback-window closure |
-| Decisions ratified | D1–D192 (D131 is a permanent gap — never reused) |
+| Decisions ratified | D1–D193 (D131 is a permanent gap — never reused) |
 | Authority schema | v13 (released migrations SHA-pinned, immutable) |
 | Guards | **60 active** / 8 retired / 2 planned (`one-time-import-offline`, `preflight-coverage`) |
 | Tests | 1602 unit+scenario · 431 architecture · 134 parity · coverage gate green (87.1% lines) |
@@ -73,6 +74,19 @@ on a reachable path; the coverage gate had been red for a whole tail.
 6. Mark rebuild-ready — but **nothing goes live before the single cutover** (no mixed-engine production, ever)
 7. Close the loop: regression scenario, knowledge record, capability disposition, docs
 
+### Entry point — **separations (order 8)**, chosen 2026-08-12 (D193)
+
+You picked separations to go first, and the reason is store population: a big multi-system workflow
+**forces the task libraries into existence** — the UCPath termination write family, the Kuali
+read + finalization write family, and the **new-kronos** driver, login recipe, and timecard reads
+that do not exist at all today — so one migration mints what every later workflow reuses, instead of
+trickling the same stores in through small reads. The order table below is **not** re-sequenced: it
+stays the risk-proof ordering, so this entry buys the deepest write proof first rather than making
+it cheaper. Separations still owes every exit criterion, **questionnaire first** —
+`docs/migrations/separations.md` holds it and is BLOCKED on your 12 answers. Its controlled-commit
+target (a UCPath termination + Kuali finalization you approve) is yours to name at step 5; none has
+been invented.
+
 ### Migration order (doc 07 §3.3) — the 13 remaining legacy workflows
 
 | Order | Workflow | Class | What it does for you | Blocking gaps |
@@ -105,14 +119,17 @@ explicit authorization.
 
 ## 4 · What is needed from YOU
 
-### Decisions open right now
+### Needed from you right now
 
-| # | Decision | Context | Where recorded |
+| # | Item | Context | Where it lives |
 |---|---|---|---|
-| 1 | **Which workflow starts Phase 3?** | §3.3 orders them; the operator picks the entry point. Order 1–2 (reads) are the natural ramp; order 3 (OCR pipeline) unlocks the paper-form family. | doc 07 §3.1 |
+| 1 | **Answer the separations §b questionnaire — 12 items** | Nothing builds before it (doc 07 §3.1 step 1). Each item carries a DRAFT answer prefilled from the legacy source and these docs; you confirm or correct it. A handful genuinely have no basis in legacy and need you outright — they are marked. | `docs/migrations/separations.md` |
 
 ### Decided
 
+- **Scope: solo, local, never hosted; local-app packaging and any cooperation mode are LATER and unplanned** — D193, 2026-08-12 (doc 00 §Non-negotiables, doc 12 §7)
+- **Storage is done for this scope: manual `.tracker-rebuild/` folder copies (app stopped) are an acceptable backup; retention-sweep scheduling and the artifact refcount are `wont-build-unless-asked`** — D193, 2026-08-12 (doc 12 §D137, doc 03 §2.5). *Why:* this DB stores records of **completions**, not primary records — the real record of a completed transaction lives in UCPath/Kuali and is checkable there; these rows show *how* and *whether* something completed and mean little once it is completed and approved. (Unchanged: the fence rows are still load-bearing **during** a write.)
+- **Phase 3 enters at separations (order 8)** — D193, 2026-08-12 (doc 07 §3.1) — chosen to force the store task libraries into existence; §3.3's ordering is unchanged
 - **`test:coverage` becomes the per-commit gate** — D191, 2026-08-12 (doc 10 §3.14)
 - **AI advisory tools dispositioned: run-summary and selector-suggestion retire; record-sanity-check stays open, deferred to order-8 separations** — D192, 2026-08-12 (doc 12 §4.4)
 - **Production byte path timing confirmed: builds at the first phone-consuming migration (orders 3–4), not earlier, not at cutover** — D189 timing confirmed 2026-08-12 (doc 13 §6.9)
@@ -130,7 +147,9 @@ explicit authorization.
 ## 5 · Deferred features — the X → Y traceback
 
 *"I want to do X; the plan said build Y; Y is deferred."* Every deferral below has a named trigger
-— none is silently dropped, and none is "can't ever work."
+— none is silently dropped, and none is "can't ever work." **Two now have a decided stance instead
+of a trigger** (the storage rows, D193): they are not waiting on anything, they simply do not get
+built unless you ask.
 
 | X — what you'd want to do | Y — what's deferred | Decision | Comes due |
 |---|---|---|---|
@@ -142,8 +161,8 @@ explicit authorization.
 | Edit settings in the dashboard (legacy: 11 editable sections) | `apply-settings` command family — rebuild settings are read-only, "nothing here pretends to save" | D169/D184 | Phase 3 milestone, no single trigger |
 | Set a run-wide constant (e.g. work-study `effectiveDate`) / unbind a mapped column | Intake grid constants entry + unbind arm — no command arms exist yet, and a control that pretends would be worse | D172/D173 | Order 6 (work-study), the first workflow needing a non-column field |
 | One-click QR without pasting an HTTPS URL | on-demand ngrok launcher (refuses `ingress-not-built` rather than serving a loopback QR that scans and then dies) | D174/D175 | Bundled with D189's owner |
-| Auto-purge old diagnostics on the 14/8/5 schedule | Retention sweep scheduling | D169 note | On 2i-D's owner, unscheduled |
-| Reclaim disk from unreferenced artifact bytes | Content-store refcount | open question | No trigger — needs a refcount the store lacks |
+| Auto-purge old diagnostics on the 14/8/5 schedule | Retention sweep **scheduling** (the sweep itself is built and tested; nothing calls it on a cadence) | D169 note → **D193** | **Wont build unless you ask.** Off every milestone; manual folder copies + dirty-only backups are the accepted stance |
+| Reclaim disk from unreferenced artifact bytes | Content-store refcount | open question → **D193** | **Wont build unless you ask.** Disk growth on one local machine isn't worth a durable reference count |
 | Trust UCPath/ServiceNow wait-before-negative-read windows | Rebuild-verified propagation measurements (currently ported legacy knowledge) | doc 07 §3.8 | Each system's own migration's live probe |
 | Search runs across dates / view screenshots / export Excel | No search module, no artifact-bytes route, no export writers in the BFF yet | capability register (open) | Phase 3, shaped against a real run corpus |
 
@@ -194,6 +213,7 @@ new-kronos, old-kronos, sharepoint — declaration-only in the rebuild).
 - **Generic retry on a parked write** — only proof-of-presence or operator-confirmed-absence releases one
 - **DSL/codegen workflow authoring (D79a)** — selectors, schemas, proof, and graph structure stay code, forever
 - **LAN/remote operator mode** — loopback only; the token-scoped phone ingress is the one deny-by-default exception
+- **Hosting** (D193) — never deployed to a platform; it runs on your machine. A locally-run app package and a cooperation mode over solo are *later, unplanned* ideas, not a hosted future
 - **Legacy change accounting (D150)** — replaced by mandatory live re-verification at each migration
 
 ---

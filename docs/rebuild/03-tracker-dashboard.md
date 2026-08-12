@@ -1095,6 +1095,25 @@ every word survives, nothing is truncated, and the line is a line.
 names the suspect directory — it is `<stateRoot>/suspects` by construction. Doc 03 §2.5's
 "a configurable path may point at another local volume" remains unimplemented.
 
+**Storage stance — operator 2026-08-12 (D193): the built surface is enough, and the remainders are
+`wont-build-unless-asked`.** With the doctor, the dirty-only 15-minute verified backup cadence, and
+the drilled `cli storage restore` all live, the operator judges storage **done for this scope** and
+judges a **manual folder copy of `.tracker-rebuild/` taken with the app stopped** an acceptable
+backup for a solo-local system (charter §Non-negotiables, reaffirmed the same day). **The reasoning
+is that this database stores records of COMPLETIONS, not primary records:** the real record of a
+completed HR transaction lives in the external system — the UCPath transaction, the Kuali document —
+and can be checked there in more than one way, while these rows carry *how* a thing was completed
+and *whether* it completed, and mean little going forward once it is completed and approved. That is
+what makes backup non-critical at this scope. It says nothing about durability *during* a write —
+the fence, its binding proof, and a parked intent are load-bearing for the run in flight (doc 09),
+and that is untouched. Everything above
+**stays exactly as built — nothing is removed or weakened.** What changes is the forward plan: the
+**14/8/5 retention sweep scheduling** and the **content-store refcount reclamation** (doc 12 §D137)
+move off "deferred on an owning milestone" and onto nobody's milestone; no gate, cutover criterion,
+or later slice is blocked on either. They land only if the operator asks. Note this decision is
+about *further investment*, not about correctness: the doctor's refusals, the byte verification, and
+the restore interlock are safety floor and remain mandatory.
+
 ### 2.6 Durable single-operator notifications
 
 Desktop notifications are delivery conveniences, not the record. A `notifications` authority

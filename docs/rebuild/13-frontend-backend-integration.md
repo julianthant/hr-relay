@@ -703,6 +703,14 @@ beside the BFF, which is what has always actually run.
 migration (orders 3–4), not earlier and not held to cutover. No new decision number: this is D189's
 owner and trigger as already recorded, now explicitly confirmed rather than merely proposed.
 
+**"Production" here means LOCAL, and nothing about this gap implies hosting (D193, 2026-08-12).**
+The byte path serves the **local app's own bundle** from the operator's own machine, replacing the
+Vite dev server that sits beside the BFF today — it is not, and never becomes, a deployment. The
+**ngrok tunnel stays the ONE internet-exposed path**, exists only for phone capture, is
+operator-started and session-scoped, and reaches the token-scoped capture allow-list and nothing
+else (§capture scope, D174). The trigger above is unchanged. Read `production` throughout this doc
+as the charter defines it: the day this repo becomes the operator's daily local tool.
+
 ## 7. Exact visual-parity and contract verification
 
 ### 7.1 Reference route matrix
