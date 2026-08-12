@@ -140,9 +140,9 @@
     - text: Run data
     - button "Hide run data"
     - region "Data":
-      - text: Data Starts on
+      - text: Data Starts on 9:51 AM
       - textbox "Starts on — recorded value": 2026-07-15
-      - text: Invited on
+      - text: Invited on corrected 9:50 AM
       - textbox "Invited on — recorded value": 2026-06-02
       - text: Corrected 2026-08-03T09:50:00.000-07:00 — applies when the run resumes; the run recorded 2026-06-01.
     - separator
