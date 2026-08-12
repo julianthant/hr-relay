@@ -94,39 +94,28 @@ function readStoredRailOpen(): boolean {
   return readEnumPreference(RAIL_STORAGE_KEY, RAIL_PREFERENCES, RAIL_DEFAULT) === "open";
 }
 
-/**
- * The three-column threshold, as a matchMedia the LAYOUT also uses. It is here
- * in JS as well as in the class names for one reason: collapsing is a
- * three-column affordance. Below the threshold the region is a scrolling stack,
- * and a collapsed spine there would hide the data behind a control that gives
- * back 34px of a column that no longer exists — so the stored preference is
- * simply not applied at that width.
- */
-const THREE_COLUMN_QUERY = "(min-width: 1280px)";
-
-function useThreeColumnRegion(): boolean {
-  const [wide, setWide] = useState(() =>
-    typeof window === "undefined" ? true : window.matchMedia(THREE_COLUMN_QUERY).matches,
-  );
-  useEffect(() => {
-    const query = window.matchMedia(THREE_COLUMN_QUERY);
-    const onChange = (): void => setWide(query.matches);
-    onChange();
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
-  return wide;
-}
-
 export interface ContextRailState {
   open: boolean;
   collapsed: boolean;
   setOpen: (open: boolean) => void;
 }
 
-export function useContextRail(): ContextRailState {
+/**
+ * `threeColumn` is the REGION's own answer, handed down by the layout owner —
+ * it was a `matchMedia("(min-width: 1280px)")` here, and that was the window.
+ *
+ * Collapsing is a three-column affordance: below the threshold the region is a
+ * scrolling stack, and a spine there would hide the data behind a control that
+ * gives back 34px of a column that no longer exists — so the stored preference
+ * is simply not applied. The threshold that decides it has to be the same one
+ * the columns switch on, and that one is now the COLUMN's width (doc 03
+ * §Shell), which only the element that owns the box can measure. Asking the
+ * window from here reintroduced the exact disagreement: with the workflow
+ * panel docked at a 1280px window this hook said "three columns" while the
+ * region had 668px and was drawing a stack.
+ */
+export function useContextRail(threeColumn: boolean): ContextRailState {
   const [open, setOpenState] = useState(readStoredRailOpen);
-  const wide = useThreeColumnRegion();
   const setOpen = useCallback((next: boolean) => {
     setOpenState(next);
     // The write's outcome is returned, not thrown away: an unwritable store
@@ -134,7 +123,7 @@ export function useContextRail(): ContextRailState {
     // operator this one — but it is a distinguishable outcome, not a silence.
     void writePreference(RAIL_STORAGE_KEY, next ? "open" : "closed");
   }, []);
-  return { open, collapsed: !open && wide, setOpen };
+  return { open, collapsed: !open && threeColumn, setOpen };
 }
 
 // ---------------------------------------------------------------------------

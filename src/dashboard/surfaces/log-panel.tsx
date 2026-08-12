@@ -110,6 +110,41 @@ type TimelineEvent = RunDetailWire["timeline"]["events"][number];
 type NotePage = Extract<RunDetailSectionResponse, { section: "logs" }>["payload"];
 type FailurePayload = Extract<RunDetailSectionResponse, { section: "failure" }>["payload"];
 
+/**
+ * THE DETAIL REGION'S TWO BREAKPOINTS, IN COLUMN PIXELS (doc 03 §Shell).
+ *
+ * > "A consequence worth pinning: inside the detail region, a layout switch
+ * > keys on the COLUMN, not the window."
+ *
+ * The region used to switch on `min-[1280px]:` / `min-[1480px]:`, which is the
+ * WINDOW — and the window is the one measurement that does not describe this
+ * box. The shell spends `--ds-w-side-panel` (376px) on the queue plus three
+ * `--ds-shell-inset` gaps (12px each) before this column starts, and the
+ * workflow panel takes 200px more whenever it is docked as a sidebar. So the
+ * same 1280px window hands this region 868px with the panel floating and 668px
+ * with it docked — and a viewport query fires at the wrong moment in both
+ * directions. Measured, on the fixture corpus, before the change:
+ *
+ * | window | floating | sidebar | old centre, docked |
+ * |---|---|---|---|
+ * | 1280 | 868 | 668 | **280px** — three columns forced into a two-column box |
+ * | 1480 | 1068 | 868 | shape split beside a 480px centre |
+ *
+ * Both numbers are the OLD window thresholds translated through that constant
+ * 412px of shell, so the rendered arrangement at the default (floating) panel
+ * mode is unchanged at every reference viewport: 1280 − 412 = 868, and
+ * 1480 − 412 = 1068.
+ *
+ * These are the JS half of the split. The CSS half is the literal
+ * `@min-[868px]/detail:` / `@min-[1068px]/detail:` in this file's class
+ * strings, because Tailwind cannot see through an identifier — and
+ * `tests/unit/dashboard/detail-region-breakpoints.test.ts` pins the two halves
+ * to each other, since a threshold that drifts between them is a region whose
+ * component choice and column arrangement disagree.
+ */
+export const DETAIL_THREE_COLUMN_PX = 868;
+export const DETAIL_SHAPE_BESIDE_PX = 1068;
+
 /** The tab set this slice can draw. Review and People are advertised, not assumed. */
 export type PanelTab = "review" | "people" | "logs" | "receipt";
 
@@ -997,7 +1032,50 @@ export function LogPanel({
         : outcome.reason;
   const noticeShown = gateOpen && !noticeDismissed && !decisionInView;
 
-  const railState = useContextRail();
+  /**
+   * Is this region drawing three columns? Measured, not inferred (doc 03 §Shell).
+   *
+   * The CSS half of the split is the CONTAINER query on the wrapper below. This
+   * is the JS half, and it exists because one decision inside the region is a
+   * React one rather than a CSS one: whether the rail may render as its 34px
+   * SPINE. In the stacked arrangement a spine would hide the data behind a
+   * control that gives back a column that no longer exists — and which of two
+   * components mounts is not something a stylesheet can decide.
+   *
+   * Both halves must answer identically, so this reads the CSS decision back
+   * instead of re-deriving it:
+   *
+   * - `containerType` is the shell gate. Below 1180 the shell is one stacked
+   *   column and the wrapper is NOT declared a container, so every
+   *   `@…/detail:` variant is false whatever the width; `normal` here is that
+   *   same fact, read from the same class.
+   * - the width is the region's own, from the SAME box the query measures —
+   *   the wrapper carries no padding and no border, which is what makes its
+   *   border box its container-query box. `getBoundingClientRect` rather than
+   *   `clientWidth` because a container query compares fractional pixels and
+   *   `clientWidth` rounds, so at a fractional width the rounded value is the
+   *   one that would disagree.
+   */
+  const regionRef = useRef<HTMLDivElement>(null);
+  const [threeColumn, setThreeColumn] = useState(false);
+  useLayoutEffect(() => {
+    const region = regionRef.current;
+    if (region === null) return;
+    const publish = (): void => {
+      setThreeColumn(
+        window.getComputedStyle(region).containerType !== "normal"
+        && region.getBoundingClientRect().width >= DETAIL_THREE_COLUMN_PX,
+      );
+    };
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(region);
+    return () => observer.disconnect();
+  }, []);
+  // Unmeasured is NOT "three columns": the first render has no layout behind
+  // it, and defaulting to the spine would flash a collapsed rail over data the
+  // operator never asked to hide.
+  const railState = useContextRail(threeColumn);
   // The rail widens to its edit width while the Data section is being edited
   // (`--ds-w-context-rail-wide`, doc 03 D19(d)); the flag resets when the
   // operator switches runs so one run's edit session can never widen another's.
@@ -1014,28 +1092,59 @@ export function LogPanel({
   };
 
   return (
+    /*
+      THE CONTAINER IS THE WRAPPER, AND IT CARRIES NOTHING ELSE.
+
+      A container query cannot style its own container, so the element that
+      declares `@container/detail` can never be the element whose columns
+      switch — asking from the same box is a query that never matches, and it
+      degrades silently to the stacked layout at every width (doc 03 §13.2 says
+      the same thing about the explorer's `@container/graph`).
+
+      It carries no padding and no border on purpose: the JS half above
+      measures this box with `getBoundingClientRect`, so its border box has to
+      BE its container-query box or the two halves can disagree.
+
+      `min-[1180px]:` on the container DECLARATION is doc 03 §Shell's first
+      row, and it is the one question in this file the WINDOW is the right
+      instrument for — it is the shell's own breakpoint, already spelled once
+      in `dashboard-app.tsx`. Below it the shell is a single stacked column, so
+      the region is handed the full page width (1000px at a 1024px window)
+      while having no definite height for an inner grid to fill: a three-column
+      arrangement there would be wide enough and still wrong, and no width
+      threshold can tell that 1000px apart from the 868px a docked 1280px
+      window gives a region that IS a cell. So below 1180 there is simply no
+      container named `detail`, every `@…/detail:` variant is false, and the
+      arrangement is the stack the table asks for — "the rail degrades to a
+      section, never to nothing."
+    */
+    <div ref={regionRef} className="min-[1180px]:@container/detail flex min-h-0 min-w-0 flex-col">
     <div
       className={cn(
         // Below the three-column threshold the region is a scrolling stack, so
         // the rail sits under the panel instead of squeezing it to nothing.
         //
-        // `w-full` is load-bearing (D187). This element is a FLEX CHILD of the
-        // shell's panel column, and without an explicit width a flex child
-        // sizes to its content — so the grid below resolved
+        // `w-full` is load-bearing (D187). Without an explicit width this
+        // element sized to its content — so the grid below resolved
         // `minmax(0,1fr) var(--ds-w-context-rail)` to **2px 376px**, collapsing
         // the entire run-detail panel (the failure record, the evidence
         // receipt — every trust surface) into a 2px sliver while the
         // accessibility tree still reported all of it. Every `run-*` reference
         // in the parity corpus photographed that empty column and nobody read
         // the pixels, because the a11y half agreed the content was there.
-        "flex min-h-0 w-full min-w-0 flex-col gap-[var(--ds-space-cozy)] overflow-y-auto",
-        "min-[1280px]:grid min-[1280px]:h-full min-[1280px]:overflow-hidden",
-        "min-[1280px]:grid-rows-[auto_minmax(0,1fr)]",
+        //
+        // `flex-1` rather than the former `h-full`: the wrapper's height is
+        // definite only where the shell grid's row is, and a percentage height
+        // against an auto row resolves to auto — which would leave the stacked
+        // arrangement overflowing its box instead of scrolling inside it.
+        "flex min-h-0 w-full min-w-0 flex-1 flex-col gap-[var(--ds-space-cozy)] overflow-y-auto",
+        "@min-[868px]/detail:grid @min-[868px]/detail:overflow-hidden",
+        "@min-[868px]/detail:grid-rows-[auto_minmax(0,1fr)]",
         railState.collapsed
-          ? "min-[1280px]:grid-cols-[minmax(0,1fr)_var(--ds-w-context-spine)]"
+          ? "@min-[868px]/detail:grid-cols-[minmax(0,1fr)_var(--ds-w-context-spine)]"
           : dataEditing
-            ? "min-[1280px]:grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail-wide)]"
-            : "min-[1280px]:grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail)]",
+            ? "@min-[868px]/detail:grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail-wide)]"
+            : "@min-[868px]/detail:grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail)]",
       )}
     >
       {detail.timeline.events.length > 0 && (
@@ -1045,8 +1154,8 @@ export function LogPanel({
             "min-w-0 shrink-0 border",
             "border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]",
             dsRadius.lg,
-            "min-[1280px]:col-span-2 min-[1280px]:row-start-1",
-            "min-[1480px]:col-span-1 min-[1480px]:col-start-1",
+            "@min-[868px]/detail:col-span-2 @min-[868px]/detail:row-start-1",
+            "@min-[1068px]/detail:col-span-1 @min-[1068px]/detail:col-start-1",
           )}
         >
           <Timeline detail={detail} />
@@ -1063,7 +1172,7 @@ export function LogPanel({
           "@container relative flex min-h-[24rem] min-w-0 flex-col overflow-hidden border",
           "border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]",
           dsRadius.lg,
-          "min-[1280px]:col-start-1 min-[1280px]:row-start-2 min-[1280px]:min-h-0",
+          "@min-[868px]/detail:col-start-1 @min-[868px]/detail:row-start-2 @min-[868px]/detail:min-h-0",
         )}
       >
         {/* ONE SCROLLING REGION FOR THE WHOLE PANEL BODY — see the file note. */}
@@ -1221,8 +1330,8 @@ export function LogPanel({
           summary={detail.context}
           onOpen={() => railState.setOpen(true)}
           className={cn(
-            "min-[1280px]:col-start-2 min-[1280px]:row-start-2",
-            "min-[1480px]:row-start-1 min-[1480px]:row-span-2",
+            "@min-[868px]/detail:col-start-2 @min-[868px]/detail:row-start-2",
+            "@min-[1068px]/detail:row-start-1 @min-[1068px]/detail:row-span-2",
           )}
         />
       ) : (
@@ -1236,11 +1345,12 @@ export function LogPanel({
           onSaved={onDetailEdited}
           className={cn(
             "shrink-0",
-            "min-[1280px]:col-start-2 min-[1280px]:row-start-2 min-[1280px]:shrink",
-            "min-[1480px]:row-start-1 min-[1480px]:row-span-2",
+            "@min-[868px]/detail:col-start-2 @min-[868px]/detail:row-start-2 @min-[868px]/detail:shrink",
+            "@min-[1068px]/detail:row-start-1 @min-[1068px]/detail:row-span-2",
           )}
         />
       )}
+    </div>
     </div>
   );
 }
