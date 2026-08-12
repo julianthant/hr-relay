@@ -29,11 +29,13 @@ import type { JsonValue } from "../../../domain/canonical-json.js";
 import { localDatePart } from "../../../domain/clock.js";
 import {
   FailureDetailWireSchema,
+  ParkedWriteDetailWireSchema,
   RunDetailSectionResponseSchema,
   RunDetailWireSchema,
   type RunDetailSectionResponse,
   type RunDetailWire,
 } from "../../../domain/dashboard/run-detail.js";
+import type { WriteBindingProof, WriteIntentRecord } from "../../../domain/write-safety.js";
 import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
 import type { FailureRecord } from "../../../domain/trust/failure.js";
 import { runClaim, type RunRecord } from "../../../domain/run/record.js";
@@ -93,6 +95,14 @@ export interface RunDetailQueryDeps {
       itemId: string,
       nodeId: string,
     ): RunCheckpointRecord | undefined;
+    /**
+     * Doc 09 §4.1: the durable `write_intents` row a `parked-write` run names.
+     * Read at REQUEST time, never folded into the projection — the intent is
+     * the write-safety authority, and a resolution CASes against the exact
+     * generation this read returned. A stale copy would let a browser resolve
+     * a generation recovery has since advanced.
+     */
+    getWriteIntent(writeIntentId: string): WriteIntentRecord | undefined;
   };
   /** Resolves the CURRENT registered descriptor for a workflow. */
   readonly descriptors: {
@@ -139,12 +149,17 @@ function requireRun(deps: RunDetailQueryDeps, runId: string): { row: RunFoldReco
  * `receipt` needs BOTH a terminal run (a receipt states a settled verdict) and
  * the trust seam; `failure` needs a terminal failure and the same seam, since
  * without it the panel could only serve the pointer it used to.
+ *
+ * `parked-write` needs NO seam and no condition beyond the lifecycle itself: a
+ * `parked-write` run is one whose durable intent row authority already holds,
+ * and a parked run with no intent is a contradiction the serving arm refuses
+ * loudly rather than hides by not advertising.
  */
 export function availableSections(
   _row: RunFoldRecord,
   authority: RunRecord,
   trust?: RunDetailTrustDeps,
-): readonly ("logs" | "receipt" | "context-data" | "context-attempts" | "failure")[] {
+): readonly ("logs" | "receipt" | "context-data" | "context-attempts" | "failure" | "parked-write")[] {
   const { lifecycle } = authority;
   const terminal = lifecycle.state === "terminal";
   const settled = terminal && lifecycle.outcome !== "interrupted";
@@ -156,6 +171,7 @@ export function availableSections(
     ...(terminal && lifecycle.outcome === "failed" && trust !== undefined
       ? (["failure"] as const)
       : []),
+    ...(lifecycle.state === "parked-write" ? (["parked-write"] as const) : []),
   ];
 }
 
@@ -276,6 +292,7 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
 
 const SectionNameSchema = z.enum([
   "logs", "receipt", "review", "people", "context-data", "context-evidence", "context-attempts", "failure", "captures",
+  "parked-write",
 ]);
 
 const LEVEL_MAP = { error: "error", warn: "warning", waiting: "warning", step: "info", success: "info", debug: "info" } as const;
@@ -370,6 +387,13 @@ export function buildRunSection(
     });
   }
 
+  if (section === "parked-write") {
+    return RunDetailSectionResponseSchema.parse({
+      section,
+      payload: buildParkedWritePayload(deps, authority),
+    });
+  }
+
   if (section === "context-attempts") {
     return RunDetailSectionResponseSchema.parse({
       section,
@@ -402,6 +426,145 @@ export function buildRunSection(
   return RunDetailSectionResponseSchema.parse({
     section: "failure",
     payload: { state: "available", value: failureDetailWire(runId, failure, trust) },
+  });
+}
+
+/* ── the parked-write section (doc 09 §4.1) ──────────────────────────────── */
+
+/**
+ * The binding proof's subject. A `subject-match` proof pins `expected` and
+ * `observed` as canonically identical — its own `superRefine` refuses any
+ * proof where they are not — so `expected` IS the fact, not half of it.
+ *
+ * The evidence is copied, not re-shaped: `SubjectEvidenceSchema` is already the
+ * display-safe form doc 09 binds a write against, and every arm of it is a
+ * digest, a branded id, or a bounded suffix. A second projection here could
+ * only invent a name for a redaction that happened at binding time.
+ */
+function parkedWriteSubject(proof: WriteBindingProof): unknown {
+  return proof.kind === "unscoped"
+    ? {
+      state: "unscoped",
+      proofId: proof.proofId,
+      observedAt: proof.observedAt,
+      reviewedReasonId: proof.reviewedReasonId,
+    }
+    : {
+      state: "subject-match",
+      proofId: proof.proofId,
+      observedAt: proof.observedAt,
+      evidence: proof.expected,
+    };
+}
+
+/**
+ * The two typed resolutions, both always served (doc 09 §4.1, doc 13 §8.5).
+ *
+ * Serving only one would be this query deciding what the operator's look at
+ * the target system is going to find, and there is no third arm on purpose:
+ * doc 09 is explicit that no "force done" or "retry anyway" endpoint exists.
+ * Both carry `confirm` copy that names the CASUALTY in the operator's terms —
+ * confirmed-present settles the run as though the transaction happened, and
+ * confirmed-absent authorizes a fresh fence that will click again.
+ */
+function parkedWriteActions(
+  authority: RunRecord,
+  intent: Extract<WriteIntentRecord, { status: "parked" }>,
+): unknown[] {
+  const writeTarget = { writeIntentId: intent.writeIntentId, intentGeneration: intent.generation };
+  return [
+    {
+      key: "resolve-write-present",
+      label: "I confirmed it IS there",
+      detail: "Record the transaction you found, with its proof. The run settles as committed and never clicks again.",
+      intent: "warning",
+      icon: "resolve",
+      placement: ["banner", "footer"],
+      kind: "command",
+      command: "resolve-write-present",
+      expectedVersion: authority.version,
+      confirm: {
+        title: "Confirm the transaction exists",
+        body: `This files ${intent.system} transaction ${intent.writeIntentId} as committed on this run's `
+          + "evidence. If it is not actually there, the run finishes reporting work nobody did.",
+        confirmLabel: "It is there",
+        tone: "destructive",
+      },
+      writeTarget,
+    },
+    {
+      key: "resolve-write-absent",
+      label: "I confirmed it is NOT there",
+      detail: "Release the fence so the run may attempt the write again under a new generation.",
+      intent: "primary",
+      icon: "resolve",
+      placement: ["banner", "footer"],
+      kind: "command",
+      command: "resolve-write-absent",
+      expectedVersion: authority.version,
+      confirm: {
+        title: "Confirm the transaction is absent",
+        body: `This authorizes a fresh attempt against ${intent.system}. If the transaction does exist, `
+          + "the retry submits it a SECOND time.",
+        confirmLabel: "It is not there",
+        tone: "destructive",
+      },
+      writeTarget,
+    },
+  ];
+}
+
+function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord): unknown {
+  const { lifecycle } = authority;
+  const runId = authority.envelope.runId;
+  if (lifecycle.state !== "parked-write") {
+    throw new Error(`run ${runId} advertises a parked-write section while it is ${lifecycle.state}`);
+  }
+  const intent = deps.authority.getWriteIntent(lifecycle.writeIntentId);
+  if (intent === undefined) {
+    // The run's own park NAMES this intent. Its absence is a storage fault on
+    // the one record that says whether a real HR transaction exists — serving
+    // an empty panel here would let an operator resolve nothing while being
+    // told they resolved something.
+    throw new Error(
+      `run ${runId} is parked on write intent ${lifecycle.writeIntentId}, which authority does not hold`,
+    );
+  }
+  if (intent.status !== "parked") {
+    throw new Error(
+      `run ${runId} is parked on write intent ${lifecycle.writeIntentId}, which is ${intent.status}; `
+      + "the run park and the intent disagree about what happened to this write",
+    );
+  }
+  if (intent.runId !== runId) {
+    throw new Error(
+      `run ${runId} is parked on write intent ${lifecycle.writeIntentId}, but that intent belongs to `
+      + `run ${intent.runId}`,
+    );
+  }
+  if (intent.generation !== lifecycle.intentGeneration) {
+    throw new Error(
+      `run ${runId} is parked on generation ${String(lifecycle.intentGeneration)} of write intent `
+      + `${lifecycle.writeIntentId}, which is at generation ${String(intent.generation)}`,
+    );
+  }
+  return ParkedWriteDetailWireSchema.parse({
+    runId,
+    writeIntentId: intent.writeIntentId,
+    generation: intent.generation,
+    runAttempt: intent.runAttempt,
+    system: intent.system,
+    taskId: intent.taskId,
+    idempotencyKeyDigest: intent.idempotencyKeyDigest,
+    fencedAt: intent.fencedAt,
+    // The run's park instant, not the intent's `updatedAt`: the operator is
+    // being told when THIS run stopped, and a later intent row touch is a
+    // different event.
+    parkedAt: lifecycle.parkedAt,
+    parkedCode: intent.parkedCode,
+    parkedMessage: intent.message,
+    subject: parkedWriteSubject(intent.bindingProof),
+    actions: parkedWriteActions(authority, intent),
   });
 }
 

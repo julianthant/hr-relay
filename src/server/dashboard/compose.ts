@@ -335,6 +335,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       getRun: (runId) => database.authority.runs.get(runId),
       latestCheckpoint: (workflowId, itemId, nodeId) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
+      // Doc 09 §4.1: read straight off write-safety authority, per request.
+      getWriteIntent: (writeIntentId) => database.authority.writeIntents.get(writeIntentId),
     },
     descriptors: {
       resolve: (workflowId) => DESCRIPTORS.find((descriptor) => descriptor.id === workflowId),

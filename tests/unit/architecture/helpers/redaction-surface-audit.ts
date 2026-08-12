@@ -644,6 +644,33 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.value.summary", origin: "external-text" },
   { surface: "wire/run-detail-section", path: "payload.value.warnings[].summary", origin: "external-text" },
 
+  /*
+   * The parked-write section (doc 09 §4.1). Its served actions are the same
+   * server-authored `ActionDescriptorWire` leaves already dispositioned under
+   * `wire/action-descriptor`, reached one level deeper.
+   *
+   * `payload.parkedMessage` is `external-text` and NOT repository-authored,
+   * which is the disposition that matters here: doc 09 §4's `park()` builds it
+   * by interpolating a thrown driver error's `message` and a probe verdict's
+   * own `reason`. Nobody in this repository controls those bytes. It stays on
+   * the loopback surface because "why did this stop" is the whole question the
+   * panel answers, and loopback admits every origin.
+   *
+   * `payload.subject` needs no entry at all, and that is the point of serving
+   * the DURABLE `SubjectEvidenceSchema` verbatim: every one of its arms is a
+   * digest, a branded id, or a pattern-bounded string, so the walker decides
+   * them without a human disposition. A re-projection would have introduced
+   * exactly the free-text leaves this table exists to interrogate.
+   */
+  { surface: "wire/run-detail-section", path: "payload.actions[].confirm.body", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.actions[].confirm.confirmLabel", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.actions[].confirm.title", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.actions[].detail", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.actions[].key", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.actions[].label", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.actions[].navigate.runId", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.parkedMessage", origin: "external-text" },
+
   { surface: "wire/queue-surface", path: "appVersion.reason", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "endedAt.reason", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "liveMessage.reason", origin: "repository-authored" },
