@@ -102,8 +102,24 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
   "frontend-tailwind-compliance": {
     roots: ["src/dashboard"],
     fixture: {
-      files: { "src/dashboard/Bad.tsx": "export function Bad() { return <div className=\"bg-red-500\">bad</div>; }\n" },
-      expected: /palette color/,
+      // ONE fixture that violates all FOUR checks, and an expectation that
+      // requires all four to be reported. A fixture tripping only the palette
+      // rule would let the other three rot back out silently — which is exactly
+      // how three of them were lost in the port in the first place.
+      files: {
+        "src/dashboard/Bad.tsx": [
+          "export function Bad() {",
+          "  return (",
+          "    <div className=\"bg-red-500 z-[9999]\">",
+          "      <span className=\"animate-spin\" />",
+          "      <img src=\"x.png\" />",
+          "    </div>",
+          "  );",
+          "}",
+          "",
+        ].join("\n"),
+      },
+      expected: /(?=[\s\S]*palette color)(?=[\s\S]*arbitrary z-index)(?=[\s\S]*reduced-motion)(?=[\s\S]*image without alt)/,
     },
   },
 };
@@ -357,17 +373,84 @@ function auditConventions(files: readonly string[], root: string): string[] {
   return violations;
 }
 
+/*
+  The port of this arm kept ONE of the four checks its source had.
+
+  Legacy's `frontend-tailwind-compliance.test.ts` runs four: reduced-motion
+  coverage over animation, the z-index scale, image loading discipline, and the
+  palette/hex rule. Only the last came across, and DESIGN.md meanwhile asserts
+  "guard enforced" for the first two by name (`:209`, `:546`, `:548-549`). A
+  document claiming a guard that does not run is worse than no claim, because
+  the next reader believes it.
+
+  The tree happens to be clean on all four today. That is not the same as being
+  held to them — which is the whole argument of `DESIGN.md:56-57`, "if it is
+  true, hold it with a test".
+
+  Palette and hex stay on the AST (a colour only means something inside a string
+  literal or JSX text). The other three read raw text on purpose: the
+  reduced-motion rule is a statement about what appears on the SAME LINE as an
+  `animate-*` class, and `@keyframes` is not a TypeScript node at all.
+*/
 function auditFrontend(files: readonly string[]): string[] {
   const palette = /\b(?:bg|text|border|ring|from|to|via|fill|stroke)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:50|100|200|300|400|500|600|700|800|900|950)\b/;
   const hex = /#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?\b/;
   const violations: string[] = [];
   for (const file of files) {
     visit(parse(file), (node) => {
-      if (!ts.isStringLiteralLike(node) && !ts.isJsxText(node)) return;
-      if (palette.test(node.text)) violations.push(`${file}: palette color class`);
-      if (hex.test(node.text.replace(/#4ade80|#fbbf24/gi, ""))) violations.push(`${file}: raw hex color`);
+      if (ts.isStringLiteralLike(node) || ts.isJsxText(node)) {
+        if (palette.test(node.text)) violations.push(`${file}: palette color class`);
+        if (hex.test(node.text.replace(/#4ade80|#fbbf24/gi, ""))) violations.push(`${file}: raw hex color`);
+        return;
+      }
+      // Images go through the AST rather than a text match on purpose: the
+      // first text-based draft of this check reported `capture-client.ts` for
+      // the sentence "an `<img src>` cannot carry a header" in a comment. A
+      // guard that reads prose as code teaches people to work around it.
+      if (!ts.isJsxSelfClosingElement(node) && !ts.isJsxOpeningElement(node)) return;
+      if (node.tagName.getText(node.getSourceFile()) !== "img") return;
+      const named = node.attributes.properties.filter(ts.isJsxAttribute);
+      const has = (name: string): boolean =>
+        named.some((attribute) => ts.isIdentifier(attribute.name) && attribute.name.text === name);
+      if (!has("alt")) violations.push(`${file}: image without alt`);
+      if (!has("loading")) violations.push(`${file}: image without explicit loading`);
     });
+    violations.push(...auditFrontendText(file, readFileSync(file, "utf8")));
   }
+  return violations;
+}
+
+function auditFrontendText(file: string, text: string): string[] {
+  const violations: string[] = [];
+
+  /*
+    MOTION. DESIGN.md's five classes are all TRANSITIONS, which is what makes
+    them interruptible; key-frames are banned outright under `src/dashboard/**`.
+    The Tailwind animation utilities that remain (a spinner, mostly) must pair
+    with an explicit reduced-motion arm, because `prefers-reduced-motion` has to
+    zero both the clock AND the distance — an unpaired `animate-spin` keeps
+    spinning for an operator who asked the machine to stop moving.
+  */
+  if (/@keyframes\b/.test(text)) violations.push(`${file}: @keyframes is banned in dashboard code`);
+  if (/\banimation\s*:/.test(text)) violations.push(`${file}: raw animation property`);
+  if (/\banimate-\[[^\]]+\]/.test(text)) violations.push(`${file}: arbitrary animation utility`);
+  text.split("\n").forEach((line, index) => {
+    if (!/\banimate-(?:spin|pulse|ping|bounce)\b/.test(line)) return;
+    if (/\bmotion-safe:animate-(?:spin|pulse|ping|bounce)\b/.test(line)) return;
+    if (/\bmotion-reduce:animate-none\b/.test(line)) return;
+    violations.push(`${file}:${String(index + 1)}: animate-* without reduced-motion coverage`);
+  });
+
+  /*
+    LAYERING. `dsLayer` is a five-step scale (sticky/menu/drawer/modal/toast) and
+    an arbitrary `z-[…]` is how a control ends up above a modal by accident — the
+    stack is a shared resource, so it cannot be negotiated one file at a time.
+    `flex-shrink-0` rides along because the tree standardised on `shrink-0` and
+    two spellings of one idea is how a grep stops finding things.
+  */
+  if (/\bz-\[[^\]]+\]/.test(text)) violations.push(`${file}: arbitrary z-index outside dsLayer`);
+  if (/\bflex-shrink-0\b/.test(text)) violations.push(`${file}: flex-shrink-0, use shrink-0`);
+
   return violations;
 }
 

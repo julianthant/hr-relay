@@ -97,6 +97,13 @@ export function PhotoTile({
             <img
               src={preview.url}
               alt={`${label}, as photographed`}
+              // `eager` is the true statement, not a default. These bytes were
+              // already fetched by `capture-client` (an `<img src>` cannot
+              // carry the capture token, so the request is made in JS) and this
+              // is an object URL over memory the page is holding anyway.
+              // Deferring it would be claiming a network cost that was already
+              // paid.
+              loading="eager"
               className="size-full object-contain"
             />
           )}
