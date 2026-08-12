@@ -283,7 +283,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "ebb088d7b1302e2e913b04054a3c9b11781c8b5cd46dbf2b394fca6c1b018803",
+      "fingerprint": "2e6126cbc1f49335fca7d915b171d2e6ea8351e20c2467a2a0f0fe216517f469",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -335,7 +335,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/kronos/separation-timecard.ts",
-          "sha256": "2c967ec2de9ba1b961d67557ff3fb7a9610778ba78dc44f93b5b05c4ab734296"
+          "sha256": "a9901d7e283ca2b7d891791c901f65a3edd00bcdc442052ab8ea3be5ecee96a8"
         },
         {
           "path": "src/domain/matching/levenshtein.ts",
@@ -1671,7 +1671,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-timekeeper-annotation"
     },
     {
-      "fingerprint": "fac368bbf525fc4c1667f48c5f8268a7fb86edf7630c8ebd9ee1af58b1c6403a",
+      "fingerprint": "c649920dad352599b342fb97ccacaa3436cdb28093176d4f970399f6a0720b18",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1735,7 +1735,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/kronos/separation-timecard.ts",
-          "sha256": "2c967ec2de9ba1b961d67557ff3fb7a9610778ba78dc44f93b5b05c4ab734296"
+          "sha256": "a9901d7e283ca2b7d891791c901f65a3edd00bcdc442052ab8ea3be5ecee96a8"
         },
         {
           "path": "src/domain/provider-admission.ts",
@@ -1833,7 +1833,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "c313a14680a61cbaade15113985fb7bc0656508299aff32c1bd0bd439d274be5",
+      "fingerprint": "28a8a3da992469213483d1f93b08a81e7d5a2c030c10041e9171a6f96966c053",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1897,7 +1897,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/kronos/separation-timecard.ts",
-          "sha256": "2c967ec2de9ba1b961d67557ff3fb7a9610778ba78dc44f93b5b05c4ab734296"
+          "sha256": "a9901d7e283ca2b7d891791c901f65a3edd00bcdc442052ab8ea3be5ecee96a8"
         },
         {
           "path": "src/domain/provider-admission.ts",

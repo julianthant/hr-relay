@@ -201,8 +201,10 @@ start, not retrofit it. See §4 for migration order.
 **Status:** driver `semantic-ready` (`NewKronosTimecardDriver`,
 `src/domain/ui/new-kronos-timecard.ts`) · real login recipe (`newKronosLoginRecipe`,
 `src/stores/new-kronos/session.ts`) · `system-bindings.ts` entry · **2 tasks**. Wired into
-`separations-kronos-timecard` (separations chunk 1). Live-verified read-only **2026-08-12**; the full
-observation record is `docs/migrations/separations.md` §9.1 and the store's own `CLAUDE.md`.
+`separations-kronos-timecard` (separations chunk 1). Selectors and login live-verified read-only
+**2026-08-12**; the full observation record is `docs/migrations/separations.md` §9.1 and the store's
+own `CLAUDE.md`. **The end-to-end live dry-run is NOT met** — §9.2 records all thirteen attempts,
+the seven defects they found, and the one test-pinned fix still awaiting a live run.
 
 **Structurally read-only.** No `commit` operation, no `MutationCapability` in its import graph, and
 `auditNewKronosUiRegistry` refuses an `external-commit` element by name. A write slice adds the

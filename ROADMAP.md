@@ -88,7 +88,10 @@ answered**, including §5 item 5's freshness values (residuals **5A** and **5B**
 flipped from BLOCKED to **READY TO BUILD**, and **chunk 1 LANDED 2026-08-12 (D196)** — the
 `new-kronos` store is `semantic-ready` (real driver, login recipe, published UI registry, 16 ported
 selectors live-re-verified) with two page-visit read tasks, and the `separations-kronos-timecard`
-sub-workflow is registered and read-only. Its controlled-commit
+sub-workflow is registered and read-only. **Its live proof is NOT met**: thirteen real runs found
+and fixed seven defects no fixture could reach, and the last one ran the whole path before correctly
+refusing on a pay-period overhang whose fix is test-pinned but not yet live-verified — see
+`docs/migrations/separations.md` §9.2. Its controlled-commit
 target (a UCPath termination + Kuali finalization you approve) is still yours to name at step 5; none
 has been invented.
 

@@ -192,6 +192,13 @@ export function resolveTimecardColumns(
   });
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Whole calendar days from `from` to `to`, DST-safe (rounded). */
+function calendarDaysBetween(from: Date, to: Date): number {
+  return Math.round((startOfDay(to) - startOfDay(from)) / DAY_MS);
+}
+
 function startOfDay(at: Date): number {
   return new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
 }
@@ -239,7 +246,11 @@ export function assertTimecardCoversRange(
       + " — the grid was not read; this is not an empty timecard",
     );
   }
-  const observed = new Set(rows.map((row) => formatTimecardDate(row.month, row.day, range)));
+  // Resolve against the WIDENED window: the grid legitimately renders
+  // period-aligned days outside the requested one, and a coverage check must
+  // not refuse them any more than the fold does.
+  const resolution = periodAlignedResolutionRange(range);
+  const observed = new Set(rows.map((row) => formatTimecardDate(row.month, row.day, resolution)));
   const missing = enumerateRangeDays(range).filter((day) => !observed.has(day));
   if (missing.length === 0) return;
   const shown = missing.slice(0, 8).join(", ");
@@ -250,6 +261,47 @@ export function assertTimecardCoversRange(
     + (missing.length > 8 ? ` and ${String(missing.length - 8)} more` : "")
     + " — the virtualized grid was not scrolled to the end; refusing to derive a last punch from a partial read",
   );
+}
+
+/**
+ * A Kronos pay period is at most a month, so a grid whose range bounds fall
+ * mid-period renders up to a month of extra days on each side.
+ */
+const PERIOD_ALIGNMENT_SLACK_DAYS = 31;
+/**
+ * Widen the applied window by one pay period on each side, so a period-aligned
+ * neighbouring day still resolves to exactly ONE candidate year.
+ *
+ * WFD renders whole pay periods: a window ending 08/12 inside the 08/02-08/15
+ * period still paints rows through 08/15. Those rows are not corruption and
+ * they are not in scope — but resolving them against the applied window alone
+ * makes `formatTimecardDate` refuse, which is what failed the last live attempt.
+ * Widening keeps S41's no-guessing rule intact (the widened span stays far
+ * under a year, so the candidate year is still unique) while letting the fold
+ * DISCARD what falls outside the window instead of dying on it.
+ *
+ * A window so wide that widening it could make a month/day ambiguous is refused
+ * rather than silently narrowed.
+ */
+export function periodAlignedResolutionRange(range: TimecardDateRange): TimecardDateRange {
+  const widened = {
+    start: new Date(
+      range.start.getFullYear(), range.start.getMonth(),
+      range.start.getDate() - PERIOD_ALIGNMENT_SLACK_DAYS,
+    ),
+    end: new Date(
+      range.end.getFullYear(), range.end.getMonth(),
+      range.end.getDate() + PERIOD_ALIGNMENT_SLACK_DAYS,
+    ),
+  };
+  const spanDays = calendarDaysBetween(widened.start, widened.end);
+  if (spanDays > 330) {
+    throw new Error(
+      `[new-kronos] timecard window ${describeDay(range.start)} - ${describeDay(range.end)} is too wide to `
+      + `resolve grid years unambiguously once widened for pay-period alignment (${String(spanDays)} days)`,
+    );
+  }
+  return widened;
 }
 
 /** A row carries a punch when either the In or the Out cell holds a clock time. */
@@ -288,13 +340,24 @@ export function foldSeparationTimecard(
   range: TimecardDateRange,
 ): SeparationTimecardFold {
   assertTimecardCoversRange(rows, range);
+  const resolution = periodAlignedResolutionRange(range);
+  const insideStart = startOfDay(range.start);
+  const insideEnd = startOfDay(range.end);
   const punchDates: string[] = [];
   const sickDates: string[] = [];
   const holidayDates: string[] = [];
   const payCodeDays: TimecardPayCodeDay[] = [];
   const unclassified: string[] = [];
   for (const row of rows) {
-    const date = formatTimecardDate(row.month, row.day, range);
+    // Resolve the year against the WIDENED window (see
+    // `periodAlignedResolutionRange`), then drop anything outside the window
+    // the run actually asked for. Resolving against the applied window alone
+    // made a legitimately rendered neighbouring day a refusal — live run
+    // `sk-131627-4ca5` (2026-08-12) read a grid for 06/07–08/12 that carried a
+    // row for 8/13, because WFD renders whole PAY PERIODS.
+    const date = formatTimecardDate(row.month, row.day, resolution);
+    const at = startOfDay(parseTimecardDate(date, "resolved grid date"));
+    if (at < insideStart || at > insideEnd) continue;
     if (rowHasPunch(row)) punchDates.push(date);
     const payCode = row.payCode.trim();
     if (payCode.length === 0) continue;

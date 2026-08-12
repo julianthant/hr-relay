@@ -8,6 +8,7 @@ import {
   formatRangeBound,
   parseAppliedRangeLabel,
   parseTimecardDate,
+  periodAlignedResolutionRange,
   rangesAreSameDays,
   resolveTimecardColumns,
   rowHasPunch,
@@ -155,6 +156,42 @@ describe("separation timecard fold", () => {
     assert.equal(classifyPayCode("Holiday - Hourly"), "holiday");
     assert.equal(classifyPayCode("Independence Day Observed"), "unclassified");
     assert.equal(classifyPayCode(""), "unclassified");
+  });
+});
+
+describe("period-aligned grid rows", () => {
+  // WFD renders whole PAY PERIODS, so a window ending mid-period still paints
+  // rows past its end. Live run `sk-131627-4ca5` (2026-08-12) read a grid for
+  // 06/07-08/12 carrying a row for 8/13 and refused; the rows are legitimate
+  // and simply out of scope.
+  const AUGUST_WINDOW: TimecardDateRange = { start: new Date(2026, 6, 15), end: new Date(2026, 7, 12) };
+
+  it("keeps a neighbouring rendered day out of the fold instead of refusing it", () => {
+    const fold = foldSeparationTimecard(coveringRows(AUGUST_WINDOW, [
+      row(8, 10, { punchIn: "9:00 AM", punchOut: "5:00 PM" }),
+      row(8, 13, { punchIn: "9:00 AM", punchOut: "5:00 PM" }),
+      row(8, 15, { payCode: "Sick - Hourly", amount: "8.00" }),
+      row(7, 14, { punchIn: "9:00 AM", punchOut: "5:00 PM" }),
+    ]), AUGUST_WINDOW);
+    assert.deepEqual(fold.punchDates, ["08/10/2026"]);
+    assert.deepEqual(fold.sickDates, []);
+    assert.equal(fold.lastPunchDate, "08/10/2026");
+  });
+
+  it("still resolves the year of an in-window day across a December boundary", () => {
+    const december: TimecardDateRange = { start: new Date(2025, 11, 20), end: new Date(2026, 0, 10) };
+    const fold = foldSeparationTimecard(coveringRows(december, [
+      row(1, 2, { punchIn: "9:00 AM", punchOut: "5:00 PM" }),
+      row(12, 22, { punchIn: "9:00 AM", punchOut: "5:00 PM" }),
+    ]), december);
+    assert.deepEqual(fold.punchDates, ["12/22/2025", "01/02/2026"]);
+  });
+
+  it("refuses a window too wide to widen unambiguously rather than narrowing it", () => {
+    assert.throws(
+      () => periodAlignedResolutionRange({ start: new Date(2026, 0, 1), end: new Date(2026, 11, 1) }),
+      /too wide to resolve grid years unambiguously/,
+    );
   });
 });
 

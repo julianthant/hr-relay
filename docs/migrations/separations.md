@@ -1740,3 +1740,64 @@ verbatim and every unmatched pay code is surfaced as `unclassifiedPayCodes` rath
 Options are recorded in the return of the chunk-1 build; nothing is decided here.
 
 ---
+
+### 9.2 Chunk 1 — the live proof: **NOT RUN to completion** (13 attempts, 2026-08-12)
+
+**Honest status.** Doc 07 §3.1 step 4 (the live dry-run for this chunk) is **NOT MET**. The
+`separations-kronos-timecard` workflow was started against the real system thirteen times through
+the real start-plan → command → worker path. **The search half is proved live** — `search` reached
+`observed-this-attempt` with a durable checkpoint on runs `sk-123940-ab25`, `sk-125031-54c5`,
+`sk-125229-f0c8`, `sk-125512-8fa6` (attempt 1) and `sk-131627-4ca5`. **The timecard half has never
+produced a terminal `done`.** No run reached a terminal result, so this chunk has **no evidence
+receipt over real data** and the exit criterion stays open.
+
+**What the lane was worth anyway.** Every attempt failed for a DIFFERENT, real reason, and each one
+was green on `typecheck`, `lint`, `test:coverage`, `test:architecture` and every scenario. Seven
+defects were found and fixed that no fixture could reach; they are recorded in commit
+`fix(kronos): six defects the live lane found, and the rules they settle` and, as rules, in doc 01
+§2.9 and `src/stores/new-kronos/CLAUDE.md`. In order observed:
+
+| Run | Failure | Root cause |
+|---|---|---|
+| `sk-123452-7b1e` | login refused an authenticating session | `kronosAuthToken` is issued by the WFD app AFTER the URL lands; the probe sampled once |
+| `sk-123704-7551` | `Employee Search` button resolved to 0 nodes | `exactlyOne` sampled a client-rendered SPA once |
+| `sk-123940-ab25` | timecard step found no query field | the panel collapses to `Show Search` after a search; the context probe used the wrong anchor |
+| `sk-124132-9beb` | Go To disabled on an empty panel | the search node was `replay:"checkpoint"`, restoring a VALUE into a browser with no page state |
+| `sk-124821-5956` | `employee-not-found` for an employee that exists | WFD renders its empty-grid sentinel while the search is still resolving |
+| `sk-125031-54c5` | no Go To control at all | a task may not inherit page state from the previous task — the worker re-verifies the session between leases |
+| `sk-125229-f0c8` | `ReferenceError: __name is not defined` | esbuild's `keepNames` helper leaked into a `page.evaluate` callback |
+| `sk-131627-4ca5` | `8/13 falls outside the requested range … refusing to guess the year` | **the deepest one** — see below |
+
+**The last attempt is the most informative, and its fix is TEST-PINNED, NOT LIVE-VERIFIED.**
+`sk-131627-4ca5` ran the whole path — login, panel, search, selection, Go To, timecard, subject
+proof, custom-range apply, virtualized-grid read — and then correctly REFUSED, because the grid
+carried a row for `8/13` while the run had asked for `06/07/2026 - 08/12/2026`. That is not
+corruption: **WFD renders whole PAY PERIODS**, so a window ending mid-period still paints rows to the
+period's end (here 08/15). The fold now resolves each grid row's year against the applied window
+WIDENED by one pay period on each side — keeping S41's "exactly one candidate year, never a guess" —
+and then DISCARDS the rows that fall outside the window the run asked for. It is covered by unit
+tests built from the exact observed shape, and it has **not** been through a live run.
+
+**The two remaining failures were environmental, not defects.** `sk-125420-dc59` and
+`sk-125512-8fa6` (attempt 2) failed at `duo-clearance` / `navigate-login-entry` with `about:blank`
+after thirteen cold-profile Duo ceremonies in roughly twenty minutes; the SSO chain returned to the
+ForgeRock login page rather than the application.
+
+**Two platform findings this chunk did not fix, recorded for whoever owns them.**
+
+1. **A crashed worker wedges its own worker id.** `claimNext` refuses when the worker already owns a
+   run in `claimed`/`validating`/`running`, and the D118 claim sweeper lives inside the loop that
+   cannot start — so a worker that dies mid-run can never claim again. It was cleared each time by
+   starting a DIFFERENT workflow's worker (whose sweeper requeues across workflows) or by a
+   `run/cancel` command. A worker that cannot recover its own wedge is an operability gap.
+2. **An `always-rerun` node re-writes its checkpoint, so a second run under the same identity fails
+   when the observation moved.** Re-running the same EID + window produced
+   `run checkpoint … already exists with different content`. Arguably correct — the identity is the
+   same and the observation differs — but it means a proving harness cannot simply be re-run, and
+   the proof runs above had to vary the window by a day each time to get a fresh item id.
+
+**What is required to close this.** One clean live run on a rested session: the fix for the
+pay-period overhang is the only untested code left on the path, and every earlier failure has been
+fixed and re-proved past. The measured leg timings are in §9.1.
+
+---
