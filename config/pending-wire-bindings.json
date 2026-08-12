@@ -1,0 +1,36 @@
+{
+  "milestone": "2k",
+  "reason": "D107's `pending-impl-bindings.json` applied to the WIRE. This tree has twice shipped a half-connection that every gate was green over: a `captures` section arm no `availableSections` could return, and a `\"degraded\"` stream arm nothing could emit. A schema arm, a command key, or a route is only real when something on the other side of it exists, and until then its absence must be a DECLARATION with an owner — not a silence. `wire-connectivity.test.ts` fails in both directions: an undeclared orphan, and a declaration whose binding has become reachable or no longer exists.",
+  "bindings": [
+    {
+      "binding": "RunDetailSectionResponseSchema#review",
+      "direction": "declared-unserved",
+      "decision": "D184",
+      "note": "Doc 13 §3.3's Review panel kind. `availableSections` cannot return it for any lifecycle: no registered descriptor declares a review panel, and the review record store is 2h-deferred. Closes with the first workflow that declares one."
+    },
+    {
+      "binding": "RunDetailSectionResponseSchema#people",
+      "direction": "declared-unserved",
+      "decision": "D184",
+      "note": "The operation-member People page, same 2h deferral as `review`; `sectionsCompatible` already refuses it beside `review` on one panel. Closes with the first multi-person operation workflow."
+    },
+    {
+      "binding": "RunDetailSectionResponseSchema#context-evidence",
+      "direction": "declared-unserved",
+      "decision": "D184",
+      "note": "Doc 03 §1.1's Evidence rail. `buildRunDetail` serves `context.evidenceFacts: 0` with the comment that the evidence service is a later slice, so no composition can populate this arm; the 2g receipt section serves the trust content that exists today."
+    },
+    {
+      "binding": "RunDetailSectionResponseSchema#captures",
+      "direction": "declared-unserved",
+      "decision": "D184",
+      "note": "Named in `config/legacy-capabilities.json` entry `legacy-dashboard-capture` (open, phase-3-workflow-migration): the section lists artifact refs but NOTHING serves artifact bytes, so it is blocked on the artifact route `legacy-route-files` owns and closes with it."
+    },
+    {
+      "binding": "route:GET /api/v1/capture/sessions/:sessionId",
+      "direction": "served-unconsumed",
+      "decision": "D175",
+      "note": "The operator's capture-session poll. Doc 12 §7's QR flow hands the phone the session; the operator surface today creates a session and renders the QR without re-reading it, so the route is served for the operator poll the capture modal will do (`legacy-dashboard-capture`, phase-3-workflow-migration)."
+    }
+  ]
+}
