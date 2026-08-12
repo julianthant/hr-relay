@@ -1741,7 +1741,7 @@ Options are recorded in the return of the chunk-1 build; nothing is decided here
 
 ---
 
-### 9.2 Chunk 1 — the live proof: **NOT RUN to completion** (13 attempts, 2026-08-12)
+### 9.2 Chunk 1 — the live proof: **NOT RUN to completion** (14 attempts, 2026-08-12)
 
 **Honest status.** Doc 07 §3.1 step 4 (the live dry-run for this chunk) is **NOT MET**. The
 `separations-kronos-timecard` workflow was started against the real system thirteen times through
@@ -1799,6 +1799,23 @@ ForgeRock login page rather than the application.
 **What is required to close this.** One clean live run on a rested session: the fix for the
 pay-period overhang is the only untested code left on the path, and every earlier failure has been
 fixed and re-proved past. The measured leg timings are in §9.1.
+
+**Attempt 14 (2026-08-12, from chunk 3's session — one bounded attempt, still NOT MET).** Run
+`sk-162032-45bb` (`45bb354b-2ed4-4225-8808-13a5bd690740`), EID `10001754` over a fresh window
+`07/06/2026 – 08/09/2026` (varied again for the always-rerun identity quirk). The search half passed
+for the sixth time — `search` reached `observed-this-attempt` with a durable checkpoint at
+`23:21:11.812Z` — and the timecard half failed on a **NEW, ninth** mode, distinct from all eight
+above and from the pay-period overhang that attempt 13 fixed:
+
+> `[new-kronos] timecard grid read covers 14 of 35 days in 07/06/2026 - 08/09/2026 — missing
+> 07/06/2026 … and 19 more — the virtualized grid was not scrolled to the end; refusing to derive a
+> last punch from a partial read`
+
+The refusal is CORRECT and is the whole point of that check — a last punch derived from 14 of 35 days
+would be a plausible-but-wrong separation date. What it says about the chunk is that the virtualized
+grid's scroll-to-end is not yet reliable over a five-week window; the durable failure fingerprint
+`53336e1c` records `seen 6×`, so this is a recurring class rather than a one-off. Doc 07 §3.1 step 4
+for chunk 1 stays **OPEN**, and the next attempt owes the scroll loop rather than another window.
 
 ---
 
@@ -2070,5 +2087,148 @@ Two platform items fall out, neither owned by this chunk:
    right for its purpose (replay across attempts of one item), and the refusal is right (a differing
    observation under the same identity is a real conflict). What is missing is a way for an operator
    to say "read it again" — which for a read-only workflow is a completely ordinary request.
+
+---
+
+### 9.5 Chunk 3 — the UCPath identity surface, observed 2026-08-12
+
+Read-only, one session, Duo cleared hands-off by Duo Autopilot. Subjects: the two employees chunk 2's
+live documents name — **10001799** (doc 4510, "Clauckia, Drose") and **10001754** (doc 4502,
+"Cramia, Dreitho").
+
+**The page, and why it is this page.** The chunk reads the **Person Organizational Summary DETAIL
+page**'s *Employment Instances* grid, not legacy's `WF_JOB_SUMMARY.GBL`. Both carry the same
+per-employment facts; the Person Org grid carries them as ONE grid on ONE visit with anchors this
+tree already live-verified and registered (2026-08-02), while legacy's arrive across two lazily
+rendered tabs (`Work Location`, `Job Information`) with a frozen left column that has to be zipped
+back on by row count. D194 asks for one task per page visit returning the full useful surface, and
+this is the page on which that is one visit. **The one fact the two pages do NOT share** is legacy's
+effective-dated history per empl record ("what was this job on the separation date"); that belongs to
+the termination-filing chunk, which is the only consumer that has ever needed it, and it is a second
+page visit either way.
+
+**The twelve columns, in the order the live grid renders them** (the same layout the 2026-08-02 port
+already parses, re-verified live 2026-08-12 on both subjects):
+
+| # | Column | Live value, EID 10001754 | Live value, EID 10001799 |
+|---|---|---|---|
+| 0 | Empl Record | `0` | `0` |
+| 1 | Effective Date | *(read)* | `07/01/2026` |
+| 2 | **HR Status** | `Active` | `Inactive` |
+| 3 | Business Unit | `SDCMP` | `SDCMP` |
+| 4 | Position Number | *(read)* | *(read)* |
+| 5 | Dept ID | *(read)* | *(read)* |
+| 6 | Department Description | `HOUSING/DINING/HOSPITALITY` | `HOUSING/DINING/HOSPITALITY` |
+| 7 | Job Code | *(read)* | *(read)* |
+| 8 | Job Code Description | `STDT 2` | `STDT 2` |
+| 9 | Expected Job End Date | *(read)* | *(read)* |
+| 10 | FTE | *(read)* | *(read)* |
+| 11 | Empl Class | *(read)* | *(read)* |
+
+Empl record, HR status and business unit are STRUCTURAL — every rendered employment row carries all
+three, and a blank one means the extraction read something that is not an employment row. The other
+nine are `{state:"absent", reason}` arms (S24): surfaced as data with the reason, never dropped and
+never guessed. Neither live subject produced an absent cell; the arm is exercised by fixtures built
+from this exact layout.
+
+**Render context, captured because it decides what `rowCount` MEANS.** PeopleSoft auto-redirects a
+single-result search straight to the detail page (`entry: "auto-detail"`, `searchResultRows: 0`) and
+renders a grid otherwise; and an Employment Instances grid paginates until its `View All` control has
+been driven to `View N` (`employmentInstances: "already-complete" | "expanded"`). Both live subjects
+came through `auto-detail` on an `already-complete` grid.
+
+**The name the DETAIL page displays is "First Last", and the Kuali document says "Last, First".**
+Live: UCPath rendered `Drose Clauckia` and `Dreitho Cramia` against Kuali's `Clauckia, Drose` and
+`Cramia, Dreitho`. The ported `classifyNameSimilarity` compares token multisets and answers `same` for
+both, which is right — and is also why the gate does not lean on the tier (below).
+
+**Every status, type and state this chunk encountered** (§3.2's MAP-EVERYTHING): HR Status `Active`
+and `Inactive`; business unit `SDCMP`; empl class values as rendered; disposition folds
+`single-active-job`, `no-active-job`, `concurrent-active-jobs`, `indeterminate-status`; approval
+shapes `one-click`, `choose-a-candidate`, `type-the-eid`. The status vocabulary is the ported one
+(`/inactive|terminated|separated/` before `/active/`, because "Inactive" contains "active"); anything
+outside it is `unknown` and makes the whole grid `indeterminate-status` rather than being guessed.
+
+---
+
+### 9.6 Chunk 3 — the live proof: **PASSED**, and the two defects it caught
+
+Doc 07 §3.1 step 4 for chunk 3 is **MET**. Two runs went through the real start-plan → command →
+worker → **operator gate command** → worker path against real UCPath. The second reached terminal
+`done` with a `verified-done` evidence receipt; the first found a platform defect no fixture could
+reach and is left failed as the record of it.
+
+| Trace | Subject | Gate shape | Result |
+|---|---|---|---|
+| `si-160956-834f` | 10001799 (doc 4510) | `choose-a-candidate` | parked, **approved live**, then **failed** on the gate-provenance defect (D203) |
+| `si-161551-774c` | 10001754 (doc 4502) | `one-click` | parked, **approved live**, resumed, **terminal `done`**, receipt `verified-done` |
+
+**Measured legs** (`si-161551-774c`, cold profile, Duo cleared hands-off):
+
+| Leg | Time |
+|---|---|
+| queued → `Job Summary` span start | 4.60 s |
+| `Job Summary` (browser launch + UCPath login + Person Org search + detail + View-All grid) | **22.94 s** |
+| `Name Search` on the ready session (the full by-name search + drill-in) | **6.24 s** |
+| `Identity Comparison` (pure fold, packet + digest) | **4 ms** |
+| gate open → gate resolved (operator, over the real command endpoint) | 18.80 s |
+| `Approval Check` (pure fold) | **2 ms** |
+| queued → terminal | **53.86 s** |
+
+So the identity check costs about **29 s of live reading** on a cold session and two milliseconds of
+judgment. The second UCPath search — the one legacy only performs when its name tier says `different`
+— costs 6.2 s on an already-authenticated session, which is the honest price of doc 09 §14.2's
+two-candidate presentation existing on every run.
+
+**What the live lane proved that no fixture could — S22, on a real person.** Doc 4510's employee
+(EID `10001799`) is **already terminated in UCPath**: one employment row, `HR Status: Inactive`,
+reached by `auto-detail`. That is S22's silent-risk scenario exactly — a single-employment person who
+is already separated auto-redirects, so legacy's all-terminated guard (which only runs on a multi-row
+grid) never executes and the run proceeds to file a **second** termination. Here the classification is
+unconditional, the disposition came back `no-active-job`, the employment comparison led the packet as
+a DISAGREEMENT, and the gate refused to be a one-click approve. The chunk found the scenario in the
+wild on its first live subject.
+
+**What the live lane CAUGHT — a platform defect, ratified as D203.** Run `si-160956-834f` read
+UCPath, parked, took a real approval through the real `/api/v1/commands` endpoint, resumed — and the
+post-gate node then failed with `declared dependency "identity-approval" has no checkpoint record to
+hand to the provenance collector`. That message was TRUE about a record that cannot exist: a gate
+produces a `gate_results` row, not a `run_checkpoints` row, so any task declaring a gate as a
+dependency was structurally unrunnable. Every fixture missed it because no fixture in this tree had a
+task node downstream of a gate. Fixed by admitting the gate row as its own kind of upstream evidence
+(D203); the run is left `failed` as the durable record.
+
+**What the guard caught before any of that.** `identity-gate-before-commit`, extended in this chunk to
+audit the TERMINAL RESULT as a sink, refused the descriptor's first draft: it derived the document
+number and the employment picture straight off the PRE-gate comparison node, giving the run's product
+two ancestry paths to a root that never crossed the gate. The post-gate node carries those facts
+forward instead, so the workflow's whole product is a post-approval fact.
+
+**What was NOT observed, stated honestly.**
+
+- **No live REJECTION.** The reject arm is proved against the real task implementation
+  (`separations-identity-check/gate-rejected`), not against a live run; rejecting a real separation
+  document's identity is an operator decision this session had no mandate to make.
+- **No live `different` name tier, and no live two-candidate gate.** Both live subjects' names agreed
+  token-for-token and both name searches resolved the same person the document's EID did, so the
+  `type-the-eid` shape and the second candidate are test-pinned.
+- **No live absent cell (S24).** Both grids were complete.
+- **The receipt cannot yet attribute the approver.** The settled receipt lists
+  `node.identity-approval` as **`unknown`**, because a receipt derives from checkpoints and a gate has
+  none. Doc 09 §14.6 risk 6 ("who approved is lost") is answered durably — `gate_results.resolvedBy`
+  holds `local-operator` under the run's identity — but it does not yet reach the receipt or
+  `explain run`. That is a real open item for the composition chunk, not a claim this chunk gets to
+  make.
+- **The run-detail wire's top-level `gate` field still read "this run declares no operator gate"**
+  while the run was parked, because that field folds the `gate.opened` SPAN and the dashboard
+  process's projection had not tailed the worker's stream. The `identity-gate` section, which reads
+  authority per request, was correct throughout. Recorded as an observation about the span-fold
+  latency, not as a chunk defect.
+
+**The re-run wall, again, and its shape here.** `matchKey` is `separations-identity:<document>:<eid>`,
+so a second run of the same document+EID is the same ITEM and replays the first run's checkpoints —
+whose `observedAt` differs by construction. The first run's failure therefore could not be re-proved
+on the same subject; the fix was proved on a second real document instead. This is the same platform
+item §9.4 recorded (chunk 2, item 2), unchanged and still open.
 
 ---

@@ -117,16 +117,22 @@ which store you are in, this decides how wide the new read task is:
 ### `ucpath` — browser store, real
 
 **Status:** driver `semantic-ready` (`UcpathPersonOrgDriver`, `src/domain/ui/ucpath-person-org.ts`) ·
-real login recipe (`ucpathLoginRecipe`, `src/stores/ucpath/session.ts`) · **1 task**. Wired into
+real login recipe (`ucpathLoginRecipe`, `src/stores/ucpath/session.ts`) · **2 tasks**. Wired into
 `BROWSER_SYSTEM_BINDINGS` (`src/infra/browser/system-bindings.ts`), so a real session can be opened.
 
 | Item | Kind | Contract id | What it does | Reuse notes |
 |---|---|---|---|---|
 | `searchPersonOrgTask` | task | `ucpath/search-person-org` (read) | Searches UCPath's Person Organizational Summary by EID or name, expands `View All`, drills into every plausible record, and returns candidate results plus one resolved selection (employee status, HDH flag). | `sessions: [{system:"ucpath", access:"read"}]`, retries `{attempts:2, backoffMs:2000}` on transient. Ported from legacy `793abe1f…`, live-verified 2026-08-02. Handles the **Person Org** screen family only — `ui-registry.ts` also carries the SS Smart HR **receipt** screen family (live-verified 2026-08-04) but no task reads it yet (see §4). |
 
+| `readJobSummaryTask` | task | `ucpath/read-job-summary` (read) | D194's rich read of the SAME page family: opens the Person Org **detail** page for a person the run already names, proves the displayed EID equals the requested one, and returns the WHOLE *Employment Instances* grid — every row's empl record, verbatim HR status, business unit, effective dates, department, job code, title, FTE, empl class — plus the page-displayed name, the row count, and the render context (`auto-detail` vs `drilled-from-grid`; grid already-complete vs expanded). | `sessions: [{system:"ucpath", access:"read"}]`, retries `{attempts:2, backoffMs:2000}`. **Classifies nothing** — "all terminated", "already separated", "two concurrent jobs" are a pure fold in `src/domain/separations/job-summary-classification.ts` (D201). Subject-bound `before-subject-read` on `ucpath.person-org.displayed-eid`, unlike `search-person-org` whose subject is `none` because the search IS the resolution. Live-verified 2026-08-12. |
+
 **Driver notes.** `driver/person-org-operation.ts` owns navigation/search/grid/drill-in/assignment
 selection; locator recipes live only in `driver/ui-registry.ts` and require matching fixture plus
-live-read-only evidence before use. Login verifies `PS_TOKEN` presence plus absence of every sign-in
+live-read-only evidence before use. **One extraction, two parses (D201):** `extractDetail` returns the
+grid's raw cells, and each consumer parses them with its own strictness — the search keeps its exact
+preferred-assignment derivation (which refuses a blank department, because a CANDIDATE without one is
+unusable), while the job-summary read gives that same cell an `{state:"absent", reason}` arm (S24).
+Widening the search's own output instead would have moved a schema hash shipped run records bind. Login verifies `PS_TOKEN` presence plus absence of every sign-in
 form (2026-08-03 finding: a URL substring alone previously matched the *public* portal).
 
 ---

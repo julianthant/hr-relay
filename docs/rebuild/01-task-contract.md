@@ -907,6 +907,39 @@ CRM **history** page is a second visit and stays its own task under this convent
 
 ---
 
+### 2.11 The third store authored under §2.8 — `ucpath/read-job-summary` (D201, 2026-08-12)
+
+Separations chunk 3 mints the UCPath side of §2.8's convention, and it settles two authoring rules the
+first two stores did not have to answer.
+
+**A page's read task reports what the page showed; the JUDGMENT is a separate fold.**
+`ucpath/read-job-summary` returns the whole *Employment Instances* grid — every row's empl record,
+verbatim HR status, business unit, effective dates, department, job code, title, FTE and class — plus
+the page-displayed person identity, the row count, and the **render context** that says whether the
+grid is complete. It classifies nothing. "All rows terminated", "two concurrent jobs" and "already
+separated" are a pure fold over that output
+(`src/domain/separations/job-summary-classification.ts`). Legacy computes those same facts as THROWS
+inside its page module, and only when the search happened to render a multi-row grid — so they exist
+only in a log, and a single-employment person who is already terminated is never checked at all (S22,
+found live on a real person). A read that refuses on the shape of its own answer cannot serve a gate
+whose whole job is to SHOW the operator that answer.
+
+**Absent arms are for genuinely-optional CELLS, and the STRUCTURAL ones refuse.** Empl record, HR
+status and business unit are required on every rendered row: a blank one means the extraction read
+something that is not an employment row. The nine descriptive cells each carry
+`{state:"absent", reason}`. The dividing line is *what a blank MEANS*, not what is convenient: a blank
+structural cell is a broken read, a blank descriptive cell is a real page state. S24's unreadable
+department is therefore data with a reason rather than a refusal — refusing there would fail an
+identity check over a cell the identity check does not use, and the consumer that NEEDS a department
+is the one that refuses.
+
+**One extraction, two parses.** `searchPersonOrg` and `readJobSummary` share the same page visit and
+the same cell read. They do not share a parse: the search keeps its exact preferred-assignment
+derivation, which refuses a blank department because a CANDIDATE without one is unusable, while the
+job-summary read gives that same cell an absent arm. Widening the search's own output instead would
+have moved a schema hash shipped run records already bind (D110/D114/D82) — which is the cost §2.8
+warned about, paid the way §2.8 said to pay it: a new contract beside the old one.
+
 ### 2.9 The first store authored under §2.8 — `new-kronos` as-built (D196, 2026-08-12)
 
 Separations chunk 1 (`docs/migrations/separations.md` §3) is the first slice authored under the

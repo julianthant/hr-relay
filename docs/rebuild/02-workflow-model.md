@@ -1025,6 +1025,20 @@ partial failure, cancellation, retry/resume, duplicate replay, and multiple inde
 
 ## 4. The run-state machine (gates are run-state, not task internals — D5)
 
+> **A gate's durable evidence is a `gate_results` row, and a downstream task's provenance must accept
+> it as such (D203, 2026-08-12).** A task's read-completion validation resolves its declared
+> `dependsOn` set against whole authority checkpoints. A gate has none and never will — its durable
+> record is an operator decision, not an observation — so a task declaring a gate as a dependency was
+> structurally unrunnable until the first live gated run found it. `upstreamEvidence` now carries
+> `gateResults` beside `checkpoints`: a declared dependency is satisfied by either, an undeclared one
+> from either side is refused by name, and a gate contributes exactly ONE `operator`-sourced fact
+> dated at `resolvedAt` with no output leaves — what a gate dates is the DECISION, not a field. It
+> cannot make a derived output look fresher than its live inputs, because a derived leaf takes the
+> OLDEST original observation and an approval is always at least as new as the evidence it was
+> granted on. Fabricating a checkpoint row for the gate was the tempting fix and is exactly what D144
+> refused: a durable record must not claim a shape it does not have.
+
+
 Tasks stay run-to-completion with bounded duration (doc 01's retry/timeout policy). Long waits —
 OCR approval, oath-upload's child-signature watching, external signals — are **gate nodes** in the
 descriptor sequence, owned by this state machine. Doc 03's `gate.opened`/`gate.resolved` events

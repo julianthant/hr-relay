@@ -11,6 +11,32 @@ means "Person Org" must say so rather than quantifying over the whole registry.
 
 ## Lessons learned
 
+- **2026-08-12: the Person Org DETAIL page already carried the whole job summary — the port was
+  throwing eleven twelfths of it away.** `extractDetail` read every *Employment Instances* row's
+  twelve cells and then called `selectPreferredAssignmentDetails` to keep ONE. Separations chunk 3
+  needed all of them, and the answer was not a second page visit or a second extraction: it was to
+  return the raw cells and let each consumer parse them with its own strictness. `searchPersonOrg`
+  keeps its exact derivation (which refuses a blank department, because a CANDIDATE without one is
+  unusable); `readJobSummary` gives that same cell an `{state:"absent", reason}` arm, because a
+  SEPARATION's identity check does not use the department and refusing there would fail a run over a
+  cell it never reads. Widening `search-person-org`'s own output instead would have moved a schema
+  hash shipped run records bind (D110/D114/D82) — which is why D194's convention says a new contract
+  beside the old one, not a wider old one.
+- **2026-08-12: the detail page renders "First Last" and Kuali renders "Last, First".** Live:
+  `Drose Clauckia` / `Dreitho Cramia` against `Clauckia, Drose` / `Cramia, Dreitho`. The ported
+  `classifyNameSimilarity` compares token MULTISETS and answers `same` for both, which is right —
+  and is the reason the identity gate does not lean on the tier. The `T002173685` incident's own pair
+  (`Hernandez, Jose Santos` vs `Santos Hernandez`) also classifies `same`, because the alignment
+  tolerates extra tokens on the longer side. A tier-triggered wrong-person control would not have
+  fired on the case it exists for.
+- **2026-08-12: legacy's Job Summary page is a DIFFERENT page, and this store deliberately does not
+  port it.** `WF_JOB_SUMMARY.GBL` carries the same per-employment facts across two LAZILY rendered
+  tabs (`Work Location`, `Job Information`) with a frozen left column that has to be zipped back on
+  by row count — three race-prone mechanisms for facts Person Org renders as one grid on one visit
+  with anchors this store already live-verified. The one fact only legacy's page has is the
+  effective-dated history per empl record ("what was this job on the separation date"), which is the
+  termination-filing chunk's problem and a second page visit either way.
+
 - **2026-08-04: A UCPath `T…` is not proof of success, and the receipt page is not where you'd
   guess.** The `receipt` completion arm reads SS Smart HR's transaction detail
   (`UC_EXTENSIONS.UC_SS_TBH.GBL`) — **not** the submit, and **not** the Smart HR Transaction Status

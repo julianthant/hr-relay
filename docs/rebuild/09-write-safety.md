@@ -1661,6 +1661,66 @@ limit** on the approval (how long may an approval sit before re-gating — hours
 whether **I-9 separations** show a different candidate packet than Kuali separations (the operator
 distinguishes the two types; the resolver schema is shared either way).
 
+### 14.9 As-built — the gate is BUILT, and three things changed on contact (D202, 2026-08-12)
+
+Separations chunk 3 (`docs/migrations/separations.md` §9.5/§9.6) builds §14 as
+`separations-identity-check`: two UCPath reads, a pure comparison producing the decision packet, the
+operator gate, and a post-gate check — registered, live-proved, and terminal `done` over a real person
+through the real command endpoint. D77's ALWAYS-GATE policy is unchanged. Three parts of §14.4/§14.5
+landed DIFFERENTLY from the design, each stronger, and this is the ratified record of that.
+
+**1. The result payload carries NO actor and NO instant. Authority does.** §14.4 draws
+`approvedBy: ActorId` and `approvedAt: Instant` on the payload. They are not there. The command
+kernel writes a `GateResultRecord` whose `resolvedBy` is `request.requestedBy` and whose `resolvedAt`
+is the kernel's own `now`, in the SAME transaction that stores the result and resumes the run
+(`executeResolveGate`). A caller-supplied `approvedBy` beside that would be a claim sitting next to
+authority — schema-valid, unverifiable, and free to disagree with it — which D110/D114 already
+settled ("a schema-valid caller-built result is not authority"). What the payload carries is what only
+the approver knows: the EID, where it came from, and the evidence digest. **§14.6 risk 6's honest
+status:** the durable row answers "who approved", and the receipt does NOT yet show it — a settled
+receipt lists the gate node as `unknown` because a receipt derives from checkpoints and a gate has
+none. Carrying the approver onto the receipt is open for the composition chunk.
+
+**2. A manually typed EID that the packet never SHOWED cannot be approved here.** §14.4 admits manual
+entry "re-validated against a live read before it can be approved". This chunk performs no second live
+read, so `verify-identity-approval` refuses an EID outside the packet's `approvableEids` with the
+durable code `identity-approval-eid-not-shown`. That is narrower than §14.4 and narrow in the safe
+direction: it refuses rather than filing against a person nothing in the run read. The live re-read
+that widens it belongs to the chunk that can perform one.
+
+**3. `chosenFrom` is CHECKED, not recorded.** The post-gate node re-derives where the approved EID
+actually came from and refuses a label the packet contradicts
+(`identity-approval-choice-mismatch`). A receipt that mislabels where an approved identity came from
+states something false about the human decision it records — D197's defect, one level up.
+
+**What is enforced structurally, and where.**
+
+| §14 requirement | How it is true |
+|---|---|
+| ALWAYS-GATE, no mode disables it (§4d/D7) | the graph has NO branch and NO `when`; `dryRun` reaches only the write sequencer, proved by an executable arm that parks a dry run at the gate; a resume past an unresolved gate fails by name |
+| the commit/product is reachable only through the gate (§14.6 #2) | `identity-gate-before-commit` now audits BOTH sinks — every transaction node AND the terminal result. A path is gated when it reaches the gate's own ancestry; a node outside that ancestry is data the operator never saw, and a side read feeding the sink is the violation. It caught the descriptor's first draft, which derived the run's product off the pre-gate node |
+| only an `IdentityApprovalResult` resolves it (§14.6 #5) | the same guard pins the registered gate's schema hash to `IdentityApprovalResultSchema`; the kernel compares an incoming payload against exactly that value |
+| the approval binds to the evidence (§14.5) | the comparison node stores `evidenceDigest` beside the packet; the post-gate node refuses a divergent digest with `identity-approval-evidence-moved` |
+| disconfirming evidence first (§14.6 #1) | `comparisons` is sorted disagreements-first by construction |
+| the control's shape changes with the risk (§14.6 #1) | `approvalShape` is computed SERVER-side and served on the wire — a frontend free to choose the control could quietly turn every gate into one click |
+| rejection never falls through to a write (§14.4) | `rejected` is a terminal `FailureRecord` whose message names the operator's reason AND the disagreements they were shown |
+
+**The wire, which is the whole of the frontend contract.** A `parked-gate` run advertises an
+`identity-gate` run-detail section carrying the packet as authority stored it, the evidence digest,
+the descriptor's exact gate-result schema hash (so a surface never derives it), the approvable EIDs
+each paired with the `chosenFrom` label the post-gate node will verify, `approvalShape`, and both
+typed resolutions as action descriptors at the run's CAS version. A command built straight off that
+payload parses through `CommandRequestSchema` unchanged. It is the one loopback payload that carries
+identity in the CLEAR, and the redaction table says so by name: §14.4's standard is that the operator
+decides without leaving the dashboard, and a wrong-person control whose evidence is redacted is a
+control that cannot be exercised.
+
+**The live finding that is the argument for ALWAYS-GATE in one line.** The `T002173685` incident's own
+name pair — Kuali `Hernandez, Jose Santos` versus the UCPath detail's `Santos Hernandez` — classifies
+as **`same`** under the ported tier function, because the token alignment tolerates extra tokens on
+the longer side. Legacy fires its wrong-person control only on `different`. A tier-triggered gate would
+not have fired on the very case it exists for.
+
 ### 14.8 Scope — the Kuali timekeeper-annotation workflow takes NO identity-approval gate (D127)
 
 **Ratified by the operator 2026-08-04.** `kuali-timekeeper-annotation` — the Phase-2 transaction

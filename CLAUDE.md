@@ -310,6 +310,49 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-12: a GATE's durable record is not a checkpoint, and the first live gated run is what
+  found it (D203).** A task's read-completion validation resolves its declared `dependsOn` against
+  whole authority checkpoints. A gate has none and never will — its record is an operator DECISION in
+  `gate_results`, not an observation — so a task declaring a gate as a dependency was structurally
+  unrunnable, and no fixture in the tree caught it because no fixture had a task node downstream of a
+  gate. The live run read UCPath, parked, took a real approval through the real command endpoint, and
+  then failed with a message that was TRUE about a record that cannot exist. The fix is D144's shape
+  again: the READER moves. `upstreamEvidence` carries `gateResults` beside `checkpoints`, a gate
+  contributes exactly ONE `operator`-sourced fact dated at `resolvedAt` with no output leaves, and it
+  cannot make a derived output look fresher than its live inputs because a derived leaf takes the
+  OLDEST original observation. Fabricating a checkpoint row for the gate was the tempting fix and is
+  exactly what D144 refused.
+- **2026-08-12: a gate that dominates the DECISION must also dominate the OUTPUT (D202).** The
+  identity-gate guard used to audit transaction nodes only, which was the whole truth while every
+  separation-class descriptor was gate-free. A read-only chunk whose product is an *approved subject*
+  breaks that: the later composition binds it as a write's `expected` side, so a terminal result
+  reachable without the gate hands that composition an identity no human confirmed while the eventual
+  commit looks perfectly gated. The guard now audits both sinks and caught the descriptor's first
+  draft, which read the document number and the employment picture straight off the PRE-gate node.
+  The walk's rule is also sharper than "the gate is on every edge" — no post-gate node could satisfy
+  that, since it must read the evidence it is checking. A path is gated when it reaches the gate's own
+  ANCESTRY; the violation is a side read the gate never depended on, which is data the operator never
+  saw.
+- **2026-08-12: a read task must not classify its own answer, and "absent" is decided by what a blank
+  MEANS (D201).** Legacy computes "all rows terminated" and "two concurrent jobs" as THROWS inside its
+  Job Summary page module, and only when the search happened to render a multi-row grid — so a
+  single-employment person who is already terminated is never checked at all, and the first live
+  subject of the new chunk turned out to be exactly that. The rich read returns the whole grid with
+  statuses VERBATIM and classifies nothing; the disposition is a pure unconditional fold. The absent
+  arms split the same way: empl record, HR status and business unit refuse a blank (a blank means the
+  extraction read a non-employment row), while the nine descriptive cells carry
+  `{state:"absent", reason}` — an unreadable department is data, and the consumer that NEEDS a
+  department is the one that refuses. One page extraction, two parses, each strict about its own
+  needs; widening the existing search task instead would have moved a schema hash shipped run records
+  bind.
+- **2026-08-12: the incident that motivated the identity gate would not have tripped a tier-triggered
+  gate.** `classifyNameSimilarity("Hernandez, Jose Santos", "Santos Hernandez")` returns **`same`**,
+  because the token alignment tolerates extra tokens on the longer side. Legacy fires its wrong-person
+  control only on `different`. That single fact is the argument for ALWAYS-GATE stated in one line,
+  and it is why the gate's packet leads with DISCONFIRMING evidence and computes its `approvalShape`
+  SERVER-side: a frontend free to choose the control could quietly turn every gate into one click,
+  which is doc 09 §14.6's rubber-stamping risk manufactured by accident.
+
 - **2026-08-12: A recovery mechanism that lives inside the thing it recovers cannot recover the
   thing it lives inside (D200).** `claimNext` throws while a worker id still owns a non-terminal
   run, and the D118 sweep that releases such a row runs in the maintenance ticker of a RUNNING
