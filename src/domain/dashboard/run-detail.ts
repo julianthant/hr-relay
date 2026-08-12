@@ -1,12 +1,14 @@
 import { z } from "zod";
 import {
   ActorIdSchema,
+  BrowserSystemIdSchema,
   DiagnosticBundleIdSchema,
   ElementIdSchema,
   ErrorCodeSchema,
   EvidenceRefSchema,
   FailureFingerprintSchema,
   FailureIdSchema,
+  FingerprintSchema,
   IsoInstantSchema,
   NodeIdSchema,
   NoteIdSchema,
@@ -19,7 +21,13 @@ import {
   TraceIdSchema,
   WorkflowIdSchema,
   WriteBindingProofIdSchema,
+  WriteIntentIdSchema,
 } from "../ids.js";
+import { UnscopedCommitReasonIdSchema } from "../unscoped-commit.js";
+import {
+  SubjectEvidenceSchema,
+  WriteIntentParkCodeSchema,
+} from "../write-safety-primitives.js";
 import { ContractFieldPathSchema } from "../contracts/base.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
 import {
@@ -28,6 +36,7 @@ import {
   SubjectEvidenceWireSchema,
   WriteStateSchema,
 } from "../trust/failure.js";
+import { ActionDescriptorWireSchema } from "./actions.js";
 import { ArtifactResourceWireSchema } from "./artifacts.js";
 import {
   PanelKindSchema,
@@ -345,6 +354,116 @@ export const FailureDetailWireSchema = z.strictObject({
 
 const CaptureListSchema = z.strictObject({ runId: RunIdSchema, artifacts: z.array(ArtifactResourceWireSchema) });
 
+/**
+ * WHO the fenced write was bound to, in the only form a surface may see it.
+ *
+ * A `subject-match` binding proof carries `expected` AND `observed` subject
+ * evidence, and its own `superRefine` already refuses any proof whose two
+ * halves differ — so projecting ONE value is not a shortcut, it is the whole
+ * fact: the proof exists precisely because the two agreed.
+ *
+ * The evidence is served as the DURABLE `SubjectEvidenceSchema`, not a second
+ * projection of it. That schema is display-safe by construction — a binding
+ * digest plus a bounded suffix, a branded artifact id, or a closed catalog key
+ * — so re-shaping it into `{ digest, displayRedacted }` would claim a redaction
+ * this projection did not perform and would drop the digest that makes the
+ * value checkable against the failure panel's copy.
+ *
+ * The `unscoped` arm is doc 09's reviewed no-subject commit. It has no subject
+ * to redact and must not pretend to one: it names the reviewed reason id from
+ * the closed registry, which is repository-authored text by construction.
+ */
+export const ParkedWriteSubjectWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("subject-match"),
+    proofId: WriteBindingProofIdSchema,
+    observedAt: IsoInstantSchema,
+    /** `expected` and `observed`, which the proof schema pins as identical. */
+    evidence: SubjectEvidenceSchema,
+  }),
+  z.strictObject({
+    state: z.literal("unscoped"),
+    proofId: WriteBindingProofIdSchema,
+    observedAt: IsoInstantSchema,
+    reviewedReasonId: UnscopedCommitReasonIdSchema,
+  }),
+]);
+
+/**
+ * The parked-write section (doc 09 §4.1, doc 13 §3.3/§8.5).
+ *
+ * A run in `parked-write` is the one lifecycle whose ordinary controls are
+ * REFUSED BY NAME: the kernel rejects generic retry for it, because a fenced
+ * write that may or may not exist in a real HR system is not a thing anyone
+ * gets to "try again". Until this section existed the operator saw a run
+ * rendered as generic `blocked` with two typed resolutions implemented, tested
+ * and unreachable — the same "built one half, never connected" shape D181 and
+ * D187 each found once.
+ *
+ * Every field is a durable fact re-read from authority at request time: the
+ * `write_intents` row is the write-safety authority, and a cached copy of it is
+ * exactly the value nobody may act on. `expectedVersion` on the served actions
+ * is the RUN's version, which is what both resolutions CAS against.
+ *
+ * **There is no negative-settlement/`wait` block here, deliberately.** Doc 09
+ * §4's `wait` decision is a scheduler answer that *changes no durable state* —
+ * `createWriteRecovery` returns it and writes nothing, by design, so the run
+ * stays unclaimable under its park. Nothing durable records that a probe ran,
+ * how many qualifying observations it has, or when the next one is due, so a
+ * `nextProbeAt` on this wire could only be re-derived from a policy the query
+ * cannot reach or invented outright — the banned constant. When §4 recovery
+ * gets a production caller that retains its probe verdicts, THAT is the commit
+ * that earns this block; see the `pending-wire-bindings` note.
+ */
+export const ParkedWriteDetailWireSchema = z.strictObject({
+  runId: RunIdSchema,
+  writeIntentId: WriteIntentIdSchema,
+  /** The exact intent generation a resolution must name to be accepted. */
+  generation: z.number().int().positive(),
+  /** The run attempt that fenced it — a later attempt is a different story. */
+  runAttempt: z.number().int().positive(),
+  system: BrowserSystemIdSchema,
+  taskId: TaskIdSchema,
+  /** The permanent key as a digest; the key itself never reaches a surface. */
+  idempotencyKeyDigest: FingerprintSchema,
+  fencedAt: IsoInstantSchema,
+  parkedAt: IsoInstantSchema,
+  parkedCode: WriteIntentParkCodeSchema,
+  /**
+   * The park message as the kernel composed it. It is `external-text`, not
+   * repository-authored: doc 09 §4's `park()` interpolates a thrown driver
+   * error and a probe's own `reason` into it, and neither is authored here.
+   */
+  parkedMessage: z.string().min(1),
+  subject: ParkedWriteSubjectWireSchema,
+  /**
+   * Doc 13 §8.5: an interactive control exists only because the SERVER
+   * described it. Both typed resolutions are always served for a parked run —
+   * which one is right is a question only the operator's look at the target
+   * system can answer, so hiding either would be this wire pre-deciding it.
+   */
+  actions: z.array(ActionDescriptorWireSchema).min(1),
+}).superRefine((parked, context) => {
+  if (Date.parse(parked.parkedAt) < Date.parse(parked.fencedAt)) {
+    context.addIssue({
+      code: "custom",
+      path: ["parkedAt"],
+      message: "a write cannot park before it was fenced",
+    });
+  }
+  const targeted = parked.actions.filter((action) => action.kind === "command"
+    && action.writeTarget !== undefined
+    && action.writeTarget.writeIntentId === parked.writeIntentId
+    && action.writeTarget.intentGeneration === parked.generation);
+  if (targeted.length !== parked.actions.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["actions"],
+      message: "every parked-write action must target this exact intent and generation",
+    });
+  }
+});
+
 export const RunDetailSectionResponseSchema = z.discriminatedUnion("section", [
   z.strictObject({ section: z.literal("logs"), payload: NotePageSchema }),
   z.strictObject({ section: z.literal("receipt"), payload: wireResourceSchema(ReceiptSectionSchema) }),
@@ -355,8 +474,10 @@ export const RunDetailSectionResponseSchema = z.discriminatedUnion("section", [
   z.strictObject({ section: z.literal("context-attempts"), payload: ContextSectionSchema }),
   z.strictObject({ section: z.literal("failure"), payload: wireResourceSchema(FailureDetailWireSchema) }),
   z.strictObject({ section: z.literal("captures"), payload: CaptureListSchema }),
+  z.strictObject({ section: z.literal("parked-write"), payload: ParkedWriteDetailWireSchema }),
 ]);
 
+export type ParkedWriteDetailWire = z.infer<typeof ParkedWriteDetailWireSchema>;
 export type FailureDetailWire = z.infer<typeof FailureDetailWireSchema>;
 export type RunDetailWire = z.infer<typeof RunDetailWireSchema>;
 export type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;

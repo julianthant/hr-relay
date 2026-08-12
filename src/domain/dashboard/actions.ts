@@ -13,12 +13,38 @@
  * note; serving lands with the doc 03 action-policy projection).
  */
 import { z } from "zod";
+import { WriteIntentIdSchema } from "../ids.js";
 
 export const ActionPlacementSchema = z.enum(["footer", "banner", "outcome", "menu", "data", "review"]);
 export const ActionIntentSchema = z.enum(["primary", "neutral", "destructive", "violet", "success", "info", "warning"]);
 export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "delete", "review", "resolve", "rename", "external", "drill"]);
-/** The Phase-1 command verbs a served action may name (kernel-accepted only). */
-export const ActionCommandKeySchema = z.enum(["retry", "cancel", "bump", "hide", "unhide", "resolve-gate"]);
+/**
+ * The command verbs a served action may name (kernel-accepted only).
+ *
+ * The two `resolve-write-*` verbs are doc 09 §4.1's typed operator resolutions.
+ * They are NOT interchangeable with `retry`: the kernel rejects generic retry
+ * for a `parked-write` run by name, because a fenced write that may already
+ * exist in a real HR system has no "try again" — only "I looked, and it is
+ * there" or "I looked, and it is not". Serving them is what makes that pair
+ * reachable at all.
+ */
+export const ActionCommandKeySchema = z.enum([
+  "retry", "cancel", "bump", "hide", "unhide", "resolve-gate",
+  "resolve-write-present", "resolve-write-absent",
+]);
+
+/**
+ * Doc 09 §4.1: both write resolutions are INTENT-scoped as well as run-scoped
+ * — the run version alone cannot express "resolve the write this browser was
+ * looking at", because recovery can advance a generation without touching the
+ * run row. A stale generation is refused by the kernel, which is why the
+ * descriptor carries the one it was projected from rather than letting the
+ * surface read it back off a second fetch.
+ */
+export const ActionWriteTargetSchema = z.strictObject({
+  writeIntentId: WriteIntentIdSchema,
+  intentGeneration: z.number().int().positive(),
+});
 
 export const ActionConfirmWireSchema = z.strictObject({
   title: z.string().min(1),
@@ -49,6 +75,8 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
     confirm: ActionConfirmWireSchema.optional(),
     /** the typed resolution this gate option records (`resolve-gate` only) */
     resolution: z.enum(["approved", "rejected"]).optional(),
+    /** the parked intent this write resolution settles (`resolve-write-*` only) */
+    writeTarget: ActionWriteTargetSchema.optional(),
   }),
   z.strictObject({
     ...ActionBaseFields,
@@ -58,7 +86,28 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
       runId: z.string().min(1).optional(),
     }),
   }),
-]);
+]).superRefine((action, context) => {
+  if (action.kind !== "command") return;
+  const scoped = action.command === "resolve-write-present" || action.command === "resolve-write-absent";
+  // A write resolution WITHOUT its intent target is a control that cannot be
+  // sent, and an intent target on any other verb names a scope that command
+  // does not accept — both are unreachable controls, which is the one thing a
+  // server-authored descriptor exists to make impossible.
+  if (scoped && action.writeTarget === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["writeTarget"],
+      message: `${action.command} is intent-scoped and cannot be served without a write target`,
+    });
+  }
+  if (!scoped && action.writeTarget !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["writeTarget"],
+      message: `${action.command} takes no write target; only the doc 09 §4.1 resolutions are intent-scoped`,
+    });
+  }
+});
 
 export type ActionPlacement = z.infer<typeof ActionPlacementSchema>;
 export type ActionIntent = z.infer<typeof ActionIntentSchema>;

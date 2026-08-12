@@ -329,6 +329,7 @@ function surface(options: SurfaceOptions = {}): Surface {
         getRun: (runId) => database.authority.runs.get(runId),
         latestCheckpoint: (workflowId, itemId, nodeId) =>
           database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
+        getWriteIntent: (writeIntentId) => database.authority.writeIntents.get(writeIntentId),
       },
       descriptors,
       trust: createReceiptService({ database, descriptors: [captureFixtureDescriptor] }),

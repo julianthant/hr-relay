@@ -54,7 +54,18 @@ export interface DashboardCommandService {
   execute(input: unknown): CommandResult;
 }
 
-const SPANLESS_RUN_TYPES = new Set(["hide", "unhide", "rename", "bump", "cancel"]);
+/**
+ * Applied run commands that emit no span but DO change what the queue row
+ * projects, so the projection has to be told. The two doc 09 §4.1 write
+ * resolutions belong here for exactly the reason `cancel` does: they move the
+ * run off `parked-write` (to `queued` on absent, to a settled outcome on
+ * present) and the row's status is folded from authority. Without the refresh
+ * the operator resolves the write and the queue keeps saying `blocked`.
+ */
+const SPANLESS_RUN_TYPES = new Set([
+  "hide", "unhide", "rename", "bump", "cancel",
+  "resolve-write-present", "resolve-write-absent",
+]);
 
 export function createDashboardCommandService(deps: DashboardCommandServiceDeps): DashboardCommandService {
   return Object.freeze({

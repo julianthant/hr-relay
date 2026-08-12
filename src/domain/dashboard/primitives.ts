@@ -26,7 +26,7 @@ export const RecordRevisionSchema = z.number().int().positive().brand<"RecordRev
 export const PanelKindSchema = z.enum(["run", "member", "review", "group"]);
 export const RunDetailSectionSchema = z.enum([
   "logs", "receipt", "review", "people", "context-data", "context-evidence",
-  "context-attempts", "failure", "captures",
+  "context-attempts", "failure", "captures", "parked-write",
 ]);
 
 export const WireErrorSchema = z.strictObject({

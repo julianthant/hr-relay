@@ -241,6 +241,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
       getRun: (runId) => database.authority.runs.get(runId),
       latestCheckpoint: (workflowId, itemId, nodeId) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
+      getWriteIntent: (writeIntentId) => database.authority.writeIntents.get(writeIntentId),
     },
     descriptors: descriptorResolver,
     trust: receipts,
