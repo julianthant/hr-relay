@@ -163,14 +163,33 @@ function separationDocumentLeaves(scope: EvidenceValueScope, prefix: string): un
     ["state", "reason", ...extra].map((leaf) => at(`${path}.${leaf}`));
   const text = (path: string): string[] => arms(path, ["value"]);
   const date = (path: string): string[] => arms(path, ["value", "raw"]);
+  /**
+   * A person field's ARM DISCRIMINATOR is not the person.
+   *
+   * The live proof run on document 4502 (2026-08-12) is why this is split
+   * rather than declared wholesale: classifying `employee.name.state` as a
+   * `direct-identifier` put its value through `last4`, so a receipt that should
+   * read `present` read **`sent`** — and `employee.name.reason` read `alue`.
+   * That is not redaction, it is a receipt telling the operator something
+   * false. Only the `value` leaf carries the identifier; `state` and `reason`
+   * describe the READ, and the read is a transaction fact.
+   */
+  const personText = (path: string): { open: string[]; identifying: string[] } => ({
+    open: [at(`${path}.state`), at(`${path}.reason`)],
+    identifying: [at(`${path}.value`)],
+  });
+  const employeeName = personText("employee.name");
+  const employeeEid = personText("employee.eid");
+  const timekeeperName = personText("timekeeper.name");
   return [
     // Transaction facts: the document's identity, the page state, the instant,
     // and the form-type proof. None of them describes a person.
     ...open(scope, at("pageStateId"), at("actionId"), at("documentNumber"), at("observedAt"),
       at("formType.observed"), at("formType.matches")),
-    // The PERSON. `name` and `eid` are `direct-identifier`; the transform doc 11
-    // permits for one is `last4`, on every arm the field can take.
-    ...person(scope, ...text("employee.name"), ...text("employee.eid")),
+    // The PERSON: the `value` leaf only (see `personText` above).
+    ...person(scope, ...employeeName.identifying, ...employeeEid.identifying,
+      ...timekeeperName.identifying),
+    ...open(scope, ...employeeName.open, ...employeeEid.open, ...timekeeperName.open),
     // Everything else about the appointment describes the TRANSACTION: a title
     // code, a division, a work location, a department. The operator already
     // sees these on the queue row.
@@ -191,12 +210,6 @@ function separationDocumentLeaves(scope: EvidenceValueScope, prefix: string): un
       // Option lists are ARRAYS, hence single leaves each.
       at("options.terminationType"), at("options.division"), at("options.employeeType"),
       at("options.studentTitleCode"), at("options.department"), at("options.finalPay")),
-    /**
-     * `timekeeper.name` is `direct-identifier` because `src/domain/secrets.ts`
-     * already classifies the `TIMEKEEPER_NAME` environment value that way, and
-     * one field cannot carry two classifications.
-     */
-    ...person(scope, ...text("timekeeper.name")),
   ];
 }
 
