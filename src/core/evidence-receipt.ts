@@ -370,7 +370,7 @@ export function buildRunEvidenceReceipt(input: ReceiptBuildInput): RunEvidenceRe
 
   /** The descriptor's OWN declaration of what matters on a surface (doc 02 §1.5). */
   const declaredDetails = new Set(
-    descriptor.details.map((detail) => `${detail.source.nodeId} ${detail.source.fieldPath}`),
+    descriptor.details.map((detail) => `${detail.source.nodeId}\u0000${detail.source.fieldPath}`),
   );
 
   for (const node of nodes) {
@@ -457,7 +457,7 @@ export function buildRunEvidenceReceipt(input: ReceiptBuildInput): RunEvidenceRe
         record,
         node.kind === "transaction" ? `output.${leaf.path}` : leaf.path,
       );
-      const mandatory = declaredDetails.has(`${id} ${leaf.path}`);
+      const mandatory = declaredDetails.has(`${id}\u0000${leaf.path}`);
       observations.push(observationFact({
         factId,
         entryId,

@@ -32,6 +32,7 @@
       - button "person-lookup" [pressed]
       - button "kuali-timekeeper-annotation"
       - button "separations-kronos-timecard"
+      - button "separations-kuali-read"
     - text: code pl category search version 1 shape single enqueue reject-active subject derived from input system crm system ucpath edit data declared-fields review no run surface declared intake 2 bindable fields capture none descriptor src/workflows/person-lookup/descriptor.ts module src/workflows/person-lookup/module.ts contract 99fd17f6d99aresult c1db3f17036333 files fingerprinted7 scenarios
     - navigation "Graph structure":
       - text: Graph · 4 nodes

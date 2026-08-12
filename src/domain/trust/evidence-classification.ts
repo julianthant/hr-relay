@@ -325,7 +325,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
 
 const BY_SCOPE_AND_PATH = new Map<string, EvidenceFieldClassification>();
 for (const entry of EVIDENCE_FIELD_CLASSIFICATIONS) {
-  const key = `${evidenceScopeKey(entry.scope)} ${entry.path}`;
+  const key = `${evidenceScopeKey(entry.scope)}\u0000${entry.path}`;
   const existing = BY_SCOPE_AND_PATH.get(key);
   if (existing !== undefined) {
     throw new Error(
@@ -385,7 +385,7 @@ export function classifyEvidenceLeaf(
   scope: EvidenceValueScope,
   path: string,
 ): EvidenceFieldClassification {
-  const entry = BY_SCOPE_AND_PATH.get(`${evidenceScopeKey(scope)} ${path}`);
+  const entry = BY_SCOPE_AND_PATH.get(`${evidenceScopeKey(scope)}\u0000${path}`);
   if (entry === undefined) {
     throw new Error(
       `no declared evidence classification for ${evidenceScopeKey(scope)} field "${path}"; `

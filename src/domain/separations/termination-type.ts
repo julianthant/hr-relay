@@ -273,7 +273,7 @@ export function auditTerminationTypeOptionList(
   const added = observed.filter((option) => !captured.includes(option));
   const removed = captured.filter((option) => !observed.includes(option));
   const reordered = added.length === 0 && removed.length === 0
-    && observed.join(" ") !== captured.join(" ");
+    && observed.join("\u0000") !== captured.join("\u0000");
   if (added.length === 0 && removed.length === 0 && !reordered) {
     return TerminationTypeOptionAuditSchema.parse({ state: "matches" });
   }
