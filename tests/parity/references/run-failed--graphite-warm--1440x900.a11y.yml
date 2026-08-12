@@ -150,14 +150,14 @@
     - region "Attempts": Attempts Attempt 1 2026-08-03T09:30:00.000-07:00 · this attempt
     - separator
     - text: 2 fields · 1 attempt
-- dialog "Workflow Panel":
-  - text: Workflow Panel
-  - button "Dock the Workflow Panel as a sidebar"
-  - button "Minimise the Workflow Panel to an icon"
-  - text: rows Search
-  - list:
-    - listitem:
-      - button "Person Lookup 14 in Person Lookup": Person Lookup 14
+  - dialog "Workflow Panel":
+    - text: Workflow Panel
+    - button "Dock the Workflow Panel as a sidebar"
+    - button "Minimise the Workflow Panel to an icon"
+    - text: rows Search
+    - list:
+      - listitem:
+        - button "Person Lookup 14 in Person Lookup": Person Lookup 14
 - region "Session Panel":
   - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
   - text: v0.1.0

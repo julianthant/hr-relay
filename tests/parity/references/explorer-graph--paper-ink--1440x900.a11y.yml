@@ -18,7 +18,7 @@
   - button "Keyboard shortcuts"
   - button "Switch to Graphite Warm"
 - main:
-  - button "Workflow Panel — Person Lookup, minimised. 14 rows on this day, across every workflow": "14"
+  - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
   - button "Archive"
   - button "Activity"
   - button "Explore graph"
@@ -31,6 +31,7 @@
     - group "Registered workflows":
       - button "person-lookup" [pressed]
       - button "kuali-timekeeper-annotation"
+      - button "separations-kronos-timecard"
     - text: code pl category search version 1 shape single enqueue reject-active subject derived from input system crm system ucpath edit data declared-fields review no run surface declared intake 2 bindable fields capture none descriptor src/workflows/person-lookup/descriptor.ts module src/workflows/person-lookup/module.ts contract 99fd17f6d99aresult c1db3f17036333 files fingerprinted7 scenarios
     - navigation "Graph structure":
       - text: Graph · 4 nodes

@@ -125,14 +125,15 @@
       - button "EID 10990032 person lookup"
       - button "Expand"
       - text: 9:10 AM pl-091010-0070 person lookup took 2m 0s Right-click or press m for every command on Separation audit — August
-- dialog "Workflow Panel":
-  - text: Workflow Panel
-  - button "Dock the Workflow Panel as a sidebar"
-  - button "Minimise the Workflow Panel to an icon"
-  - text: rows Search
-  - list:
-    - listitem:
-      - button "Person Lookup 14 in Person Lookup": Person Lookup 14
+  - text: No run open Pick a run from the Person Lookup queue and its logs, decisions, data and receipt open here. The run you had open belongs to a different workflow, so it closed when you switched.
+  - dialog "Workflow Panel":
+    - text: Workflow Panel
+    - button "Dock the Workflow Panel as a sidebar"
+    - button "Minimise the Workflow Panel to an icon"
+    - text: rows Search
+    - list:
+      - listitem:
+        - button "Person Lookup 14 in Person Lookup": Person Lookup 14
 - region "Session Panel":
   - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
   - text: v0.1.0

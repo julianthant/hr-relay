@@ -18,7 +18,7 @@
   - button "Keyboard shortcuts"
   - button "Switch to Paper Ink"
 - main:
-  - button "Workflow Panel — Person Lookup, minimised. 14 rows on this day, across every workflow": "14"
+  - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
   - button "Archive"
   - button "Activity"
   - button "Explore graph"
@@ -31,6 +31,7 @@
     - group "Registered workflows":
       - button "person-lookup"
       - button "kuali-timekeeper-annotation" [pressed]
+      - button "separations-kronos-timecard"
     - text: code kt category operations version 1 shape single enqueue reject-active subject eid system kuali edit data none review no run surface none intake none capture none descriptor src/workflows/kuali-timekeeper-annotation/descriptor.ts module src/workflows/kuali-timekeeper-annotation/module.ts contract b9d96f8bd9d7result d46e4d87548931 files fingerprinted4 scenarios
     - navigation "Graph structure":
       - text: Graph · 1 node

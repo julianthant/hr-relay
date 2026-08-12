@@ -18,7 +18,7 @@
   - button "Keyboard shortcuts"
   - button "Switch to Graphite Warm"
 - main:
-  - button "Workflow Panel — Person Lookup, minimised. 14 rows on this day, across every workflow": "14"
+  - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
   - button "Archive"
   - button "Activity"
   - button "Explore graph"
@@ -31,7 +31,7 @@
     - group "Search the UI catalog":
       - searchbox "Search the UI catalog by id, label, system or search term": kuali
       - button "Clear search"
-      - text: 8 of 49 entries
+      - text: 8 of 72 entries
     - region "kuali":
       - text: kuali · 8 entries
       - list:
