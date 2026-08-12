@@ -5,15 +5,32 @@
  * The Context rail — the permanent home of a run's DATA, beside the stream
  * rather than behind a tab (doc 13 §3.3: "Data lives in the Context rail").
  *
- * WHAT THE 1i WIRE SERVES, and what that costs this surface. A context section
- * is `{ runId, entries: [{ label, valueRedacted }] }` — a label and an
- * already-redacted string, and nothing else. The demo's ledger drew four more
- * axes on every row: DIRECTION (the `--ds-read-*` / `--ds-write-*` pair), the
- * originating system, the observation clock, and an editable/locked policy with
- * dirty/corrected/refreshed/staged/unconfirmed badges. None of them is on this
- * wire, so none of them is drawn — a direction arrow this surface guessed would
- * be a claim about whether a run CHANGED the world, which is the most expensive
- * thing in this product to get wrong.
+ * WHAT THE WIRE SERVES, AND WHAT IT STILL DOES NOT. The demo's ledger drew four
+ * axes this surface could not: DIRECTION (the `--ds-read-*` / `--ds-write-*`
+ * pair), the originating system, the observation clock, and an editable/locked
+ * policy with dirty/corrected/refreshed/staged/unconfirmed badges. Two of the
+ * four have since arrived and two have NOT, and the difference between them is
+ * the whole rule this comment exists to hold:
+ *
+ *  - **The edit policy** is served (2i-C): `edit` carries editable/locked with
+ *    the real reason and any pending correction, and the row renders by SHAPE.
+ *  - **The observation clock and the fact's own source** are served (W2): each
+ *    entry may carry `observedAt`, `source` and `correctedAt`, projected from
+ *    the producing checkpoint's `FactProvenance` row — the SAME record
+ *    `editableEntryOf` was already reading and discarding. `corrected` is
+ *    drawn from `correctedAt`; `derived` from `source`; a `live` read is the
+ *    unmarked default, because a badge on every row is a badge on none.
+ *  - **DIRECTION is still absent.** Nothing durable says whether a recorded
+ *    field was read or written, and a direction arrow this surface guessed
+ *    would be a claim about whether a run CHANGED the world — the most
+ *    expensive thing in this product to get wrong. It stays undrawn.
+ *  - **The originating system is still absent**, and so is the demo's
+ *    `refreshed` badge, which means "this changed on the server since you
+ *    looked" and needs the superseded reading beside the current one. This
+ *    wire carries one value per entry, so there is nothing to compare.
+ *
+ * An absent axis draws NOTHING — never a placeholder, never a dash, and never
+ * a plausible default.
  *
  * What survives is the ratified SHAPE: the stacked label-over-value row bound
  * by a rail (the rail is what makes an eight-row ledger read as eight things
@@ -31,6 +48,7 @@ import { systemClock } from "../../domain/clock.js";
 import { readEnumPreference, writePreference } from "../lib/preference-storage.js";
 import { cn } from "../lib/utils.js";
 import {
+  Badge,
   Button,
   EmptyState,
   Field,
@@ -48,7 +66,7 @@ import type {
   RunDetailSectionResponseSchema,
 } from "../../domain/dashboard/run-detail.js";
 import { useDashboardClient } from "../state/client-context.js";
-import { plural } from "./format.js";
+import { fmtClock, plural } from "./format.js";
 
 type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;
 export type ContextSummary = z.infer<typeof ContextSummaryWireSchema>;
@@ -228,7 +246,70 @@ function parseDraft(
  * not" are told apart by SHAPE): a locked row is flat text with a lock and the
  * REAL reason, an editable row is a `ValueField` box the operator types into.
  */
-function LedgerRow({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * WHEN a value was established, and by WHAT — the demo's Data-ledger axis, in
+ * exactly the arms this wire now serves (W2).
+ *
+ * The clock is the least load-bearing thing on the row, so it is the FIRST to
+ * fold away in the resting 376px rail and the first to return when the rail
+ * widens to edit in — the demo's own `@min-[26rem]:` rule, on the rail's own
+ * container. It reads `-muted` rather than `-faint`: `-faint` is the
+ * disabled/placeholder step and a real observation is neither.
+ *
+ * The badges do NOT fold. `corrected` says a human overrode what the run read,
+ * and a hazard is never disclosed behind a width.
+ */
+function ProvenanceMarks({ entry }: { entry: ContextDataEntry }) {
+  const { observedAt, source, correctedAt } = entry;
+  if (observedAt === undefined && source === undefined && correctedAt === undefined) return null;
+  return (
+    <>
+      {correctedAt !== undefined && (
+        <Badge
+          tone="warning"
+          className="shrink-0"
+          title={`Corrected by an operator at ${correctedAt}. The run's own reading is kept beside it on the receipt.`}
+        >
+          corrected
+        </Badge>
+      )}
+      {/* `live` is the unmarked default — it is what most rows are, and a badge
+          on every row is a badge on none. `derived` earns one because a
+          computed value's clock is not a live observation of anything. */}
+      {source === "derived" && (
+        <Badge
+          className="shrink-0"
+          title="Computed by the run from other recorded values, not read from a system."
+        >
+          derived
+        </Badge>
+      )}
+      {observedAt !== undefined && (
+        <span
+          title={observedAt}
+          className={cn(
+            dsText.micro,
+            dsText.nums,
+            "hidden shrink-0 text-[color:var(--ds-fg-muted)] @min-[26rem]:inline",
+          )}
+        >
+          {fmtClock(observedAt)}
+        </span>
+      )}
+    </>
+  );
+}
+
+function LedgerRow({
+  label,
+  marks,
+  children,
+}: {
+  label: string;
+  /** the row's provenance marks, right-aligned on the label line */
+  marks?: ReactNode;
+  children: ReactNode;
+}) {
   const labelId = useId();
   return (
     <div className="flex gap-[var(--ds-space-snug)] py-[var(--ds-space-snug)]">
@@ -244,16 +325,27 @@ function LedgerRow({ label, children }: { label: string; children: ReactNode }) 
         )}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-hair)]">
-        <span
-          id={labelId}
-          title={label}
-          className={cn(
-            dsText.body,
-            dsText.flush,
-            "min-w-0 truncate font-medium text-[color:var(--ds-fg-secondary)]",
+        {/* The LABEL gives up width to the marks, never the other way round:
+            the marks are already one word each and a truncated badge is
+            unreadable, while a clipped label is still recoverable from its
+            `title` and from the value under it. */}
+        <span className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
+          <span
+            id={labelId}
+            title={label}
+            className={cn(
+              dsText.body,
+              dsText.flush,
+              "min-w-0 truncate font-medium text-[color:var(--ds-fg-secondary)]",
+            )}
+          >
+            {label}
+          </span>
+          {marks !== undefined && (
+            <span className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-tight)]">
+              {marks}
+            </span>
           )}
-        >
-          {label}
         </span>
         {children}
       </div>
@@ -440,7 +532,11 @@ function DataSection({
       ) : (
         <div className="flex flex-col">
           {policies.map(({ entry, policy }, index) => (
-            <LedgerRow key={`${entry.label}:${String(index)}`} label={entry.label}>
+            <LedgerRow
+              key={`${entry.label}:${String(index)}`}
+              label={entry.label}
+              marks={<ProvenanceMarks entry={entry} />}
+            >
               {policy.kind === "locked" ? (
                 <LockedValue value={entry.valueRedacted} reason={policy.reason} />
               ) : (

@@ -262,6 +262,37 @@ const ContextDataSectionSchema = z.strictObject({
     label: z.string().min(1),
     valueRedacted: z.string().min(1),
     edit: ContextDataEntryEditSchema,
+    /**
+     * WHEN this value was established and by WHAT, off the producing
+     * checkpoint's own `FactProvenance` row (doc 02 §5.6).
+     *
+     * The rail's header comment has listed an observation clock among four
+     * axes the 1i wire dropped since the surface was ported, and of those four
+     * this one was never missing from AUTHORITY — `editableEntryOf` has read
+     * the checkpoint since 2i-C and thrown its `.provenance` away. So this is
+     * a projection of a fact already loaded, not a new storage read and not a
+     * migration: there is no schema version to move.
+     *
+     * All three are OPTIONAL and every one of them is read forward (D133). A
+     * pre-2i checkpoint carries provenance for the leaves its task recorded and
+     * nothing for a leaf it did not, an entry with no field identity at all
+     * (a key recorded under an earlier descriptor) can have none by
+     * construction, and a run whose step never checkpointed has no row to read
+     * — three different absences, all of which mean "this build cannot date
+     * this value", which is what an absent field says. Substituting the
+     * checkpoint's `writtenAt` would date the ROW rather than the FACT, and a
+     * derived value's own rule (`originalObservedAt`) exists precisely because
+     * those two are not the same instant.
+     *
+     * `correctedAt` is present only on an operator correction and is what the
+     * surface's `corrected` badge is drawn from. The demo's `refreshed` badge
+     * has NO arm here on purpose: it means "this value changed on the server
+     * since you looked", which needs the superseded reading beside the current
+     * one, and this wire carries one value per entry.
+     */
+    observedAt: IsoInstantSchema.optional(),
+    source: z.enum(["live", "derived", "operator"]).optional(),
+    correctedAt: IsoInstantSchema.optional(),
   })),
 });
 export type ContextDataSectionWire = z.infer<typeof ContextDataSectionSchema>;
