@@ -64,6 +64,14 @@ const ROLE_PAIRS: readonly { id: string; fixtureRun?: string; seededRun?: string
   { id: "running-run", fixtureRun: FIXTURE_IDS.runningRun, seededRun: "runningRun" },
   { id: "done-run", fixtureRun: FIXTURE_IDS.doneRun, seededRun: "doneRun" },
   { id: "group-run", fixtureRun: FIXTURE_IDS.groupOf13, seededRun: "groupRun" },
+  /*
+    W2. The pair that matters most for this slice: the fixture adapter AUTHORS
+    the parked-write section while the seeded one DERIVES it from a real fenced
+    and parked `write_intents` row, and the surface must take the same branch
+    over both. A control the two adapters disagree about is a control one of
+    them is inventing.
+  */
+  { id: "parked-write-run", fixtureRun: FIXTURE_IDS.parkedRun, seededRun: "parkedRun" },
 ];
 
 for (const pair of ROLE_PAIRS) {

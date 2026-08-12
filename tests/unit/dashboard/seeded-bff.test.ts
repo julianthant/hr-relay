@@ -136,6 +136,44 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
     expect(logs.payload.notes.some(({ level }) => level === "error")).toBe(true);
   });
 
+  /**
+   * W2. The seed has transitioned this run to `parked-write` since it was
+   * written, and `availableSections` advertises the section from that lifecycle
+   * ALONE — while the serving arm re-reads the `write_intents` row the park
+   * names and throws by design when authority does not hold it. Nothing in the
+   * corpus had ever opened this run, so the 500 sat there unmet. This case is
+   * what makes the fenced row a requirement of the seed rather than a detail.
+   */
+  it("serves the parked run's section from a real fenced-and-parked write intent", async () => {
+    const server = await boot();
+    const runId = server.runIds.parkedRun;
+
+    const detail = RunDetailWireSchema.parse(
+      await (await fetch(`${server.baseUrl}/api/v1/runs/${runId}`)).json(),
+    );
+    expect(detail.availableSections).toContain("parked-write");
+    // The coarse queue status is unchanged; the SECTION is what makes the park
+    // addressable, which is the whole D198 (a) claim.
+    expect(detail.header.status).toBe("blocked");
+
+    const response = await fetch(`${server.baseUrl}/api/v1/runs/${runId}/parked-write`);
+    expect(response.status, "a parked run with no intent answers 500, not an empty panel").toBe(200);
+    const section = RunDetailSectionResponseSchema.parse(await response.json());
+    if (section.section !== "parked-write") throw new Error("expected the parked-write section");
+    expect(section.payload.generation).toBe(1);
+    expect(section.payload.system).toBe("ucpath");
+    expect(section.payload.subject.state).toBe("subject-match");
+    // Both typed resolutions, both intent-scoped, both confirm-first — the
+    // three properties a surface may not supply for itself.
+    expect(section.payload.actions.map((action) => action.kind === "command" && action.command))
+      .toEqual(["resolve-write-present", "resolve-write-absent"]);
+    for (const action of section.payload.actions) {
+      if (action.kind !== "command") throw new Error("expected a command descriptor");
+      expect(action.confirm).toBeDefined();
+      expect(action.writeTarget?.intentGeneration).toBe(1);
+    }
+  });
+
   it("opens a resumable stream whose first envelope parses", async () => {
     const server = await boot();
     const controller = new AbortController();

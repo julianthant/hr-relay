@@ -406,6 +406,13 @@ interface DetailSeed {
     notRunReason?: "condition-false" | "branch-not-selected";
   }[];
   readonly dataFacts?: number;
+  /**
+   * An explicit advertisement, for a state the status alone cannot imply. A
+   * `blocked` row is `parked-write` OR `interrupted` — the lifecycle knows and
+   * the coarse queue status does not (the real `availableSections` reads
+   * `authority.lifecycle`, not `header.status`), so the corpus states it.
+   */
+  readonly sections?: readonly string[];
 }
 
 function detailOf(input: DetailSeed): RunDetailWire {
@@ -442,9 +449,9 @@ function detailOf(input: DetailSeed): RunDetailWire {
     gate: input.gate,
     outcome: input.outcome,
     context: { dataFacts: input.dataFacts ?? 2, evidenceFacts: 0, attempts: 1 },
-    availableSections: input.status === "failed"
+    availableSections: input.sections ?? (input.status === "failed"
       ? ["logs", "receipt", "context-data", "context-attempts", "failure"]
-      : ["logs", "receipt", "context-data", "context-attempts"],
+      : ["logs", "receipt", "context-data", "context-attempts"]),
   });
 }
 
@@ -490,6 +497,25 @@ export const FIXTURE_RUN_DETAILS: Readonly<Record<string, RunDetailWire>> = Obje
       { seed: 5, minute: 47, label: "searching", state: "done" },
       { seed: 5, minute: 49, label: "gate:identity-review", state: "blocked" },
     ],
+  }),
+  /*
+    THE PARKED WRITE (doc 09 §4.1, W2). The one lifecycle whose ordinary
+    controls are refused by name, and — until this reference existed — the one
+    the corpus had never opened at all: the queue photographed its `blocked`
+    row from the day the corpus was written, and nothing had ever asked what
+    the panel behind it drew. A run is NOT terminal while a write is parked, so
+    its outcome is absent with the reason and its receipt section is not
+    advertised: a receipt states a settled verdict and this run has none.
+  */
+  [FIXTURE_IDS.parkedRun]: detailOf({
+    seed: 6, panelKind: "run", title: "EID 10777012", status: "blocked",
+    gate: NO_GATE,
+    outcome: absent("a write to UCPath is fenced and unresolved; the run is stopped"),
+    timeline: [
+      { seed: 6, minute: 44, label: "searching", state: "done" },
+      { seed: 6, minute: 45, label: "terminate", state: "blocked" },
+    ],
+    sections: ["logs", "context-data", "context-attempts", "parked-write"],
   }),
   [FIXTURE_IDS.memberRun]: detailOf({
     seed: 31, panelKind: "member", title: "Alvarez, Maria", status: "done",
@@ -595,11 +621,108 @@ type DataEntrySeed = {
   label: string;
   valueRedacted: string;
   edit?: Record<string, unknown>;
+  /** W2: the fact's own provenance, when the producing checkpoint carried one. */
+  observedAt?: string;
+  source?: "live" | "derived" | "operator";
+  correctedAt?: string;
 };
 
 const LOCKED_NOT_DECLARED = {
   state: "locked",
   reason: "not declared correctable by this workflow",
+} as const;
+
+/**
+ * The parked write, in the durable facts the real query projects (doc 09 §4.1).
+ *
+ * Adapter #1 AUTHORS this payload, and `sectionsOf` parses every section it
+ * returns through `RunDetailSectionResponseSchema` — so the bytes the corpus
+ * photographs are bytes the real wire would accept, including the schema's own
+ * `superRefine`: `parkedAt` may not precede `fencedAt`, and EVERY served action
+ * must target this exact intent and generation. A hand-rolled blob that drifted
+ * from either would fail here rather than in a screenshot.
+ *
+ * The two action descriptors are the server's, word for word
+ * (`parkedWriteActions` in `src/server/dashboard/queries/run-detail.ts`). They
+ * are copied rather than imported because that function is not exported and
+ * takes an authority `RunRecord` this adapter has none of — so the copy is
+ * PINNED to the server's, modulo the identities the two adapters legitimately
+ * differ on, by `tests/unit/server/parked-write-section.test.ts`. A copy nobody
+ * compares is a reference that documents last month's copy.
+ */
+const PARKED_WRITE_INTENT_ID = uuidOf(906);
+const PARKED_WRITE_TARGET = { writeIntentId: PARKED_WRITE_INTENT_ID, intentGeneration: 1 };
+const PARKED_WRITE_SYSTEM = "ucpath";
+const PARKED_WRITE_REVISION = 6;
+
+export const FIXTURE_PARKED_WRITE = {
+  runId: FIXTURE_IDS.parkedRun,
+  writeIntentId: PARKED_WRITE_INTENT_ID,
+  generation: 1,
+  runAttempt: 1,
+  system: PARKED_WRITE_SYSTEM,
+  taskId: "ucpath/terminate-person",
+  idempotencyKeyDigest: "7".repeat(64),
+  fencedAt: at(44),
+  parkedAt: at(45),
+  parkedCode: "unknown",
+  // The KERNEL's own sentence — doc 09 §4's `park()` interpolates the driver's
+  // thrown error into it. The surface prints it verbatim and writes none of
+  // its own, which is what this reference is here to photograph.
+  parkedMessage:
+    "the UCPath save was submitted and the confirmation page never rendered: read-back timed out "
+    + "after 30000ms at ucpath.termination-confirmed",
+  subject: {
+    state: "subject-match",
+    proofId: uuidOf(907),
+    observedAt: at(44),
+    evidence: {
+      kind: "person",
+      identifierKind: "eid",
+      bindingDigest: "3".repeat(64),
+      displaySuffix: "7012",
+    },
+  },
+  actions: [
+    {
+      key: "resolve-write-present",
+      label: "I confirmed it IS there",
+      detail: "Record the transaction you found, with its proof. The run settles as committed and never clicks again.",
+      intent: "warning",
+      icon: "resolve",
+      placement: ["banner", "footer"],
+      kind: "command",
+      command: "resolve-write-present",
+      expectedVersion: PARKED_WRITE_REVISION,
+      confirm: {
+        title: "Confirm the transaction exists",
+        body: `This files ${PARKED_WRITE_SYSTEM} transaction ${PARKED_WRITE_INTENT_ID} as committed on this run's `
+          + "evidence. If it is not actually there, the run finishes reporting work nobody did.",
+        confirmLabel: "It is there",
+        tone: "destructive",
+      },
+      writeTarget: PARKED_WRITE_TARGET,
+    },
+    {
+      key: "resolve-write-absent",
+      label: "I confirmed it is NOT there",
+      detail: "Release the fence so the run may attempt the write again under a new generation.",
+      intent: "primary",
+      icon: "resolve",
+      placement: ["banner", "footer"],
+      kind: "command",
+      command: "resolve-write-absent",
+      expectedVersion: PARKED_WRITE_REVISION,
+      confirm: {
+        title: "Confirm the transaction is absent",
+        body: `This authorizes a fresh attempt against ${PARKED_WRITE_SYSTEM}. If the transaction does exist, `
+          + "the retry submits it a SECOND time.",
+        confirmLabel: "It is not there",
+        tone: "destructive",
+      },
+      writeTarget: PARKED_WRITE_TARGET,
+    },
+  ],
 } as const;
 
 function sectionsOf(
@@ -608,6 +731,7 @@ function sectionsOf(
   dataEntries: readonly DataEntrySeed[],
   failureId?: string,
   editing?: Record<string, unknown>,
+  parkedWrite?: unknown,
 ): Readonly<Record<string, RunDetailSectionResponse>> {
   const runId = uuidOf(seed);
   const sections: Record<string, unknown> = {
@@ -625,6 +749,11 @@ function sectionsOf(
           label: entry.label,
           valueRedacted: entry.valueRedacted,
           edit: entry.edit ?? LOCKED_NOT_DECLARED,
+          // OMITTED, never nulled — the wire's members are optional and an
+          // absent one is what "this build cannot date this value" looks like.
+          ...(entry.observedAt === undefined ? {} : { observedAt: entry.observedAt }),
+          ...(entry.source === undefined ? {} : { source: entry.source }),
+          ...(entry.correctedAt === undefined ? {} : { correctedAt: entry.correctedAt }),
         })),
       },
     },
@@ -642,6 +771,9 @@ function sectionsOf(
       payload: { state: "available", value: failureDetail(runId, failureId, seed) },
     };
   }
+  if (parkedWrite !== undefined) {
+    sections["parked-write"] = { section: "parked-write", payload: parkedWrite };
+  }
   return Object.freeze(Object.fromEntries(
     Object.entries(sections).map(([name, value]) => [name, RunDetailSectionResponseSchema.parse(value)]),
   ));
@@ -657,6 +789,10 @@ export const FIXTURE_SECTIONS: Readonly<Record<string, Readonly<Record<string, R
   [FIXTURE_IDS.queuedRun]: sectionsOf(1, [
     { level: "info", minute: 55, message: "Run queued at interactive priority" },
   ], [
+    // W2: the same two rows now carry the provenance the wire serves — one a
+    // plain live read (clock only, no badge, because `live` is what most rows
+    // are and a badge on every row is a badge on none) and one an operator
+    // correction, which is the row the `corrected` badge exists for.
     {
       label: "Starts on",
       valueRedacted: "2026-07-15",
@@ -667,6 +803,8 @@ export const FIXTURE_SECTIONS: Readonly<Record<string, Readonly<Record<string, R
         value: "2026-07-15",
         pendingCorrection: { state: "none" },
       },
+      observedAt: at(51),
+      source: "live",
     },
     {
       label: "Invited on",
@@ -678,6 +816,9 @@ export const FIXTURE_SECTIONS: Readonly<Record<string, Readonly<Record<string, R
         value: "2026-06-01",
         pendingCorrection: { state: "pending", value: "2026-06-02", correctedAt: at(50) },
       },
+      observedAt: at(50),
+      source: "operator",
+      correctedAt: at(50),
     },
   ], undefined, { state: "editable", expectedVersion: 2 }),
   [FIXTURE_IDS.runningRun]: sectionsOf(2, [
@@ -724,6 +865,20 @@ export const FIXTURE_SECTIONS: Readonly<Record<string, Readonly<Record<string, R
     reason: "the run is claimed by a worker — the resume consumes corrections and wins races; "
       + "editing reopens when it parks or finishes",
   }),
+  [FIXTURE_IDS.parkedRun]: sectionsOf(6, [
+    { level: "info", minute: 44, message: "Searching UCPath directory for EID 10777012" },
+    { level: "info", minute: 44, message: "Subject bound: the termination page names the expected EID" },
+    { level: "warning", minute: 45, message: "Save submitted; the confirmation page did not render" },
+    { level: "warning", minute: 45, message: "Write fenced at generation 1; the run is parked pending proof" },
+  ], [
+    { label: "Selection", valueRedacted: "exact-match", observedAt: at(44), source: "live" },
+    { label: "Termination reason", valueRedacted: "Resign - No Reason Given", observedAt: at(44), source: "derived" },
+  ], undefined, {
+    // Doc 03 D19: a parked run is not executing, but it is not resumable by a
+    // correction either — the kernel's own arm says so, so the fixture does.
+    state: "locked",
+    reason: "run is parked-write; corrections apply only to a non-executing resumable run",
+  }, FIXTURE_PARKED_WRITE),
   [FIXTURE_IDS.memberRun]: sectionsOf(31, [
     { level: "info", minute: 29, message: "Searching UCPath directory for Alvarez, Maria" },
     { level: "info", minute: 31, message: "Active status resolved: active" },
