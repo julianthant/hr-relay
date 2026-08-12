@@ -1,6 +1,25 @@
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/shared/IconActionButton.tsx
+ *
+ * IT LIVES OUTSIDE `ds/`, AND THAT IS THE PORT BEING FAITHFUL.
+ *
+ * This control draws with literal sizes (`h-6 w-6`) and the shadcn semantic
+ * layer (`text-destructive`, `bg-warning/15`) rather than the `--ds-*` face, so
+ * by `DESIGN.md`'s rules it could not be a design-system primitive. It is not
+ * one in the design reference either: the demo reaches OUT of its own DS for it
+ * (`DemoActions.tsx:18`, `DemoLogPanel.tsx:35`, both importing
+ * `@/components/shared/IconActionButton`), which is why its palette is narrower
+ * than the wire's seven intents and why `INTENT_TONE` exists to squeeze them
+ * into four.
+ *
+ * So the honest placement is the one the demo uses — a shared component beside
+ * the surfaces, never inside `ds/`. Keeping it in `ds/` was the actual defect:
+ * it put a fork inside the folder whose whole rule is that primitives are not
+ * forked, one directory away from the `IconButton` a builder should reach for
+ * instead. Redrawing it on `--ds-*` tokens is a separate, deliberate change to
+ * the design language and belongs upstream in the demo first — doing it here
+ * would move this tree off the visual oracle it is being held to.
  */
 import type { MouseEvent, ReactNode } from "react";
 import { Loader2 } from "lucide-react";
