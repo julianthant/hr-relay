@@ -2292,22 +2292,42 @@ write-state sentence rendering unconditionally in the stream.
 **Measured effect of the split, at 1280×720:** chrome above the panels **190px → 117px**; each
 panel **469px → 542px** tall; the tab body **123–215px → 213–335px**.
 
-**Three breakpoints, and they are deliberately different numbers:**
+**Two breakpoints, and the panel region is a GRID (D195):**
 
 | Width | Layout |
 |---|---|
 | **< 1180** | one scrolling stack — shape, then detail, then context. The rail degrades to a section, never to nothing. |
-| **1180–1479** | queue **400px** + a three-column detail cell, with the run's *shape* (timeline) spanning the full region width. |
-| **≥ 1480** | queue **470px**; the centre is wide enough to hold the shape on its own, so the rail rises beside it full-height. |
+| **≥ 1180** | queue **`--ds-w-side-panel` (376px)**, a fixed track, + a detail cell taking `minmax(0,1fr)`. The detail cell splits itself again into shape · detail · context at 1280. |
 
-Both numbers are **measured, not chosen**. 1480 = 470 queue + 348 rail + gaps + padding, which
-leaves the centre ~590px — the width at which a six-segment equal-width timeline still prints
-readable labels. 400 is the **largest** queue that keeps the review's page-beside-fields layout side
-by side below 1480: the review's floor is a **464px centre** (label + value + provenance chip +
-confidence on one line) and centre = 884 − queue at 1280, so 470 gave 414 and stacked it. **The
-cost is real and is stated rather than hidden:** at 1280 no queue width satisfies both — a queue
-that renders `Oath_Packet_Summer.pdf` whole needs ~475px, which puts the centre back under the
-review's floor.
+**The queue and the context rail share ONE resting width**, and neither side panel grows
+independently at wider viewports, so the centre stays the largest column at every size. 376 is 28px
+wider than the former 348px rail and narrower than either former queue width — which is exactly what
+buys the centre back the room the 400/470 analysis was fighting over. The visual oracle moved first
+(doc 13 §1; the demo's own panel region, legacy
+`hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc` `RebuildDemo.tsx:747-748`) and this table
+had not followed.
+
+**Grid, not flex, is normative here — it is what makes the empty case impossible.** The region was
+authored as two `flex-1` children. `flex-1` distributes free space only among children that EXIST,
+so with no run open the second child was not rendered, nothing claimed the space, and the queue
+panel — a flex item with no width — shrank to its content. At 1440×900 that left a ~470px column of
+rows and **~950px of empty black** in the middle of the surface this product is named after, at
+every viewport since 1i-spine, through a dozen green gates and a frozen reference corpus that
+photographed it. A grid cannot fail that way: its tracks exist whether or not anything is placed in
+them. And **nothing selected is a STATE** — `No run open`, owing §9's three things and no more — not
+an absent element.
+
+The superseded numbers, kept because they remain the record of what was tried and why:
+
+> **1180–1479** queue **400px**; **≥ 1480** queue **470px**, both measured rather than chosen.
+> 1480 = 470 queue + 348 rail + gaps + padding, leaving the centre ~590px — the width at which a
+> six-segment equal-width timeline still prints readable labels. 400 was the largest queue that kept
+> the review's page-beside-fields layout side by side below 1480: the review's floor is a **464px
+> centre** (label + value + provenance chip + confidence on one line) and centre = 884 − queue at
+> 1280, so 470 gave 414 and stacked it. The cost was stated rather than hidden: at 1280 no queue
+> width satisfied both — a queue that renders `Oath_Packet_Summer.pdf` whole needs ~475px, which
+> puts the centre back under the review's floor. **One shared 376px resolves that trade by refusing
+> to spend the width on either side panel.**
 
 **A consequence worth pinning: inside the detail region, a layout switch keys on the COLUMN, not
 the window.** The same 1280px viewport gives the centre 414px with the rail open and 728px with it

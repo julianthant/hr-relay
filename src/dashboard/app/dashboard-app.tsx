@@ -23,8 +23,8 @@ import {
 import { CapabilityAvailabilitySchema, type CapabilityAvailability } from "../../domain/absence.js";
 import { InputRunSurfaceSchema } from "../../domain/workflow/ingress.js";
 import { WORKFLOW_DESCRIPTORS } from "../../workflows/descriptor-registry.js";
-import { Archive as ArchiveIcon, BookMarked, ChartNoAxesColumn, FileSpreadsheet, GitBranch } from "lucide-react";
-import { Button, ToastProvider, TooltipProvider, dsIcon, useDemoTheme } from "../ds/ui.js";
+import { Archive as ArchiveIcon, BookMarked, ChartNoAxesColumn, FileSpreadsheet, GitBranch, PanelRight } from "lucide-react";
+import { Button, EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, dsIcon, useDemoTheme } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
@@ -487,8 +487,39 @@ function LoadedApp({
             onSelect={onFilter}
           />
 
-          <div className="flex min-h-0 flex-1 gap-[var(--ds-space-base)] px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
-            <div className="flex min-h-0 min-w-0 flex-1">
+          {/*
+            THE PANEL REGION IS A GRID, AND THAT IS THE WHOLE FIX.
+
+            It was two `flex-1` children. `flex-1` on a flex child is
+            `flex-basis: 0%` plus a GROW factor, and a grow factor only
+            distributes space among children that EXIST — so with no run open
+            the second child was not rendered, nothing claimed the free space,
+            and `QueuePanel`'s own root (a flex item with no width) shrank to
+            its content. At 1440×900 that left a ~470px column of rows and ~950
+            PIXELS OF EMPTY BLACK, in the middle of the surface this product is
+            named after, at every viewport since 1i-spine.
+
+            A grid cannot fail that way: the tracks exist whether or not
+            anything is placed in them. `--ds-w-side-panel` (376px) is the same
+            resting width the context rail uses, which is the design's own
+            contract — neither side panel grows independently at wider
+            viewports, so the centre stays the largest column. Below 1180 it
+            collapses to one column and the panels stack.
+
+            Ported from the demo's own panel region, legacy
+            hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+            `RebuildDemo.tsx:747-748`. Note this SUPERSEDES doc 03's 400/470
+            table — the demo moved both side panels onto one 376px token after
+            those numbers were measured, and doc 13 §1 makes the demo the
+            visual oracle. Doc 03 §Shell is updated in the same commit.
+
+            `relative` is the positioning context for the floating Workflow
+            Panel, which is why the window now overlays the panels WITHOUT
+            covering the bars above them — it had been absolutely positioned
+            against the viewport and was clipping the status-filter row.
+          */}
+          <div className="relative min-h-0 flex-1">
+            <div className="grid h-full grid-cols-1 gap-[var(--ds-shell-inset)] p-[var(--ds-shell-inset)] min-[1180px]:grid-cols-[var(--ds-w-side-panel)_minmax(0,1fr)]">
               <QueuePanel
                 surfaces={surfaces}
                 state={viewState}
@@ -507,16 +538,12 @@ function LoadedApp({
                 dayLabel={day}
                 {...(filter === "all" ? {} : { filterLabel: String(filter) })}
               />
-            </div>
 
-            {detailValue !== undefined && (
-              <div className="flex min-h-0 min-w-0 flex-1">
-                {/* This wrapper used to carry `w-[minmax(0,var(--ds-w-panel))]`,
-                    which did nothing at all: `minmax()` is only valid inside a
-                    grid track list, so the browser dropped the declaration, and
-                    `--ds-w-panel` was never defined either. Its width has always
-                    come from `flex-1`. See D187 — the real collapse was one
-                    level down, in `LogPanel`'s own root. */}
+            {/* NOTHING SELECTED IS A STATE, not the absence of one. It owes the
+                three things doc 03 §9 says an empty state owes and no more:
+                what would be here, why it is not, and what to do. It is reached
+                by switching workflows, so the reason is the switch. */}
+            {detailValue !== undefined ? (
                 <LogPanel
                   detail={detailValue}
                   sections={sections}
@@ -531,25 +558,41 @@ function LoadedApp({
                   onDetailEdited={() => setDetailNonce((nonce) => nonce + 1)}
                   aiAdvisory={advisoryAvailability}
                 />
-              </div>
+            ) : (
+              <Panel className="min-h-0">
+                <PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
+                  <EmptyState
+                    icon={<PanelRight aria-hidden className={dsIcon.lg} />}
+                    title="No run open"
+                    description={`Pick a run from the ${workflowLabelOf(activeWorkflowId)} queue and its logs, decisions, data and receipt open here. The run you had open belongs to a different workflow, so it closed when you switched.`}
+                  />
+                </PanelBody>
+              </Panel>
+            )}
+            </div>
+
+            {/* The floating window lives INSIDE the panel region, so it overlays
+                the panels and never the bars above them — and it is rendered on
+                the queue view only, as in the demo. A takeover replaces the
+                queue whole; a workflow switcher hovering over it would be
+                offering to change the scope of a surface that no longer has
+                one. */}
+            {panelMode.mode === "floating" && (
+              <WorkflowWindow
+                mode={panelMode.mode}
+                onMode={panelMode.setMode}
+                opened={panelMode.opened}
+                workflows={workflows}
+                categories={categories}
+                counts={dayWire?.workflowCounts ?? []}
+                activeWorkflowId={activeWorkflowId}
+                onActive={setActiveWorkflowId}
+              />
             )}
           </div>
           </>
           )}
         </main>
-
-        {panelMode.mode === "floating" && (
-          <WorkflowWindow
-            mode={panelMode.mode}
-            onMode={panelMode.setMode}
-            opened={panelMode.opened}
-            workflows={workflows}
-            categories={categories}
-            counts={dayWire?.workflowCounts ?? []}
-            activeWorkflowId={activeWorkflowId}
-            onActive={setActiveWorkflowId}
-          />
-        )}
       </div>
 
       <SessionPanel
