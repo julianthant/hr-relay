@@ -1,0 +1,315 @@
+# Store Catalog — Reuse Reference
+
+> **This is a derived convenience view, not a source of truth.** The plan SSOT is
+> `docs/rebuild/07-master-plan.md` (migration order, exit criteria) and the owning docs 00–13; the
+> decision changelog is `docs/rebuild/04-reconciliation.md`. **Code is the source of truth for every
+> fact in this file** — if this file ever disagrees with `src/stores/**`, `src/services/**`, or
+> `src/infra/providers/**`, the code wins. Regenerate at every slice boundary, and whenever a store
+> gains, loses, or rewires a task.
+>
+> **Last updated:** 2026-08-12
+
+**Why this file exists.** Phase 3 migrates 13 more legacy workflows onto stores that already exist
+in this tree. The single most expensive mistake a migration can make is re-implementing a task a
+store already has, or worse, minting a second driver declaration beside one that already exists.
+Before writing any new task: **read this file, find the store, and decide REUSE / CUSTOMIZE / BUILD**
+— never guess.
+
+---
+
+## 1 · How stores work
+
+A **store** is the per-system module that owns three things together: the semantic driver
+declaration (`BROWSER_STORES` entries) or nothing at all (service stores), the login recipe (browser
+stores only, in `session.ts`), and the task implementations bound to that exact driver. `src/base/
+store.ts` is the factory layer — `defineBrowserStore`, `defineServiceStore`, and
+`defineWorkflowStore` are the only three ways a store may come into existence, and each is validated
+at call time:
+
+- **Browser stores** (`defineBrowserStore(namespace, driver, session, tasks)`) require every task's
+  contract id to start with `${namespace}/`, require every task's `driver` to be the store's **exact**
+  declaration object (`task.driver !== driver` throws — a second declaration for the same system is
+  structurally impossible, not just discouraged), and enforce `onbase`'s unique
+  `session.exclusive: true` requirement (the only identity-exclusive session in the tree).
+- **Service stores** (`defineServiceStore(namespace, tasks)`) and **workflow mini-stores**
+  (`defineWorkflowStore(workflowId, tasks)`) require every task to be a sessionless `effect: "read"`
+  task (`sessions: []`); a mini-store task additionally may declare no `artifacts`/`providers`.
+- Every store lands in `src/stores/index.ts`'s `BROWSER_STORES` (the 9 browser systems) and
+  `TASK_STORES` (browser stores plus the service/workflow mini-stores), and `defineTaskStoreRegistry`
+  cross-checks every registered task against the contract corpus in both directions — a store task
+  with no corpus entry, or a corpus entry with no store task, fails to boot.
+
+**Two task shapes**, both from `src/base/task.ts`'s `defineTask`:
+
+- **Browser task** — `defineTask(driver, contract, impl)`. `driver` must be the store's
+  `DriverDeclaration<ConcreteDriver>` (e.g. `ucpathDriver`, `crmDriver`, `kualiDriver`); `impl.sessions`
+  names which system(s) it needs at `read` or `transaction` access, always `session: "reuse-worker"`.
+  A commit-effect task additionally receives `ctx.mutation`, which only exists inside a fenced write
+  the write sequencer (`src/core/write-sequencer.ts`) has minted — nothing else can construct one.
+- **Service/workflow task** — `defineTask(contract, impl)`. No driver, `sessions: []` (or the
+  mini-store's forced-empty session list); reaches remote I/O only through `ctx.providers[capability]`,
+  never a raw `fetch`.
+
+**Two driver declaration shapes**, both from `src/base/task.ts`:
+
+- `declareDriverFor<ConcreteDriverInterface>()(system, "semantic-ready")` — a real typed driver over a
+  domain-owned interface (e.g. `UcpathPersonOrgDriver` in `src/domain/ui/ucpath-person-org.ts`). Raw
+  Playwright access stays under `driver/`; only the task-safe declaration in `declaration.ts` (or
+  `driver-declaration.ts` for ucpath) is reachable from task code.
+- `declareDriver(system, "unwired")` — an empty placeholder for a store with no semantic operations
+  yet. A store on this declaration has zero tasks by construction (`validateStoreTasks` refuses a
+  driver-bound task registered against a store whose `driver === undefined`, and the browser-store
+  path further requires `task.driver === driver`, so a real task cannot attach to an unwired
+  declaration at all).
+
+**Workflows never contain selectors.** A descriptor (`src/workflows/<id>/descriptor.ts`) references
+only task **contracts** — bundle-safe, zod-schema-only. The server composition value
+(`src/workflows/<id>/module.ts`) is what imports concrete stores, and `src/control/workflow-registry.ts`
+audits at load time that every contract a descriptor uses resolves through one of that module's own
+factory-defined stores, and that no listed store goes unused (`auditWorkflowModuleBindings`).
+
+**The reuse rule.** Before adding a task:
+
+1. Find the store below. If the exact operation already exists as a task, **REUSE** it — call it from
+   the new workflow's descriptor, do not re-implement.
+2. If the store exists and is `semantic-ready` but lacks this one operation, **CUSTOMIZE**: add a
+   sibling task file under `stores/<system>/tasks/`, bound to the store's existing driver declaration
+   — importing it, never re-declaring it (`declareDriverFor` is called exactly once per store, at
+   `declaration.ts`/`driver-declaration.ts`).
+3. If the store is `unwired` (see §4, Gaps), **BUILD**: this is a genuine new-store slice — a domain
+   driver interface, a `driver/interpreter.ts`, a `session.ts` login recipe, a `system-bindings.ts`
+   entry, live selector verification, and only then tasks. Check §4 for which migration order owns it
+   before starting.
+
+---
+
+## 2 · Per-store catalog
+
+### `ucpath` — browser store, real
+
+**Status:** driver `semantic-ready` (`UcpathPersonOrgDriver`, `src/domain/ui/ucpath-person-org.ts`) ·
+real login recipe (`ucpathLoginRecipe`, `src/stores/ucpath/session.ts`) · **1 task**. Wired into
+`BROWSER_SYSTEM_BINDINGS` (`src/infra/browser/system-bindings.ts`), so a real session can be opened.
+
+| Item | Kind | Contract id | What it does | Reuse notes |
+|---|---|---|---|---|
+| `searchPersonOrgTask` | task | `ucpath/search-person-org` (read) | Searches UCPath's Person Organizational Summary by EID or name, expands `View All`, drills into every plausible record, and returns candidate results plus one resolved selection (employee status, HDH flag). | `sessions: [{system:"ucpath", access:"read"}]`, retries `{attempts:2, backoffMs:2000}` on transient. Ported from legacy `793abe1f…`, live-verified 2026-08-02. Handles the **Person Org** screen family only — `ui-registry.ts` also carries the SS Smart HR **receipt** screen family (live-verified 2026-08-04) but no task reads it yet (see §4). |
+
+**Driver notes.** `driver/person-org-operation.ts` owns navigation/search/grid/drill-in/assignment
+selection; locator recipes live only in `driver/ui-registry.ts` and require matching fixture plus
+live-read-only evidence before use. Login verifies `PS_TOKEN` presence plus absence of every sign-in
+form (2026-08-03 finding: a URL substring alone previously matched the *public* portal).
+
+---
+
+### `crm` — browser store, real
+
+**Status:** driver `semantic-ready` (`CrmOnboardingDriver`, `src/domain/ui/crm-onboarding.ts`) · real
+login recipe (`crmLoginRecipe`, `src/stores/crm/session.ts`) · **2 tasks**. Wired into
+`BROWSER_SYSTEM_BINDINGS`.
+
+| Item | Kind | Contract id | What it does | Reuse notes |
+|---|---|---|---|---|
+| `readOnboardingRecordTask` | task | `crm/read-onboarding-record` (read) | Fuzzy-searches ACT CRM onboarding by EID, opens every plausible record, and accepts only an exact displayed `UCPath Employee ID`; returns `found`/`not-found` plus a subject binding. | `sessions:[{crm, read}]`, retry `{2, 2000ms}` transient. Fails `subject-mismatch` (not absence) if the binding or output EID disagrees with the input — this is the pattern every other read task in the tree copies. Ported legacy `793abe1f…` `onboarding-records.ts`, live-verified 2026-08-02. |
+| `readOnboardingDatesTask` | task | `crm/read-onboarding-dates` (read) | Reads `invitedOn` (Offer Letter Sent history transition), `startsOn` (First Day of Service), `completedOn` (Completed history transition) for an EID. | Same binding discipline as above. Blank dates are only reported as absence **after** the record's displayed EID and page state are proven — a malformed nonblank date throws rather than going blank. `Date Signed` is deliberately not `completedOn`. |
+
+**Driver notes.** Login realm defaults to Business Systems in TritON's picker — the recipe waits for
+the SSO form, matches by option **value** (not label; the same `#ssousername` field wears three
+different labels per realm), and refuses to submit unless Active Directory is confirmed
+(2026-08-03 finding). Cold live login ~11.8s.
+
+---
+
+### `kuali` — browser store, real (Phase 2's transaction proof)
+
+**Status:** driver `semantic-ready` (`KualiRrssDocumentDriver`, `src/domain/ui/kuali-rrss-document.ts`)
+· real login recipe (`kualiLoginRecipe`, `src/stores/kuali/session.ts`) · **4 tasks**, including the
+tree's **only** `effect:"commit"` contract. Wired into `BROWSER_SYSTEM_BINDINGS`.
+
+| Item | Kind | Contract id | What it does | Reuse notes |
+|---|---|---|---|---|
+| `readTimekeeperAnnotationTask` | task | `kuali/read-timekeeper-annotation` (read) | Beat ① pre-fence probe: opens the document fresh and checks whether it already carries this exact `Timekeeper Name` value (idempotency). | `sessions:[{kuali, read}]`. Re-opens the document rather than trusting page state; a wrong-EID read is `subject-mismatch`, never absence. |
+| `verifyTimekeeperAnnotationTask` | task | `kuali/verify-timekeeper-annotation` (read) | Beat ⑥ **the only landing proof**: reloads the retained page and reads the field back after `save` returns. | Kuali's save is UI-silent and its HTTP `200`/`Form saved` is a **proven false positive** (measured live 2026-08-04) — never reintroduce banner-based success detection. Anything but `present` parks the run. |
+| `fillTimekeeperAnnotationTask` | task | `kuali/fill-timekeeper-annotation` (**prepare**) | Beat ②: opens the document, stages the value via the driver, proves the field read it back. Zero save — closing here leaves Kuali byte-identical (the dry-run stop point). | `sessions:[{kuali, transaction}]`. The EID check here is defence-in-depth only; the load-bearing subject binding is the kernel's own beat-③ re-observation on this same page. |
+| `saveTimekeeperAnnotationTask` | task | `kuali/save-timekeeper-annotation` (**commit**) | Beat ⑤: the tree's one external write. Clicks `Save` via `ctx.driver.commit(KUALI_RRSS_SAVE_BUTTON, ctx.mutation)`. | `sessions:[{kuali, transaction}]`. `ctx.mutation` only exists inside a fence the write sequencer minted — this task cannot fire outside it even if mis-authored. Reports only that it clicked, **never** that the save landed; beat ⑥ is the proof. |
+
+**Driver notes.** The commit contract's own schema names its `verify`/`probe` task ids
+(`kuali/verify-timekeeper-annotation`, `kuali/read-timekeeper-annotation`) so the write sequencer can
+invoke them without the workflow wiring a fourth binding. `Send Back` and `Mark Complete` — the
+buttons that actually advance a real separation — are **not addressable through this store at all**
+(see §4, kuali separation family). Live-proven end-to-end 2026-08-04 on real doc 4489: fence → click →
+reload read-back → settle in 16.45s, idempotent re-run 2ms with no browser.
+
+---
+
+### `onbase` — browser store, declaration-only
+
+**Status:** driver `unwired` (`declareDriver("onbase", "unwired")`) · session provider is a
+`defineWorkerSessionProvider("onbase", {exclusive:true})` **stub** — its `login` call would dispatch
+to `handle.authenticate("onbase", …)`, but `onbase` has no entry in
+`src/infra/browser/system-bindings.ts`'s `BROWSER_SYSTEM_BINDINGS`, so opening a real session fails
+loud today rather than opening an unusable browser · **0 tasks**.
+
+No table — nothing is bound. **Structurally distinctive:** `onbase` is the only system where
+`defineBrowserStore`/`defineSessionProvider` *require* `exclusive: true` — a live identity-exclusive
+session — so whoever builds this store must design that exclusivity into the login recipe from the
+start, not retrofit it. See §4 for migration order.
+
+### `servicenow` — browser store, declaration-only
+
+**Status:** driver `unwired` · session provider stub, no `system-bindings.ts` entry · **0 tasks**. See §4.
+
+### `i9` — browser store, declaration-only
+
+**Status:** driver `unwired` · session provider stub, no `system-bindings.ts` entry · **0 tasks**. See §4.
+
+### `new-kronos` — browser store, declaration-only
+
+**Status:** driver `unwired` · session provider stub, no `system-bindings.ts` entry · **0 tasks**. A
+shared semantic helper already exists for this store to bind to — see `common/timecard.ts` below. See §4.
+
+### `old-kronos` — browser store, declaration-only
+
+**Status:** driver `unwired` · session provider stub, no `system-bindings.ts` entry · **0 tasks**. Same
+`common/timecard.ts` helper applies. See §4.
+
+### `sharepoint` — browser store, declaration-only
+
+**Status:** driver `unwired` · session provider stub, no `system-bindings.ts` entry · **0 tasks**. See §4.
+
+---
+
+### `common` — shared modules (not a registered store)
+
+Not a `TASK_STORES` entry; these are plain modules imported by real task implementations so a parser
+or a semantic helper has exactly one copy.
+
+| Item | Kind | Contract id | What it does | Reuse notes |
+|---|---|---|---|---|
+| `spreadsheet-grid.ts` (`parseSpreadsheetGrid`, `readArtifactBytes`) | shared module | n/a | The one "artifact bytes → canonical string grid" edge: xlsx via `read-excel-file`, csv via `csv-parse`, refusals returned as `{state:"refused"}` data. Date cells are canonicalized to UTC ISO here, once. | Consumed verbatim by `extraction/extract-spreadsheet` and `roster/match-spreadsheet` — **any future spreadsheet-consuming task must reuse this**, not fork a parser; the date-cell UTC rule is exactly what the 2026-07-13 corruption class was about. |
+| `timecard.ts` (`TimecardDriver` type, `runTimecardCheck`-equivalent operations) | shared module | n/a | Page-free semantic timecard-check operations (period navigation/switch comparison) ported from legacy `793abe1f…` `src/services/timecard/index.ts` (blob `91c5b930…`), with four fail-loud corrections over the legacy port (no raw `Page`, no `waitForTimeout`, navigation failure throws instead of returning `false`, switch success is an asserted before/after comparison). | **Not yet consumed** — both Kronos stores are still `unwired` (0 tasks), so this module has no caller today. It exists precisely so migration order 2 (old-kronos-reports) and order 6 (kronos-pay-rule) bind their concrete drivers' page operations to THIS helper's period logic rather than re-deriving it. |
+
+---
+
+### `extraction` — service store, real
+
+**Status:** headless (`defineServiceStore`), sessionless, **2 tasks**.
+
+| Item | Kind | Contract id | What it does | Reuse notes |
+|---|---|---|---|---|
+| `extractSpreadsheetTask` | task | `extraction/extract-spreadsheet` (read) | Parses an artifact via `common/spreadsheet-grid.ts`, ranks header-row candidates, detects columns + types, returns the full row grid. | Sessionless, deterministic; `headerRowIndex` explicit selection is honoured exactly or refused, never clamped. The one place in the tree that knows which spreadsheet format a file is — nothing downstream branches on an extension. |
+| `extractPdfPagesTask` | task | `extraction/extract-pdf-pages` (read) | Rasterizes PDF pages to PNG artifacts via `pdf-to-img` (pdfjs, MIT) at 2× scale, with the JBIG2 wasm decoder wired for bilevel scanner output. | Sessionless. Every call gets a fresh `Uint8Array` copy because pdfjs **detaches** the input buffer — a retry over the same buffer would throw `DataCloneError`. Page range past the document end is refused, never clamped. |
+
+### `normalization` — service store, real
+
+**Status:** headless, sessionless, **1 task**.
+
+| Item | Kind | Contract id | What it does | Reuse notes |
+|---|---|---|---|---|
+| `readContactAdviceTask` | task | `normalization/read-contact-advice` (read) | Deterministic contact/address normalization rules (phone digits, US state/ZIP, country alias, relationship canonicalization), plus opt-in geocode advice (Census → Nominatim fallback) and opt-in AI advisory (D178) for fields the rules leave `ambiguous`. | Sessionless; reaches remote I/O only through `ctx.providers["geocode.census"|"geocode.nominatim"|"ai.advisory"]`. `geocode`/`ai` are caller-declared flags — nothing here applies anything, it is advice for a review gate. `relationship` is classified `sensitive-hr` and is **never** sent to the AI provider even when ambiguous (the one field legacy's LLM fallback existed for is the one this arm withholds). |
+
+### `ocr` — service store, real
+
+**Status:** headless, sessionless, **1 task**.
+
+| Item | Kind | Contract id | What it does | Reuse notes |
+|---|---|---|---|---|
+| `extractFormPageTask` | task | `ocr/extract-form-page` (read) | Builds the same extraction instruction a human/CLI operator would get, sends it to the admitted `ocr.extract` provider, and runs the answer through the SAME `admitOcrExtraction` gate every route uses. | Sessionless; a peer of the `rebuild:cli ocr` routes, not a privileged path. A model answering a different field set than the form declares fails admission (`incomplete-extraction`) with the gate's own problem list — nothing here repairs a partial answer. |
+
+### `roster` — service store, real
+
+**Status:** headless, sessionless, **1 task**.
+
+| Item | Kind | Contract id | What it does | Reuse notes |
+|---|---|---|---|---|
+| `matchSpreadsheetTask` | task | `roster/match-spreadsheet` (read) | Parses a roster via `common/spreadsheet-grid.ts`, proves the operator's column mapping still fits the file (header fingerprint match), coerces bound cells through the canonical field registry, and matches subjects by EID/name. | Sessionless, pure. A moved/missing layout fails loud `mapping-mismatch` naming what changed; a cell that fails canonical coercion nulls **that fact on that row only** — never the whole row, never a fabricated EID. |
+
+### `person-lookup` — workflow mini-store, real
+
+**Status:** `defineWorkflowStore("person-lookup", …)`, sessionless, **1 task**. Namespace is
+`workflow:person-lookup` — this pattern (a pure, sessionless, artifact/provider-free fold over prior
+node outputs) is what a future workflow-specific derivation step should copy rather than reaching for
+a service store.
+
+| Item | Kind | Contract id | What it does | Reuse notes |
+|---|---|---|---|---|
+| `readActiveStatusTask` | task | `workflow:person-lookup/read-active-status` (read) | Pure fold: combines the UCPath selection, the CRM cross-verify record, and the `keepNonHdh` flag into `active`/`inactive`/`undetermined` with a stated reason. | `replay:"always-rerun"` at the descriptor — re-running a pure fold on resume is strictly safer than replaying a checkpoint whose deriving code may have changed. Throws `inconsistent-inputs` if the UCPath and CRM EIDs disagree. |
+
+---
+
+### `src/infra/providers` — provider adapters (not a `TASK_STORES` entry)
+
+Provider adapters are not registered in `src/stores/index.ts`; they are composed directly into
+`RunProviderWiring` at `src/server/worker/compose.ts` and reached by tasks only through
+`ctx.providers[capability]`.
+
+| Item | Kind | Capability id | What it does | Reuse notes |
+|---|---|---|---|---|
+| `createGeminiOcrExtractAdapter` (`gemini-ocr-extract.ts`) | provider adapter | `ocr.extract` | Production Gemini adapter: resolves page bytes from the content-addressed store by full `ArtifactRef`, sends inline base64, stamps only facts it truly knows (`formType`/`source`/`readAt`/`sourceSha256`/`sourcePage`), passes `pageKind`/`record` through verbatim. | **Wired** in `compose.ts` via `createProviderPool("ocr.extract", ocrChildren)`, one child per (key, model) tier from `GEMINI_API_KEY`(s). Cost pinned `$0`; any nonzero measured cost is treated as a breach. No key present ⇒ the slot is not composed and a declaring run is denied `adapter-unavailable` — never silently degraded. |
+| `createGeminiAdvisoryAdapter` (`gemini-advisory.ts`) | provider adapter | `ai.advisory` | Production Gemini adapter for the D178 contact-advisory arm; transport + provenance only, the model's answer passes through verbatim for the consumer to parse against a closed schema. | **Implemented but NOT wired into `compose.ts`'s production `adapters` registry today** — a run declaring `ai.advisory` is currently denied `adapter-unavailable` by admission. Wiring it is a one-line addition mirroring the `ocr.extract` slot, not new adapter code — this is a real, checkable gap, not a design decision. |
+| `createCensusGeocodeAdapter` / `createNominatimGeocodeAdapter` (`geocode-adapters.ts`) | provider adapters | `geocode.census` / `geocode.nominatim` | Production keyless US Census and OpenStreetMap Nominatim geocoders; Census builds the street name from `preDirection`/`streetName`/`suffixType` only (never TIGER block-range fields — the 2026-07-13 corruption vector). | **Wired unconditionally** in `compose.ts` (no API key required). Which one is tried first, and whether the other is a fallback at all, is `normalization/read-contact-advice`'s policy (Census first for US-shaped addresses), not the adapters'. Nominatim's rate limit is the kernel's own fixed-window budget — no in-adapter sleep. |
+| `gemini-transport.ts` (`geminiAnswerText`, `parseGeminiModelJson`, `geminiRetryAt`, `GEMINI_ENDPOINT`) | shared module | n/a | The one Gemini HTTP/JSON transport both Gemini adapters share: endpoint, loose response schema, fenced-JSON tolerance, `429`→`rate-exhausted` mapping with `Retry-After`. | A third Gemini-backed capability should reuse this transport rather than re-deriving the 429 mapping — two private copies would drift on exactly the fact that matters to the admission kernel. |
+| `createProviderPool` (`provider-pool.ts`) | shared factory | n/a | Wraps N `(key, model)` children behind one `ProviderAdapter`; advances the rotation cursor only on the retryable-exhaustion code family, leaves it in place on success/non-retryable failure. | The composition-layer wrapper for **any** capability wanting key/model fan-out — it is not itself a capability and holds no budget/throttle/retry logic (that is the admission kernel's job, strictly above it). |
+| `createDeterministicProviderHarness` (`deterministic-provider.ts`) | test harness | n/a | Scriptable fake `ProviderAdapter` (`return`/`throw`/`wait-for-abort` scripts) for tests. | **Test-only.** Never wire into production composition. |
+
+---
+
+## 3 · Worked examples — how the two live workflows consume stores
+
+### `person-lookup` (`src/workflows/person-lookup/`)
+
+Module binds exactly `[ucpathStore, crmStore, personLookupStore]`.
+
+| Node | Contract | Store task | System |
+|---|---|---|---|
+| `searching` | `ucpath/search-person-org` (read) | `ucpathStore.searchPersonOrg` | ucpath |
+| `cross-verify` | `crm/read-onboarding-record` (read) | `crmStore.readOnboardingRecord` | crm |
+| `active-status` (`always-rerun`) | `workflow:person-lookup/read-active-status` (read) | `personLookupStore.readActiveStatus` | none — pure fold over `searching` + `cross-verify` outputs |
+| `crm-dates` (conditional on `input.includeCrmDates`) | `crm/read-onboarding-dates` (read) | `crmStore.readOnboardingDates` | crm |
+
+### `kuali-timekeeper-annotation` (`src/workflows/kuali-timekeeper-annotation/`)
+
+Module binds exactly `[kualiStore]`. ONE transaction node, `annotate-timekeeper`, whose beats (doc 09
+§13) each call a `kualiStore` task:
+
+| Beat | Contract | Store task | Role |
+|---|---|---|---|
+| ① pre-fence probe (`probePolicy:"always"`) | `kuali/read-timekeeper-annotation` (read) | `kualiStore.readTimekeeperAnnotation` | already-present idempotency check |
+| ② prepare (`dryRun:"stop-after-prepare"` stops here) | `kuali/fill-timekeeper-annotation` (prepare) | `kualiStore.fillTimekeeperAnnotation` | stage the value, prove read-back, zero save |
+| ③ subject binding | kernel-owned, not a store task | write sequencer's `read(observationId)` off the driver | re-observes the subject on the exact page the fence binds to |
+| ⑤ commit | `kuali/save-timekeeper-annotation` (commit) | `kualiStore.saveTimekeeperAnnotation` | the one external write, under a minted `MutationCapability` |
+| ⑥ verify | `kuali/verify-timekeeper-annotation` (read) | `kualiStore.verifyTimekeeperAnnotation` | reload read-back — the only landing proof |
+
+---
+
+## 4 · Gaps at a glance
+
+Six of the nine browser stores are declaration-only (`unwired` driver, stub session provider, 0
+tasks, no `system-bindings.ts` entry). Building one is genuinely BUILD work, not CUSTOMIZE — see §1
+step 3. Migration order is doc 07 §3.3's table:
+
+| Store | Migration order that mints it | Workflow(s) | Notes |
+|---|---|---|---|
+| `i9` | **1** | `i9-lookup` (signer lookup) | Pure UCPath-shaped read, same risk class as `person-lookup`. |
+| `sharepoint` | **2** | `sharepoint-download` | Single-system download; low risk. |
+| `old-kronos` | **2** | `old-kronos-reports` | `common/timecard.ts` is the shared helper already waiting for this driver. |
+| `new-kronos` | **6** | `kronos-pay-rule` | Same `common/timecard.ts` helper; first workflow-specific production commit class. |
+| `onbase` | **7** | `onbase` (with ServiceNow) | Uniquely requires `session.exclusive:true` — design the exclusive lease into the login recipe from the start. |
+| `servicenow` | **7** | `oath-upload` | Proves a `receipt`-style completion. |
+
+Two more gaps are **inside** currently-real stores, not new stores — flagged here because they are
+easy to miss:
+
+- **The ucpath write family** (UCPath termination, UCPath hire) does not exist yet. `ucpathStore` today
+  is read-only (`searchPersonOrg`); the SS Smart HR **receipt** screen is already live-verified in
+  `driver/ui-registry.ts` (2026-08-04) but has no task reading it, and no write task exists at all.
+  Minted at **order 8** (separations — UCPath term) and **order 9** (onboarding — UCPath hire).
+- **The kuali separation read/finalization family** (`Send Back`, `Mark Complete` — the controls that
+  actually advance or finalize a real separation) is explicitly **not addressable** through the
+  current `kualiStore`; only the benign `Timekeeper Name` annotation is. Minted at **order 8**
+  (separations), under doc 09 §14's ALWAYS-GATE identity-approval — the operator ratified manual
+  approval on every separation with no auto-approve-on-match.
+
+One provider-layer gap, not a store gap: `ai.advisory` (`createGeminiAdvisoryAdapter`) is implemented
+but not yet wired into `src/server/worker/compose.ts`'s production adapter registry (§2, providers
+table) — a run declaring it is denied `adapter-unavailable` today.

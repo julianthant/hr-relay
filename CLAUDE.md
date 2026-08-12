@@ -147,6 +147,7 @@ see "Operational isolation" below.
 | `config/`                          | `legacy-change-accounting.json`, `legacy-capabilities.json`, `legacy-test-disposition.json`, `runtime-isolation.json`, `pending-impl-bindings.json` |
 | `docs/rebuild/`                    | the plan SSOT — kept at this exact path so every cross-doc link still resolves                                                                      |
 | `ROADMAP.md`                       | DERIVED operator tracking view (progress, migration order, deferrals, legacy diff); regenerate its status sections at slice boundaries — doc 07 wins on any disagreement |
+| `STORES.md`                        | DERIVED store catalog (every store, every task, reuse notes for REUSE/CUSTOMIZE/BUILD decisions); regenerate at slice boundaries — code wins on any disagreement |
 | `duo-autopilot/`                   | the Duo MFA WebAuthn extension (vendored; credentials are gitignored)                                                                               |
 
 ## Fail loud — no unverified silent fallbacks
