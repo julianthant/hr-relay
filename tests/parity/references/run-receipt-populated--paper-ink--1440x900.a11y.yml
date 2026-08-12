@@ -18,6 +18,9 @@
   - button "Keyboard shortcuts"
   - button "Switch to Graphite Warm"
 - main:
+  - status:
+    - text: Storage has no restore point Runs and writes are unaffected; no verified backup was found, so there is no restore point. checked 10:00 AM
+    - button "Storage health"
   - button "Workflow Panel — Person Lookup, minimised. 8 rows on this day, across every workflow": "8"
   - button "Archive"
   - button "Activity"
