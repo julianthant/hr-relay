@@ -35,13 +35,22 @@ and the grid read are one visit to one page and cannot be re-entered independent
   never renders, a window that did not apply, a grid that was not fully read — each throws with its
   own code. `lastPunchDate: null` is reachable ONLY from a grid whose day set covers the whole
   applied window (S34/S36/S38).
-- **The grid is VIRTUALIZED.** A 73-day window renders **51** date rows at `scrollTop: 0`. The driver
-  scrolls the pinned viewport and accumulates; `assertTimecardCoversRange` then refuses a day set
-  that does not cover the applied window. Legacy reads the DOM once — a punch after the rendered
-  window is invisible to it, and the last-day-worked silently regresses.
-- **Columns bind BY HEADER NAME.** Legacy hardcodes `[1]=In [2]=Out [4]=Pay code`. A column inserted
-  by a WFD release would re-point "Pay code" at "Transfer"; here a missing or ambiguous header is a
-  loud refusal naming the observed header row.
+- **The grid is VIRTUALIZED, and the read stops on COVERAGE, never on the scrollbar (D205).** A
+  73-day window renders **51** date rows at `scrollTop: 0`. `readVirtualizedGrid` drives the **body**
+  viewport (ui-grid's pinned column is synced *from* it and drives no virtualization), accumulates,
+  and continues until `timecardRangeCoverage` says every day of the applied window is rendered — the
+  same invariant `assertTimecardCoversRange` refuses on, one implementation. It **refuses** with
+  days-seen against days-expected when it cannot get there; position and "did the row set grow" are
+  bounded stall detectors, never the verdict. There is no return-what-we-got arm. Legacy reads the
+  DOM once — a punch after the rendered window is invisible to it, and the last-day-worked silently
+  regresses.
+- **Columns bind BY HEADER NAME — from the DATA container's headers only.** Legacy hardcodes
+  `[1]=In [2]=Out [4]=Pay code`. A column inserted by a WFD release would re-point "Pay code" at
+  "Transfer"; here a missing or ambiguous header is a loud refusal naming the observed header row.
+  The headers are read from the data viewport's own `.ui-grid-render-container`, because a
+  `document`-wide `.ui-grid-header-cell` query also matches the PINNED column's `Date` header while
+  the cells come from a body row that has none — see the lesson below. A header count that disagrees
+  with a body row's cell count is its own refusal.
 - **The applied window is proved by VALUE.** WFD renders the window back into the period label
   (`6/01/2026 - 8/12/2026`), so S40 is a calendar-day comparison, not legacy's "the label changed".
   Padding differs between the two halves, so the comparison is never on strings.
@@ -111,6 +120,25 @@ hit the search box's own echo of the query), and the `loadingOverlay` CSS union 
 
 ## Lessons learned
 
+- **2026-08-13: a loop that stops on the widget can be RIGHT about the widget and wrong about the
+  answer (D205).** The grid read stopped when `scrollTop` refused to advance — which was true, and
+  meaningless, because the position was being written to ui-grid's PINNED viewport, which is synced
+  *from* the body container and drives no virtualization. Fourteen live attempts and six recurrences
+  of one failure fingerprint came out of a loop whose termination condition was a property of the
+  scrollbar instead of a property of the ANSWER. The rule: when a read gathers a set, terminate on
+  what the set must CONTAIN and refuse when you cannot get there. The second half is testability —
+  the loop lived inside a `page.evaluate` closure, so no fixture could reach it and only a real WFD
+  session could ever have found the defect. It now sits behind a port in `driver/grid-scroll.ts`,
+  where a fake virtualized grid executes the exact algorithm.
+- **2026-08-13: "bind by header name" is only as good as the ELEMENT SET the names came from
+  (D205).** The first grid read that ever reached the fold returned `payCode: "4.00"` with
+  `amount: ""` and threw nothing. Headers were queried `document`-wide, so the pinned column's `Date`
+  header survived the blank/`.` filter at index 0, while `cells` came from a body row that has no
+  date cell — every resolved index one too high, `In` reading `Out` and `Pay code` reading `Amount`.
+  The mapping was internally consistent and externally wrong, which is the worst shape a mapping can
+  have: name-binding *felt* like the safe alternative to legacy's hardcoded indices and had quietly
+  become a different hardcoded offset. Read the names from the same container as the cells, and
+  compare the COUNTS — an invariant that catches the class rather than the instance.
 - **2026-08-12: a virtualized grid makes "read the DOM" a partial read, and partial reads regress
   silently.** The defect is not a wrong selector — every legacy selector still resolves. It is that
   `document.querySelectorAll(".ui-grid-viewport [role=row]")` returns the RENDERED window, which for

@@ -310,6 +310,21 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-13: a loop that terminates on the WIDGET can be right about the widget and wrong about
+  the answer — and a mapping can be internally consistent and externally wrong (D205).** Chunk 1's
+  live proof stayed open through 14 attempts because the virtualized timecard read stopped when
+  `scrollTop` refused to advance. That was TRUE: the position was being written to ui-grid's pinned
+  viewport, which is synced from the body container and drives no virtualization. A true statement
+  about the wrong thing reported a 14-of-35-day read as whole. **Terminate on what the gathered set
+  must CONTAIN, and refuse when you cannot get there** — here `timecardRangeCoverage`, the same
+  invariant the fold already refused on, now shared as ONE implementation between the loop and the
+  fold. Two corollaries earned the hard way: an algorithm inside a `page.evaluate` closure is
+  untestable by construction, so it moved behind a port where a fake grid runs it; and the first read
+  that finally reached the fold exposed a second defect where "bind columns by header NAME" — the
+  safe-looking alternative to legacy's hardcoded indices — had become a different hardcoded offset,
+  because the names were queried `document`-wide (catching the pinned `Date` header) while the cells
+  came from a body row that has none. Nothing threw. Read names from the same container as the cells
+  and compare the counts.
 - **2026-08-12: "answered durably" and "answered in evidence" are two different claims, and a trust
   surface only honours the second (D204).** D202 put the approver into authority and D203 taught the
   KERNEL to read a `gate_results` row as a dependency's evidence — and the RECEIPT, which is the

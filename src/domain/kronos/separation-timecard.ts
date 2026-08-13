@@ -229,6 +229,62 @@ export function enumerateRangeDays(range: TimecardDateRange): readonly string[] 
 }
 
 /**
+ * NOT exported: this is the in-process result of a computation, never a
+ * durable, wire, or config boundary, and `strict-boundary-schemas` is right to
+ * demand a schema for anything a `src/domain` module exports as a shape. The
+ * two functions below carry it by inference to their callers, which is all
+ * either of them needs.
+ */
+interface TimecardRangeCoverage {
+  /** Every day the applied window demands, `MM/DD/YYYY`. */
+  readonly expected: readonly string[];
+  /** Every distinct day the rows actually carry, INCLUDING period overhang. */
+  readonly observed: ReadonlySet<string>;
+  /** The expected days no row carries — empty exactly when the read is whole. */
+  readonly missing: readonly string[];
+  readonly complete: boolean;
+}
+
+/**
+ * How much of the applied window a set of rows actually covers.
+ *
+ * This is the ONE coverage computation. The driver's scroll loop uses it as its
+ * termination condition (D205) and `assertTimecardCoversRange` uses it as its
+ * refusal — a second implementation would let the loop believe it had finished
+ * a read the fold then rejected, which is the shape of the failure that kept
+ * chunk 1's live proof open.
+ */
+export function timecardRangeCoverage(
+  rows: readonly Readonly<{ month: number; day: number }>[],
+  range: TimecardDateRange,
+): TimecardRangeCoverage {
+  // Resolve against the WIDENED window: the grid legitimately renders
+  // period-aligned days outside the requested one, and a coverage check must
+  // not refuse them any more than the fold does.
+  const resolution = periodAlignedResolutionRange(range);
+  const observed = new Set(rows.map((row) => formatTimecardDate(row.month, row.day, resolution)));
+  const expected = enumerateRangeDays(range);
+  const missing = expected.filter((day) => !observed.has(day));
+  return Object.freeze({
+    expected,
+    observed,
+    missing: Object.freeze(missing),
+    complete: missing.length === 0,
+  });
+}
+
+/** `N of M days, missing a, b, c and K more` — the one phrasing for both callers. */
+export function describeTimecardCoverage(
+  coverage: TimecardRangeCoverage,
+  range: TimecardDateRange,
+): string {
+  const shown = coverage.missing.slice(0, 8).join(", ");
+  return `covers ${String(coverage.observed.size)} of ${String(coverage.expected.length)} days in `
+    + `${describeDay(range.start)} - ${describeDay(range.end)} — missing ${shown}`
+    + (coverage.missing.length > 8 ? ` and ${String(coverage.missing.length - 8)} more` : "");
+}
+
+/**
  * Refuse a grid read that does not cover the applied window.
  *
  * This is the guard the virtualized grid demands: WFD renders one row per
@@ -246,19 +302,10 @@ export function assertTimecardCoversRange(
       + " — the grid was not read; this is not an empty timecard",
     );
   }
-  // Resolve against the WIDENED window: the grid legitimately renders
-  // period-aligned days outside the requested one, and a coverage check must
-  // not refuse them any more than the fold does.
-  const resolution = periodAlignedResolutionRange(range);
-  const observed = new Set(rows.map((row) => formatTimecardDate(row.month, row.day, resolution)));
-  const missing = enumerateRangeDays(range).filter((day) => !observed.has(day));
-  if (missing.length === 0) return;
-  const shown = missing.slice(0, 8).join(", ");
+  const coverage = timecardRangeCoverage(rows, range);
+  if (coverage.complete) return;
   throw new Error(
-    `[new-kronos] timecard grid read covers ${String(observed.size)} of `
-    + `${String(enumerateRangeDays(range).length)} days in `
-    + `${describeDay(range.start)} - ${describeDay(range.end)} — missing ${shown}`
-    + (missing.length > 8 ? ` and ${String(missing.length - 8)} more` : "")
+    `[new-kronos] timecard grid read ${describeTimecardCoverage(coverage, range)}`
     + " — the virtualized grid was not scrolled to the end; refusing to derive a last punch from a partial read",
   );
 }

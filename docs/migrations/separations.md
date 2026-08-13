@@ -1741,9 +1741,34 @@ Options are recorded in the return of the chunk-1 build; nothing is decided here
 
 ---
 
-### 9.2 Chunk 1 — the live proof: **NOT RUN to completion** (14 attempts, 2026-08-12)
+### 9.2 Chunk 1 — the live proof: **MET at attempt 17** (2026-08-12/13)
 
-**Honest status.** Doc 07 §3.1 step 4 (the live dry-run for this chunk) is **NOT MET**. The
+**Status: CLOSED.** Doc 07 §3.1 step 4 for chunk 1 is **MET**. Run **`sk-171645-4adf`**
+(`4adf2efb-c433-422e-8e89-d7836da59a1f`), EID `10776990` / *Kou, Nathan* over `06/10/2026 –
+08/12/2026` (64 days), reached terminal **`done`** against real WFD with a complete, correctly-bound
+grid read. The full attempt record — including the two runs that closed it and the tenth defect the
+first of them exposed — is in **§9.2a** below; everything from "Honest status" down is the record as
+it stood at attempt 14, kept verbatim because the defects it names are the reason the rules exist.
+
+**Measured, run `sk-171645-4adf`** (enqueue `00:16:51.197Z` → terminal `00:17:30.816Z`, **39.6 s**
+end to end): `search` checkpoint at `00:17:22.951Z` (**31.8 s**, including a cold browser launch and
+the whole SSO + Duo chain), `timecard` checkpoint at `00:17:30.813Z` (**7.9 s** for Go To → subject
+proof → range apply → the whole virtualized grid read). The grid: **67 days covered** over a 64-day
+window (WFD's pay-period overhang), **1 scroll step**, `columnHeaders`
+`Schedule · In · Out · Transfer · Pay code · Amount · Shift · Daily · Period · Absence`,
+`lastPunchDate 06/12/2026`, `punchDates ["06/12/2026"]`, `holidayDates ["06/19/2026"]`,
+`payCodeDays` `Holiday - Hourly 4.00` · `Juneteenth Observed 0.00` (06/19) ·
+`Independence Day Observed 0.00` (07/03), `unclassifiedPayCodes`
+`["Independence Day Observed", "Juneteenth Observed"]`. **Those three pay codes are exactly the three
+§9.1 recorded from an independent read-only probe of the same EID on 2026-08-12** — which is what
+proves the cell binding, not just the day coverage.
+
+---
+
+### 9.2a Chunk 1 — the attempt record (14 failures, then two runs that closed it)
+
+**Honest status *as of attempt 14*.** Doc 07 §3.1 step 4 (the live dry-run for this chunk) was
+**NOT MET**. The
 `separations-kronos-timecard` workflow was started against the real system thirteen times through
 the real start-plan → command → worker path. **The search half is proved live** — `search` reached
 `observed-this-attempt` with a durable checkpoint on runs `sk-123940-ab25`, `sk-125031-54c5`,
@@ -1815,7 +1840,51 @@ The refusal is CORRECT and is the whole point of that check — a last punch der
 would be a plausible-but-wrong separation date. What it says about the chunk is that the virtualized
 grid's scroll-to-end is not yet reliable over a five-week window; the durable failure fingerprint
 `53336e1c` records `seen 6×`, so this is a recurring class rather than a one-off. Doc 07 §3.1 step 4
-for chunk 1 stays **OPEN**, and the next attempt owes the scroll loop rather than another window.
+for chunk 1 stayed **OPEN** after this attempt, and the next one owed the scroll loop rather than
+another window.
+
+**Attempts 15–17 (2026-08-13) — the scroll loop, then the tenth defect it uncovered (D205).**
+
+**Root cause of the ninth mode.** ui-grid renders the pinned date column and the body columns as
+SEPARATE `.ui-grid-viewport` elements, and only the body's scroll drives virtualization — the pinned
+one is synced *from* it. The loop wrote `scrollTop` to `viewports[0]`, the pinned column, so the
+position moved (or clamped at zero) while the rendered row set never changed, and the loop then
+stopped because `scrollTop` "refused to advance". That was a TRUE statement about the wrong widget,
+and it was reported as a whole read. The fix drives every viewport and reports geometry from the
+BODY one — and, more importantly, stops terminating on the scrollbar at all: the loop now terminates
+on `timecardRangeCoverage`, the same invariant `assertTimecardCoversRange` refuses on, and REFUSES
+with days-seen against days-expected when it cannot reach it. The algorithm moved out of the
+`page.evaluate` closure into `src/stores/new-kronos/driver/grid-scroll.ts` so a fake virtualized grid
+can execute it; `tests/unit/new-kronos-grid-scroll.test.ts` pins the whole-window read, the refusal,
+and the bounded give-up on a wedged grid.
+
+| Attempt | Run | Window | Outcome |
+|---|---|---|---|
+| 15 | `sk-171126-e5f4` | `07/13/2026 – 08/11/2026`, EID 10001754 | **`done`** in 43.2 s — first terminal timecard read this chunk has ever produced. 34 days covered, but `populatedRows: 0` and every derived date `null` |
+| 16 | `sk-171330-f394` | `06/08/2026 – 08/12/2026`, EID 10776990 | **`done`** in 46.5 s, 69 days, 67 populated rows — **and its values were wrong**, which is how the tenth defect was found |
+| 17 | `sk-171645-4adf` | `06/10/2026 – 08/12/2026`, EID 10776990 | **`done`** in 39.6 s, 67 days, correct values matching §9.1's independent probe — **the proof** |
+
+**The tenth defect: the column binding was off by one, and only a grid read that REACHED the fold
+could show it.** Attempt 16 returned `payCode: "4.00"` with `amount: ""` and
+`unclassifiedPayCodes: ["0.00", "4.00"]`. Nothing threw. The cause: the header row was read
+`document`-wide from `.ui-grid-header-cell`, which also matches the PINNED container's header, and
+live that leaves `Date` surviving the blank/`.` filter at index 0 — while `cells` come from a body
+row, which has no date cell. Every resolved index was therefore one too high: `In` read the Out
+column, `Pay code` read Amount, `Amount` read Shift. **"Columns bind by header name" was supposed to
+make this impossible and did not**, because the names were read from a WIDER element set than the
+cells: the mapping was internally consistent and externally wrong. Headers are now read from the
+data viewport's own `.ui-grid-render-container` alone, and a cell-count/header-count disagreement is
+its own loud refusal — the cheap invariant that catches this class rather than this instance.
+
+Attempt 15's nulls were honest either way (that subject has no punches in that window, and every
+shifted column was empty too), and attempt 16's checkpoint is LEFT in authority holding its shifted
+values: it is durable evidence of the defect, not corruption, and insert-only authority is not
+rewritten to make history tidier.
+
+**What the coverage refusal is worth, measured.** Both closing runs needed exactly **one** scroll
+step, so the loop's many-step path is exercised by the fixture rather than live. The invariant is
+what carries the guarantee: a read that had not reached the end of the grid could not have returned
+at all.
 
 ---
 

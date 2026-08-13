@@ -60,7 +60,10 @@ import {
   rangesAreSameDays,
   resolveTimecardColumns,
 } from "../../../domain/kronos/separation-timecard.js";
+import { readVirtualizedGrid } from "./grid-scroll.js";
+import type { RawTimecardGridRow } from "./grid-scroll.js";
 import type { TimecardGridRow } from "../../../domain/kronos/separation-timecard.js";
+import type { TimecardDateRange } from "../../../domain/timecard-period.js";
 import {
   NEW_KRONOS_SEARCH_CLOSE_BUTTON,
   NEW_KRONOS_SEARCH_GO_TO_BUTTON,
@@ -122,6 +125,7 @@ const NO_RESULTS_STABLE_POLLS = 15;
  * driver's internal reach-the-page step and is not a caller's choice.
  */
 const PANEL_SEARCH_TIMEOUT_MS = 20_000;
+/** The virtualized grid's own scroll bounds live with its loop in `grid-scroll.ts` (D205). */
 
 type PanelRoot = FrameLocator | Page;
 type PanelContext = "portal-frame" | "top-level";
@@ -532,15 +536,20 @@ function createDriverInternals(page: Page, clock: Clock) {
   };
 
   /**
-   * Read the whole virtualized grid: scroll the pinned viewport in steps and
-   * accumulate every distinct (day, cells) row, binding columns BY HEADER NAME.
+   * Read the whole virtualized grid: scroll the BODY viewport in bounded steps
+   * and accumulate every distinct (day, cells) row, binding columns BY HEADER
+   * NAME — then prove the applied window is entirely rendered before returning.
    *
-   * The scroll loop lives inside one `page.evaluate` because a Playwright-side
-   * loop would need a sleep between steps; in-page it waits on a CONDITION (the
-   * first rendered date row changing) with its own bound. The returned rows are
-   * raw strings — every derivation happens in the domain fold.
+   * It takes the APPLIED range because the read cannot know it is finished
+   * without one. `assertTimecardCoversRange` already stated the invariant, but
+   * it ran in the fold, after the browser was gone: the driver got to declare
+   * success on a partial grid and the refusal arrived one layer too late to say
+   * anything useful about the scroll. The same `timecardRangeCoverage` is now
+   * the loop's termination condition and the loop's refusal.
+   *
+   * The returned rows are raw strings — every derivation happens in the fold.
    */
-  const readGrid = async (): Promise<{
+  const readGrid = async (applied: TimecardDateRange): Promise<{
     rows: TimecardGridRow[];
     headers: string[];
     scrollSteps: number;
@@ -556,6 +565,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     const harvestOnce = async (): Promise<{
       rows: readonly { month: number; day: number; rawDateCell: string; cells: readonly string[] }[];
       headers: readonly string[];
+      dataCells: number;
       viewportCount: number;
       topRow: string;
       scrollTop: number;
@@ -567,11 +577,20 @@ function createDriverInternals(page: Page, clock: Clock) {
       const dataViewport = viewports[viewports.length - 1];
       if (dateViewport === undefined || dataViewport === undefined || viewports.length < 2) {
         return {
-          rows: [], headers: [], viewportCount: viewports.length,
+          rows: [], headers: [], viewportCount: viewports.length, dataCells: -1,
           topRow: "", scrollTop: 0, scrollHeight: 0, clientHeight: 0,
         };
       }
-      const headers = [...document.querySelectorAll(".ui-grid-header-cell")]
+      // The headers must come from the DATA container ALONE (D205). Reading
+      // `.ui-grid-header-cell` document-wide also picks up the PINNED column's
+      // header — live, `Date` survives the blank/`.` filter at index 0 — while
+      // the cells below come from the body row, which has no date cell. Every
+      // resolved index was then one too high: `Pay code` read the Amount column
+      // and `In` read `Out`. That is not a crash, it is a plausible-but-wrong
+      // last punch on a real separation, and only the first grid read that
+      // reached the fold could ever have shown it.
+      const container = dataViewport.closest(".ui-grid-render-container");
+      const headers = (container === null ? [] : [...container.querySelectorAll(".ui-grid-header-cell")])
         .map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim())
         .filter((text) => text.length > 0 && text !== ".");
       const dateRows = [...dateViewport.querySelectorAll("[role=row]")];
@@ -603,58 +622,92 @@ function createDriverInternals(page: Page, clock: Clock) {
         });
       }
       const first = dateRows[0];
+      const firstDataRow = dataRows[0];
       return {
         rows,
         headers,
+        // How many cells a body row actually renders — the count the header
+        // list has to agree with, checked below rather than assumed.
+        dataCells: firstDataRow === undefined
+          ? -1
+          : firstDataRow.querySelectorAll("[role=gridcell]").length,
         viewportCount: viewports.length,
         topRow: first === undefined ? "" : (first.textContent ?? "").trim(),
-        scrollTop: dateViewport.scrollTop,
-        scrollHeight: dateViewport.scrollHeight,
-        clientHeight: dateViewport.clientHeight,
+        scrollTop: dataViewport.scrollTop,
+        scrollHeight: dataViewport.scrollHeight,
+        clientHeight: dataViewport.clientHeight,
       };
     });
 
-    const scrollBy = async (fraction: number): Promise<number> => page.evaluate((step: number) => {
-      const viewport = document.querySelectorAll(".ui-grid-viewport")[0];
-      if (viewport === undefined) return -1;
-      viewport.scrollTop = step < 0 ? 0 : viewport.scrollTop + Math.max(1, Math.floor(viewport.clientHeight * step));
-      return viewport.scrollTop;
-    }, fraction);
+    /**
+     * Drive the grid's scroll position, and report where it actually landed.
+     *
+     * The position is written to EVERY `.ui-grid-viewport`, and the geometry
+     * comes back from the LAST one. That is the whole D205 fix: ui-grid renders
+     * a pinned container and a body container as separate viewports, and only
+     * the body's scroll drives virtualization — the pinned date column is
+     * synced FROM it. Writing `scrollTop` to `viewports[0]` therefore moved the
+     * pinned column's pixels (or nothing at all, if it does not overflow) while
+     * the row set never re-rendered, which is exactly how attempt 14 read the
+     * last 14 days of a 35-day window and reported a scroll it had not done.
+     * Writing all of them keeps the two columns aligned for the paired read
+     * below rather than relying on ui-grid's own sync landing first.
+     */
+    const scrollGridTo = async (top: number): Promise<{
+      scrollTop: number;
+      scrollHeight: number;
+      clientHeight: number;
+    }> => page.evaluate((position: number) => {
+      const viewports = [...document.querySelectorAll(".ui-grid-viewport")];
+      for (const viewport of viewports) viewport.scrollTop = Math.max(0, position);
+      const driver = viewports[viewports.length - 1];
+      return driver === undefined
+        ? { scrollTop: -1, scrollHeight: -1, clientHeight: -1 }
+        : {
+          scrollTop: driver.scrollTop,
+          scrollHeight: driver.scrollHeight,
+          clientHeight: driver.clientHeight,
+        };
+    }, top);
 
-    await scrollBy(-1);
-    const seen = new Map<string, { month: number; day: number; rawDateCell: string; cells: readonly string[] }>();
-    let harvest = await harvestOnce();
-    const headers = harvest.headers;
-    const viewportCount = harvest.viewportCount;
-    let scrollSteps = 0;
-    for (let step = 0; step <= 200; step++) {
-      for (const row of harvest.rows) {
-        seen.set(`${String(row.month)}/${String(row.day)}|${row.cells.join(" ")}`, row);
-      }
-      const before = harvest.scrollTop;
-      const after = await scrollBy(0.8);
-      if (after <= before) break;
-      scrollSteps++;
-      // Wait for the virtualized grid to REPAINT — the condition is the top row
-      // changing, not a fixed delay.
-      const anchor = harvest.topRow;
-      for (let attempt = 0; attempt < 20; attempt++) {
-        harvest = await harvestOnce();
-        if (harvest.topRow !== anchor) break;
-        await tick(POLL_INTERVAL_MS);
-      }
-    }
-
-    if (viewportCount < 2) {
+    const opening = await harvestOnce();
+    const headers = opening.headers;
+    if (opening.viewportCount < 2) {
       throw new NewKronosDriverError(
-        `the timecard grid rendered ${String(viewportCount)} viewports, expected the pinned date column `
-        + "plus the data column — the timecard did not load",
+        `the timecard grid rendered ${String(opening.viewportCount)} viewports, expected the pinned date `
+        + "column plus the data column — the timecard did not load",
+      );
+    }
+    /*
+     * The header row and a body row must describe the SAME columns, or every
+     * resolved index is an offset into somebody else's row. Binding by header
+     * name was supposed to make that impossible and did not: the names were
+     * read from a wider element set than the cells, so the mapping was
+     * internally consistent and externally wrong. A count comparison is the
+     * cheap invariant that catches it, and it catches the next version of it
+     * too — a WFD release that renders a header with no cell, or the reverse.
+     */
+    if (opening.dataCells >= 0 && opening.dataCells !== headers.length) {
+      throw new NewKronosDriverError(
+        `the timecard grid's data rows render ${String(opening.dataCells)} cell(s) against `
+        + `${String(headers.length)} data header(s) ${JSON.stringify(headers)} — the header row and the `
+        + "body rows do not describe the same columns, so every column index would be an offset into "
+        + "the wrong cell; refusing to read punches through a mapping that cannot be trusted",
       );
     }
     const columns = resolveTimecardColumns(headers);
     const cellAt = (cells: readonly string[], column: keyof typeof columns): string =>
       cells[columns[column]] ?? "";
-    const rows: TimecardGridRow[] = [...seen.values()].map((row) => ({
+    const read = await readVirtualizedGrid(
+      {
+        harvest: async () => await harvestOnce(),
+        scrollTo: scrollGridTo,
+        settle: async () => { await tick(POLL_INTERVAL_MS); },
+        refuse: (message: string) => new NewKronosDriverError(message),
+      },
+      applied,
+    );
+    const rows: TimecardGridRow[] = read.rows.map((row: RawTimecardGridRow) => ({
       month: row.month,
       day: row.day,
       rawDateCell: row.rawDateCell,
@@ -669,7 +722,7 @@ function createDriverInternals(page: Page, clock: Clock) {
       period: cellAt(row.cells, "Period"),
       absence: cellAt(row.cells, "Absence"),
     }));
-    return { rows, headers: [...headers], scrollSteps };
+    return { rows, headers: [...headers], scrollSteps: read.scrollSteps };
   };
 
   const readSeparationTimecard = async (
@@ -794,7 +847,7 @@ function createDriverInternals(page: Page, clock: Clock) {
       );
     }
 
-    const { rows, headers, scrollSteps } = await readGrid();
+    const { rows, headers, scrollSteps } = await readGrid(applied.value.parsed);
     const fold = foldSeparationTimecard(rows, applied.value.parsed);
     const daysCovered = new Set(rows.map((row) => `${String(row.month)}/${String(row.day)}`)).size;
     const populatedRows = rows.filter((row) =>

@@ -449,7 +449,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-identity-check"
     },
     {
-      "fingerprint": "2e6126cbc1f49335fca7d915b171d2e6ea8351e20c2467a2a0f0fe216517f469",
+      "fingerprint": "cef2a35e0d5fab106c3902bb208421b26b07086e5a9e3aac2a21c3d5987c2c2b",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -501,7 +501,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/kronos/separation-timecard.ts",
-          "sha256": "a9901d7e283ca2b7d891791c901f65a3edd00bcdc442052ab8ea3be5ecee96a8"
+          "sha256": "3f59beb26ff0b60e5e4c7dce3016a47dcac9bb0eac599b6ede8dcb05166630dc"
         },
         {
           "path": "src/domain/matching/levenshtein.ts",
@@ -2201,7 +2201,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-timekeeper-annotation"
     },
     {
-      "fingerprint": "60a745faa30e9d417b533c4ca4dc372afe6cf3ef4a654582feb1b715dba29a34",
+      "fingerprint": "381deb1128a9ce37eb54518e9c4120fe57c1908facf40720c75f7a1c34636eff",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2269,7 +2269,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/kronos/separation-timecard.ts",
-          "sha256": "a9901d7e283ca2b7d891791c901f65a3edd00bcdc442052ab8ea3be5ecee96a8"
+          "sha256": "3f59beb26ff0b60e5e4c7dce3016a47dcac9bb0eac599b6ede8dcb05166630dc"
         },
         {
           "path": "src/domain/provider-admission.ts",
@@ -2348,8 +2348,12 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "8af55a6559c2b38b06a1483dbd6393dbc11967b5aabe9a2a6b8b61a8741667c5"
         },
         {
+          "path": "src/stores/new-kronos/driver/grid-scroll.ts",
+          "sha256": "25780d2a97bf293f4ba80edb08572062b16f4338ff02d3bd6fc885e9b41cbd59"
+        },
+        {
           "path": "src/stores/new-kronos/driver/interpreter.ts",
-          "sha256": "ddf27b5ba12d152100a27d7378a7ecc1f605d3ed34e4b05b405cfde0bcb1253f"
+          "sha256": "bb8d5dd7d6cc7635f9fb36858ba5da36cc8f8ddf85536037a2562589f5f02610"
         },
         {
           "path": "src/stores/new-kronos/driver/ui-registry.ts",
@@ -2367,7 +2371,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "6439bd65843b09a7da05c5df6381c22d786667944c0082ed4a86c6dbb3f78683",
+      "fingerprint": "f439910c1b1b277343dd4ab4deb5e53ef6cfeb9fbf163e012d2d3a27c2e24163",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2435,7 +2439,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/kronos/separation-timecard.ts",
-          "sha256": "a9901d7e283ca2b7d891791c901f65a3edd00bcdc442052ab8ea3be5ecee96a8"
+          "sha256": "3f59beb26ff0b60e5e4c7dce3016a47dcac9bb0eac599b6ede8dcb05166630dc"
         },
         {
           "path": "src/domain/provider-admission.ts",
@@ -2514,8 +2518,12 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "8af55a6559c2b38b06a1483dbd6393dbc11967b5aabe9a2a6b8b61a8741667c5"
         },
         {
+          "path": "src/stores/new-kronos/driver/grid-scroll.ts",
+          "sha256": "25780d2a97bf293f4ba80edb08572062b16f4338ff02d3bd6fc885e9b41cbd59"
+        },
+        {
           "path": "src/stores/new-kronos/driver/interpreter.ts",
-          "sha256": "ddf27b5ba12d152100a27d7378a7ecc1f605d3ed34e4b05b405cfde0bcb1253f"
+          "sha256": "bb8d5dd7d6cc7635f9fb36858ba5da36cc8f8ddf85536037a2562589f5f02610"
         },
         {
           "path": "src/stores/new-kronos/driver/ui-registry.ts",
