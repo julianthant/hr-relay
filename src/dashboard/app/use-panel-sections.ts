@@ -28,6 +28,14 @@ function sectionsWanted(detail: RunDetailWire, tab: PanelTab): string[] {
   // so it is fetched for the same reason and on the same terms: whenever the
   // run advertises it, never only when some tab is open.
   if (advertised.has("parked-write")) wanted.add("parked-write");
+  // Doc 09 §14.4's identity gate is the THIRD inline decision, on exactly the
+  // same terms — and it was an orphan until this line: the server has projected
+  // it (packet, options, approval shape, both `resolve-gate` descriptors) since
+  // the gate landed, nothing ever asked for it, and `merge()` below would have
+  // thrown if anything had. A run held at a gate therefore drew a decision card
+  // with no way to answer it. R5's escalation on the audit's queue/run-action
+  // ledger row (`docs/plans/2026-08-13-detail-fidelity-audit.md`).
+  if (advertised.has("identity-gate")) wanted.add("identity-gate");
   return [...wanted];
 }
 
@@ -47,6 +55,8 @@ function merge(into: PanelSections, response: RunDetailSectionResponse): PanelSe
       return { ...into, "context-attempts": response.payload };
     case "parked-write":
       return { ...into, "parked-write": response.payload };
+    case "identity-gate":
+      return { ...into, "identity-gate": response.payload };
     default:
       // A section the server serves and this build does not know how to place
       // is dropped rather than guessed at — but it must not be silent.

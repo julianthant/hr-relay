@@ -122,6 +122,7 @@ type RunDetailSection = z.infer<typeof RunDetailSectionSchema>;
 type TimelineEvent = RunDetailWire["timeline"]["events"][number];
 type NotePage = Extract<RunDetailSectionResponse, { section: "logs" }>["payload"];
 type FailurePayload = Extract<RunDetailSectionResponse, { section: "failure" }>["payload"];
+export type IdentityGatePayload = Extract<RunDetailSectionResponse, { section: "identity-gate" }>["payload"];
 
 /**
  * THE DETAIL REGION'S TWO BREAKPOINTS, IN COLUMN PIXELS (doc 03 §Shell).
@@ -173,6 +174,19 @@ export interface PanelSections extends ContextSections {
    * gets and for the same reason.
    */
   "parked-write"?: ParkedWritePayload;
+  /**
+   * Doc 09 §14.4's identity-approval gate. It has no tab either, and for the
+   * same reason: an open gate is a DECISION, and the decision card renders
+   * inline in the stream at the line it stopped on.
+   *
+   * The server has projected this section — packet, options, approval shape and
+   * both `resolve-gate` action descriptors — since the gate landed, and NOTHING
+   * fetched it: `use-panel-sections.ts` omitted it from the wanted set and
+   * `merge()` would have thrown on it (R5's escalation on the audit's
+   * queue/run-action ledger row). The gate's own served controls are what
+   * `InlineDecision` draws.
+   */
+  "identity-gate"?: IdentityGatePayload;
 }
 
 const TAB_META: Record<PanelTab, { label: string; icon: typeof ScrollText }> = {
@@ -1167,6 +1181,24 @@ export function LogPanel({
     "nearest",
   );
   const parked = sections["parked-write"];
+  /**
+   * THE GATE'S OWN CONTROLS, off the gate's OWN section.
+   *
+   * They used to come from the panel's generic `actions` prop, which is fed
+   * `SERVED_ACTIONS = []` because no generic action projection exists — so a run
+   * held at an identity gate drew a decision card with no way to answer it,
+   * while the server had projected both `resolve-gate` descriptors all along.
+   * Reading them here rather than through the generic prop is also what keeps
+   * the two straight: the wire refines that EVERY action on this section is a
+   * `resolve-gate` at this exact run version, so nothing else can arrive in
+   * this slot.
+   *
+   * A section in any state but `available` (missing / purged / error) yields no
+   * controls — a gate this build cannot describe is one it may not offer to
+   * resolve, which is `InlineDecision`'s own stated rule.
+   */
+  const gateSection = sections["identity-gate"];
+  const gateActions = gateSection?.state === "available" ? gateSection.value.actions : [];
   const {
     setNode: setParkedNode,
     inView: parkedInView,
@@ -1608,7 +1640,7 @@ export function LogPanel({
               notes={sections.logs}
               failure={sections.failure}
               parked={parked}
-              gateActions={actions}
+              gateActions={gateActions}
               onAction={handleAction}
               onResolvePark={handleParkResolution}
               decisionRef={setDecisionNode}

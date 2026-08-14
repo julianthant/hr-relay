@@ -1605,3 +1605,25 @@ export function visibleRunIds(
   }
   return ids;
 }
+
+/**
+ * The rows that need the operator, in the order they are DRAWN — the `n`
+ * binding's target (`app/global-keys.ts`).
+ *
+ * It filters `visibleRunIds` by the same `bandOf` the NEEDS YOU band header
+ * draws from, so the key and the band physically cannot disagree about what
+ * needs attention. A member of an attention band's group is in the list at its
+ * own drawn position, which is where the eye finds it.
+ */
+export function attentionRunIds(
+  surfaces: readonly QueueSurfaceWire[],
+  sort: QueueSortKey = "attention",
+  nowIso: string = new Date(0).toISOString(),
+): string[] {
+  const attention = new Set<string>(
+    surfaces
+      .filter((surface) => bandOf(dsStatusOf(surface.status)) === "attention")
+      .map((surface) => String(surface.runId)),
+  );
+  return visibleRunIds(surfaces, sort, nowIso).filter((runId) => attention.has(runId));
+}

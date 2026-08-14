@@ -17,6 +17,19 @@
  * 1i drop from the demo registry: `c` (mark the selected member checked) — the
  * member-checked bookkeeping has no wire state in this slice and the binding
  * would be a lie in Help.
+ *
+ * TWO MORE ENTRIES WERE CORRECTED WHEN THE HANDLER LANDED (`app/global-keys.ts`,
+ * the consumer four regions of the detail-fidelity audit deferred to). The rule
+ * the audit applies is that two operator-facing surfaces asserting a binding
+ * which does not exist is the defect, so a key with no target is removed here
+ * rather than bound to nothing:
+ *
+ *  - `Enter` is GONE. The demo opens a group's DRILL-IN view with it; this build
+ *    has no drill-in (deferred with a named trigger in `queue.tsx`), and here
+ *    selecting a row already opens it, so the key would do nothing.
+ *  - `Esc` no longer says "back out of a group" — that was the same drill-in.
+ *    Its other demo arm is real and is bound: at the top level it minimises the
+ *    Workflow Panel, which is why the entry moved to the `Anywhere` scope.
  */
 import { cn } from "../lib/utils.js";
 import { Kbd, SectionLabel, dsText } from "../ds/ui.js";
@@ -35,15 +48,14 @@ export const DEMO_SHORTCUTS: DemoShortcut[] = [
   { keys: ["r"], what: "start a run — any workflow, from any view", where: "Anywhere" },
   { keys: ["j", "k"], what: "move down / up the queue", where: "The queue" },
   { keys: ["n"], what: "jump to the next row waiting on you", where: "The queue" },
-  { keys: ["Enter"], what: "open the selected group", where: "The queue" },
   // The keyboard route to the row context menu. Right-click and the platform's
   // own Menu / Shift+F10 key open the same menu; this one does not depend on
   // the operator's keyboard having that key, and it works from the SELECTION
   // rather than from focus.
   { keys: ["m"], what: "every command on the selected row", where: "The queue" },
-  { keys: ["Esc"], what: "back out of a group", where: "The queue" },
   { keys: ["1", "4"], join: "–", what: "switch the detail panel's tab", where: "The detail panel" },
   { keys: ["w"], what: "cycle the Workflow Panel — floating, icon, sidebar", where: "Anywhere" },
+  { keys: ["Esc"], what: "minimise the Workflow Panel", where: "Anywhere" },
 ];
 
 /** the registry, in scope order, with empty scopes dropped */

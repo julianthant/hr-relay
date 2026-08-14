@@ -24,8 +24,9 @@ import { CapabilityAvailabilitySchema, type CapabilityAvailability } from "../..
 import { InputRunSurfaceSchema } from "../../domain/workflow/ingress.js";
 import { WORKFLOW_DESCRIPTORS } from "../../workflows/descriptor-registry.js";
 import { FileSpreadsheet, PanelRight } from "lucide-react";
-import { Button, EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, dsIcon, useDemoTheme } from "../ds/ui.js";
+import { Button, EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, dsIcon, useDemoTheme, useToasts } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
+import { useDashboardClient } from "../state/client-context.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
 import { useRunDetail } from "../state/use-run-detail.js";
@@ -37,11 +38,16 @@ import { UiCatalogWorkspace } from "../surfaces/ui-catalog.js";
 import { LogPanel, defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel.js";
 import {
   QueuePanel,
+  attentionRunIds,
+  visibleRunIds,
   type QueueFilterScope,
   type QueueSortKey,
   type QueueSurfaceWire,
   type QueueViewState,
 } from "../surfaces/queue.js";
+import { ConfirmCommandDialog, type ActionTarget, type PendingCommand } from "../surfaces/actions.js";
+import { composeCommandRequest, type CommandAction } from "./command-dispatch.js";
+import { useGlobalKeys } from "./global-keys.js";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/status.js";
 import { QueueToolbar } from "../surfaces/queue-toolbar.js";
 import { RunStartButton, RunStartSurfaces, type RunStartWorkflow } from "../surfaces/run-start.js";
@@ -98,8 +104,16 @@ import {
  *
  * It is therefore a wire gap, not a wiring oversight: the row on the
  * `docs/plans/2026-08-13-detail-fidelity-audit.md` hookup ledger (queue/run
- * action descriptors) is what closes it, and `LogPanel`'s `onAction` connects
- * in the same change that lands the field.
+ * action descriptors) is what closes it.
+ *
+ * WHAT IS NOW CONNECTED AROUND IT. `onAction` is passed on both panels and
+ * routes into `runAction` → `composeCommandRequest` → the one command client,
+ * so the day this constant becomes a read of a served array, every row and
+ * panel control is live with no further change. The SECTION-level descriptors
+ * that already exist do NOT come through here: the parked write's two
+ * resolutions are read off `sections["parked-write"]` by the panel's own dialog,
+ * and the identity gate's two `resolve-gate` actions are read off
+ * `sections["identity-gate"]` — which nothing fetched until this commit.
  */
 const SERVED_ACTIONS: readonly ActionDescriptorWire[] = [];
 
@@ -295,6 +309,16 @@ function LoadedApp({
    * shared link carry a dialog somebody else had open.
    */
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /**
+   * The command waiting on the operator's confirmation. A descriptor that
+   * carries a server-authored `confirm` block goes here first; everything else
+   * is posted straight away (the demo's own split, `RebuildDemo.tsx:226-252` —
+   * D16 keeps group cancel out of this flow BY CONSTRUCTION, because its
+   * descriptor carries no `confirm`).
+   */
+  const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null);
+  const client = useDashboardClient();
+  const { toast } = useToasts();
 
   const dayWire = dayResource.state === "loaded" ? dayResource.value : undefined;
   const workflowLabelOf = useCallback(
@@ -469,6 +493,115 @@ function LoadedApp({
     },
     [route, setRoute, onTab],
   );
+
+  /**
+   * THE ONE PLACE A SERVED CONTROL BECOMES A COMMAND (R8 finding 4, R5 finding
+   * 8). Every surface hands back the descriptor and its target; nothing below
+   * this line knows what a command envelope is.
+   *
+   * `composeCommandRequest` may REFUSE, and a refusal is reported rather than
+   * swallowed: a control that looks pressed and posts nothing is the silent
+   * failure this program forbids. The refusal toast is `danger`, which in this
+   * product means it never auto-dismisses — "nothing was recorded" may not time
+   * out (the same rule `park-resolve.tsx` follows).
+   */
+  const dispatchCommand = useCallback(
+    (action: CommandAction, target: ActionTarget): void => {
+      const composed = composeCommandRequest(action, target, {
+        actorId: boot.actor.id,
+        source: "run-detail",
+        gate: sections["identity-gate"],
+      });
+      if (composed.state === "refused") {
+        toast({ tone: "danger", title: "Nothing was sent", description: composed.reason });
+        return;
+      }
+      client.executeCommand(composed.request).then(
+        (result) => {
+          // `conflict` and `rejected` are VALUES, not exceptions (doc 13 §3.4),
+          // and the server's own sentence is printed verbatim — it is the only
+          // party that knows which version is live now.
+          if (result.state === "conflict" || result.state === "rejected") {
+            toast({ tone: "danger", title: "Nothing was recorded", description: result.message });
+            return;
+          }
+          toast({ tone: "success", title: action.label, description: "Recorded." });
+          setDetailNonce((nonce) => nonce + 1);
+        },
+        (caught: unknown) => {
+          toast({
+            tone: "danger",
+            title: "Nothing was recorded",
+            description: caught instanceof Error ? caught.message : String(caught),
+          });
+        },
+      );
+    },
+    [boot.actor.id, client, sections, toast],
+  );
+
+  /**
+   * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+   * `RebuildDemo.tsx:226-252` (`runAction`).
+   *
+   * Note what is NOT here: no status check, no per-button special case. The
+   * DESCRIPTOR decides — navigation moves the view, a command with
+   * server-authored confirm copy asks first, everything else posts.
+   */
+  const runAction = useCallback(
+    (action: ActionDescriptorWire, target: ActionTarget): void => {
+      if (action.kind === "navigation") {
+        if (action.navigate.runId !== undefined) selectRun(action.navigate.runId);
+        return;
+      }
+      if (action.confirm !== undefined) {
+        const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === target.runId);
+        setPendingCommand({
+          action,
+          target,
+          // The row's own name and identity, so the operator is shown the thing
+          // the blast radius lands ON. A run the day's projection does not hold
+          // states that rather than inventing a title for it.
+          subject: surface?.title ?? `run ${target.runId}`,
+          traceId: surface?.traceId ?? target.runId,
+          workflowLabel: workflowLabelOf(String(surface?.workflowId ?? activeWorkflowId)),
+        });
+        return;
+      }
+      dispatchCommand(action, target);
+    },
+    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun],
+  );
+
+  /**
+   * THE KEYBOARD, BOUND (R2 D13/D14, R3 finding 8, R5 finding 7, R8 finding 7).
+   *
+   * The traversal list is `visibleRunIds` — the queue's OWN drawn order, whose
+   * doc comment has named this consumer since it was written and had none — and
+   * the attention list is the NEEDS YOU band's own rows through the same
+   * `bandOf`. Both are computed from the same `surfaces`/`sort` the panel below
+   * renders, so a keyboard walk and a scroll cannot disagree.
+   */
+  const keyboardOrder = useMemo(
+    () => visibleRunIds(surfaces, sort, boot.serverClock.now),
+    [surfaces, sort, boot.serverClock.now],
+  );
+  const keyboardAttention = useMemo(
+    () => attentionRunIds(surfaces, sort, boot.serverClock.now),
+    [surfaces, sort, boot.serverClock.now],
+  );
+  useGlobalKeys({
+    onStartRun: () => setStartOpen(true),
+    onCyclePanelMode: panelMode.cycleMode,
+    panelMode: panelMode.mode,
+    onMinimisePanel: () => panelMode.setMode("icon"),
+    visibleRunIds: keyboardOrder,
+    attentionRunIds: keyboardAttention,
+    selectedRunId: route.run,
+    onSelectRun: selectRun,
+    panelTabs: offered,
+    onTab,
+  });
 
   /*
     BACK AND FORWARD, over PLACES rather than over presses.
@@ -824,6 +957,14 @@ function LoadedApp({
                 state={viewState}
                 handlers={{
                   onSelect: selectRun,
+                  /*
+                    Wired, and inert until the queue's generic action projection
+                    lands: `actionsOf` below answers `SERVED_ACTIONS`, which is
+                    empty, so no row draws a control to press. Connecting the
+                    handler now is what makes that ONE wire change the whole
+                    change — and it is not a claim that anything is served.
+                  */
+                  onAction: runAction,
                   onToggleWell: (runId) => {
                     const next = new Set(openWells);
                     if (next.has(runId)) next.delete(runId);
@@ -867,6 +1008,7 @@ function LoadedApp({
                   sections={sections}
                   surface={dayWire?.queueSurfaces.find((s) => s.runId === detailValue.runId)}
                   actions={actionsAt(SERVED_ACTIONS, "footer")}
+                  onAction={runAction}
                   tab={effectiveTab}
                   onTab={onTab}
                   workflowLabel={workflowLabelOf(detailValue.header.workflowId)}
@@ -924,6 +1066,19 @@ function LoadedApp({
         workflows={startWorkflows}
         panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
+      />
+
+      {/* Destructive commands ask first — with the SERVER's own description of
+          the blast radius (`DemoActions.tsx:430-447`). Group cancel is
+          deliberately not in this flow: D16 keeps it out BY CONSTRUCTION, since
+          its descriptor carries no `confirm` block to route on. */}
+      <ConfirmCommandDialog
+        pending={pendingCommand}
+        onCancel={() => setPendingCommand(null)}
+        onConfirm={(confirmed) => {
+          setPendingCommand(null);
+          dispatchCommand(confirmed.action, confirmed.target);
+        }}
       />
     </div>
   );
