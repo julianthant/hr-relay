@@ -1491,12 +1491,11 @@ export function QueuePanel({
               )}
             >
               <FileText aria-hidden className={cn(dsIcon.md, "text-[color:var(--ds-fg-muted)]")} />
-              {/* The day is FORMATTED (`Thu, Aug 14`), through the same helper
-                  the date navigator reads. It printed the raw ISO partition
-                  here, which is the one string on this surface an operator
-                  never types (R3 finding 2). */}
+              {/* No date in the heading (operator call, 2026-08-14): the day
+                  is already the date navigator's one visible fact, and the
+                  body sentence still says "on this day". */}
               {filter === undefined
-                ? `No ${panelLabel} runs on ${dayLabel(day)}`
+                ? `No ${panelLabel} runs`
                 : filter.kind === "needsYou"
                   ? `No ${panelLabel} runs need your attention`
                   : `No ${panelLabel} runs are ${filter.word}`}
