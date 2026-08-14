@@ -36,7 +36,11 @@ Owning docs for triage: `docs/rebuild/03-tracker-dashboard.md` §10.2 (D80/D179)
 
 ## Dry-run, priority and preset on an archived run
 
-**Recorded:** 2026-08-14 · **Status:** recorded
+**Recorded:** 2026-08-14 · **Status:** triaged 2026-08-14 — blocked on the queue row: the archived
+row is a frozen copy of `QueueSurfaceWire`, so these land there first (`dryRun` is landing on
+`QueueBaseFields` via the 2026-08-14 queue-rows session; rows archived AFTER that carry it
+forward automatically — D133 read-forward, never back-filled). `priority`/`preset` remain queue
+gaps with no record yet; add them to `queue-rows.md` when worked.
 
 - **Symptom:** an archived rehearsal is indistinguishable from an archived filing on the identity
   chip row. The ported ChipRow shows version / app / trace / by / attempt and stops.
@@ -68,7 +72,10 @@ Owning docs for triage: `docs/rebuild/03-tracker-dashboard.md` §10.2 (D80/D179)
 
 ## Logs, Data and People tabs
 
-**Recorded:** 2026-08-14 · **Status:** recorded
+**Recorded:** 2026-08-14 · **Status:** triaged 2026-08-14 — decide-first. This is an archive-MODEL
+decision (freeze section payloads beside the row, or state that an archived run keeps counts and
+not rows), i.e. a doc 03 §10.2 ratification plus a schema-version question on the immutable
+archived record — not a projection edit. Awaiting that ratification.
 
 - **Symptom:** the archived detail renders two tabs (Summary, Evidence) where the demo renders five.
   The archived run's log lines, data points and member rows are not readable at all.
@@ -165,7 +172,10 @@ Owning docs for triage: `docs/rebuild/03-tracker-dashboard.md` §10.2 (D80/D179)
 
 ## Workflow short code
 
-**Recorded:** 2026-08-14 · **Status:** recorded
+**Recorded:** 2026-08-14 · **Status:** triaged 2026-08-14 — deferred to the workflow-taxonomy
+question ([workflow-taxonomy.md](workflow-taxonomy.md)): a short code is a descriptor presentation
+attribute that several surfaces want (the Activity per-workflow table records the same need), so
+it should be decided once there, then frozen into archived records like the label.
 
 - **Symptom:** a list row reads `EID 10873698 · Person Lookup v1` where the demo reads
   `Tomás Rivera · pl v3.0`, and the version registry has no code column. At 800 rows the long label
@@ -182,7 +192,10 @@ Owning docs for triage: `docs/rebuild/03-tracker-dashboard.md` §10.2 (D80/D179)
 
 ## Export an archived run
 
-**Recorded:** 2026-08-14 · **Status:** recorded
+**Recorded:** 2026-08-14 · **Status:** triaged 2026-08-14 — decide-first, per the standing rule a
+frontend feature the plans do not list is not built. Needs an operator decision landing a line in
+doc 03 §10.2 (with the redaction posture stated: the export carries exactly the display-redacted
+detail wire and nothing more) before anyone builds it.
 
 - **Symptom:** the archived detail's panel header has no Export control; the demo's does.
 - **Demo element:** `<Button icon={<Download/>}>Export</Button>` in `ArchivedRunDetail`'s
