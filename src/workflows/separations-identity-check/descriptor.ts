@@ -70,6 +70,7 @@ import {
   IdentityApprovalResultSchema,
 } from "../../domain/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../domain/separations/identity-evidence.js";
+import { noSeparationWritePlan } from "../../domain/separations/write-plan.js";
 import { JobSummaryClassificationSchema } from "../../domain/separations/job-summary-classification.js";
 import { KualiDocumentNumberSchema } from "../../domain/ui/kuali-document-identity.js";
 import { KualiEidFieldSchema } from "../../domain/ui/kuali-separation-document.js";
@@ -203,6 +204,9 @@ const separationsIdentityCheckFlow = flow(SeparationsIdentityCheckInput)
       emplIdSource: input.emplIdSource,
       jobSummary: outputs["job-summary"],
       nameSelection: outputs["name-search"].selection,
+      plan: noSeparationWritePlan(
+        "this chunk resolves an identity and files nothing; the composed `separations` graph is where a write plan exists to show",
+      ),
     }),
   })
   .gate("identity-approval", {

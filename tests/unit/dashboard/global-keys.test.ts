@@ -33,6 +33,7 @@ import {
   composeCommandRequest,
   type CommandAction,
 } from "../../../src/dashboard/app/command-dispatch.js";
+import { noSeparationWritePlan } from "../../../src/domain/separations/write-plan.js";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
@@ -231,6 +232,7 @@ function packet(): IdentityEvidencePacket {
       },
       candidateEids: [EID as never],
     },
+    plan: noSeparationWritePlan("this fixture composes no separation write plan"),
   });
 }
 

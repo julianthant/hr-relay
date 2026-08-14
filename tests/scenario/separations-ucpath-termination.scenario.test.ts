@@ -68,6 +68,7 @@ import {
   terminationQueuedRun,
   type TerminationHarness,
 } from "../unit/fixtures/ucpath-termination-fixtures.js";
+import { noSeparationWritePlan } from "../../src/domain/separations/write-plan.js";
 
 const taskCtx = Object.freeze({
   signal: new AbortController().signal,
@@ -197,6 +198,7 @@ async function comparisonFixture(summary: UcpathJobSummary): Promise<MatchIdenti
       emplIdSource: RUN_INPUT.emplIdSource,
       jobSummary: summary,
       nameSelection: nameSearchFixture().selection,
+      plan: noSeparationWritePlan("this fixture composes no separation write plan"),
     },
     ctx: taskCtx,
   }));

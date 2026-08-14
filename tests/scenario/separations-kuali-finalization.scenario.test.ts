@@ -91,6 +91,7 @@ import {
   finalizationQueuedRun,
   type FinalizationHarness,
 } from "../unit/fixtures/kuali-finalization-fixtures.js";
+import { noSeparationWritePlan } from "../../src/domain/separations/write-plan.js";
 
 const FAILURES: string[] = [];
 const taskCtx = Object.freeze({
@@ -201,6 +202,7 @@ async function graphComparison(summary: UcpathJobSummary): Promise<MatchIdentity
       emplIdSource: FINALIZATION_RUN_INPUT.emplIdSource,
       jobSummary: summary,
       nameSelection: graphNameSearch().selection,
+      plan: noSeparationWritePlan("this fixture composes no separation write plan"),
     },
     ctx: taskCtx,
   }));

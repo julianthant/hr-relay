@@ -51,6 +51,7 @@ export const matchIdentityTask = defineTask(SeparationsMatchIdentity, {
       documentEidConflicts: documentEidPresent && documentEidValue !== input.emplId,
       jobSummary: input.jobSummary,
       nameSelection: input.nameSelection,
+      plan: input.plan,
     });
     const output = MatchIdentityOutputSchema.parse({
       packet,

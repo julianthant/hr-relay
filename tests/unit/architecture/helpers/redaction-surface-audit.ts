@@ -714,6 +714,34 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.value.packet.jobs.rows[].jobTitle", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.packet.jobs.rows[].effectiveDate", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.packet.jobs.unreadableCells[]", origin: "repository-authored" },
+  // The gate packet's WRITE PLAN block (chunk 6, `write-plan.ts`) — what the
+  // two writes will consume, rendered so the operator approves the VALUES and
+  // not only the person. It rides the same operator-loopback section as the
+  // rest of the packet and for the same reason (§14.4: the operator decides
+  // without leaving the dashboard). Templates, reason codes and comment text
+  // are repository-authored; every date, code, title and department came off a
+  // real page.
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.reason", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.termination.terminationType", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.termination.template", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.termination.reasonCode", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.termination.emplRecord", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.termination.effectiveDate", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.termination.lastDateWorked", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.termination.initiatorComments", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.document.documentNumber", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.document.department", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.document.departmentCode", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.document.ucpathDepartment", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.document.payrollTitleCode", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.document.payrollTitle", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.document.terminationEffectiveDate", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.document.timekeeperName", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.dates.kualiLastDayWorked", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.dates.lastDayWorked", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.dates.kualiSeparationDate", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.dates.separationDate", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.packet.plan.dates.unclassifiedPayCodes[]", origin: "captured-hr-value" },
 
   { surface: "wire/queue-surface", path: "appVersion.reason", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "endedAt.reason", origin: "repository-authored" },

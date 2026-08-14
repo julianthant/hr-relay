@@ -57,6 +57,8 @@ import {
   classifyJobSummary,
 } from "./job-summary-classification.js";
 import type { JobSummaryClassification } from "./job-summary-classification.js";
+import { SeparationWritePlanSchema } from "./write-plan.js";
+import type { SeparationWritePlan } from "./write-plan.js";
 
 /** Where the EID this run is checking came from — S18/S19's fork, stated. */
 export const IdentityEidSourceSchema = z.enum(["document-eid", "name-resolved"]);
@@ -138,6 +140,14 @@ export const IdentityEvidencePacketSchema = z.strictObject({
   comparisons: z.array(IdentityFieldComparisonSchema).min(1),
   nameSearch: IdentityNameSearchSchema,
   jobs: JobSummaryClassificationSchema,
+  /**
+   * **What the writes will consume**, or a stated reason this graph composes
+   * none (`write-plan.ts`). It rides INSIDE the packet so §14.5's digest binds
+   * the approval to the values themselves: a reconciled date that moves after
+   * approval re-derives a different digest and re-opens the gate. An approval of
+   * a person is not an approval of a date.
+   */
+  plan: SeparationWritePlanSchema,
   /** Every EID a human may legitimately approve on this packet. */
   approvableEids: z.array(EidSchema).min(1),
   approvalShape: IdentityApprovalShapeSchema,
@@ -239,6 +249,7 @@ interface IdentityEvidenceInput {
   readonly documentEidConflicts: boolean;
   readonly jobSummary: UcpathJobSummary;
   readonly nameSelection: UcpathPersonSelection;
+  readonly plan: SeparationWritePlan;
 }
 
 export function buildIdentityEvidencePacket(
@@ -323,6 +334,7 @@ export function buildIdentityEvidencePacket(
     comparisons,
     nameSearch,
     jobs,
+    plan: SeparationWritePlanSchema.parse(input.plan),
     approvableEids,
     approvalShape: deriveApprovalShape({
       nameTier,

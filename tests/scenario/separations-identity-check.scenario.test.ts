@@ -37,6 +37,7 @@ import { verifyIdentityApprovalTask } from "../../src/stores/separations/tasks/v
 import { separationsIdentityCheckDescriptor } from "../../src/workflows/separations-identity-check/descriptor.js";
 import { SEPARATIONS_IDENTITY_CHECK_CLAIMS } from "./coverage-claims.js";
 import { walkDescriptor } from "./helpers/pure-walk.js";
+import { noSeparationWritePlan } from "../../src/domain/separations/write-plan.js";
 
 const taskCtx = Object.freeze({
   signal: new AbortController().signal,
@@ -152,6 +153,7 @@ async function comparisonFor(
       emplIdSource: input.emplIdSource,
       jobSummary: summary,
       nameSelection: search.selection,
+      plan: noSeparationWritePlan("this fixture composes no separation write plan"),
     },
     ctx: taskCtx,
   }));

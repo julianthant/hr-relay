@@ -21,6 +21,7 @@ import {
   IdentityEidSourceSchema,
   IdentityEvidencePacketSchema,
 } from "../../separations/identity-evidence.js";
+import { SeparationWritePlanSchema } from "../../separations/write-plan.js";
 import { UcpathPersonSelectionSchema } from "../ucpath/search-person-org.js";
 import { UcpathJobSummarySchema } from "../../ui/ucpath-job-summary.js";
 import { KualiEidFieldSchema } from "../../ui/kuali-separation-document.js";
@@ -50,6 +51,12 @@ export const SeparationsMatchIdentity = defineTaskContract({
     jobSummary: UcpathJobSummarySchema,
     /** What a UCPath search on the DOCUMENT'S NAME resolved — run every time. */
     nameSelection: UcpathPersonSelectionSchema,
+    /**
+     * What the writes will consume, or a STATED reason this graph composes none.
+     * Required rather than optional: an omitted block is one a composition can
+     * forget to fill while every gate still renders (`write-plan.ts`).
+     */
+    plan: SeparationWritePlanSchema,
   }),
   output: MatchIdentityOutputSchema,
   errorCodes: [
@@ -115,6 +122,10 @@ export const SeparationsMatchIdentity = defineTaskContract({
           effectiveDate: "07/01/2025",
         }],
         unreadableCells: [],
+      },
+      plan: {
+        state: "not-composed",
+        reason: "this graph resolves an identity and composes no separation write plan",
       },
       approvableEids: ["10873698"],
       approvalShape: "one-click",

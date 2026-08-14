@@ -71,6 +71,7 @@ import {
   IdentityApprovalResultSchema,
 } from "../../domain/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../domain/separations/identity-evidence.js";
+import { noSeparationWritePlan } from "../../domain/separations/write-plan.js";
 import { KualiDocumentNumberSchema } from "../../domain/ui/kuali-document-identity.js";
 import {
   KualiEidFieldSchema,
@@ -196,6 +197,9 @@ const separationsUcpathTerminationFlow = flow(SeparationsUcpathTerminationInput)
       emplIdSource: input.emplIdSource,
       jobSummary: outputs["job-summary"],
       nameSelection: outputs["name-search"].selection,
+      plan: noSeparationWritePlan(
+        "this chunk files the UCPath termination alone; the composed `separations` graph is where the whole write plan — the Kuali finalization included — exists to show",
+      ),
     }),
   })
   .gate("identity-approval", {

@@ -40,6 +40,7 @@ import {
   uuidOf,
   type DashboardWorld,
 } from "./helpers/dashboard-harness.js";
+import { noSeparationWritePlan } from "../../../src/domain/separations/write-plan.js";
 
 const worlds: DashboardWorld[] = [];
 function world(): DashboardWorld {
@@ -106,6 +107,7 @@ function packetOf(overrides: Readonly<{ differentName?: boolean }> = {}): Identi
         candidateEids: [OTHER_EID as never],
       }
       : { status: "not-found", selected: null, candidateEids: [], searchName: "Hernandez, Jose Santos" },
+    plan: noSeparationWritePlan("this fixture composes no separation write plan"),
   });
 }
 

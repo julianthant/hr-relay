@@ -36,6 +36,7 @@ import {
   FixtureStage,
   fixtureDescriptor,
 } from "./architecture/helpers/descriptor-fixtures.js";
+import { noSeparationWritePlan } from "../../src/domain/separations/write-plan.js";
 
 const NOW = "2026-08-02T18:00:00.000Z";
 const EARLIER = "2026-08-02T16:00:00.000Z";
@@ -112,6 +113,7 @@ const IDENTITY_PACKET = buildIdentityEvidencePacket({
     observedAt: EARLIER,
   } as never,
   nameSelection: person.selection,
+  plan: noSeparationWritePlan("this fixture composes no separation write plan"),
 });
 
 const IDENTITY_JOBS = {
