@@ -11,7 +11,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
       backendPort: 3938,
       frontendPort: 5174,
       processLockRoot: ".tracker-rebuild/locks",
-      browserProfileRoot: ".auth-rebuild",
+      browserProfileRoot: ".auth",
       browserSessionNamespace: "hrauto-rebuild",
     });
     assert.match(runtimeHelp(rebuildRuntimeIsolation), /1g-spine/);

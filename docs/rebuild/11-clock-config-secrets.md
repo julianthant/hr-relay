@@ -465,14 +465,14 @@ pinned by `z.literal`. Two reasons, both load-bearing:
 
 - **cwd-independence.** The runtime-isolation contract states its roots as repo-relative literals
   because that is the text the operational-isolation audit compares on both sides. A *runtime* path
-  may not be that literal: `.auth-rebuild/duo-webauthn.json` resolves against `process.cwd()`, so a
+  may not be that literal: `.auth/duo-webauthn.json` (the root `.auth-rebuild` before D216) resolves against `process.cwd()`, so a
   worker or daemon started anywhere but the repo root silently looks for the Duo credential in a
   directory that does not have it, and `requireSecretFile` then reports a missing credential that is
   in fact present. `src/domain/config/schema.ts` resolves the isolation root exactly once and both
   leaves derive from that single absolute value, so no consumer re-derives it.
 - **The real credential home must be redirectable.** The profile directory is created by
   `factory.open()` (a real `mkdirSync`) and the credential is a real file read, so any caller that
-  must NOT touch the operator's `.auth-rebuild/` — every unit test — has to be able to say so.
+  must NOT touch the operator's `.auth/` — every unit test — has to be able to say so.
   Before this, `tests/unit/browser-session-factory.test.ts` both created directories in the real
   root and then `rmSync(..., { recursive: true, force: true })`'d it, deleting the Duo WebAuthn
   credential on every `npm run test`; fresh enrollment is the one Duo ceremony Autopilot cannot

@@ -321,7 +321,12 @@ export const DISTINCT_RESOURCE_KEYS = [
   "stateRoot",
   "artifactRoot",
   "processLockRoot",
-  "browserProfileRoot",
+  // `browserProfileRoot` left this list with D216 (operator decision,
+  // 2026-08-14): both repos name their profile root `.auth`, which never
+  // collides on disk because the roots are repo-relative. The browser-state
+  // identity that MUST stay distinct is `browserSessionNamespace` below —
+  // that is what keeps a session opened in the wrong checkout from reusing
+  // the other runtime's authenticated state.
   "browserSessionNamespace",
 ] as const;
 

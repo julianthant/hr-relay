@@ -8,7 +8,10 @@ const RuntimeIsolationSchema = z.strictObject({
   backendPort: z.literal(3938),
   frontendPort: z.literal(5174),
   processLockRoot: z.literal(".tracker-rebuild/locks"),
-  browserProfileRoot: z.literal(".auth-rebuild"),
+  // D216: the same NAME as legacy's on purpose — the roots are repo-relative so
+  // the two runtimes never share the directory, and the browser-state identity
+  // that must stay distinct is `browserSessionNamespace`, which still does.
+  browserProfileRoot: z.literal(".auth"),
   browserSessionNamespace: z.literal("hrauto-rebuild"),
 });
 

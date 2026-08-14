@@ -128,7 +128,7 @@ const DEFAULT_LAUNCHER: PersistentContextLauncher = {
  * The on-disk profile for one worker browser session.
  *
  * Every segment below the root is derived from the runtime-isolation contract
- * and the session identity — there is no literal `.auth-rebuild` here, and the
+ * and the session identity — there is no profile-root literal here, and the
  * `browserSessionNamespace` segment is what keeps a rebuild profile from ever
  * being the legacy one even if both roots were ever pointed at the same
  * directory. The config fingerprint is part of the path because D116 forbids
@@ -139,7 +139,7 @@ const DEFAULT_LAUNCHER: PersistentContextLauncher = {
  * `profileRoot` is an explicit ABSOLUTE base (`config.paths.browserProfileRoot`,
  * whose default is the isolation contract's root resolved once in
  * `domain/config/schema.ts`). It is a parameter rather than a re-resolution of
- * the isolation literal for two reasons: `resolve(".auth-rebuild")` is
+ * the isolation literal for two reasons: `resolve(".auth")` is
  * cwd-dependent, so a worker started elsewhere would silently open a different
  * profile home; and a caller that must NOT touch the operator's real profile
  * root — every unit test — has to be able to say so, rather than being forced

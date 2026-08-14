@@ -232,7 +232,7 @@ pins what must differ, and `operational-isolation.test.ts` proves it:
 | artifact root             | `.tracker`                                       | `.tracker-rebuild/artifacts`                                 |
 | backend / frontend port   | 3838 / 5173                                      | 3938 / 5174                                                  |
 | process locks             | `.tracker/daemons`                               | `.tracker-rebuild/locks`                                     |
-| browser profile / session | `.auth` / `hrauto-legacy`                        | `.auth-rebuild` / `hrauto-rebuild`                           |
+| browser profile / session | `.auth` / `hrauto-legacy`                        | `.auth` / `hrauto-rebuild` (D216 — roots are repo-relative and never collide; the SESSION namespace is the distinct half) |
 | launch commands           | `dashboard`, `dashboard:prod`, `dashboard:watch` | `rebuild:dashboard`, `rebuild:dashboard:prod`, `rebuild:cli` |
 
 The runtime command names stay distinct across both repos so a muscle-memory `npm run dashboard` in

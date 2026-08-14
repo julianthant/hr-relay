@@ -185,7 +185,7 @@ function recordingBindings(options: Readonly<{
  * `factory.open()` really does `mkdirSync` its profile directory, and the Duo
  * prerequisites are really read off disk, so a suite that ran against the
  * default config would create — and any cleanup it then wrote would DELETE —
- * the operator's real `.auth-rebuild/`, including the Duo WebAuthn credential
+ * the operator's real `.auth/` (named `.auth-rebuild/` before D216), including the Duo WebAuthn credential
  * whose re-enrollment is the one ceremony Duo Autopilot cannot do unattended.
  * The profile root is therefore bound to this temp root, exactly as an operator
  * could bind it through a settings override; the real root is never named.

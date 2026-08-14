@@ -30,7 +30,7 @@ import { ConfigPathsSchema, type ConfigPaths } from "./schema.js";
  * The rebuild's own Chromium profile root, absolute.
  *
  * The runtime-isolation contract states the root as a repo-relative literal
- * (`.auth-rebuild`) because that is what the operational-isolation audit reads
+ * (`.auth`, since D216) because that is what the operational-isolation audit reads
  * as text on both sides. A RUNTIME path may never be that literal: a worker or
  * daemon started from any other working directory would otherwise resolve a
  * different, empty profile root and silently re-authenticate — or, worse, write

@@ -1504,6 +1504,16 @@ therefore **physical, not guarded**:
   itself prevent operational collisions. The rebuild keeps distinct commands/entrypoints, distinct
   state and artifact roots, distinct ports, distinct process locks, and distinct browser
   profiles/sessions from the legacy repo, and tests continue to prove it.
+  - **D216 (2026-08-14, operator decision) narrows exactly ONE distinctness: the browser profile
+    ROOT'S NAME.** Both repos now name their profile root `.auth` (the rebuild's was
+    `.auth-rebuild`, renamed with its contents — sessions and the Duo WebAuthn credential moved
+    intact). The roots are repo-relative, so the two runtimes still never share the directory —
+    what a shared NAME could never cause and a distinct name never prevented. The browser-state
+    identity that MUST stay distinct — and remains guarded by `operational-isolation.test.ts` — is
+    `browserSessionNamespace` (`hrauto-legacy` vs `hrauto-rebuild`), which is the segment that keeps
+    a session opened in the wrong checkout from reusing the other runtime's authenticated state.
+    `DISTINCT_RESOURCE_KEYS` dropped `browserProfileRoot` with a comment naming this decision;
+    every other distinctness in the table above is unchanged and still asserted.
 - **Legacy maintenance stays accounted for, now cross-repo (D90).** Every legacy maintenance change
   is recorded against the affected capabilities and rebuild evidence in the rebuild repo's
   `config/legacy-change-accounting.json`, referencing legacy-repo commit hashes. The legacy repo's
