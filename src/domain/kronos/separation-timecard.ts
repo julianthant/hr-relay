@@ -39,7 +39,7 @@
  *    timecard that opened and is genuinely empty is a real outcome; a grid that
  *    produced no rows at all is a failed read. The fold never collapses them.
  */
-import { formatTimecardDate } from "../timecard-period.js";
+import { formatTimecardDate, resolveTimecardDate } from "../timecard-period.js";
 import type { TimecardDateRange } from "../timecard-period.js";
 import { z } from "zod";
 
@@ -242,6 +242,13 @@ interface TimecardRangeCoverage {
   readonly observed: ReadonlySet<string>;
   /** The expected days no row carries — empty exactly when the read is whole. */
   readonly missing: readonly string[];
+  /**
+   * Rows the grid rendered that belong to NO year inside the widened window —
+   * `M/D` pairs as the grid spelled them. A grid still painting a different pay
+   * period produces these, and they are reported rather than thrown so the
+   * refusal can name every one of them (live run `sp-064821-1fd7`, 2026-08-14).
+   */
+  readonly outside: readonly string[];
   readonly complete: boolean;
 }
 
@@ -262,14 +269,24 @@ export function timecardRangeCoverage(
   // period-aligned days outside the requested one, and a coverage check must
   // not refuse them any more than the fold does.
   const resolution = periodAlignedResolutionRange(range);
-  const observed = new Set(rows.map((row) => formatTimecardDate(row.month, row.day, resolution)));
+  const observed = new Set<string>();
+  const outside: string[] = [];
+  for (const row of rows) {
+    const resolved = resolveTimecardDate(row.month, row.day, resolution);
+    if (resolved === null) outside.push(`${String(row.month)}/${String(row.day)}`);
+    else observed.add(resolved);
+  }
   const expected = enumerateRangeDays(range);
   const missing = expected.filter((day) => !observed.has(day));
   return Object.freeze({
     expected,
     observed,
     missing: Object.freeze(missing),
-    complete: missing.length === 0,
+    outside: Object.freeze([...new Set(outside)]),
+    // A window is covered when every day it demands is present AND nothing the
+    // grid rendered belongs to a different one. Scrolling can fix the first and
+    // can never fix the second, which is why they are separate refusals.
+    complete: missing.length === 0 && outside.length === 0,
   });
 }
 
@@ -304,6 +321,13 @@ export function assertTimecardCoversRange(
   }
   const coverage = timecardRangeCoverage(rows, range);
   if (coverage.complete) return;
+  if (coverage.outside.length > 0) {
+    throw new Error(
+      `[new-kronos] timecard grid rows ${coverage.outside.join(", ")} belong to no year inside `
+      + `${describeDay(range.start)} - ${describeDay(range.end)} — the grid rendered a DIFFERENT period `
+      + "than the one that was applied; refusing to derive a last punch from rows that are not this window's",
+    );
+  }
   throw new Error(
     `[new-kronos] timecard grid read ${describeTimecardCoverage(coverage, range)}`
     + " — the virtualized grid was not scrolled to the end; refusing to derive a last punch from a partial read",

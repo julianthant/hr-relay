@@ -295,7 +295,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "4ea80776eff50cc476f6c1b0a0febc859931cc99c599afe794633381e3debe56",
+      "fingerprint": "4c780f840982d15f1ec88c0f61b84517647aafc387ad84bde7281c1a663c2740",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -415,7 +415,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/kronos/separation-timecard.ts",
-          "sha256": "3f59beb26ff0b60e5e4c7dce3016a47dcac9bb0eac599b6ede8dcb05166630dc"
+          "sha256": "1832994b571082e94cadf3a61aef6ef8a670f5bb9022130be3c4d88380ff9e61"
         },
         {
           "path": "src/domain/matching/levenshtein.ts",
@@ -487,7 +487,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/timecard-period.ts",
-          "sha256": "e84b77a149818ce2829ef6ae3ee97cc916f1759d5396a601223fd6e2ac294223"
+          "sha256": "49b728a8ef90f7bb8b8c7fc394a713073736928842b89d1f236efa5b22aece82"
         },
         {
           "path": "src/domain/ui/driver.ts",
@@ -747,7 +747,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-identity-check"
     },
     {
-      "fingerprint": "485774c4222d6406c3e29020f175b2e40aa4f91857beaa321c2cb27f61dfbf0d",
+      "fingerprint": "419c9e4dc5d25823c0098a613a51546b340476bfc5c5ae963ac3da324ed115b3",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -799,7 +799,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/kronos/separation-timecard.ts",
-          "sha256": "3f59beb26ff0b60e5e4c7dce3016a47dcac9bb0eac599b6ede8dcb05166630dc"
+          "sha256": "1832994b571082e94cadf3a61aef6ef8a670f5bb9022130be3c4d88380ff9e61"
         },
         {
           "path": "src/domain/matching/levenshtein.ts",
@@ -835,7 +835,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/timecard-period.ts",
-          "sha256": "e84b77a149818ce2829ef6ae3ee97cc916f1759d5396a601223fd6e2ac294223"
+          "sha256": "49b728a8ef90f7bb8b8c7fc394a713073736928842b89d1f236efa5b22aece82"
         },
         {
           "path": "src/domain/ui/new-kronos-timecard.ts",
@@ -3643,7 +3643,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-timekeeper-annotation"
     },
     {
-      "fingerprint": "91515421e5707694882bf41da8817d45e9eea9e3c3402dc6632f65890f7f6787",
+      "fingerprint": "0d4738e6ce555761a046d1b71200f2886634bfcd73ee62a25feb0f79687ba823",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3711,7 +3711,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/kronos/separation-timecard.ts",
-          "sha256": "3f59beb26ff0b60e5e4c7dce3016a47dcac9bb0eac599b6ede8dcb05166630dc"
+          "sha256": "1832994b571082e94cadf3a61aef6ef8a670f5bb9022130be3c4d88380ff9e61"
         },
         {
           "path": "src/domain/provider-admission.ts",
@@ -3743,7 +3743,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/timecard-period.ts",
-          "sha256": "e84b77a149818ce2829ef6ae3ee97cc916f1759d5396a601223fd6e2ac294223"
+          "sha256": "49b728a8ef90f7bb8b8c7fc394a713073736928842b89d1f236efa5b22aece82"
         },
         {
           "path": "src/domain/trust/preflight-scenarios.ts",
@@ -3791,7 +3791,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/new-kronos/driver/grid-scroll.ts",
-          "sha256": "25780d2a97bf293f4ba80edb08572062b16f4338ff02d3bd6fc885e9b41cbd59"
+          "sha256": "010fe3d947631d4d90964bbf06a0cdec3ff4b10aca2c0cac65999cddf49a8112"
         },
         {
           "path": "src/stores/new-kronos/driver/interpreter.ts",
@@ -3813,7 +3813,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "6b0594dc7dccb027cfa626cb3dcd1f5fa9ef3c98acd5eee0ee9d43721a282926",
+      "fingerprint": "5e0d5dc3372bca867c1d532a49b9b26b8bd8f3ef61675a80f64f6b977e17d963",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3881,7 +3881,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/kronos/separation-timecard.ts",
-          "sha256": "3f59beb26ff0b60e5e4c7dce3016a47dcac9bb0eac599b6ede8dcb05166630dc"
+          "sha256": "1832994b571082e94cadf3a61aef6ef8a670f5bb9022130be3c4d88380ff9e61"
         },
         {
           "path": "src/domain/provider-admission.ts",
@@ -3913,7 +3913,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/timecard-period.ts",
-          "sha256": "e84b77a149818ce2829ef6ae3ee97cc916f1759d5396a601223fd6e2ac294223"
+          "sha256": "49b728a8ef90f7bb8b8c7fc394a713073736928842b89d1f236efa5b22aece82"
         },
         {
           "path": "src/domain/trust/preflight-scenarios.ts",
@@ -3961,7 +3961,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/new-kronos/driver/grid-scroll.ts",
-          "sha256": "25780d2a97bf293f4ba80edb08572062b16f4338ff02d3bd6fc885e9b41cbd59"
+          "sha256": "010fe3d947631d4d90964bbf06a0cdec3ff4b10aca2c0cac65999cddf49a8112"
         },
         {
           "path": "src/stores/new-kronos/driver/interpreter.ts",
@@ -7389,7 +7389,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-termination-type"
     },
     {
-      "fingerprint": "1e6a7090e404d13c1e730e11509dda529e2a86ac5347bf5c8947442d7beb6b44",
+      "fingerprint": "3cb31ccb6fd998287c4fd7ff52d0c4c7053ad5f0a5512860b3e87074bf168b9a",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7449,7 +7449,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/kronos/separation-timecard.ts",
-          "sha256": "3f59beb26ff0b60e5e4c7dce3016a47dcac9bb0eac599b6ede8dcb05166630dc"
+          "sha256": "1832994b571082e94cadf3a61aef6ef8a670f5bb9022130be3c4d88380ff9e61"
         },
         {
           "path": "src/domain/provider-admission.ts",
@@ -7485,7 +7485,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/timecard-period.ts",
-          "sha256": "e84b77a149818ce2829ef6ae3ee97cc916f1759d5396a601223fd6e2ac294223"
+          "sha256": "49b728a8ef90f7bb8b8c7fc394a713073736928842b89d1f236efa5b22aece82"
         },
         {
           "path": "src/domain/ui/driver.ts",

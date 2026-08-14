@@ -207,6 +207,31 @@ export function formatTimecardDate(
   day: number,
   range: TimecardDateRange,
 ): string {
+  const resolved = resolveTimecardDate(month, day, range);
+  if (resolved === null) {
+    throw new Error(
+      `[timecard] ${month}/${day} falls outside the requested range ${describeRange(range)} in every candidate year - refusing to guess the year`,
+    );
+  }
+  return resolved;
+}
+
+/**
+ * The same resolution, with the OUT-OF-WINDOW arm returned rather than thrown.
+ *
+ * A caller that is auditing a whole rendered grid needs to say *which* rows do
+ * not belong to the window it applied — a formatter that throws on the first
+ * one turns a describable anomaly (live run `sp-064821-1fd7`, 2026-08-14: a WFD
+ * grid still rendering the CURRENT pay period after the period label had
+ * already switched) into an unhandled error naming a single date. Every other
+ * refusal stays a throw, because an impossible or ambiguous month/day is a
+ * defect in the read rather than a fact about the window.
+ */
+export function resolveTimecardDate(
+  month: number,
+  day: number,
+  range: TimecardDateRange,
+): string | null {
   assertValidDate(range.start, "range start");
   assertValidDate(range.end, "range end");
   assertValidMonthDayBounds({ month, day }, "parsed");
@@ -229,18 +254,15 @@ export function formatTimecardDate(
       `[timecard] impossible date ${month}/${day} - no candidate year in ${describeRange(range)} has that calendar day`,
     );
   }
-  const [resolved] = candidates;
-  if (candidates.length === 0 || resolved === undefined) {
-    throw new Error(
-      `[timecard] ${month}/${day} falls outside the requested range ${describeRange(range)} in every candidate year - refusing to guess the year`,
-    );
-  }
   if (candidates.length > 1) {
     throw new Error(
       `[timecard] ${month}/${day} is ambiguous within ${describeRange(range)} - candidate years ${candidates.join(", ")}; narrow the range`,
     );
   }
-  return `${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/${resolved}`;
+  const [resolved] = candidates;
+  return resolved === undefined
+    ? null
+    : `${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/${resolved}`;
 }
 
 /**

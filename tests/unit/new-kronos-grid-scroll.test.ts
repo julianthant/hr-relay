@@ -55,6 +55,12 @@ interface FakeGridOptions {
   readonly rows: readonly RawTimecardGridRow[];
   /** When true the body viewport ignores writes, as a wedged grid would. */
   readonly frozen?: boolean;
+  /**
+   * The rows the grid is STILL painting from the period it is leaving, and how
+   * many harvests it keeps painting them for. That is the live shape of
+   * `sp-064821-1fd7`: the period label switches first, the body catches up.
+   */
+  readonly stale?: Readonly<{ rows: readonly RawTimecardGridRow[]; harvests: number }>;
 }
 
 /**
@@ -72,6 +78,9 @@ function fakeGrid(options: FakeGridOptions) {
   const port: VirtualizedGridPort = {
     harvest: () => {
       harvests++;
+      if (options.stale !== undefined && harvests <= options.stale.harvests) {
+        return Promise.resolve<GridHarvest>({ ...geometry(), rows: options.stale.rows });
+      }
       const first = Math.floor(scrollTop / ROW_HEIGHT);
       return Promise.resolve<GridHarvest>({
         ...geometry(),
@@ -145,6 +154,71 @@ describe("new-kronos virtualized grid read", () => {
     const read = await readVirtualizedGrid(grid.port, narrow);
     assert.equal(read.scrollSteps, 0);
     assert.equal(timecardRangeCoverage(read.rows, narrow).complete, true);
+  });
+
+  /**
+   * The live defect run `sp-064821-1fd7` (2026-08-14) found: the period label
+   * had already switched to the applied window while the body was still
+   * painting the CURRENT pay period, so the opening harvest carried August rows
+   * into a February–April read. A stale row cannot be scrolled away, so nothing
+   * may be accumulated until the body proves it is on the applied window.
+   */
+  it("waits for the BODY to repaint onto the applied window before keeping a single row", async () => {
+    const grid = fakeGrid({
+      rows: WINDOW_ROWS,
+      stale: { rows: dayRows(new Date(2026, 0, 12), 14), harvests: 2 },
+    });
+    const read = await readVirtualizedGrid(grid.port, RANGE);
+    assert.equal(timecardRangeCoverage(read.rows, RANGE).complete, true);
+    assert.equal(coveredDays(read.rows), 35);
+    // Nothing from the period it was leaving survived into the answer.
+    assert.equal(read.rows.some((row) => row.month === 1), false, "a January row was kept");
+  });
+
+  it("refuses by name when the body never repaints, naming the period it is still showing", async () => {
+    const grid = fakeGrid({
+      rows: WINDOW_ROWS,
+      stale: { rows: dayRows(new Date(2026, 0, 12), 14), harvests: 10_000 },
+    });
+    await assert.rejects(
+      readVirtualizedGrid(grid.port, RANGE),
+      (error: Error) => {
+        assert.match(error.message, /never repainted onto the applied window after 50 poll\(s\)/u);
+        assert.match(error.message, /dated 1\/12, 1\/13/u);
+        assert.match(error.message, /attribute another period's punches to this separation/u);
+        return true;
+      },
+    );
+  });
+
+  /**
+   * A grid that changes period MID-read is the same fact arriving later, and it
+   * refuses about the period rather than about the scroll — a row from another
+   * window can never be scrolled away.
+   */
+  it("refuses a grid that changes period mid-read", async () => {
+    const rows = [...WINDOW_ROWS];
+    let harvests = 0;
+    const port: VirtualizedGridPort = {
+      harvest: () => {
+        harvests++;
+        return Promise.resolve<GridHarvest>({
+          scrollTop: 0,
+          scrollHeight: rows.length * ROW_HEIGHT,
+          clientHeight: VIEWPORT_ROWS * ROW_HEIGHT,
+          rows: harvests <= 1 ? rows.slice(0, VIEWPORT_ROWS) : dayRows(new Date(2026, 0, 12), VIEWPORT_ROWS),
+        });
+      },
+      scrollTo: () => Promise.resolve({
+        scrollTop: 0, scrollHeight: rows.length * ROW_HEIGHT, clientHeight: VIEWPORT_ROWS * ROW_HEIGHT,
+      }),
+      settle: () => Promise.resolve(),
+      refuse: (message: string) => new Error(`[new-kronos] ${message}`),
+    };
+    await assert.rejects(
+      readVirtualizedGrid(port, RANGE),
+      /rendered 1\/12, .* while showing the applied window .* changed period mid-read/su,
+    );
   });
 
   /**

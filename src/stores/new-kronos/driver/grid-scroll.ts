@@ -91,6 +91,15 @@ export const GRID_SCROLL_FRACTION = 0.6;
 export const GRID_REPAINT_POLLS = 20;
 /** Consecutive steps that add no new row before the read is declared stuck. */
 export const GRID_SCROLL_STALL_LIMIT = 3;
+/**
+ * Polls of the caller's interval for the BODY to repaint onto a newly applied
+ * window — 50 at 200ms, 10s.
+ *
+ * It is deliberately longer than one virtualized repaint: applying a range
+ * makes WFD re-fetch the period, and the period LABEL switches first. Live run
+ * `sp-064821-1fd7` (2026-08-14) proved the label alone is not the grid.
+ */
+export const GRID_APPLIED_WINDOW_POLLS = 50;
 
 /** The rendered window's identity, for "has it repainted yet". */
 function renderedDays(rows: readonly RawTimecardGridRow[]): string {
@@ -105,6 +114,35 @@ export async function readVirtualizedGrid(
   let harvest = await port.harvest();
   let geometry: GridScrollGeometry = harvest;
 
+  /*
+   * Nothing is accumulated until the body PROVES it is painting the window
+   * that was applied.
+   *
+   * The applied-range check upstream reads the period LABEL, and on live run
+   * `sp-064821-1fd7` (2026-08-14) the label switched to 02/28/2026 - 04/30/2026
+   * while the grid was still rendering the CURRENT pay period — so the first
+   * harvest carried August rows, they went into `seen` permanently, and the
+   * coverage computation then died inside a date formatter. A stale row can
+   * never be scrolled away, so the only place to catch it is before the first
+   * one is kept.
+   */
+  for (let attempt = 0; attempt < GRID_APPLIED_WINDOW_POLLS; attempt++) {
+    if (harvest.rows.length > 0 && timecardRangeCoverage(harvest.rows, applied).outside.length === 0) break;
+    if (attempt === GRID_APPLIED_WINDOW_POLLS - 1) {
+      const stale = timecardRangeCoverage(harvest.rows, applied).outside;
+      throw port.refuse(
+        `the timecard grid never repainted onto the applied window after ${String(GRID_APPLIED_WINDOW_POLLS)} `
+        + `poll(s): it renders ${String(harvest.rows.length)} row(s)`
+        + (stale.length === 0 ? "" : ` dated ${stale.join(", ")}, which belong to no year inside it`)
+        + " — the period label had already switched, so reading here would attribute another period's punches "
+        + "to this separation",
+      );
+    }
+    await port.settle();
+    harvest = await port.harvest();
+    geometry = harvest;
+  }
+
   const seen = new Map<string, RawTimecardGridRow>();
   let scrollSteps = 0;
   let stalled = 0;
@@ -117,6 +155,16 @@ export async function readVirtualizedGrid(
     }
     coverage = timecardRangeCoverage([...seen.values()], applied);
     if (coverage.complete) break;
+    // A row from another period cannot be scrolled away, so continuing would
+    // only spend the whole step budget before refusing with a message about
+    // the scroll instead of about the period.
+    if (coverage.outside.length > 0) {
+      throw port.refuse(
+        `the timecard grid rendered ${coverage.outside.join(", ")} while showing the applied window — `
+        + `${String(seen.size)} row(s) accumulated after ${String(scrollSteps)} scroll step(s); refusing to `
+        + "read a grid that changed period mid-read",
+      );
+    }
 
     stalled = seen.size === before ? stalled + 1 : 0;
     const atEnd = geometry.clientHeight > 0

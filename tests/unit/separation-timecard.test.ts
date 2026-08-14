@@ -12,6 +12,7 @@ import {
   rangesAreSameDays,
   resolveTimecardColumns,
   rowHasPunch,
+  timecardRangeCoverage,
 } from "../../src/domain/kronos/separation-timecard.js";
 import type { TimecardGridRow } from "../../src/domain/kronos/separation-timecard.js";
 import type { TimecardDateRange } from "../../src/domain/timecard-period.js";
@@ -90,6 +91,25 @@ describe("separation timecard coverage guard", () => {
     assert.throws(
       () => { assertTimecardCoversRange(truncated, JUNE_WINDOW); },
       /covers 20 of 30 days .* missing 06\/21\/2026/s,
+    );
+  });
+
+  /**
+   * Live run `sp-064821-1fd7` (2026-08-14). A row from a period the grid was
+   * still painting used to die inside `formatTimecardDate` as an unhandled
+   * error naming one date; it is a describable anomaly about the WINDOW, and it
+   * refuses as one — naming every offending row, and never as "the scroll was
+   * short", which no amount of scrolling could fix.
+   */
+  it("refuses rows that belong to a DIFFERENT period, separately from a short scroll", () => {
+    const inWindow = coveringRows(JUNE_WINDOW);
+    const foreign = [...inWindow, { ...inWindow[0], month: 12, day: 2 }];
+    assert.deepEqual(timecardRangeCoverage(foreign, JUNE_WINDOW).outside, ["12/2"]);
+    assert.equal(timecardRangeCoverage(foreign, JUNE_WINDOW).missing.length, 0);
+    assert.equal(timecardRangeCoverage(foreign, JUNE_WINDOW).complete, false);
+    assert.throws(
+      () => { assertTimecardCoversRange(foreign, JUNE_WINDOW); },
+      /rows 12\/2 belong to no year inside .* rendered a DIFFERENT period/s,
     );
   });
 
