@@ -417,6 +417,79 @@ maps to exactly that status. So the row passes a real age into a pill that rende
 is the half this delta lands; whether D12's queue-row sentence or the later operator direction wins
 on screen is an operator call, and the visible design is not relitigated here (D126's rule).
 
+### The row title is the SUBJECT, and `displayName` is served beside it (2026-08-14)
+
+§1.2 says a queue row is a projection of the run's identity attributes, and `run.queued.title` is
+the string the descriptor's `presentation.title` composed **from the start input**. That is the only
+honest thing to say before the run has read anything, and it is also why three of six rows on a real
+separations day read `Separation 4502` / `Separation 4524`: a document number is not a person, so the
+column an operator scans distinguished nothing. Nothing here is a new decision — §1.2 already makes
+the row a projection of what the run knows, and the run knows who its subject is well before it ends.
+
+**The title now STARTS as the composed one and is REPLACED, once, when the run's own reads settle the
+subject's name.** Never blanked while it waits, never guessed. Three states keep the composed title
+and each is a real answer rather than a fallback: the workflow declares no subject leaf, the declared
+node has produced no checkpoint yet, or the declared path's union arm was not the one the run took (a
+lookup that resolved nobody, a Kuali employee-name control that was blank).
+
+**The seam is a DECLARATION, and there is deliberately no per-workflow branch and no field-name
+sniff.** A descriptor carries one optional `subjectProjection: { nodeId, fieldPath }` beside its
+`details` projections; the factory proves the node exists and the path is OFFERED by that node's real
+output schema, and `src/server/dashboard/projectors/run-subject-title.ts` reads the stored checkpoint
+at exactly that address. This is D204's rule at the one surface where a wrong answer is a wrong
+person's NAME in the place the eye trusts most: a heuristic that is right for eight workflows and
+wrong for the ninth is not a mechanism, it is a coin toss with good odds. `inputSubject` is
+unaffected and answers a different question — what KIND of thing a run is about, versus where this
+graph settles that thing's name.
+
+The read is a checkpoint and not a folded `span.patched` detail, for a reason worth writing down: the
+detail channel has a declared vocabulary and **no emitter in this build**, so a title sourced from
+`row.details` would be a title that never changes. The checkpoint is the record the identity chunk
+actually writes. It is also the ONE stored node output a queue row reads — everything else on the row
+is fold ⊕ authority.
+
+A declared leaf that resolves to a NON-STRING or a blank string **throws**, naming the workflow, the
+node, the path and what was found. It is the one arm that does not degrade gracefully, on purpose: it
+can only be an authoring defect the build could not catch (a checkpoint is canonical JSON, so nothing
+between the contract and this read re-checks the leaf's type), and the alternatives are a row titled
+`[object Object]` or a silent revert to the document number that hides a declaration wrong since the
+day it was written. This deliberately differs from `liveMessage`'s named absence: that one describes
+DATA that may legitimately be missing, this one describes a DECLARATION that is legitimately never
+wrong.
+
+What the five declaring workflows now title their rows:
+
+| Workflow | Composed from input | Replaced by |
+|---|---|---|
+| `separations` | `Separation 4502` | `job-summary.displayedName` — UCPath's record, never the Kuali form's claim |
+| `separations-identity-check` | `Battistessa, Johnnie (10873698)` | `job-summary.displayedName` — the input name is the CLAIM this chunk exists to check |
+| `separations-kuali-read` | `Document 4510` | `document.employee.name.value` |
+| `separations-kronos-timecard` | `EID 10620118` | `timecard.subject.observedDisplayName` — the S37 wrong-person control's own page, never the search panel's candidate list |
+| `person-lookup` | `EID 10873698` | `searching.selection.selected.name` |
+
+`separations-ucpath-termination`, `separations-kuali-finalization` and `kuali-timekeeper-annotation`
+declare nothing, and that is complete rather than pending: the first two already title with a person
+their input carried, and the third's subject IS its document.
+
+**`QueueBaseFields.displayName` is now served in its own right, and is no longer folded into
+`title`.** `RunRecord.displayName` is durable and authority-owned, written only by the kernel's
+`rename` run command, and the projection used to serve `authority.displayName ?? queued.title` as one
+string. That collapse is what made the demo's *"Named by you — subject is …"* tooltip unwritable:
+once the two are one field, no surface can tell an operator-authored title from a system-derived one,
+and a renamed row loses the subject it was renamed away from. The row renders `displayName ?? title`
+and carries the tooltip only when the operator has actually renamed the run. The absent arm names its
+one reason, in the same shape `subtitle` uses for the same kind of fact.
+
+`run-detail`'s header title goes through the SAME resolver — a row and the panel it opens are the
+pair an operator sees side by side, and two surfaces naming one run two ways is exactly the
+divergence §2.2's one-projection rule exists to prevent.
+
+**What this does not land.** There is still no operator-facing way to REACH `rename`: the
+wire-connectivity guard's `KERNEL_ONLY_COMMANDS` records the display-name edit as an inline row field
+rather than a descriptor-driven control, and no build has one. So `displayName` is served, drawn and
+tooltipped, and today only a CLI/API caller can set it. That is a UI gap with an owner, not a wire
+gap.
+
 ---
 
 ## 0. What exists today (and what specifically hurts)
