@@ -17,30 +17,13 @@ session can take them one at a time.
 Shared evidence for every record: `GET /api/v1/dashboard?day=2026-08-14` and
 `QueueBaseFields` in `src/domain/dashboard/projection.ts`.
 
----
-
-## A failed row shows no error sentence
-
-**Recorded:** 2026-08-14 · **Status:** recorded · **Owning doc:** doc 03 §1.2 (queue-row
-projection), §9 D13
-
-**Symptom.** All six of today's rows are `failed` and NONE of them says why on the card. The
-demo's failed row prints the error in the subline directly under the title
-(`DemoQueue.tsx:582`, `sublineFor` → `row.error`), which is what makes a failed queue row
-triage-able without opening it. D13 goes further and requires the parent to mirror a linked
-child's error **verbatim, never "Unknown error"**.
-
-**Demo element.** The subline — the coloured sentence between the title row and the footer.
-
-**Missing wire.** Nothing: `liveMessage` is served `{state:"absent", reason:"live messages ride
-the notes projection, which lands after 1g"}` on every row, and `queue.tsx` correctly draws no
-subline for an absent message rather than inventing one. The field exists; no producer fills it.
-
-**Where it would come from.** The terminal `FailureRecord`'s own summary for a terminal-failed
-run (authority already holds it — the run-detail `failure` section renders it), folded into
-`liveMessage` by `src/server/dashboard/queries/run-queue-projection.ts`. This is the single
-highest-value row in this file: it is one served string away, and it is the difference between
-a queue you scan and a queue you have to click through.
+**Landed 2026-08-14 — four records worked, two deleted.** `liveMessage` on a failed row (D13) and
+the `warnings` count (D22/D126) are SERVED and DRAWN; their records are deleted, and doc 03's
+*Queue-row projection as-built delta* is where the contract now lives. `gateOpenedAt` (D12) and
+`dryRun` (D6) are SERVED and still not drawn — each for a reason that is a design decision rather
+than a wire gap — so both records stay below, rewritten to state exactly what is left and who owns
+it. **The opening claim above no longer holds for those two:** the frontend is not 1:1 on them, and
+neither gap closes by serving another field.
 
 ---
 
@@ -91,66 +74,56 @@ greps. When `runNumber` lands, the two are siblings, not substitutes.
 
 ---
 
-## No gate age on the status pill (D12)
+## The gate age is served and the pill refuses to draw it (D12)
 
-**Recorded:** 2026-08-14 · **Status:** recorded · **Owning doc:** doc 03 §9 **D12**
+**Recorded:** 2026-08-14 · **Updated:** 2026-08-14 · **Status:** diagnosed — the WIRE half landed,
+the render half is an operator call · **Owning doc:** doc 03 §9 **D12**, and doc 03's
+*Queue-row projection as-built delta*
 
-**Symptom.** D12 is ratified and unamended: *"the collapsed row shows the gate's age —
-`Waiting on you · 10m`. An aging gate is the most actionable fact in the queue."* The rebuild
-row draws the bare word. The rendering half already exists — `StatusBadge` takes an `age`
-prop (`surfaces/status.tsx:138`) and `HeaderChips` passes none, because nothing on the wire
-dates the gate.
+**What landed.** `QueueBaseFields.gateOpenedAt` is now served: present only on an
+`awaiting-approval` row (a schema refinement refuses it anywhere else), sourced from the gate's own
+`gate.opened` span — the same record the run-detail decision notice reads — with authority's
+`lifecycle.parkedAt` as a documented fallback and `updatedAt` explicitly excluded. `HeaderChips`
+computes the age against the bootstrap-calibrated `nowIso` and passes it to `StatusBadge`.
 
-**Demo element.** `StatusBadge status={status} age={gateAge(row, tick)}` (`DemoQueue.tsx:493`).
+**What still does not render, and why it is not a bug to fix here.** `StatusPill`
+(`src/dashboard/ds/primitives-status.tsx`) suppresses `age` for the `waiting` status, on a recorded
+operator direction: *"Was `Waiting on you · age` in solid amber. Operator: drop the timer, and every
+waiting tag becomes the blue `Review` pill — the word names the work, not the wait."*
+`awaiting-approval` maps to exactly that status, so the row hands a real age to a pill that draws
+none.
 
-**Missing wire.** `QueueBaseFields.gateOpenedAt` (an ISO instant), for `awaiting-approval` rows.
-
-**Where it would come from.** The open gate's own record — the same source the run-detail
-decision notice reads. Age is then display-only arithmetic against the bootstrap-calibrated
-`nowIso` the queue already receives, exactly like elapsed. It must NOT be derived from
-`updatedAt`: that moves on every patch and would report a gate as younger than it is, which is
-the one direction this fact may never err in.
-
----
-
-## No `dry run` chip
-
-**Recorded:** 2026-08-14 · **Status:** recorded · **Owning doc:** doc 03 §1.2, doc 09 (dry run)
-
-**Symptom.** The rehearsal/real separator is invisible on the queue. The demo draws a violet
-`dry run` chip beside `test`, titled *"this rehearsal reads the systems and writes nothing"*
-(`DemoQueue.tsx:437`). The rebuild draws the `test` chip (the field IS served, as
-`resolvedInstances[].instance`) but has nothing for dry run — so a rehearsal and a real filing
-look identical in the one column an operator scans before acting.
-
-**Demo element.** The violet `dry run` chip on the title row.
-
-**Missing wire.** `QueueBaseFields.dryRun`.
-
-**Where it would come from.** The run envelope's own `dryRun` — the same flag the write kernel
-refuses a real write on (`executeDryRun` vs `executeTransaction`), so it is already durable per
-run and needs only to be projected.
+**The open question is an OPERATOR call, not an implementation one.** D12 is ratified and unamended
+(*"an aging gate is the most actionable fact in the queue"*); the DS suppression is a later operator
+direction recorded only in a code comment. One of the two has to give, and D126's rule — the
+visible design is settled and is not to be relitigated by a session — means a backend session may
+not decide it. Either D12 gets an amendment naming the direction that superseded its queue-row
+half, or the `waiting` arm comes out of `StatusPill`'s age filter. The wire is ready for the second
+either way.
 
 ---
 
-## The warning count is a constant, not a count
+## The `dry run` chip has its field and no tone to draw in
 
-**Recorded:** 2026-08-14 · **Status:** recorded · **Owning doc:** doc 03 §9 D22 / D126
+**Recorded:** 2026-08-14 · **Updated:** 2026-08-14 · **Status:** diagnosed — the WIRE half landed,
+the chip needs a DS decision · **Owning doc:** doc 03 §1.2, doc 09 (dry run)
 
-**Symptom.** `HeaderChips` draws `△ 1` for any `partial` (→ `doneWarnings`) row, with a comment
-saying so: the number is not counted, it is the smallest true statement ("at least one"). The
-demo's chip carries the real count from `row.warnings`, or a group's rolled-up member warnings.
-D126's ratified argument for keeping the visible word `Done` on both terminal dones leans on
-this chip being one of the three visible channels separating them — a channel that always
-reads `1` is weaker than the argument assumes.
+**What landed.** `QueueBaseFields.dryRun` is served on every row, read from the run envelope (D6's
+one home for the flag, and the same bit `executeDryRun`/`executeTransaction` turns on). There is no
+absent arm by design.
 
-**Demo element.** `△ N` beside the status pill.
+**What still does not render.** Nothing draws it. The demo's chip is VIOLET
+(`DemoQueue.tsx:437`, titled *"this rehearsal reads the systems and writes nothing"*) and
+`ROW_CHIP_TONE` in `queue.tsx` has exactly three tones — `neutral`, `info`, `warning`. There is no
+violet in `tokens.css`, and the one token that carried the name was deliberately re-derived to
+amber (`--log-violet: #f79009; /* unconfirmed / parked — warning, not a category */`). Drawing the
+chip in `info` would put it in the same tone as the `test` chip it sits beside, which is the one
+pair a glance has to separate.
 
-**Missing wire.** `QueueBaseFields.warnings` (`{count, first}` in the demo — the count plus the
-first warning's sentence for the chip's title), and the member rollup's warning tally for a
-group row.
-
-**Where it would come from.** The terminal result record's warning set.
+**What a fix involves.** A DS decision — either a fourth row-chip tone with its own light/dark
+token pair, or a ratified reason the rehearsal chip shares a tone with `test`. That is a UI
+session's call, not a backend one; the field is served and the chip is one line the moment the tone
+exists.
 
 ---
 

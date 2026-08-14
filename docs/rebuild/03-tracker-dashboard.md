@@ -322,6 +322,57 @@ As-built contract:
 
 ---
 
+## Queue-row projection as-built delta (2026-08-14)
+
+Four §1.2 row facts had a CONSUMER and no PRODUCER: `queue.tsx` drew each one the moment it
+arrived and the projection served none of them. This delta records what the ONE run/queue
+projection now derives, and — because three of the four have an absent arm — where each absence
+comes from. Nothing here is a new decision; D6, D12, D13 and D22-as-amended-by-D126 all already
+said what the row should say.
+
+- **`liveMessage` on a failed row (D13).** A terminal-failed run serves its `FailureRecord.summary`
+  **verbatim** — D13's "never *Unknown error*" is the same rule stated for the substitution this
+  projector must not make. Every other status carries a reasoned absence, and there are four
+  distinct ones: an in-flight run (no producer authors a progress sentence on this wire), a
+  settled non-failed run, a run whose span reports a failure authority has not settled, and a
+  terminal-failed run whose failure record authority does not hold. That last one is NAMED rather
+  than thrown, which deliberately differs from `buildActivityReportWire`: an aggregate with a hole
+  is a wrong number, but the same hole here would degrade the ONE projection every surface renders,
+  and the queue's ⓘ popover prints the reason — which puts the missing record in front of the
+  operator instead of behind an outage. `liveMessage.value` is therefore re-dispositioned in the
+  D183 redaction audit from `repository-authored` to **`external-text`**: it now inherits
+  `durable/failure-record` `summary`'s class, because a failure summary may quote a thrown message.
+- **`dryRun` (D6).** Read from the run envelope — the flag's one home, and the same bit doc 09's
+  `executeDryRun`/`executeTransaction` split turns on — never from the `run.queued` span's copy.
+  There is no absent arm and there must never be one: every envelope carries it, so "we do not know
+  whether this run writes" is not a state this system can be in.
+- **`gateOpenedAt` (D12).** Present ONLY on an `awaiting-approval` row (a schema refinement in the
+  same shape as D124's `refineEndedAt` refuses it anywhere else), sourced from the gate's own
+  `gate.opened` span — exactly what the run-detail decision notice reads, so two surfaces cannot
+  date one gate two ways. Authority's `lifecycle.parkedAt` is the FALLBACK and not the preferred
+  value, which inverts `endedAt`'s ordering on purpose: the executor emits `gate.opened`, then
+  releases the browser session, THEN parks, so `parkedAt` is the later instant by however long a
+  session close takes and preferring it would shave that off every gate's age. `updatedAt` is never
+  a source — it moves on every patch, and reporting a gate as *younger* than it is remains the one
+  direction this fact may not err in.
+- **`warnings` (D22/D126).** The `△ N` chip's count is the run's evidence-receipt warning set, with
+  the first warning's own summary as the chip's title. The read is a plain lookup of an
+  ALREADY-DERIVED receipt: D141 makes derivation an on-demand act that persists a row, and a read
+  model that wrote authority as a side effect of rendering a queue would be a projection deciding
+  when a durable record exists. There is no `count: 0` present arm — absence IS zero, as it is for
+  this doc's sparse count arrays — and the absent `reason` keeps three states apart that a silent
+  zero would collapse: not settled, no receipt derived, receipt with no warning.
+
+**One conflict this work surfaced and did not resolve.** D12's queue-row half is now fully served
+and is still not DRAWN. `StatusPill` (`src/dashboard/ds/primitives-status.tsx`) suppresses the age
+for the `waiting` status on a recorded operator direction — *"Was `Waiting on you · age` in solid
+amber. Operator: drop the timer … the word names the work, not the wait"* — and `awaiting-approval`
+maps to exactly that status. So the row passes a real age into a pill that renders none. The wire
+is the half this delta lands; whether D12's queue-row sentence or the later operator direction wins
+on screen is an operator call, and the visible design is not relitigated here (D126's rule).
+
+---
+
 ## 0. What exists today (and what specifically hurts)
 
 | Today | Mechanism | Pain |
