@@ -16,13 +16,13 @@
 | **Scope** | **Solo, local, never hosted** (D193) — one operator, one machine; "production" = the day this replaces legacy as your daily **local** tool. *Later, unplanned:* package it as a locally-run app ("web app → real app"); a cooperation/multi-user mode built **on top of** solo, if ever |
 | Runtime phase marker | `completedThrough: "2j"` · `active: "3-workflow-migration"` |
 | Phases complete | 0, 1 (a–e, f, g-spine, i-spine), 2 (proof + 2g + 2h + 2i + 2j) |
-| Active phase | **Phase 3 — per-workflow migration**; separations **chunks 1, 2 and 3 LANDED** (the `new-kronos` store + timecard-read sub-workflow, D196; the `kuali` separation-document read + the `separations` mini-store + §4a's live-captured exhaustive termination-type map, D197; the UCPath whole-employment-grid read + doc 09 §14's **ALWAYS-GATE identity approval**, D201/D202/D203 — live-proved to terminal `done` through a real operator gate command; and **chunk 4** — the UCPath termination WRITE, D206, two fenced transactions with the ALWAYS-GATE in front of both) and **chunk 5a/5b/5c** — the Kuali finalization write's contracts, driver, descriptor, graph and its live read-only + dry-run pass, D207, ONE transaction node behind the same ALWAYS-GATE) and **chunk 6a — THE COMPOSITION, D211**: eighteen nodes, one ALWAYS-GATE, three fenced transactions) and **chunk 6b — the COMPOSED LIVE PASS, D212/D213**: the whole read chain live on two real subjects in 82 s, parked at the ALWAYS-GATE, a real approval through the real command endpoint, resumed — with ZERO durable write rows proved from authority. Two live defects found and fixed; the preview terminal is blocked one node short by two named PLATFORM items (a dry run previews the pending-sweep prepare without its probe; an `always-rerun` node collides with its own checkpoint across a gate resume). The controlled real commits stay open on your named canaries |
+| Active phase | **Phase 3 — per-workflow migration**; separations **chunks 1, 2 and 3 LANDED** (the `new-kronos` store + timecard-read sub-workflow, D196; the `kuali` separation-document read + the `separations` mini-store + §4a's live-captured exhaustive termination-type map, D197; the UCPath whole-employment-grid read + doc 09 §14's **ALWAYS-GATE identity approval**, D201/D202/D203 — live-proved to terminal `done` through a real operator gate command; and **chunk 4** — the UCPath termination WRITE, D206, two fenced transactions with the ALWAYS-GATE in front of both) and **chunk 5a/5b/5c** — the Kuali finalization write's contracts, driver, descriptor, graph and its live read-only + dry-run pass, D207, ONE transaction node behind the same ALWAYS-GATE) and **chunk 6a — THE COMPOSITION, D211**: eighteen nodes, one ALWAYS-GATE, three fenced transactions) and **chunk 6b — the COMPOSED LIVE PASS, D212/D213**: the whole read chain live on two real subjects in 82 s, parked at the ALWAYS-GATE, a real approval through the real command endpoint, resumed — with ZERO durable write rows proved from authority. Two live defects found and fixed; the preview terminal was blocked one node short by two named PLATFORM items (a dry run previews the pending-sweep prepare without its probe; an `always-rerun` node collides with its own checkpoint across a gate resume), both since FIXED as D214/D215) and **chunk 6c — the PREVIEW TERMINAL REACHED**: the composed dry run on doc 4502 settled at a real preview terminal (`transaction.previewed`, a terminal row bound to the preview schema hash, a `partial`/`unknown` receipt with the load-bearing `DRY_RUN_PREVIEW`), and the composed REAL run on canary doc 4510 refused `NO_ACTIVE_EMPLOYMENT` **before the gate** — still ZERO durable write rows in the whole database beyond 2026-08-04's Phase-2 commit. The controlled real commits stay open on your named canaries |
 | After Phase 3 | The one all-at-once cutover (D89/D93), then rollback-window closure |
 | Decisions ratified | D1–D213 (D131 is a permanent gap — never reused) |
 | Authority schema | v13 (released migrations SHA-pinned, immutable) |
 | Guards | **61 active** / 8 retired / 2 planned (`one-time-import-offline`, `preflight-coverage`) |
 | Tests | one `test:coverage` run: **1894 across 201 files**, green · 451 architecture · **parity green at 147** after the composition's mechanical re-freeze |
-| Workflows registered | 8 — `person-lookup` (live-proven), `kuali-timekeeper-annotation` (controlled-commit-proven), and separations chunks 1–5: `separations-kronos-timecard`, `separations-kuali-read`, `separations-identity-check` (all three live-proven), `separations-ucpath-termination` (prepare arm live-proven; commit awaits the canary), `separations-kuali-finalization` (prepare arm live-proven on real doc 4524; commit awaits the canary), and **`separations` itself — the composition, live-proved through the real pipeline to its gate and back (6b); the transaction preview and the controlled commits stay open** |
+| Workflows registered | 8 — `person-lookup` (live-proven), `kuali-timekeeper-annotation` (controlled-commit-proven), and separations chunks 1–5: `separations-kronos-timecard`, `separations-kuali-read`, `separations-identity-check` (all three live-proven), `separations-ucpath-termination` (prepare arm live-proven; commit awaits the canary), `separations-kuali-finalization` (prepare arm live-proven on real doc 4524; commit awaits the canary), and **`separations` itself — the composition, live-proved through the real pipeline to its gate, back, and all the way to a real PREVIEW TERMINAL (6c); only the controlled commits stay open** |
 | Legacy capability register | 78 entries: **48 open · 20 replaced · 7 native · 3 retired** — cutover requires zero open |
 | Production writes proven | Kuali controlled commit on real doc 4489 (D135): fence → click → read-back → settle, idempotent re-run 2 ms |
 
@@ -163,6 +163,35 @@ operator input due is step 5's controlled-commit target naming (a UCPath termina
 finalization to approve), owed later in the build, not now.
 
 ### Decided
+
+- **Separations 6c — the composed dry run REACHED its preview terminal, and the real run on your
+  canary 4510 refused before the gate** — 2026-08-14 (`docs/migrations/separations.md` §9.17). Two
+  parts, and **nothing was written by either**: the only write-intent / write-attempt / outbox rows
+  in the database are still 2026-08-04's Phase-2 commit on Kuali doc 4489, and no separations
+  transaction node has ever written a checkpoint. **(1) The last blocked deliverable is DONE.** With
+  the BFF restarted on the current tree, the composed dry run on doc 4502 ran the whole chain live,
+  parked at the ALWAYS-GATE, took a real approval through the real command endpoint, resumed, and
+  ended at a genuine **preview terminal** — the `transaction.previewed` span, a terminal record bound
+  to the PREVIEW schema hash (never the workflow's declared result), and a receipt that says
+  `partial` / `unknown` with a load-bearing `DRY_RUN_PREVIEW` warning naming the probe. That also
+  proves **D215's `already-present` arm live** for the first time and **D214** across three claim
+  generations. **(2) Your canary answered its own question.** The composed `separations` graph, run
+  for REAL (not dry) on doc **4510**, refused `NO_ACTIVE_EMPLOYMENT` 17.6 s in, **before the gate
+  opened and before any human was asked** — UCPath still shows exactly one employment row for EID
+  10001799 and it is `Inactive`. Deleting `T002209631` cleared a *transaction*; it did not change an
+  *employment status*, and the already-Approved `T002197996` is why. **For 4510 to move on this graph
+  you must make an active terminable employment exist in UCPath** — that is yours, not the code's,
+  and doc 4510 remains the best-mapped target for a Kuali finalization commit on the STANDALONE
+  graph, which has no such node. **(3) Reaching the preview found a fourth defect**: D215's fourth
+  subject verdict (`not-observed`) had been ratified and landed in the kernel but never reached the
+  span WIRE schema, so the first preview that ever settled killed the worker one emit short of its
+  terminal — the run itself was correct throughout, and the platform's own self-sweep released the
+  orphaned claim on the next boot. Fixed with its test. **(4) One correction to the record**: the
+  `probeToFenceMaxMs` measurement does **not** ride on the preview terminal — a preview has no fence
+  at all — so it moves to the controlled commits, which is the one §3.2 criterion still open.
+  **(5) One thing you should know about operating this**: a run that fails at or after the Kronos
+  timecard search **cannot be retried** — the retry re-collides on that node's checkpoint — so the
+  way to re-run a document today is the explicit re-read affordance, which is what this pass used.
 
 - **Separations 6b completion — §4e's last three unknowns closed, doc 4510 re-observed, and the
   canary you were pointed at is GONE** — 2026-08-14 (`docs/migrations/separations.md` §9.16). A

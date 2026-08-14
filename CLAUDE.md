@@ -310,6 +310,27 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-14: two schemas that call each other PARITY TWINS still fork on the arm nobody could
+  reach — and a fixture emitter is what hides it (separations 6c).** D215 ratified a fourth
+  `transaction.previewed` subject verdict, `not-observed`, for the preview that settles
+  `already-present` before anything is staged. It landed in the kernel's union
+  (`src/core/span-emitter.ts`) with a comment explaining exactly why, and never reached
+  `src/events/types.ts` — the leaf the JSONL writer parses. So the **first preview that ever settled**
+  killed the worker one emit short of its terminal, on a live run, with `Invalid option: expected one
+  of "match"|"mismatch"|"unscoped"`. `span-events.test.ts` opens by promising it "pins that
+  restatement … so the two can never quietly fork", and its round-trip list covered eight event
+  shapes with **no `transaction.previewed` case at all**: the arm nobody could execute was the arm
+  nobody pinned, and every unit gate passed because a fixture `SpanEmitter` does not parse the wire
+  schema — only the writer does. Generalize both halves: **a parity claim is only as wide as its
+  cases, so enumerate the VALUES a producer can emit rather than sampling the shapes**, and **a port
+  whose test double skips the boundary's validation makes that boundary untested by construction.**
+  Two side facts worth keeping from the same run. The kernel was right throughout — the crash landed
+  after the preview was computed and before anything settled, so zero intent / zero fence / zero
+  checkpoint, and D200's lease-as-evidence sweep released the orphaned claim on the next boot and the
+  run finished. And a measurement can ride on the wrong thing for months: `probeToFenceMaxMs` was
+  recorded twice as "riding on the preview terminal", and a settled preview emits ONE event with no
+  beat decomposition and **has no fence at all** — so reaching it could never have produced the
+  number. When a blocked measurement finally unblocks, re-derive what it is a measurement OF.
 - **2026-08-14: "our graph refuses it" and "the system refuses it" are different facts, and recording
   only the first makes the platform look more constrained than reality (separations §9.16).** Doc
   4510's subject is `Inactive` in UCPath Person Org, so `match-active-employment` refuses
