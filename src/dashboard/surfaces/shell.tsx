@@ -863,9 +863,27 @@ type WorkerState = WorkerCardWire["state"];
 /**
  * A worker's state, on the same hue ramp as everything else, so "this daemon is
  * alive" and "this row is running" are not two unrelated blues.
+ *
+ * THREE OF THESE SIX ARMS ARE CURRENTLY UNREACHABLE, and that is recorded
+ * rather than pruned (R7-1, `docs/plans/2026-08-13-detail-fidelity-audit.md`).
+ * `run-queue-projection.ts:805` derives the state from two observations alone —
+ * `endedAt` ⇒ `stopped`, a claimed row ⇒ `working`, otherwise `idle` — so
+ * `waiting`, `paused` and `failed` never arrive on the wire, which is also why
+ * the collapsed bar's attention chip can never fire today. The arms stay
+ * because the states are REAL in authority: `workerLeases.control` already
+ * moves a lease through stop/pause/resume directives
+ * (`src/core/command-kernel.ts:1767-1796`) and a lease that died carries its
+ * own terminal state. What closes it is the ledger's `WorkerCardWireSchema`
+ * batch — the projector folding the authority lease lifecycle into this enum
+ * instead of inferring two arms from row presence. Until then the surface shows
+ * honest absence: no chip, and no state word nothing produced.
  */
 const WORKER_TONE: Record<WorkerState, { dot: string; label: string; text: string }> = {
-  working: { dot: "bg-[var(--ds-success-fg)]", label: "Working", text: "text-[color:var(--ds-success-fg)]" },
+  // `Running`, not `Working` — the demo's word and the ratified status
+  // vocabulary (R7-9). A worker that is on a run and a row that is running are
+  // the same event seen from two places; two words for it made them read as
+  // two facts.
+  working: { dot: "bg-[var(--ds-success-fg)]", label: "Running", text: "text-[color:var(--ds-success-fg)]" },
   waiting: {
     dot: "bg-[var(--ds-status-waiting-fg)]",
     label: "Waiting",
@@ -882,6 +900,38 @@ const WORKER_TONE: Record<WorkerState, { dot: string; label: string; text: strin
 };
 
 const WORKER_STATE_ORDER: WorkerState[] = ["working", "waiting", "idle", "paused", "failed", "stopped"];
+
+/**
+ * Ported verbatim from legacy
+ * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+ * `src/dashboard/components/dev/rebuild-demo/DemoShell.tsx:1531-1541`.
+ *
+ * ONE compact chip shape for every summary chip on the collapsed Session bar.
+ * The demo's own comment is the reason it lives at module scope: the identical
+ * nine lines had been declared a second time ~230 lines below the first,
+ * differing only in the name of their boolean, and two declarations of one
+ * shape is how the two drift. At module scope the second copy could not have
+ * been written without noticing the first — which is exactly what happened
+ * here, where the shape had been inlined into its one call site and the demo's
+ * anti-drift argument was lost with it (R7-10).
+ *
+ * `full` is the loud arm (something needs attention); the quiet arm is the
+ * recessed capacity summary. Both ship even though only the loud one has a
+ * caller today: an arm deleted for lack of a caller is the drift the helper
+ * exists to prevent, and the quiet arm's caller is the browser-health summary
+ * riding the `WorkerCardWireSchema` batch (R7-3).
+ */
+const capacityChip = (full: boolean): string =>
+  cn(
+    "inline-flex shrink-0 items-center border text-ellipsis",
+    dsClip.token,
+    "h-[var(--ds-h-xs)] gap-[var(--ds-space-tight)] px-[var(--ds-space-snug)]",
+    dsRadius.sm,
+    dsText.micro,
+    full
+      ? "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] text-[color:var(--ds-status-waiting-fg)]"
+      : "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-recess-fg-quiet)]",
+  );
 
 /** The tallies the collapsed bar always shows, even at zero. */
 const ALWAYS_TALLIED: WorkerState[] = ["working", "idle"];
@@ -931,11 +981,13 @@ export function connectionTone(state: SubscriptionState): {
  * One worker card.
  *
  * Everything on it is served: the worker's id, its system, its state, and the
- * run it is on. The demo's browser-health tile grid, micro-pipeline, elapsed
- * clock, queued count, lease-wait sentence and `Stop` button are NOT served by
- * the 1g projection and are omitted rather than drawn from nothing — an
- * invented health tile on a panel whose entire job is health would be the worst
- * possible lie.
+ * run it is on. The demo's browser-health tile grid, elapsed clock, queued
+ * count, lease-wait sentence and `Stop` button are NOT served by the 1g
+ * projection and are omitted rather than drawn from nothing — an invented
+ * health tile on a panel whose entire job is health would be the worst possible
+ * lie. The micro-pipeline is the one exception in KIND, not in honesty: its
+ * band is reserved at the demo's height and drawn EMPTY (see the base below),
+ * because holding a baseline costs nothing and claims nothing.
  */
 function WorkerCard({ card }: { card: WorkerCardWire }) {
   const tone = WORKER_TONE[card.state];
@@ -962,27 +1014,57 @@ function WorkerCard({ card }: { card: WorkerCardWire }) {
 
       <SystemChip system={card.system} />
 
-      {/* THE BASE — the run this worker is on, pinned to the bottom so a row of
-          cards can be read across. `currentRun` is a served union: a worker
-          with no run says WHY, in the server's own words. */}
-      <div
-        className={cn(
-          dsText.meta,
-          "mt-auto flex items-center border-t text-[color:var(--ds-fg-muted)]",
-          dsBorder.subtle,
-          "gap-[var(--ds-space-snug)] pt-[var(--ds-space-snug)]",
-        )}
-      >
-        {card.currentRun.state === "present" ? (
-          <span
-            className={cn(dsText.nums, "min-w-0 flex-1 truncate")}
-            title={`Run ${String(card.currentRun.runId)} · trace ${String(card.currentRun.traceId)}`}
-          >
-            {String(card.currentRun.traceId)}
-          </span>
-        ) : (
-          <span className="min-w-0 flex-1 truncate">{card.currentRun.reason}</span>
-        )}
+      {/*
+        THE BASE — pipeline then footer, pinned to the bottom as ONE block
+        (ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+        `DemoShell.tsx:1653-1671`; R7-7).
+
+        Everything above this varies by card, so anchoring the whole base rather
+        than the footer alone is what puts every card's pipeline band on ONE
+        baseline instead of wherever its own content happened to end — that is
+        the property that lets a row of cards be read across.
+
+        The pipeline's row is RESERVED at a fixed height on every card, so a
+        worker with no item in flight keeps the same baseline without being
+        given a bar it has not earned. The slack lands above and is left EMPTY
+        on purpose: an idle worker genuinely has less to say than a blocked one.
+      */}
+      <div className="mt-auto flex flex-col gap-[var(--ds-space-snug)]">
+        {/* The band is reserved and EMPTY. The demo draws the in-flight item's
+            step dots here; `WorkerCardWireSchema` serves no `steps[]`, and dots
+            drawn from nothing would be the worst kind of lie on a panel about
+            what a worker is doing. It fills when the projector's
+            `WorkerCardWireSchema` batch lands (audit ledger, R7-7) — the height
+            is held now so that landing moves no baseline. */}
+        <div aria-hidden className={cn("flex shrink-0 items-center", dsSize.hMicroPipeline)} />
+        <div
+          className={cn(
+            dsText.meta,
+            "flex items-center border-t text-[color:var(--ds-fg-muted)]",
+            dsBorder.subtle,
+            "gap-[var(--ds-space-snug)] pt-[var(--ds-space-snug)]",
+          )}
+        >
+          {/* THE STEP SLOT — hard left, the demo's answer to "what is this
+              worker doing". No `step` is served, so the slot carries the run
+              THIS worker is on: the nearest true statement the wire can make,
+              and `currentRun` is a served union, so a worker with no run says
+              WHY in the server's own words. It becomes the step, and gains the
+              demo's right-aligned elapsed clock and `Stop` verb, with the same
+              `WorkerCardWireSchema` batch (R7-5/7, and R7-4 for `Stop`, whose
+              server half is already complete and waits only on the lease
+              `version` the CAS checks). */}
+          {card.currentRun.state === "present" ? (
+            <span
+              className={cn(dsText.nums, "min-w-0 flex-1 truncate")}
+              title={`Run ${String(card.currentRun.runId)} · trace ${String(card.currentRun.traceId)}`}
+            >
+              {String(card.currentRun.traceId)}
+            </span>
+          ) : (
+            <span className="min-w-0 flex-1 truncate">{card.currentRun.reason}</span>
+          )}
+        </div>
       </div>
     </article>
   );
@@ -1014,8 +1096,16 @@ export function SessionPanel({
       (tally) => tally.count > 0 || ALWAYS_TALLIED.includes(tally.state),
     );
   }, [workerCards]);
+  /**
+   * WHICH workers, not only how many — the demo's chip carries the naming
+   * `title` (`DemoShell.tsx:1887`) because a count with no names cannot be
+   * acted on. The demo names each card's WORKFLOW and the lease it waits on;
+   * neither is served here, so the title joins what IS — the worker id and the
+   * state word — rather than inventing the sentence. It grows the demo's
+   * wording with the `WorkerCardWireSchema` batch (R7-1/R7-10).
+   */
   const attention = useMemo(
-    () => workerCards.filter((card) => card.state === "failed" || card.state === "waiting").length,
+    () => workerCards.filter((card) => card.state === "failed" || card.state === "waiting"),
     [workerCards],
   );
   const link = connectionTone(connection);
@@ -1062,19 +1152,18 @@ export function SessionPanel({
               </span>
             ))}
           </span>
-          {attention > 0 && (
+          {/* Renders only when the count is above zero — honest absence, and
+              today it can never fire at all (see `WORKER_TONE`'s note: the
+              projector emits neither `failed` nor `waiting`). */}
+          {attention.length > 0 && (
             <span
-              className={cn(
-                "inline-flex shrink-0 items-center border text-ellipsis",
-                dsClip.token,
-                "h-[var(--ds-h-xs)] gap-[var(--ds-space-tight)] px-[var(--ds-space-snug)]",
-                dsRadius.sm,
-                dsText.micro,
-                "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] text-[color:var(--ds-status-waiting-fg)]",
-              )}
+              title={attention
+                .map((card) => `${String(card.workerId)} is ${WORKER_TONE[card.state].label.toLowerCase()}`)
+                .join(" · ")}
+              className={capacityChip(true)}
             >
               <AlertTriangle aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
-              {plural(attention, "worker")} need attention
+              {plural(attention.length, "worker")} need attention
             </span>
           )}
         </button>
@@ -1090,8 +1179,15 @@ export function SessionPanel({
             to check. It lands when the projection serves the pool version, and
             not by a client picking one.
           */}
+          {/* The full sentence, ported from legacy
+              hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+              `DemoShell.tsx:1919-1924` (R7-11). The rebuild IMPLEMENTS D179's
+              archive semantics and had dropped the only place the operator is
+              ever told them: what a MAJOR bump does to prior-version runs is
+              not derivable from a version string, and the tooltip on that
+              string is where the demo puts it. */}
           <span
-            title={`App ${appVersion} — every run on screen is being served by this build. A run that RAN under a different version carries its own.`}
+            title={`App ${appVersion} — MAJOR moves when a dashboard change reaches some or all workflows (prior-version runs archive); MINOR when it reaches none. A run that RAN under a different version carries its own, which is a fact about the run and stays on the run.`}
             className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}
           >
             app {appVersion}
