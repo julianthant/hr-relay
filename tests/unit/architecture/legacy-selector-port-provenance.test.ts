@@ -31,8 +31,12 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     ]);
     assert.equal(portMap.entries.length, 406);
     assert.deepEqual(auditLegacySelectorPortMap(portMap, LEGACY_ROOT), []);
-    assert.equal(portMap.entries.filter((entry) => entry.disposition === "candidate").length, 352);
-    assert.equal(portMap.entries.filter((entry) => entry.disposition === "ported").length, 53);
+    // Separations chunk 4 moved THIRTEEN ucpath keys candidate→ported (D206):
+    // the Smart HR wizard's three pages, the pending-sweep delete, and the SS
+    // Smart HR search filter — one of which (`ssSmartHRTransactions.emplIdInput()`)
+    // binds TWO canonical ids by context.
+    assert.equal(portMap.entries.filter((entry) => entry.disposition === "candidate").length, 339);
+    assert.equal(portMap.entries.filter((entry) => entry.disposition === "ported").length, 66);
     assert.equal(portMap.entries.filter((entry) => entry.disposition === "driver-internal").length, 1);
   });
 

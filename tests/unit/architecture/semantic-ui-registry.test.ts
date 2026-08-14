@@ -69,6 +69,10 @@ function evidenceBindingInput(): unknown {
       "evidence/ui/ucpath/person-org.live.json": readJson("evidence/ui/ucpath/person-org.live.json"),
       "evidence/ui/ucpath/ss-smart-hr.fixture.json": readJson("evidence/ui/ucpath/ss-smart-hr.fixture.json"),
       "evidence/ui/ucpath/ss-smart-hr.live.json": readJson("evidence/ui/ucpath/ss-smart-hr.live.json"),
+      "evidence/ui/ucpath/smart-hr-termination.fixture.json":
+        readJson("evidence/ui/ucpath/smart-hr-termination.fixture.json"),
+      "evidence/ui/ucpath/smart-hr-termination.live.json":
+        readJson("evidence/ui/ucpath/smart-hr-termination.live.json"),
     },
     portBindings,
   };

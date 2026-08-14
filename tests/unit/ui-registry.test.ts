@@ -67,9 +67,12 @@ describe("semantic UI registry", () => {
   it("resolves every UCPath semantic dependency without collisions", () => {
     assert.deepEqual(auditUcpathUiRegistry(), []);
     assert.equal(UCPATH_UI_REGISTRY.system, "ucpath");
-    // 14 Person Org (2026-08-02) + 2 SS Smart HR receipt (2026-08-04).
-    assert.equal(UCPATH_UI_REGISTRY.elements.length, 16);
-    assert.equal(UCPATH_UI_REGISTRY.scenarios.length, 4);
+    // 14 Person Org (2026-08-02) + 2 SS Smart HR receipt (2026-08-04)
+    // + 14 Smart HR termination (2026-08-14, D206).
+    assert.equal(UCPATH_UI_REGISTRY.elements.length, 30);
+    // 4 + the termination family's three: the wizard, the pending sweep, and
+    // the SS Smart HR search filter.
+    assert.equal(UCPATH_UI_REGISTRY.scenarios.length, 7);
   });
 
   it("runs the deterministic read-only Person Org scenario through typed ids", async () => {
@@ -99,8 +102,9 @@ describe("semantic UI registry", () => {
   it("publishes a schema-valid catalog with no private recipe or captured value", () => {
     const catalog = UiCatalogSchema.parse(buildSafeUiCatalog());
     const serialized = JSON.stringify(catalog);
-    // 28 ucpath + 13 crm + 25 kuali + 23 new-kronos.
-    assert.equal(catalog.entries.length, 89);
+    // 51 ucpath + 13 crm + 25 kuali + 23 new-kronos. UCPath gained 23 facts
+    // with the Smart HR termination family: 4 screens, 14 elements, 5 states.
+    assert.equal(catalog.entries.length, 112);
     assert.doesNotMatch(
       serialized,
       /#main_target_win0|PERSON_NPC_VW_EMPLID|Empl ID|legacyKey|locator|selector|capturedValue|valueType|timeoutMs/,

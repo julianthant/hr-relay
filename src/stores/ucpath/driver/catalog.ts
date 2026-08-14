@@ -86,6 +86,54 @@ function newKronosTaskUses(screen: string): TaskId[] {
   return screen === NEW_KRONOS_SEARCH_SCREEN_ID ? [NEW_KRONOS_SEARCH_TASK] : [NEW_KRONOS_TIMECARD_TASK];
 }
 
+/**
+ * UCPath's attribution splits by SCREEN FAMILY, and within the termination
+ * family by FACT — the same rule Kuali settled (D197 #2), because the catalog
+ * is what an operator reads to answer "what can click this?".
+ *
+ * The two commit controls are attributed to their COMMIT task alone. Naming the
+ * prepare task beside `Save and Submit` would be a lie about which task can
+ * file a real termination, and naming anything but the sweep's commit beside
+ * `Delete Selected Transactions` would be a lie about which task can delete.
+ *
+ * The Person Org family stays unattributed: its two read tasks reach the page
+ * through one semantic driver operation each, and the registry's Person Org
+ * elements are the driver's internal steps rather than task-addressable facts.
+ */
+const UCPATH_STAGE_TERMINATION_TASK = TaskIdSchema.parse("ucpath/stage-termination");
+const UCPATH_CREATE_TERMINATION_TASK = TaskIdSchema.parse("ucpath/create-termination");
+const UCPATH_STAGE_SWEEP_TASK = TaskIdSchema.parse("ucpath/stage-pending-termination-sweep");
+const UCPATH_DELETE_PENDING_TASK = TaskIdSchema.parse("ucpath/delete-pending-terminations");
+const UCPATH_MATCH_EXISTING_TASK = TaskIdSchema.parse("ucpath/match-existing-termination");
+const UCPATH_MATCH_PENDING_TASK = TaskIdSchema.parse("ucpath/match-pending-terminations");
+const UCPATH_VERIFY_TERMINATION_TASK = TaskIdSchema.parse("ucpath/verify-termination");
+const UCPATH_VERIFY_SWEEP_TASK = TaskIdSchema.parse("ucpath/verify-pending-terminations-cleared");
+
+/** Every task that reads the SS Smart HR transaction surface. */
+const UCPATH_SS_SMART_HR_READERS = [
+  UCPATH_MATCH_EXISTING_TASK,
+  UCPATH_MATCH_PENDING_TASK,
+  UCPATH_VERIFY_TERMINATION_TASK,
+  UCPATH_VERIFY_SWEEP_TASK,
+];
+
+function ucpathTaskUses(id: string, screen: string | undefined): TaskId[] {
+  if (id === "ucpath.smart-hr.save-and-submit-button") return [UCPATH_CREATE_TERMINATION_TASK];
+  if (id === "ucpath.smart-hr.delete-selected-button") return [UCPATH_DELETE_PENDING_TASK];
+  if (id === "ucpath.smart-hr.setup" || screen === "ucpath.smart-hr.setup") {
+    // The setup page carries BOTH the wizard's entry and the in-progress grid
+    // the sweep selects from, so both prepares reach it.
+    return [UCPATH_STAGE_TERMINATION_TASK, UCPATH_STAGE_SWEEP_TASK];
+  }
+  if (id.startsWith("ucpath.smart-hr.") || screen?.startsWith("ucpath.smart-hr.") === true) {
+    return [UCPATH_STAGE_TERMINATION_TASK];
+  }
+  if (id === "ucpath.ss-smart-hr.search" || screen === "ucpath.ss-smart-hr.search") {
+    return [...UCPATH_SS_SMART_HR_READERS];
+  }
+  return [];
+}
+
 function safeVerification(verification: (typeof UCPATH_UI_REGISTRY.screens)[number]["verification"]) {
   return {
     verifiedAt: verification.verifiedAt,
@@ -96,7 +144,6 @@ function safeVerification(verification: (typeof UCPATH_UI_REGISTRY.screens)[numb
 }
 
 export function buildSafeUiCatalog(): UiCatalog {
-  const taskUses: never[] = [];
   const entries: UiCatalogEntry[] = [
     ...UCPATH_UI_REGISTRY.screens.map((screen) => ({
       kind: "screen" as const,
@@ -106,7 +153,7 @@ export function buildSafeUiCatalog(): UiCatalog {
       searchTerms: screen.searchTerms,
       sensitivity: screen.sensitivity,
       verification: safeVerification(screen.verification),
-      taskUses,
+      taskUses: ucpathTaskUses(screen.id, screen.id),
       sourceLink: UCPATH_SOURCE_LINK,
     })),
     ...UCPATH_UI_REGISTRY.elements.map((element) => ({
@@ -120,7 +167,7 @@ export function buildSafeUiCatalog(): UiCatalog {
       effect: element.effect,
       sensitivity: element.sensitivity,
       verification: safeVerification(element.verification),
-      taskUses,
+      taskUses: ucpathTaskUses(element.id, element.screen),
       sourceLink: UCPATH_SOURCE_LINK,
     })),
     ...UCPATH_UI_REGISTRY.states.map((state) => ({
@@ -132,7 +179,7 @@ export function buildSafeUiCatalog(): UiCatalog {
       searchTerms: state.searchTerms,
       sensitivity: state.sensitivity,
       verification: safeVerification(state.verification),
-      taskUses,
+      taskUses: ucpathTaskUses(state.id, state.screen),
       sourceLink: UCPATH_SOURCE_LINK,
     })),
     ...UCPATH_UI_REGISTRY.observations.map((observation) => ({
@@ -144,7 +191,7 @@ export function buildSafeUiCatalog(): UiCatalog {
       searchTerms: observation.searchTerms,
       sensitivity: observation.sensitivity,
       verification: safeVerification(observation.verification),
-      taskUses,
+      taskUses: ucpathTaskUses(observation.id, observation.screen),
       sourceLink: UCPATH_SOURCE_LINK,
       authoritativeFor: observation.authoritativeFor,
     })),

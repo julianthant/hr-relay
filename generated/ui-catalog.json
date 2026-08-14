@@ -63,6 +63,98 @@
     },
     {
       "system": "ucpath",
+      "label": "Smart HR transaction setup",
+      "searchTerms": [
+        "ucpath smart hr wizard setup screen"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination",
+        "ucpath/stage-pending-termination-sweep"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "screen",
+      "id": "ucpath.smart-hr.setup"
+    },
+    {
+      "system": "ucpath",
+      "label": "Smart HR transaction details",
+      "searchTerms": [
+        "ucpath smart hr wizard details screen"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "screen",
+      "id": "ucpath.smart-hr.details"
+    },
+    {
+      "system": "ucpath",
+      "label": "Smart HR transaction information",
+      "searchTerms": [
+        "ucpath smart hr wizard information screen"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "screen",
+      "id": "ucpath.smart-hr.information"
+    },
+    {
+      "system": "ucpath",
+      "label": "SS Smart HR transaction search",
+      "searchTerms": [
+        "ucpath ss smart hr transaction search screen"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-ss-smart-hr-search"
+        ]
+      },
+      "taskUses": [
+        "ucpath/match-existing-termination",
+        "ucpath/match-pending-terminations",
+        "ucpath/verify-termination",
+        "ucpath/verify-pending-terminations-cleared"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "screen",
+      "id": "ucpath.ss-smart-hr.search"
+    },
+    {
+      "system": "ucpath",
       "label": "Person Organizational Summary navigation link",
       "searchTerms": [
         "ucpath person org navigation link"
@@ -432,6 +524,365 @@
     },
     {
       "system": "ucpath",
+      "label": "Smart HR template input",
+      "searchTerms": [
+        "ucpath smart hr template input"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination",
+        "ucpath/stage-pending-termination-sweep"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.smart-hr.template-input",
+      "screen": "ucpath.smart-hr.setup",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "ucpath",
+      "label": "Smart HR transaction date input",
+      "searchTerms": [
+        "ucpath smart hr transaction date input"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination",
+        "ucpath/stage-pending-termination-sweep"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.smart-hr.transaction-date-input",
+      "screen": "ucpath.smart-hr.setup",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "ucpath",
+      "label": "Smart HR Create Transaction button",
+      "searchTerms": [
+        "ucpath smart hr create transaction button"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination",
+        "ucpath/stage-pending-termination-sweep"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.smart-hr.create-transaction-button",
+      "screen": "ucpath.smart-hr.setup",
+      "role": "button",
+      "effect": "navigate"
+    },
+    {
+      "system": "ucpath",
+      "label": "Delete Selected Transactions button",
+      "searchTerms": [
+        "ucpath smart hr delete selected transactions button"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-pending-sweep"
+        ]
+      },
+      "taskUses": [
+        "ucpath/delete-pending-terminations"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.smart-hr.delete-selected-button",
+      "screen": "ucpath.smart-hr.setup",
+      "role": "button",
+      "effect": "external-commit"
+    },
+    {
+      "system": "ucpath",
+      "label": "Smart HR wizard employee-id input",
+      "searchTerms": [
+        "ucpath smart hr wizard empl id input"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.smart-hr.details-eid-input",
+      "screen": "ucpath.smart-hr.details",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "ucpath",
+      "label": "Smart HR Action Reason select",
+      "searchTerms": [
+        "ucpath smart hr action reason select"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.smart-hr.reason-code-select",
+      "screen": "ucpath.smart-hr.details",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "ucpath",
+      "label": "Smart HR Continue button",
+      "searchTerms": [
+        "ucpath smart hr wizard continue button"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.smart-hr.continue-button",
+      "screen": "ucpath.smart-hr.details",
+      "role": "button",
+      "effect": "navigate"
+    },
+    {
+      "system": "ucpath",
+      "label": "Override Last Date Worked checkbox",
+      "searchTerms": [
+        "ucpath smart hr override last date worked checkbox"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.smart-hr.override-ldw-checkbox",
+      "screen": "ucpath.smart-hr.information",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "ucpath",
+      "label": "Last Date Worked input",
+      "searchTerms": [
+        "ucpath smart hr last date worked input"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.smart-hr.last-date-worked-input",
+      "screen": "ucpath.smart-hr.information",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "ucpath",
+      "label": "Smart HR initiator comments",
+      "searchTerms": [
+        "ucpath smart hr initiator comments textarea"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.smart-hr.initiator-comments-field",
+      "screen": "ucpath.smart-hr.information",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "ucpath",
+      "label": "Smart HR transaction comments",
+      "searchTerms": [
+        "ucpath smart hr transaction comments textarea"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.smart-hr.transaction-comments-field",
+      "screen": "ucpath.smart-hr.information",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "ucpath",
+      "label": "Save and Submit button",
+      "searchTerms": [
+        "ucpath smart hr save and submit button"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/create-termination"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.smart-hr.save-and-submit-button",
+      "screen": "ucpath.smart-hr.information",
+      "role": "button",
+      "effect": "external-commit"
+    },
+    {
+      "system": "ucpath",
+      "label": "SS Smart HR employee-id filter",
+      "searchTerms": [
+        "ucpath ss smart hr empl id filter input"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-ss-smart-hr-search"
+        ]
+      },
+      "taskUses": [
+        "ucpath/match-existing-termination",
+        "ucpath/match-pending-terminations",
+        "ucpath/verify-termination",
+        "ucpath/verify-pending-terminations-cleared"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.ss-smart-hr.search-eid-input",
+      "screen": "ucpath.ss-smart-hr.search",
+      "role": "field",
+      "effect": "prepare"
+    },
+    {
+      "system": "ucpath",
+      "label": "SS Smart HR Search button",
+      "searchTerms": [
+        "ucpath ss smart hr execute search button"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-ss-smart-hr-search"
+        ]
+      },
+      "taskUses": [
+        "ucpath/match-existing-termination",
+        "ucpath/match-pending-terminations",
+        "ucpath/verify-termination",
+        "ucpath/verify-pending-terminations-cleared"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "element",
+      "id": "ucpath.ss-smart-hr.search-button",
+      "screen": "ucpath.ss-smart-hr.search",
+      "role": "button",
+      "effect": "navigate"
+    },
+    {
+      "system": "ucpath",
       "label": "Person Org search ready",
       "searchTerms": [
         "person org search eid ready state"
@@ -534,6 +985,125 @@
       "kind": "page-state",
       "id": "ucpath.ss-smart-hr.transaction-ready",
       "screen": "ucpath.ss-smart-hr.transaction"
+    },
+    {
+      "system": "ucpath",
+      "label": "Smart HR setup ready",
+      "searchTerms": [
+        "ucpath smart hr wizard setup ready state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination",
+        "ucpath/stage-pending-termination-sweep"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "ucpath.smart-hr.setup-ready",
+      "screen": "ucpath.smart-hr.setup"
+    },
+    {
+      "system": "ucpath",
+      "label": "Smart HR details ready",
+      "searchTerms": [
+        "ucpath smart hr wizard details ready state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "ucpath.smart-hr.details-ready",
+      "screen": "ucpath.smart-hr.details"
+    },
+    {
+      "system": "ucpath",
+      "label": "Smart HR information ready",
+      "searchTerms": [
+        "ucpath smart hr wizard information ready state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "ucpath.smart-hr.information-ready",
+      "screen": "ucpath.smart-hr.information"
+    },
+    {
+      "system": "ucpath",
+      "label": "Smart HR termination staged",
+      "searchTerms": [
+        "ucpath smart hr termination staged fence state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-smart-hr-termination-wizard"
+        ]
+      },
+      "taskUses": [
+        "ucpath/stage-termination"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "ucpath.smart-hr.termination-staged",
+      "screen": "ucpath.smart-hr.information"
+    },
+    {
+      "system": "ucpath",
+      "label": "SS Smart HR search ready",
+      "searchTerms": [
+        "ucpath ss smart hr search ready state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json",
+        "scenarios": [
+          "ui/ucpath-ss-smart-hr-search"
+        ]
+      },
+      "taskUses": [
+        "ucpath/match-existing-termination",
+        "ucpath/match-pending-terminations",
+        "ucpath/verify-termination",
+        "ucpath/verify-pending-terminations-cleared"
+      ],
+      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "ucpath.ss-smart-hr.search-ready",
+      "screen": "ucpath.ss-smart-hr.search"
     },
     {
       "system": "ucpath",

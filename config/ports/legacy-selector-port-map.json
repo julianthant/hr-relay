@@ -4322,9 +4322,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/smart-hr.template-input"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.template-input",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -4340,9 +4345,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/smart-hr.effective-date-input"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.transaction-date-input",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -4358,9 +4368,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/smart-hr.create-transaction-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.create-transaction-button",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -4376,9 +4391,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/smart-hr.reason-code-select"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.reason-code-select",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -4394,9 +4414,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/smart-hr.continue-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.continue-button",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -4485,9 +4510,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/smart-hr.save-and-submit-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.save-and-submit-button",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -4542,9 +4572,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/smart-hr.delete-selected-transactions-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.delete-selected-button",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -4901,9 +4936,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/comments.comments-textarea"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.initiator-comments-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -4919,9 +4959,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/comments.initiator-comments-textarea"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.transaction-comments-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -4938,9 +4983,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/termination.override-last-date-worked-checkbox"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.override-ldw-checkbox",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -4957,9 +5007,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/termination.last-date-worked-input"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.last-date-worked-input",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -7033,9 +7088,23 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.empl-id-input"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalBindings": [
+        {
+          "context": "smart-hr-wizard-details",
+          "canonicalId": "ucpath.smart-hr.details-eid-input"
+        },
+        {
+          "context": "ss-smart-hr-search",
+          "canonicalId": "ucpath.ss-smart-hr.search-eid-input"
+        }
+      ],
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json"
+      }
     },
     {
       "system": "ucpath",
@@ -7163,9 +7232,14 @@
       "sourceBlob": "695d88fcc7a108f262b91b45eb1b9a276deaf427",
       "catalogPath": "src/systems/ucpath/SELECTORS.md",
       "catalogBlob": "b9f19d3e709d6502a65a613b8f9a8ce470563b0a",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:ucpath/ss-smart-hr-transactions.search-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.ss-smart-hr.search-button",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/ucpath/smart-hr-termination.live.json"
+      }
     },
     {
       "system": "ucpath",

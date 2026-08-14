@@ -1,0 +1,339 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "deterministic-fixture",
+  "system": "ucpath",
+  "screens": [
+    "ucpath.smart-hr.setup",
+    "ucpath.smart-hr.details",
+    "ucpath.smart-hr.information",
+    "ucpath.ss-smart-hr.search"
+  ],
+  "verifiedAt": "2026-08-14",
+  "method": "deterministic-driver",
+  "assertions": [
+    {
+      "semanticId": "ucpath.smart-hr.setup",
+      "screen": "ucpath.smart-hr.setup",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "smartHR.templateInput()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.details",
+      "screen": "ucpath.smart-hr.details",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "smartHR.reasonCodeSelect()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.information",
+      "screen": "ucpath.smart-hr.information",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "smartHR.saveAndSubmitButton()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.search",
+      "screen": "ucpath.ss-smart-hr.search",
+      "scenarioId": "ui/ucpath-ss-smart-hr-search",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "ssSmartHRTransactions.searchButton()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.template-input",
+      "screen": "ucpath.smart-hr.setup",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "smartHR.templateInput()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.transaction-date-input",
+      "screen": "ucpath.smart-hr.setup",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "smartHR.effectiveDateInput()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.create-transaction-button",
+      "screen": "ucpath.smart-hr.setup",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "smartHR.createTransactionButton()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.delete-selected-button",
+      "screen": "ucpath.smart-hr.setup",
+      "scenarioId": "ui/ucpath-smart-hr-pending-sweep",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "smartHR.deleteSelectedTransactionsButton()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.details-eid-input",
+      "screen": "ucpath.smart-hr.details",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "ssSmartHRTransactions.emplIdInput()"
+        }
+      ],
+      "assertion": "accepts-canonical-eid",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.reason-code-select",
+      "screen": "ucpath.smart-hr.details",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "smartHR.reasonCodeSelect()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.continue-button",
+      "screen": "ucpath.smart-hr.details",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "smartHR.continueButton()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.override-ldw-checkbox",
+      "screen": "ucpath.smart-hr.information",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "termination.overrideLastDateWorkedCheckbox()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.last-date-worked-input",
+      "screen": "ucpath.smart-hr.information",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "termination.lastDateWorkedInput()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.initiator-comments-field",
+      "screen": "ucpath.smart-hr.information",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "comments.commentsTextarea()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.transaction-comments-field",
+      "screen": "ucpath.smart-hr.information",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "comments.initiatorCommentsTextarea()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.save-and-submit-button",
+      "screen": "ucpath.smart-hr.information",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "smartHR.saveAndSubmitButton()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.search-eid-input",
+      "screen": "ucpath.ss-smart-hr.search",
+      "scenarioId": "ui/ucpath-ss-smart-hr-search",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "ssSmartHRTransactions.emplIdInput()"
+        }
+      ],
+      "assertion": "accepts-canonical-eid",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.search-button",
+      "screen": "ucpath.ss-smart-hr.search",
+      "scenarioId": "ui/ucpath-ss-smart-hr-search",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "ssSmartHRTransactions.searchButton()"
+        }
+      ],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.setup-ready",
+      "screen": "ucpath.smart-hr.setup",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "smartHR.templateInput()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.details-ready",
+      "screen": "ucpath.smart-hr.details",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "ssSmartHRTransactions.emplIdInput()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.information-ready",
+      "screen": "ucpath.smart-hr.information",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "smartHR.saveAndSubmitButton()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.smart-hr.termination-staged",
+      "screen": "ucpath.smart-hr.information",
+      "scenarioId": "ui/ucpath-smart-hr-termination-wizard",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "termination.lastDateWorkedInput()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.search-ready",
+      "screen": "ucpath.ss-smart-hr.search",
+      "scenarioId": "ui/ucpath-ss-smart-hr-search",
+      "portMapRows": [
+        {
+          "system": "ucpath",
+          "legacyKey": "ssSmartHRTransactions.emplIdInput()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    }
+  ],
+  "externalWriteAttempted": false,
+  "sanitized": true
+}

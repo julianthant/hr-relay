@@ -61,6 +61,13 @@ export const ContextualElementPortBindingSchema = z.array(z.strictObject({
   context: z.enum([
     "search-results-view-toggle",
     "employment-instances-view-toggle",
+    // Separations chunk 4 (D206): `ssSmartHRTransactions.emplIdInput()` names
+    // TWO live controls. Legacy fills the Smart HR WIZARD's Page-B Empl ID with
+    // the SS Smart HR SEARCH form's key, and live they are
+    // `#HR_TBH_WRK_EMPLID_PROMPT2` and `#UC_SS_TBH_DVW_EMPLID`. Binding both by
+    // context is what keeps one of them from being demoted to a "fallback".
+    "smart-hr-wizard-details",
+    "ss-smart-hr-search",
   ]),
   canonicalId: ElementIdSchema,
 })).min(2).superRefine((bindings, context) => {
