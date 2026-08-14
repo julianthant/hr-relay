@@ -43,7 +43,11 @@ import {
 } from "../base/workflow.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../domain/canonical-json.js";
 import type { JsonValue } from "../domain/canonical-json.js";
-import { TransactionOutcomeSchema } from "../domain/write-safety-primitives.js";
+import {
+  TransactionDryRunPreviewSchema,
+  TransactionOutcomeSchema,
+  type TransactionDryRunPreview,
+} from "../domain/write-safety-primitives.js";
 import type { Clock } from "../domain/clock.js";
 import type { AnyReadTaskContract } from "../domain/contracts/base.js";
 import type { GateResultRecord } from "../domain/gates.js";
@@ -51,6 +55,7 @@ import type { IdFactory } from "../domain/identifiers.js";
 import {
   GateIdSchema,
   IsoInstantSchema,
+  NodeIdSchema,
   OutboxIdSchema,
   ProviderCapabilityIdSchema,
   TaskIdSchema,
@@ -62,6 +67,10 @@ import {
   type RunLifecycle,
   type RunRecord,
 } from "../domain/run/record.js";
+import type {
+  RunResultRecord,
+  TerminalDependencyEvidence,
+} from "../domain/run/result.js";
 import { RunTerminalOutboxRecordSchema } from "../domain/run/terminal-outbox.js";
 import type { SessionNeed } from "../domain/session.js";
 import { FailureRecordSchema, type FailureRecord } from "../domain/trust/failure.js";
@@ -110,7 +119,7 @@ import {
   buildEntryValidationFailureRecord,
   buildNodeFailureRecord,
 } from "./run-failure.js";
-import { buildRunResult } from "./run-result.js";
+import { buildRunPreviewResult, buildRunResult } from "./run-result.js";
 import {
   ExecutorSpanEventSchema,
   runSpanPath,
@@ -158,6 +167,13 @@ export interface WriteSequencerContext {
 
 export interface WriteSequencer {
   executeTransaction(context: WriteSequencerContext): Promise<unknown>;
+  /**
+   * D210 — doc 09 §12's prepare-only arm. It is part of the seam rather than a
+   * production-only extra because the interpreter's dry-run path is not
+   * optional: a run whose envelope says `dryRun` has no other legal way through
+   * a transaction node, and `executeTransaction` refuses to substitute one.
+   */
+  executeDryRun(context: WriteSequencerContext): Promise<unknown>;
 }
 
 /**
@@ -550,6 +566,86 @@ export async function executeClaimedRun(
     const checkpointRecords = new Map<string, RunCheckpointRecord>();
     const replayedForFreshness: ReplayedCheckpoint[] = [];
     const skippedReasons = new Map<string, "condition-false" | "branch-not-selected">();
+
+    /**
+     * Turn a node-id list into the exact terminal-dependency evidence the sealed
+     * factory demands: a durable checkpoint this run actually produced, or a
+     * closed not-run reason this run actually recorded. Nothing is invented — a
+     * node with neither is a hard error, because "we have no record" and "the
+     * node did not run" are the two things that must never be conflated.
+     */
+    const dependencyEvidenceFor = (
+      nodeIds: readonly NodeId[],
+      purpose: string,
+    ): readonly TerminalDependencyEvidence[] => nodeIds.map((dependency) => {
+      const record = checkpointRecords.get(String(dependency));
+      if (record !== undefined) return { state: "resolved" as const, nodeId: dependency, checkpoint: record };
+      const reason = skippedReasons.get(String(dependency));
+      if (reason !== undefined) return { state: "not-run" as const, nodeId: dependency, reason };
+      throw new Error(
+        `${purpose} dependency "${dependency}" has neither a checkpoint-backed output nor a closed not-run reason`,
+      );
+    });
+
+    /**
+     * The ONE terminal-success settlement: outbox, authorization, and the
+     * authority transaction that writes them with the run CAS. A derived result
+     * and D210's preview record differ in what they SAY and not in how they
+     * settle, so they share this — a second copy would be a second place for the
+     * terminal invariants to drift.
+     */
+    const settleSuccess = (
+      current: RunRecord,
+      built: Readonly<{ record: RunResultRecord; authorization: object }>,
+    ): RunExecutionOutcome => {
+      const outboxId = OutboxIdSchema.parse(deps.ids.uuid());
+      const outbox = RunTerminalOutboxRecordSchema.parse({
+        outboxId,
+        payload: {
+          kind: "run-terminal-result",
+          runId: built.record.runId,
+          workflowId: built.record.workflowId,
+          attempt: built.record.attempt,
+          resultDigest: built.record.resultDigest,
+        },
+        projection: { state: "pending" },
+        createdAt: built.record.createdAt,
+      });
+      const authorization = buildTerminalAuthorization({
+        run: current,
+        authorizedAt: built.record.createdAt,
+        consequence: { kind: "done", result: built.record, outboxId },
+      });
+      deps.authority.terminalizeSuccess(
+        { result: built.record, outbox, authorization },
+        built.authorization,
+      );
+      emit({ t: "span.ended", kind: "run", ...runSpanIdentity, outcome: "done" });
+      return RunExecutionOutcomeSchema.parse({ state: "done", runId });
+    };
+
+    /**
+     * D210 — end a previewed run AT the transaction node. The dependency evidence
+     * is that node's OWN `dependsOn`, which is the exact set its `prepare`/`commit`
+     * binds read; the factory re-derives the expected set from the authenticated
+     * descriptor, so this list is checked rather than trusted.
+     */
+    const settlePreview = (
+      node: TransactionRuntimeNode,
+      preview: TransactionDryRunPreview,
+    ): RunExecutionOutcome => {
+      const current = getRun();
+      return settleSuccess(current, buildRunPreviewResult(
+        descriptor,
+        current,
+        preview,
+        dependencyEvidenceFor(
+          node.dependsOn.map((nodeId) => NodeIdSchema.parse(nodeId)),
+          "dry-run preview",
+        ),
+        clock,
+      ));
+    };
     const branchExcluded = new Set<string>();
 
     const scopeFor = (dependsOn: readonly NodeId[]): RuntimeScope => {
@@ -1286,6 +1382,38 @@ export async function executeClaimedRun(
               + "refusing to skip a write node",
             ));
           }
+          /**
+           * D210 — the preview arm (doc 01 §6.2). A dry run reaches the
+           * transaction node, runs the sequencer's REAL prepare-only arm (zero
+           * intent, zero fence, zero commit), records an honest
+           * `transaction.previewed` span, and ENDS THE RUN HERE. Nothing
+           * downstream executes: doc 01 §10.1's default is that a preview stops
+           * after the first transaction prepare, and continuing would run nodes
+           * whose inputs a real run derives from a commit output this run never
+           * produced.
+           */
+          if (envelope.dryRun) {
+            let preview: TransactionDryRunPreview;
+            try {
+              preview = TransactionDryRunPreviewSchema.parse(await deps.writeSequencer.executeDryRun({
+                descriptor, node, run: getRun(), claim,
+                scope: scopeFor(node.dependsOn),
+                dryRun: true,
+                signal: input.signal,
+              }));
+            } catch (error) {
+              if (error instanceof RunAbandonedError) throw error;
+              return await failNode(node, node.commit.uses.id, error);
+            }
+            emit({
+              t: "transaction.previewed",
+              ...runSpanIdentity,
+              node: node.id,
+              subject: preview.subject.state,
+              externalCommit: "none",
+            });
+            return settlePreview(node, preview);
+          }
           try {
             const raw = await deps.writeSequencer.executeTransaction({
               descriptor, node, run: getRun(), claim,
@@ -1400,41 +1528,13 @@ export async function executeClaimedRun(
 
     /* ── terminal success (D110/D114) ────────────────────────────────────── */
     const terminal = workflowTerminalResultExecution(descriptor);
-    const evidence = terminal.dependsOn.map((dependency) => {
-      const record = checkpointRecords.get(String(dependency));
-      if (record !== undefined) return { state: "resolved" as const, nodeId: dependency, checkpoint: record };
-      const reason = skippedReasons.get(String(dependency));
-      if (reason !== undefined) return { state: "not-run" as const, nodeId: dependency, reason };
-      throw new Error(
-        `terminal dependency "${dependency}" has neither a checkpoint-backed output nor a closed not-run reason`,
-      );
-    });
     const current = getRun();
-    const built = buildRunResult(descriptor, current, evidence, clock);
-    const outboxId = OutboxIdSchema.parse(deps.ids.uuid());
-    const outbox = RunTerminalOutboxRecordSchema.parse({
-      outboxId,
-      payload: {
-        kind: "run-terminal-result",
-        runId: built.record.runId,
-        workflowId: built.record.workflowId,
-        attempt: built.record.attempt,
-        resultDigest: built.record.resultDigest,
-      },
-      projection: { state: "pending" },
-      createdAt: built.record.createdAt,
-    });
-    const authorization = buildTerminalAuthorization({
-      run: current,
-      authorizedAt: built.record.createdAt,
-      consequence: { kind: "done", result: built.record, outboxId },
-    });
-    deps.authority.terminalizeSuccess(
-      { result: built.record, outbox, authorization },
-      built.authorization,
-    );
-    emit({ t: "span.ended", kind: "run", ...runSpanIdentity, outcome: "done" });
-    return RunExecutionOutcomeSchema.parse({ state: "done", runId });
+    return settleSuccess(current, buildRunResult(
+      descriptor,
+      current,
+      dependencyEvidenceFor(terminal.dependsOn, "terminal"),
+      clock,
+    ));
   };
 
   try {

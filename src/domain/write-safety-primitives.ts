@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { JsonValueSchema } from "./canonical-json.js";
 import {
+  ArtifactIdSchema,
   EvidenceRefSchema,
   FingerprintSchema,
   IsoInstantSchema,
@@ -7,6 +9,34 @@ import {
   PageStateIdSchema,
 } from "./ids.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
+
+/**
+ * The identity a write is fenced against (doc 09 beat ③).
+ *
+ * It lives in the browser-safe half for the same reason `TransactionOutcome`
+ * does (D144): a descriptor closure has to be able to hash a schema that embeds
+ * it, and `write-safety.ts` imports `node:crypto`. Doc 09's module re-exports
+ * it, so its address is unchanged.
+ */
+export const SubjectEvidenceSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("person"),
+    identifierKind: z.enum(["eid", "kuali-id", "email"]),
+    bindingDigest: FingerprintSchema,
+    displaySuffix: z.string().regex(/^[A-Za-z0-9*@._-]{2,32}$/),
+  }),
+  z.strictObject({
+    kind: z.literal("artifact"),
+    artifactId: ArtifactIdSchema,
+    bindingDigest: FingerprintSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("catalog"),
+    catalogKey: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    bindingDigest: FingerprintSchema,
+  }),
+]);
+export type SubjectEvidence = z.infer<typeof SubjectEvidenceSchema>;
 
 export const AbsentEvidenceSchema = z.strictObject({
   idempotencyKeyDigest: FingerprintSchema,
@@ -74,6 +104,35 @@ export const TransactionOutcomeSchema = z.discriminatedUnion("disposition", [
     observedAt: IsoInstantSchema,
   }),
 ]);
+
+/**
+ * D210 — what a dry run of a transaction node actually observed.
+ *
+ * Every field is a fact the preview GATHERED: the prepare arm's own parsed
+ * output under its contract's schema hash, and the beat-③ subject observation
+ * taken on the staged page. There is deliberately no `disposition` and no commit
+ * output, because a preview settles nothing — and inventing either to make a
+ * terminal derive fold is exactly the fabrication D144 refused.
+ *
+ * It lives here, beside `TransactionOutcome`, because the descriptor factory
+ * hashes it when a previewed run is terminalized.
+ */
+export const TransactionDryRunPreviewSchema = z.strictObject({
+  kind: z.literal("transaction-dry-run-preview"),
+  nodeId: z.string().min(1),
+  prepare: z.strictObject({ schemaHash: FingerprintSchema, value: JsonValueSchema }),
+  subject: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("match"), evidence: SubjectEvidenceSchema }),
+    z.strictObject({
+      state: z.literal("mismatch"),
+      expected: SubjectEvidenceSchema,
+      observed: SubjectEvidenceSchema,
+    }),
+    z.strictObject({ state: z.literal("unscoped"), reviewedReasonId: z.string().min(1) }),
+  ]),
+  observedAt: IsoInstantSchema,
+});
+export type TransactionDryRunPreview = z.infer<typeof TransactionDryRunPreviewSchema>;
 
 export type ProbeVerdict<ProofSchema extends z.ZodType> = z.output<ReturnType<typeof probeVerdictSchema<ProofSchema>>>;
 export type NegativeSettlementPolicy = z.infer<typeof NegativeSettlementPolicySchema>;

@@ -229,22 +229,18 @@ export interface ProductionWriteSequencer extends WriteSequencer {
 
 /* ── dry-run preview (doc 02 §3.1: prepare + observe, zero intent/fence) ─── */
 
-export const TransactionDryRunPreviewSchema = z.strictObject({
-  kind: z.literal("transaction-dry-run-preview"),
-  nodeId: z.string().min(1),
-  prepare: z.strictObject({ schemaHash: FingerprintSchema, value: JsonValueSchema }),
-  subject: z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("match"), evidence: SubjectEvidenceSchema }),
-    z.strictObject({
-      state: z.literal("mismatch"),
-      expected: SubjectEvidenceSchema,
-      observed: SubjectEvidenceSchema,
-    }),
-    z.strictObject({ state: z.literal("unscoped"), reviewedReasonId: z.string().min(1) }),
-  ]),
-  observedAt: IsoInstantSchema,
-});
-export type TransactionDryRunPreview = z.infer<typeof TransactionDryRunPreviewSchema>;
+/**
+ * The schema itself lives in `src/domain/write-safety-primitives.ts` (D210):
+ * the descriptor factory hashes it when a previewed run is terminalized, and a
+ * descriptor closure may not reach `write-safety.ts`'s `node:crypto`. This
+ * module stays its address for every existing caller.
+ */
+import {
+  TransactionDryRunPreviewSchema,
+  type TransactionDryRunPreview,
+} from "../domain/write-safety-primitives.js";
+export { TransactionDryRunPreviewSchema };
+export type { TransactionDryRunPreview };
 
 /* ── small helpers ───────────────────────────────────────────────────────── */
 
@@ -1355,9 +1351,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       throw new TaskError(
         commitContract.id,
         "capability-unavailable",
-        `transaction node "${node.id}" was asked for a dry run; the Phase-1f interpreter has no preview `
-        + "outcome arm yet, and the sequencer refuses to substitute a real write — use executeDryRun "
-        + "(zero intent, zero fence, zero commit) once the preview arm lands",
+        `transaction node "${node.id}" was asked for a dry run, and this is the arm that FENCES AND `
+        + "CLICKS; the sequencer never substitutes a real write for a preview. The interpreter's "
+        + "preview arm calls executeDryRun (zero intent, zero fence, zero commit) — D210. Reaching "
+        + "here with dryRun means a caller routed a preview into the commit path.",
       );
     }
     // The run's OWN immutable envelope, not the caller's claim about it.

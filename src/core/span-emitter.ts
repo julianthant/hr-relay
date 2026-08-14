@@ -23,6 +23,7 @@ import {
   FailureIdSchema,
   GateIdSchema,
   IsoInstantSchema,
+  NodeIdSchema,
   PositiveIntSchema,
   RunIdSchema,
   TraceIdSchema,
@@ -131,6 +132,23 @@ export const ExecutorSpanEventSchema = z.union([
     ...BaseFields,
     ...RunSpanIdentityFields,
     gate: GateIdSchema,
+  }),
+  /**
+   * D210 / doc 01 §6.2 — "records an honest `transaction.previewed` span, and
+   * ends the run at the node". It is its own event rather than a `span.ended`
+   * arm because no `SpanOutcome` value is true of it: a preview is neither
+   * `done` (nothing was committed) nor `skipped` (the node ran). It carries the
+   * subject verdict the beat-③ observation actually reached and states the one
+   * thing an operator must be able to read off the timeline — that no external
+   * write was attempted.
+   */
+  z.strictObject({
+    t: z.literal("transaction.previewed"),
+    ...BaseFields,
+    ...RunSpanIdentityFields,
+    node: NodeIdSchema,
+    subject: z.enum(["match", "mismatch", "unscoped"]),
+    externalCommit: z.literal("none"),
   }),
   z.strictObject({
     t: z.literal("span.started"),

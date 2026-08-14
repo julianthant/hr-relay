@@ -465,6 +465,19 @@ export class RunQueueProjection {
       return { runIds: [], workerChanged: true };
     }
 
+    /**
+     * D210 — `transaction.previewed`. The JSONL stream carries it (doc 01 §6.2)
+     * and this projection has no arm that could render it without lying: the
+     * queue row's vocabulary is task spans and terminal outcomes, and a preview
+     * is neither. It is deliberately IGNORED here rather than folded into a
+     * `span.ended` it is not, and the operator-facing truth is carried by the
+     * evidence receipt, which refuses `verified-done` for a previewed run and
+     * names the preview as a load-bearing uncertainty. Surfacing it on the queue
+     * row is a wire + UI change this slice does not own; §9.9's carry-forward
+     * names it.
+     */
+    if (event.t === "transaction.previewed") return { runIds: [], workerChanged: false };
+
     // span.ended
     if (event.kind === "task") {
       const row = this.#row(event.runId, event.t);

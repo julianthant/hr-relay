@@ -98,13 +98,14 @@ import {
 } from "../domain/ids.js";
 import { RunRecordSchema, type RunRecord } from "../domain/run/record.js";
 import {
+  RunDryRunPreviewResultSchema,
   RunResultRecordSchema,
   deriveCheckpointOutputDigest,
   deriveTerminalDependencyDigest,
   type RunResultRecord,
   type TerminalNotRunReason,
 } from "../domain/run/result.js";
-import { SchemaBoundCanonicalValueSchema } from "../domain/schema-bound-value.js";
+import { SchemaBoundCanonicalValueSchema, deriveSchemaHash } from "../domain/schema-bound-value.js";
 import { sha256Hex } from "../domain/sha256.js";
 import {
   evidenceLeaves,
@@ -694,7 +695,51 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
 
   /* ── outputs ───────────────────────────────────────────────────────────── */
 
-  if (result !== undefined) {
+  /**
+   * D210 — a PREVIEWED run. The two facts must agree: the envelope says the
+   * operator asked for a dry run, and the stored terminal row is bound to the
+   * preview schema. Either alone would be an incoherent record, so each is
+   * checked against the other rather than one being believed.
+   */
+  const previewResultSchemaHash = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
+  const previewed = result !== undefined && result.resultSchemaHash === previewResultSchemaHash;
+  if (previewed !== (envelope.dryRun && result !== undefined)) {
+    throw new Error(
+      `run ${envelope.runId} has dryRun=${String(envelope.dryRun)} but its terminal result is bound to `
+      + `${result === undefined ? "no schema" : result.resultSchemaHash}; a receipt cannot describe a run `
+      + "whose envelope and terminal record disagree about whether it committed anything",
+    );
+  }
+
+  if (previewed && result !== undefined) {
+    const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
+    /**
+     * NO output facts. A preview produced no workflow result, and putting its
+     * staged-then-discarded values in the section an operator reads as "what
+     * this run produced" is exactly the confusion the arm exists to prevent.
+     * The staged values are not lost — they are on the durable terminal row —
+     * but the receipt's job is the verdict, and the verdict is "nothing".
+     */
+    verification.push({
+      id: terminalResultVerificationId,
+      obligation: "completion.terminal-result",
+      mandatory: true,
+      // D187: a record-less obligation reports `unknown`, which is the honest
+      // verdict. It also makes `verified-done` structurally unreachable here.
+      verdict: "unknown",
+      evidence: [],
+    });
+    warnings.push({
+      id: entryId("warning", "dry-run-preview"),
+      code: ErrorCodeSchema.parse("DRY_RUN_PREVIEW"),
+      summary: `this run was a DRY RUN: transaction node "${preview.stoppedAtNodeId}" was previewed `
+        + `(subject ${preview.preview.subject.state}, observed ${preview.preview.observedAt}) and the run ended `
+        + "there. No external write was attempted — no write intent, no fence, no commit — so this "
+        + "receipt states what WOULD have been written, never what was",
+      loadBearing: true,
+      evidence: [],
+    });
+  } else if (result !== undefined) {
     const resultScope: EvidenceValueScope = { kind: "workflow-result", workflowId: descriptor.id };
     for (const leaf of evidenceLeaves(result.result.value)) {
       outputs.push({

@@ -18,6 +18,7 @@ import type { Fingerprint } from "../ids.js";
 import { SchemaBoundCanonicalValueSchema } from "../schema-bound-value.js";
 import { sha256Hex } from "../sha256.js";
 import { RunCheckpointRecordSchema } from "../workflow/checkpoint.js";
+import { TransactionDryRunPreviewSchema } from "../write-safety-primitives.js";
 
 export const TerminalNotRunReasonSchema = z.enum([
   "condition-false",
@@ -65,6 +66,32 @@ export const TerminalDependencyEvidenceSchema = z.discriminatedUnion("state", [
     reason: TerminalNotRunReasonSchema,
   }),
 ]);
+
+/**
+ * D210 — the terminal record of a PREVIEWED run.
+ *
+ * A dry run stops at its first transaction node, so the workflow's declared
+ * result was never derived and there is nothing to fold: a preview has no
+ * `disposition` and no commit output. Fabricating a `TransactionOutcome` to make
+ * `build()` fold would be the banned plausible-wrong value, so a previewed run
+ * settles with THIS shape instead, and `RunResultRecord.resultSchemaHash` names
+ * it — the only hash that truthfully describes the bytes stored (D144's rule).
+ * A consumer that demands the descriptor's declared result therefore sees a hash
+ * that is not the one it expects and refuses, rather than reading a preview as a
+ * completed workflow.
+ *
+ * `externalCommit: "none"` is a structural restatement, not a claim to be
+ * trusted: a dry run mints no write intent, no fence, and never invokes a commit
+ * implementation, and the scenarios assert that on rows.
+ */
+export const RunDryRunPreviewResultSchema = z.strictObject({
+  kind: z.literal("dry-run-preview"),
+  /** The transaction node the run stopped at — its first (doc 01 §10.1). */
+  stoppedAtNodeId: NodeIdSchema,
+  externalCommit: z.literal("none"),
+  preview: TransactionDryRunPreviewSchema,
+});
+export type RunDryRunPreviewResult = z.infer<typeof RunDryRunPreviewResultSchema>;
 
 export function deriveRunResultDigest(result: unknown): Fingerprint {
   return FingerprintSchema.parse(sha256Hex(

@@ -29,3 +29,23 @@ export function buildRunResult(
     clock,
   );
 }
+
+/**
+ * D210 — the terminal record of a previewed run, through the same sealed
+ * factory. There is no authored derive to invoke: the record IS what the
+ * preview observed, so nothing here composes a value the run did not produce.
+ */
+export function buildRunPreviewResult(
+  descriptor: AnyWorkflowDescriptor,
+  currentRun: unknown,
+  preview: unknown,
+  evidence: unknown,
+  clock: Clock,
+): Readonly<{ record: RunResultRecord; authorization: object }> {
+  return workflowTerminalResultExecution(descriptor).buildPreview(
+    RunRecordSchema.parse(currentRun),
+    preview,
+    evidence,
+    clock,
+  );
+}

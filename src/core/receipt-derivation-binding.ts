@@ -68,6 +68,7 @@
 import { z } from "zod";
 import {
   descriptorRuntimeNodes,
+  workflowDryRunSupport,
   workflowTerminalResultExecution,
   type AnyWorkflowDescriptor,
 } from "../base/workflow.js";
@@ -283,14 +284,30 @@ export function evaluateReceiptDerivationBinding(
       "not evaluated: this run holds no terminal result, so authority retains no dependency set to compare",
     ));
   } else {
-    const declared = workflowTerminalResultExecution(descriptor).dependsOn.map(String);
+    /**
+     * D210 — a PREVIEWED run's terminal record is not a derived result, so the
+     * set it must still agree with is not `terminalDependsOn`. A preview stops
+     * at the graph's first transaction node and its dependencies are THAT
+     * node's own `dependsOn` — the exact upstream facts its binds read — so
+     * that is the set this build re-derives and compares. Comparing against the
+     * terminal set instead would refuse every preview receipt on a difference
+     * that is by design, which is a check reporting the wrong baseline rather
+     * than a moved declaration.
+     */
+    const dryRun = workflowDryRunSupport(descriptor);
+    const previewed = run.envelope.dryRun;
+    const declared = (previewed && dryRun.state === "supported"
+      ? descriptorRuntimeNodes(descriptor)
+        .find((node) => String(node.id) === dryRun.stopsAt)?.dependsOn ?? []
+      : workflowTerminalResultExecution(descriptor).dependsOn).map(String);
     const retained = result.dependencies.map((dependency) => String(dependency.nodeId));
     checks.push(canonicalJsonStringify([...declared].sort()) === canonicalJsonStringify([...retained].sort())
       ? held("terminal-dependency-set", `both depend on [${declared.join(", ")}]`)
       : moved(
         "terminal-dependency-set",
-        `the stored result was built from [${retained.join(", ")}] and this build's terminal execution `
-        + `depends on [${declared.join(", ")}]; the mandatory-evidence set would move`,
+        `the stored result was built from [${retained.join(", ")}] and this build's `
+        + `${run.envelope.dryRun ? "dry-run preview" : "terminal execution"} depends on `
+        + `[${declared.join(", ")}]; the mandatory-evidence set would move`,
       ));
   }
 

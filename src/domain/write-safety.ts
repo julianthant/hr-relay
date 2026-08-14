@@ -4,7 +4,6 @@ import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Clock } from "./clock.js";
 import {
   ActorIdSchema,
-  ArtifactIdSchema,
   BrowserSystemIdSchema,
   EvidenceRefSchema,
   FingerprintSchema,
@@ -32,6 +31,7 @@ import {
   AbsentEvidenceSchema,
   NegativeSettlementPolicySchema,
   probeVerdictSchema,
+  SubjectEvidenceSchema,
 } from "./write-safety-primitives.js";
 export {
   AbsentEvidenceSchema,
@@ -39,6 +39,10 @@ export {
   probeVerdictSchema,
   // The durable transaction settlement lives in the browser-safe half so a
   // descriptor closure can hash it (D144); doc 09's module stays its address.
+  // The subject evidence a fence binds and the D210 dry-run preview are there
+  // for the same reason.
+  SubjectEvidenceSchema,
+  TransactionDryRunPreviewSchema,
   TransactionOutcomeSchema,
 } from "./write-safety-primitives.js";
 export type {
@@ -51,25 +55,6 @@ export const SpanPathSchema = z.string().regex(
   /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+$/,
   "span path must be slash-delimited kebab-case",
 );
-
-export const SubjectEvidenceSchema = z.discriminatedUnion("kind", [
-  z.strictObject({
-    kind: z.literal("person"),
-    identifierKind: z.enum(["eid", "kuali-id", "email"]),
-    bindingDigest: FingerprintSchema,
-    displaySuffix: z.string().regex(/^[A-Za-z0-9*@._-]{2,32}$/),
-  }),
-  z.strictObject({
-    kind: z.literal("artifact"),
-    artifactId: ArtifactIdSchema,
-    bindingDigest: FingerprintSchema,
-  }),
-  z.strictObject({
-    kind: z.literal("catalog"),
-    catalogKey: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-    bindingDigest: FingerprintSchema,
-  }),
-]);
 
 export const SubjectProofSchema = z.strictObject({
   kind: z.literal("subject-match"),

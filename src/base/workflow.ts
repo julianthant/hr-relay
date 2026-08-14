@@ -34,6 +34,7 @@ import {
 } from "../domain/ids.js";
 import type { Fingerprint, NodeId, ScenarioId, WorkflowId } from "../domain/ids.js";
 import {
+  RunDryRunPreviewResultSchema,
   RunResultRecordSchema,
   TerminalDependencyEvidenceSchema,
   deriveCheckpointOutputDigest,
@@ -59,7 +60,10 @@ import {
 } from "../domain/workflow/completion.js";
 import { GraphNodeKindSchema, projectTransactionOutcome } from "../domain/workflow/graph.js";
 import type { GraphNodeBase, RuntimeFlowNode } from "../domain/workflow/graph.js";
-import { TransactionOutcomeSchema } from "../domain/write-safety-primitives.js";
+import {
+  TransactionDryRunPreviewSchema,
+  TransactionOutcomeSchema,
+} from "../domain/write-safety-primitives.js";
 import { WorkflowSurfacesSchema } from "../domain/workflow/ingress.js";
 import type { WorkflowSurfaces } from "../domain/workflow/ingress.js";
 import {
@@ -406,6 +410,18 @@ export interface WorkflowTerminalResultExecution<Input = never, Outputs = never,
     evidence: unknown,
     clock: TerminalResultClock,
   ) => Readonly<{ record: RunResultRecord; authorization: object }>;
+  /**
+   * D210 — the terminal record of a run that stopped at its transaction node
+   * under `envelope.dryRun`. It shares `build`'s seal and every identity check;
+   * what it does NOT share is the authored `derive`, because a preview has no
+   * commit output to fold and inventing one is the banned fabrication.
+   */
+  readonly buildPreview: (
+    currentRun: WorkflowTerminalRun,
+    preview: unknown,
+    evidence: unknown,
+    clock: TerminalResultClock,
+  ) => Readonly<{ record: RunResultRecord; authorization: object }>;
 }
 
 /** Structural executor view; core owns strict RunRecord parsing before this boundary. */
@@ -419,6 +435,8 @@ interface WorkflowTerminalRun {
     contractFingerprint: string;
     configFingerprint: string;
     configSnapshotId: string;
+    /** D210 — the one durable record of what the operator asked for (D6). */
+    dryRun: boolean;
   }>;
   readonly input: Readonly<{
     parsed: Readonly<{ schemaHash: string; value: unknown }>;
@@ -943,17 +961,28 @@ export function defineWorkflowDescriptor<
   const branchTargets = new Set(nodes.flatMap((node) => node.kind === "branch"
     ? Object.values(node.cases).flat()
     : []));
-  const terminalDependencies: WorkflowTerminalResultExecution["dependencies"] = Object.freeze(
-    terminalDependsOn.map((nodeId) => {
-      const node = nodeByIdOrThrow(id, nodes, nodeId, "terminal result");
+  /**
+   * The factory-authenticated dependency SPEC for an arbitrary node-id list —
+   * which nodes are expected, and the one closed `not-run` reason each may
+   * legitimately carry. `build` asks it for the terminal `dependsOn`; D210's
+   * `buildPreview` asks it for the transaction node's own `dependsOn`, which is
+   * the exact set that node's `prepare`/`commit` binds read. ONE implementation
+   * on purpose: a second copy would be a second answer to disagree with.
+   */
+  const dependencySpecFor = (
+    nodeIds: readonly NodeId[],
+    purpose: string,
+  ): WorkflowTerminalResultExecution["dependencies"] => Object.freeze(
+    nodeIds.map((nodeId) => {
+      const node = nodeByIdOrThrow(id, nodes, nodeId, purpose);
       if (terminalEvidenceOf(node) === undefined) {
-        throw new Error(`${id}: terminal result dependency ${nodeId} owns no output schema`);
+        throw new Error(`${id}: ${purpose} dependency ${nodeId} owns no output schema`);
       }
       const isBranchTarget = branchTargets.has(nodeId);
       const hasWhen = node.kind === "task" && node.when !== undefined;
       if (isBranchTarget && hasWhen) {
         throw new Error(
-          `${id}: terminal result dependency ${nodeId} has both branch and when conditionality; `
+          `${id}: ${purpose} dependency ${nodeId} has both branch and when conditionality; `
           + "its durable not-run reason would be ambiguous",
         );
       }
@@ -965,59 +994,73 @@ export function defineWorkflowDescriptor<
       });
     }),
   );
-  TERMINAL_RESULTS.set(descriptor, Object.freeze({
-    schema: spec.flow.result.schema,
-    schemaHash: deriveSchemaHash(spec.flow.result.schema, "output"),
-    dependsOn: Object.freeze(terminalDependsOn),
-    dependencies: terminalDependencies,
-    parseResult: (candidate: unknown) => spec.flow.result.schema.parse(candidate),
-    derive: spec.flow.result.derive,
-    build: (currentRun: WorkflowTerminalRun, evidenceInput: unknown, clock: TerminalResultClock) => {
-      if (currentRun.lifecycle.state !== "running") {
-        throw new Error(
-          `run ${currentRun.envelope.runId} is ${currentRun.lifecycle.state}; `
-          + "only a running claimed run can build a terminal result",
-        );
-      }
-      if (currentRun.envelope.workflow !== descriptor.id
-        || currentRun.envelope.descriptorVersion !== descriptor.version
-        || currentRun.envelope.contractFingerprint !== descriptor.contractFingerprint) {
-        throw new Error(`run ${currentRun.envelope.runId} is not bound to descriptor ${descriptor.id}`);
-      }
-      const canonicalInputSchemaHash = deriveSchemaHash(spec.canonicalInput, "output");
-      if (currentRun.input.parsed.schemaHash !== canonicalInputSchemaHash) {
-        throw new Error(
-          `run ${currentRun.envelope.runId} canonical input schema ${currentRun.input.parsed.schemaHash} `
-          + `does not match descriptor schema ${canonicalInputSchemaHash}`,
-        );
-      }
-      const input = spec.canonicalInput.parse(currentRun.input.parsed.value);
-      const evidence = z.array(TerminalDependencyEvidenceSchema).parse(evidenceInput);
-      const evidenceNodeIds = evidence.map(({ nodeId }) => nodeId);
-      if (new Set(evidenceNodeIds).size !== evidenceNodeIds.length) {
-        throw new Error("terminal dependency evidence contains a duplicate node identity");
-      }
-      const extras = evidenceNodeIds.filter((nodeId) => !terminalDependsOn.includes(nodeId));
-      const missing = terminalDependsOn.filter((nodeId) => !evidenceNodeIds.includes(nodeId));
-      if (extras.length > 0 || missing.length > 0) {
-        throw new Error(
-          "terminal dependency evidence does not match authenticated dependsOn; "
-          + `missing=${missing.join(",") || "none"} extra=${extras.join(",") || "none"}`,
-        );
-      }
+  const terminalDependencies = dependencySpecFor(terminalDependsOn, "terminal result");
+  /**
+   * Every identity check a terminal settlement makes about the RUN itself,
+   * shared by `build` and D210's `buildPreview` so the two can never diverge on
+   * what "this run may settle against this descriptor" means.
+   */
+  const assertTerminalRunBinding = (currentRun: WorkflowTerminalRun): z.output<typeof spec.canonicalInput> => {
+    if (currentRun.lifecycle.state !== "running") {
+      throw new Error(
+        `run ${currentRun.envelope.runId} is ${currentRun.lifecycle.state}; `
+        + "only a running claimed run can build a terminal result",
+      );
+    }
+    if (currentRun.envelope.workflow !== descriptor.id
+      || currentRun.envelope.descriptorVersion !== descriptor.version
+      || currentRun.envelope.contractFingerprint !== descriptor.contractFingerprint) {
+      throw new Error(`run ${currentRun.envelope.runId} is not bound to descriptor ${descriptor.id}`);
+    }
+    const canonicalInputSchemaHash = deriveSchemaHash(spec.canonicalInput, "output");
+    if (currentRun.input.parsed.schemaHash !== canonicalInputSchemaHash) {
+      throw new Error(
+        `run ${currentRun.envelope.runId} canonical input schema ${currentRun.input.parsed.schemaHash} `
+        + `does not match descriptor schema ${canonicalInputSchemaHash}`,
+      );
+    }
+    return spec.canonicalInput.parse(currentRun.input.parsed.value);
+  };
 
-      const byNode = new Map(evidence.map((entry) => [entry.nodeId, entry]));
-      const outputs: Record<string, unknown> = {};
-      const dependencies: TerminalDependencyRecord[] = terminalDependencies.map((expected) => {
-        const entry = byNode.get(expected.nodeId);
-        if (entry === undefined) throw new Error(`terminal dependency ${expected.nodeId} is missing`);
+  /**
+   * Resolve caller-supplied evidence against a factory-authenticated dependency
+   * spec, producing both the durable dependency identities and the scope values.
+   * `purpose` only names the thing in refusals; the CHECKS are identical, which
+   * is the point — a preview's upstream facts are held to exactly the bar a
+   * terminal result's are.
+   */
+  const resolveTerminalDependencies = (
+    currentRun: WorkflowTerminalRun,
+    evidenceInput: unknown,
+    expectedDependencies: WorkflowTerminalResultExecution["dependencies"],
+    purpose: string,
+  ): Readonly<{ outputs: Record<string, unknown>; dependencies: TerminalDependencyRecord[] }> => {
+    const expectedIds = expectedDependencies.map(({ nodeId }) => nodeId);
+    const evidence = z.array(TerminalDependencyEvidenceSchema).parse(evidenceInput);
+    const evidenceNodeIds = evidence.map(({ nodeId }) => nodeId);
+    if (new Set(evidenceNodeIds).size !== evidenceNodeIds.length) {
+      throw new Error(`${purpose} dependency evidence contains a duplicate node identity`);
+    }
+    const extras = evidenceNodeIds.filter((nodeId) => !expectedIds.includes(nodeId));
+    const missing = expectedIds.filter((nodeId) => !evidenceNodeIds.includes(nodeId));
+    if (extras.length > 0 || missing.length > 0) {
+      throw new Error(
+        `${purpose} dependency evidence does not match authenticated dependsOn; `
+        + `missing=${missing.join(",") || "none"} extra=${extras.join(",") || "none"}`,
+      );
+    }
+    const byNode = new Map(evidence.map((entry) => [entry.nodeId, entry]));
+    const outputs: Record<string, unknown> = {};
+    const dependencies: TerminalDependencyRecord[] = expectedDependencies.map((expected) => {
+      const entry = byNode.get(expected.nodeId);
+      if (entry === undefined) throw new Error(`${purpose} dependency ${expected.nodeId} is missing`);
         if (entry.state === "not-run") {
           if (expected.notRunReason === undefined) {
-            throw new Error(`terminal dependency ${entry.nodeId} is unconditional and cannot be marked not-run`);
+            throw new Error(`${purpose} dependency ${entry.nodeId} is unconditional and cannot be marked not-run`);
           }
           if (entry.reason !== expected.notRunReason) {
             throw new Error(
-              `terminal dependency ${entry.nodeId} not-run reason ${entry.reason} `
+              `${purpose} dependency ${entry.nodeId} not-run reason ${entry.reason} `
               + `does not match authenticated reason ${expected.notRunReason}`,
             );
           }
@@ -1027,43 +1070,43 @@ export function defineWorkflowDescriptor<
 
         const checkpoint = entry.checkpoint;
         if (checkpoint.nodeId !== entry.nodeId) {
-          throw new Error(`terminal dependency ${entry.nodeId} carries checkpoint ${checkpoint.nodeId}`);
+          throw new Error(`${purpose} dependency ${entry.nodeId} carries checkpoint ${checkpoint.nodeId}`);
         }
         if (checkpoint.workflowId !== currentRun.envelope.workflow
           || checkpoint.itemId !== currentRun.envelope.itemId) {
           throw new Error(
-            `terminal dependency ${entry.nodeId} checkpoint belongs to `
+            `${purpose} dependency ${entry.nodeId} checkpoint belongs to `
             + `${checkpoint.workflowId}/${checkpoint.itemId}, not `
             + `${currentRun.envelope.workflow}/${currentRun.envelope.itemId}`,
           );
         }
         if (checkpoint.attempt > currentRun.envelope.attempt) {
           throw new Error(
-            `terminal dependency ${entry.nodeId} checkpoint attempt ${String(checkpoint.attempt)} `
+            `${purpose} dependency ${entry.nodeId} checkpoint attempt ${String(checkpoint.attempt)} `
             + `is newer than run attempt ${String(currentRun.envelope.attempt)}`,
           );
         }
         if (checkpoint.descriptorVersion !== descriptor.version
           || checkpoint.contractFingerprint !== descriptor.contractFingerprint) {
           throw new Error(
-            `terminal dependency ${entry.nodeId} checkpoint descriptor binding does not match ${descriptor.id}`,
+            `${purpose} dependency ${entry.nodeId} checkpoint descriptor binding does not match ${descriptor.id}`,
           );
         }
-        const node = nodeByIdOrThrow(id, nodes, entry.nodeId, "terminal result");
+        const node = nodeByIdOrThrow(id, nodes, entry.nodeId, purpose);
         const binding = terminalEvidenceOf(node);
         if (binding === undefined) {
-          throw new Error(`${id}: terminal result dependency ${entry.nodeId} owns no output schema`);
+          throw new Error(`${id}: ${purpose} dependency ${entry.nodeId} owns no output schema`);
         }
         const outputSchemaHash = deriveSchemaHash(binding.checkpointSchema, "output");
         if (checkpoint.output.schemaHash !== outputSchemaHash) {
           throw new Error(
-            `terminal dependency ${entry.nodeId} checkpoint output schema `
+            `${purpose} dependency ${entry.nodeId} checkpoint output schema `
             + `${checkpoint.output.schemaHash} does not match ${outputSchemaHash}`,
           );
         }
         outputs[entry.nodeId] = binding.project(
           checkpoint.output.value,
-          `terminal dependency ${entry.nodeId}`,
+          `${purpose} dependency ${entry.nodeId}`,
         );
         return {
           state: "resolved",
@@ -1081,7 +1124,43 @@ export function defineWorkflowDescriptor<
           outputDigest: deriveCheckpointOutputDigest(checkpoint.output),
           provenanceDigest: deriveCheckpointProvenanceDigest(checkpoint.provenance),
         };
-      });
+    });
+    return Object.freeze({ outputs, dependencies });
+  };
+
+  /**
+   * The unforgeable seal D110/D114 requires: membership in a module-private
+   * WeakMap over the EXACT stored bytes and the exact run they settle. Both
+   * builders go through it, so a preview record is authority in precisely the
+   * same sense a derived result is.
+   */
+  const sealTerminalRecord = (
+    currentRun: WorkflowTerminalRun,
+    result: RunResultRecord,
+  ): Readonly<{ record: RunResultRecord; authorization: object }> => {
+    const authorization = Object.freeze({});
+    RUN_RESULT_AUTHORIZATIONS.set(authorization, Object.freeze({
+      result: canonicalJsonStringify(result),
+      currentRun: canonicalJsonStringify(currentRun),
+    }));
+    return Object.freeze({ record: result, authorization });
+  };
+
+  TERMINAL_RESULTS.set(descriptor, Object.freeze({
+    schema: spec.flow.result.schema,
+    schemaHash: deriveSchemaHash(spec.flow.result.schema, "output"),
+    dependsOn: Object.freeze(terminalDependsOn),
+    dependencies: terminalDependencies,
+    parseResult: (candidate: unknown) => spec.flow.result.schema.parse(candidate),
+    derive: spec.flow.result.derive,
+    build: (currentRun: WorkflowTerminalRun, evidenceInput: unknown, clock: TerminalResultClock) => {
+      const input = assertTerminalRunBinding(currentRun);
+      const { outputs, dependencies } = resolveTerminalDependencies(
+        currentRun,
+        evidenceInput,
+        terminalDependencies,
+        "terminal",
+      );
 
       const scopeCandidate = Object.freeze({ input, outputs: Object.freeze(outputs) });
       // This checked identity bridge preserves the exact generic scope needed by
@@ -1110,12 +1189,89 @@ export function defineWorkflowDescriptor<
         dependencyDigest: deriveTerminalDependencyDigest(dependencies),
         createdAt: clock.now().toISOString(),
       });
-      const authorization = Object.freeze({});
-      RUN_RESULT_AUTHORIZATIONS.set(authorization, Object.freeze({
-        result: canonicalJsonStringify(result),
-        currentRun: canonicalJsonStringify(currentRun),
+      return sealTerminalRecord(currentRun, result);
+    },
+    buildPreview: (
+      currentRun: WorkflowTerminalRun,
+      previewInput: unknown,
+      evidenceInput: unknown,
+      clock: TerminalResultClock,
+    ) => {
+      assertTerminalRunBinding(currentRun);
+      /**
+       * A preview result may only be built for a run the OPERATOR enqueued as a
+       * dry run. `envelope.dryRun` is the durable, immutable record of that
+       * request (D6), and it is the run's own field rather than a caller claim —
+       * the same reason beat ② re-reads it before a real write.
+       */
+      if (!currentRun.envelope.dryRun) {
+        throw new Error(
+          `run ${currentRun.envelope.runId} is not a dry run; a preview result may not be built for it`,
+        );
+      }
+      if (dryRun.state !== "supported") {
+        throw new Error(
+          `${id} is not previewable (${dryRun.reason}); no preview result can describe a run of it`,
+        );
+      }
+      const preview = TransactionDryRunPreviewSchema.parse(previewInput);
+      /**
+       * The preview must name the node the executor could actually have stopped
+       * at. A preview claiming a different node would put an unreachable stop
+       * point on a durable record nobody can check later.
+       */
+      if (preview.nodeId !== dryRun.stopsAt) {
+        throw new Error(
+          `preview for run ${currentRun.envelope.runId} stopped at "${preview.nodeId}", but ${id} previews `
+          + `stop at "${dryRun.stopsAt}"`,
+        );
+      }
+      const stopNode = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(preview.nodeId), "dry-run preview");
+      if (stopNode.kind !== "transaction") {
+        throw new Error(`${id}: dry-run preview node ${preview.nodeId} is a ${stopNode.kind} node`);
+      }
+      /**
+       * The preview's dependencies are the transaction node's OWN `dependsOn` —
+       * the exact upstream facts its `prepare` and `commit` binds read. They are
+       * not `terminalDependsOn`, because the authored `derive` never ran; saying
+       * otherwise would claim a derivation that did not happen.
+       */
+      const { dependencies } = resolveTerminalDependencies(
+        currentRun,
+        evidenceInput,
+        dependencySpecFor(
+          stopNode.dependsOn.map((nodeId) => NodeIdSchema.parse(nodeId)),
+          "dry-run preview",
+        ),
+        "dry-run preview",
+      );
+      const previewValue = JsonValueSchema.parse(RunDryRunPreviewResultSchema.parse({
+        kind: "dry-run-preview",
+        stoppedAtNodeId: preview.nodeId,
+        externalCommit: "none",
+        preview,
       }));
-      return Object.freeze({ record: result, authorization });
+      // The hash of the bytes actually stored — never the descriptor's declared
+      // result hash, which would make a preview readable as a completed
+      // workflow (D144's rule applied to the terminal row).
+      const schemaHash = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
+      const resultValue = { schemaHash, value: previewValue };
+      const result = RunResultRecordSchema.parse({
+        runId: currentRun.envelope.runId,
+        attempt: currentRun.envelope.attempt,
+        workflowId: currentRun.envelope.workflow,
+        descriptorVersion: currentRun.envelope.descriptorVersion,
+        contractFingerprint: currentRun.envelope.contractFingerprint,
+        configFingerprint: currentRun.envelope.configFingerprint,
+        configSnapshotId: currentRun.envelope.configSnapshotId,
+        resultSchemaHash: schemaHash,
+        result: resultValue,
+        resultDigest: deriveRunResultDigest(resultValue),
+        dependencies,
+        dependencyDigest: deriveTerminalDependencyDigest(dependencies),
+        createdAt: clock.now().toISOString(),
+      });
+      return sealTerminalRecord(currentRun, result);
     },
   }));
   return descriptor;

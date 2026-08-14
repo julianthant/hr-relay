@@ -185,6 +185,19 @@ const GateOpenedSchema = z.strictObject({
   gate: SlugSchema,
 });
 
+/**
+ * D210 / doc 01 §6.2 — a dry run's transaction node. Its parity twin lives in
+ * `src/core/span-emitter.ts`; see that arm for why it is not a `span.ended`.
+ */
+const TransactionPreviewedSchema = z.strictObject({
+  t: z.literal("transaction.previewed"),
+  ...BaseFields,
+  ...RunSpanIdentityFields,
+  node: SlugSchema,
+  subject: z.enum(["match", "mismatch", "unscoped"]),
+  externalCommit: z.literal("none"),
+});
+
 const GateResolvedSchema = z.strictObject({
   t: z.literal("gate.resolved"),
   ...BaseFields,
@@ -253,6 +266,7 @@ export const SpanEventWireSchema = z.union([
   SpanPatchedSchema,
   GateOpenedSchema,
   GateResolvedSchema,
+  TransactionPreviewedSchema,
   TaskSpanEndedSchema,
   RunSpanEndedSchema,
   WorkerSpanEndedSchema,
