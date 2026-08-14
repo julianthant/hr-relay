@@ -1192,10 +1192,14 @@ export function LogPanel({
   /**
    * THE GATE'S OWN CONTROLS, off the gate's OWN section.
    *
-   * They used to come from the panel's generic `actions` prop, which is fed
-   * `SERVED_ACTIONS = []` because no generic action projection exists — so a run
-   * held at an identity gate drew a decision card with no way to answer it,
+   * They used to come from the panel's generic `actions` prop, which was fed a
+   * hard-coded empty list because no generic action projection existed — so a
+   * run held at an identity gate drew a decision card with no way to answer it,
    * while the server had projected both `resolve-gate` descriptors all along.
+   * That prop now carries the ROW's served controls, and the gate's options
+   * still do not ride it: `resolve-gate` needs the packet, the evidence digest
+   * and the result schema hash, all of which live on this section and none of
+   * which a queue row carries.
    * Reading them here rather than through the generic prop is also what keeps
    * the two straight: the wire refines that EVERY action on this section is a
    * `resolve-gate` at this exact run version, so nothing else can arrive in

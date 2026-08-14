@@ -14,7 +14,7 @@
  * shell, and a human reading the DOM can tell the same thing.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { actionsAt, type ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import {
   SettingsSectionPrimitiveSchema,
   SystemInstancePrimitiveSchema,
@@ -86,36 +86,28 @@ import {
 } from "./url-state.js";
 
 /**
- * No projection serves generic row/panel actions, so every row and panel draws
- * no command controls. That is the honest state of the contract, not a stub:
- * when actions arrive, this constant becomes a read of the served array and
- * nothing else in the tree changes.
+ * THE ROW'S OWN CONTROLS, off the row (doc 13 §8.5).
  *
- * THE EARLIER NOTE HERE WAS STALE AND WRONG ABOUT ITS OWN EXPIRY — it said the
- * projection "lands with 2g" and the runtime is 2j. R5 f.8 verified what
- * actually exists, and the answer is a split, not a date:
+ * This was `SERVED_ACTIONS = []` — an honest constant while `QueueBaseFields`
+ * carried no `actions` field and no projector built one, which meant every
+ * queue row drew no command controls at all. Both halves now exist
+ * (`server/dashboard/projectors/queue-row-actions.ts`), so the array is READ
+ * off the surface the server sent and nothing in the tree branches on status
+ * to decide what a row may do.
  *
- *  - the two run-detail SECTION payloads that carry decisions do project real
- *    descriptors (`parked-write` and `identity-gate`, built by
- *    `server/dashboard/queries/run-detail.ts` and schema-pinned to their own
- *    target in `domain/dashboard/run-detail.ts`);
- *  - the generic queue/run-detail `actions[]` has NO schema field and NO
- *    projector. Both halves are missing, so there is nothing here to read.
+ * A row whose served list is empty draws nothing, with no client branch: the
+ * surfaces already render exactly the descriptors they are handed.
  *
- * It is therefore a wire gap, not a wiring oversight: the row on the
- * `docs/plans/2026-08-13-detail-fidelity-audit.md` hookup ledger (queue/run
- * action descriptors) is what closes it.
- *
- * WHAT IS NOW CONNECTED AROUND IT. `onAction` is passed on both panels and
- * routes into `runAction` → `composeCommandRequest` → the one command client,
- * so the day this constant becomes a read of a served array, every row and
- * panel control is live with no further change. The SECTION-level descriptors
- * that already exist do NOT come through here: the parked write's two
- * resolutions are read off `sections["parked-write"]` by the panel's own dialog,
- * and the identity gate's two `resolve-gate` actions are read off
- * `sections["identity-gate"]` — which nothing fetched until this commit.
+ * The SECTION-level descriptors still do NOT come through here, and must not:
+ * the parked write's two resolutions are read off `sections["parked-write"]` by
+ * the panel's own dialog (which captures the evidence note the kernel
+ * requires), and the identity gate's two `resolve-gate` actions are read off
+ * `sections["identity-gate"]` beside the packet they are about. Each payload is
+ * composable only where its evidence is.
  */
-const SERVED_ACTIONS: readonly ActionDescriptorWire[] = [];
+function servedActions(surface: QueueSurfaceWire | undefined): readonly ActionDescriptorWire[] {
+  return surface?.actions ?? [];
+}
 
 /** The closed tab vocabulary, so a `?section=` value is validated, not trusted. */
 const PANEL_TABS: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
@@ -967,11 +959,11 @@ function LoadedApp({
                 handlers={{
                   onSelect: selectRun,
                   /*
-                    Wired, and inert until the queue's generic action projection
-                    lands: `actionsOf` below answers `SERVED_ACTIONS`, which is
-                    empty, so no row draws a control to press. Connecting the
-                    handler now is what makes that ONE wire change the whole
-                    change — and it is not a claim that anything is served.
+                    LIVE. `actionsOf` below reads the row's own served
+                    `actions[]`, so every control the server describes routes
+                    through `runAction` → `composeCommandRequest` → the one
+                    command client. A row served an empty list still draws
+                    nothing, with no branch here.
                   */
                   onAction: runAction,
                   onToggleWell: (runId) => {
@@ -997,7 +989,7 @@ function LoadedApp({
                     selectRun(runId);
                   },
                 }}
-                actionsOf={() => SERVED_ACTIONS}
+                actionsOf={servedActions}
                 workflowLabelOf={workflowLabelOf}
                 parentOf={parentOf}
                 panelLabel={workflowLabelOf(activeWorkflowId)}
@@ -1016,7 +1008,15 @@ function LoadedApp({
                   detail={detailValue}
                   sections={sections}
                   surface={dayWire?.queueSurfaces.find((s) => s.runId === detailValue.runId)}
-                  actions={actionsAt(SERVED_ACTIONS, "footer")}
+                  /*
+                    The WHOLE served list, not a placement slice: the prop's
+                    contract is "every action the server served for this run"
+                    and the panel filters by placement itself. Pre-filtering
+                    here to `footer` and letting `OutcomeActionButton` filter
+                    again to `outcome` intersected the two, so only a descriptor
+                    carrying BOTH placements could ever have arrived.
+                  */
+                  actions={servedActions(dayWire?.queueSurfaces.find((s) => s.runId === detailValue.runId))}
                   onAction={runAction}
                   tab={effectiveTab}
                   onTab={onTab}
