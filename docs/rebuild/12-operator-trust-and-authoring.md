@@ -67,6 +67,45 @@ authoring/explorer surfaces remain with their later owning work items.
 - **D101 — semantic ids are imported.** UI modules import/re-export the existing `ElementId`,
   `ScreenId`, `PageStateId`, and `ObservationId` schemas/types from `src/domain/ids.ts`; no driver or
   registry redeclares those closed identities.
+- **D208 (2026-08-14) — "resolves to exactly one node" and "resolves to exactly one EDITABLE node"
+  are different evidence strengths, and a write-surface anchor requires the second.** D98 made
+  verification conjunctive but left every positive assertion at one strength:
+  `exactly-one-visible` says a recipe resolved to a single node and says nothing about whether that
+  node could have been typed into. That is the whole of the evidence a **read-only** record can
+  supply, and it is not the evidence a **staging** anchor needs — a Kuali document rendered at a
+  step that owns no edit right resolves each control to exactly one node, disabled, and reads as
+  verified. `UiVerificationAssertionSchema` therefore carries a strictly stronger arm,
+  **`exactly-one-editable`**: the recipe resolved to one node AND that node was live-observed
+  `isEditable()` (text controls) or `isEnabled()` (select, checkbox, radio). The rules that follow
+  from it are normative:
+  1. An element recipe whose declared `UiEffect` is `prepare` or `external-commit` must carry
+     `exactly-one-editable` in its live-read-only manifest, or carry a named, dated exception
+     pointing at STRONGER evidence — a controlled commit on that exact control is stronger than any
+     assertion in this vocabulary, and `kuali/timekeeper-field` stands on D135's for exactly that
+     reason.
+  2. `exactly-one-editable` claims nothing about a WRITE. `externalWriteAttempted` stays
+     `z.literal(false)` in every manifest: a value staged into a control and discarded by a reload
+     never left the browser, and a manifest that could say otherwise would be the one place in this
+     tree where read-only evidence can assert an external effect.
+  3. The arm is **additive to** `exactly-one-visible`, never a rename of it. A read-only screen's
+     observation recipes keep the weaker arm truthfully; downgrading them would claim editability
+     nobody looked for, and upgrading the enum in place would silently restate every historical
+     manifest as evidence it never gathered.
+
+  As-built: nine of the ten separations-finalization controls in
+  `evidence/ui/kuali/separation-document.live.json` at `verifiedAt: 2026-08-14`
+  (`docs/migrations/separations.md` §9.12 item 3).
+
+  **Enforcement status, stated rather than assumed.** The schema arm exists and
+  `semantic-ui-registry` resolves every manifest assertion against the registry as before; rule 1 is
+  an **authoring** obligation today, not a machine check, because the one standing exception
+  (`kuali/timekeeper-field`, on D135's controlled commit) has nowhere structured to live — an
+  element cannot yet cite evidence stronger than an assertion arm. The trigger that ends that is the
+  second such exception: at two, the registry element gains a closed
+  `strongerEvidence: { kind: "controlled-commit"; decision: DecisionId }` field and
+  `semantic-ui-registry` refuses a `prepare`/`external-commit` element that carries neither
+  `exactly-one-editable` nor that field. One exception is a fact; two is a pattern, and a pattern is
+  what a guard can hold without inventing a schema for a sample of one (D79a's own argument).
 
 ### Phase 1d as-built seed (2026-08-01)
 
