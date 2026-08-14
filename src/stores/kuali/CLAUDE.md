@@ -15,9 +15,9 @@ only the task-safe declaration at `../declaration.ts`.
 | `kuali/save-timekeeper-annotation` | **commit** | clicks `Save` |
 | `kuali/verify-timekeeper-annotation` | read | the reload read-back — the ONLY landing proof |
 | `kuali/match-separation-finalization` | read | the finalization's beat-① probe |
-| `kuali/stage-separation-finalization` | prepare | stages ALL TEN finalization fields in one pass |
+| `kuali/stage-separation-finalization` | prepare | stages ALL TWELVE finalization fields in one pass |
 | `kuali/save-separation-finalization` | **commit** | the ONE `Save` that commits the finalization |
-| `kuali/verify-separation-finalization` | read | the reload read-back over all ten fields |
+| `kuali/verify-separation-finalization` | read | the reload read-back over all twelve fields |
 
 **The read family is a SIBLING on the same `DriverDeclaration`, not a second store.**
 `defineTask(driver, contract, impl)` binds the store's exact invariant declaration, so a second
@@ -114,7 +114,7 @@ variable, ONE prepare stages every field from those variables, ONE save, ONE rel
 compares every written field against the EXACT staged variables. Nothing re-reads a value to compute
 with it.
 
-- **Seven variables, three ratified assertions.** `requestAcknowledged` and
+- **Nine variables, three ratified assertions.** `requestAcknowledged` and
   `submittedTerminationTemplate` are checked unconditionally (legacy steps 10b and 16), and the
   final-pay radio is **§4g**'s operator-ratified business assertion of 2026-08-12 — *Does not need
   Final Pay (student employee)* on every RRSS separation, with no data behind it and the residual
@@ -130,22 +130,38 @@ with it.
   so an empty one refuses before a control is touched.
 - **S56 is strengthened.** The prepare re-reads the comments control and refuses when it no longer
   holds what the read this run composed from saw. That re-read decides a REFUSAL, never a value.
-- **`Last Day Worked` / `Separation Date` are deliberately absent.** Legacy's step 13 writes them
-  back; they are in neither §4e's field list nor §5 item 1's mutation table, so nothing here invents
-  a rule for them.
-- **The write paths ARE live-verified (chunk 5c, 2026-08-14).** All ten controls resolved to exactly
+- **`Last Day Worked` / `Separation Date` ARE staged — §4e's amendment of 2026-08-14.** They were
+  deliberately absent through chunk 5; the operator answered the question (*"collect all data first
+  and then fill in the forms at the end"*), so legacy's step-13 write-backs join the ONE staged pass.
+  Both come from the `dates` node's RECONCILED values and both are staged **unconditionally**:
+  legacy's "only when it moved" is a property of its incremental drafts, and under one-pass staging a
+  conditional field would need an expectation composed from the page's own prior value — the re-read
+  §4e forbids. When nothing moved the two are equal, so the save writes the same string back and the
+  read-back proves it either way. **What this owes the next live pass:** neither control is
+  live-verified EDITABLE (both carry `exactly-one-visible` only, from the 2026-08-12 read-only pass),
+  neither `formKey` has been observed, and the section that owns them has never been read — so §4e's
+  section caveat, discharged for the ten, is re-opened for these two. Both write paths carry
+  `// live-verify: next-live-pass`; `docs/migrations/separations.md` §9.15 is the list.
+- **The write paths ARE live-verified (chunk 5c, 2026-08-14) — for TEN of the twelve.** All ten
+  controls resolved to exactly
   one EDITABLE node on the editable page of real docs 4502 / 4510 / 4495 / 4524, and the live dry run
   staged every one of them from the run's variables and read every one back on real doc 4524 in
   **8.06 s**, then abandoned by hard reload and re-read the document unchanged (S61 proved live). The
-  `// live-verify: 5c` markers are discharged.
-- **All ten `formKey`s are known; only FIVE may be asserted on the wire.** The keys came off Kuali's
+  `// live-verify: 5c` markers are discharged. The two date write-backs §4e's amendment added were
+  NOT part of that pass and carry `// live-verify: next-live-pass` instead — a marker is only
+  discharged by the pass that actually verified the control.
+- **Ten of the twelve `formKey`s are known; only FIVE may be asserted on the wire.** The keys came
+  off Kuali's
   own `ActionPage` query (read-only, 2026-08-14) and the extraction is validated by `timekeeperName`
   returning `QGJ63YrCom` byte-identical to the 2026-08-04 capture. But `submitDocumentV2` sends the
   document MODEL, and only a `Text`/`Textarea` gadget holds the staged STRING there — a `Date` holds
   epoch milliseconds, a `Dropdown`/`Radios` holds `{id,label}` and `Checkboxes` an array of them.
   `KUALI_RRSS_FINALIZATION_WIRE_ASSERTED` is therefore five fields, `kualiFinalizationWireUnasserted()`
-  names the other five, and the controlled commit is what closes them. The landing proof is
-  unaffected — it was always the reload read-back over all ten.
+  names the other seven, and `kualiFinalizationFormKeysMissing()` names the two of those seven whose
+  key is not known at all (§4e's 2026-08-14 amendment added them; a `Date` gadget's wire value is
+  epoch milliseconds anyway, so they would be unassertable even with a key). The controlled commit is
+  what closes them, by OBSERVING the payload. The landing proof is unaffected — it was always the
+  reload read-back, over all twelve.
 
 ## Provenance
 

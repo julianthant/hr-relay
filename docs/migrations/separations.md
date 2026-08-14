@@ -864,6 +864,72 @@ and the map is a property of the STEP, so a step nothing has stood on could stil
 gap as a human wait. The per-read `maxAge` values are what bound that gap, which is exactly why item
 5's values are the one residual left open.
 
+#### AMENDMENT (operator), 2026-08-14 — the staged set is TWELVE. `Last Day Worked` and `Separation Date` join it.
+
+Chunk 5a asked the one question §4e's original answer left genuinely open (§9.10 judgement 3, and the
+orchestrator's disposition 3 that they stay unstaged): legacy's **step 13** writes `Last Day Worked`
+and `Separation Date` back onto the Kuali document when date reconciliation moved them, and neither
+appears in §4e's normative field list nor in §5 item 1's five-mutation table. 5a recorded the gap and
+invented no rule for it. The operator answered it, verbatim:
+
+> **"so what we are doing here is to collect all data first and then fill in the forms at the end."**
+
+**That is this section's own model, applied to two more fields — so the MODEL DOES NOT CHANGE and the
+staged set grows by two.** Beats 1–4 are untouched: every read still lands first as a typed variable,
+ONE prepare still stages every field in one pass, ONE save, ONE reload read-back against the exact
+staged variables. What changes is the size of "every field": **ten → twelve**.
+
+**Where the two values come from.** The `dates` node's RECONCILED output and nowhere else —
+`lastDayWorked` (the New Kronos last punch) and `separationDate` (`max(lastDayWorked, last sick, last
+holiday)`). Never re-read off the Kuali document at fill time, never recomputed. Both already ride
+inside doc 09 §14.2's packet as `dates.lastDayWorked` / `dates.separationDate` (D211), so the digest
+the operator's approval binds to already covers them; they are not repeated into the packet's
+`document` block, because the packet is a PRESENTATION of decisions and one value rendered twice is a
+value that can disagree with itself.
+
+**The motivating live case is on the record.** §9.14, doc **4524**, 2026-08-14: the Kuali document
+carried `06/18/2026` and the reconciliation moved the separation date forward to **`07/03/2026`** on a
+holiday (`separationDateChanged: true`, `separationDeterminingLeave: holiday`). Under the pre-amendment
+staged set that run would have filed a UCPath termination effective `07/04/2026` and left the source
+document asserting `06/18/2026` — two systems disagreeing about the same separation, with the Kuali
+document being the one a human reads later. That is the concrete cost the amendment removes.
+
+**Both are staged UNCONDITIONALLY, and that is the honest form here.** Legacy writes them only when
+reconciliation moved them; that condition is a property of legacy's **incremental drafts** — it saves
+the document several times across its flow and touches a control only when it has a reason to — and
+not a property of one-pass staging. Under this model the staged set IS the document's finalized state,
+and beat 4 compares every written field against the exact staged variable. A conditionally staged
+field would therefore need an expectation composed from *the page's own prior value*, which is exactly
+the re-read beat 2 forbids; and the read-back would have to carry a rule about which fields it is
+allowed to skip, which is a second place for the write's definition to live. When nothing moved, the
+reconciled value **equals** what the document already carries — so the unconditional save writes the
+same string back, and the one read-back proves the outcome either way.
+
+**Three obligations this amendment creates, none of them waived.** They are §9.15's list.
+
+1. **Neither control is live-verified EDITABLE.** Both carry `exactly-one-visible` from the
+   2026-08-12 read-only pass (§9.3) and NOT the `exactly-one-editable` arm 5c added — that pass
+   verified the ten controls that were staged then. D208's whole point is that these are different
+   evidence strengths. Both write paths carry `// live-verify: next-live-pass`.
+2. **Neither `formKey` has ever been observed**, so both are `null` in
+   `KUALI_RRSS_FINALIZATION_FORM_KEYS` and `kualiFinalizationFormKeysMissing()` names them. A
+   fabricated key makes the commit's wire proof a check that cannot fail. They would be unassertable
+   even with a key, because a Kuali `Date` gadget's model value is epoch milliseconds and not the
+   staged `MM/DD/YYYY` string (§9.12 item 2) — so the wire-asserted set stays at five.
+3. **§4e's section caveat RE-OPENS for exactly these two.** §9.12 item 1 discharged it for the ten
+   fields, which sit in three sections all reporting `sectionSettings: "edit"` at both live workflow
+   steps. `Last Day Worked` and `Separation Date` sit in the *Employee Information* block, whose
+   section id nothing has read. If it reports `hide` at a live step, one save cannot carry them and
+   the structure grows exactly as the original caveat says — one (save, read-back) pair per step,
+   each with its own fence and its own permanent key. **The staged-variables model is unchanged
+   either way.**
+
+None of the three touches the landing proof, which was never the wire check: the reload read-back now
+compares **twelve** fields with the same exact equality and no tolerance arm, so a document that kept
+its stale date is an `absent` naming `separationDate` and the write parks.
+
+_(Built 2026-08-14 — §9.15. Ratified as **D217** in doc 04.)_
+
 ---
 
 ### 4f. The pure-operator items — no legacy basis, options where options exist
@@ -2921,6 +2987,9 @@ disagrees.**
    workflow may not rely on the stabilized arm in production before that.
 3. **The step-13 date write-backs stay unstaged.** §4e's normative list is built as written; the open
    question is queued for the operator rather than answered by the driver.
+   **_(SUPERSEDED 2026-08-14 by §4e's AMENDMENT — see §9.15._** The operator answered the queued
+   question and the two fields ARE staged. 5a's judgement was right about its own scope — a driver may
+   not invent a rule §4e does not carry — and the disposition held exactly until §4e carried one.)_
 
 ---
 
@@ -3094,6 +3163,14 @@ must read it from `ActionPage`, not from the DOM. And the map is a property of t
 pass never stood on could still report `hide`, which is exactly why the finding is stated as "at both
 live steps" rather than "always".
 
+> **ADDENDUM 2026-08-14 — the discharge covers TEN fields, and §4e's amendment added two more.**
+> `Last Day Worked` and `Separation Date` now join the staged set (§4e AMENDMENT, §9.15). They are in
+> the *Employee Information* block, and **no row above names their section** — this pass read the
+> `sectionSettings` map whole (twelve entries, two of them `hide`) but only mapped the ten fields it
+> was staging, so which of those entries owns the two date gadgets was never determined. The caveat is
+> therefore discharged for ten and OPEN for two. The instrument is unchanged and costs nothing: the
+> same passive `ActionPage` read on a document open.
+
 #### 2. All ten `formKey`s captured — and filling the table turned out NOT to be a one-line change
 
 §9.10 recorded "filling the table is a one-line change". The capture succeeded on the first attempt
@@ -3155,6 +3232,15 @@ The registry now says so in a way `exactly-one-visible` could not: a new
 `timekeeper-field`, is deliberately left on the 2026-08-04 write pair, where it already carries the
 strongest evidence in this tree — D135's controlled commit. **`externalWriteAttempted` stays `false`
 in every manifest**: a staged value a reload discards is not an external write.
+
+> **ADDENDUM 2026-08-14 — two of the twelve staged controls are NOT covered by this.**
+> `kuali.rrss-document.last-day-worked-field` and `kuali.rrss-document.separation-date-field` carry
+> `exactly-one-visible` only, from the 2026-08-12 read-only pass, and §4e's amendment now writes both.
+> The manifest is deliberately left as it stands: upgrading an assertion arm nothing verified would
+> be fabricating exactly the evidence D208 exists to distinguish. Both driver write paths carry
+> `// live-verify: next-live-pass`, and the `stageText` read-back is what makes shipping them safe in
+> the meantime — a control that does not take the value refuses by name (`stage-not-persisted`) with
+> zero fence and zero click.
 
 #### 4. The live dry run — S61 proved on a real document
 
@@ -3472,6 +3558,17 @@ re-frozen with `npm run test:parity:update`.
    first beat), the five unasserted Kuali wire shapes, the `already-present` arm's live proof, and
    D207's provisional `stabilized` window.
 
+> **ADDENDUM 2026-08-14 — §4e's amendment grows the `finalize-kuali` node's staged set to TWELVE**
+> (§9.15, **D217**). The graph is otherwise unchanged: the node already `dependsOn` the `dates` node,
+> so the two write-backs bind from outputs the composition already had, and no node, edge, gate,
+> permanent key or `dependsOn` moved. Two consequences for this list. Item 6 grows from four items to
+> **seven** — the two uncaptured `formKey`s, the two controls' editability, and the section that owns
+> them all close on the same live pass. And item 2's live gate-wire capture gains a second reading:
+> `dates.lastDayWorked` / `dates.separationDate` are no longer only *what the UCPath filing consumes*,
+> they are also *what the Kuali document will be set to*, so the digest the approval binds to now
+> covers the Kuali write-back as well. Nothing was added to the packet to achieve that — the values
+> were already inside it (D211).
+
 Also honestly NOT RUN: any real write of any kind, and any case where the document's EID is blank
 (every live document observed so far carries one), so `subject`'s `name-resolved` arm and its
 `type-the-eid` gate shape are test-pinned rather than live-verified.
@@ -3741,3 +3838,109 @@ name search returns more than one row.
   working tree, and the lane rebuilds the bundle from the tree, so a re-freeze would have baked in
   someone else's work. The D213 label change was checked against the reference corpus directly and
   photographs nothing in it.
+
+---
+
+### 9.15 §4e's date-staging amendment, as built (2026-08-14)
+
+**BUILD ONLY. Nothing here has touched the live system.** This is the as-built for §4e's
+`AMENDMENT (operator), 2026-08-14` — the operator's answer to the question chunk 5a queued and
+5a's own judgement 3 deliberately left unanswered. Ratified as **D217** (doc 04).
+
+**The answer, verbatim:** *"so what we are doing here is to collect all data first and then fill in
+the forms at the end."* Legacy's step-13 Kuali date write-backs belong in the rebuild, as staged
+variables — so the staged-variables model does not change and the staged set grows from ten to
+twelve.
+
+#### The twelve-field table, with each field's honest evidence
+
+| # | Field | Wire shape asserted? | Live-verified EDITABLE? | `formKey` captured? |
+|---|---|---|---|---|
+| 1 | `department` | no — `Dropdown` holds `{id,label}` | **yes** (5c, 2026-08-14) | yes `JPYGckVxcf` |
+| 2 | `payrollTitleCode` | **yes** — `Text` | **yes** (5c) | yes `2FlOeR5pd9` |
+| 3 | `payrollTitle` | **yes** — `Text` | **yes** (5c) | yes `sVmpq6tG9X` |
+| 4 | `requestAcknowledged` | no — `Checkboxes` holds an array of `{id,label}` | **yes** (5c) | yes `xKRU6vmYSY` |
+| 5 | `timekeeperName` | **yes** — `Textarea` | **yes** — D135's controlled commit, 2026-08-04 | yes `QGJ63YrCom` |
+| 6 | **`lastDayWorked`** | **no — key unknown**, and a `Date` holds epoch ms anyway | **NO** — `exactly-one-visible` only (2026-08-12) | **NO** |
+| 7 | **`separationDate`** | **no — key unknown**, and a `Date` holds epoch ms anyway | **NO** — `exactly-one-visible` only (2026-08-12) | **NO** |
+| 8 | `terminationEffectiveDate` | no — `Date` holds epoch ms | **yes** (5c) | yes `DoWSfJhpRm` |
+| 9 | `submittedTerminationTemplate` | no — `Checkboxes` | **yes** (5c) | yes `6Ejy-1rfQJ` |
+| 10 | `transactionNumber` | **yes** — `Text` | **yes** (5c) | yes `wPyuyY0wT0` |
+| 11 | `finalPay` | no — `Radios` holds `{id,label}` | **yes** (5c) | yes `8CXaCSIvx5` |
+| 12 | `timekeeperComments` | **yes** — `Textarea` | **yes** (5c) | yes `J_upFRq074` |
+
+Five asserted on the wire (unchanged — the amendment adds nothing assertable), ten live-verified
+editable, ten `formKey`s captured. **The two new rows are the only three-`NO` rows in the table**, and
+that is stated here rather than discovered later.
+
+#### What landed
+
+- **`KualiFinalizationVariablesSchema` grows by two** `KualiFormDateSchema` leaves, and
+  `kualiFinalizationFields` passes them through. Nine variables now, plus the same three ratified
+  assertions (§4g's final-pay radio unchanged).
+- **The three dates sit together in `KUALI_FINALIZATION_FIELD_NAMES`** — `lastDayWorked`,
+  `separationDate`, `terminationEffectiveDate` — so a mismatch report naming two of them reads as one
+  fact about the reconciliation rather than as two unrelated controls. That list is what the fill, the
+  read-back and the mismatch report all walk.
+- **The driver stages both through the SAME `stageText` discipline** every other text control uses:
+  fill, read back, one retry through key events, then wait for Kuali's document model to take it. Both
+  calls carry `// live-verify: next-live-pass`. `readFinalizationFields` reads them through the read
+  family's own already-live-verified recipes; this surface mints no element.
+- **`KUALI_RRSS_FINALIZATION_FORM_KEYS` admits `null`** and `kualiFinalizationFormKeysMissing()` is
+  back as the derived to-do list. `stagedWireValues` now throws by name if an ASSERTED field ever has
+  a null key, rather than indexing `data[undefined]` — which would turn a landed save into a
+  post-fence park the day somebody adds a field to the asserted list before its key is captured.
+- **The composition binds both from `outputs["dates"]`** in the `finalize-kuali` prepare and commit,
+  identically. No node, edge, gate, `dependsOn` or permanent key moved — the node already depended on
+  `dates`.
+- **The standalone `separations-kuali-finalization` descriptor** gains the two ingress leaves, like
+  every other variable no read on that graph produces.
+- **`evidence-classification.ts`** declares both leaves everywhere the field set appears (the
+  prepare's `previousFields` and `stagedFields`, the commit's claimed `savedState.fields`, both
+  terminal results, and the standalone ingress). An undeclared leaf fails loud, so this is not
+  optional bookkeeping.
+- **The write plan (D211) is unchanged in shape.** `dates.lastDayWorked` / `dates.separationDate`
+  were already inside `IdentityEvidencePacketSchema`, so the digest an approval binds to already
+  covers what the write-back will set; the schema comment now says so. They are deliberately NOT
+  repeated into the packet's `document` block — the packet is a presentation of decisions, never a
+  second authority over them, and one value rendered twice is a value that can disagree with itself.
+
+#### What the tests hold
+
+- The fold composes twelve fields from nine variables plus three assertions; `observedExistingComments`
+  is still a refusal input and never a written value.
+- The two new leaves refuse an ISO spelling, a blank and a single-digit month before a control is
+  touched.
+- **The unconditional-staging property**, as a test rather than a sentence: the moved and unmoved
+  folds have the same shape, and the comparison between them names exactly the field whose value
+  differs — an unconditionally staged unchanged value reports no mismatch, which is why the
+  simplification is safe.
+- **§9.14's doc 4524 case, pinned**: expected `07/03/2026` against a document still holding
+  `06/18/2026` is one mismatch naming `separationDate`, and a blank date control renders `<empty>`
+  distinguishably from a wrong one.
+- The `stage-refusals` walk drops both date controls and refuses `stage-not-persisted` — the two are
+  ordinary staged fields, not a best-effort write nobody notices failing.
+- The composed `finalization-committed` walk now starts from a document holding the STALE dates and
+  asserts the persisted document ends up with the reconciled ones.
+- Both dry-run previews (standalone and composed) assert the preview stages twelve and shows the
+  reconciled separation date it WOULD write back, with zero intents, zero checkpoints and zero
+  outboxes.
+
+#### What the next live pass owes — the whole list, in one place
+
+1. **The two controls' `sectionSettings`.** Read the section id that owns `Last Day Worked` and
+   `Separation Date` off `ActionPage`'s `document.form.template`, and its `edit`/`hide` at BOTH live
+   workflow steps. If either reports `hide`, §4e's caveat fires for real and this node splits into one
+   (save, read-back) pair per step. Passive read, costs nothing, sends nothing.
+2. **The two `formKey`s**, from the same response.
+3. **`exactly-one-editable` for both controls**, added to
+   `evidence/ui/kuali/separation-document.live.json` at the date it is actually observed — never
+   before. `externalWriteAttempted` stays `false`; a staged value a reload discards is not a write.
+4. **The controlled commit still owes the wire shapes.** Even with the two keys, a `Date` gadget's
+   model value is epoch milliseconds and the staged value is `MM/DD/YYYY`, so the two join the
+   recorded-not-asserted set. Only observing the real payload settles them — §9.12 item 2's rule,
+   unchanged.
+
+Everything else chunk 5c and 6b handed forward is unaffected: the controlled real commits, the five
+unasserted wire shapes, the `already-present` arm's live proof, and D207's provisional `stabilized`
+window.

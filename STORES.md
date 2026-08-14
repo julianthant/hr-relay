@@ -189,10 +189,10 @@ live in their own module (`src/domain/ui/kuali-separation-document.ts`); the dec
 | `fillTimekeeperAnnotationTask` | task | `kuali/fill-timekeeper-annotation` (**prepare**) | Beat ②: opens the document, stages the value via the driver, proves the field read it back. Zero save — closing here leaves Kuali byte-identical (the dry-run stop point). | `sessions:[{kuali, transaction}]`. The EID check here is defence-in-depth only; the load-bearing subject binding is the kernel's own beat-③ re-observation on this same page. |
 | `readSeparationDocumentTask` | task | `kuali/read-separation-document` (read) | **ONE visit to the RRSS separation form, returning the WHOLE form** (D194): employee identity, both separation dates raw AND parsed, the termination type verbatim, location, division, employee type, student title code, the Timekeeper Tasks and Final Transactions sections, the Final Pay group, and every dropdown's COMPLETE option list. | `sessions:[{kuali, read}]`. Subject is the **DOCUMENT** (`artifact`/`document-id`), not the person — the run names a document and DISCOVERS the EID. Six distinct error codes; S2 is refused BY NAME off the page title before a field is read. Strictly read-only: no fill, no save, no draft (S61 is legacy's defect). |
 | `saveTimekeeperAnnotationTask` | task | `kuali/save-timekeeper-annotation` (**commit**) | Beat ⑤: the tree's one external write. Clicks `Save` via `ctx.driver.commit(KUALI_RRSS_SAVE_BUTTON, ctx.mutation)`. | `sessions:[{kuali, transaction}]`. `ctx.mutation` only exists inside a fence the write sequencer minted — this task cannot fire outside it even if mis-authored. Reports only that it clicked, **never** that the save landed; beat ⑥ is the proof. |
-| `matchSeparationFinalizationTask` | task | `kuali/match-separation-finalization` (read) | Beat ① pre-fence probe for the finalization: reloads the document and asks whether it already carries this exact ten-field finalization. | `sessions:[{kuali, read}]`. `absent` is the COMMON case (live doc 4502 is blank in five controls); `ambiguous` has no producer — one document carries one value per control. |
-| `stageSeparationFinalizationTask` | task | `kuali/stage-separation-finalization` (**prepare**) | Beat ②, §4e's staged-variables model: stages **every** finalization field in ONE pass from stored variables — department, payroll title code/title, Request Acknowledged, timekeeper name, termination effective date, Submitted Termination Template, transaction number, the §4g final-pay radio and the comments. Zero save. | `sessions:[{kuali, transaction}]`. Nothing is re-read to COMPUTE with; the two page reads it does decide refusals — **S55** (`department-option-not-offered`, with the whole observed option list) and **S56** strengthened (`comments-changed-since-read`). Every control read back or `stage-not-persisted`. |
+| `matchSeparationFinalizationTask` | task | `kuali/match-separation-finalization` (read) | Beat ① pre-fence probe for the finalization: reloads the document and asks whether it already carries this exact twelve-field finalization. | `sessions:[{kuali, read}]`. `absent` is the COMMON case (live doc 4502 is blank in five controls); `ambiguous` has no producer — one document carries one value per control. |
+| `stageSeparationFinalizationTask` | task | `kuali/stage-separation-finalization` (**prepare**) | Beat ②, §4e's staged-variables model: stages **every** finalization field in ONE pass from stored variables — department, payroll title code/title, Request Acknowledged, timekeeper name, termination effective date, Submitted Termination Template, transaction number, the §4g final-pay radio, the comments, and — since §4e's 2026-08-14 amendment — legacy's step-13 `Last Day Worked` / `Separation Date` write-backs, staged unconditionally from the reconciled dates. Zero save. | `sessions:[{kuali, transaction}]`. Nothing is re-read to COMPUTE with; the two page reads it does decide refusals — **S55** (`department-option-not-offered`, with the whole observed option list) and **S56** strengthened (`comments-changed-since-read`). Every control read back or `stage-not-persisted`. |
 | `saveSeparationFinalizationTask` | task | `kuali/save-separation-finalization` (**commit**) | Beat ⑤: the ONE `Save` click that commits the finalization. | `sessions:[{kuali, transaction}]`. A STATED Kuali refusal arrives as `KualiSaveRefusedError` → `save-refused` (post-fence, parks). Reports only that it clicked. |
-| `verifySeparationFinalizationTask` | task | `kuali/verify-separation-finalization` (read) | Beat ⑥ **the only landing proof**: ONE reload read-back comparing all ten written fields against the EXACT staged variables (§4e beat 4). | `sessions:[{kuali, read}]`. Exact equality, no tolerance arm; a partial save is `absent` and parks, naming every field that disagreed. This is the answer to **S59**'s open question. |
+| `verifySeparationFinalizationTask` | task | `kuali/verify-separation-finalization` (read) | Beat ⑥ **the only landing proof**: ONE reload read-back comparing all twelve written fields against the EXACT staged variables (§4e beat 4). | `sessions:[{kuali, read}]`. Exact equality, no tolerance arm; a partial save is `absent` and parks, naming every field that disagreed. This is the answer to **S59**'s open question. |
 
 **Driver notes.** The commit contract's own schema names its `verify`/`probe` task ids
 (`kuali/verify-timekeeper-annotation`, `kuali/read-timekeeper-annotation`) so the write sequencer can
@@ -210,13 +210,19 @@ differently composed comments string is not a second finalization. `recoveryAbse
 on D135's measured Kuali window (30 000 ms, 2 reads 5 s apart), which transfers because the MECHANISM
 transfers: the same `submitDocumentV2` on the same form, proved by the same reload of the same
 document — and settling a negative here re-saves the identical field set rather than filing a second
-real transaction. Two things chunk 5c owes: **(1)** every write path is marked `live-verify: 5c` —
-the fourteen controls were live-verified as READS on 2026-08-12 and no control has been observed
-being WRITTEN, and a selector mapped on a read-only pass is not a verified selector for the editable
-page; **(2)** nine of the ten `submitDocumentV2` `formKey`s are unknown, so the commit's wire proof
-covers only `timekeeperName` today (`kualiFinalizationFormKeysMissing()` is the to-do list). The
-landing proof is unaffected — it was always the reload read-back — but the earlier, louder half of
-the defence is incomplete until those keys are captured.
+real transaction. Chunk 5c DISCHARGED both of the things 5a owed for the ten fields staged then: all
+ten controls resolved to exactly one EDITABLE node on real docs 4502/4510/4495/4524
+(`exactly-one-editable`, D208), and all ten `formKey`s came off Kuali's own `ActionPage` query — of
+which **five** may be asserted on the wire, because `submitDocumentV2` sends the document MODEL and
+only a `Text`/`Textarea` gadget holds the staged string there.
+
+**§4e's 2026-08-14 amendment reopens exactly two of those obligations, for exactly two fields.** The
+staged set is now **twelve**: `Last Day Worked` and `Separation Date` join it, staged unconditionally
+from the `dates` node's reconciled values. Their `formKey`s were never captured (they are `null` and
+`kualiFinalizationFormKeysMissing()` names them), their controls carry `exactly-one-visible` and NOT
+`exactly-one-editable`, and the section that owns them has never been read — so both write paths are
+marked `live-verify: next-live-pass` and `docs/migrations/separations.md` §9.15 is the list. The
+landing proof is unaffected and always was the reload read-back, which now compares twelve fields.
 
 ---
 

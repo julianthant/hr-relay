@@ -310,6 +310,24 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-14: applying a settled model to two more fields costs nothing structurally and everything
+  evidentially — a new staged field inherits NO evidence (D217).** The operator's answer to chunk 5a's
+  queued question (*"collect all data first and then fill in the forms at the end"*) put legacy's
+  step-13 Kuali date write-backs into §4e's one-pass staged set: ten fields become twelve, one save,
+  one reload read-back. The graph did not move — `finalize-kuali` already depended on the `dates` node,
+  so no edge, gate, `dependsOn` or permanent key changed, and D211's packet already carried both values
+  so the approval's digest already covered them. What DID change is the honesty ledger, and it is the
+  transferable half: both controls carry `exactly-one-visible` from a read-only pass and NOT D208's
+  `exactly-one-editable`, neither `formKey` has ever been observed (so the table admits `null` rather
+  than a guess — a fabricated key is a wire check that cannot fail), and **§4e's section caveat, which
+  5c had DISCHARGED for ten fields, re-opens for exactly these two** because the section that owns them
+  was never read. A discharge is scoped to what was verified, and adding a field silently inherits the
+  discharge unless somebody re-states its scope. The design lesson beside it: **legacy's "write it only
+  when it moved" was a property of its INCREMENTAL drafts, not of the write** — under one-pass staging a
+  conditional field would need an expectation composed from the page's own prior value, which is the
+  re-read the model forbids, so unconditional staging is the simpler AND the more honest form (when
+  nothing moved the reconciled value equals what the document holds, and the read-back proves the
+  outcome either way).
 - **2026-08-14: a run ATTEMPT is not one execution of its graph, and a rehearsal that skips the real
   path's first act is a false rehearsal (D214/D215).** Chunk 6b's live pass left two platform items,
   and they turned out to be the same mistake in two places: a model that was true of the ordinary
