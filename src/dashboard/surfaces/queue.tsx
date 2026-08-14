@@ -226,6 +226,32 @@ function elapsedMs(surface: QueueSurfaceWire, nowIso: string): number {
   return Math.max(0, ended - started);
 }
 
+/**
+ * What this row is CALLED — the operator's own name for the run when they have
+ * given it one, and otherwise the server's (doc 03 §1.2).
+ *
+ * The server serves the two separately on purpose: `title` says what the system
+ * thinks the run is about (the start-input title, replaced by the subject's
+ * name once the run resolves one) and `displayName` is the operator's override.
+ * Folding them on the server would make the tooltip below unwritable, because
+ * no surface could then tell a renamed row from a system-titled one.
+ */
+export function queueRowTitle(surface: QueueSurfaceWire): string {
+  return surface.displayName.state === "present" ? surface.displayName.value : surface.title;
+}
+
+/**
+ * The renamed row's tooltip: it names the SUBJECT the operator renamed away
+ * from, so the run's own identity is one hover away rather than gone. A row
+ * that was never renamed carries no tooltip at all — a title explaining itself
+ * is noise on every row in the queue.
+ */
+function queueRowTitleTooltip(surface: QueueSurfaceWire): string | undefined {
+  return surface.displayName.state === "present"
+    ? `Named by you — subject is ${surface.title}`
+    : undefined;
+}
+
 export function sortQueueBand(
   rows: readonly QueueSurfaceWire[],
   key: QueueSortKey,
@@ -535,7 +561,7 @@ function RowFooterLine({
   // repeats the title prints the same string twice on one card, once large and
   // once small (R3 finding 18). A subtitle is a SECOND identifier, and when it
   // is not second there is nothing to show.
-  const showSubtitle = surface.subtitle.state === "present" && surface.subtitle.value !== surface.title;
+  const showSubtitle = surface.subtitle.state === "present" && surface.subtitle.value !== queueRowTitle(surface);
   return (
     <div
       className={cn(
@@ -611,7 +637,7 @@ function RowFooterLine({
           {...(onAction === undefined ? {} : { onAction })}
         />
       </div>
-      <span className="sr-only">{`Right-click or press m for every command on ${surface.title}`}</span>
+      <span className="sr-only">{`Right-click or press m for every command on ${queueRowTitle(surface)}`}</span>
     </div>
   );
 }
@@ -810,7 +836,7 @@ function MemberLine({
       // so this string is the whole of what an operator is told. It uses the
       // ACCESSIBLE name: `done` alone cannot separate the verified done from
       // the done-with-warnings (D22, amended 2026-08-04).
-      title={`${surface.title} — ${statusAccessibleName(status).toLowerCase()}`}
+      title={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
       onClick={onSelect}
       className={cn(
         MEMBER_GRID,
@@ -829,7 +855,7 @@ function MemberLine({
       )}
     >
       <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass)} />
-      <span className="min-w-0 truncate text-[color:var(--ds-fg)]">{surface.title}</span>
+      <span className="min-w-0 truncate text-[color:var(--ds-fg)]">{queueRowTitle(surface)}</span>
       {surface.subtitle.state === "present" ? (
         <span
           className={cn(
@@ -1165,13 +1191,14 @@ export function QueueRow({
   const parent = surface.lineage.state === "child" ? parentOf?.(surface.lineage.parentRunId) : undefined;
   const { onToggleBulk, onAction } = handlers;
   const bulkIds = state.bulkIds;
+  const titleTooltip = queueRowTitleTooltip(surface);
 
   return (
     <div className="px-[var(--ds-space-cozy)] pt-[var(--ds-space-snug)] first:pt-[var(--ds-space-cozy)]">
       <RowContextMenu
         actions={actions}
         target={target}
-        rowLabel={surface.title}
+        rowLabel={queueRowTitle(surface)}
         {...(onAction === undefined ? {} : { onAction })}
       >
         <div
@@ -1182,7 +1209,7 @@ export function QueueRow({
           // Same collision as the filter bar's, one surface down: the row's
           // name ended `— done` for BOTH terminal dones. The badge inside the
           // row still draws the short word; only the name lengthens.
-          aria-label={`${surface.title} — ${statusAccessibleName(status).toLowerCase()}`}
+          aria-label={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
           data-demo-row-id={surface.runId}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
@@ -1234,7 +1261,7 @@ export function QueueRow({
                   <input
                     type="checkbox"
                     checked={bulkIds?.has(surface.runId) ?? false}
-                    aria-label={`Select ${surface.title} for a bulk command`}
+                    aria-label={`Select ${queueRowTitle(surface)} for a bulk command`}
                     onClick={(event) => event.stopPropagation()}
                     onChange={() => onToggleBulk(surface.runId)}
                     className={cn("size-3.5 shrink-0 accent-[var(--ds-accent)]", dsFocus)}
@@ -1248,8 +1275,14 @@ export function QueueRow({
                     // pill onto a second line under the name.
                     "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]",
                   )}
+                  // Present only on a RENAMED row, where it names the subject
+                  // the operator's own title replaced. A truncated title
+                  // already gets the browser's own tooltip from `truncate`;
+                  // this one deliberately overrides it, because "which run is
+                  // this really" beats "the rest of the word".
+                  {...(titleTooltip === undefined ? {} : { title: titleTooltip })}
                 >
-                  {surface.title}
+                  {queueRowTitle(surface)}
                 </span>
                 {/* Which workflow owns this row. Printed the moment the surface
                     mixes workflows, silent when every row would say the same
