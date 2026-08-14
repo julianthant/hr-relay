@@ -44,7 +44,7 @@ serve and where it plugs in — see "Wire-hookup ledger" below.
 |---|--------|-------------|----------------|--------|
 | R1 | Top bar — every glyph, spacing, date-nav pill, notification cluster, tabs, search | `DemoShell.tsx` (top-bar half) + `DemoTopBarSurfaces.tsx` | `surfaces/top-bar.tsx` | [ ] |
 | R2 | Workflow panel — ALL THREE modes (floating/icon/sidebar): header row, mode toggles, category labels, count alignment, the ACTIVE\|ALL row (no window footer — audit confirmed the demo has none) | `DemoShell.tsx` :160-235 + :636-1180, `RebuildDemo.tsx` (mount + keyboard), `demo-wire.ts` | `surfaces/shell.tsx` :106-600 + `app/dashboard-app.tsx` (NOT `use-panel-sections.ts` — that is log-panel plumbing) | [a] |
-| R3 | Queue rows — chips, footers, member wells, section bands NEEDS YOU / ACTIVE / QUEUED / FINISHED TODAY | `DemoQueue.tsx` | `surfaces/queue.tsx` + `queue-toolbar.tsx` | [ ] |
+| R3 | Queue rows — chips, footers, member wells, section bands NEEDS YOU / ACTIVE / QUEUED / FINISHED TODAY | `DemoQueue.tsx` | `surfaces/queue.tsx` (toolbar needs no R3 edit — bulk parts are R8's) | [a] |
 | R4 | Status pills band | `demo-status.tsx` | `surfaces/status.tsx` | [ ] |
 | R5 | Run-detail header row (log panel header) | `DemoLogPanel.tsx` (header region) | `surfaces/log-panel.tsx` | [a] |
 | R6 | Context rail rows — observation clock, badges, row anatomy | `DemoContextRail.tsx` | `surfaces/context-rail.tsx` (+ rail mount in `log-panel.tsx`) | [a] |
@@ -106,6 +106,8 @@ Running list (grown during the audit; initial entries from the known-open items)
 | `GateDecisionWireSchema.kind` + tab attention counts | DecisionNotice icon arm, per-tab dot (R5 f.10/15) | `DemoLogPanel.tsx:874-876,2651-2656` | to declare (low priority) |
 | prior-runs list + custom-run descriptor for the rail dock | `Load prior run` / `Start custom run` (R6 f.5) | `DemoContextRail.tsx:822-930` | to declare |
 | `context-evidence` re-home | Receipt tab (leaves the rail per demo order, R6 f.19) | demo Receipt section | to declare with Receipt tab |
+| `QueueBaseFields` batch: `dryRun`, `warnings`, `containment`, `displayName`, `runNumber`, `gateOpenedAt`, `memberPreview`+`groupNoun`, member `eid`+outcome vocabulary, `pipeline[].durationSec`, `rejectedCount`, `facts[]`/`extractedCount`/`linkedRunIds`/`reviewRunId` | queue row chips, aria age, member well heads, fact band (R3 f.6/10-12/14/15/17/18/20/25) | `DemoRow` in `demo-data.ts` + `DemoQueue.tsx` | to declare (ONE batched change with `run-queue-projection.ts`) |
+| served roster/People section + `records[]` stream | drill-in surface + record-stream well (R3 f.23/24) | `DemoQueue.tsx:1369-1820`, `DemoRecord` | deferred — named trigger in queue.tsx:110-115 |
 
 ## Execution structure
 
@@ -239,9 +241,69 @@ D15/D16 delete; D17/D18 frontend table per doc 03. Wire schema edits live under 
 run `npm run build:manifest` in the same change. Served additions (code, queued/running) need no
 pending-wire-bindings entry — they are served and consumed in the same commit.
 
-### R3 — Queue rows · R4 — Status band · R7 — Session footer
+### R3 — Queue rows (audited 2026-08-14; 92 elements: 50 match, 19 divergent, 21 missing, 2 justified extras; findings 1–25)
 
-(Audits in flight.)
+Oracle: `DemoQueue.tsx` (+ `demo-data.ts`, `demo-status.tsx`, `DemoActions.tsx`). Rebuild:
+`queue.tsx`, `queue-toolbar.tsx` (no R3 edit needed there), composed `dashboard-app.tsx:655-686`.
+Full detail in the audit transcript; actionable record:
+
+1. **`Attention first` is a FALSE claim** — the note says "what needs you, then what broke…" but
+   the arm returns server order (oldest-started). Demo ranks within bands via `SORT_STATUS_RANK`
+   (waiting 0 · failed 1 · parked 2 … cancelled 7, newest-first tiebreak). Pure-port + fix the note.
+2/3/5. Empty state prints a raw ISO day and the raw `StatusBucket` enum key; `needsYou` arm
+   missing; "Finished today" reads "Finished" with no today-ness input. All served-additions
+   (`dayLabel` formatter exists in `top-bar.tsx:91`; `PROPOSED_STATUS` labels; `day === today`).
+4. **Finished-today digest strip missing entirely** (dashed strip: `N verified · N with warnings ·
+   N failed · N cancelled`) — served-addition, folds over band rows the client already holds.
+6. Redirect/fact chip band below the well missing — `ParentBackChip` is a SERVED-ADDITION
+   (lineage.parentRunId + sibling surface lookup); facts[]/linked/review/extractedCount are
+   wire-gaps.
+7. Group subline not suppressed when the member well is on screen (the demo's truncating-copy
+   rationale). Pure-port.
+8. **`j`/`k`/`Enter`/`m` advertised and unbound; `visibleRunIds` exported and dead** (its doc
+   comment names the j/k traversal). Same no-global-keydown defect family as R2/R5/R8.
+9. An operation row with no member surfaces served draws NO member info despite a served
+   `memberRollup`. Served-addition: draw RollupStrip whenever `surfaceKind === "operation"`.
+10. **Warnings `△ N` chip missing** (operator quote in demo source). Count is wire-gap, but the
+    `doneWarnings → △ 1` arm is derivable TODAY and closes the D22 hue-only collision.
+11. **Dry-run chip missing** + the violet/warning row-chip tones — wire-gap (`dryRun` on the
+    envelope but not `QueueBaseFields`).
+12. `memberPreview` (the counted anchor's names — "the names ARE its identity") — wire-gap.
+13. Member rank inverts `cancelled` vs verifiedDone. Pure-port of rank values; KEEP the rebuild's
+    stable-server-index tiebreak (better rule, audit concurs).
+14. Member-well header loses rejected count / checked count / Outcome-vs-Detail heading switch —
+    wire-gaps (note `MemberOutcomeWord` already ships unused in `status.tsx:160-197`).
+15. `rejected` containment treatment missing at all three sites — wire-gap.
+16. Row ⓘ can be ABSENT entirely (demo: always rendered, "quiet at rest is not absent");
+    `panelKind` is SERVED and unread — port the panel sentence now; row-variant naming layer
+    stays wire-gap.
+17. Row accessible name loses gate age (aria is the ONLY place age reaches a screen reader for
+    waiting/parked). Wire-gap (`gateOpenedAt`).
+18. Footer: `#run` ordinal chip gone (wire-gap), trace id took its box, and the `showId` guard
+    dropped so title==subtitle prints twice (pure-port). `attempt N` extra: keep (cited).
+19. `omitKeys` not status-conditional (inert until actions serve). Pure-port.
+20. MicroSteps tooltip loses per-step duration — wire-gap; rebuild's DS dot tones are CORRECT,
+    do not port backwards.
+21. Failed member's detail cell never tints — status IS served. Pure-port.
+22. `cancel-tree` loses its D16 no-undo warning sentence. Pure-port (inert until served).
+23/24. Drill-in roster + record-stream well — deferred wire-gaps (documented); the unreachable
+    `View full list` branch gets the deferral note.
+25. `displayName` (operator-renamed run) unrepresented at six sites — wire-gap.
+
+Verified no-action: Cancelled-pill clip MATCHES the demo (both scroll — do not fix); status-pill
+age suppression matches on screen; three justified rebuild extras keep.
+
+**Orchestrator decisions (R3):** fix wave = audit's order 1–2 (pure-ports + served-additions) as
+the R3 region commit. Finding 8: BIND, don't delete — the keys join the ONE consolidated global
+keydown handler (with R2 D13/D14, R5 f.7, R8 f.7) in the final dashboard-app commit;
+`visibleRunIds` becomes its consumer. Finding 10's derivable arm and 16's panel sentence land in
+the R3 commit. The batched wire change (finding-order 4) is ONE `QueueBaseFields` + projector
+change → single ledger row below; its consuming UI ports ride the same commit when the wire lands.
+23/24 stay deferred with named triggers.
+
+### R4 — Status band · R7 — Session footer
+
+(Audit in flight.)
 
 ### R5 — Run-detail header (audited 2026-08-13; 37 elements: 16 match, 8 divergent, 11 missing, 2 extra; findings 1–17)
 
