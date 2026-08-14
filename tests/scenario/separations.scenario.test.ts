@@ -461,6 +461,25 @@ describe("separations scenarios — the composition", () => {
     assert.equal(SWEEP_IDEMPOTENCY_KEY.includes("re-read"), false);
     assert.equal(FINALIZATION_IDEMPOTENCY_KEY.includes("re-read"), false);
 
+    /*
+     * D221 — and a RETRY is the other intent, which §9.17 had to substitute a
+     * re-read for. A retry keeps the logical item (that is what lets it replay
+     * the failed run's reads at all), so the ONLY thing that can separate its
+     * `timecard-search` executions from the failed run's is the attempt — and
+     * the attempt is the ITEM's, so a retry takes the next one. Minting it at 1
+     * is what made every retry of this graph die on that node.
+     */
+    const retryItemId = deriveItemId(COMPOSITION_WORKFLOW_ID, matchKey(base));
+    const timecardAt = (attempt: number): string =>
+      checkpointLookupKey(String(separationsDescriptor.id), retryItemId, "timecard-search", attempt, 1);
+    assert.notEqual(timecardAt(1), timecardAt(2));
+    assert.equal(timecardAt(1), checkpointLookupKey(
+      String(separationsDescriptor.id),
+      deriveItemId(COMPOSITION_WORKFLOW_ID, matchKey(base)),
+      "timecard-search",
+      1,
+      1,
+    ), "a retry is the SAME item — it is not a re-read, and it replays what it may");
   });
 
   /**
