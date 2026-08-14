@@ -777,6 +777,17 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
   { surface: "wire/bootstrap", path: "actor.label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "featureAvailability[].availability.reason", origin: "repository-authored" },
+  // The doctor's four free-text leaves. Every one is written in THIS
+  // repository's own check table — the label names a check, the detail states
+  // what it found about the local environment, `blocks` names the workflows a
+  // failure would break, and `remediation` is the fix somebody wrote down. A
+  // preflight check reads local configuration and never a person's record, so
+  // none of these may ever carry a captured HR value; a check that wanted to
+  // quote one would need its own origin row and a reviewer.
+  { surface: "wire/bootstrap", path: "preflight[].blocks[]", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "preflight[].detail", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "preflight[].label", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "preflight[].remediation", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "settingsSections[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "systemInstances[].test.reason", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflowCategories[].label", origin: "repository-authored" },

@@ -249,8 +249,20 @@ interface FrontendBootstrapWire {
   systemInstances: SystemInstanceProjection[];
   settingsSections: SettingsSectionProjection[];
   featureAvailability: FeatureAvailabilityWire[];
+  preflight?: PreflightCheckWire[];
 }
 ```
+
+`preflight` is the doctor's standing summary — one entry per check, each carrying its verdict, its
+detail, the named things its failure **blocks**, an optional remediation, and the instant it was
+checked. The Top Bar owns it (§5): the stethoscope carries the worst verdict of the set, its popover
+lists the checks, and "Run doctor again" is the paired command. It is **optional and unserved
+today** — `buildBootstrap` composes no preflight service — and its absence is declared as
+`FrontendBootstrapWireSchema#preflight` in `config/pending-wire-bindings.json`. The surface renders
+the whole popover only when the field is present: a doctor indicator over checks nobody ran would
+report a pass the server never made. The verdict itself is DERIVED on the client from the checks
+(`fail` beats `warning` beats `pass`) and is never a second served field, so the glyph and the list
+cannot disagree.
 
 The workflow projection includes label/icon/category/code/version, panel kind, graph summary,
 systems, start methods/options/presets, dry-run support or explicit absence reason, input subject,

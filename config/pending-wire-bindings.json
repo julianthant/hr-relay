@@ -27,6 +27,12 @@
       "note": "Named in `config/legacy-capabilities.json` entry `legacy-dashboard-capture` (open, phase-3-workflow-migration): the section lists artifact refs but NOTHING serves artifact bytes, so it is blocked on the artifact route `legacy-route-files` owns and closes with it."
     },
     {
+      "binding": "FrontendBootstrapWireSchema#preflight",
+      "direction": "declared-unserved",
+      "decision": "D184",
+      "note": "Doc 13 §3.1/§5 assign the preflight (doctor) summary and the doctor-rerun command to the Top Bar. `buildBootstrap` composes no preflight service, so the optional field is never present and the Top Bar's Stethoscope popover never mounts — the honest absence, never a fabricated pass verdict. Closes with the doc 11 preflight/config service that also serves the rerun command."
+    },
+    {
       "binding": "route:GET /api/v1/capture/sessions/:sessionId",
       "direction": "served-unconsumed",
       "decision": "D175",

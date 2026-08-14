@@ -42,7 +42,7 @@ serve and where it plugs in — see "Wire-hookup ledger" below.
 
 | # | Region | Demo source | Rebuild target | Status |
 |---|--------|-------------|----------------|--------|
-| R1 | Top bar — every glyph, spacing, date-nav pill, notification cluster, tabs, search | `DemoShell.tsx` (top-bar half) + `DemoTopBarSurfaces.tsx` | `surfaces/top-bar.tsx` | [ ] |
+| R1 | Top bar — every glyph, spacing, date-nav pill, notification cluster, tabs, search | `DemoShell.tsx` (top-bar half) + `DemoTopBarSurfaces.tsx` | `surfaces/top-bar.tsx` | [x] |
 | R2 | Workflow panel — ALL THREE modes (floating/icon/sidebar): header row, mode toggles, category labels, count alignment, the ACTIVE\|ALL row (no window footer — audit confirmed the demo has none) | `DemoShell.tsx` :160-235 + :636-1180, `RebuildDemo.tsx` (mount + keyboard), `demo-wire.ts` | `surfaces/shell.tsx` :106-600 + `app/dashboard-app.tsx` (NOT `use-panel-sections.ts` — that is log-panel plumbing) | [a] |
 | R3 | Queue rows — chips, footers, member wells, section bands NEEDS YOU / ACTIVE / QUEUED / FINISHED TODAY | `DemoQueue.tsx` | `surfaces/queue.tsx` (toolbar needs no R3 edit — bulk parts are R8's) | [a] |
 | R4 | Status pills band (band itself lives in `DemoShell.tsx:1183-1364` → `shell.tsx:602-795`; `demo-status.tsx` is the vocabulary adapter) | `demo-status.tsx` + `DemoShell.tsx` | `surfaces/status.tsx` + `shell.tsx:602-795` | [a] |
@@ -199,6 +199,51 @@ top-bar.tsx (bell/drawer/rows/filters/footer/empty → doctor popover → vocabu
 → FlaskConical → DateNav arm → remove Shortcuts glyph) → settings.tsx (gear aria-pressed+class) →
 day-search.tsx (Try: chips, placeholder, Day column, copy re-check) → dashboard-app.tsx (+ port
 demo-nav-history.ts, wire `nav`).
+
+**R1 FIXED + image-verified + committed 2026-08-14 (`1e4bb03`)** — every fix-order item landed
+as decided. The wire half rode the SAME commit (the manifest was clean, so the ledger protocol's
+four parts are together): `FrontendBootstrapWireSchema` grew optional `preflight`,
+`config/pending-wire-bindings.json` declares it `declared-unserved`, doc 13 §3.1 states it
+normatively, and `build:manifest` regenerated with a ZERO diff — `bootstrap.ts` is outside every
+descriptor's import closure, which is the fact that made the domain edit safe beside another
+session. `redaction-surface-scan` then refused the four new free-text leaves until
+`SURFACE_LEAF_ORIGINS` said where their bytes come from — the guard working, and the reason the
+audit table grew four `repository-authored` rows in the same commit.
+
+Recorded deviations, each with its cause:
+
+- **Notification body / badge row / link stay absent** (doc 03 §2.6 keeps free text off the wire).
+  The row markup ports whole and every arm is gated on an OPTIONAL field declared in
+  `NotificationRowExtras` — the plug point backend fills, never a placeholder.
+- **`Pings` / `Inbox` chips count zero** because no row declares a delivery route yet; their filter
+  answers the demo's own EmptyState, which says a zero here never means a record was deleted.
+- **`Un-snooze` renders disabled with its reason** — the kernel serves `notification-snooze` and no
+  inverse, so a live control would 422 on click. Hiding it (what the surface did before) moved every
+  button beside it the moment a row snoozed.
+- **A refused command is REPORTED** inside the drawer (`role="alert"`). The demo has no server to
+  refuse one; swallowing it would let a failed `Mark read` read as a success.
+- **`Try:` chips are QUOTED from the day's rows**, four not six: fixture queries would be fabricated
+  data, `run` is dropped because a 36-char uuid is not an example anybody types, and the demo's last
+  two chips demonstrate a zero-hit and a FAILING lookup, which this find cannot do.
+- **`ShortcutsPopover` stays exported, unmounted** — the glyph is gone per the operator's quote; the
+  component is whole for the global binding + Settings → Help that own it next.
+- **Catalog label stays "UI catalog"** (D177) with the demo's `FlaskConical` glyph and pressed
+  treatment; **the date pill keeps its `Tooltip`** with the demo's wording restored.
+- **`NavPlace` is a quad, not the demo's triple** — it carries `day`, because the demo derives a
+  row's day from a constant corpus and this app cannot without a fetch; `runId` is nullable because
+  a panel with nothing open is a real place to come back to.
+
+Image verification (1440×900, demo :5173 vs rebuild :5174, read as images): the closed bar matches
+left to right, with the stethoscope correctly ABSENT (unserved) and no keyboard glyph; the drawer
+matches the demo's 480px anatomy — description line, five filter chips (byte-identical `Chip`
+rendering), EmptyState, standing footer — with the rebuild empty, which is the correct rendering;
+the search dialog gained the `Try:` row and the five-column table. Three behaviours were verified
+LIVE rather than by reading code: the tracker serves only `2026-08-12`, so the app opened on an
+UNSERVED day and the ported DateNav arm pointed `Next day → Wed, Aug 12` while `Previous` refused —
+before this fix both arrows were disabled and the operator was stranded; the gear reports pressed in
+BOTH representations (`aria-pressed=true` and the surface-3 fill, per D187); and back/forward drove
+a real panel switch, naming `Back to Person Lookup` then `Forward to Separation Timecard` with no
+re-push loop. Parity references deferred to the wave-end re-freeze as planned.
 
 ### R2 — Workflow panel (audited 2026-08-13; floating 37 / icon 9 / sidebar 30 elements; 18 findings D1–D18)
 

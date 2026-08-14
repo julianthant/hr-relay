@@ -323,6 +323,13 @@ export function SettingsControl({
         <IconButton
           size="sm"
           label={attention ? "Settings — storage needs attention" : "Settings"}
+          // The gear REPORTS that it owns the screen, in both representations:
+          // `aria-pressed` for the accessibility tree and the surface-3 fill
+          // for the eye. Every other pressed control in this cluster carries
+          // the pair; the gear carried neither, so the one takeover an operator
+          // opens most often was the one that never looked open.
+          aria-pressed={open}
+          className={cn(open && "bg-[var(--ds-surface-3)] text-[color:var(--ds-fg)]")}
           icon={
             <span className="relative inline-flex">
               <SettingsIcon aria-hidden className={dsIcon.md} />

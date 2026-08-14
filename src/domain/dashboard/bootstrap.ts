@@ -74,6 +74,35 @@ export const SettingsSectionPrimitiveSchema = z.strictObject({
   revision: RevisionSchema,
 });
 
+export const PreflightVerdictSchema = z.enum(["pass", "warning", "fail"]);
+
+/**
+ * ONE doctor check, as the Top Bar's standing indicator reads it (doc 13 §5,
+ * the Top Bar row's "storage/preflight summary").
+ *
+ * `blocks` names what this check's failure would break — never "some
+ * workflows" — because the whole point of the doctor is knowing what will fail
+ * BEFORE a Duo prompt is spent finding out. `checkedAt` is an instant and the
+ * surface formats it; a display string on the wire would put the server's
+ * locale on a Pacific operator's screen.
+ *
+ * The field is OPTIONAL on the bootstrap document and NOTHING serves it today
+ * — `config/pending-wire-bindings.json` declares
+ * `FrontendBootstrapWireSchema#preflight` as `declared-unserved`. The Top Bar's
+ * popover renders only when it arrives; there is no fabricated verdict in the
+ * meantime, because a green stethoscope over checks nobody ran is exactly the
+ * lie this program forbids.
+ */
+export const PreflightCheckWireSchema = z.strictObject({
+  id: z.string().regex(/^[a-z][a-z0-9-]*$/),
+  label: z.string().min(1),
+  verdict: PreflightVerdictSchema,
+  detail: z.string().min(1),
+  blocks: z.array(z.string().min(1)),
+  remediation: z.string().min(1).optional(),
+  checkedAt: IsoInstantSchema,
+});
+
 interface BootstrapParts {
   readonly workflow: z.ZodType;
   readonly workflowCategory: z.ZodType;
@@ -97,6 +126,9 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
     systemInstances: z.array(parts.systemInstance),
     settingsSections: z.array(parts.settingsSection),
     featureAvailability: z.array(FeatureAvailabilityWireSchema),
+    // Absent until the preflight service lands. Its ABSENCE is the honest
+    // state, so the surface draws nothing rather than a verdict it invented.
+    preflight: z.array(PreflightCheckWireSchema).optional(),
   });
 }
 

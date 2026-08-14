@@ -23,6 +23,7 @@ import { Search, SearchX } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
   Badge,
+  Chip,
   Dialog,
   DialogBody,
   DialogContent,
@@ -140,13 +141,71 @@ export function searchDaySurfaces(
     : { state: "hits", query, scanned: surfaces.length, hits };
 }
 
+/* ── the examples row ────────────────────────────────────────────────────── */
+
+export interface DaySearchExample {
+  readonly field: DaySearchField;
+  readonly query: string;
+}
+
+/**
+ * The demo's `Try:` chips, over THIS day's rows.
+ *
+ * The demo hardcodes six fixture queries (`Rosa`, `10633092`, `onbase`, …)
+ * because its corpus is a constant. Here the corpus is whatever the server
+ * served, so the examples are QUOTED from it — one per searchable field, taken
+ * from the first row that offers that field. Every chip is therefore a query
+ * that is guaranteed to return at least the row it came from, and nothing on
+ * this row is a value the server never issued.
+ *
+ * It follows that an empty day produces no chips, which is the honest state:
+ * there is nothing to give an example of.
+ *
+ * `run` is searchable and is deliberately NOT offered as an example: a run id
+ * is a 36-character uuid nobody types by hand, and one quoted whole is a chip
+ * three times the width of every other — the demo's six examples are all short
+ * because an example you would not type is not an example. The trace id is the
+ * identifier an operator actually quotes, and it is here. Four chips against
+ * the demo's six, for that reason and because its last two demonstrate a
+ * zero-hit answer and a lookup FAILING, and nothing here can fail (see
+ * `DaySearchOutcome`).
+ */
+export function daySearchExamples(
+  surfaces: readonly QueueSurfaceWire[],
+  workflowLabelOf: (workflowId: string) => string,
+): readonly DaySearchExample[] {
+  const order: readonly DaySearchField[] = ["title", "subtitle", "trace", "workflow"];
+  const examples: DaySearchExample[] = [];
+  for (const field of order) {
+    for (const surface of surfaces) {
+      const found = fieldsOf(surface, workflowLabelOf(String(surface.workflowId)))
+        .find(([candidate]) => candidate === field);
+      if (found === undefined) continue;
+      const [, value] = found;
+      if (examples.some((example) => example.query === value)) continue;
+      examples.push({ field, query: value });
+      break;
+    }
+  }
+  return examples;
+}
+
 /* ── the control ─────────────────────────────────────────────────────────── */
 
 function DaySearchOutcomeView({
   outcome,
+  day,
   onPick,
 }: {
   outcome: DaySearchOutcome;
+  /**
+   * The day every hit belongs to. It is a CONSTANT down the column and it is
+   * still the demo's column: a find that reads one partition can only answer
+   * with that partition's date, and printing it is what keeps the table honest
+   * about the scope it scanned. When the cross-day corpus lands (D184), the
+   * value moves from this prop to the hit and nothing else here changes.
+   */
+  day: string;
   onPick: (runId: string) => void;
 }) {
   if (outcome.state === "idle") {
@@ -186,6 +245,7 @@ function DaySearchOutcomeView({
               <TH>Row</TH>
               <TH>Workflow</TH>
               <TH>Matched</TH>
+              <TH>Day</TH>
               <TH>Status</TH>
             </TR>
           </THead>
@@ -207,6 +267,7 @@ function DaySearchOutcomeView({
                     <span className={cn(dsText.nums, "truncate text-[color:var(--ds-fg)]")}>{hit.matchedValue}</span>
                   </span>
                 </TD>
+                <TD numeric>{day}</TD>
                 <TD>
                   <StatusPill status={dsStatusOf(hit.status)} size="sm" />
                 </TD>
@@ -229,11 +290,14 @@ function DaySearchOutcomeView({
  */
 export function DaySearchControl({
   surfaces,
+  day,
   workflowLabelOf,
   onOpenRun,
 }: {
   /** the day's whole queue projection — every workflow, not just the open panel */
   surfaces: readonly QueueSurfaceWire[];
+  /** the partition being read — the results table's `Day` column */
+  day: string;
   workflowLabelOf: (workflowId: string) => string;
   onOpenRun: (runId: string) => void;
 }) {
@@ -243,6 +307,10 @@ export function DaySearchControl({
   const outcome = useMemo(
     () => searchDaySurfaces(surfaces, query, workflowLabelOf),
     [surfaces, query, workflowLabelOf],
+  );
+  const examples = useMemo(
+    () => daySearchExamples(surfaces, workflowLabelOf),
+    [surfaces, workflowLabelOf],
   );
 
   useEffect(() => {
@@ -312,14 +380,31 @@ export function DaySearchControl({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onClear={() => setQuery("")}
-              placeholder="Nguyen · 10777012 · pl-090505-0005"
+              placeholder="Nguyen · 10777012 · pl-090505-0005 · person-lookup"
               aria-label="Search query"
             />
+            {examples.length > 0 && (
+              <div className="mt-[var(--ds-space-base)] flex flex-wrap items-center gap-[var(--ds-space-tight)]">
+                <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Try:</span>
+                {examples.map((example) => (
+                  <Chip
+                    key={example.query}
+                    tone="neutral"
+                    label={FIELD_LABEL[example.field]}
+                    selected={query === example.query}
+                    onSelect={() => setQuery(example.query)}
+                  >
+                    {example.query}
+                  </Chip>
+                ))}
+              </div>
+            )}
           </div>
 
           <DialogBody className="p-0">
             <DaySearchOutcomeView
               outcome={outcome}
+              day={day}
               onPick={(runId) => {
                 setOpen(false);
                 onOpenRun(runId);

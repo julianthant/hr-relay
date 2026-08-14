@@ -13,7 +13,7 @@
  * the parity lane waits on it so a capture can never catch a half-painted
  * shell, and a human reading the DOM can tell the same thing.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { actionsAt, type ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import {
   SettingsSectionPrimitiveSchema,
@@ -53,6 +53,17 @@ import {
 import { StorageBanner } from "../surfaces/settings.js";
 import { TopBar, serverLocalDay, type ShellView } from "../surfaces/top-bar.js";
 import { usePanelSections } from "./use-panel-sections.js";
+import {
+  canGoBack,
+  canGoForward,
+  currentPlace,
+  goBack,
+  goForward,
+  initNavHistory,
+  navDestinationLabel,
+  pushPlace,
+  type NavHistory,
+} from "./nav-history.js";
 import {
   INTAKE_NEW,
   activeTakeover,
@@ -205,7 +216,13 @@ interface LoadedAppProps {
   openWells: ReadonlySet<string>;
   onWells: (next: ReadonlySet<string>) => void;
   tab: PanelTab | undefined;
-  onTab: (tab: PanelTab) => void;
+  /**
+   * The operator's EXPLICIT tab choice. `undefined` clears the override and
+   * hands the panel back to the run's own default — which is what the history
+   * restores when a place was recorded before any tab was pressed, and what a
+   * forced section the run cannot offer must never become.
+   */
+  onTab: (tab: PanelTab | undefined) => void;
   sort: QueueSortKey;
   onSort: (sort: QueueSortKey) => void;
   selectMode: boolean;
@@ -377,6 +394,80 @@ function LoadedApp({
     [route, setRoute, onTab],
   );
 
+  /*
+    BACK AND FORWARD, over PLACES rather than over presses.
+
+    A place is `day + workflow + run + tab` (`nav-history.ts`), and the history
+    is recorded by OBSERVING those four rather than by asking every navigation
+    call site to remember to log itself. That is the whole reason this is cheap
+    to satisfy: several routes already move the panel (the rail, search, a
+    notification link, a queue row) and another will be added by somebody who
+    has never read this file. An observer cannot be forgotten by a new call
+    site; a `pushPlace()` sprinkled through the handlers can, and one that is
+    forgotten produces a Back button that skips a step — which is worse than no
+    Back button.
+
+    The ref is what stops the observer from recording its OWN moves: applying a
+    history entry changes exactly the state the effect watches, so without it
+    every Back would immediately re-push the place it just left and the history
+    would be two entries long forever.
+  */
+  const [navHistory, setNavHistory] = useState<NavHistory>(() =>
+    initNavHistory({ day, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }),
+  );
+  const applyingNav = useRef(false);
+
+  useEffect(() => {
+    if (applyingNav.current) {
+      applyingNav.current = false;
+      return;
+    }
+    setNavHistory((prev) =>
+      pushPlace(prev, { day, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }));
+  }, [day, activeWorkflowId, route.run, tab]);
+
+  const travel = useCallback(
+    (direction: "back" | "forward"): void => {
+      const next = direction === "back" ? goBack(navHistory) : goForward(navHistory);
+      const place = currentPlace(next);
+      if (next === navHistory || place === undefined) return;
+      applyingNav.current = true;
+      setNavHistory(next);
+      setActiveWorkflowId(place.workflow);
+      // A tab the panel no longer offers resolves to `undefined`, which is the
+      // run's own default — never a forced section the detail cannot render.
+      onTab(PANEL_TABS.find((candidate) => candidate === place.tab));
+      // Every takeover clears, exactly as the switcher does: a place is a spot
+      // in the QUEUE, and restoring one under an Archive overlay would move the
+      // panel behind a screen the operator cannot see it through. The day moves
+      // with the run for the same reason the demo's does — a place restored
+      // into the wrong partition lands on an empty queue and reads as a broken
+      // button.
+      setRoute({
+        ...route,
+        intake: undefined,
+        archive: undefined,
+        activity: undefined,
+        explore: undefined,
+        catalog: undefined,
+        day: place.day,
+        run: place.runId ?? undefined,
+        section: place.tab ?? undefined,
+      });
+    },
+    [navHistory, route, setRoute, onTab],
+  );
+
+  /** what each control will actually do, named on its face rather than guessed at */
+  const nameRun = useCallback(
+    (runId: string): string | undefined =>
+      dayWire?.queueSurfaces.find((surface) => String(surface.runId) === runId)?.title,
+    [dayWire],
+  );
+
+  const navBackTo = navDestinationLabel(navHistory, "back", nameRun, workflowLabelOf);
+  const navForwardTo = navDestinationLabel(navHistory, "forward", nameRun, workflowLabelOf);
+
   const ready = dayResource.state === "loaded" || dayResource.state === "failed";
   // One resolution of "which takeover owns the main region", so the JSX below
   // cannot disagree with a link that carries more than one key.
@@ -441,7 +532,14 @@ function LoadedApp({
         onDay={(next) => setRoute({ ...route, day: next })}
         theme={theme}
         onToggleTheme={onToggleTheme}
-        nav={{ canBack: false, canForward: false, onBack: () => undefined, onForward: () => undefined }}
+        nav={{
+          canBack: canGoBack(navHistory),
+          canForward: canGoForward(navHistory),
+          ...(navBackTo === undefined ? {} : { backTo: navBackTo }),
+          ...(navForwardTo === undefined ? {} : { forwardTo: navForwardTo }),
+          onBack: () => travel("back"),
+          onForward: () => travel("forward"),
+        }}
       />
 
       <div className="flex min-h-0 flex-1">
