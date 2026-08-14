@@ -711,23 +711,41 @@ doc, and therefore the convention every later one follows (§0.1: migration docs
 this plan; they answer §3.4 and record reuse/additions, and never re-order the program).
 
 > **Separations' §3.2 status, 2026-08-14 (`docs/migrations/separations.md` §6 owns the checklist;
-> §9.16 is the latest as-built).** Six of the ten criteria are MET. **Four are open, and they are two
-> facts:**
+> §9.17 is the latest as-built).** **The live dry-run criterion and the D58 sweep are now MET; the
+> regression-record criterion is PARTLY MET; ONE criterion is fully open, and it is one fact:**
 >
-> 1. **One live re-run of the composed dry run**, to its preview terminal. Every platform blocker the
->    live lane found is FIXED and gated (D212, D213, D214, D215), the composition is unchanged, and
->    the subject is named (doc 4502). §9.16 §5 records why it did not run — a stale singleton
->    dashboard BFF serving a pre-D217 descriptor fingerprint no current worker can claim under — and
->    restarting that process is the entire remedy. §4f3's `probeToFenceMaxMs` measurement, the
->    regression-record criterion and the D58 disposition sweep all ride on the same run.
-> 2. **The three controlled commits**, on a target the operator names (§4f2), and the three
->    confirmation obligations that can only be discharged by them: **D207**'s provisional
->    `stabilized` recovery-absence window, **D210/D215**'s preview arms observed against a real
->    settlement, and **D217**'s two date write-backs' WIRE SHAPES — their `formKey`s are captured but
->    a `Date` gadget's model value is epoch milliseconds, so only the real payload settles them.
+> - **The three controlled commits**, on a target the operator names (§4f2), and the three
+>   confirmation obligations that can only be discharged by them: **D207**'s provisional
+>   `stabilized` recovery-absence window, **D215**'s `would-prepare` preview arm observed against a
+>   real settlement, and **D217**'s two date write-backs' WIRE SHAPES — their `formKey`s are captured
+>   but a `Date` gadget's model value is epoch milliseconds, so only the real payload settles them.
 >
-> Nothing else is outstanding. This is a status line, not a waiver: an open criterion still blocks
-> rebuild-ready status exactly as §3.2 says.
+> **What §9.17 closed.** The composed dry run reached its **preview terminal** through the real
+> pipeline (run `7565a88d`, doc 4502, terminal `done`) with `transaction.previewed`, the
+> preview-bound terminal record and the receipt's live `DRY_RUN_PREVIEW` warning — which also proved
+> **D215's `already-present` arm live** and **D214** across three claim generations. The **D58
+> disposition sweep** is done (three entries, all correctly dispositioned; `legacy-tool-ops-sanity-check-record`'s
+> D192 condition is flagged as materially satisfied by the §14.2 packet's prose comparisons, for the
+> operator to close). Reaching the preview terminal also found a fourth live defect — D215's
+> `not-observed` subject verdict had never reached the span WIRE leaf, so the first preview that ever
+> settled killed the worker one emit short of its terminal — fixed with its test in `e1ba81b`, and
+> the run itself was correct throughout (zero intent, zero fence, D200's self-sweep released the
+> orphaned claim). One live-lane finding is NOT pinned as a regression and is handed to doc 02 §5.7's
+> owner: a `run`/`retry` mints a new run at attempt 1 / generation 1, so an `always-rerun` node
+> re-collides with the ORIGINAL run's checkpoint — **a separations run that fails at or after
+> `timecard-search` cannot be retried at all.** The composed **REAL** run on canary doc 4510 (`ee9824f7`, not dry) refused
+> `NO_ACTIVE_EMPLOYMENT` **before the gate** — a valid result: UCPath shows one `Inactive` employment
+> for EID 10001799, so there is no employment for the separation to end, and 4510 cannot proceed on
+> the composed graph until the operator makes an active terminable employment exist. Zero durable
+> write rows across both parts.
+>
+> **One §3.2 expectation was corrected rather than met.** §4f3's `probeToFenceMaxMs` per-beat
+> measurement does NOT ride on the preview terminal: a settled preview emits one event and has no
+> fence at all, so the number can only come from a real fenced transaction. It rides with the
+> controlled commits.
+>
+> This is a status line, not a waiver: an open criterion still blocks rebuild-ready status exactly as
+> §3.2 says.
 
 #### 3.2 Exit criteria (per workflow)
 

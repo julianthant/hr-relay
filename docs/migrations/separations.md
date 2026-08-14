@@ -1704,11 +1704,11 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 - [x] **§5 questionnaire answered and recorded above, and every §4 decision answered** — §4a–§4g and all twelve §5 items landed 2026-08-12, including item 5's residuals 5A/5B (the freshness values and the date fields' override column) — `new-kronos/read-separation-timecard` can now be authored against a real `freshness` field
 - [x] `typecheck` + `lint` + `test:coverage` green (D191); the descriptor passes `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing — green at `1d019ee`
 - [x] Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id, and subject observation resolves; no raw Page/Locator/selector outside the system driver
-- [ ] **Live dry-run green** against Kuali, UCPath, and New Kronos (submit-free, zero durable write rows asserted) — and, per §4f3, the UCPath preparation interval measured on that run — **PARTLY MET (§9.14)**: the composed graph ran the whole read chain live on two real subjects, parked at the ALWAYS-GATE, took a real approval through the real command endpoint and resumed, with **zero durable write rows proved from authority**. The preview terminal was blocked by two PLATFORM items, neither a write-safety failure — `executeDryRun` previewing `clear-pending`'s prepare without its probe, and an `always-rerun` node colliding with its own checkpoint across a gate resume — and **both are FIXED (D215, D214; platform slice 2, 2026-08-14)**. **What remains is one re-run and nothing else** — §9.16 §5 found the re-run blocked operationally, on a stale singleton dashboard BFF serving a pre-D217 `separations` fingerprint that no current worker can claim a run under; restarting it is the whole remedy, and doc **4502** is the subject (active job, past LDW, no pending row — D215's `already-present` arm). §4f3's per-beat interval rides on that same run
-- [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **OPEN on all three commits**; the §4f2 canary is still unnamed. **Doc 4524's recommendation as the Kuali candidate is WITHDRAWN** (§9.16 §3): its action was completed 2026-08-14 and its form no longer renders. Doc **4510** is the best-mapped open document for a Kuali finalization commit, on the STANDALONE `separations-kuali-finalization` graph — the composed `separations` graph refuses it at `no-active-job` before the gate
+- [x] **Live dry-run green** against Kuali, UCPath, and New Kronos (submit-free, zero durable write rows asserted) — **MET 2026-08-14 (§9.17)**: run `7565a88d` / `sp-105939-7565` on doc 4502 ran the whole read chain live, parked at the ALWAYS-GATE, took a real approval through the real command endpoint, resumed, and reached its **preview terminal** — `transaction.previewed` (`subject: not-observed`, `externalCommit: none`), a terminal `run_results` row bound to the PREVIEW schema hash `86cd007a…` carrying D215's `already-present` settlement off a live probe, and a receipt at `partial`/`unknown` with the load-bearing `DRY_RUN_PREVIEW` warning naming that probe. **Zero durable write rows proved from authority** across both parts of the pass. §4f3's per-beat interval does **not** ride on this run and never could — a preview has no fence — so it moves to the controlled commits (§9.17 item 4). _Historical (§9.14): the two platform blockers, both FIXED as D214/D215; §9.16 §5's stale-BFF blocker, cleared by the restart._ Prior text: the composed graph ran the whole read chain live on two real subjects, parked at the ALWAYS-GATE, took a real approval through the real command endpoint and resumed, with **zero durable write rows proved from authority**. The preview terminal was blocked by two PLATFORM items, neither a write-safety failure — `executeDryRun` previewing `clear-pending`'s prepare without its probe, and an `always-rerun` node colliding with its own checkpoint across a gate resume — and **both are FIXED (D215, D214; platform slice 2, 2026-08-14)**. **What remains is one re-run and nothing else** — §9.16 §5 found the re-run blocked operationally, on a stale singleton dashboard BFF serving a pre-D217 `separations` fingerprint that no current worker can claim a run under; restarting it is the whole remedy, and doc **4502** is the subject (active job, past LDW, no pending row — D215's `already-present` arm). §4f3's per-beat interval rides on that same run
+- [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **OPEN on all three commits**; the §4f2 canary is still unnamed. **Doc 4524's recommendation as the Kuali candidate is WITHDRAWN** (§9.16 §3): its action was completed 2026-08-14 and its form no longer renders. Doc **4510** is the best-mapped open document for a Kuali finalization commit, on the STANDALONE `separations-kuali-finalization` graph — the composed `separations` graph refuses it before the gate, **live-proved 2026-08-14 (§9.17 item 2)**: run `ee9824f7`, not dry, refused `NO_ACTIVE_EMPLOYMENT` at `employment` in 17.6 s with no gate opened and zero writes, because UCPath still shows one `Inactive` employment for EID 10001799
 - [x] `identity-gate-before-separation-commit` green — every commit is graph-reachable only through the gate node (doc 09 §14.6 guard #2; the structural half of §4d) — and §14.5's digest binding is now proved LIVE (§9.14): the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's
-- [ ] D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved
-- [ ] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above became D214/D215 and both landed with theirs; the `already-present` receipt arm platform slice 2 named landed at `b73b546`.** What is still owed here is only whatever the blocked re-run finds
+- [x] D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved — **MET 2026-08-14 (§9.17 item 6)**: three entries touched (`legacy-workflow-separations`, `legacy-tool-debug-kronos`, `legacy-tool-ops-sanity-check-record`), all correctly `open` at the runtime's own milestone, nothing stale under D188's arm, no legacy path deleted. One finding for the operator: **D192's deferral condition on `legacy-tool-ops-sanity-check-record` is now materially satisfied** — the §14.2 packet's `comparisons` array is exactly the prose-observations-beside-the-gate shape D192 asked for — and it is flagged rather than re-dispositioned, because closing an inventory entry is an operator decision
+- [ ] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above became D214/D215 and both landed with theirs; the `already-present` receipt arm platform slice 2 named landed at `b73b546`.** **PARTLY MET after §9.17**: the re-run's own defect — D215's `not-observed` subject verdict missing from the span WIRE leaf, which killed the worker on the first preview that ever settled — landed with its regression case at `e1ba81b`. **Two findings are NOT pinned and are named instead**: the retry checkpoint re-collision (§9.17 item 8, handed to doc 02 §5.7's owner — a `run`/`retry` mints a new run at attempt 1 / generation 1, so an `always-rerun` node re-collides with the original run's key and **a separations run that fails at or after `timecard-search` cannot be retried at all**), and the browser-profile wedge (§9.17 item 5 — three consecutive 60 s `sessionAcquireMs` failures on one worker profile while a fresh profile logged in in 17.9 s; recorded as a shape, not diagnosed to root cause)
 - [x] **§2.6 confirmed and ratified: D194 recorded in doc 01 §2.8, pointer in doc 04 round 48, `STORES.md` §1 updated** (2026-08-12) — every new read task this migration authors is authored under it
 
 ---
@@ -4161,3 +4161,317 @@ settlement would (commit `b73b546`).
 - **A blank-EID document**, unchanged from §9.14.
 - **The parity lane**, deliberately: another session held uncommitted dashboard edits in this shared
   working tree throughout, and the lane rebuilds the bundle from the tree.
+
+---
+
+### 9.17 Chunk 6c — the composed dry run reaches its preview terminal, and the real run on 4510 refuses before the gate (2026-08-14)
+
+The pass §9.16 handed forward, run against production on the restarted BFF (lock generation 26, pid
+`58211`, serving `contractFingerprint` **`9790eaf8…`** — the working tree's, which is the whole
+remedy §9.16 §5 named). Two parts: **(A)** the composed DRY run on doc **4502** driven start-plan →
+command → worker → gate → real approval → resume → **preview terminal**, and **(B)** the composed
+**REAL** (not-dry) run on the operator's canary doc **4510**, taken exactly as far as the composition
+would take it and no further.
+
+**Nothing was written, anywhere, by either part.** Asserted against the authority database rather
+than logs, after both parts finished: `write_intents` **2**, `write_attempts` **3**, `durable_outbox`
+**2** — every one of them 2026-08-04's Phase-2 controlled commit on Kuali doc **4489**
+(`kuali:4489|…|timekeeper-name|10001828|PROBE-DELETE-ME` parked, `…|PROBE-VERIFIED-0804` committed),
+newest row `2026-08-04T17:08:48.805Z` — and **zero** `run_checkpoints` for `clear-pending`,
+`file-termination` or `finalize-kuali` across every run this database has ever held. All three
+separations permanent keys are absent from authority. `Delete Selected Transactions`, `Save and
+Submit` and Kuali `Save` were never clicked; `submitDocumentV2` was never issued; the Smart HR
+wizard's `Continue` was never clicked. **No gate this session was approved on a not-dry run** — part
+B never reached its gate, and part A's approval authorized a preview.
+
+#### The honest status of doc 07 §3.1 step 4 for chunk 6, updated again
+
+| Asked for | Status |
+|---|---|
+| The composed dry run to its **preview terminal** through the REAL pipeline | **MET** — run `7565a88d` / `sp-105939-7565`, terminal `done` at `2026-08-14T18:05:17.874Z` |
+| `transaction.previewed`, the preview-bound terminal record, the receipt's live `DRY_RUN_PREVIEW` | **MET, all three** — and reaching them found a fourth defect (below) |
+| D215's `already-present` preview arm, LIVE | **MET** — the ordinary subject's arm, settled off a live probe, with zero durable rows |
+| The composed REAL run on 4510 | **MET as a REFUSAL** — `NO_ACTIVE_EMPLOYMENT` at `employment`, pre-gate, verbatim below. That is a result, not a blocker |
+| `probeToFenceMaxMs` off per-beat spans | **NOT MET — and it does not ride on the preview terminal after all.** See item 4 |
+| The D58 disposition sweep for separations | **MET with findings** — item 6 |
+
+#### 1. Part A, the run that closed it: `7565a88d` · `sp-105939-7565` · doc 4502 · `separations:4502#re-read-4`
+
+Five runs were needed and all five are recorded in §9.17a; this is the one that finished. Its read
+chain, warm Kuali and Kronos sessions, a FRESH UCPath profile (item 5):
+
+| Node | Wall |
+|---|---|
+| `document` | 6.44 s |
+| `plan` · `termination-type` | 0.01 s · 0.00 s |
+| `name-search` | **25.70 s** (includes the UCPath SSO + Duo session) |
+| `subject` | 0.00 s |
+| `job-summary` | 4.58 s |
+| `employment` · `department-option` | 0.00 s · 0.00 s |
+| `timecard-search` | 4.99 s (warm New Kronos session — the 30 s figure is a login, not a search) |
+| `timecard` | 8.93 s |
+| `dates` · `comparison` | 0.00 s · 0.01 s |
+| **claim → `gate.opened`** | **50.70 s** |
+
+The gate as the wire served it at the park (`GET /api/v1/runs/{runId}/identity-gate`):
+
+```
+gateId            identity-approval          parkedAt   2026-08-14T18:00:53.620Z
+resumeAt          approval                   expectedVersion 40
+resultSchemaHash  2165f585c743…              evidenceDigest  a43f789bb928…
+approvalShape     one-click                  approvableEids  [10001754]
+observedAt        2026-08-14T18:00:34.899Z
+```
+
+The packet is byte-for-byte the §9.14 shape on the same subject — four comparisons all `agrees`, the
+`single-active-job` grid, and D211's write plan inside it (`UC_INVOL_TERM` / `Appointment Expired` /
+empl record `0` / effective `04/01/2026` / LDW `03/31/2026`; department option
+`000412 - Housing/Dining/Hospitality`; reconciled dates unchanged with `unclassifiedPayCodes:
+["Farmworkers Day"]`). The **`evidenceDigest` moved** from §9.14's `157a8311…` to `a43f789b…`, which
+is D211 landing: the digest an approval binds to now covers the write plan, so a packet with the same
+identity and a different plan is a different approval.
+
+**The approval was taken through the real `/api/v1/commands`** (`resolve-gate`, one-click, command
+`6e01652a-7bb7-4681-8503-79a6e21158dc`, `2026-08-14T18:01:14.996Z`) and the run resumed —
+`timecard-search` re-ran twice across two claim generations at **29.70 s** and **29.65 s**, which
+agrees with §9.14's 30.4 s / 30.5 s to within a login's noise and confirms the §9.13 item 5 answer a
+third and fourth time.
+
+**D214 is live-proved.** The re-executions landed at `timecard-search#2.1` and `#3.1` — the span path
+now carries the claim generation — and `run_checkpoints` accepted all three executions of the node
+under one attempt. The collision that killed §9.14's run 6 one node past a real approval did not
+occur.
+
+**The preview terminal, verbatim.** `transaction.previewed` at `2026-08-14T18:05:17.871Z`, `node:
+clear-pending`, `subject: not-observed`, `externalCommit: none`. The terminal `run_results` row is a
+`dry-run-preview` bound to schema hash **`86cd007a59d4…`** — not the workflow's declared result — with
+
+```
+outcome  { state: "already-present", proofSource: "live-probe" }
+probe    ucpath-pending-terminations-clear · emplId 10001754
+         source "ss-smart-hr-detail-read" · scannedRowCount 2 · observedAt 18:05:13.593Z
+dependencies  [ approval ]  (the transaction node's own dependsOn — D210, not terminalDependsOn)
+              checkpoint attempt 2, claimGeneration 3
+externalCommit "none"
+```
+
+**This is D215's `already-present` arm proved live for the first time**, on the ORDINARY subject —
+one with no pending transaction — which is exactly the case §9.14 recorded the pre-D215 preview
+failing on. The preview REPORTED the settlement and performed none: zero write intent, zero fence,
+zero checkpoint, zero run transition.
+
+**The receipt.** `result: partial`, `confidence: unknown`, `output: []`, and one load-bearing warning:
+
+> `DRY_RUN_PREVIEW` — *"this run was a DRY RUN: transaction node "clear-pending" was previewed
+> (settled already-present at its present probe, before anything was staged, observed
+> 2026-08-14T18:05:17.871Z) and the run ended there. No external write was attempted — no write
+> intent, no fence, no commit — so this receipt states what WOULD have been written, never what was"*
+
+That is the `already-present` BRANCH of the summary — the branch platform slice 2 closed as a test
+gap (§9.16 item 6) and which had never executed against a live settlement. It names the probe and
+claims no subject, as designed. Verification: fourteen nodes `verified` including
+`node.identity-approval` (**D204 live for the third time** — the gate decision carries authority's own
+`resolvedBy` / `resolvedAt` / resolving command id and the bound `evidenceDigest`), the four
+write-half nodes `unknown`, and `completion.terminal-result` `unknown` — D210's shape exactly.
+
+#### 2. Part B, the canary: run `ee9824f7` · `sp-110837-ee98` · doc 4510 · **not dry** · REFUSED pre-gate
+
+The whole read chain ran live against production on warm sessions — `document` 6.05 s, `plan` 0.01 s,
+`termination-type` 0.00 s, `name-search` **7.06 s**, `subject` 0.00 s, `job-summary` 4.48 s — and then
+the composition refused, 17.6 s after claim, at `2026-08-14T18:09:05.534Z`:
+
+> **`NO_ACTIVE_EMPLOYMENT`** · node `employment` · task `workflow:separations/match-active-employment`
+> · `writeState: not-attempted` · failure `876ea288-fc45-40cf-ae4d-c473e0765537`
+>
+> *"[workflow:separations/match-active-employment] no-active-employment: Kuali document 4510: UCPath
+> shows no active employment for this person (#0 empl record 0 — Inactive). They may already be fully
+> separated (S21/S22) — legacy computes this only when the search happened to render a multi-row
+> grid, which is why a single-employment person who was already terminated was never checked at all.
+> There is no employment for this separation to end."*
+
+The `job-summary` checkpoint is the live evidence, read at `2026-08-14T18:09:01.050Z`: **one** row,
+`emplRecord 0`, `hrStatus Inactive`, `HOUSING/DINING/HOSPITALITY` / `000412`, `STDT 2` / `004921`,
+position `40767680`, effective `07/01/2026`, expected job end `09/20/2026`, FTE `0.440000`,
+`Student: Casual/Restricted`, `renderContext.employmentInstances: already-complete`.
+
+**This is the composition working, and it is the answer to the operator's premise.** The deletion of
+`T002209631` cleared a UCPath *transaction*; it did not change an *employment status*. §9.16 §2(b)
+predicted exactly this and §9.16 §4 stated the consequence in advance. **No gate opened, no human was
+asked, and no transaction node was entered** — which is D211's rule about where a refusal belongs
+("the composition files a termination, so a grid it cannot reduce to ONE row is a run that cannot
+compute what it is about to write, and it refuses before the gate opens") observed on a real not-dry
+run for the first time.
+
+**What the operator must do for 4510 to proceed.** UCPath must show an **ACTIVE terminable
+employment for EID 10001799**. That is operator territory and nothing in this repository can or
+should manufacture it: §9.16 §2(a) recorded that `T002197996` (TER, **Approved**) still exists, and an
+Approved termination is the reason the employment reads `Inactive`. Until that changes, the composed
+`separations` graph cannot reach any of its three writes on this subject — and the standalone
+`separations-kuali-finalization` graph remains the one place a Kuali controlled commit on doc 4510 is
+legal (§9.16 §4, unchanged).
+
+#### 3. The defect this pass found — D215's fourth subject verdict never reached the wire leaf
+
+The FIRST preview that ever settled **killed the worker**. `transaction.previewed` carries a subject
+verdict, and D215 added a fourth value, `not-observed`, for the `already-present` arm: no page was
+staged, so no subject was read, and reporting `match` for a comparison nobody made would be the
+fabrication the arm exists to prevent. That value landed in the kernel's union
+(`src/core/span-emitter.ts`, with a D215 comment explaining it) and **not** in
+`src/events/types.ts`, the leaf the JSONL writer parses — so the emit threw
+`Invalid option: expected one of "match"|"mismatch"|"unscoped"` and the worker process died one emit
+short of its terminal.
+
+Three things about it are worth keeping.
+
+**(1) The two schemas call each other parity twins in their own comments, and the test that exists to
+hold them together had no case for this arm.** `tests/unit/events/span-events.test.ts` opens by
+saying it "pins that restatement against the domain vocabulary byte-for-byte, so the two can never
+quietly fork" — and its executor-event round-trip list covered `run.claimed`, `run.requeued`, four
+`span.*` arms and `gate.opened`, with **no `transaction.previewed` event at all**. The arm nobody
+could reach was the arm nobody pinned.
+
+**(2) A fixture span emitter does not parse the wire schema, so the unit suite could not see it.**
+Every green gate in this tree ran with an in-memory emitter; only the JSONL writer validates. The fix
+walks all four verdicts through BOTH schemas in that same case.
+
+**(3) The kernel was correct throughout.** The crash happened after the preview had been computed and
+before anything was settled: zero intent, zero fence, zero checkpoint, the run left `claimed` and
+non-terminal. On the next worker boot **D200's lease-as-evidence self-sweep released it by name** —
+`"orphaned claim released before the first poll; its worker never settled"` — and the run resumed at
+claim generation 3 and finished. A defect in a span emitter cost a re-execution of one `always-rerun`
+node and nothing else.
+
+Fixed in `e1ba81b` (one enum value, one test case). No decision moved: doc 02 §2.1 had already
+ratified `not-observed`; this was an implementation that lagged its own ratification.
+
+#### 4. `probeToFenceMaxMs` — the expectation was wrong, and the correction matters
+
+§9.14 and §9.16 both recorded this measurement as riding on the preview terminal. **It does not.** A
+settled preview emits exactly ONE event, `transaction.previewed`, and no per-beat spans — and a
+preview has **no fence at all**, by construction. So reaching the preview terminal cannot produce a
+probe→fence interval, and the §9.16 line "it rides on the preview terminal" is withdrawn on the
+facts.
+
+What the preview DOES give is a whole-preview interval: the probe observed at `18:05:13.593Z` and the
+preview settled at `18:05:17.871Z` — **4.28 s** for the durable permanent-key lookup plus the live
+probe read plus the settlement, on a warm UCPath session. That is a bound on the read half and it is
+recorded as such; it is not `probeToFenceMaxMs`. §4f3's per-beat decomposition can only come from a
+**real fenced transaction**, or from a new instrument somebody decides to build, and it stays open
+with that reason instead of the wrong one.
+
+#### 5. The operational finding: a worker's browser profile can wedge a system, and only a live run says so
+
+Three consecutive runs failed at **exactly 60.01 s** on D125's `timeouts.sessionAcquireMs` bound —
+one at `clear-pending`, two at `name-search` — across a worker restart and a fresh worker process.
+The bound fired as designed and the message is the right one. The CAUSE was not UCPath: at
+`2026-08-14T17:52Z`, between the second and third failures,
+`scripts/live-browser-login-smoke.ts ucpath` completed **login + neutral reset in 17.9 s** through the
+full hop chain (`ucpath.ucsd.edu → ucphrprdpub → idpproxy-ucpath → a5.ucsd.edu → api-*.duosecurity.com`)
+with both authentication facts proved — on a **fresh** profile directory.
+
+The one controlled difference was the worker's own persistent profile,
+`.auth/hrauto-rebuild/separations-worker-1/ucpath-prod-9e62a0611bb3`. Its cookie jar showed the flow
+reaching Duo every time and never completing: **three** `frameless-session-binding-*` cookies at
+`api-ce13a1a7.duosecurity.com` expiring 18:05, 18:08 and 18:12 — one per failed attempt — with **no
+`PS_TOKEN`**. Deleting that one directory and restarting the worker restored the login on the very
+next run (`name-search` 25.70 s) and every UCPath read afterwards. The Kuali and New Kronos profiles
+were untouched and kept working throughout; the Duo WebAuthn credential lives in `.auth/` above the
+profile and was never in scope.
+
+**Recorded, not diagnosed to root cause.** What is proved is the shape: *a per-(worker, system,
+config) browser profile can reach a state where every acquisition burns the whole 60 s bound while the
+same system logs in fine on a fresh profile, and nothing in the runtime notices or reports it.* The
+honest remediation today is operator-level (delete the profile — it is a cache, not authority), and
+the interesting question for its owner is whether a repeated acquisition timeout on ONE (worker,
+system) pair should recycle the profile automatically, or at least SAY that it might be the cause.
+The current failure message names Duo hand-approval and `timeouts.duoApprovalSeconds`, which is a real
+cause and was not this one.
+
+#### 6. The D58 disposition sweep for separations
+
+Three inventory entries in `config/legacy-capabilities.json` are touched by this workflow, and all
+three are correctly dispositioned at the milestone the runtime is actually in
+(`phase-3-workflow-migration`), so the guard's D188 arm is satisfied and nothing here is stale:
+
+- **`legacy-workflow-separations`** — `open`. Correct and must stay so: the legacy workflow is
+  production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this
+  inventory authorizes deleting it.
+- **`legacy-tool-debug-kronos`** — `open`. The Kronos timecard isolation run still has no rebuild
+  counterpart; selector discovery and login smoke do. Unchanged by this chunk.
+- **`legacy-tool-ops-sanity-check-record`** — `open`, deferred by **D192** to this migration with a
+  named condition: *"its value arrives with separations/onboarding … where it renders as prose
+  observations beside the doc 09 §14 ALWAYS-GATE identity approval, never a pass/fail verdict chip
+  that could be mistaken for authority."* **That condition is now materially satisfied by something
+  that shipped**: the §14.2 packet's `comparisons` array is exactly that — four prose observations
+  (`note` per field) beside the approval, with no verdict chip — and this pass served it live twice.
+  It is flagged rather than re-dispositioned here, because closing an inventory entry is an operator
+  decision and `AdvisorySurfaceIdSchema`'s D178 two-value shape has not been widened.
+
+#### 7. Two surface observations, both recorded rather than fixed
+
+**(a) A settled gated run's panel cannot say its gate was approved.** `run-detail.ts` maps a resolved
+gate to a wire resolution only when `resolutionKey` is literally `approved` or `rejected`, and the
+command service emits `resolutionKey: "resolved"` for every gate — deliberately, with a comment
+naming the deferral (*"Until gate descriptors declare display keys (2h Review), the one honest key is
+the fact of resolution itself"*). So the approve/reject arm is **structurally unreachable** and every
+settled separations run's panel reports `gate: { state: "absent", reason: "gate identity-approval
+resolved with key resolved, which is not an approve/reject verdict" }` — a sentence that reads like a
+data problem and is a vocabulary deferral. The receipt carries the truth (D204). Owner: doc 12 / doc
+13, with doc 02's gate display keys.
+
+**(b) A preview run's outcome chip reads `verified-done`.** `run-detail` maps lifecycle `done` →
+`verified-done` mechanically, while the receipt for the same run says `partial` / `unknown` with a
+load-bearing `DRY_RUN_PREVIEW`. This is D210's own named carry-forward (*"the queue row and the
+timeline have no arm for a preview … Surfacing it on the queue row is a wire + UI change, and it is
+named here rather than left silent"*), now observed on a real settled preview rather than reasoned
+about.
+
+#### 8. The platform defect this pass found and did NOT fix: a RETRY re-collides on the same node
+
+D214 keys a checkpoint by `(workflow, itemId, nodeId, attempt, claimGeneration)` and that closed the
+gate-park/resume collision. A **retry** re-opens it from the other side. `run` / `retry` mints a NEW
+run for the SAME logical item, born at attempt 1 and claim generation 1 — so an `always-rerun` node
+re-executes against the ORIGINAL run's attempt-1/generation-1 key. Live, verbatim, run `555ba4b4`
+retrying `12a5cd3e`:
+
+> `run checkpoint separations\0c9837287-f3c5-5697-89f4-73e727fbfe04\0timecard-search\0 1 \0 1 already
+> exists with different content`
+
+It failed in **1.89 s**, having replayed the whole read chain from the first run's checkpoints. The
+consequence is operational and general: **a separations run that fails at or after `timecard-search`
+cannot be retried at all** — every retry dies on the first `always-rerun` node — and the only way
+forward is the re-read affordance, which mints a new logical item and re-reads everything. That is
+what this pass used (`#re-read-2`, `#re-read-3`, `#re-read-4`).
+
+It is named and handed to doc 02 §5.7's owner rather than fixed here, on §9.14's own reasoning:
+inventing replay semantics inside a live-proof slice is not this slice's job, and the candidate
+answers (a per-ITEM execution ordinal; a generation that does not reset across `retryOf`; an
+always-rerun node that writes no row) each have consequences for D110/D114 terminal dependencies and
+D115 provenance that belong to the doc that owns them.
+
+#### 9.17a The attempt record — five runs for part A, one for part B, verbatim
+
+| # | Run / trace | Item | Outcome |
+|---|---|---|---|
+| 1 | `12a5cd3e` · `sp-104736-12a5` | `separations:4502` (dry) | whole chain **done** in 98.0 s claim→gate; packet served, **approved live** 17:49; resumed (`timecard-search#2.1` 30.06 s); **failed** at `clear-pending` on D125's 60 s `sessionAcquireMs` bound. `writeState: not-attempted` |
+| 2 | `555ba4b4` · `sp-105221-555b` | retry of #1, same item | **failed** in 1.89 s at `timecard-search` — the retry checkpoint collision, item 8 above |
+| 3 | `2aa16dd0` · `sp-105328-2aa1` | `…#re-read-2` (dry) | **failed** at `name-search`, 60.01 s, same bound |
+| 4 | `1d84b8b2` · `sp-105715-1d84` | `…#re-read-3` (dry) | **failed** at `name-search`, 60.01 s, same bound, on a freshly restarted worker with no other browser running. The UCPath smoke passed on a fresh profile in 17.9 s in the same window → item 5 |
+| 5 | `7565a88d` · `sp-105939-7565` | `…#re-read-4` (dry) | **the run that closed it.** Chain done, claim→gate **50.70 s**, approved live 18:01:14.996Z, resumed twice across the span-writer crash, **terminal `done`** 18:05:17.874Z with the preview record and receipt of item 1 |
+| B | `ee9824f7` · `sp-110837-ee98` | `separations:4510` (**not dry**) | **failed** in 17.6 s at `employment` — `NO_ACTIVE_EMPLOYMENT`, pre-gate, item 2. Zero writes, no gate opened |
+
+#### What is honestly NOT RUN
+
+- **Every real write, of every kind**, and all three controlled commits. The composed graph has still
+  never entered a transaction node's commit arm on any subject.
+- **`probeToFenceMaxMs`'s per-beat decomposition** — item 4, now open for the RIGHT reason.
+- **The `would-prepare` preview arm live.** Only the `already-present` arm has ever settled live,
+  because the only mapped subject with a pending transaction (10001799) is the one the composition
+  refuses pre-gate. A subject with BOTH an active job and a pending row still has not been observed
+  (§9.14's jointly-unsatisfiable pair, unchanged).
+- **D207's provisional `stabilized` window**, the seven unasserted Kuali wire shapes (including the
+  two dates' epoch-millisecond shapes), and the finalization's own `already-present` arm — all
+  reachable only from a real finalization.
+- **A blank-EID document**, unchanged from §9.14.
+- **The parity lane**, unchanged from §9.16: no dashboard bytes moved in this pass.
+- **The retry path**, item 8 — known-broken for this graph and not exercised further.
