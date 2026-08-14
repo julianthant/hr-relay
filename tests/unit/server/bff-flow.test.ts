@@ -81,6 +81,8 @@ function harness(): Harness {
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
+      latestCheckpoint: (workflowId: string, itemId: string, nodeId: string) =>
+        database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
     descriptors,
     projectionStore: database,

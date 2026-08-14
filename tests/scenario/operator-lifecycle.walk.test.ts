@@ -220,6 +220,8 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
       isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
+      latestCheckpoint: (workflowId, itemId, nodeId) =>
+        database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
     descriptors: descriptorResolver,
     projectionStore: database,

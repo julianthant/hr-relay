@@ -87,6 +87,7 @@ function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): un
       ? { state: "present", value: NOW }
       : { state: "absent", reason: `run is ${status} and is not waiting on a gate` },
     title: "A run",
+    displayName: { state: "absent", reason: "the operator has not renamed this run" },
     subtitle: { state: "absent", reason: "none planned" },
     status,
     liveMessage: { state: "absent", reason: "no message" },

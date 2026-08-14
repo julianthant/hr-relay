@@ -98,6 +98,7 @@ const ARCHIVED_ROW = {
   endedAt: { state: "present", value: NOW },
   gateOpenedAt: { state: "absent", reason: "run is done and is not waiting on a gate" },
   title: "EID 10873698",
+  displayName: { state: "absent", reason: "the operator has not renamed this run" },
   subtitle: { state: "absent", reason: "the start plan proposed no subtitle" },
   status: "done",
   liveMessage: { state: "absent", reason: "an archived run has no live message" },

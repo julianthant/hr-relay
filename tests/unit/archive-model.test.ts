@@ -140,6 +140,7 @@ function snapshotSource(world: { database: AuthorityDatabase }) {
           updatedAt: NOW,
           endedAt: { state: "present", value: NOW },
           gateOpenedAt: { state: "absent", reason: "an archived run is not waiting on a gate" },
+          displayName: { state: "absent", reason: "the operator has not renamed this run" },
           title: `EID ${run.envelope.itemId.slice(0, 8)}`,
           subtitle: { state: "absent", reason: "the start plan proposed no subtitle" },
           status,

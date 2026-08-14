@@ -41,6 +41,7 @@ function surface(input: Record<string, unknown>) {
     updatedAt: NOW,
     endedAt: { state: "absent", reason: "run has not ended" },
     gateOpenedAt: { state: "absent", reason: "no gate has opened on this run" },
+    displayName: { state: "absent", reason: "the operator has not renamed this run" },
     title: "A run",
     subtitle: { state: "absent", reason: "no second identifier" },
     liveMessage: { state: "absent", reason: "no message" },

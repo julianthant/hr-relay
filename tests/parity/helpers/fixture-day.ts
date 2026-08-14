@@ -181,6 +181,9 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
       : { state: "absent", reason: `run is ${input.status} and has not ended` },
     gateOpenedAt,
     title: input.title,
+    // The fixture corpus renames nothing, so every reference row draws the
+    // server-derived title — which is what the demo's un-renamed rows draw too.
+    displayName: { state: "absent", reason: "the operator has not renamed this run" },
     subtitle,
     status: input.status,
     liveMessage,

@@ -41,6 +41,7 @@ const QUEUE = {
   updatedAt: NOW,
   endedAt: { state: "absent", reason: "run is running" },
   gateOpenedAt: { state: "absent", reason: "run is running and is not waiting on a gate" },
+  displayName: { state: "absent", reason: "the operator has not renamed this run" },
   title: "Onboard employee",
   subtitle: { state: "present", value: "EID ••••1234" },
   status: "running",

@@ -261,6 +261,8 @@ export interface SeedRunInput {
   readonly injected?: unknown;
   /** D6: the rehearsal flag, whose one home is the envelope. */
   readonly dryRun?: boolean;
+  /** The operator's own name for the run — the `rename` command's durable field. */
+  readonly displayName?: string;
 }
 
 export function runRecordOf(input: SeedRunInput): RunRecord {
@@ -293,6 +295,7 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
     input: { raw: { emplId: "10873698" }, parsed: { schemaHash: HASH_B, value: { emplId: "10873698" } }, ingressSchemaHash: HASH_A },
     lifecycle: input.lifecycle ?? { state: "queued" },
     claimGeneration: input.claimGeneration ?? 0,
+    ...(input.displayName === undefined ? {} : { displayName: input.displayName }),
     hidden: input.hidden ?? false,
     version: input.version ?? 1,
     createdAt: enqueuedAt,
