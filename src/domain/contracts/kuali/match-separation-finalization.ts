@@ -71,7 +71,11 @@ export const KualiMatchSeparationFinalization = defineTaskContract({
   effect: "read",
   input: KualiFinalizationTargetSchema,
   output: KualiFinalizationVerdictSchema,
-  errorCodes: ["kuali-unavailable", "unexpected-page-state", "subject-mismatch"],
+  // Only codes this task PRODUCES: `subject-mismatch` when the reloaded
+  // document displays another person, `unexpected-page-state` when it is
+  // another document. A driver throw is already `unknown` by then, and a
+  // declared code with no producer is a dead union member.
+  errorCodes: ["unexpected-page-state", "subject-mismatch"],
   subject: {
     kind: "person",
     expected: { fromInput: ContractFieldPathSchema.parse("emplId"), identity: "eid" },
