@@ -9,26 +9,43 @@
 - dialog "Start a run":
   - banner:
     - heading "Start a run" [level=2]
-    - paragraph: It declares what it takes, and the plan says exactly what will exist before anything is enqueued.
+    - paragraph: Pick what to run. It declares what it takes, and the plan says exactly what will exist before anything is enqueued.
     - button "Close"
+  - text: Filter workflows
+  - textbox "Filter workflows":
+    - /placeholder: Filter
+  - navigation "Workflow":
+    - text: Search
+    - button "Person Lookup"
+  - button "0 not startable"
   - navigation "Start stages — step 1 of 3":
     - button "1 Input"
     - button "2 Plan" [disabled]
     - button "3 Result" [disabled]
-  - text: Workflow
+  - text: Workflow setup
   - heading "Person Lookup" [level=3]
-  - text: Entries — separated by “;” or a new line 0 parsed
+  - text: group Search Entries — separated by “;” or a new line 0 parsed
   - textbox "Entries — separated by “;” or a new line":
     - /placeholder: Enter EIDs or names, semicolon-separated (e.g. 10873698; Battistessa, Johnnie)
   - text: How this run is shaped keepNonHdh no includeCrmDates no
   - complementary "Run controls":
+    - text: Shared settings
+    - heading "Run controls" [level=3]
+    - paragraph: These options work the same way for every workflow.
+    - heading "Queue behavior" [level=4]
+    - paragraph: Choose how this work enters the browser queue.
     - text: Priority
     - combobox "Priority":
       - option "Interactive" [selected]
       - option "Bulk"
     - paragraph: Bulk work yields whenever interactive work needs the browser.
+    - heading "Safety & mode" [level=4]
+    - paragraph: Apply optional limits before the run starts.
     - checkbox "Dry run not declared by this workflow" [disabled]
-    - text: Dry run not declared by this workflow Destination UCPATH
+    - text: Dry run not declared by this workflow
+    - heading "Destination" [level=4]
+    - paragraph: Confirm the systems this run is allowed to write to.
+    - text: UCPATH
     - combobox "UCPATH":
       - option "Production" [selected]
       - option "Test instance"
@@ -38,6 +55,6 @@
       - option "Test instance — not wired" [disabled]
     - paragraph: no CRM test instance is configured
   - contentinfo:
-    - text: Person LookupType at least one entry.
+    - text: Person LookupType at least one value.
     - button "Cancel"
     - button "Plan the run" [disabled]
