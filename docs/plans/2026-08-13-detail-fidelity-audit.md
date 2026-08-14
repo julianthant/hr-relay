@@ -44,8 +44,8 @@ serve and where it plugs in — see "Wire-hookup ledger" below.
 |---|--------|-------------|----------------|--------|
 | R1 | Top bar — every glyph, spacing, date-nav pill, notification cluster, tabs, search | `DemoShell.tsx` (top-bar half) + `DemoTopBarSurfaces.tsx` | `surfaces/top-bar.tsx` | [x] |
 | R2 | Workflow panel — ALL THREE modes (floating/icon/sidebar): header row, mode toggles, category labels, count alignment, the ACTIVE\|ALL row (no window footer — audit confirmed the demo has none) | `DemoShell.tsx` :160-235 + :636-1180, `RebuildDemo.tsx` (mount + keyboard), `demo-wire.ts` | `surfaces/shell.tsx` :106-600 + `app/dashboard-app.tsx` (NOT `use-panel-sections.ts` — that is log-panel plumbing) | [x] |
-| R3 | Queue rows — chips, footers, member wells, section bands NEEDS YOU / ACTIVE / QUEUED / FINISHED TODAY | `DemoQueue.tsx` | `surfaces/queue.tsx` (toolbar needs no R3 edit — bulk parts are R8's) | [a] |
-| R4 | Status pills band (band itself lives in `DemoShell.tsx:1183-1364` → `shell.tsx:602-795`; `demo-status.tsx` is the vocabulary adapter) | `demo-status.tsx` + `DemoShell.tsx` | `surfaces/status.tsx` + `shell.tsx:602-795` | [a] |
+| R3 | Queue rows — chips, footers, member wells, section bands NEEDS YOU / ACTIVE / QUEUED / FINISHED TODAY | `DemoQueue.tsx` | `surfaces/queue.tsx` (toolbar needs no R3 edit — bulk parts are R8's) | [x] |
+| R4 | Status pills band (band itself lives in `DemoShell.tsx:1183-1364` → `shell.tsx:602-795`; `demo-status.tsx` is the vocabulary adapter) | `demo-status.tsx` + `DemoShell.tsx` | `surfaces/status.tsx` + `shell.tsx:602-795` | [x] |
 | R5 | Run-detail header row (log panel header) | `DemoLogPanel.tsx` (header region) | `surfaces/log-panel.tsx` | [a] |
 | R6 | Context rail rows — observation clock, badges, row anatomy | `DemoContextRail.tsx` | `surfaces/context-rail.tsx` (+ rail mount in `log-panel.tsx`) | [a] |
 | R7 | Session footer | `DemoShell.tsx:1366-1958` + `demo-workers-wire.ts` | `surfaces/shell.tsx:797-1068` | [a] |
@@ -404,6 +404,68 @@ the R3 commit. The batched wire change (finding-order 4) is ONE `QueueBaseFields
 change → single ledger row below; its consuming UI ports ride the same commit when the wire lands.
 23/24 stay deferred with named triggers.
 
+**R3 AS-BUILT (2026-08-14, commit `b70ef3d`).** Every decided item landed: pure-ports 1, 7, 13, 18b,
+19, 21, 22; served-additions 2, 3, 4, 5, 6 (partial), 9, 10 (third arm), 16 (partial); housekeeping
+23. Finding 8 is deliberately absent — the keys join the ONE consolidated keydown commit, and
+`visibleRunIds` stays as its consumer (it is now also the seam finding 13's member rank is tested
+through). Everything touched `src/dashboard/**`; **no `src/domain/**` edit and no `build:manifest`**,
+per the dispatch constraint (the generated manifest is dirty with the other session's ucpath work).
+
+*Deviations, each with its cause.*
+
+- **`dayLabel` MOVED rather than shared in place.** It lived in `top-bar.tsx`, and `top-bar.tsx`
+  already imports `queue.tsx` for a type — importing back would have been a cycle for a four-line
+  date formatter. It is now in `surfaces/format.ts` (with `dayLabelWithToday`), which is where the
+  other display-only formatters already are, and both surfaces read the one copy.
+- **`filterLabel: string` became `filter?: QueueFilterScope`.** Three arms (all / needsYou / a status
+  word) cannot be expressed by one optional string, and the previous prop was being fed
+  `String(filter)` — the raw wire enum — which is the defect finding 3 names. The composition owns
+  the mapping so the empty state and the pill the operator clicked cannot disagree.
+- **`dayLabel: string` prop became `day: string` + `isToday: boolean`.** The prop held an ISO day
+  while its name said label; formatting moved inside, and `isToday` is finding 5's input.
+- **The `doneWarnings` filter's empty state says "are done".** That is the demo verbatim
+  (`PROPOSED_STATUS[filter].label.toLowerCase()` over a visible word both terminal dones share), so
+  the port is faithful; the D22 separation lives on the pill's own accessible name, not here. Named
+  rather than silently "improved".
+- **f.22 binds by descriptor `key`, not `command`.** `ActionCommandKeySchema` has no `cancel-tree`
+  verb — the kernel accepts `cancel` — and binding the group sentence to that would put "its
+  delegated review and every member" on a single run's ✕. `key` is the stable per-row identifier the
+  action projection will name this control by. Inert until it serves one.
+- **f.21 tints on the served status alone.** The demo also requires `containment !== "rejected"`;
+  containment is not on this wire (ledger), and status-only is a strictly wider set that cannot
+  mis-tint a member the server called failed.
+- **f.9 suppresses the `Name`/`Detail` column heads at zero members.** The rollup band and the
+  "0 of N members loaded" line are what the finding asks for; a labelled column head over an empty
+  region reads as a failed render, which is R6 f.18's argument one surface across.
+- **f.10 lands ONE of the demo's three warning arms.** The authored `warnings` count and the group
+  member-rollup count both need a counted field this wire does not carry; inventing either would be
+  a number about a real HR run that nothing produced. Ledger.
+- **f.6 lands ONE chip of the demo's redirect band.** `ParentBackChip` only; fact chips, the linked
+  review pointer and the extracted-people count are the `QueueBaseFields` batch. The lookup runs
+  over the whole day's surfaces rather than the panel's scoped list, because a cross-workflow parent
+  is exactly the case a scoped lookup misses, and `onOpenParent` moves the panel before selecting.
+- **f.16 titles the ⓘ with the PANEL kind's name** (`Run Panel` / `Group Panel` / …). The demo titles
+  it with the row VARIANT name, which needs the naming layer that stays a wire gap; the panel kind is
+  served, so the title is derived rather than invented.
+
+*Gates.* `typecheck` clean, `lint` clean over the whole tree, `vitest --project unit` 1680/1680 and
+`test:architecture` 451/451 green. Two new unit files: `queue-ordering.test.ts` (the `attention`
+comparator over a deliberately reverse-ranked input, its newest-first tiebreak, a named order NOT
+being re-ranked, the member rank and its served-order tiebreak) and R4's `status-band-scope.test.ts`.
+No `test:parity` run — wave-end re-freeze, as planned.
+
+*Image verification (1440×900, headless, demo :5173 vs rebuild :5174, read as images), and its
+LIMIT.* The rebuild's live day (`2026-08-14`) is empty, so what an empty day can show was verified
+live and does: the empty state reads **"No Person Lookup runs on Fri, Aug 14"** (it printed the raw
+ISO partition before), **"No Person Lookup runs need your attention"** under the `Needs you` scope,
+and **"No Person Lookup runs are done"** under a status pill — the demo's own three arms. No console
+errors. The POPULATED arms — the digest strip, the `△` chip, the band-header narrowing, the ranks,
+the member well — were read on the DEMO in the same pass (its finished band renders exactly the
+dashed `Today: 3 verified 1 failed` strip this commit ports, with the zero arms correctly absent) and
+are byte-ports of the demo's own conditionals; on the rebuild they are pinned by the new unit tests
+rather than photographed, because the populated corpus is the parity fixture bundle and re-freezing
+it is the orchestrator's wave-end step. Stated as a limit, not glossed.
+
 ### R4 — Status pills band (audited 2026-08-14; band is byte-equivalent to the demo — every defect is in the DATA reaching it)
 
 Oracle: `demo-status.tsx` (vocabulary adapter) + `DemoShell.tsx:1183-1364` (the band). Rebuild:
@@ -428,6 +490,36 @@ Oracle: `demo-status.tsx` (vocabulary adapter) + `DemoShell.tsx:1183-1364` (the 
 change (`WorkflowCountWireSchema` grows the full per-status shape, not just queued/running) serves
 R2's ACTIVE│ALL column, R4's band scoping, AND R7-5's per-card `queued` chip. R4's re-point + R4-2
 then ride as served-additions. The R2 fix dispatch carries this widened shape.
+
+**R4 AS-BUILT (2026-08-14, commit `b7f79b0`).** Both items landed as decided, and the whole change
+is three files under `src/dashboard/**` — R2 had already served the shape, so there was no wire work
+and no `build:manifest` (the generated manifest is dirty with the other session's ucpath work).
+
+*R4-1 is a RE-POINT.* `dashboard-app.tsx` derives `scopedStatusCounts` with R2's
+`workflowStatusCounts(dayWire.workflowCounts, activeWorkflowId)` and hands it to `StatusFilters`.
+Nothing folds `queueSurfaces` — `shell.tsx:1-17` refuses that by name and D81 is why. `dayCount` is
+untouched and still feeds the panel launcher, which the audit's coupling note says is deliberately a
+different quantity (day-wide across workflows); its prop simply LEAVES `StatusFilters`, which no
+longer needs a second scope. The ported title "Every row in this view" is true again, and it matches
+the demo's string byte for byte.
+
+*R4-2 folds the same array.* New `totalCount(counts)` in `shell.tsx` sums the scoped entries, so
+`All` is closed under addition with the eight pills beside it — which is how the demo has it
+(`countRows(scopedRows)` feeds `counts.all` AND every pill). The projection already refines that a
+workflow entry's per-status counts sum to its `count`, so the fold cannot disagree with the server's
+own total. R4-3/4/5/6 stay no-ops as audited.
+
+*Gates.* `typecheck` clean, `lint` clean over the whole tree, `vitest --project unit` 1674/1674 at
+the time of the commit. `tests/unit/dashboard/status-band-scope.test.ts` pins the scope selector, the
+unserved-workflow zero arm (an absent entry IS zero, and every pill must still draw), and the
+composites' closure under addition — over schema-parsed fixtures, so the fixture cannot drift from
+what the server may serve.
+
+*Image verification (1440×900, headless, rebuild :5174, read as an image).* The band renders
+`All 0 · Needs you 0` and eight zero pills scoped to Person Lookup, with no console error. LIMIT,
+stated: the live day is empty, so only the zero arm was photographed; the non-zero arms are untouched
+byte-identical markup and the SCOPING itself is what the unit test pins. Parity references deferred
+to the wave-end re-freeze.
 
 ### R7 — Session footer (audited 2026-08-14; 41 elements: 17 match, 5 divergent, 19 missing, 3 extras; findings R7-1..14)
 
