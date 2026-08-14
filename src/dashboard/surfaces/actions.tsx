@@ -154,6 +154,26 @@ const INTENT_TONE: Record<ActionIntent, "destructive" | "warning" | "primary" | 
 // Footer — the queue row's own controls
 // ---------------------------------------------------------------------------
 
+/**
+ * D16's no-undo sentence, on the group cancel's own ✕ (R3 finding 22).
+ *
+ * Ported verbatim from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+ * `DemoActions.tsx:171-174`. D16 keeps group cancel exempt from a confirm
+ * dialog by construction — the descriptor carries no `confirm` — so this title
+ * is the ONLY place an operator is told what the ✕ takes with it, which is
+ * exactly why losing it mattered.
+ *
+ * BOUND BY `key`, NOT BY `command`, and that is a deviation with a cause: the
+ * demo tests `a.command === "cancel-tree"`, and this repository's
+ * `ActionCommandKeySchema` has no such verb — the kernel accepts `cancel`, and
+ * binding to that would put a sentence about "every member" on a single run's
+ * cancel. `key` is the descriptor's stable per-row identifier, so the action
+ * projection names this control by naming this key. Inert until it serves one.
+ */
+const CANCEL_TREE_KEY = "cancel-tree";
+const CANCEL_TREE_TITLE =
+  "Cancels this group, its delegated review and every member. Final — there is no undo.";
+
 export function FooterActions({
   actions,
   target,
@@ -168,7 +188,8 @@ export function FooterActions({
   // The `Cancel group` caption beside the ✕ is GONE. An icon that already means
   // cancel, captioned "cancel", is the same word twice — and it was the only
   // label in the footer's action cluster, so it made one row's buttons a
-  // different shape from every other row's.
+  // different shape from every other row's. D16's warning did not live in that
+  // caption: it is the ✕'s own `title` below.
   return (
     <span className="flex items-center gap-[var(--ds-space-hair)]">
       {footer.map((a) => (
@@ -177,7 +198,13 @@ export function FooterActions({
           tone={INTENT_TONE[a.intent]}
           icon={ICONS[a.icon ?? "external"]}
           label={a.label}
-          title={a.kind === "command" && a.confirm ? `${a.label} — asks first` : a.label}
+          title={
+            a.key === CANCEL_TREE_KEY
+              ? CANCEL_TREE_TITLE
+              : a.kind === "command" && a.confirm
+                ? `${a.label} — asks first`
+                : a.label
+          }
           onClick={(e) => {
             e.stopPropagation();
             onAction(a, target);

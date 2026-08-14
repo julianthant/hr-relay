@@ -30,7 +30,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import type { z } from "zod";
-import { ArrowRight, ChevronDown, ChevronUp, FileText, Info } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Info } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
   IconButton,
@@ -57,12 +57,13 @@ import {
   RowContextMenu,
   type DashboardActionHandler,
 } from "./actions.js";
-import { fmtClock, plural, runTiming } from "./format.js";
+import { dayLabel, fmtClock, plural, runTiming } from "./format.js";
 import {
   PROPOSED_STATUS,
   StatusBadge,
   dsStatusOf,
   statusAccessibleName,
+  statusText,
   type ProposedStatus,
 } from "./status.js";
 
@@ -115,7 +116,23 @@ export interface QueueHandlers {
   onOpenRoster?: (runId: string) => void;
   /** add/remove a row from the bulk target set */
   onToggleBulk?: (runId: string) => void;
+  /**
+   * Jump to the run that delegated this one — the panel switch AND the
+   * selection, because a parent can belong to another workflow and selecting it
+   * without moving the panel would open a run the queue beside it cannot show.
+   */
+  onOpenParent?: (runId: string) => void;
 }
+
+/**
+ * What a row needs to draw a route back to its parent: the parent's own
+ * identity and status, resolved from the SERVED day projection. It answers
+ * `undefined` for a parent the day does not hold (another day, or paged out),
+ * and the chip is then not drawn — never a chip whose label was guessed.
+ */
+export type QueueParentLookup = (
+  parentRunId: string,
+) => { runId: string; title: string; workflowLabel: string; status: ProposedStatus } | undefined;
 
 /** How a surface reaches its served actions. The default is honest emptiness. */
 export type QueueActionsOf = (surface: QueueSurfaceWire) => readonly ActionDescriptorWire[];
@@ -130,7 +147,8 @@ const BAND_LABEL: Record<QueueBandKey, string> = {
   attention: "Needs you",
   active: "Active",
   queued: "Queued",
-  finished: "Finished",
+  /** narrowed to `Finished` off today's partition — see `isToday` below */
+  finished: "Finished today",
 };
 
 /**
@@ -153,26 +171,47 @@ const BAND_ORDER: QueueBandKey[] = ["attention", "active", "queued", "finished"]
 
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * `demo-data.ts` `DEMO_SORTS` / `sortDemoRows`.
+ * `demo-data.ts` `DEMO_SORTS` / `sortDemoRows` / `SORT_STATUS_RANK`.
  *
- * THE DEFAULT REORDERS NOTHING. `attention` is the projection's own order,
- * rendered verbatim — the bands are already attention-first and the server
- * already ordered inside them, so the honest default is to pass the array
- * through untouched rather than re-derive the same answer client-side.
+ * All four are PRESENTATIONS the operator asked for by name, and the control on
+ * the toolbar is what makes the reorder visible. They reorder WITHIN a band and
+ * never across one: a band is what a run's status means, and no sort may move a
+ * row out of the group that says a human is blocking.
  *
- * The other three are PRESENTATIONS the operator asked for by name, and the
- * control on the toolbar is what makes the reorder visible. They reorder WITHIN
- * a band and never across one: a band is what a run's status means, and no
- * sort may move a row out of the group that says a human is blocking.
+ * `attention` used to pass the array straight through with a note claiming it
+ * ordered "what needs you, then what broke, then the rest" — a sentence about
+ * an order the server does not produce, on the control that is the default
+ * (R3 finding 1). It now ranks by status the way the demo does, newest first
+ * inside a rank. That is presentation over a served enum, not a second opinion
+ * about what a run IS: no row changes band, no count moves.
  */
 export type QueueSortKey = "attention" | "newest" | "oldest" | "longest";
 
 export const QUEUE_SORTS: readonly { key: QueueSortKey; label: string; note: string }[] = [
-  { key: "attention", label: "Attention first", note: "The projection's own order — what needs you, then what broke, then the rest." },
+  { key: "attention", label: "Attention first", note: "What needs you, then what broke, then everything else — the default." },
   { key: "newest", label: "Newest first", note: "Most recently started at the top of each band." },
   { key: "oldest", label: "Oldest first", note: "The rows that have been sitting the longest, first in each band." },
   { key: "longest", label: "Longest running", note: "Biggest elapsed or recorded duration first — where the time is going." },
 ];
+
+/**
+ * The `attention` order, copied VALUE FOR VALUE from the demo's
+ * `SORT_STATUS_RANK` (`demo-data.ts:4259-4268`).
+ *
+ * It is not the band order and must not be re-derived from it: `failed` sorts
+ * second here while its band is `finished`, which is the whole point — inside
+ * the finished band a failure comes before a clean done.
+ */
+const SORT_STATUS_RANK: Record<ProposedStatus, number> = {
+  waiting: 0,
+  failed: 1,
+  parked: 2,
+  running: 3,
+  queued: 4,
+  doneWarnings: 5,
+  verifiedDone: 6,
+  cancelled: 7,
+};
 
 /**
  * How long a row has been working: recorded when it ended, live while it runs.
@@ -192,12 +231,15 @@ export function sortQueueBand(
   key: QueueSortKey,
   nowIso: string,
 ): readonly QueueSurfaceWire[] {
-  if (key === "attention") return rows;
   const born = (surface: QueueSurfaceWire): number => Date.parse(surface.startedAt);
+  const rank = (surface: QueueSurfaceWire): number => SORT_STATUS_RANK[dsStatusOf(surface.status)];
   return [...rows].sort((a, b) => {
     if (key === "newest") return born(b) - born(a);
     if (key === "oldest") return born(a) - born(b);
-    return elapsedMs(b, nowIso) - elapsedMs(a, nowIso);
+    if (key === "longest") return elapsedMs(b, nowIso) - elapsedMs(a, nowIso);
+    // `attention` — rank, then newest first inside a rank, exactly as the demo
+    // composes it (`rank(a) - rank(b) || born(b) - born(a)`).
+    return rank(a) - rank(b) || born(b) - born(a);
   });
 }
 
@@ -241,11 +283,12 @@ function MicroSteps({ pipeline }: { pipeline: QueueSurfaceWire["pipeline"] }) {
  * chooses — six hand-rolled copies of this span is how a queue ends up with six
  * chip heights on one line.
  */
-type RowChipTone = "neutral" | "info";
+type RowChipTone = "neutral" | "info" | "warning";
 
 const ROW_CHIP_TONE: Record<RowChipTone, string> = {
   neutral: "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-recess-fg-quiet)]",
   info: "border-[color:var(--ds-info-border)] bg-[var(--ds-info-bg)] text-[color:var(--ds-info-fg)]",
+  warning: "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] text-[color:var(--ds-status-waiting-fg)]",
 };
 
 const rowChip = (tone: RowChipTone, extra?: string): string =>
@@ -282,6 +325,33 @@ function HeaderChips({ surface, status }: { surface: QueueSurfaceWire; status: P
           test
         </span>
       )}
+      {/*
+        △ N — the warning count, beside the status pill.
+
+        Operator, quoted in the demo: *"if there is warning add the triangle
+        with the n number of warnings."* It is also what breaks the D22 hue-only
+        collision on screen: `verifiedDone` and `doneWarnings` both draw the
+        word `Done`, and the triangle is the non-colour half of telling them
+        apart.
+
+        ONE of the demo's three arms is derivable from what this wire serves:
+        a row the server settled as `partial` (→ `doneWarnings`) finished with
+        at least one warning, so the chip says `1` and titles itself from the
+        run's own served sentence. The demo's other two arms — an authored
+        `warnings` count, and a group's rolled-up member warnings — need a
+        counted field this wire does not carry, and a count invented here would
+        be a number about a real HR run that nothing produced (R3 finding 10;
+        `QueueBaseFields.warnings` is on the wire-hookup ledger).
+      */}
+      {status === "doneWarnings" && (
+        <span
+          title={surface.liveMessage.state === "present" ? surface.liveMessage.value : "Finished with warnings"}
+          className={rowChip("warning")}
+        >
+          <AlertTriangle aria-hidden className={dsIcon.sm} />
+          1
+        </span>
+      )}
       {/* Progress dots then the status pill — both on the TITLE row's right
           edge. The dots sit in the same `--ds-h-xs` box as the badge so they
           centre on the name rather than hugging the top of the chip line. */}
@@ -292,15 +362,52 @@ function HeaderChips({ surface, status }: { surface: QueueSurfaceWire; status: P
 }
 
 /**
- * The ⓘ on a queue row — SERVED FACTS ONLY.
+ * The four panel kinds, in the demo's own words.
  *
- * The demo's popover explained what kind of row you were looking at, from a
- * fixture naming layer. There is no such wire, and inventing the copy would be
- * the product explaining itself (DESIGN.md, binding). What DOES exist is the
- * server's own reasons for the values it did not send: an absent subtitle or
- * live message arrives with a reason, and that reason is a fact about THIS run
- * — the one thing the ⓘ is sanctioned to hold. When nothing is absent there is
- * nothing to disclose and the trigger is not drawn at all.
+ * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+ * `demo-catalog.ts:418-430` (`PANEL_KIND_SPECS` names + `PANEL_EXPLANATION`).
+ * This is FRONTEND COPY, the same move R2 made for the category table: the
+ * sentence is a fact about what this product's panel does with a kind, not a
+ * fact about the run, so the server serves the closed `panelKind` enum and the
+ * frontend owns the words. A new arm on the enum fails `tsc` here rather than
+ * rendering a hole.
+ *
+ * The demo's other two sentences (`doing` / `why`) come off its row-VARIANT
+ * naming layer, which needs a wire this projection does not serve — they stay
+ * on the wire-hookup ledger (R3 finding 16) rather than being invented here.
+ */
+const PANEL_KIND_NAME: Record<QueueSurfaceWire["panelKind"], string> = {
+  run: "Run Panel",
+  review: "Review Panel",
+  group: "Group Panel",
+  member: "Member Panel",
+};
+
+const PANEL_EXPLANATION: Record<QueueSurfaceWire["panelKind"], string> = {
+  run: "Opening it shows the log stream, every value the run read or wrote, and the receipt once it ends.",
+  review: "Opening it starts the review — the scanned page beside the fields read from it, one person at a time.",
+  group: "Opening it lists the people it holds, attention first, and you can open any one of them from there.",
+  member: "Opening it walks the set — previous, next, and a checked mark so you keep your place in it.",
+};
+
+/**
+ * The ⓘ on a queue row.
+ *
+ * IT IS ALWAYS DRAWN. It used to render only when the server had reported an
+ * absence, so the affordance appeared and disappeared down the column and an
+ * operator learned it was not there — the demo's own rule is that *quiet at
+ * rest is not the same as absent* (R3 finding 16). Two things are inside it,
+ * and both are honest:
+ *
+ *  - **What opening the row will show**, from the SERVED `panelKind` through
+ *    the frontend vocabulary above. The field was already on the wire and read
+ *    by nothing.
+ *  - **What this run did not report** — an absent subtitle or live message
+ *    arrives with the server's own reason, and that reason is a fact about THIS
+ *    run, which is the one thing beyond the panel sentence the ⓘ may hold.
+ *
+ * It EXPLAINS; it never HIDES. Nothing load-bearing (status, counts, error,
+ * trace, every command) moves in here from the row.
  */
 function absentFacts(surface: QueueSurfaceWire): { label: string; reason: string }[] {
   const facts: { label: string; reason: string }[] = [];
@@ -317,13 +424,13 @@ function RowInfo({
   workflowLabel: string;
 }) {
   const facts = absentFacts(surface);
-  if (facts.length === 0) return null;
+  const panelName = PANEL_KIND_NAME[surface.panelKind];
   return (
     <Popover>
       <PopoverTrigger asChild>
         <IconButton
           size="xs"
-          label={`What this run did not report — ${surface.title}`}
+          label={`What is this row? — ${panelName}`}
           icon={<Info aria-hidden className={dsIcon.sm} />}
           // Both stopped: the card root is itself a button, so without these a
           // press on the ⓘ also selects the row underneath it.
@@ -334,8 +441,14 @@ function RowInfo({
           className="text-[color:var(--ds-fg-faint)] hover:text-[color:var(--ds-fg)] data-[state=open]:text-[color:var(--ds-fg)]"
         />
       </PopoverTrigger>
-      <PopoverContent title="Not reported" side="bottom" align="start" width="md">
+      {/* `md`, not `lg`: a 380px surface in a 380px queue column is
+          collision-shifted on every open, which moves the point the entrance
+          scales out of. */}
+      <PopoverContent title={panelName} side="bottom" align="start" width="md">
         <div className="flex flex-col gap-[var(--ds-space-base)]">
+          <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
+            {PANEL_EXPLANATION[surface.panelKind]}
+          </p>
           {facts.map((fact) => (
             <p key={fact.label} className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
               <span className="font-semibold text-[color:var(--ds-fg)]">{fact.label}: </span>
@@ -396,6 +509,11 @@ function RowFooterLine({
   // execution (D124). A terminal row with no served end instant says the
   // duration is unknown and names why; it never falls back to `now`.
   const timing = runTiming(surface, nowIso, isTerminalQueueStatus);
+  // The demo's `showId` guard (`DemoQueue.tsx:674`), restored: a subtitle that
+  // repeats the title prints the same string twice on one card, once large and
+  // once small (R3 finding 18). A subtitle is a SECOND identifier, and when it
+  // is not second there is nothing to show.
+  const showSubtitle = surface.subtitle.state === "present" && surface.subtitle.value !== surface.title;
   return (
     <div
       className={cn(
@@ -428,7 +546,7 @@ function RowFooterLine({
         >
           {surface.traceId}
         </span>
-        {surface.subtitle.state === "present" && (
+        {showSubtitle && surface.subtitle.state === "present" && (
           <span className="whitespace-nowrap text-[color:var(--ds-fg-secondary)]" title={surface.subtitle.value}>
             {surface.subtitle.value}
           </span>
@@ -672,7 +790,18 @@ function MemberLine({
       <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass)} />
       <span className="min-w-0 truncate text-[color:var(--ds-fg)]">{surface.title}</span>
       {surface.subtitle.state === "present" ? (
-        <span className={cn(dsText.meta, "min-w-0 truncate text-[color:var(--ds-fg-muted)]")}>
+        <span
+          className={cn(
+            dsText.meta,
+            "min-w-0 truncate",
+            // A FAILED member's fact is the failure (R3 finding 21). The demo
+            // tints this cell whenever the member failed and was not contained
+            // as `rejected`; containment is not on this wire, so the tint keys
+            // off the served status alone — a strictly wider set that cannot
+            // mis-tint a member the server called failed.
+            status === "failed" ? "text-[color:var(--ds-status-failed-fg)]" : "text-[color:var(--ds-fg-muted)]",
+          )}
+        >
           {surface.subtitle.value}
         </span>
       ) : (
@@ -705,16 +834,27 @@ const disclosureLink = cn(
  * Members sort attention-first and keep the same one-line tracks (DESIGN.md:
  * "Member status changes order and ink, never row shape"). Within a tier the
  * SERVER's order is preserved — the client never re-sorts a projection.
+ *
+ * The VALUES are the demo's `MEMBER_ATTENTION_RANK`
+ * (`demo-data.ts:4388-4397`), copied rather than re-derived: a member that
+ * finished WITH WARNINGS ranks with `parked` at 2, because a warning is
+ * something to look at, and `cancelled` sinks BELOW a clean done at 5/6 — a
+ * member nobody ran is the least interesting line in the well, and the rebuild
+ * had those two inverted (R3 finding 13).
+ *
+ * The TIEBREAK stays the rebuild's: the member's index in the served array, so
+ * two members of the same status keep the projection's order. The demo falls
+ * back to its fixture id, which is not an order any server produces.
  */
 const MEMBER_TIER: Record<ProposedStatus, number> = {
   failed: 0,
   waiting: 1,
+  doneWarnings: 2,
   parked: 2,
-  doneWarnings: 3,
-  running: 4,
-  queued: 5,
+  running: 3,
+  queued: 4,
+  cancelled: 5,
   verifiedDone: 6,
-  cancelled: 7,
 };
 
 function orderMembers(members: readonly MemberSurfaceWire[]): MemberSurfaceWire[] {
@@ -741,9 +881,19 @@ function GroupMemberList({
   const ordered = orderMembers(members);
   const wellOpen = state.openWells.has(surface.runId);
   const canExpand = ordered.length > MEMBER_WELL_LINES;
+  /**
+   * DEFERRED, and this branch is currently unreachable (R3 finding 23).
+   * `onOpenRoster` is never supplied by the composition, because the roster it
+   * would travel to is a served People section deferred past 1i — see the
+   * wire-hookup ledger row "served roster/People section + `records[]` stream"
+   * in `docs/plans/2026-08-13-detail-fidelity-audit.md`, and the named trigger
+   * at the top of this file. It is kept whole rather than deleted so the route
+   * lands with the section instead of being rebuilt from the demo again; a
+   * disclosure that travels nowhere is worse than no disclosure, which is why
+   * it stays gated on the handler.
+   */
   const canOpenRoster = canViewAllMembers(surface.memberRollup.total) && handlers.onOpenRoster !== undefined;
   const { onToggleWell, onOpenRoster } = handlers;
-  if (ordered.length === 0) return null;
 
   const disclosures = (
     <>
@@ -809,18 +959,25 @@ function GroupMemberList({
               )}
             </div>
           </div>
-          <div
-            className={cn(
-              MEMBER_GRID,
-              MEMBER_WELL_PAD,
-              "h-[var(--ds-h-member-line)] items-center gap-x-[var(--ds-space-base)]",
-              dsText.meta,
-              "text-[color:var(--ds-fg-faint)]",
-            )}
-          >
-            <span className="col-span-2 col-start-1 truncate">Name</span>
-            <span className="col-start-3 truncate">Detail</span>
-          </div>
+          {/* Column heads only when there are columns under them. A labelled
+              header over an empty region reads as a failed render, which is
+              exactly the state a paged operation with no member surfaces is
+              in — the tally above still tells the operator what the group
+              holds. */}
+          {ordered.length > 0 && (
+            <div
+              className={cn(
+                MEMBER_GRID,
+                MEMBER_WELL_PAD,
+                "h-[var(--ds-h-member-line)] items-center gap-x-[var(--ds-space-base)]",
+                dsText.meta,
+                "text-[color:var(--ds-fg-faint)]",
+              )}
+            >
+              <span className="col-span-2 col-start-1 truncate">Name</span>
+              <span className="col-start-3 truncate">Detail</span>
+            </div>
+          )}
         </div>
       }
       footer={
@@ -853,6 +1010,58 @@ function GroupMemberList({
   );
 }
 
+/* ── cross-panel routes ──────────────────────────────────────────────────── */
+
+/**
+ * A chip that CHANGES PANEL. Ported from legacy
+ * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc, `DemoQueue.tsx`
+ * `linkChip` (:1078) + `PanelRedirectChip` (:1099) + `ParentBackChip` (:1142).
+ *
+ * One shape everywhere: gray matte + hairline, `Name · status`, arrow on the
+ * RIGHT. Never a leading ←, never info-blue — the operator's rule is that every
+ * redirect must match. It grows to fill leftover space, never truncates its
+ * label, and a smaller sibling that cannot fit beside it wraps underneath.
+ */
+const linkChip = cn(
+  "inline-flex cursor-pointer items-center border",
+  dsClip.token,
+  "h-[var(--ds-h-xs)] gap-[var(--ds-space-snug)] px-[var(--ds-space-base)]",
+  dsRadius.sm,
+  dsText.meta,
+  dsText.flush,
+  dsFocus,
+  dsMotion.fast,
+  "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]",
+);
+
+function ParentBackChip({
+  parent,
+  onOpen,
+}: {
+  parent: NonNullable<ReturnType<QueueParentLookup>>;
+  onOpen: () => void;
+}) {
+  const title = `${parent.workflowLabel} · ${parent.title} — the run that delegated this one`;
+  return (
+    <button
+      type="button"
+      data-demo-row-link
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen();
+      }}
+      title={title}
+      aria-label={title}
+      className={cn(linkChip, "min-w-max flex-1 justify-start")}
+    >
+      <span className="whitespace-nowrap">
+        {parent.workflowLabel} · {statusText(parent.status).toLowerCase()}
+      </span>
+      <ArrowUpRight aria-hidden className="size-3 shrink-0" />
+    </button>
+  );
+}
+
 /* ── the row ─────────────────────────────────────────────────────────────── */
 
 export function QueueRow({
@@ -862,6 +1071,7 @@ export function QueueRow({
   handlers,
   actionsOf = NO_ACTIONS,
   workflowLabelOf,
+  parentOf,
 }: {
   surface: QueueSurfaceWire;
   /** the joined member surfaces, for an operation row */
@@ -870,6 +1080,13 @@ export function QueueRow({
   handlers: QueueHandlers;
   actionsOf?: QueueActionsOf;
   workflowLabelOf: (workflowId: string) => string;
+  /**
+   * The run that delegated this one, when the day's projection holds it. Read
+   * ONCE at the composition over the whole day's surfaces (a parent can be a
+   * different workflow, so the panel's own scoped list is not enough) and
+   * handed down, rather than each row searching an array it does not own.
+   */
+  parentOf?: QueueParentLookup;
 }) {
   const status = dsStatusOf(surface.status);
   const announcing = useAttentionAnnounce(status);
@@ -878,8 +1095,33 @@ export function QueueRow({
   const target = { runId: surface.runId, expectedVersion: surface.rowRevision };
   const StatusIcon = PROPOSED_STATUS[status].icon;
   const workflowLabel = workflowLabelOf(surface.workflowId);
-  const membersVisible = surface.surfaceKind === "operation" && members.length > 0;
-  const subline = surface.liveMessage.state === "present" ? surface.liveMessage.value : undefined;
+  /**
+   * TWO different questions, and conflating them is what R3 finding 9 caught.
+   *
+   *  - `isOperation` — does this row STAND FOR a set? Then its served rollup is
+   *    drawn, even when the payload carried none of its members (the day query
+   *    pages), because "12 members, 0 loaded" is a fact and a group row with no
+   *    member chrome at all is a group row pretending to be a run.
+   *  - `membersVisible` — is the LIST on screen? That is what decides whether
+   *    the subline is redundant (finding 7) and whether the redirect band aligns
+   *    to the well's table.
+   */
+  const isOperation = surface.surfaceKind === "operation";
+  const membersVisible = isOperation && members.length > 0;
+  /**
+   * A group with its MEMBER LIST on screen has no subline (R3 finding 7).
+   *
+   * Ported from the demo's `groupSublineSuppressed` (`DemoQueue.tsx:638`): the
+   * sentence read `11/12 signed · Grace Egan failed — signature fi…`, cut
+   * mid-word, directly above a tally strip that says the same counts and a list
+   * whose first line IS Grace Egan with her outcome in its own column. Three
+   * renderings of one fact, and the only one that truncates is the redundant
+   * one. A row whose list is shut still gets its sentence — that is the case
+   * the sentence was written for.
+   */
+  const subline =
+    membersVisible || surface.liveMessage.state !== "present" ? undefined : surface.liveMessage.value;
+  const parent = surface.lineage.state === "child" ? parentOf?.(surface.lineage.parentRunId) : undefined;
   const { onToggleBulk, onAction } = handlers;
   const bulkIds = state.bulkIds;
 
@@ -999,8 +1241,24 @@ export function QueueRow({
                   target={target}
                   {...(onAction === undefined ? {} : { onAction })}
                   className="ml-auto shrink-0"
-                  // The queue omits the Review ↗ — clicking the row is enough.
-                  omitKeys={["open-gate"]}
+                  /*
+                    WHAT THIS CARD ALREADY RENDERS, it does not also offer as a
+                    jump (R3 finding 19). The omission is per STATUS, because
+                    which control is redundant depends on what the card is
+                    showing: a failed row already carries its error in this very
+                    line (so `open-failure` and `reupload` would travel to what
+                    you are reading), a parked row carries the park, and a
+                    waiting row is opened by clicking it. Ported verbatim from
+                    `DemoQueue.tsx:950-958`; inert until the action projection
+                    serves outcome descriptors.
+                  */
+                  {...(status === "failed"
+                    ? { omitKeys: ["open-failure", "reupload"] }
+                    : status === "parked"
+                      ? { omitKeys: ["open-park"] }
+                      : status === "waiting"
+                        ? { omitKeys: ["open-gate"] }
+                        : {})}
                 />
               </div>
             )}
@@ -1009,9 +1267,33 @@ export function QueueRow({
                 column, so its glyphs land under the card's status icon and its
                 text under the card's title — one left edge for the whole card
                 rather than a well indented inside column two. */}
-            {membersVisible && surface.surfaceKind === "operation" && (
+            {isOperation && surface.surfaceKind === "operation" && (
               <div className="col-span-2 flex flex-col gap-[var(--ds-space-base)]">
                 <GroupMemberList surface={surface} members={members} state={state} handlers={handlers} />
+              </div>
+            )}
+
+            {/*
+              THE BAND A CROSS-PANEL CHIP LIVES IN (`DemoQueue.tsx:1008-1046`).
+              It aligns to the well's table when one is on screen, and to the
+              title column otherwise, so a jump never hangs off a different
+              edge from the row it belongs to.
+
+              ONE chip of the demo's band is served today: the route back to the
+              run that delegated this one (R3 finding 6). The fact chips, the
+              linked-review pointer and the extracted-people count all need
+              `QueueBaseFields` batch fields this wire does not carry, and are on
+              the wire-hookup ledger.
+            */}
+            {parent !== undefined && (
+              <div
+                className={cn(
+                  "flex w-full min-w-0 flex-wrap items-center",
+                  "gap-x-[var(--ds-space-snug)] gap-y-[var(--ds-space-tight)]",
+                  membersVisible ? cn("col-span-2", MEMBER_WELL_PAD) : "col-start-2",
+                )}
+              >
+                <ParentBackChip parent={parent} onOpen={() => handlers.onOpenParent?.(parent.runId)} />
               </div>
             )}
           </div>
@@ -1060,15 +1342,28 @@ function partition(surfaces: readonly QueueSurfaceWire[]): {
   return { top, membersOf };
 }
 
+/**
+ * The active filter, as the empty state must SAY it.
+ *
+ * The panel used to be handed `String(filter)`, so it printed the raw wire enum
+ * key — `No Person Lookup runs are awaiting-approval` (R3 finding 3). The word
+ * is the status pill's own label, lowercased, exactly as the demo's
+ * `filterWord` derives it; the `needsYou` composite is not a status and gets
+ * the demo's own sentence instead of a word (finding 2).
+ */
+export type QueueFilterScope = { kind: "needsYou" } | { kind: "status"; word: string };
+
 export function QueuePanel({
   surfaces,
   state,
   handlers,
   actionsOf = NO_ACTIONS,
   workflowLabelOf,
+  parentOf,
   panelLabel,
-  dayLabel,
-  filterLabel,
+  day,
+  isToday = false,
+  filter,
   sort = "attention",
 }: {
   /** the day's flat queue projection, already scoped to this panel's workflow */
@@ -1077,12 +1372,19 @@ export function QueuePanel({
   handlers: QueueHandlers;
   actionsOf?: QueueActionsOf;
   workflowLabelOf: (workflowId: string) => string;
+  parentOf?: QueueParentLookup;
   /** the Workflow Panel entry this queue is scoped to — the header's one word */
   panelLabel: string;
-  /** the day partition these rows came from; the header never invents its own */
-  dayLabel: string;
-  /** the active filter's own word, so the empty state names what the operator set */
-  filterLabel?: string;
+  /** the day partition these rows came from, as `YYYY-MM-DD`; formatted here */
+  day: string;
+  /**
+   * Whether that partition is the live one. `Finished today` is only true on
+   * today's day, and a Tuesday panel saying it about Monday's rows is a lie the
+   * band header told at every viewport (R3 finding 5).
+   */
+  isToday?: boolean;
+  /** the active filter, absent when the scope is `All` */
+  filter?: QueueFilterScope;
   /** the toolbar's ordering control; the default passes the projection through */
   sort?: QueueSortKey;
 }) {
@@ -1099,6 +1401,29 @@ export function QueuePanel({
       state.nowIso,
     ),
   }));
+
+  /**
+   * THE FINISHED-TODAY DIGEST (R3 finding 4).
+   *
+   * One dashed strip under the band head, folded over THE BAND'S OWN ROWS —
+   * the rows already on screen, in this component, for this filter. That is a
+   * count of what is drawn, exactly like the band's own number beside its
+   * label, and it is not a second opinion about the day's totals: those are the
+   * Status Bar's, from the one projection (D81).
+   *
+   * `N verified` prints even at zero, because a finished band that says nothing
+   * verified is itself the answer; the other three appear only when they
+   * happened, which is how the demo folds it (`DemoQueue.tsx:1845-1850`).
+   */
+  const finished = bands.find((band) => band.key === "finished")?.rows ?? [];
+  const digestOf = (status: ProposedStatus): number =>
+    finished.filter((surface) => dsStatusOf(surface.status) === status).length;
+  const digest = {
+    done: digestOf("verifiedDone"),
+    warned: digestOf("doneWarnings"),
+    failed: digestOf("failed"),
+    cancelled: digestOf("cancelled"),
+  };
 
   return (
     <section
@@ -1147,17 +1472,23 @@ export function QueuePanel({
               )}
             >
               <FileText aria-hidden className={cn(dsIcon.md, "text-[color:var(--ds-fg-muted)]")} />
-              {filterLabel === undefined
-                ? `No ${panelLabel} runs on ${dayLabel}`
-                : `No ${panelLabel} runs are ${filterLabel}`}
+              {/* The day is FORMATTED (`Thu, Aug 14`), through the same helper
+                  the date navigator reads. It printed the raw ISO partition
+                  here, which is the one string on this surface an operator
+                  never types (R3 finding 2). */}
+              {filter === undefined
+                ? `No ${panelLabel} runs on ${dayLabel(day)}`
+                : filter.kind === "needsYou"
+                  ? `No ${panelLabel} runs need your attention`
+                  : `No ${panelLabel} runs are ${filter.word}`}
             </span>
             <p className={cn(dsText.body, "max-w-[52ch] leading-relaxed text-[color:var(--ds-fg-muted)]")}>
-              {filterLabel === undefined
+              {filter === undefined
                 ? "It is registered and can be run — there is simply nothing on this day."
                 : "Nothing matches this filter."}
             </p>
             <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-              {filterLabel === undefined
+              {filter === undefined
                 ? "Start one with Start a run, or pick another workflow."
                 : "Clear the filter to see all runs."}
             </p>
@@ -1176,7 +1507,8 @@ export function QueuePanel({
                     : "text-[color:var(--ds-fg-muted)]",
                 )}
               >
-                {band.label}
+                {/* `Finished today` is only true on today's partition. */}
+                {band.key === "finished" && !isToday ? "Finished" : band.label}
                 {/* How many rows are DRAWN in this band — what is on screen,
                     never a claim about the day's totals. Those are the Status
                     Bar's, and they come from the one projection (D81). */}
@@ -1192,6 +1524,43 @@ export function QueuePanel({
                 </span>
                 <span aria-hidden className="h-px flex-1 bg-[var(--ds-border-subtle)]" />
               </div>
+              {/* The day's finished work in one line — only under `All`, where
+                  the band holds everything that finished. Under a filter it
+                  would count a subset and read like a day total. */}
+              {band.key === "finished" && filter === undefined && (
+                <div
+                  className={cn(
+                    dsText.meta,
+                    "mx-[var(--ds-space-cozy)] mt-[var(--ds-space-base)] flex flex-wrap items-center border border-dashed",
+                    "gap-x-[var(--ds-space-cozy)] gap-y-[var(--ds-space-tight)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]",
+                    dsRadius.md,
+                    dsBorder.base,
+                    "text-[color:var(--ds-fg-muted)]",
+                  )}
+                >
+                  <span className="font-semibold text-[color:var(--ds-fg-secondary)]">
+                    {isToday ? "Today:" : `${dayLabel(day)}:`}
+                  </span>
+                  <span>
+                    <span className="font-semibold text-[color:var(--ds-success-fg)]">{digest.done}</span> verified
+                  </span>
+                  {digest.warned > 0 && (
+                    <span className="text-[color:var(--ds-status-waiting-fg)]">
+                      <span className="font-semibold">{digest.warned}</span> with warnings
+                    </span>
+                  )}
+                  {digest.failed > 0 && (
+                    <span className="text-[color:var(--ds-status-failed-fg)]">
+                      <span className="font-semibold">{digest.failed}</span> failed
+                    </span>
+                  )}
+                  {digest.cancelled > 0 && (
+                    <span>
+                      <span className="font-semibold">{digest.cancelled}</span> cancelled
+                    </span>
+                  )}
+                </div>
+              )}
               {band.rows.map((surface) => (
                 <QueueRow
                   key={surface.runId}
@@ -1201,6 +1570,7 @@ export function QueuePanel({
                   handlers={handlers}
                   actionsOf={actionsOf}
                   workflowLabelOf={workflowLabelOf}
+                  {...(parentOf === undefined ? {} : { parentOf })}
                 />
               ))}
             </div>

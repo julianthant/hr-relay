@@ -82,6 +82,33 @@ export function runTiming(
  * `n` with its noun, pluralised — a template literal is the easiest place to
  * write a number beside a word that does not agree with it.
  */
+/**
+ * `2026-08-03` → `Mon, Aug 3` — the day, in the operator's short form.
+ *
+ * It lives HERE rather than in `top-bar.tsx` because two surfaces read it: the
+ * date navigator, and the queue's empty state, which printed a raw ISO day
+ * (`No Person Lookup runs on 2026-08-14`) where the demo prints the same short
+ * form its own header carries (R3 f.2). A second copy in the queue was the
+ * other option and is exactly how one surface comes to say `Aug 3` while its
+ * neighbour says `August 3rd`.
+ *
+ * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+ * `demo-days.ts` `dayLabel` / `demo-wire.ts` `fmtDayLabel`.
+ */
+export function dayLabel(day: string): string {
+  return new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** `Thu, Aug 13` → `Thu, Aug 13 · today` on the live partition. */
+export function dayLabelWithToday(day: string, today: string): string {
+  return day === today ? `${dayLabel(day)} · today` : dayLabel(day);
+}
+
 export function plural(n: number, noun: string, pluralNoun?: string): string {
   return `${n} ${n === 1 ? noun : pluralNoun ?? `${noun}s`}`;
 }

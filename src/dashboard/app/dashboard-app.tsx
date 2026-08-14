@@ -35,7 +35,14 @@ import { ARCHIVE_INDEX, ArchiveWorkspace } from "../surfaces/archive.js";
 import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { UiCatalogWorkspace } from "../surfaces/ui-catalog.js";
 import { LogPanel, defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel.js";
-import { QueuePanel, type QueueSortKey, type QueueSurfaceWire, type QueueViewState } from "../surfaces/queue.js";
+import {
+  QueuePanel,
+  type QueueFilterScope,
+  type QueueSortKey,
+  type QueueSurfaceWire,
+  type QueueViewState,
+} from "../surfaces/queue.js";
+import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/status.js";
 import { QueueToolbar } from "../surfaces/queue-toolbar.js";
 import { RunStartButton, RunStartSurfaces, type RunStartWorkflow } from "../surfaces/run-start.js";
 import {
@@ -332,6 +339,41 @@ function LoadedApp({
     () => workflowStatusCounts(dayWire?.workflowCounts ?? [], activeWorkflowId),
     [dayWire, activeWorkflowId],
   );
+
+  /**
+   * The route back to a run's parent (R3 finding 6), resolved over the WHOLE
+   * day's surfaces rather than the panel's scoped list — a parent that
+   * delegated across workflows is the interesting case, and it is exactly the
+   * one a scoped lookup would miss. A parent the day does not hold answers
+   * `undefined` and the chip is not drawn; nothing here invents a label.
+   */
+  const parentOf = useCallback(
+    (parentRunId: string) => {
+      const parent = dayWire?.queueSurfaces.find((surface) => String(surface.runId) === parentRunId);
+      return parent === undefined
+        ? undefined
+        : {
+          runId: String(parent.runId),
+          title: parent.title,
+          workflowLabel: workflowLabelOf(String(parent.workflowId)),
+          status: dsStatusOf(parent.status),
+        };
+    },
+    [dayWire, workflowLabelOf],
+  );
+
+  /**
+   * The active filter in the operator's own words, for the queue's empty state
+   * (R3 findings 2/3). It used to hand the panel `String(filter)`, which
+   * printed the raw wire enum (`awaiting-approval`); the word is the status
+   * pill's own label, so the empty state and the pill the operator clicked
+   * cannot disagree.
+   */
+  const queueFilterScope = useMemo((): QueueFilterScope | undefined => {
+    if (filter === "all") return undefined;
+    if (filter === "needsYou") return { kind: "needsYou" };
+    return { kind: "status", word: PROPOSED_STATUS[dsStatusOf(filter)].label.toLowerCase() };
+  }, [filter]);
 
   /**
    * The first consumer of `featureAvailability` (2i-G, D178). A feature the
@@ -778,13 +820,25 @@ function LoadedApp({
                     else next.add(runId);
                     onBulkIds(next);
                   },
+                  /*
+                    A parent can belong to ANOTHER workflow, so the jump moves
+                    the panel and then selects — selecting alone would open a
+                    run the queue beside it is scoped away from.
+                  */
+                  onOpenParent: (runId) => {
+                    const parent = dayWire?.queueSurfaces.find((s) => String(s.runId) === runId);
+                    if (parent !== undefined) setActiveWorkflowId(String(parent.workflowId));
+                    selectRun(runId);
+                  },
                 }}
                 actionsOf={() => SERVED_ACTIONS}
                 workflowLabelOf={workflowLabelOf}
+                parentOf={parentOf}
                 panelLabel={workflowLabelOf(activeWorkflowId)}
-                dayLabel={day}
+                day={day}
+                isToday={day === today}
                 sort={sort}
-                {...(filter === "all" ? {} : { filterLabel: String(filter) })}
+                {...(queueFilterScope === undefined ? {} : { filter: queueFilterScope })}
               />
 
             {/* NOTHING SELECTED IS A STATE, not the absence of one. It owes the

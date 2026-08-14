@@ -75,7 +75,13 @@ import { useDashboardClient } from "../state/client-context.js";
 import { DemoShortcutsLegend } from "./shortcuts.js";
 import { DaySearchControl } from "./day-search.js";
 import type { QueueSurfaceWire } from "./queue.js";
-import { elapsedSecondsBetween, fmtClock, fmtElapsed, plural } from "./format.js";
+import {
+  dayLabelWithToday,
+  elapsedSecondsBetween,
+  fmtClock,
+  fmtElapsed,
+  plural,
+} from "./format.js";
 import {
   SettingsControl,
   type SettingsSection,
@@ -116,20 +122,6 @@ const WEEKDAY_HEADS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 function ymd(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
-}
-
-/** `2026-08-03` → `Mon, Aug 3` — the day, in the operator's short form. */
-export function dayLabel(day: string): string {
-  return new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-export function dayLabelWithToday(day: string, today: string): string {
-  return day === today ? `${dayLabel(day)} · today` : dayLabel(day);
 }
 
 export function monthOfDay(day: string): string {
