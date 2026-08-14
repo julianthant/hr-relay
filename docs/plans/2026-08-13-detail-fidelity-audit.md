@@ -43,7 +43,7 @@ serve and where it plugs in — see "Wire-hookup ledger" below.
 | # | Region | Demo source | Rebuild target | Status |
 |---|--------|-------------|----------------|--------|
 | R1 | Top bar — every glyph, spacing, date-nav pill, notification cluster, tabs, search | `DemoShell.tsx` (top-bar half) + `DemoTopBarSurfaces.tsx` | `surfaces/top-bar.tsx` | [x] |
-| R2 | Workflow panel — ALL THREE modes (floating/icon/sidebar): header row, mode toggles, category labels, count alignment, the ACTIVE\|ALL row (no window footer — audit confirmed the demo has none) | `DemoShell.tsx` :160-235 + :636-1180, `RebuildDemo.tsx` (mount + keyboard), `demo-wire.ts` | `surfaces/shell.tsx` :106-600 + `app/dashboard-app.tsx` (NOT `use-panel-sections.ts` — that is log-panel plumbing) | [a] |
+| R2 | Workflow panel — ALL THREE modes (floating/icon/sidebar): header row, mode toggles, category labels, count alignment, the ACTIVE\|ALL row (no window footer — audit confirmed the demo has none) | `DemoShell.tsx` :160-235 + :636-1180, `RebuildDemo.tsx` (mount + keyboard), `demo-wire.ts` | `surfaces/shell.tsx` :106-600 + `app/dashboard-app.tsx` (NOT `use-panel-sections.ts` — that is log-panel plumbing) | [x] |
 | R3 | Queue rows — chips, footers, member wells, section bands NEEDS YOU / ACTIVE / QUEUED / FINISHED TODAY | `DemoQueue.tsx` | `surfaces/queue.tsx` (toolbar needs no R3 edit — bulk parts are R8's) | [a] |
 | R4 | Status pills band (band itself lives in `DemoShell.tsx:1183-1364` → `shell.tsx:602-795`; `demo-status.tsx` is the vocabulary adapter) | `demo-status.tsx` + `DemoShell.tsx` | `surfaces/status.tsx` + `shell.tsx:602-795` | [a] |
 | R5 | Run-detail header row (log panel header) | `DemoLogPanel.tsx` (header region) | `surfaces/log-panel.tsx` | [a] |
@@ -86,14 +86,14 @@ Running list (grown during the audit; initial entries from the known-open items)
 
 | Binding (proposed) | Consumer (UI, ready) | Shape oracle in demo | Status |
 |---|---|---|---|
-| bootstrap workflow `code` (2-char) | panel toggle + panel rows | `demo-data.ts` workflow defs | served-addition (R2 fix commit) |
+| bootstrap workflow `code` (2-char) | panel toggle + panel rows | `demo-data.ts` workflow defs | LANDED 2026-08-14 (R2 commit `5fe2893`) — `WorkflowBootstrapPrimitiveSchema#code`, regex-guarded 2 chars |
 | `QueueBaseFields.actions[]` + per-row `expectedVersion` (bulk) | bulk strip + result-vector band (R8 f.5/6) | `DemoBulkBar.tsx:65-77` via `demo-wire.ts` `actionsAt` | booked — shape pinned by R8 audit |
 | pool `expectedVersion` on footer `+` | session footer add control + AddWorkersDialog (R7-2, anatomy pinned) | `demo-workers-wire.ts:151-209` | to declare — SECOND blocker: dashboard supervisor throws for spawnWorker (`compose.ts:178-186`, doc 05 lane) |
 | worker-lease `version` on `WorkerCardWireSchema` (distinct from `revision`, which is a span counter) | footer `Stop` button (R7-4 — server half already complete) | `DemoShell.tsx:1706-1708` | to declare (priority: smallest change, restores a real control) |
 | `WorkerCardWireSchema` batch: `workflowId`, `startedAt`/elapsed (already folded in the projector), `waiting` lease block, `browsers[]` (health/label/url/session id), `crashed`, state-enum lifecycle (`authenticating`/`keepalive`/`waiting`/`paused`/`failed` via the authority lease fold) | card identity/subline, footer clock, lease-wait block, BrowserTile grid + menus, crashed arm, attention chips (R7-1/3/5/6/7/8/9) | `demo-workers-wire.ts:19-57` | to declare (ONE batched change with the projector) |
 | preflight/storage summary + doctor-rerun command | top-bar doctor popover (R1) | `DemoShell.tsx:296` DemoDoctorPopover | to declare |
 | cross-day search corpus | day-search Day column (R1) | `DemoTopBarSurfaces.tsx` search | to declare (D184 copy until served) |
-| per-workflow status counts on `WorkflowCountWireSchema` — WIDENED to the full per-status shape (was queued/running only) | panel ACTIVE│ALL column (R2) + status-band scoping (R4-1/R4-2) + worker-card `queued` chip (R7-5) | `DemoShell.tsx:159-235` counting helpers | served-addition (ONE change, rides the R2 fix commit) |
+| per-workflow status counts on `WorkflowCountWireSchema` — WIDENED to the full per-status shape (was queued/running only) | panel ACTIVE│ALL column (R2) + status-band scoping (R4-1/R4-2) + worker-card `queued` chip (R7-5) | `DemoShell.tsx:159-235` counting helpers | LANDED 2026-08-14 (R2 commit `5fe2893`) — `{ workflowId, count, statusCounts[] }`; R4/R7 consume it, no further wire work |
 | `InputRunSurfaceSchema` `examples[]` / `parserLabel` / value-noun | run-start typed input (R8 f.17) | `DemoRunStart.tsx:405-472` | to declare |
 | `capability.note` + method tabs | run-start workflow-setup block (R8 f.11) | `DemoRunStart.tsx:696-715` | to declare (2h scope) |
 | active-run policy control | run-start group 01 (R8 f.8) | `DemoRunStart.tsx` ENQUEUE_POLICY | to declare (already noted `run-start.tsx:28-29`) |
@@ -287,6 +287,62 @@ Findings (full table in audit transcript):
 D15/D16 delete; D17/D18 frontend table per doc 03. Wire schema edits live under `src/domain/**` →
 run `npm run build:manifest` in the same change. Served additions (code, queued/running) need no
 pending-wire-bindings entry — they are served and consumed in the same commit.
+
+
+**R2 AS-BUILT (2026-08-14, commit `5fe2893`).** All ten fix-list steps landed except D13/D14, which
+are booked for the consolidated keydown commit as decided.
+
+*The wire served.* `WorkflowBootstrapPrimitiveSchema` grew
+`code: z.string().regex(/^[a-z0-9]{2}$/)` — the descriptor's own guarded code, not a derived one.
+`WorkflowCountWireSchema` became
+`{ workflowId, count, statusCounts: [{ status, count }] }` with two refinements (statuses unique,
+per-status counts sum to `count`), filled in the projector's existing countable loop beside the
+day-wide totals — ONE fold, D81 intact. R4-1/R4-2 and R7-5 need no further wire change; they read
+these entries. Both are served AND consumed in this commit, so neither needed a
+`pending-wire-bindings` row. Consuming helpers on the frontend:
+`workflowStatusCounts(counts, id)` and `activeCount(statusCounts)` in `shell.tsx`.
+
+*The wire REMOVED, which the audit's D17/D18 decision implies and is worth stating.* The bootstrap's
+`workflowCategories` projection is gone, and with it `WorkflowCategoryPrimitiveSchema` and
+`parseWorkflowCategories`. Its only two fields were display decisions the SERVER invented (`label`
+was `id.replace(/-/g, " ")`, `order` was the registry's first-seen index); once doc 03 §Shell puts
+both on the frontend the array serves nothing derivable, and keeping it would be exactly the
+inert-served-field pattern D15/D16 deletes one level down. `src/dashboard/surfaces/workflow-category.ts`
+now owns the table as `Record<WorkflowCategory, {label, order}>` — the descriptor vocabulary is a
+closed six-value enum, so a new category with no heading fails `tsc` rather than rendering a hole —
+plus `groupWorkflowsByCategory` (the ONE rule) and `workflowCategoryLabel`. Doc 13 §3.1/§3.2 carry
+the normative sentences in the same commit. Guard follow-through:
+`redaction-surface-audit.ts` lost the `workflowCategories[].label` origin row and needed NO row for
+`workflows[].code` — the scan does not read a regex-constrained leaf as free text, which it told us
+by failing on the row we first added.
+
+*Deviation from the dispatch brief, oracle-justified.* The brief said the code renders on "the
+toggle … and panel rows likewise". The demo's `WorkflowEntryList` entry renders the LABEL only —
+no code, in the row, its title or its aria-label (`DemoShell.tsx:930-977`) — so the code stayed on
+the launcher, per "the demo is the SPEC".
+
+*Manifest.* `npm run build:manifest` produced a ZERO diff for this change, as R1 found: the
+dashboard wire schemas sit outside every descriptor's import closure. (A later regeneration DID
+drift, entirely on the other session's in-flight `src/domain/ui/ucpath-smart-hr-termination.ts` and
+`src/stores/ucpath/**`; the manifest was restored to HEAD and is not in this commit.)
+
+*Gates.* `typecheck` clean, `lint` clean over the touched tree, `vitest --project unit` 1670/1670
+and `test:architecture` 450/450 green at the time of the change. The later full `test:coverage` run
+shows 3 failures (`descriptor-coverage` ×2, `strict-boundary-schemas` ×1) and 1 lint error, ALL
+attributable to the other session's uncommitted ucpath work — reported, not touched.
+
+*Image verification (1440×900, headless, demo :5173 vs rebuild :5174), all three modes.* Floating,
+icon and sidebar each read side by side against the demo. The rail is structurally pixel-aligned
+with the demo: same header row, `ACTIVE│ALL` head at the same right-aligned position, same group
+heading rhythm, same row height, same count cluster. Category headings render **Separations ·
+Timekeeping · Search · Operations**, exactly the decided order. The launcher reads `pl │ 0` against
+the demo's `os │ 12` — same icon/code/rule/count anatomy, the width difference being one glyph and
+one digit. No entry is dimmed or disabled. The Run Modal's picker row now reads `Person Lookup pl`.
+LIMIT, stated rather than glossed: the rebuild's live day is empty, so every count rendered its ZERO
+arm; the non-zero amber/`fg` arms are byte-identical ports of the demo's own conditionals (verified
+by reading, and rendered by the demo in the same screenshot pass) and were not photographed on the
+rebuild, because the populated corpus is the parity fixture bundle and re-freezing that is the
+orchestrator's wave-end step.
 
 ### R3 — Queue rows (audited 2026-08-14; 92 elements: 50 match, 19 divergent, 21 missing, 2 justified extras; findings 1–25)
 
