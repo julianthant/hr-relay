@@ -9,7 +9,61 @@ Summary (2026-08-02) and the SS Smart HR **receipt** surface (2026-08-04). They 
 the system id — different route, different frame model, different anchor style — so a guard that
 means "Person Org" must say so rather than quantifying over the whole registry.
 
+## The termination write family (separations chunk 4, D206)
+
+| Task | Effect | What it visits |
+|---|---|---|
+| `ucpath/match-existing-termination` | read | SS Smart HR — is there a `TER` on THIS effective date? (S44) |
+| `ucpath/match-pending-terminations` | read | the same read, folded date-agnostically for the sweep |
+| `ucpath/stage-pending-termination-sweep` | prepare | ticks every in-progress row |
+| `ucpath/delete-pending-terminations` | **commit** | clicks `Delete Selected Transactions` |
+| `ucpath/verify-pending-terminations-cleared` | read | the post-delete re-read |
+| `ucpath/stage-termination` | prepare | the whole three-page Smart HR wizard |
+| `ucpath/create-termination` | **commit** | clicks `Save and Submit` |
+| `ucpath/verify-termination` | read | the post-submit re-read — the ONLY landing proof |
+
+Naming follows `EFFECT_VERBS`, which is why the probes are `match-*` and the prepares are `stage-*`.
+The whole family is a SIBLING on the store's ONE `DriverDeclaration`
+(`src/domain/ui/ucpath-driver.ts` joins the two halves); a second declaration is what
+`task-driver-boundary` exists to refuse. **Smart HR renders no iframe at all**, so every scope in
+this family is `page` and legacy's `getContentFrame` funnel does not apply.
+
+**Invariants worth stating once:**
+
+- **Prepare stages the WHOLE wizard; the commit is one click.** The Smart HR wizard leaves ZERO
+  durable footprint before an explicit Save — verified 2026-08-13 and independently re-confirmed
+  2026-08-14 (two abandoned Page-A → Create Transaction → Page-B walks left the *Transactions in
+  Progress* grid unchanged). `Transaction ID` reads the literal `"NEW"` until then.
+- **The subject is the NAME.** `#PERSON_NAME_NAME_DISPLAY` is UCPath's own answer to the typed Empl
+  ID; reading the Empl ID field back is the run's own input echoed to itself. The anchor renders
+  **zero nodes** until UCPath resolves a person, so the beat-③ observation and S48's
+  `emplid-not-recognized` refusal are the same check. Legacy reads that name NOWHERE in the
+  termination flow, which is why `T002173685` was possible — and why the anchor stays
+  driver-internal here (no legacy key to port).
+- **`TER` and `Terminatn` are BOTH real.** The SS Smart HR search grid and its transaction detail
+  render the PeopleSoft code; the *Transactions in Progress* grid renders the descriptive form.
+  Accept either, and let `(blank)` — a real live value — match neither.
+- **A settled row is never swept.** Only `Pending` and `Pushed Back` are in progress; deleting an
+  `Approved`/`Denied`/`Error`/`Manually Processed` row would destroy a record of something that
+  already happened.
+- **A number alone is never a receipt.** `present` requires the `T…` AND its approval status,
+  because a Denied transaction carries a perfectly well-formed number.
+- **Post-fence absence is `operator-only`** on both commits: no propagation window has been measured
+  (the controlled real commit waits on §4f2's operator-named canary), and a guessed
+  `minSinceFenceMs` on a real termination is what D128 forbids.
+
 ## Lessons learned
+
+- **2026-08-14: a closed vocabulary must be read off the surface that renders it, and one system may
+  have two.** `isUcpathTerminationAction` shipped testing legacy's `/Terminat/i` prefix. The SS Smart
+  HR search grid and its transaction detail render the PeopleSoft CODE `TER`; only the *Transactions
+  in Progress* grid renders `Terminatn`. Legacy uses both matchers, in two different modules, and
+  says so nowhere. The first live read therefore found a probe that would have answered `absent`
+  about EID 10001799 — who has a Pending `T002209631` effective 06/11/2026 — which is exactly the
+  duplicate-filing failure the probe exists to prevent, on the first real subject. Generalise it:
+  when two surfaces of one system render "the same" field, read BOTH before assuming one vocabulary,
+  and let a value matching neither (`(blank)`, live) fall through rather than widening the matcher
+  into it.
 
 - **2026-08-12: the Person Org DETAIL page already carried the whole job summary — the port was
   throwing eleven twelfths of it away.** `extractDetail` read every *Employment Instances* row's

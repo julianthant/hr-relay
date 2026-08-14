@@ -167,6 +167,30 @@ const JOB_SUMMARY = taskOutput("ucpath/read-job-summary");
 const MATCH_IDENTITY = taskOutput("workflow:separations/match-identity");
 const VERIFY_IDENTITY_APPROVAL = taskOutput("workflow:separations/verify-identity-approval");
 const IDENTITY_APPROVAL_GATE = gateResult("separations-identity-check", "identity-approval");
+const UCPATH_TERMINATION_INPUT = workflowInput("separations-ucpath-termination");
+const UCPATH_TERMINATION_RESULT = workflowResult("separations-ucpath-termination");
+const UCPATH_TERMINATION_GATE = gateResult("separations-ucpath-termination", "identity-approval");
+const UCPATH_STAGE_TERMINATION = taskOutput("ucpath/stage-termination");
+const UCPATH_CREATE_TERMINATION = taskOutput("ucpath/create-termination");
+const UCPATH_STAGE_SWEEP = taskOutput("ucpath/stage-pending-termination-sweep");
+const UCPATH_DELETE_PENDING = taskOutput("ucpath/delete-pending-terminations");
+
+/** The termination receipt PAIR — the person, plus the transaction it names. */
+function terminationProofLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...person(scope, `${prefix}.emplId`, `${prefix}.displayedName`),
+    ...open(scope, `${prefix}.kind`, `${prefix}.effectiveDate`, `${prefix}.transactionId`,
+      `${prefix}.approvalStatus`, `${prefix}.source`),
+  ];
+}
+
+function sweepProofLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...person(scope, `${prefix}.emplId`),
+    ...open(scope, `${prefix}.kind`, `${prefix}.scannedRowCount`, `${prefix}.observedAt`,
+      `${prefix}.source`),
+  ];
+}
 
 /**
  * Every leaf of the Kuali separation-document read, relative to a prefix.
@@ -440,6 +464,50 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(IDENTITY_CHECK_RESULT, "documentNumber"),
   ...approvedSubjectLeaves(IDENTITY_CHECK_RESULT, "approved"),
   ...jobClassificationLeaves(IDENTITY_CHECK_RESULT, "jobs"),
+
+  /* separations-ucpath-termination ingress (chunk 4). The identity half repeats
+     chunk 3's split verbatim — an arm DISCRIMINATOR is not the person — and the
+     termination half is all transaction facts: the dates, the empl record and
+     the comment text describe WHAT is being filed, not WHO. */
+  ...person(UCPATH_TERMINATION_INPUT, "employeeName", "emplId", "documentEid.value"),
+  ...open(UCPATH_TERMINATION_INPUT, "documentNumber", "emplIdSource", "documentEid.state",
+    "documentEid.reason", "terminationType.state", "terminationType.value",
+    "terminationType.reason", "observedTerminationTypeOptions", "emplRecord",
+    "effectiveDate", "lastDateWorked", "initiatorComments"),
+
+  /* The ALWAYS-GATE again, on this workflow's own scope. A gate's redaction is
+     scoped by `(workflow, gate)` (D204), so chunk 3's declaration does not
+     cover chunk 4's gate even though the payload schema is identical — which is
+     the point: a second workflow must state its own answer. */
+  ...person(UCPATH_TERMINATION_GATE, "eid"),
+  ...open(UCPATH_TERMINATION_GATE, "decision", "chosenFrom", "evidenceDigest", "reason"),
+
+  /* ucpath/stage-termination — the staged wizard. `observedName` is UCPath's own
+     answer to the typed EID and is therefore the PERSON; the reason-option list
+     is a control capture (§3.2) and is one leaf. */
+  ...person(UCPATH_STAGE_TERMINATION, "emplId", "observedName"),
+  ...population(UCPATH_STAGE_TERMINATION, "observedReasonOptions"),
+  ...open(UCPATH_STAGE_TERMINATION, "stagedPageState", "observedEmplRecord", "template",
+    "transactionDate", "effectiveDate", "resolvedReasonOption", "lastDateWorked",
+    "lastDateWorkedOverridden", "transactionIdDisplay", "observedAt"),
+
+  /* ucpath/create-termination — the commit's own post-click read. */
+  ...terminationProofLeaves(UCPATH_CREATE_TERMINATION, "receipt"),
+
+  /* ucpath/stage-pending-termination-sweep — the ticked rows, before any click. */
+  ...person(UCPATH_STAGE_SWEEP, "emplId", "observedName"),
+  ...population(UCPATH_STAGE_SWEEP, "selected"),
+  ...open(UCPATH_STAGE_SWEEP, "stagedPageState", "observedAt"),
+
+  /* ucpath/delete-pending-terminations — the sweep commit's own post-click read. */
+  ...sweepProofLeaves(UCPATH_DELETE_PENDING, "cleared"),
+
+  /* separations-ucpath-termination terminal result */
+  ...open(UCPATH_TERMINATION_RESULT, "documentNumber", "pendingSweep.disposition",
+    "termination.disposition"),
+  ...approvedSubjectLeaves(UCPATH_TERMINATION_RESULT, "approved"),
+  ...sweepProofLeaves(UCPATH_TERMINATION_RESULT, "pendingSweep.proof"),
+  ...terminationProofLeaves(UCPATH_TERMINATION_RESULT, "termination.proof"),
 ].map((entry) => Object.freeze(EvidenceFieldClassificationSchema.parse(entry))));
 
 const BY_SCOPE_AND_PATH = new Map<string, EvidenceFieldClassification>();

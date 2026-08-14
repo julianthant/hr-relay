@@ -35,6 +35,9 @@ export type ExecutableScenarioSpec = z.infer<typeof ExecutableScenarioSpecSchema
  */
 /** Chunk 3 registers eleven rows against one file; naming it once keeps them aligned. */
 const SEPARATIONS_IDENTITY_CHECK_FILE = "tests/scenario/separations-identity-check.scenario.test.ts";
+/** Chunk 4's UCPath termination write — the two transactions share one file. */
+const SEPARATIONS_UCPATH_TERMINATION_FILE =
+  "tests/scenario/separations-ucpath-termination.scenario.test.ts";
 
 export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
   { scenarioId: "person-lookup/happy-by-eid", file: "tests/scenario/person-lookup.scenario.test.ts" },
@@ -177,6 +180,36 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
   { scenarioId: "separations-identity-check/gate-approved", file: SEPARATIONS_IDENTITY_CHECK_FILE },
   { scenarioId: "separations-identity-check/gate-rejected", file: SEPARATIONS_IDENTITY_CHECK_FILE },
   { scenarioId: "separations-identity-check/gate-evidence-moved", file: SEPARATIONS_IDENTITY_CHECK_FILE },
+  { scenarioId: "separations-ucpath-termination/dry-run-preview", file: SEPARATIONS_UCPATH_TERMINATION_FILE },
+  { scenarioId: "separations-ucpath-termination/already-present", file: SEPARATIONS_UCPATH_TERMINATION_FILE },
+  { scenarioId: "separations-ucpath-termination/subject-mismatch", file: SEPARATIONS_UCPATH_TERMINATION_FILE },
+  { scenarioId: "separations-ucpath-termination/committed", file: SEPARATIONS_UCPATH_TERMINATION_FILE },
+  { scenarioId: "separations-ucpath-termination/gate-approved", file: SEPARATIONS_UCPATH_TERMINATION_FILE },
+  {
+    scenarioId: "separations-ucpath-termination/pending-sweep-committed",
+    file: SEPARATIONS_UCPATH_TERMINATION_FILE,
+  },
+  { scenarioId: "separations-ucpath-termination/emplid-not-recognized", file: SEPARATIONS_UCPATH_TERMINATION_FILE },
+  {
+    scenarioId: "separations-ucpath-termination/last-date-worked-not-verified",
+    file: SEPARATIONS_UCPATH_TERMINATION_FILE,
+  },
+  {
+    scenarioId: "separations-ucpath-termination/submit-outcome-unknown",
+    file: SEPARATIONS_UCPATH_TERMINATION_FILE,
+  },
+  {
+    scenarioId: "separations-ucpath-termination/unreadable-probe-is-not-absent",
+    file: SEPARATIONS_UCPATH_TERMINATION_FILE,
+  },
+  {
+    scenarioId: "separations-ucpath-termination/pending-sweep-nothing-to-do",
+    file: SEPARATIONS_UCPATH_TERMINATION_FILE,
+  },
+  {
+    scenarioId: "separations-ucpath-termination/pending-sweep-refuses-unreadable-scan",
+    file: SEPARATIONS_UCPATH_TERMINATION_FILE,
+  },
 ]));
 
 export const EXECUTABLE_SCENARIO_IDS: readonly ScenarioId[] = Object.freeze(

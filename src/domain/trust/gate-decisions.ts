@@ -104,6 +104,35 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     ],
     boundEvidencePath: "evidenceDigest",
   },
+  {
+    /**
+     * Chunk 4's write carries the SAME ALWAYS-GATE, and it needs its own
+     * declaration rather than inheriting chunk 3's: a gate decision is scoped by
+     * `(workflow, gate)` on purpose (D204), because the payload is authored per
+     * gate and a second workflow reusing a schema is not the same thing as a
+     * second workflow having answered the question.
+     *
+     * Here the stakes are also higher: this gate stands in front of a real
+     * UCPath termination rather than in front of a read-only chunk's result, so
+     * `rejected` means an operator refused to let a person be separated.
+     */
+    workflowId: "separations-ucpath-termination",
+    gateId: "identity-approval",
+    decisionPath: "decision",
+    arms: [
+      {
+        value: "approved",
+        outcome: "approved",
+        summary: "an operator approved this identity before the UCPath termination was filed",
+      },
+      {
+        value: "rejected",
+        outcome: "rejected",
+        summary: "an operator REJECTED this identity, so no UCPath termination was filed",
+      },
+    ],
+    boundEvidencePath: "evidenceDigest",
+  },
 ].map((entry) => Object.freeze(GateDecisionDeclarationSchema.parse(entry))));
 
 const BY_WORKFLOW_AND_GATE = new Map<string, GateDecisionDeclaration>();

@@ -1405,6 +1405,21 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/ui/ucpath-person-org.ts:UcpathPersonOrgFields",
   "src/domain/ui/ucpath-person-org.ts:UcpathPersonOrgObservations",
   "src/domain/ui/ucpath-person-org.ts:UcpathPersonOrgDriver",
+  // Chunk 4's Smart HR family, for the same reason as its Person Org sibling
+  // above: these are DRIVER-SHAPE types — screen/state/observation unions and a
+  // surface of functions — not data crossing a boundary. Every value they carry
+  // IS schema-described (`UcpathTerminationTargetSchema`,
+  // `UcpathTerminationStagingSchema`, `UcpathTransactionScanSchema`,
+  // `UcpathTerminationProofSchema`, `UcpathPendingSweepProofSchema`), and a
+  // schema over the driver itself would be describing a set of functions.
+  "src/domain/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrScreens",
+  "src/domain/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrStates",
+  "src/domain/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrObservations",
+  "src/domain/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrTerminationDriver",
+  // The JOIN of the store's two driver halves (D197 rule 1: one declaration per
+  // store). It adds no data of its own — it is the intersection of the two
+  // allowlisted surfaces plus the shared `SystemDriver` navigation seam.
+  "src/domain/ui/ucpath-driver.ts:UcpathStoreDriver",
   "src/domain/contracts/base.ts:ReadTaskContract",
   "src/domain/contracts/base.ts:PrepareTaskContract",
   "src/domain/contracts/base.ts:CommitTaskContract",

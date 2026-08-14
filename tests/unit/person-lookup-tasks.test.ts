@@ -165,8 +165,20 @@ describe("Phase 1f Person Lookup task implementations", () => {
         "roster/match-spreadsheet",
         // D194's rich Person Org read: the whole Employment Instances grid,
         // one page visit (separations chunk 3).
+        // Separations chunk 4's UCPath termination write: TWO transactions
+        // (the date-agnostic pending sweep, then the filing) with doc 09 §5's
+        // two probe kinds and a verifier each, all on the SAME `ucpath` driver
+        // declaration as the Person Org reads (D197 rule 1).
+        "ucpath/create-termination",
+        "ucpath/delete-pending-terminations",
+        "ucpath/match-existing-termination",
+        "ucpath/match-pending-terminations",
         "ucpath/read-job-summary",
         "ucpath/search-person-org",
+        "ucpath/stage-pending-termination-sweep",
+        "ucpath/stage-termination",
+        "ucpath/verify-pending-terminations-cleared",
+        "ucpath/verify-termination",
         "workflow:person-lookup/read-active-status",
         // The `separations` pure workflow mini-store: §4a's termination-type
         // refusal, plus chunk 3's identity comparison and post-gate check — all

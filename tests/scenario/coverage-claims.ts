@@ -103,6 +103,43 @@ export const SEPARATIONS_IDENTITY_CHECK_CLAIMS: readonly ScenarioCoverageClaim[]
   ]),
 ]);
 
+/**
+ * Chunk 4's write path. Ten derived points: the gate's two, and four per
+ * transaction node.
+ *
+ * Six of them are claimed by scenarios that drive the REAL write sequencer over
+ * a REAL authority database, so `dry-run` and `subject-mismatch` are backed by
+ * "zero rows in `write_intents`" rather than by a function returning. The
+ * gate's two are claimed by the graph walk, which runs the descriptor's own
+ * binds and terminal derive.
+ */
+export const SEPARATIONS_UCPATH_TERMINATION_CLAIMS: readonly ScenarioCoverageClaim[] = Object.freeze([
+  claim("separations-ucpath-termination/gate-approved", [
+    "gate:identity-approval/opened",
+    "gate:identity-approval/resolved",
+  ]),
+  claim("separations-ucpath-termination/dry-run-preview", [
+    "transaction:clear-pending/dry-run",
+    "transaction:file-termination/dry-run",
+  ]),
+  claim("separations-ucpath-termination/subject-mismatch", [
+    "transaction:clear-pending/subject-mismatch",
+    "transaction:file-termination/subject-mismatch",
+  ]),
+  claim("separations-ucpath-termination/pending-sweep-committed", [
+    "transaction:clear-pending/committed",
+  ]),
+  claim("separations-ucpath-termination/pending-sweep-nothing-to-do", [
+    "transaction:clear-pending/already-present",
+  ]),
+  claim("separations-ucpath-termination/committed", [
+    "transaction:file-termination/committed",
+  ]),
+  claim("separations-ucpath-termination/already-present", [
+    "transaction:file-termination/already-present",
+  ]),
+]);
+
 export const SCENARIO_COVERAGE_CLAIMS: Readonly<Record<string, readonly ScenarioCoverageClaim[]>> =
   Object.freeze({
     "person-lookup": PERSON_LOOKUP_CLAIMS,
@@ -111,4 +148,5 @@ export const SCENARIO_COVERAGE_CLAIMS: Readonly<Record<string, readonly Scenario
     "separations-kronos-timecard": SEPARATIONS_KRONOS_TIMECARD_CLAIMS,
     "separations-kuali-read": SEPARATIONS_KUALI_READ_CLAIMS,
     "separations-identity-check": SEPARATIONS_IDENTITY_CHECK_CLAIMS,
+    "separations-ucpath-termination": SEPARATIONS_UCPATH_TERMINATION_CLAIMS,
   });

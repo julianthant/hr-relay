@@ -30,6 +30,7 @@ import { personLookupModule } from "../workflows/person-lookup/module.js";
 import { separationsIdentityCheckModule } from "../workflows/separations-identity-check/module.js";
 import { separationsKronosTimecardModule } from "../workflows/separations-kronos-timecard/module.js";
 import { separationsKualiReadModule } from "../workflows/separations-kuali-read/module.js";
+import { separationsUcpathTerminationModule } from "../workflows/separations-ucpath-termination/module.js";
 
 export const WORKFLOW_MODULES = Object.freeze([
   personLookupModule,
@@ -37,6 +38,7 @@ export const WORKFLOW_MODULES = Object.freeze([
   separationsKronosTimecardModule,
   separationsKualiReadModule,
   separationsIdentityCheckModule,
+  separationsUcpathTerminationModule,
 ]);
 
 export const DESCRIPTORS: readonly AnyWorkflowDescriptor[] = Object.freeze(

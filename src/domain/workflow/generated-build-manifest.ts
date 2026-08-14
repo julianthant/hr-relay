@@ -731,6 +731,200 @@ export const GENERATED_BUILD_MANIFEST = {
         }
       ],
       "id": "separations-kuali-read"
+    },
+    {
+      "fingerprint": "84631147d78b2aad6a1f003bb76962969f53ed6af5ad677c5d77c7ecdc71c857",
+      "sources": [
+        {
+          "path": "src/base/flow.ts",
+          "sha256": "4db473ffb5976e0541ff9c05324f98d870ce41a9090853ad8f62139d8fa9aca4"
+        },
+        {
+          "path": "src/base/workflow.ts",
+          "sha256": "3a9502314577f90e73abe5b5e67e3338d718cbf27e5d7110483b1ace0c201755"
+        },
+        {
+          "path": "src/domain/canonical-json.ts",
+          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/contracts/base.ts",
+          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/separations/match-identity.ts",
+          "sha256": "7292ff9035806a885d70b992d4e9abbda6fa0a746f1e2e81aebfaeab4eb50bcf"
+        },
+        {
+          "path": "src/domain/contracts/separations/match-termination-type.ts",
+          "sha256": "e7791dc398d44b3271adca0a15d5a973e36c5305c44423bff60255f5cbadad0e"
+        },
+        {
+          "path": "src/domain/contracts/separations/verify-identity-approval.ts",
+          "sha256": "e4e4b726d6034ad9a4d3f1f1e6f488868520d7ff18fb4776d141ee9bd9fce5f5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "91b0a29c6826ee0f971b2bc0f22749df9dbbfe928a73b16f6f87f6af388c2666"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "1cb5e9a21bc893e7ab65e75cef2d9446a63e2d1cd9a3730490aa96df5a84c5e5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/read-job-summary.ts",
+          "sha256": "c1919e13f8a55f9d0d0a5a9fb530e5610e9d4892b3a84b1edf82f98fc3dd1b2a"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/search-person-org.ts",
+          "sha256": "77f432dc92d89aa2921158dfc341d1449766c5eea08d16f91a591a7fe45357ea"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/stage-pending-termination-sweep.ts",
+          "sha256": "ccbf918402b4495f2f9ce85cc908963c3e347b04a712aa238171f86216137977"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/stage-termination.ts",
+          "sha256": "fd44c55fad09e93f22d1e17f0fc425f6726a952c3a7687006b78acf20d2c1fa0"
+        },
+        {
+          "path": "src/domain/contracts/write-safety.ts",
+          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+        },
+        {
+          "path": "src/domain/ids.ts",
+          "sha256": "9dcb9cf4e188f05fdc64e82c4a4e7c8bab18ec91355d66d718581040c1ae881a"
+        },
+        {
+          "path": "src/domain/immutability.ts",
+          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/domain/matching/levenshtein.ts",
+          "sha256": "f3f15ca0398c45461c0bab20c947adc4ecd745f6e9e1956fcbe7c7a68df14d48"
+        },
+        {
+          "path": "src/domain/matching/name-match.ts",
+          "sha256": "25360b5b5632265af1a7d158f5399ef9d9337f2a6e3920f3c1280add8b21e577"
+        },
+        {
+          "path": "src/domain/run/result.ts",
+          "sha256": "4c45e0fa2df7723ae0a4d2fa9e31201c3f7467d7f133bcf631a575a9f9a70f00"
+        },
+        {
+          "path": "src/domain/schema-bound-value.ts",
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
+        },
+        {
+          "path": "src/domain/secret-names.ts",
+          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
+        },
+        {
+          "path": "src/domain/separations/identity-approval.ts",
+          "sha256": "b40363ce7b11193964b1fea1cb0a4459dc305d9623ed6a728bfde4307a74730a"
+        },
+        {
+          "path": "src/domain/separations/identity-evidence.ts",
+          "sha256": "7bb482e51bab10e44b95187e54e99bc40d4957f72ca25b3c77fce04a58e4409f"
+        },
+        {
+          "path": "src/domain/separations/job-summary-classification.ts",
+          "sha256": "b5f0aa03957ce1b889416ee971cf0e9d4e7e1d08657613231b33d7a62b099bf9"
+        },
+        {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
+          "path": "src/domain/session.ts",
+          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
+        },
+        {
+          "path": "src/domain/ui/driver.ts",
+          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
+        },
+        {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "162a172789595c9974885b371ea6e2ea305b6106650ae6a694dc68eebc88a8e3"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "cee2181b327d03299b78df06e233fbd6ad87929a6ddb84583c8d143a5c00c7c4"
+        },
+        {
+          "path": "src/domain/ui/ucpath-job-summary.ts",
+          "sha256": "1bec68004adb73eda4de737854a1ab032395fad101930fe640cf27134b855022"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "5ee73ecf18e8b601e4fea38279bbcd4c745611ad6db14d9a461f9513e3571401"
+        },
+        {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "8aa13e47594683cd4ceb15b47e839d8ca012fabffe5f901146650a4a76f4a011"
+        },
+        {
+          "path": "src/domain/unscoped-commit.ts",
+          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
+        },
+        {
+          "path": "src/domain/workflow/build-manifest.ts",
+          "sha256": "96c7b2c3d1c9fef6b791a0eb77ddf40b1210fa69837ef913f918b657df3fa6d1"
+        },
+        {
+          "path": "src/domain/workflow/canonical-input.ts",
+          "sha256": "e3ee87bdec7d447005c59b230b8b09f6cee22efcb547071165e75b90ea7a1891"
+        },
+        {
+          "path": "src/domain/workflow/checkpoint.ts",
+          "sha256": "5aeac2c74fcdb130fbfd33fcb663056ee5bebda9b953bea9dc99f67654b085f6"
+        },
+        {
+          "path": "src/domain/workflow/completion.ts",
+          "sha256": "41f4c321829665233ce03b629e1419df967af544f2ec62ba46089f46f6375539"
+        },
+        {
+          "path": "src/domain/workflow/delegation-policy.ts",
+          "sha256": "189e529e80af3e9367c2adc0e7b447e6d84714200ded02f0713f4a1d2370a0ad"
+        },
+        {
+          "path": "src/domain/workflow/graph.ts",
+          "sha256": "7bce5ef2a46f85b6ef55c8f4efbb1fa5157693660011cbe3e61a56e0ffd81aae"
+        },
+        {
+          "path": "src/domain/workflow/ingress.ts",
+          "sha256": "ef46b48c06678d9ad96cdded7b48c4e2aae243b076a2015d3852ac66494ce9fe"
+        },
+        {
+          "path": "src/domain/workflow/presentation.ts",
+          "sha256": "2f4b9423010165287992cf8378983a54019d0fc41fb696c14f7c1d9e20f5f030"
+        },
+        {
+          "path": "src/domain/workflow/scenario-coverage.ts",
+          "sha256": "cbc65b12be8aefd81c2b9defaa0a4f976611b2d8bdf32b7d66eea4cc815ed41f"
+        },
+        {
+          "path": "src/domain/write-safety-primitives.ts",
+          "sha256": "fc228f48b1cd04ebdd50e69e9846c54289924f26327deb69961235b7997d5a62"
+        },
+        {
+          "path": "src/validation/canonical-input-schema.ts",
+          "sha256": "fce909fc454399bd15b1d0fd3c4c3a49851e862a5ada6549f37be5f8ccdec53e"
+        },
+        {
+          "path": "src/validation/contract-boundary.ts",
+          "sha256": "e1ff83d14555a67247b6044d83052ff90e3dc4c72e381ffa04e1376d1a661b90"
+        },
+        {
+          "path": "src/workflows/separations-ucpath-termination/descriptor.ts",
+          "sha256": "155f574ec9e7af1b542eed33ce9607bf78915b6a0ed79cc8d6caa98169c339fb"
+        }
+      ],
+      "id": "separations-ucpath-termination"
     }
   ],
   "tasks": [
@@ -2995,7 +3189,847 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "2b736c3720810ce779df31063fddc0618bdf937f5f1aa849955962bc93bb6a84",
+      "fingerprint": "fc3259cabd1d90510316dacf1aee4c3fb3048c9fd9ba3011ff056f028c3fa477",
+      "sources": [
+        {
+          "path": "src/base/artifacts.ts",
+          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
+        },
+        {
+          "path": "src/base/errors.ts",
+          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
+        },
+        {
+          "path": "src/base/providers.ts",
+          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
+        },
+        {
+          "path": "src/base/session.ts",
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
+        },
+        {
+          "path": "src/base/store.ts",
+          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
+        },
+        {
+          "path": "src/base/task.ts",
+          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
+        },
+        {
+          "path": "src/domain/artifacts.ts",
+          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
+        },
+        {
+          "path": "src/domain/canonical-json.ts",
+          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/clock.ts",
+          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
+        },
+        {
+          "path": "src/domain/config/schema.ts",
+          "sha256": "c3da673bb88832cad9f5645037bf03b536a404c0e6a2ab5c555220ebeeb5c40b"
+        },
+        {
+          "path": "src/domain/contracts/base.ts",
+          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "91b0a29c6826ee0f971b2bc0f22749df9dbbfe928a73b16f6f87f6af388c2666"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "1cb5e9a21bc893e7ab65e75cef2d9446a63e2d1cd9a3730490aa96df5a84c5e5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
+          "sha256": "5c6c035f82ec760a047039a38806ba03de8eefd50c2afa099d7830c8eb46234b"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
+          "sha256": "1f408efbb22eab627ffa060a32b27edfc9db692d162a55793b8aabe963db61f0"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/search-person-org.ts",
+          "sha256": "77f432dc92d89aa2921158dfc341d1449766c5eea08d16f91a591a7fe45357ea"
+        },
+        {
+          "path": "src/domain/contracts/write-safety.ts",
+          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+        },
+        {
+          "path": "src/domain/gates.ts",
+          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
+        },
+        {
+          "path": "src/domain/ids.ts",
+          "sha256": "9dcb9cf4e188f05fdc64e82c4a4e7c8bab18ec91355d66d718581040c1ae881a"
+        },
+        {
+          "path": "src/domain/immutability.ts",
+          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/domain/provider-admission.ts",
+          "sha256": "c843923d15f4ea4730f458faf53da92c2c732b8ce9cdd69431089e62b84a3899"
+        },
+        {
+          "path": "src/domain/providers.ts",
+          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/schema-bound-value.ts",
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
+        },
+        {
+          "path": "src/domain/secret-names.ts",
+          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
+        },
+        {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
+          "path": "src/domain/session.ts",
+          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
+        },
+        {
+          "path": "src/domain/task-provenance.ts",
+          "sha256": "7592360b7b1b52bf65f654b26f66444bd230710e037154a5da6333dbaf82793d"
+        },
+        {
+          "path": "src/domain/trust/preflight-scenarios.ts",
+          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
+        },
+        {
+          "path": "src/domain/trust/scenario.ts",
+          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
+        },
+        {
+          "path": "src/domain/ui/contracts.ts",
+          "sha256": "d48be467dfa66a7725a7706c00bed7a1df224f9642feffc11184bfc9248b9fba"
+        },
+        {
+          "path": "src/domain/ui/driver.ts",
+          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
+        },
+        {
+          "path": "src/domain/ui/ucpath-driver.ts",
+          "sha256": "6c0f000bfb7a1e81a5cb1e951eed0cdd0b7f51b2eb38fbf3b30b37fef759ed07"
+        },
+        {
+          "path": "src/domain/ui/ucpath-job-summary.ts",
+          "sha256": "1bec68004adb73eda4de737854a1ab032395fad101930fe640cf27134b855022"
+        },
+        {
+          "path": "src/domain/ui/ucpath-person-org.ts",
+          "sha256": "c53af126d52e06544c683ad0af45f459c96821e148420effef87964186ccec90"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "5ee73ecf18e8b601e4fea38279bbcd4c745611ad6db14d9a461f9513e3571401"
+        },
+        {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "8aa13e47594683cd4ceb15b47e839d8ca012fabffe5f901146650a4a76f4a011"
+        },
+        {
+          "path": "src/domain/unscoped-commit.ts",
+          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
+        },
+        {
+          "path": "src/domain/workflow/checkpoint.ts",
+          "sha256": "5aeac2c74fcdb130fbfd33fcb663056ee5bebda9b953bea9dc99f67654b085f6"
+        },
+        {
+          "path": "src/domain/workflow/delegation-policy.ts",
+          "sha256": "189e529e80af3e9367c2adc0e7b447e6d84714200ded02f0713f4a1d2370a0ad"
+        },
+        {
+          "path": "src/domain/workflow/graph.ts",
+          "sha256": "7bce5ef2a46f85b6ef55c8f4efbb1fa5157693660011cbe3e61a56e0ffd81aae"
+        },
+        {
+          "path": "src/domain/write-safety-primitives.ts",
+          "sha256": "fc228f48b1cd04ebdd50e69e9846c54289924f26327deb69961235b7997d5a62"
+        },
+        {
+          "path": "src/domain/write-safety.ts",
+          "sha256": "a131d575df83c6d7880506a218d9590ba2cdf961c8b8c59b5eb61d78b0f7c813"
+        },
+        {
+          "path": "src/stores/ucpath/driver-declaration.ts",
+          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
+        },
+        {
+          "path": "src/stores/ucpath/driver/interpreter.ts",
+          "sha256": "1826bc8356a505111af0c759395f99823d4a22bd29fc38b985a24b687ce3bd81"
+        },
+        {
+          "path": "src/stores/ucpath/driver/person-org-operation.ts",
+          "sha256": "d6b47365ce8b734d103385b2d700f7f363c71849c3dbd7e488926ef288483fb9"
+        },
+        {
+          "path": "src/stores/ucpath/driver/registry-locators.ts",
+          "sha256": "01bc084c5ee4163bde98168f089b8cf847242da1efcac6da90d778674521c585"
+        },
+        {
+          "path": "src/stores/ucpath/driver/ui-registry.ts",
+          "sha256": "8a7106d2b7116847f0ca37ab1b232a3f9050778ea3acefe063defbd9bb1af24f"
+        },
+        {
+          "path": "src/stores/ucpath/tasks/create-termination.ts",
+          "sha256": "3c6917cae1f58d358fefad8ea752c6da09fe4d3a89e16e90b43458da2df8bf09"
+        },
+        {
+          "path": "src/stores/ucpath/termination-verdict.ts",
+          "sha256": "fa0c1ecf5218c0264984b3b2466ab3110320b9b9f12cf15657f77eedb53c9431"
+        },
+        {
+          "path": "src/validation/contract-boundary.ts",
+          "sha256": "e1ff83d14555a67247b6044d83052ff90e3dc4c72e381ffa04e1376d1a661b90"
+        }
+      ],
+      "id": "ucpath/create-termination"
+    },
+    {
+      "fingerprint": "06762286792baa095bc680ff3b11e2bcfd17de11e6395f2853dbeae1aca98ac3",
+      "sources": [
+        {
+          "path": "src/base/artifacts.ts",
+          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
+        },
+        {
+          "path": "src/base/errors.ts",
+          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
+        },
+        {
+          "path": "src/base/providers.ts",
+          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
+        },
+        {
+          "path": "src/base/session.ts",
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
+        },
+        {
+          "path": "src/base/store.ts",
+          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
+        },
+        {
+          "path": "src/base/task.ts",
+          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
+        },
+        {
+          "path": "src/domain/artifacts.ts",
+          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
+        },
+        {
+          "path": "src/domain/canonical-json.ts",
+          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/clock.ts",
+          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
+        },
+        {
+          "path": "src/domain/config/schema.ts",
+          "sha256": "c3da673bb88832cad9f5645037bf03b536a404c0e6a2ab5c555220ebeeb5c40b"
+        },
+        {
+          "path": "src/domain/contracts/base.ts",
+          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "91b0a29c6826ee0f971b2bc0f22749df9dbbfe928a73b16f6f87f6af388c2666"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "1cb5e9a21bc893e7ab65e75cef2d9446a63e2d1cd9a3730490aa96df5a84c5e5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
+          "sha256": "5c6c035f82ec760a047039a38806ba03de8eefd50c2afa099d7830c8eb46234b"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
+          "sha256": "1f408efbb22eab627ffa060a32b27edfc9db692d162a55793b8aabe963db61f0"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/search-person-org.ts",
+          "sha256": "77f432dc92d89aa2921158dfc341d1449766c5eea08d16f91a591a7fe45357ea"
+        },
+        {
+          "path": "src/domain/contracts/write-safety.ts",
+          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+        },
+        {
+          "path": "src/domain/gates.ts",
+          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
+        },
+        {
+          "path": "src/domain/ids.ts",
+          "sha256": "9dcb9cf4e188f05fdc64e82c4a4e7c8bab18ec91355d66d718581040c1ae881a"
+        },
+        {
+          "path": "src/domain/immutability.ts",
+          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/domain/provider-admission.ts",
+          "sha256": "c843923d15f4ea4730f458faf53da92c2c732b8ce9cdd69431089e62b84a3899"
+        },
+        {
+          "path": "src/domain/providers.ts",
+          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/schema-bound-value.ts",
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
+        },
+        {
+          "path": "src/domain/secret-names.ts",
+          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
+        },
+        {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
+          "path": "src/domain/session.ts",
+          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
+        },
+        {
+          "path": "src/domain/task-provenance.ts",
+          "sha256": "7592360b7b1b52bf65f654b26f66444bd230710e037154a5da6333dbaf82793d"
+        },
+        {
+          "path": "src/domain/trust/preflight-scenarios.ts",
+          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
+        },
+        {
+          "path": "src/domain/trust/scenario.ts",
+          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
+        },
+        {
+          "path": "src/domain/ui/contracts.ts",
+          "sha256": "d48be467dfa66a7725a7706c00bed7a1df224f9642feffc11184bfc9248b9fba"
+        },
+        {
+          "path": "src/domain/ui/driver.ts",
+          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
+        },
+        {
+          "path": "src/domain/ui/ucpath-driver.ts",
+          "sha256": "6c0f000bfb7a1e81a5cb1e951eed0cdd0b7f51b2eb38fbf3b30b37fef759ed07"
+        },
+        {
+          "path": "src/domain/ui/ucpath-job-summary.ts",
+          "sha256": "1bec68004adb73eda4de737854a1ab032395fad101930fe640cf27134b855022"
+        },
+        {
+          "path": "src/domain/ui/ucpath-person-org.ts",
+          "sha256": "c53af126d52e06544c683ad0af45f459c96821e148420effef87964186ccec90"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "5ee73ecf18e8b601e4fea38279bbcd4c745611ad6db14d9a461f9513e3571401"
+        },
+        {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "8aa13e47594683cd4ceb15b47e839d8ca012fabffe5f901146650a4a76f4a011"
+        },
+        {
+          "path": "src/domain/unscoped-commit.ts",
+          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
+        },
+        {
+          "path": "src/domain/workflow/checkpoint.ts",
+          "sha256": "5aeac2c74fcdb130fbfd33fcb663056ee5bebda9b953bea9dc99f67654b085f6"
+        },
+        {
+          "path": "src/domain/workflow/delegation-policy.ts",
+          "sha256": "189e529e80af3e9367c2adc0e7b447e6d84714200ded02f0713f4a1d2370a0ad"
+        },
+        {
+          "path": "src/domain/workflow/graph.ts",
+          "sha256": "7bce5ef2a46f85b6ef55c8f4efbb1fa5157693660011cbe3e61a56e0ffd81aae"
+        },
+        {
+          "path": "src/domain/write-safety-primitives.ts",
+          "sha256": "fc228f48b1cd04ebdd50e69e9846c54289924f26327deb69961235b7997d5a62"
+        },
+        {
+          "path": "src/domain/write-safety.ts",
+          "sha256": "a131d575df83c6d7880506a218d9590ba2cdf961c8b8c59b5eb61d78b0f7c813"
+        },
+        {
+          "path": "src/stores/ucpath/driver-declaration.ts",
+          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
+        },
+        {
+          "path": "src/stores/ucpath/driver/interpreter.ts",
+          "sha256": "1826bc8356a505111af0c759395f99823d4a22bd29fc38b985a24b687ce3bd81"
+        },
+        {
+          "path": "src/stores/ucpath/driver/person-org-operation.ts",
+          "sha256": "d6b47365ce8b734d103385b2d700f7f363c71849c3dbd7e488926ef288483fb9"
+        },
+        {
+          "path": "src/stores/ucpath/driver/registry-locators.ts",
+          "sha256": "01bc084c5ee4163bde98168f089b8cf847242da1efcac6da90d778674521c585"
+        },
+        {
+          "path": "src/stores/ucpath/driver/ui-registry.ts",
+          "sha256": "8a7106d2b7116847f0ca37ab1b232a3f9050778ea3acefe063defbd9bb1af24f"
+        },
+        {
+          "path": "src/stores/ucpath/tasks/delete-pending-terminations.ts",
+          "sha256": "c2e466b901e4c41db1350d21039151c6dd94b1858b35fc73c1612398d1267e81"
+        },
+        {
+          "path": "src/stores/ucpath/termination-verdict.ts",
+          "sha256": "fa0c1ecf5218c0264984b3b2466ab3110320b9b9f12cf15657f77eedb53c9431"
+        },
+        {
+          "path": "src/validation/contract-boundary.ts",
+          "sha256": "e1ff83d14555a67247b6044d83052ff90e3dc4c72e381ffa04e1376d1a661b90"
+        }
+      ],
+      "id": "ucpath/delete-pending-terminations"
+    },
+    {
+      "fingerprint": "6176ba84f1057d6bcbad33c94f75ee41e53522151b386131fa89a5e429670eef",
+      "sources": [
+        {
+          "path": "src/base/artifacts.ts",
+          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
+        },
+        {
+          "path": "src/base/errors.ts",
+          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
+        },
+        {
+          "path": "src/base/providers.ts",
+          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
+        },
+        {
+          "path": "src/base/session.ts",
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
+        },
+        {
+          "path": "src/base/store.ts",
+          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
+        },
+        {
+          "path": "src/base/task.ts",
+          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
+        },
+        {
+          "path": "src/domain/artifacts.ts",
+          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
+        },
+        {
+          "path": "src/domain/canonical-json.ts",
+          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/clock.ts",
+          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
+        },
+        {
+          "path": "src/domain/config/schema.ts",
+          "sha256": "c3da673bb88832cad9f5645037bf03b536a404c0e6a2ab5c555220ebeeb5c40b"
+        },
+        {
+          "path": "src/domain/contracts/base.ts",
+          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "91b0a29c6826ee0f971b2bc0f22749df9dbbfe928a73b16f6f87f6af388c2666"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "1cb5e9a21bc893e7ab65e75cef2d9446a63e2d1cd9a3730490aa96df5a84c5e5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
+          "sha256": "5c6c035f82ec760a047039a38806ba03de8eefd50c2afa099d7830c8eb46234b"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
+          "sha256": "1f408efbb22eab627ffa060a32b27edfc9db692d162a55793b8aabe963db61f0"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/search-person-org.ts",
+          "sha256": "77f432dc92d89aa2921158dfc341d1449766c5eea08d16f91a591a7fe45357ea"
+        },
+        {
+          "path": "src/domain/contracts/write-safety.ts",
+          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+        },
+        {
+          "path": "src/domain/gates.ts",
+          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
+        },
+        {
+          "path": "src/domain/ids.ts",
+          "sha256": "9dcb9cf4e188f05fdc64e82c4a4e7c8bab18ec91355d66d718581040c1ae881a"
+        },
+        {
+          "path": "src/domain/immutability.ts",
+          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/domain/provider-admission.ts",
+          "sha256": "c843923d15f4ea4730f458faf53da92c2c732b8ce9cdd69431089e62b84a3899"
+        },
+        {
+          "path": "src/domain/providers.ts",
+          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/schema-bound-value.ts",
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
+        },
+        {
+          "path": "src/domain/secret-names.ts",
+          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
+        },
+        {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
+          "path": "src/domain/session.ts",
+          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
+        },
+        {
+          "path": "src/domain/task-provenance.ts",
+          "sha256": "7592360b7b1b52bf65f654b26f66444bd230710e037154a5da6333dbaf82793d"
+        },
+        {
+          "path": "src/domain/trust/preflight-scenarios.ts",
+          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
+        },
+        {
+          "path": "src/domain/trust/scenario.ts",
+          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
+        },
+        {
+          "path": "src/domain/ui/contracts.ts",
+          "sha256": "d48be467dfa66a7725a7706c00bed7a1df224f9642feffc11184bfc9248b9fba"
+        },
+        {
+          "path": "src/domain/ui/driver.ts",
+          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
+        },
+        {
+          "path": "src/domain/ui/ucpath-driver.ts",
+          "sha256": "6c0f000bfb7a1e81a5cb1e951eed0cdd0b7f51b2eb38fbf3b30b37fef759ed07"
+        },
+        {
+          "path": "src/domain/ui/ucpath-job-summary.ts",
+          "sha256": "1bec68004adb73eda4de737854a1ab032395fad101930fe640cf27134b855022"
+        },
+        {
+          "path": "src/domain/ui/ucpath-person-org.ts",
+          "sha256": "c53af126d52e06544c683ad0af45f459c96821e148420effef87964186ccec90"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "5ee73ecf18e8b601e4fea38279bbcd4c745611ad6db14d9a461f9513e3571401"
+        },
+        {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "8aa13e47594683cd4ceb15b47e839d8ca012fabffe5f901146650a4a76f4a011"
+        },
+        {
+          "path": "src/domain/unscoped-commit.ts",
+          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
+        },
+        {
+          "path": "src/domain/workflow/checkpoint.ts",
+          "sha256": "5aeac2c74fcdb130fbfd33fcb663056ee5bebda9b953bea9dc99f67654b085f6"
+        },
+        {
+          "path": "src/domain/workflow/delegation-policy.ts",
+          "sha256": "189e529e80af3e9367c2adc0e7b447e6d84714200ded02f0713f4a1d2370a0ad"
+        },
+        {
+          "path": "src/domain/workflow/graph.ts",
+          "sha256": "7bce5ef2a46f85b6ef55c8f4efbb1fa5157693660011cbe3e61a56e0ffd81aae"
+        },
+        {
+          "path": "src/domain/write-safety-primitives.ts",
+          "sha256": "fc228f48b1cd04ebdd50e69e9846c54289924f26327deb69961235b7997d5a62"
+        },
+        {
+          "path": "src/domain/write-safety.ts",
+          "sha256": "a131d575df83c6d7880506a218d9590ba2cdf961c8b8c59b5eb61d78b0f7c813"
+        },
+        {
+          "path": "src/stores/ucpath/driver-declaration.ts",
+          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
+        },
+        {
+          "path": "src/stores/ucpath/driver/interpreter.ts",
+          "sha256": "1826bc8356a505111af0c759395f99823d4a22bd29fc38b985a24b687ce3bd81"
+        },
+        {
+          "path": "src/stores/ucpath/driver/person-org-operation.ts",
+          "sha256": "d6b47365ce8b734d103385b2d700f7f363c71849c3dbd7e488926ef288483fb9"
+        },
+        {
+          "path": "src/stores/ucpath/driver/registry-locators.ts",
+          "sha256": "01bc084c5ee4163bde98168f089b8cf847242da1efcac6da90d778674521c585"
+        },
+        {
+          "path": "src/stores/ucpath/driver/ui-registry.ts",
+          "sha256": "8a7106d2b7116847f0ca37ab1b232a3f9050778ea3acefe063defbd9bb1af24f"
+        },
+        {
+          "path": "src/stores/ucpath/tasks/match-existing-termination.ts",
+          "sha256": "a97d8c4f16df80fd90dc2ada76e35b17554dea1cb4979d5625e6f397ebda32e1"
+        },
+        {
+          "path": "src/stores/ucpath/termination-verdict.ts",
+          "sha256": "fa0c1ecf5218c0264984b3b2466ab3110320b9b9f12cf15657f77eedb53c9431"
+        },
+        {
+          "path": "src/validation/contract-boundary.ts",
+          "sha256": "e1ff83d14555a67247b6044d83052ff90e3dc4c72e381ffa04e1376d1a661b90"
+        }
+      ],
+      "id": "ucpath/match-existing-termination"
+    },
+    {
+      "fingerprint": "19cce7297ec31662abe827456cfb6fb273a6c7e84894e3e7f2a9b78f42cfcf98",
+      "sources": [
+        {
+          "path": "src/base/artifacts.ts",
+          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
+        },
+        {
+          "path": "src/base/errors.ts",
+          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
+        },
+        {
+          "path": "src/base/providers.ts",
+          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
+        },
+        {
+          "path": "src/base/session.ts",
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
+        },
+        {
+          "path": "src/base/store.ts",
+          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
+        },
+        {
+          "path": "src/base/task.ts",
+          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
+        },
+        {
+          "path": "src/domain/artifacts.ts",
+          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
+        },
+        {
+          "path": "src/domain/canonical-json.ts",
+          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/clock.ts",
+          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
+        },
+        {
+          "path": "src/domain/config/schema.ts",
+          "sha256": "c3da673bb88832cad9f5645037bf03b536a404c0e6a2ab5c555220ebeeb5c40b"
+        },
+        {
+          "path": "src/domain/contracts/base.ts",
+          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "91b0a29c6826ee0f971b2bc0f22749df9dbbfe928a73b16f6f87f6af388c2666"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "1cb5e9a21bc893e7ab65e75cef2d9446a63e2d1cd9a3730490aa96df5a84c5e5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
+          "sha256": "5c6c035f82ec760a047039a38806ba03de8eefd50c2afa099d7830c8eb46234b"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
+          "sha256": "1f408efbb22eab627ffa060a32b27edfc9db692d162a55793b8aabe963db61f0"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/search-person-org.ts",
+          "sha256": "77f432dc92d89aa2921158dfc341d1449766c5eea08d16f91a591a7fe45357ea"
+        },
+        {
+          "path": "src/domain/contracts/write-safety.ts",
+          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+        },
+        {
+          "path": "src/domain/gates.ts",
+          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
+        },
+        {
+          "path": "src/domain/ids.ts",
+          "sha256": "9dcb9cf4e188f05fdc64e82c4a4e7c8bab18ec91355d66d718581040c1ae881a"
+        },
+        {
+          "path": "src/domain/immutability.ts",
+          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/domain/provider-admission.ts",
+          "sha256": "c843923d15f4ea4730f458faf53da92c2c732b8ce9cdd69431089e62b84a3899"
+        },
+        {
+          "path": "src/domain/providers.ts",
+          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/schema-bound-value.ts",
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
+        },
+        {
+          "path": "src/domain/secret-names.ts",
+          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
+        },
+        {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
+          "path": "src/domain/session.ts",
+          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
+        },
+        {
+          "path": "src/domain/task-provenance.ts",
+          "sha256": "7592360b7b1b52bf65f654b26f66444bd230710e037154a5da6333dbaf82793d"
+        },
+        {
+          "path": "src/domain/trust/preflight-scenarios.ts",
+          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
+        },
+        {
+          "path": "src/domain/trust/scenario.ts",
+          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
+        },
+        {
+          "path": "src/domain/ui/contracts.ts",
+          "sha256": "d48be467dfa66a7725a7706c00bed7a1df224f9642feffc11184bfc9248b9fba"
+        },
+        {
+          "path": "src/domain/ui/driver.ts",
+          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
+        },
+        {
+          "path": "src/domain/ui/ucpath-driver.ts",
+          "sha256": "6c0f000bfb7a1e81a5cb1e951eed0cdd0b7f51b2eb38fbf3b30b37fef759ed07"
+        },
+        {
+          "path": "src/domain/ui/ucpath-job-summary.ts",
+          "sha256": "1bec68004adb73eda4de737854a1ab032395fad101930fe640cf27134b855022"
+        },
+        {
+          "path": "src/domain/ui/ucpath-person-org.ts",
+          "sha256": "c53af126d52e06544c683ad0af45f459c96821e148420effef87964186ccec90"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "5ee73ecf18e8b601e4fea38279bbcd4c745611ad6db14d9a461f9513e3571401"
+        },
+        {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "8aa13e47594683cd4ceb15b47e839d8ca012fabffe5f901146650a4a76f4a011"
+        },
+        {
+          "path": "src/domain/unscoped-commit.ts",
+          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
+        },
+        {
+          "path": "src/domain/workflow/checkpoint.ts",
+          "sha256": "5aeac2c74fcdb130fbfd33fcb663056ee5bebda9b953bea9dc99f67654b085f6"
+        },
+        {
+          "path": "src/domain/workflow/delegation-policy.ts",
+          "sha256": "189e529e80af3e9367c2adc0e7b447e6d84714200ded02f0713f4a1d2370a0ad"
+        },
+        {
+          "path": "src/domain/workflow/graph.ts",
+          "sha256": "7bce5ef2a46f85b6ef55c8f4efbb1fa5157693660011cbe3e61a56e0ffd81aae"
+        },
+        {
+          "path": "src/domain/write-safety-primitives.ts",
+          "sha256": "fc228f48b1cd04ebdd50e69e9846c54289924f26327deb69961235b7997d5a62"
+        },
+        {
+          "path": "src/domain/write-safety.ts",
+          "sha256": "a131d575df83c6d7880506a218d9590ba2cdf961c8b8c59b5eb61d78b0f7c813"
+        },
+        {
+          "path": "src/stores/ucpath/driver-declaration.ts",
+          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
+        },
+        {
+          "path": "src/stores/ucpath/driver/interpreter.ts",
+          "sha256": "1826bc8356a505111af0c759395f99823d4a22bd29fc38b985a24b687ce3bd81"
+        },
+        {
+          "path": "src/stores/ucpath/driver/person-org-operation.ts",
+          "sha256": "d6b47365ce8b734d103385b2d700f7f363c71849c3dbd7e488926ef288483fb9"
+        },
+        {
+          "path": "src/stores/ucpath/driver/registry-locators.ts",
+          "sha256": "01bc084c5ee4163bde98168f089b8cf847242da1efcac6da90d778674521c585"
+        },
+        {
+          "path": "src/stores/ucpath/driver/ui-registry.ts",
+          "sha256": "8a7106d2b7116847f0ca37ab1b232a3f9050778ea3acefe063defbd9bb1af24f"
+        },
+        {
+          "path": "src/stores/ucpath/tasks/match-pending-terminations.ts",
+          "sha256": "fdd618f2893d23e6f7abf3958129c689b87791683d931fd74ef52eeb464cc4aa"
+        },
+        {
+          "path": "src/stores/ucpath/termination-verdict.ts",
+          "sha256": "fa0c1ecf5218c0264984b3b2466ab3110320b9b9f12cf15657f77eedb53c9431"
+        },
+        {
+          "path": "src/validation/contract-boundary.ts",
+          "sha256": "e1ff83d14555a67247b6044d83052ff90e3dc4c72e381ffa04e1376d1a661b90"
+        }
+      ],
+      "id": "ucpath/match-pending-terminations"
+    },
+    {
+      "fingerprint": "220f6af62477a5bdcb894e7cd120b5550dea674bada098a426f614ad96b9411c",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3082,6 +4116,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
         },
         {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
           "path": "src/domain/session.ts",
           "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
         },
@@ -3110,12 +4148,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
         },
         {
+          "path": "src/domain/ui/ucpath-driver.ts",
+          "sha256": "6c0f000bfb7a1e81a5cb1e951eed0cdd0b7f51b2eb38fbf3b30b37fef759ed07"
+        },
+        {
           "path": "src/domain/ui/ucpath-job-summary.ts",
           "sha256": "1bec68004adb73eda4de737854a1ab032395fad101930fe640cf27134b855022"
         },
         {
           "path": "src/domain/ui/ucpath-person-org.ts",
           "sha256": "c53af126d52e06544c683ad0af45f459c96821e148420effef87964186ccec90"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "5ee73ecf18e8b601e4fea38279bbcd4c745611ad6db14d9a461f9513e3571401"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -3143,7 +4189,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver-declaration.ts",
-          "sha256": "8dd6f21fdfafc6144d8bde33709212a05fdac6b371efd0336e382d82f7a4d0cb"
+          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
@@ -3173,7 +4219,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "ba1d139541de0f5021ed13b39b146a288b483094275b1aaa8459025e60dfbbae",
+      "fingerprint": "8e6f6c11600bab9ecc3da8a9ddf580ee2910aa831b836c738ebd0555b8070969",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3256,6 +4302,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
         },
         {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
           "path": "src/domain/session.ts",
           "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
         },
@@ -3284,12 +4334,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
         },
         {
+          "path": "src/domain/ui/ucpath-driver.ts",
+          "sha256": "6c0f000bfb7a1e81a5cb1e951eed0cdd0b7f51b2eb38fbf3b30b37fef759ed07"
+        },
+        {
           "path": "src/domain/ui/ucpath-job-summary.ts",
           "sha256": "1bec68004adb73eda4de737854a1ab032395fad101930fe640cf27134b855022"
         },
         {
           "path": "src/domain/ui/ucpath-person-org.ts",
           "sha256": "c53af126d52e06544c683ad0af45f459c96821e148420effef87964186ccec90"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "5ee73ecf18e8b601e4fea38279bbcd4c745611ad6db14d9a461f9513e3571401"
         },
         {
           "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
@@ -3317,7 +4375,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver-declaration.ts",
-          "sha256": "8dd6f21fdfafc6144d8bde33709212a05fdac6b371efd0336e382d82f7a4d0cb"
+          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
@@ -3345,6 +4403,814 @@ export const GENERATED_BUILD_MANIFEST = {
         }
       ],
       "id": "ucpath/search-person-org"
+    },
+    {
+      "fingerprint": "ca6ff8888ed0cb42bc06320436a9ed9aa1d3a35768a981503cd7b10c2a7dfbdc",
+      "sources": [
+        {
+          "path": "src/base/artifacts.ts",
+          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
+        },
+        {
+          "path": "src/base/errors.ts",
+          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
+        },
+        {
+          "path": "src/base/providers.ts",
+          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
+        },
+        {
+          "path": "src/base/session.ts",
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
+        },
+        {
+          "path": "src/base/store.ts",
+          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
+        },
+        {
+          "path": "src/base/task.ts",
+          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
+        },
+        {
+          "path": "src/domain/artifacts.ts",
+          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
+        },
+        {
+          "path": "src/domain/canonical-json.ts",
+          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/clock.ts",
+          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
+        },
+        {
+          "path": "src/domain/config/schema.ts",
+          "sha256": "c3da673bb88832cad9f5645037bf03b536a404c0e6a2ab5c555220ebeeb5c40b"
+        },
+        {
+          "path": "src/domain/contracts/base.ts",
+          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/search-person-org.ts",
+          "sha256": "77f432dc92d89aa2921158dfc341d1449766c5eea08d16f91a591a7fe45357ea"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/stage-pending-termination-sweep.ts",
+          "sha256": "ccbf918402b4495f2f9ce85cc908963c3e347b04a712aa238171f86216137977"
+        },
+        {
+          "path": "src/domain/contracts/write-safety.ts",
+          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+        },
+        {
+          "path": "src/domain/gates.ts",
+          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
+        },
+        {
+          "path": "src/domain/ids.ts",
+          "sha256": "9dcb9cf4e188f05fdc64e82c4a4e7c8bab18ec91355d66d718581040c1ae881a"
+        },
+        {
+          "path": "src/domain/immutability.ts",
+          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/domain/provider-admission.ts",
+          "sha256": "c843923d15f4ea4730f458faf53da92c2c732b8ce9cdd69431089e62b84a3899"
+        },
+        {
+          "path": "src/domain/providers.ts",
+          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/schema-bound-value.ts",
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
+        },
+        {
+          "path": "src/domain/secret-names.ts",
+          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
+        },
+        {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
+          "path": "src/domain/session.ts",
+          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
+        },
+        {
+          "path": "src/domain/task-provenance.ts",
+          "sha256": "7592360b7b1b52bf65f654b26f66444bd230710e037154a5da6333dbaf82793d"
+        },
+        {
+          "path": "src/domain/trust/preflight-scenarios.ts",
+          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
+        },
+        {
+          "path": "src/domain/trust/scenario.ts",
+          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
+        },
+        {
+          "path": "src/domain/ui/contracts.ts",
+          "sha256": "d48be467dfa66a7725a7706c00bed7a1df224f9642feffc11184bfc9248b9fba"
+        },
+        {
+          "path": "src/domain/ui/driver.ts",
+          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
+        },
+        {
+          "path": "src/domain/ui/ucpath-driver.ts",
+          "sha256": "6c0f000bfb7a1e81a5cb1e951eed0cdd0b7f51b2eb38fbf3b30b37fef759ed07"
+        },
+        {
+          "path": "src/domain/ui/ucpath-job-summary.ts",
+          "sha256": "1bec68004adb73eda4de737854a1ab032395fad101930fe640cf27134b855022"
+        },
+        {
+          "path": "src/domain/ui/ucpath-person-org.ts",
+          "sha256": "c53af126d52e06544c683ad0af45f459c96821e148420effef87964186ccec90"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "5ee73ecf18e8b601e4fea38279bbcd4c745611ad6db14d9a461f9513e3571401"
+        },
+        {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "8aa13e47594683cd4ceb15b47e839d8ca012fabffe5f901146650a4a76f4a011"
+        },
+        {
+          "path": "src/domain/unscoped-commit.ts",
+          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
+        },
+        {
+          "path": "src/domain/workflow/checkpoint.ts",
+          "sha256": "5aeac2c74fcdb130fbfd33fcb663056ee5bebda9b953bea9dc99f67654b085f6"
+        },
+        {
+          "path": "src/domain/workflow/delegation-policy.ts",
+          "sha256": "189e529e80af3e9367c2adc0e7b447e6d84714200ded02f0713f4a1d2370a0ad"
+        },
+        {
+          "path": "src/domain/workflow/graph.ts",
+          "sha256": "7bce5ef2a46f85b6ef55c8f4efbb1fa5157693660011cbe3e61a56e0ffd81aae"
+        },
+        {
+          "path": "src/domain/write-safety-primitives.ts",
+          "sha256": "fc228f48b1cd04ebdd50e69e9846c54289924f26327deb69961235b7997d5a62"
+        },
+        {
+          "path": "src/stores/ucpath/driver-declaration.ts",
+          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
+        },
+        {
+          "path": "src/stores/ucpath/driver/interpreter.ts",
+          "sha256": "1826bc8356a505111af0c759395f99823d4a22bd29fc38b985a24b687ce3bd81"
+        },
+        {
+          "path": "src/stores/ucpath/driver/person-org-operation.ts",
+          "sha256": "d6b47365ce8b734d103385b2d700f7f363c71849c3dbd7e488926ef288483fb9"
+        },
+        {
+          "path": "src/stores/ucpath/driver/registry-locators.ts",
+          "sha256": "01bc084c5ee4163bde98168f089b8cf847242da1efcac6da90d778674521c585"
+        },
+        {
+          "path": "src/stores/ucpath/driver/ui-registry.ts",
+          "sha256": "8a7106d2b7116847f0ca37ab1b232a3f9050778ea3acefe063defbd9bb1af24f"
+        },
+        {
+          "path": "src/stores/ucpath/tasks/stage-pending-termination-sweep.ts",
+          "sha256": "ef071b5d1f1443dcf460a6a686e353ef0623011e82523f9ff293d8aeecdb0ca2"
+        },
+        {
+          "path": "src/validation/contract-boundary.ts",
+          "sha256": "e1ff83d14555a67247b6044d83052ff90e3dc4c72e381ffa04e1376d1a661b90"
+        }
+      ],
+      "id": "ucpath/stage-pending-termination-sweep"
+    },
+    {
+      "fingerprint": "e64034a6f0e1b98b223f3832571c8d5a247fe7d6394b9ef5124b95607da04aa6",
+      "sources": [
+        {
+          "path": "src/base/artifacts.ts",
+          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
+        },
+        {
+          "path": "src/base/errors.ts",
+          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
+        },
+        {
+          "path": "src/base/providers.ts",
+          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
+        },
+        {
+          "path": "src/base/session.ts",
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
+        },
+        {
+          "path": "src/base/store.ts",
+          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
+        },
+        {
+          "path": "src/base/task.ts",
+          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
+        },
+        {
+          "path": "src/domain/artifacts.ts",
+          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
+        },
+        {
+          "path": "src/domain/canonical-json.ts",
+          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/clock.ts",
+          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
+        },
+        {
+          "path": "src/domain/config/schema.ts",
+          "sha256": "c3da673bb88832cad9f5645037bf03b536a404c0e6a2ab5c555220ebeeb5c40b"
+        },
+        {
+          "path": "src/domain/contracts/base.ts",
+          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/search-person-org.ts",
+          "sha256": "77f432dc92d89aa2921158dfc341d1449766c5eea08d16f91a591a7fe45357ea"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/stage-termination.ts",
+          "sha256": "fd44c55fad09e93f22d1e17f0fc425f6726a952c3a7687006b78acf20d2c1fa0"
+        },
+        {
+          "path": "src/domain/contracts/write-safety.ts",
+          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+        },
+        {
+          "path": "src/domain/gates.ts",
+          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
+        },
+        {
+          "path": "src/domain/ids.ts",
+          "sha256": "9dcb9cf4e188f05fdc64e82c4a4e7c8bab18ec91355d66d718581040c1ae881a"
+        },
+        {
+          "path": "src/domain/immutability.ts",
+          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/domain/provider-admission.ts",
+          "sha256": "c843923d15f4ea4730f458faf53da92c2c732b8ce9cdd69431089e62b84a3899"
+        },
+        {
+          "path": "src/domain/providers.ts",
+          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/schema-bound-value.ts",
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
+        },
+        {
+          "path": "src/domain/secret-names.ts",
+          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
+        },
+        {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
+          "path": "src/domain/session.ts",
+          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
+        },
+        {
+          "path": "src/domain/task-provenance.ts",
+          "sha256": "7592360b7b1b52bf65f654b26f66444bd230710e037154a5da6333dbaf82793d"
+        },
+        {
+          "path": "src/domain/trust/preflight-scenarios.ts",
+          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
+        },
+        {
+          "path": "src/domain/trust/scenario.ts",
+          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
+        },
+        {
+          "path": "src/domain/ui/contracts.ts",
+          "sha256": "d48be467dfa66a7725a7706c00bed7a1df224f9642feffc11184bfc9248b9fba"
+        },
+        {
+          "path": "src/domain/ui/driver.ts",
+          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
+        },
+        {
+          "path": "src/domain/ui/ucpath-driver.ts",
+          "sha256": "6c0f000bfb7a1e81a5cb1e951eed0cdd0b7f51b2eb38fbf3b30b37fef759ed07"
+        },
+        {
+          "path": "src/domain/ui/ucpath-job-summary.ts",
+          "sha256": "1bec68004adb73eda4de737854a1ab032395fad101930fe640cf27134b855022"
+        },
+        {
+          "path": "src/domain/ui/ucpath-person-org.ts",
+          "sha256": "c53af126d52e06544c683ad0af45f459c96821e148420effef87964186ccec90"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "5ee73ecf18e8b601e4fea38279bbcd4c745611ad6db14d9a461f9513e3571401"
+        },
+        {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "8aa13e47594683cd4ceb15b47e839d8ca012fabffe5f901146650a4a76f4a011"
+        },
+        {
+          "path": "src/domain/unscoped-commit.ts",
+          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
+        },
+        {
+          "path": "src/domain/workflow/checkpoint.ts",
+          "sha256": "5aeac2c74fcdb130fbfd33fcb663056ee5bebda9b953bea9dc99f67654b085f6"
+        },
+        {
+          "path": "src/domain/workflow/delegation-policy.ts",
+          "sha256": "189e529e80af3e9367c2adc0e7b447e6d84714200ded02f0713f4a1d2370a0ad"
+        },
+        {
+          "path": "src/domain/workflow/graph.ts",
+          "sha256": "7bce5ef2a46f85b6ef55c8f4efbb1fa5157693660011cbe3e61a56e0ffd81aae"
+        },
+        {
+          "path": "src/domain/write-safety-primitives.ts",
+          "sha256": "fc228f48b1cd04ebdd50e69e9846c54289924f26327deb69961235b7997d5a62"
+        },
+        {
+          "path": "src/stores/ucpath/driver-declaration.ts",
+          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
+        },
+        {
+          "path": "src/stores/ucpath/driver/interpreter.ts",
+          "sha256": "1826bc8356a505111af0c759395f99823d4a22bd29fc38b985a24b687ce3bd81"
+        },
+        {
+          "path": "src/stores/ucpath/driver/person-org-operation.ts",
+          "sha256": "d6b47365ce8b734d103385b2d700f7f363c71849c3dbd7e488926ef288483fb9"
+        },
+        {
+          "path": "src/stores/ucpath/driver/registry-locators.ts",
+          "sha256": "01bc084c5ee4163bde98168f089b8cf847242da1efcac6da90d778674521c585"
+        },
+        {
+          "path": "src/stores/ucpath/driver/ui-registry.ts",
+          "sha256": "8a7106d2b7116847f0ca37ab1b232a3f9050778ea3acefe063defbd9bb1af24f"
+        },
+        {
+          "path": "src/stores/ucpath/tasks/stage-termination.ts",
+          "sha256": "e0af6fdde85fa9ca046d6a000e25cf7fa7c014ae3ac27ea942e087d16fb781fe"
+        },
+        {
+          "path": "src/validation/contract-boundary.ts",
+          "sha256": "e1ff83d14555a67247b6044d83052ff90e3dc4c72e381ffa04e1376d1a661b90"
+        }
+      ],
+      "id": "ucpath/stage-termination"
+    },
+    {
+      "fingerprint": "07e0c1c1fcaee6ba81b8061a25ef5cfa9aa5bbb38a1fef9dac4f98c30454598d",
+      "sources": [
+        {
+          "path": "src/base/artifacts.ts",
+          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
+        },
+        {
+          "path": "src/base/errors.ts",
+          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
+        },
+        {
+          "path": "src/base/providers.ts",
+          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
+        },
+        {
+          "path": "src/base/session.ts",
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
+        },
+        {
+          "path": "src/base/store.ts",
+          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
+        },
+        {
+          "path": "src/base/task.ts",
+          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
+        },
+        {
+          "path": "src/domain/artifacts.ts",
+          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
+        },
+        {
+          "path": "src/domain/canonical-json.ts",
+          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/clock.ts",
+          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
+        },
+        {
+          "path": "src/domain/config/schema.ts",
+          "sha256": "c3da673bb88832cad9f5645037bf03b536a404c0e6a2ab5c555220ebeeb5c40b"
+        },
+        {
+          "path": "src/domain/contracts/base.ts",
+          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "91b0a29c6826ee0f971b2bc0f22749df9dbbfe928a73b16f6f87f6af388c2666"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "1cb5e9a21bc893e7ab65e75cef2d9446a63e2d1cd9a3730490aa96df5a84c5e5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
+          "sha256": "5c6c035f82ec760a047039a38806ba03de8eefd50c2afa099d7830c8eb46234b"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
+          "sha256": "1f408efbb22eab627ffa060a32b27edfc9db692d162a55793b8aabe963db61f0"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/search-person-org.ts",
+          "sha256": "77f432dc92d89aa2921158dfc341d1449766c5eea08d16f91a591a7fe45357ea"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/verify-pending-terminations-cleared.ts",
+          "sha256": "1bb597188eef26f75d7d69316e6ea2e6d5f3a43e31311f0234a9a150c7d47704"
+        },
+        {
+          "path": "src/domain/contracts/write-safety.ts",
+          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+        },
+        {
+          "path": "src/domain/gates.ts",
+          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
+        },
+        {
+          "path": "src/domain/ids.ts",
+          "sha256": "9dcb9cf4e188f05fdc64e82c4a4e7c8bab18ec91355d66d718581040c1ae881a"
+        },
+        {
+          "path": "src/domain/immutability.ts",
+          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/domain/provider-admission.ts",
+          "sha256": "c843923d15f4ea4730f458faf53da92c2c732b8ce9cdd69431089e62b84a3899"
+        },
+        {
+          "path": "src/domain/providers.ts",
+          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/schema-bound-value.ts",
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
+        },
+        {
+          "path": "src/domain/secret-names.ts",
+          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
+        },
+        {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
+          "path": "src/domain/session.ts",
+          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
+        },
+        {
+          "path": "src/domain/task-provenance.ts",
+          "sha256": "7592360b7b1b52bf65f654b26f66444bd230710e037154a5da6333dbaf82793d"
+        },
+        {
+          "path": "src/domain/trust/preflight-scenarios.ts",
+          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
+        },
+        {
+          "path": "src/domain/trust/scenario.ts",
+          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
+        },
+        {
+          "path": "src/domain/ui/contracts.ts",
+          "sha256": "d48be467dfa66a7725a7706c00bed7a1df224f9642feffc11184bfc9248b9fba"
+        },
+        {
+          "path": "src/domain/ui/driver.ts",
+          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
+        },
+        {
+          "path": "src/domain/ui/ucpath-driver.ts",
+          "sha256": "6c0f000bfb7a1e81a5cb1e951eed0cdd0b7f51b2eb38fbf3b30b37fef759ed07"
+        },
+        {
+          "path": "src/domain/ui/ucpath-job-summary.ts",
+          "sha256": "1bec68004adb73eda4de737854a1ab032395fad101930fe640cf27134b855022"
+        },
+        {
+          "path": "src/domain/ui/ucpath-person-org.ts",
+          "sha256": "c53af126d52e06544c683ad0af45f459c96821e148420effef87964186ccec90"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "5ee73ecf18e8b601e4fea38279bbcd4c745611ad6db14d9a461f9513e3571401"
+        },
+        {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "8aa13e47594683cd4ceb15b47e839d8ca012fabffe5f901146650a4a76f4a011"
+        },
+        {
+          "path": "src/domain/unscoped-commit.ts",
+          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
+        },
+        {
+          "path": "src/domain/workflow/checkpoint.ts",
+          "sha256": "5aeac2c74fcdb130fbfd33fcb663056ee5bebda9b953bea9dc99f67654b085f6"
+        },
+        {
+          "path": "src/domain/workflow/delegation-policy.ts",
+          "sha256": "189e529e80af3e9367c2adc0e7b447e6d84714200ded02f0713f4a1d2370a0ad"
+        },
+        {
+          "path": "src/domain/workflow/graph.ts",
+          "sha256": "7bce5ef2a46f85b6ef55c8f4efbb1fa5157693660011cbe3e61a56e0ffd81aae"
+        },
+        {
+          "path": "src/domain/write-safety-primitives.ts",
+          "sha256": "fc228f48b1cd04ebdd50e69e9846c54289924f26327deb69961235b7997d5a62"
+        },
+        {
+          "path": "src/domain/write-safety.ts",
+          "sha256": "a131d575df83c6d7880506a218d9590ba2cdf961c8b8c59b5eb61d78b0f7c813"
+        },
+        {
+          "path": "src/stores/ucpath/driver-declaration.ts",
+          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
+        },
+        {
+          "path": "src/stores/ucpath/driver/interpreter.ts",
+          "sha256": "1826bc8356a505111af0c759395f99823d4a22bd29fc38b985a24b687ce3bd81"
+        },
+        {
+          "path": "src/stores/ucpath/driver/person-org-operation.ts",
+          "sha256": "d6b47365ce8b734d103385b2d700f7f363c71849c3dbd7e488926ef288483fb9"
+        },
+        {
+          "path": "src/stores/ucpath/driver/registry-locators.ts",
+          "sha256": "01bc084c5ee4163bde98168f089b8cf847242da1efcac6da90d778674521c585"
+        },
+        {
+          "path": "src/stores/ucpath/driver/ui-registry.ts",
+          "sha256": "8a7106d2b7116847f0ca37ab1b232a3f9050778ea3acefe063defbd9bb1af24f"
+        },
+        {
+          "path": "src/stores/ucpath/tasks/verify-pending-terminations-cleared.ts",
+          "sha256": "64282670b5e9be55889ede2be10d4d09a74022acb31422859dd3d2b180e4038e"
+        },
+        {
+          "path": "src/stores/ucpath/termination-verdict.ts",
+          "sha256": "fa0c1ecf5218c0264984b3b2466ab3110320b9b9f12cf15657f77eedb53c9431"
+        },
+        {
+          "path": "src/validation/contract-boundary.ts",
+          "sha256": "e1ff83d14555a67247b6044d83052ff90e3dc4c72e381ffa04e1376d1a661b90"
+        }
+      ],
+      "id": "ucpath/verify-pending-terminations-cleared"
+    },
+    {
+      "fingerprint": "3062802a0db3673d1ee4331854c3ad3aa82d20201d9f934dd200de5e9764e6b7",
+      "sources": [
+        {
+          "path": "src/base/artifacts.ts",
+          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
+        },
+        {
+          "path": "src/base/errors.ts",
+          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
+        },
+        {
+          "path": "src/base/providers.ts",
+          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
+        },
+        {
+          "path": "src/base/session.ts",
+          "sha256": "c463d8765c86b231a2425339d6e9dc9cad601a13cc3cf6d7769f5c8771299bf2"
+        },
+        {
+          "path": "src/base/store.ts",
+          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
+        },
+        {
+          "path": "src/base/task.ts",
+          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
+        },
+        {
+          "path": "src/domain/artifacts.ts",
+          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
+        },
+        {
+          "path": "src/domain/canonical-json.ts",
+          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/clock.ts",
+          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
+        },
+        {
+          "path": "src/domain/config/schema.ts",
+          "sha256": "c3da673bb88832cad9f5645037bf03b536a404c0e6a2ab5c555220ebeeb5c40b"
+        },
+        {
+          "path": "src/domain/contracts/base.ts",
+          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/create-termination.ts",
+          "sha256": "91b0a29c6826ee0f971b2bc0f22749df9dbbfe928a73b16f6f87f6af388c2666"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/delete-pending-terminations.ts",
+          "sha256": "1cb5e9a21bc893e7ab65e75cef2d9446a63e2d1cd9a3730490aa96df5a84c5e5"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-existing-termination.ts",
+          "sha256": "5c6c035f82ec760a047039a38806ba03de8eefd50c2afa099d7830c8eb46234b"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/match-pending-terminations.ts",
+          "sha256": "1f408efbb22eab627ffa060a32b27edfc9db692d162a55793b8aabe963db61f0"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/search-person-org.ts",
+          "sha256": "77f432dc92d89aa2921158dfc341d1449766c5eea08d16f91a591a7fe45357ea"
+        },
+        {
+          "path": "src/domain/contracts/ucpath/verify-termination.ts",
+          "sha256": "6b9f5fe86ebddbca9d52b77623e4cf53b86765a3bd5b7bb46f9b6f7564be8d2b"
+        },
+        {
+          "path": "src/domain/contracts/write-safety.ts",
+          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
+        },
+        {
+          "path": "src/domain/gates.ts",
+          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
+        },
+        {
+          "path": "src/domain/ids.ts",
+          "sha256": "9dcb9cf4e188f05fdc64e82c4a4e7c8bab18ec91355d66d718581040c1ae881a"
+        },
+        {
+          "path": "src/domain/immutability.ts",
+          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/domain/provider-admission.ts",
+          "sha256": "c843923d15f4ea4730f458faf53da92c2c732b8ce9cdd69431089e62b84a3899"
+        },
+        {
+          "path": "src/domain/providers.ts",
+          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
+        },
+        {
+          "path": "src/domain/schema-bound-value.ts",
+          "sha256": "80b28527add643e9520ad47f4f2e98b6737451f73f2712d6185c5e8f5ca35394"
+        },
+        {
+          "path": "src/domain/secret-names.ts",
+          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
+        },
+        {
+          "path": "src/domain/separations/termination-type.ts",
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
+        },
+        {
+          "path": "src/domain/session.ts",
+          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
+        },
+        {
+          "path": "src/domain/sha256.ts",
+          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
+        },
+        {
+          "path": "src/domain/task-provenance.ts",
+          "sha256": "7592360b7b1b52bf65f654b26f66444bd230710e037154a5da6333dbaf82793d"
+        },
+        {
+          "path": "src/domain/trust/preflight-scenarios.ts",
+          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
+        },
+        {
+          "path": "src/domain/trust/scenario.ts",
+          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
+        },
+        {
+          "path": "src/domain/ui/contracts.ts",
+          "sha256": "d48be467dfa66a7725a7706c00bed7a1df224f9642feffc11184bfc9248b9fba"
+        },
+        {
+          "path": "src/domain/ui/driver.ts",
+          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
+        },
+        {
+          "path": "src/domain/ui/ucpath-driver.ts",
+          "sha256": "6c0f000bfb7a1e81a5cb1e951eed0cdd0b7f51b2eb38fbf3b30b37fef759ed07"
+        },
+        {
+          "path": "src/domain/ui/ucpath-job-summary.ts",
+          "sha256": "1bec68004adb73eda4de737854a1ab032395fad101930fe640cf27134b855022"
+        },
+        {
+          "path": "src/domain/ui/ucpath-person-org.ts",
+          "sha256": "c53af126d52e06544c683ad0af45f459c96821e148420effef87964186ccec90"
+        },
+        {
+          "path": "src/domain/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "5ee73ecf18e8b601e4fea38279bbcd4c745611ad6db14d9a461f9513e3571401"
+        },
+        {
+          "path": "src/domain/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "8aa13e47594683cd4ceb15b47e839d8ca012fabffe5f901146650a4a76f4a011"
+        },
+        {
+          "path": "src/domain/unscoped-commit.ts",
+          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
+        },
+        {
+          "path": "src/domain/workflow/checkpoint.ts",
+          "sha256": "5aeac2c74fcdb130fbfd33fcb663056ee5bebda9b953bea9dc99f67654b085f6"
+        },
+        {
+          "path": "src/domain/workflow/delegation-policy.ts",
+          "sha256": "189e529e80af3e9367c2adc0e7b447e6d84714200ded02f0713f4a1d2370a0ad"
+        },
+        {
+          "path": "src/domain/workflow/graph.ts",
+          "sha256": "7bce5ef2a46f85b6ef55c8f4efbb1fa5157693660011cbe3e61a56e0ffd81aae"
+        },
+        {
+          "path": "src/domain/write-safety-primitives.ts",
+          "sha256": "fc228f48b1cd04ebdd50e69e9846c54289924f26327deb69961235b7997d5a62"
+        },
+        {
+          "path": "src/domain/write-safety.ts",
+          "sha256": "a131d575df83c6d7880506a218d9590ba2cdf961c8b8c59b5eb61d78b0f7c813"
+        },
+        {
+          "path": "src/stores/ucpath/driver-declaration.ts",
+          "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
+        },
+        {
+          "path": "src/stores/ucpath/driver/interpreter.ts",
+          "sha256": "1826bc8356a505111af0c759395f99823d4a22bd29fc38b985a24b687ce3bd81"
+        },
+        {
+          "path": "src/stores/ucpath/driver/person-org-operation.ts",
+          "sha256": "d6b47365ce8b734d103385b2d700f7f363c71849c3dbd7e488926ef288483fb9"
+        },
+        {
+          "path": "src/stores/ucpath/driver/registry-locators.ts",
+          "sha256": "01bc084c5ee4163bde98168f089b8cf847242da1efcac6da90d778674521c585"
+        },
+        {
+          "path": "src/stores/ucpath/driver/ui-registry.ts",
+          "sha256": "8a7106d2b7116847f0ca37ab1b232a3f9050778ea3acefe063defbd9bb1af24f"
+        },
+        {
+          "path": "src/stores/ucpath/tasks/verify-termination.ts",
+          "sha256": "ce246d5bc2c5c5e2c3eb1279cffc6c7783e5ce66f26c21d8b3bba18c792c8a43"
+        },
+        {
+          "path": "src/stores/ucpath/termination-verdict.ts",
+          "sha256": "fa0c1ecf5218c0264984b3b2466ab3110320b9b9f12cf15657f77eedb53c9431"
+        },
+        {
+          "path": "src/validation/contract-boundary.ts",
+          "sha256": "e1ff83d14555a67247b6044d83052ff90e3dc4c72e381ffa04e1376d1a661b90"
+        }
+      ],
+      "id": "ucpath/verify-termination"
     },
     {
       "fingerprint": "ec796a2eb38b4e0a565e91e11d96e4bd7b4f4c5eaeccbc49a270f076610c1988",

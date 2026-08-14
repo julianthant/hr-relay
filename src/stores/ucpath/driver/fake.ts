@@ -13,15 +13,18 @@ import {
   UCPATH_PERSON_ORG_SEARCH_READY,
   UCPATH_PERSON_ORG_SEARCH_SCREEN,
 } from "../../../domain/ui/ucpath-person-org.js";
-import type { UcpathPersonOrgDriver, UcpathPersonOrgScreens } from "../../../domain/ui/ucpath-person-org.js";
+import type { UcpathPersonOrgScreens } from "../../../domain/ui/ucpath-person-org.js";
+import type { UcpathStoreDriver } from "../../../domain/ui/ucpath-driver.js";
+import { refuseUnimplementedSmartHrHalf } from "./smart-hr-fake.js";
 
 export function createDeterministicUcpathPersonOrgDriver(
   result?: SearchPersonOrgOutput,
   jobSummary?: UcpathJobSummaryRead,
-): UcpathPersonOrgDriver {
+): UcpathStoreDriver {
   let screen: UcpathPersonOrgScreens = UCPATH_PERSON_ORG_SEARCH_SCREEN;
   let eid: ReturnType<typeof EidSchema.parse> | undefined;
   return {
+    ...refuseUnimplementedSmartHrHalf("the Person Org fixture"),
     system: "ucpath",
     async readJobSummary(input) {
       if (jobSummary === undefined) {
@@ -57,6 +60,9 @@ export function createDeterministicUcpathPersonOrgDriver(
       });
     },
     async goto(nextScreen) {
+      if (nextScreen !== UCPATH_PERSON_ORG_SEARCH_SCREEN && nextScreen !== UCPATH_PERSON_ORG_DETAIL_SCREEN) {
+        throw new Error(`the Person Org fixture has no screen ${String(nextScreen)}`);
+      }
       screen = nextScreen;
       const stateId = nextScreen === UCPATH_PERSON_ORG_SEARCH_SCREEN
         ? UCPATH_PERSON_ORG_SEARCH_READY
