@@ -10,43 +10,49 @@
   - heading "HR Automation" [level=1]
   - button "Back" [disabled]
   - button "Forward" [disabled]
+  - button "Dashboard"
+  - button "Archive"
+  - button "Explorer" [pressed]
+  - button "Activity"
+  - button "Search this day’s runs": Search this day… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "This is the newest day served" [disabled]
   - button "Notifications — 1 unread item": "1"
-  - button "Settings"
-  - button "Keyboard shortcuts"
   - button "Switch to Graphite Warm"
-- main:
-  - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
-  - button "Archive"
-  - button "Activity"
-  - button "Explore graph"
   - button "UI catalog"
-  - button "Import spreadsheet"
-  - button "Start a run"
+  - button "Keyboard shortcuts"
+  - button "Settings"
+- main:
   - region "Workflow explorer":
-    - text: Workflow explorer Kuali Timekeeper Annotation — the as-built graph, read from the registered descriptor Read-only
+    - text: Workflow explorer Identity Check — the as-built graph, read from the registered descriptor Read-only
     - button "Close the explorer"
     - group "Registered workflows":
       - button "person-lookup"
-      - button "kuali-timekeeper-annotation" [pressed]
+      - button "kuali-timekeeper-annotation"
       - button "separations-kronos-timecard"
       - button "separations-kuali-read"
-      - button "separations-identity-check"
-    - text: code kt category operations version 1 shape single enqueue reject-active subject eid system kuali edit data none review no run surface none intake none capture none descriptor src/workflows/kuali-timekeeper-annotation/descriptor.ts module src/workflows/kuali-timekeeper-annotation/module.ts contract 5a1315478046result d46e4d87548933 files fingerprinted4 scenarios
+      - button "separations-identity-check" [pressed]
+    - text: code si category separation version 1 shape single enqueue reject-active subject eid system ucpath edit data none review no run surface none intake none capture none descriptor src/workflows/separations-identity-check/descriptor.ts module src/workflows/separations-identity-check/module.ts contract d4040792777dresult 9800a5c657bb38 files fingerprinted15 scenarios
     - navigation "Graph structure":
-      - text: Graph · 1 node
+      - text: Graph · 5 nodes
       - list:
         - listitem:
-          - button "annotate-timekeeper Transaction · 2 contracts"
-      - text: Result annotate-timekeeper
-    - heading "annotate-timekeeper" [level=3]
-    - text: Transaction Timekeeper Annotation Depends on Nothing — this node may start immediately. dry run stop-after-prepare probe always probe→fence 45s lease transaction retry before fence none Detail projections Timekeeper savedState.timekeeperName Coverage points transaction:annotate-timekeeper/dry-run — transaction annotate-timekeeper previews prepare and creates no intent transaction:annotate-timekeeper/subject-mismatch — transaction annotate-timekeeper observes a mismatched subject and never fences transaction:annotate-timekeeper/committed — transaction annotate-timekeeper commits once and proves it transaction:annotate-timekeeper/already-present — transaction annotate-timekeeper finds its permanent key already satisfied
-    - region "kuali/fill-timekeeper-annotation": prepares kuali/fill-timekeeper-annotation Stage Kuali Timekeeper Annotation Implemented by store kuali kind browser driver kuali Subject binding kind person from input emplId identity eid observes kuali.rrss-document.displayed-eid match normalized-exact-eid required at after-prepare-before-fence Errors kuali-unavailable unexpected-page-state subject-mismatch fill-not-persisted UI vocabulary screen kuali.rrss-document observation kuali.rrss-document.displayed-eid observation kuali.rrss-document.displayed-timekeeper element kuali.rrss-document.eid-field page-state kuali.rrss-document.ready element kuali.rrss-document.timekeeper-field page-state kuali.rrss-document.timekeeper-staged Scenarios kuali-timekeeper-annotation/dry-run-preview Source contract src/domain/contracts/kuali/fill-timekeeper-annotation.ts impl src/stores/kuali/tasks/fill-timekeeper-annotation.ts input 6308707bae18output 453b257cb9e7impl 65a1b404adb8
-    - region "kuali/save-timekeeper-annotation": commits kuali/save-timekeeper-annotation Save Kuali Timekeeper Annotation Implemented by store kuali kind browser driver kuali Subject binding kind person from input emplId identity eid observes kuali.rrss-document.displayed-eid match normalized-exact-eid required at after-prepare-before-fence Write safety completion save-verify verifies with kuali/verify-timekeeper-annotation probes with kuali/read-timekeeper-annotation absence after fence stabilized · 30000ms · 2 reads Errors kuali-unavailable unexpected-page-state subject-mismatch save-refused UI vocabulary screen kuali.rrss-document observation kuali.rrss-document.displayed-eid element kuali.rrss-document.eid-field page-state kuali.rrss-document.ready element kuali.rrss-document.save-button page-state kuali.rrss-document.timekeeper-staged Scenarios kuali-timekeeper-annotation/dry-run-preview Source contract src/domain/contracts/kuali/save-timekeeper-annotation.ts impl src/stores/kuali/tasks/save-timekeeper-annotation.ts input 6308707bae18output 159d3f0de361impl 21b0764b677f
-    - region "Scenarios": Scenarios kuali-timekeeper-annotation/already-present walks tests/scenario/kuali-timekeeper-annotation.scenario.test.ts kuali-timekeeper-annotation/committed walks tests/scenario/kuali-timekeeper-annotation.scenario.test.ts kuali-timekeeper-annotation/dry-run-preview walks tests/scenario/kuali-timekeeper-annotation.scenario.test.ts kuali-timekeeper-annotation/subject-mismatch walks tests/scenario/kuali-timekeeper-annotation.scenario.test.ts
+          - button "job-summary Task · 1 contract"
+        - listitem:
+          - button "name-search Task · 1 contract"
+        - listitem:
+          - button "comparison Task · 1 contract"
+        - listitem:
+          - button "identity-approval Gate"
+        - listitem:
+          - button "approval Task · 1 contract"
+      - text: Result approval
+    - heading "job-summary" [level=3]
+    - text: Task Job Summary Depends on Nothing — this node may start immediately. replay checkpoint condition always runs Detail projections UCPath shows displayedName
+    - region "ucpath/read-job-summary": runs ucpath/read-job-summary Job Summary Implemented by store ucpath kind browser driver ucpath Subject binding kind person from input emplId identity eid observes ucpath.person-org.displayed-eid match normalized-exact-eid required at before-subject-read Errors employee-not-found subject-mismatch unexpected-page-state Freshness default 4h Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios separations-identity-check/single-active-job separations-identity-check/already-terminated-single-row separations-identity-check/already-terminated-multi-row separations-identity-check/concurrent-active-jobs separations-identity-check/unreadable-department separations-identity-check/job-summary-not-found Source contract src/domain/contracts/ucpath/read-job-summary.ts impl src/stores/ucpath/tasks/read-job-summary.ts input 5578ac7d2220output 52e6b39a1c20impl 2b736c372081
+    - region "Scenarios": Scenarios person-lookup/ambiguous-name walks tests/scenario/person-lookup.scenario.test.ts person-lookup/happy-by-eid walks tests/scenario/person-lookup.scenario.test.ts person-lookup/not-found walks tests/scenario/person-lookup.scenario.test.ts person-lookup/ucpath-drill-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts separations-identity-check/already-terminated-multi-row walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/already-terminated-single-row walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/concurrent-active-jobs walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/different-name-two-candidates walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/gate-approved walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/gate-evidence-moved walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/gate-rejected walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/job-summary-not-found walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/similar-name-never-auto-proceeds walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/single-active-job walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/unreadable-department walks tests/scenario/separations-identity-check.scenario.test.ts
 - region "Session Panel":
   - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
-  - text: v0.1.0
+  - text: app 0.1.0
   - status: Live

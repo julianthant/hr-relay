@@ -10,48 +10,43 @@
   - heading "HR Automation" [level=1]
   - button "Back" [disabled]
   - button "Forward" [disabled]
+  - button "Dashboard"
+  - button "Archive"
+  - button "Explorer" [pressed]
+  - button "Activity"
+  - button "Search this day’s runs": Search this day… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "This is the newest day served" [disabled]
   - button "Notifications — 1 unread item": "1"
-  - button "Settings"
-  - button "Keyboard shortcuts"
   - button "Switch to Paper Ink"
-- main:
-  - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
-  - button "Archive"
-  - button "Activity"
-  - button "Explore graph"
   - button "UI catalog"
-  - button "Import spreadsheet"
-  - button "Start a run"
+  - button "Keyboard shortcuts"
+  - button "Settings"
+- main:
   - region "Workflow explorer":
-    - text: Workflow explorer Person Lookup — the as-built graph, read from the registered descriptor Read-only
+    - text: Workflow explorer Separation Document — the as-built graph, read from the registered descriptor Read-only
     - button "Close the explorer"
     - group "Registered workflows":
-      - button "person-lookup" [pressed]
+      - button "person-lookup"
       - button "kuali-timekeeper-annotation"
       - button "separations-kronos-timecard"
-      - button "separations-kuali-read"
+      - button "separations-kuali-read" [pressed]
       - button "separations-identity-check"
-    - text: code pl category search version 1 shape single enqueue reject-active subject derived from input system crm system ucpath edit data declared-fields review no run surface declared intake 2 bindable fields capture none descriptor src/workflows/person-lookup/descriptor.ts module src/workflows/person-lookup/module.ts contract 99fd17f6d99aresult c1db3f17036333 files fingerprinted7 scenarios
+    - text: code sd category separation version 1 shape single enqueue reject-active subject document system kuali edit data none review no run surface none intake none capture none descriptor src/workflows/separations-kuali-read/descriptor.ts module src/workflows/separations-kuali-read/module.ts contract dbd89dfcd18dresult 74ecc1970f8931 files fingerprinted5 scenarios
     - navigation "Graph structure":
-      - text: Graph · 4 nodes
+      - text: Graph · 2 nodes
       - list:
         - listitem:
-          - button "searching Task · 1 contract"
+          - button "document Task · 1 contract"
         - listitem:
-          - button "cross-verify Task · 1 contract"
-        - listitem:
-          - button "active-status Task · 1 contract"
-        - listitem:
-          - button "crm-dates Task · 1 contract"
-      - text: Result active-status crm-dates
-    - heading "searching" [level=3]
-    - text: Task Searching Depends on Nothing — this node may start immediately. replay checkpoint condition always runs Detail projections Selection selection.status
-    - region "ucpath/search-person-org": runs ucpath/search-person-org Searching Implemented by store ucpath kind browser driver ucpath Subject binding the person search resolves identity rather than confirming it Errors search-unavailable unexpected-page-state Freshness default 4h Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios person-lookup/happy-by-eid person-lookup/ambiguous-name person-lookup/not-found person-lookup/ucpath-drill-subject-mismatch Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts input ee4776e0a94eoutput 6b08cc3af988impl ba1d139541de
-    - region "Scenarios": Scenarios person-lookup/ambiguous-name walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-failure-retry walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts person-lookup/happy-by-eid walks tests/scenario/person-lookup.scenario.test.ts person-lookup/happy-by-eid-with-dates walks tests/scenario/person-lookup.scenario.test.ts person-lookup/not-found walks tests/scenario/person-lookup.scenario.test.ts person-lookup/ucpath-drill-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts
+          - button "termination-type Task · 1 contract"
+      - text: Result document termination-type
+    - heading "document" [level=3]
+    - text: Task Separation Document Depends on Nothing — this node may start immediately. replay checkpoint condition always runs Detail projections Form formType.observed
+    - region "kuali/read-separation-document": runs kuali/read-separation-document Read Kuali Separation Document Implemented by store kuali kind browser driver kuali Subject binding kind artifact from input documentNumber identity document-id observes kuali.rrss-document.displayed-number match exact required at before-subject-read Errors kuali-unavailable unexpected-page-state document-unavailable document-number-mismatch not-a-separation-document unparseable-date unreadable-eid Freshness default unbounded Provenance default live UI vocabulary screen kuali.rrss-document element kuali.rrss-document.department-field observation kuali.rrss-document.displayed-eid observation kuali.rrss-document.displayed-form-type observation kuali.rrss-document.displayed-number observation kuali.rrss-document.displayed-timekeeper element kuali.rrss-document.eid-field element kuali.rrss-document.employee-name-field element kuali.rrss-document.final-pay-student-radio element kuali.rrss-document.last-day-worked-field element kuali.rrss-document.location-field element kuali.rrss-document.payroll-title-code-field element kuali.rrss-document.payroll-title-field page-state kuali.rrss-document.ready element kuali.rrss-document.request-acknowledged-checkbox element kuali.rrss-document.separation-date-field page-state kuali.rrss-document.separation-ready element kuali.rrss-document.submitted-template-checkbox element kuali.rrss-document.termination-effective-date-field element kuali.rrss-document.termination-type-field element kuali.rrss-document.timekeeper-comments-field element kuali.rrss-document.timekeeper-field element kuali.rrss-document.transaction-number-field Scenarios separations-kuali-read/reads-a-real-separation-document separations-kuali-read/unprocessed-document-absent-arms separations-kuali-read/non-separation-document Source contract src/domain/contracts/kuali/read-separation-document.ts impl src/stores/kuali/tasks/read-separation-document.ts input 5bb0d8b402b3output e3ac2b78779fimpl ce0961fffdf3
+    - region "Scenarios": Scenarios separations-kuali-read/non-separation-document walks tests/scenario/separations-kuali-read.scenario.test.ts separations-kuali-read/reads-a-real-separation-document walks tests/scenario/separations-kuali-read.scenario.test.ts separations-kuali-read/unmapped-termination-type walks tests/scenario/separations-kuali-read.scenario.test.ts separations-kuali-read/unparseable-separation-date walks tests/scenario/separations-kuali-read.scenario.test.ts separations-kuali-read/unprocessed-document-absent-arms walks tests/scenario/separations-kuali-read.scenario.test.ts
 - region "Session Panel":
   - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
-  - text: v0.1.0
+  - text: app 0.1.0
   - status: Live

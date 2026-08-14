@@ -10,21 +10,20 @@
   - heading "HR Automation" [level=1]
   - button "Back" [disabled]
   - button "Forward" [disabled]
+  - button "Dashboard" [pressed]
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity"
+  - button "Search this day’s runs": Search this day… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "This is the newest day served" [disabled]
   - button "Notifications — 1 unread item": "1"
-  - button "Settings"
-  - button "Keyboard shortcuts"
   - button "Switch to Paper Ink"
-- main:
-  - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
-  - button "Archive"
-  - button "Activity"
-  - button "Explore graph"
   - button "UI catalog"
-  - button "Import spreadsheet"
-  - button "Start a run"
+  - button "Keyboard shortcuts"
+  - button "Settings"
+- main:
   - text: Import a spreadsheet Person Lookup — one run per row
   - button "Close"
   - button "Drop a spreadsheet of people for Person Lookup A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects."
@@ -33,5 +32,5 @@
   - paragraph: Photograph a paper form with a phone instead of uploading a file.
 - region "Session Panel":
   - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
-  - text: v0.1.0
+  - text: app 0.1.0
   - status: Live

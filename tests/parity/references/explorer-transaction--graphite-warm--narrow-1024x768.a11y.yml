@@ -10,43 +10,43 @@
   - heading "HR Automation" [level=1]
   - button "Back" [disabled]
   - button "Forward" [disabled]
+  - button "Dashboard"
+  - button "Archive"
+  - button "Explorer" [pressed]
+  - button "Activity"
+  - button "Search this day’s runs": Search this day… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "This is the newest day served" [disabled]
   - button "Notifications — 1 unread item": "1"
-  - button "Settings"
-  - button "Keyboard shortcuts"
   - button "Switch to Paper Ink"
-- main:
-  - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
-  - button "Archive"
-  - button "Activity"
-  - button "Explore graph"
   - button "UI catalog"
-  - button "Import spreadsheet"
-  - button "Start a run"
+  - button "Keyboard shortcuts"
+  - button "Settings"
+- main:
   - region "Workflow explorer":
-    - text: Workflow explorer Kuali Timekeeper Annotation — the as-built graph, read from the registered descriptor Read-only
+    - text: Workflow explorer Separation Timecard — the as-built graph, read from the registered descriptor Read-only
     - button "Close the explorer"
     - group "Registered workflows":
       - button "person-lookup"
-      - button "kuali-timekeeper-annotation" [pressed]
-      - button "separations-kronos-timecard"
+      - button "kuali-timekeeper-annotation"
+      - button "separations-kronos-timecard" [pressed]
       - button "separations-kuali-read"
       - button "separations-identity-check"
-    - text: code kt category operations version 1 shape single enqueue reject-active subject eid system kuali edit data none review no run surface none intake none capture none descriptor src/workflows/kuali-timekeeper-annotation/descriptor.ts module src/workflows/kuali-timekeeper-annotation/module.ts contract 5a1315478046result d46e4d87548933 files fingerprinted4 scenarios
+    - text: code sk category timekeeping version 1 shape single enqueue reject-active subject eid system new-kronos edit data none review no run surface none intake none capture none descriptor src/workflows/separations-kronos-timecard/descriptor.ts module src/workflows/separations-kronos-timecard/module.ts contract cef2a35e0d5fresult 07a40fbf2d2e37 files fingerprinted5 scenarios
     - navigation "Graph structure":
-      - text: Graph · 1 node
+      - text: Graph · 2 nodes
       - list:
         - listitem:
-          - button "annotate-timekeeper Transaction · 2 contracts"
-      - text: Result annotate-timekeeper
-    - heading "annotate-timekeeper" [level=3]
-    - text: Transaction Timekeeper Annotation Depends on Nothing — this node may start immediately. dry run stop-after-prepare probe always probe→fence 45s lease transaction retry before fence none Detail projections Timekeeper savedState.timekeeperName Coverage points transaction:annotate-timekeeper/dry-run — transaction annotate-timekeeper previews prepare and creates no intent transaction:annotate-timekeeper/subject-mismatch — transaction annotate-timekeeper observes a mismatched subject and never fences transaction:annotate-timekeeper/committed — transaction annotate-timekeeper commits once and proves it transaction:annotate-timekeeper/already-present — transaction annotate-timekeeper finds its permanent key already satisfied
-    - region "kuali/fill-timekeeper-annotation": prepares kuali/fill-timekeeper-annotation Stage Kuali Timekeeper Annotation Implemented by store kuali kind browser driver kuali Subject binding kind person from input emplId identity eid observes kuali.rrss-document.displayed-eid match normalized-exact-eid required at after-prepare-before-fence Errors kuali-unavailable unexpected-page-state subject-mismatch fill-not-persisted UI vocabulary screen kuali.rrss-document observation kuali.rrss-document.displayed-eid observation kuali.rrss-document.displayed-timekeeper element kuali.rrss-document.eid-field page-state kuali.rrss-document.ready element kuali.rrss-document.timekeeper-field page-state kuali.rrss-document.timekeeper-staged Scenarios kuali-timekeeper-annotation/dry-run-preview Source contract src/domain/contracts/kuali/fill-timekeeper-annotation.ts impl src/stores/kuali/tasks/fill-timekeeper-annotation.ts input 6308707bae18output 453b257cb9e7impl 65a1b404adb8
-    - region "kuali/save-timekeeper-annotation": commits kuali/save-timekeeper-annotation Save Kuali Timekeeper Annotation Implemented by store kuali kind browser driver kuali Subject binding kind person from input emplId identity eid observes kuali.rrss-document.displayed-eid match normalized-exact-eid required at after-prepare-before-fence Write safety completion save-verify verifies with kuali/verify-timekeeper-annotation probes with kuali/read-timekeeper-annotation absence after fence stabilized · 30000ms · 2 reads Errors kuali-unavailable unexpected-page-state subject-mismatch save-refused UI vocabulary screen kuali.rrss-document observation kuali.rrss-document.displayed-eid element kuali.rrss-document.eid-field page-state kuali.rrss-document.ready element kuali.rrss-document.save-button page-state kuali.rrss-document.timekeeper-staged Scenarios kuali-timekeeper-annotation/dry-run-preview Source contract src/domain/contracts/kuali/save-timekeeper-annotation.ts impl src/stores/kuali/tasks/save-timekeeper-annotation.ts input 6308707bae18output 159d3f0de361impl 21b0764b677f
-    - region "Scenarios": Scenarios kuali-timekeeper-annotation/already-present walks tests/scenario/kuali-timekeeper-annotation.scenario.test.ts kuali-timekeeper-annotation/committed walks tests/scenario/kuali-timekeeper-annotation.scenario.test.ts kuali-timekeeper-annotation/dry-run-preview walks tests/scenario/kuali-timekeeper-annotation.scenario.test.ts kuali-timekeeper-annotation/subject-mismatch walks tests/scenario/kuali-timekeeper-annotation.scenario.test.ts
+          - button "search Task · 1 contract"
+        - listitem:
+          - button "timecard Task · 1 contract"
+      - text: Result search timecard
+    - heading "search" [level=3]
+    - text: Task Employee Search Depends on Nothing — this node may start immediately. replay always-rerun condition always runs
+    - region "new-kronos/search-employee": runs new-kronos/search-employee Search New Kronos For Employee Implemented by store new-kronos kind browser driver new-kronos Subject binding the Employee Search results panel renders a candidate list; the subject is proved on the timecard's own displayed-eid observation (S37) Errors new-kronos-unavailable unexpected-page-state employee-not-found search-returned-no-match search-no-signal Freshness default unbounded Provenance default live UI vocabulary screen new-kronos.employee-search element new-kronos.employee-search.close-button element new-kronos.employee-search.go-to-button element new-kronos.employee-search.go-to-timecard-option page-state new-kronos.employee-search.no-results element new-kronos.employee-search.no-results-text element new-kronos.employee-search.open-button element new-kronos.employee-search.query-field element new-kronos.employee-search.result-select-checkbox element new-kronos.employee-search.result-slat page-state new-kronos.employee-search.results-ready element new-kronos.employee-search.submit-button Scenarios separations-kronos-timecard/reads-a-real-timecard separations-kronos-timecard/employee-not-found separations-kronos-timecard/search-no-signal Source contract src/domain/contracts/new-kronos/search-employee.ts impl src/stores/new-kronos/tasks/search-employee.ts input 07b97d04e376output c4abaefb7580impl f439910c1b1b
+    - region "Scenarios": Scenarios separations-kronos-timecard/employee-not-found walks tests/scenario/separations-kronos-timecard.scenario.test.ts separations-kronos-timecard/reads-a-real-timecard walks tests/scenario/separations-kronos-timecard.scenario.test.ts separations-kronos-timecard/search-no-signal walks tests/scenario/separations-kronos-timecard.scenario.test.ts separations-kronos-timecard/timecard-without-punches walks tests/scenario/separations-kronos-timecard.scenario.test.ts separations-kronos-timecard/wrong-employee-timecard walks tests/scenario/separations-kronos-timecard.scenario.test.ts
 - region "Session Panel":
   - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
-  - text: v0.1.0
+  - text: app 0.1.0
   - status: Live

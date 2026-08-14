@@ -10,21 +10,20 @@
   - heading "HR Automation" [level=1]
   - button "Back" [disabled]
   - button "Forward" [disabled]
+  - button "Dashboard" [pressed]
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity"
+  - button "Search this day’s runs": Search this day… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "This is the newest day served" [disabled]
   - button "Notifications — 1 unread item": "1"
-  - button "Settings"
-  - button "Keyboard shortcuts"
   - button "Switch to Paper Ink"
+  - button "UI catalog" [pressed]
+  - button "Keyboard shortcuts"
+  - button "Settings"
 - main:
-  - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
-  - button "Archive"
-  - button "Activity"
-  - button "Explore graph"
-  - button "UI catalog"
-  - button "Import spreadsheet"
-  - button "Start a run"
   - region "UI catalog":
     - text: UI catalog The committed selector-semantics catalog, exactly as generated generated/ui-catalog.json
     - button "Close the UI catalog"
@@ -62,5 +61,5 @@
         - listitem: "Observation kuali.rrss-document.displayed-form-type Displayed RRSS document form type system kuali screen kuali.rrss-document authoritative for page-state sensitivity public verified 2026-08-12 fixture evidence/ui/kuali/separation-document.fixture.json live evidence/ui/kuali/separation-document.live.json owner src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY used by kuali/read-separation-document search: authoritative kuali rrss displayed form type1 verification scenario"
 - region "Session Panel":
   - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
-  - text: v0.1.0
+  - text: app 0.1.0
   - status: Live

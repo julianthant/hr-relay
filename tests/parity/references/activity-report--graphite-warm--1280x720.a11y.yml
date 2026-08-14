@@ -10,21 +10,20 @@
   - heading "HR Automation" [level=1]
   - button "Back" [disabled]
   - button "Forward" [disabled]
+  - button "Dashboard"
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity" [pressed]
+  - button "Search this day’s runs": Search this day… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "This is the newest day served" [disabled]
   - button "Notifications — 1 unread item": "1"
-  - button "Settings"
-  - button "Keyboard shortcuts"
   - button "Switch to Paper Ink"
-- main:
-  - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
-  - button "Archive"
-  - button "Activity"
-  - button "Explore graph"
   - button "UI catalog"
-  - button "Import spreadsheet"
-  - button "Start a run"
+  - button "Keyboard shortcuts"
+  - button "Settings"
+- main:
   - region "Activity report":
     - button "Dashboard"
     - text: Activity From
@@ -175,5 +174,5 @@
     - paragraph: Every total here is a rendering of the one run/queue projection the Queue Panel reads, generated 2026-08-03T11:00:00.000Z. Hidden and archived runs are excluded once, inside it, so this report and the day it summarises cannot disagree.
 - region "Session Panel":
   - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
-  - text: v0.1.0
+  - text: app 0.1.0
   - status: Live
