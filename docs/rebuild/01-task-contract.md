@@ -1048,6 +1048,61 @@ rebuild by name — so a classification fix strands the receipts of runs settled
 
 ---
 
+### 2.12 One store, two screen families, TWO write transactions — `ucpath`'s termination family (D206, 2026-08-14)
+
+Separations chunk 4 is the first slice to add a WRITE family to a store that already had a read
+family, and the first to compose **two transaction nodes in one graph**. Five rules fall out, and
+each was forced by something live rather than chosen.
+
+**A store's ONE driver declaration joins unrelated screen families, and a fixture answers only its
+own half.** The `ucpath` store's Person Organizational Summary family and its Smart HR termination
+family share nothing but the system id — different route, different frame model (Person Org lives
+inside `#main_target_win0`, Smart HR renders **no iframe at all**), different anchor style. D197
+rule 1 still binds: `defineTask(driver, …)` takes the store's exact invariant declaration, so the
+type is joined (`src/domain/ui/ucpath-driver.ts`) while the schemas stay in their own modules. The
+consequence a fixture cannot dodge is that it must satisfy BOTH halves structurally — and it must
+not IMPLEMENT both, because a Person Org fixture that quietly answered a termination scan would be
+inventing HR transactions. Each half therefore refuses the other's operations **by name**.
+
+**ONE rich page read, TWO probe folds.** Doc 09 §5 wants two probe kinds — "is this person already
+being terminated effective THIS DATE?" and "does this person have ANY in-progress termination?" —
+and they are two questions about the same rows, not two page visits. `scanTerminationTransactions`
+returns every transaction the SS Smart HR surface shows and classifies nothing; the folds live in
+`src/stores/ucpath/termination-verdict.ts`. That is §2.8/D194 and D201's shape applied to a WRITE's
+preconditions, and it is what lets the sweep and the filing share one read while keeping two
+independent permanent keys.
+
+**A DELETE is an external write, so it gets its own transaction — not a step inside a prepare.**
+Legacy's `deletePendingTransaction` removes every in-progress `Terminat*` row for the EID and is, in
+legacy, *the first mutation the run performs*, with no fence, no permanent key and no read-back
+(S30/S31). Here it is `ucpath/delete-pending-terminations`, composed BEFORE the filing, with its own
+probe, its own verifier and its own key (the person alone, because no date qualifies "this person has
+no in-progress rows"). A crash between a hidden delete and a submit would otherwise leave a run that
+had mutated UCPath while claiming to have staged nothing.
+
+**A subject binding may be the NAME, and here it must be.** The wizard's Empl ID field holds the
+run's own input echoed back; `#PERSON_NAME_NAME_DISPLAY` is UCPath's own answer to it. Legacy reads
+that name **nowhere** in the termination flow — checked against the pinned commit, where
+`PERSON_NAME_NAME_DISPLAY` appears only in the Person Profile and PayPath families — which is the
+structural cause of the `T002173685` wrong-person termination. The live read then made the anchor
+stronger than the design: it renders **zero nodes** until UCPath resolves a person, so the beat-③
+subject observation and the `emplid-not-recognized` refusal (S48) are the same check. Because legacy
+has no key for it, it stays DRIVER-INTERNAL rather than being published with a fabricated port row —
+the rule `new-kronos` set and `kuali` re-applied.
+
+**A closed vocabulary must be read off the surface that renders it, and one system may have two.**
+`isUcpathTerminationAction` shipped testing legacy's `/Terminat/i` prefix; the SS Smart HR search
+grid and its transaction detail render the PeopleSoft CODE `TER`, and only the *Transactions in
+Progress* grid renders `Terminatn`. Legacy uses both matchers, in two different modules, without
+saying so. The first live read therefore found a probe that would have answered `absent` about a
+person with a Pending termination — the duplicate-filing failure the probe exists to prevent. The
+fix accepts either form and neither arm is fuzzy: one is equality against a closed code, the other is
+legacy's own prefix. The general rule: **when two surfaces of one system render "the same" field,
+read both before assuming one vocabulary**, and let a value that matches neither (`(blank)`, live)
+fall through rather than be widened into.
+
+---
+
 ## 3. Task stores per system plus pure workflow mini-stores
 
 ### 3.1 Layout in the rebuild repo's `src/`

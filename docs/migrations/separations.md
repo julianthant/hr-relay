@@ -2464,3 +2464,178 @@ repo's own naming rules win. Doc 09 §5 requires **both** probe kinds ported —
 questions, which is why they are two contracts and not one with a flag.
 
 ---
+
+### 9.8 Chunk 4 — the live re-verification, 2026-08-14 (and the defect it found)
+
+Read-only against production `ucphrprdpub.universityofcalifornia.edu`, one
+session, Duo cleared hands-off by Duo Autopilot through
+`duo-autopilot/launch-selector-browser.mjs` (`SEL_SESSION=sep4`). **Nothing was
+submitted.** Two Smart HR wizards were walked to Page B and abandoned by
+navigation; no `Save and Submit` and no `Delete Selected Transactions` was ever
+clicked.
+
+**The saved profile did NOT skip the ceremony.** `.auth/sep4-profile`'s session
+had expired, so the run went through campus discovery → TritON → Duo from cold.
+The profile is still worth keeping only if it is re-used the same day; the thing
+that actually made this unattended was the extension, not the profile.
+
+#### The defect this lane found — an action vocabulary the code could not match
+
+`isUcpathTerminationAction` tested a `Terminat` prefix, ported from legacy's
+pending-sweep matcher. **The SS Smart HR surfaces do not render that string.**
+EID `10001799`'s four rows read `TER`, `TER`, `(blank)`, `HIR`, and the detail
+page for `T002209631` also reads `TER`. So every idempotency probe would have
+answered `absent` about a person who demonstrably has a Pending termination —
+the exact duplicate-filing failure the probe exists to prevent, on the first
+real subject.
+
+There genuinely are **two vocabularies on two grids**, and legacy uses both
+without ever saying so:
+
+| Surface | Action column | Legacy's matcher |
+|---|---|---|
+| SS Smart HR search grid + transaction detail | the PeopleSoft code `TER` | `ss-smart-hr.ts` matches `Action === "TER"` |
+| Smart HR *Transactions in Progress* grid | the descriptive `Terminatn` | `rowMatchesTerminationEid` matches `/Terminat/i` |
+
+Fixed: the matcher accepts the exact code `TER` **or** a `Terminat` prefix, and
+neither arm is fuzzy — one is equality against a closed PeopleSoft code, the
+other is the prefix legacy already relies on. A `(blank)` action matches
+neither, which is correct.
+
+#### The `already-present` dedupe observation — MET, with no write of any kind
+
+EID `10001799` filtered on the SS Smart HR search (`#UC_SS_TBH_DVW_EMPLID`,
+operator `2` = `=`) returns **four** rows, read verbatim:
+
+| Transaction ID | Name | Empl ID | Action | Approval Status | BU |
+|---|---|---|---|---|---|
+| `T002209631` | Drose Clauckia | 10001799 | `TER` | **Pending** | SDCMP |
+| `T002197996` | Drose Clauckia | 10001799 | `TER` | Approved | SDCMP |
+| `T001816218` | Drose Clauckia | 10001799 | `(blank)` | Approved | SDCMP |
+| `T001781115` | Drose Clauckia | 10001799 | `HIR` | Approved | SDCMP |
+
+The detail page for `T002209631` reads `startDate 06/11/2026`, `action TER`,
+`approvalStatus Pending`, `name Drose Clauckia`. So a run for EID 10001799
+effective `06/11/2026` folds to **`present`** and settles `already-present` with
+zero clicks — S44 observed on a real person, for free.
+
+**Search-grid columns (§3.2):** `Transaction ID · <sequence> · Name · Empl ID ·
+Action · Approval Status · Business Unit`. The grid carries the name, the EID,
+the action and the status; it does **not** carry the effective date, which is
+why the effective-date-keyed probe still costs one detail visit per candidate
+row and the date-agnostic sweep does not.
+
+**Approval Status filter option list, captured whole:** `(blank)` · `Approved` ·
+`Denied` · `Error` · `Manually Processed` · `Pending` · `Pushed Back` — exactly
+`UcpathApprovalStatusSchema`. **Empl ID operator list:** `1=begins with` ·
+`8=contains` · **`2==`** · `3=not =` · `4=<` · `6=<=` · `5=>` · `7=>=` ·
+`9=between` · `10=in`.
+
+#### S48 — RE-OBSERVED, and now conclusive
+
+The salvage left S48 inconclusive. Filling `#HR_TBH_WRK_EMPLID_PROMPT2` with
+`99999999` and blurring, then waiting 9 s:
+
+- `#PERSON_NAME_NAME_DISPLAY` renders **ZERO nodes**
+- `#HR_TBH_WRK_EMPL_RCD_CHAR` is **empty**
+- the EID field keeps the typed value
+- the page body carries an invalid/not-valid message; `.PSERROR` is present but
+  empty, so **the banner is not the signal**
+
+**And `#PERSON_NAME_NAME_DISPLAY` is absent on a FRESH Page B too** — it appears
+only once UCPath resolves a person. That is stronger than the salvage recorded:
+the anchor's *presence* is the resolution signal, so the beat-③ subject
+observation and the S48 refusal are the same check. `ucpath/stage-termination`
+refuses `emplid-not-recognized` here, before any fence — where legacy discovers
+it ten seconds later as an opaque timeout on the next page's first field.
+
+#### The persistence crux, independently re-confirmed
+
+Two full Page-A → `Create Transaction` → Page-B walks were abandoned by
+navigation, one of them with an EID filled. The *Transactions in Progress* grid
+afterwards reads **`First 1 of 1`**, and its one row is
+`JOB · 06/11/2026 · Drose Clauckia · 10001799 · Terminatn · United States` —
+a pre-existing departmental transaction, not either of the abandoned wizards.
+Neither walk left a row behind.
+
+**In-progress grid columns:** `Select · Transaction Type · Effective Date ·
+Name · Person ID · Action · Country`. It carries the effective date, the name,
+the EID and the descriptive `Terminatn`, which is everything the sweep's
+selection needs. **`Delete Selected Transactions` is `input#HR_TBH_WRK_DELETE_BTN`**
+— a stable id the salvage never recorded and legacy has no key for.
+
+#### The reason-code lists, captured with BOTH value and label
+
+This settles the map's one heterogeneity with data. Every one of §4a's fifteen
+legacy-ported reason codes is a live option LABEL, exactly:
+
+**`UC_VOL_TERM` — 18 options (incl. the blank sentinel):** `CAR|Career to Per
+Diem` · `XFR|Interlocation (BU) Transfer` · `TR1|Release fr Trial Emplmnt-Vol` ·
+`AAJ|Resign - Accept Another Job` · `SCH|Resign - Attend School` ·
+`DWJ|Resign - Dissatisfied w/ Job` · `JAB|Resign - Job Abandonment` ·
+`LAJ|Resign - Look For Another Job` · `MIL|Resign - Military Service` ·
+`MOA|Resign - Moved out of Area` · `NRG|Resign - No Reason Given` ·
+`PER|Resign - Personal Reasons` · `QWN|Resign - Quit Without Notice` ·
+`SLF|Resign - Self Employment` · `FRL|Resign -Failed to Ret fr Leave` ·
+`TIL|Transfer - Intra Location` · `VSP|Voluntary Separation Program`.
+
+**`UC_INVOL_TERM` — 26 options (incl. the blank sentinel):**
+`AIP|Acad- Incompetent Performance` · `APR|Acad- Presumptive Resignation` ·
+`ATA|Acad- Terminal Appointment` · `ACE|Appointment Expired` · `DEA|Death` ·
+`ATT|Dismissal - Attendance` · `FLS|Dismissal - Falsified App` ·
+`MIS|Dismissal - Misconduct` · `NLC|Dismissal - No Longer Cert/Lic` ·
+`PRF|Dismissal -Lack of Performance` · `DNP|Do Not Protest (Settlement)` ·
+`DNR|Do Not Rehire (Settlement)` · `NSV|Elimination of Position` ·
+`GCE|Grant/Contract expired` · `INV|Involuntary Termination -Other` ·
+`LHC|Layoff - Accept Health Care` · `RRR|Layoff- Rehire/Recall Rights` ·
+`SEV|Layoff- Severance` · `RDS|Layoff-Reduced Sev, Reh/Recall` ·
+`MED|Medical Separation` · **`NSE|Never Started Employment`** ·
+`GRD|No Longer Student` · `PDR|Per Diem Release` ·
+`TR2|Release fr Trial Emplmnt-Invol` · `PRO|Released During Probation` ·
+`VIS|Visa/Work Permit Expired`.
+
+**`NSE` = "Never Started Employment" is confirmed first-hand**, not only through
+the salvage — so §4a's 2026-08-13 operator answer rests on an observation this
+session made itself. `GRD|No Longer Student` and `ACE|Appointment Expired` also
+match the map's two involuntary labels exactly.
+
+The map therefore stays as it is — fifteen LABELS plus `NSE` as a VALUE — and
+the driver's "match an option by value **or** label, exactly one, refuse
+otherwise" rule is now live-verified rather than merely defensible. Normalizing
+the table to codes is possible with the two lists above and is a follow-up, not
+a debt.
+
+#### Timings, warm session (and why the 972 s spike matters more, not less)
+
+| Step | Measured |
+|---|---|
+| SS Smart HR transaction detail (keyed deep link → field read) | **753 ms** |
+| Smart HR wizard Page A open | 2.3 s |
+| fill template + transaction date | 9 ms |
+| `Create Transaction` → Page B ready | **1.07 s** |
+| Page A open → `UC_INVOL_TERM` reason list rendered | 3.4 s |
+| Smart HR Transactions page open (with in-progress grid) | 4.7 s |
+| invalid-EID blur → settled (a deliberate 9 s wait, not a measurement) | ≤9 s |
+
+Every number is far under the salvage's cold-session figures (detail 4.9 s,
+Create Transaction 7.3 s). **That widens the gap the 972 s spike has to be
+explained by rather than closing it**: this surface is normally sub-second to a
+few seconds, so a 16-minute call is a pathology, not a slow page, and the hard
+per-step bound stays mandatory.
+
+#### What was NOT run, stated honestly
+
+- **The §4f3 `probeToFenceMaxMs` live-dry-run measurement.** The descriptor's
+  120 s is derived from §9.7's step-by-step production timings (≈32.4 s of
+  staging, ~3.7x headroom) and this session's warm numbers are strictly
+  smaller — but the operator's answer asks for the interval read off a real
+  run's own per-beat spans through the start-plan → command → worker path, and
+  that run has not happened. **Still a blocking follow-up.**
+- **The controlled real commit.** Untouched by design (§4f2, option ii): it
+  waits on an operator-named canary. Nothing was submitted.
+- **The UI-registry entries for these anchors.** See the chunk-4 return: they
+  need `config/ports/legacy-selector-port-map.json` rows plus a fixture/live
+  evidence-manifest pair, and the live half is exactly the read this session
+  performed — so the work is unblocked and scoped, not blocked.
+
+---

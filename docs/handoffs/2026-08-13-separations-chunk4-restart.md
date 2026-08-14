@@ -53,7 +53,11 @@ scroll). Chunk 4 builds the tree's second-ever commit contract family: the UCPat
 - [x] Chunk 3 — job-summary + ALWAYS-GATE (`107f9b0`…`7b983af`, D201–D203; live-proven incl. real
       approval)
 - [x] Platform: D199 `796b845` · D200 `171f27e` · D204 `605abe2` · D205 `213d2c9`
-- [ ] **Chunk 4 — UCPath termination write ← RESUME HERE (fresh dispatch; nothing landed)**
+- [x] **Chunk 4 — UCPath termination write LANDED 2026-08-14 (D206)** — commits `b255868` (the code
+      slice) and `a3c66f4` (the live findings + the `TER` fix). Live: the `already-present` dedupe
+      observation on `T002209631` is MET, S48 is conclusive, and the persistence crux was
+      re-confirmed. Still open: the §4f3 `probeToFenceMaxMs` live-dry-run measurement, and the UI
+      registry entries for the chunk-4 anchors.
 - [ ] Chunk 5 — kuali finalization write (staged variables, §4e)
 - [ ] Chunk 6 — compose + full live dry-run (+ fold in the re-read affordance: new item identity
       per explicit operator re-read, recorded in §"the re-run wall" item 2)

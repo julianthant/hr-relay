@@ -116,15 +116,26 @@ which store you are in, this decides how wide the new read task is:
 
 ### `ucpath` — browser store, real
 
-**Status:** driver `semantic-ready` (`UcpathPersonOrgDriver`, `src/domain/ui/ucpath-person-org.ts`) ·
-real login recipe (`ucpathLoginRecipe`, `src/stores/ucpath/session.ts`) · **2 tasks**. Wired into
-`BROWSER_SYSTEM_BINDINGS` (`src/infra/browser/system-bindings.ts`), so a real session can be opened.
+**Status:** driver `semantic-ready` (`UcpathStoreDriver`, `src/domain/ui/ucpath-driver.ts` — the ONE
+declaration joining the Person Org half and the Smart HR termination half, D206) · real login recipe
+(`ucpathLoginRecipe`, `src/stores/ucpath/session.ts`) · **10 tasks**, of which **2 are commits**.
+Wired into `BROWSER_SYSTEM_BINDINGS` (`src/infra/browser/system-bindings.ts`), so a real session can
+be opened.
 
 | Item | Kind | Contract id | What it does | Reuse notes |
 |---|---|---|---|---|
 | `searchPersonOrgTask` | task | `ucpath/search-person-org` (read) | Searches UCPath's Person Organizational Summary by EID or name, expands `View All`, drills into every plausible record, and returns candidate results plus one resolved selection (employee status, HDH flag). | `sessions: [{system:"ucpath", access:"read"}]`, retries `{attempts:2, backoffMs:2000}` on transient. Ported from legacy `793abe1f…`, live-verified 2026-08-02. Handles the **Person Org** screen family only — `ui-registry.ts` also carries the SS Smart HR **receipt** screen family (live-verified 2026-08-04) but no task reads it yet (see §4). |
 
 | `readJobSummaryTask` | task | `ucpath/read-job-summary` (read) | D194's rich read of the SAME page family: opens the Person Org **detail** page for a person the run already names, proves the displayed EID equals the requested one, and returns the WHOLE *Employment Instances* grid — every row's empl record, verbatim HR status, business unit, effective dates, department, job code, title, FTE, empl class — plus the page-displayed name, the row count, and the render context (`auto-detail` vs `drilled-from-grid`; grid already-complete vs expanded). | `sessions: [{system:"ucpath", access:"read"}]`, retries `{attempts:2, backoffMs:2000}`. **Classifies nothing** — "all terminated", "already separated", "two concurrent jobs" are a pure fold in `src/domain/separations/job-summary-classification.ts` (D201). Subject-bound `before-subject-read` on `ucpath.person-org.displayed-eid`, unlike `search-person-org` whose subject is `none` because the search IS the resolution. Live-verified 2026-08-12. |
+
+| `matchExistingTerminationTask` | task | `ucpath/match-existing-termination` (read) | Doc 09 §5's idempotency probe and chunk 4's **S44** read: EID-filtered SS Smart HR search plus one detail visit per candidate row, folded to a four-state `ProbeVerdict` on EID + effective date. | Freshness 0 (`forbidden`). Subject binds the **name**, not the EID — the EID is the run's own filter echoed back. An unreadable scan is `unknown`, NEVER `absent` (D5/D6). Live-verified 2026-08-14. |
+| `matchPendingTerminationsTask` | task | `ucpath/match-pending-terminations` (read) | Doc 09 §5's **second** probe kind, over the SAME rich read: does this person have ANY in-progress termination? `present` means there is nothing to sweep. | Shares `scanTerminationTransactions` with the probe above — one page read, two folds (D194/D201/D206). |
+| `stageTerminationTask` | task | `ucpath/stage-termination` (prepare) | Stages the WHOLE three-page Smart HR wizard: template + transaction date, Empl ID + record + effective date + reason, Job Data + LDW override + both comment fields — and reads every one back. | Persists nothing: the wizard has ZERO durable footprint before an explicit Save (live 2026-08-13, re-confirmed 2026-08-14). Refuses `emplid-not-recognized` (S48) and `last-date-worked-not-verified` (S49) pre-fence. |
+| `createTerminationTask` | task | `ucpath/create-termination` (**commit**) | Clicks `Save and Submit` — ALONE — then re-reads its own receipt PAIR. | Permanent key EID + effective date. `recoveryAbsence: operator-only` (no measured propagation window). An unreadable post-submit read THROWS, so S51/S52 park. |
+| `verifyTerminationTask` | task | `ucpath/verify-termination` (read) | Beat ⑥'s independent re-read — the only thing that may settle the run `done`. | Anything other than `present` parks. `present` requires the `T…` AND its approval status: a Denied transaction carries a well-formed number. |
+| `stagePendingTerminationSweepTask` | task | `ucpath/stage-pending-termination-sweep` (prepare) | Ticks the Select checkbox on every in-progress `Terminat*` row for this person, reads back what it ticked. | A settled row is never selected — only `Pending`/`Pushed Back` are in progress. |
+| `deletePendingTerminationsTask` | task | `ucpath/delete-pending-terminations` (**commit**) | Clicks `Delete Selected Transactions` (`input#HR_TBH_WRK_DELETE_BTN`). | Its own transaction, composed BEFORE the filing, with its own key (the person alone). Legacy runs this same delete as the run's FIRST mutation with no fence at all (S30/S31). |
+| `verifyPendingTerminationsClearedTask` | task | `ucpath/verify-pending-terminations-cleared` (read) | The post-delete re-read: the grid shows no in-progress termination rows. | "We could not check" and "the rows are gone" are never merged. |
 
 **Driver notes.** `driver/person-org-operation.ts` owns navigation/search/grid/drill-in/assignment
 selection; locator recipes live only in `driver/ui-registry.ts` and require matching fixture plus
@@ -397,10 +408,12 @@ step 3. Migration order is doc 07 §3.3's table:
 Two more gaps are **inside** currently-real stores, not new stores — flagged here because they are
 easy to miss:
 
-- **The ucpath write family** (UCPath termination, UCPath hire) does not exist yet. `ucpathStore` today
-  is read-only (`searchPersonOrg`); the SS Smart HR **receipt** screen is already live-verified in
-  `driver/ui-registry.ts` (2026-08-04) but has no task reading it, and no write task exists at all.
-  Minted at **order 8** (separations — UCPath term) and **order 9** (onboarding — UCPath hire).
+- **The ucpath TERMINATION write family LANDED 2026-08-14** (chunk 4, D206): two transactions — the
+  date-agnostic pending sweep and the filing — with doc 09 §5's two probe kinds and a verifier each.
+  What is still missing from this store is the **UCPath hire** family (order 9, onboarding), and the
+  chunk-4 anchors are not yet published as registry ELEMENTS: they need
+  `config/ports/legacy-selector-port-map.json` rows plus a fixture/live evidence-manifest pair, and
+  the live half is the read performed on 2026-08-14 (`separations.md` §9.8).
 - **The kuali separation READ landed 2026-08-12** (chunk 2, D197): `kuali/read-separation-document`
   reads the whole RRSS form, and fourteen more legacy selector keys moved candidate→ported. What is
   still missing is the **finalization WRITE family** (`Send Back`, `Mark Complete` — the controls that
