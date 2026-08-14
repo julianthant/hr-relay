@@ -5,8 +5,14 @@ Records about how workflows, compositions and chunk harnesses are modeled and pr
 
 ## Chunk workflows render as sibling workflows of the Separation composition
 
-**Recorded:** 2026-08-14 · **Status:** recorded (design needed) · **Owning docs to consult:**
+**Recorded:** 2026-08-14 · **Status:** triaged — ratified as **D219** (doc 02 §1.2.1 owns the
+module `role`; doc 03 §Shell owns the presentation; implementation in flight) · **Owning docs:**
 doc 03 (rail/queue), doc 02 (workflow model), doc 07 (migration order), doc 12 (operator trust)
+
+**The design's answers to the open questions below:** no doc-07 conflict (no §3.2 criterion names
+rail presence; chunks stay registered and start through the start-plan lane), and the composition's
+badge counts composition runs ONLY — historical harness runs stay under the harness's own nested
+entry, because a badge that disagrees with its own panel is D81's divergence class.
 
 ## Symptom
 

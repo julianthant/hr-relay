@@ -10,6 +10,9 @@ rebuild repo's `src/`. Round-8 amendments: §4 records the two graph-legality ru
 identity-approval gate
 (doc 09 §14, D77) imposes, and the descriptor's per-run stamp now includes the **app version**
 alongside the workflow version + fingerprint (D80 archive-on-bump, owned by doc 03 §10.2).
+**Amended 2026-08-14 (Round 61):** §1.2.1 — every workflow MODULE declares a required closed
+`role` (`standalone` / `composition` / `chunk-harness of <id>`), validated at the composition root;
+presentation of the role is doc 03's (D219).
 
 ## Ownership (D1)
 
@@ -604,6 +607,42 @@ presentation overrides. The build also emits the same projection for dashboard t
 SSE hello carries its fingerprint; a server/client mismatch fails loud. This removes the previous
 `domain → workflows → domain` cycle.
 
+#### 1.2.1 The module's role declaration (D219, 2026-08-14)
+
+A registered workflow is one of three things to the program's taxonomy, and the MODULE — never the
+descriptor — states which, as a **required** closed union:
+
+```ts
+role:
+  | { kind: "standalone" }                       // an ordinary workflow (person-lookup)
+  | { kind: "composition" }                      // a graph assembled from chunk-proven tasks (separations)
+  | { kind: "chunk-harness"; of: WorkflowId }    // a per-chunk proving harness for `of`'s migration
+```
+
+**Why the module and not the descriptor** is D170's argument verbatim: taxonomy is presentation and
+server bookkeeping, not part of a run's contract identity — a run of `separations-kuali-finalization`
+behaves byte-identically whether or not it is labeled a harness, so folding the fact into
+`contractFingerprint` would re-stamp every existing run's contract for a surface no run consumes.
+It also matches how the fact MOVES: the five separations chunks *became* harnesses on the day the
+composed `separations` descriptor registered (D211), and nothing about their run identity moved
+with them.
+
+**Why required and never optional** is D211's optional-block lesson one level up: an optional field
+is one a new module can forget to fill while every surface still renders — every module states its
+role explicitly, and the honest default does not exist.
+
+**Validation is composition-root, fail-loud.** The registry refuses, at load, any `chunk-harness`
+whose `of` does not resolve to a registered module whose own role is `composition` — which makes a
+dangling target and a harness-of-a-harness chain unrepresentable rather than banned. §1.4 item 2's
+tuple audit gains the same check at CI.
+
+**What the role does NOT change:** registration, startability, run identity, or §3.2 obligations.
+A chunk harness stays independently runnable through the start-plan lane — each of the five
+separations harnesses still owes/holds its own controlled-commit proof — and doc 07 §3.2 names no
+criterion about rail presence. How the role PRESENTS (rail nesting, picker, counts, run-row labels)
+is doc 03's (§Shell, D219); the bootstrap wire serves the raw fact and the frontend owns display,
+per the standing R2 D17/D18 split.
+
 ### 1.3 Every parallel registry becomes a projection
 
 | Today's hand-list | Becomes | Mechanism |
@@ -626,8 +665,10 @@ The rebuild repo's `tests/unit/architecture/descriptor-coverage.test.ts` — a s
 `DESCRIPTORS`:
 
 1. ids unique; codes unique + 2 chars; `icon` ∈ `ICON_NAMES`.
-2. Each `WORKFLOW_MODULES` entry has one descriptor+loader; derived registry keys === derived
-   descriptor ids (both directions). No second workflow-id literal list exists.
+2. Each `WORKFLOW_MODULES` entry has one descriptor+loader and one declared `role` (§1.2.1);
+   every `chunk-harness.of` resolves to a registered module whose role is `composition`; derived
+   registry keys === derived descriptor ids (both directions). No second workflow-id literal list
+   exists.
 3. Every task/transaction arm resolves in the store impl index; every contract's `example` parses;
    every read declares freshness and provenance; prepare contracts occur only in transaction prepare arms; commit
    contracts occur only in transaction commit arms and carry write safety.

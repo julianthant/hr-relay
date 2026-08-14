@@ -21,6 +21,9 @@ operational separation stays gated.
 **Amended 2026-08-02 (Round 18):** Phase 1f ratifies planned-start consumption, the minimal
 failure/result authorities, the executable command-family boundary, and the complete atomic
 write-commit bundle; rich trust projections remain Phase 2g.
+**Amended 2026-08-14 (Round 61):** §Shell — a chunk harness presents as a step of its composition
+on every workflow-listing surface (D219): nested under the composition via the ONE grouping rule,
+served as a required wire `role`, no count roll-up, labels and startability unchanged.
 
 ## Ownership (D1)
 
@@ -2402,6 +2405,37 @@ the per-row workflow chip worth deleting. Grouping in the panel comes from **eac
 `category`** (the eight real categories the registry serves), never a frontend list: the frontend
 hardcodes only the display order, membership is the descriptor's, an unlisted category appends,
 and an empty category drops. §10.1's one counting path (`countRows`) is untouched by all of this.
+
+**A chunk harness is a step of its composition, never a peer workflow (D219, 2026-08-14).** The
+operator's ruling — *"kuali finalization is a step in the separation workflow, not another workflow
+itself"* — lands as ONE membership-aware rule in the same grouping module the category rule already
+lives in (`dashboard/surfaces/workflow-category.ts`): inside its category group, an entry whose
+served `role` is `chunk-harness` renders **nested and visually subordinate under its composition's
+entry**, marked as a proving harness, and never as a sibling. The nested entries stay **always
+visible** — a collapse-by-default disclosure would need an attention-forwarding rule so a hidden
+harness's `Needs you` could not vanish, and visible-but-subordinate hides nothing and needs no such
+rule. Every workflow-listing surface renders through the one rule — the Workflow Panel rail, the
+Run Modal picker (its startable AND its "not startable" lists alike), and the Explorer — so no two
+surfaces can disagree about what is a step and what is a workflow. Four consequences are decided
+here rather than re-litigated per surface:
+
+- **The wire serves the raw fact, display stays the frontend's** (the standing R2 D17/D18 split):
+  the bootstrap workflow primitive gains a REQUIRED closed `role`
+  (`standalone` / `composition` / `chunk-harness` + `of`), the schema refuses an `of` that does not
+  name a served composition, and the module-side fact it projects is doc 02 §1.2.1's.
+- **Counts do not roll up.** §10.1 already decides this: a badge beside an entry counts exactly the
+  rows that entry's panel shows, and folding harness runs into the composition's badge would make
+  the badge disagree with its own queue panel — D81's divergence class manufactured deliberately.
+  Historical harness runs (the proving days') stay under the harness's own nested entry; the day's
+  cross-panel `Needs you` total already contains every panel.
+- **Run rows keep the harness's own label** on every surface (queue, activity, notifications) — the
+  nested rail entry still names the harness, so a row titled by it stays legible — and archived
+  rows' frozen labels are untouched (D179).
+- **Startability does not move.** Chunks stay registered and independently runnable through the
+  start-plan lane (each still owes/holds its own §3.2 controlled-commit proof); no doc 07 exit
+  criterion names rail presence. Today all six separations entries declare `surfaces: {}`, so the
+  picker lists them only under "not startable" — the nesting applies to whatever list a surface
+  renders, not to what is in it.
 
 **One composed action bar** replaces the two stacked bars above the queue. The status filters are
 one *group* inside it, not a band of their own; the two composites (`All` / `Needs you`) are a
