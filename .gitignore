@@ -57,4 +57,3 @@ OnboardingRoster-*.xlsx
 *.xlsx
 !tests/**/fixtures/**/*.xlsx
 .auth/
-.auth/
