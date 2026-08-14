@@ -385,6 +385,7 @@ export const separationsUcpathTerminationDescriptor = defineWorkflowDescriptor({
     "separations-ucpath-termination/gate-approved",
     "separations-ucpath-termination/pending-sweep-committed",
     "separations-ucpath-termination/emplid-not-recognized",
+    "separations-ucpath-termination/submit-refused",
     "separations-ucpath-termination/last-date-worked-not-verified",
     "separations-ucpath-termination/submit-outcome-unknown",
     "separations-ucpath-termination/unreadable-probe-is-not-absent",

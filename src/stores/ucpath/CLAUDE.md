@@ -54,6 +54,30 @@ this family is `page` and legacy's `getContentFrame` funnel does not apply.
 
 ## Lessons learned
 
+- **2026-08-14: a closed `errorCodes` union member with no producer is a lie the
+  test suite can confirm, and `z.literal(true)` is how two of them got there.**
+  Three of this family's typed refusals could not fire. `emplid-not-recognized`
+  was declared, documented in §9.8/§9.9 as "refuses before any fence", and
+  reachable only as a raw `throw new Error(...)` from the driver — so the task
+  could not tell it from a page crash, and the scenario claiming it asserted the
+  FIXTURE's generic `does not implement \`stageTermination\`` message, which
+  passes for any reason at all. `submit-refused` and `delete-refused` were worse:
+  both tasks branched on `!action.performed`, and `UiActionProofSchema.performed`
+  is `z.literal(true)` — **a proof is a proof by construction, so no driver could
+  ever return the value the branch tested for.** The commit also returned that
+  proof unconditionally right after `.click()`, which is D128 exactly (a positive
+  save signal proves nothing) with the additional twist that there was no signal
+  at all. Fixed by giving each refusal a TYPE: `UcpathEmplIdNotRecognizedError`
+  and `UcpathCommitRefusedError` travel from the driver, and each commit task
+  maps its own to its own code. The commit now OBSERVES — a non-empty error
+  region, bounded, with a timeout re-read as "not observed" and every other error
+  re-thrown — and there is deliberately **no success detector**: an unobserved
+  refusal leaves the claim exactly as weak as it was, and beat ⑥'s independent
+  read-back is what settles. Generalize it: **when an arm can only be reached
+  through a value the schema forbids, the arm is dead — and a test that asserts a
+  refusal by matching a fixture's own "not implemented" message is asserting
+  nothing.**
+
 - **2026-08-14: beat ③ observes the page PREPARE LEFT BEHIND, and three of this
   store's subject bindings named a page that was already gone.** The first live
   dry runs refused three times in a row, each time at the subject observation and

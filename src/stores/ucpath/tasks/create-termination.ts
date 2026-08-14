@@ -1,6 +1,9 @@
 import { defineTask } from "../../../base/task.js";
 import { UcpathCreateTermination } from "../../../domain/contracts/ucpath/create-termination.js";
-import { UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON } from "../../../domain/ui/ucpath-smart-hr-termination.js";
+import {
+  UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON,
+  UcpathCommitRefusedError,
+} from "../../../domain/ui/ucpath-smart-hr-termination.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathTerminationVerdict } from "../termination-verdict.js";
 
@@ -29,11 +32,27 @@ import { firstDisagreeingName, ucpathTerminationVerdict } from "../termination-v
 export const createTerminationTask = defineTask(ucpathDriver, UcpathCreateTermination, {
   sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
   async run({ input, ctx }) {
-    const action = await ctx.driver.commit(UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON, ctx.mutation);
-    if (action.effect !== "external-commit" || !action.performed) {
+    // S47/S50. The refusal arrives as a typed THROW rather than a
+    // `performed: false` proof, because `UiActionProofSchema.performed` is
+    // `z.literal(true)` — a proof is always a proof, so the old
+    // `!action.performed` branch could never be taken and `submit-refused` had
+    // no producer at all.
+    const action = await ctx.driver
+      .commit(UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON, ctx.mutation)
+      .catch((error: unknown) => {
+        if (!(error instanceof UcpathCommitRefusedError)) throw error;
+        return ctx.fail(
+          "submit-refused",
+          `UCPath refused Save and Submit for EID ${input.emplId} and rendered `
+          + `${JSON.stringify(error.refusal)}. The click happened, so this is post-fence and parks.`,
+          { subject: input.emplId, cause: error },
+        );
+      });
+    if (action.effect !== "external-commit") {
       return ctx.fail(
         "submit-refused",
-        `UCPath Save and Submit for EID ${input.emplId} did not report a performed external commit`,
+        `UCPath Save and Submit for EID ${input.emplId} reported effect ${action.effect}, not an `
+        + "external commit",
         { subject: input.emplId },
       );
     }

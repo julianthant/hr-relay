@@ -190,6 +190,7 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
     file: SEPARATIONS_UCPATH_TERMINATION_FILE,
   },
   { scenarioId: "separations-ucpath-termination/emplid-not-recognized", file: SEPARATIONS_UCPATH_TERMINATION_FILE },
+  { scenarioId: "separations-ucpath-termination/submit-refused", file: SEPARATIONS_UCPATH_TERMINATION_FILE },
   {
     scenarioId: "separations-ucpath-termination/last-date-worked-not-verified",
     file: SEPARATIONS_UCPATH_TERMINATION_FILE,

@@ -419,6 +419,73 @@ export type UcpathSmartHrTerminationDriver = Readonly<{
   commit(id: ElementId, capability: MutationCapability): Promise<UiActionProof>;
 }>;
 
+/* ── Typed driver refusals ───────────────────────────────────────────────── */
+
+/**
+ * **S48**, as a value the task layer can classify — not a prose `Error`.
+ *
+ * `stageTermination` returns a `UcpathTerminationStaging` or nothing at all:
+ * when UCPath refuses the typed Empl ID there is no subject, no employment
+ * record and no page to stage, so there is no honest staging value to return
+ * and the driver must throw. A bare `throw new Error(...)` made the contract's
+ * `emplid-not-recognized` code a DEAD union member — the task could not tell
+ * that refusal from a page crash, so it fell out as an untyped failure and the
+ * scenario that claimed the arm was really asserting the fixture's generic
+ * "not implemented" message.
+ *
+ * The signal it carries is the live one (§9.8/§9.9, 2026-08-14): Page B's
+ * `#PERSON_NAME_NAME_DISPLAY` renders **zero nodes** until UCPath resolves a
+ * person, and it is absent on a fresh Page B too — so the anchor's PRESENCE is
+ * the resolution signal, and the same absence covers both live causes (an Empl
+ * ID UCPath has never seen, and one it knows but has no terminable employment
+ * record for). The error banner is explicitly NOT the signal: `.PSERROR` is
+ * present and empty in both cases.
+ */
+export class UcpathEmplIdNotRecognizedError extends Error {
+  readonly emplId: string;
+
+  constructor(input: Readonly<{ emplId: string; detail: string; cause?: unknown }>) {
+    super(
+      `UCPath did not resolve Empl ID ${input.emplId} on the Smart HR transaction details page: `
+      + `${input.detail}. No person name was rendered, so there is no subject to bind — either the `
+      + "Empl ID does not exist or the employee has no employment record eligible for termination.",
+      input.cause === undefined ? undefined : { cause: input.cause },
+    );
+    this.name = "UcpathEmplIdNotRecognizedError";
+    this.emplId = input.emplId;
+  }
+}
+
+/**
+ * **S47/S50** — UCPath rendered a refusal after the commit click.
+ *
+ * The refusal cannot travel back as a `UiActionProof`, and that is the schema
+ * working rather than a gap: `UiActionProofSchema.performed` is
+ * `z.literal(true)` on purpose, so a proof is always a proof and there is no
+ * `performed: false` value a driver could return. Both commit tasks nonetheless
+ * branched on `!action.performed` and mapped it to `submit-refused` /
+ * `delete-refused` — a branch that could not be taken at the TYPE level, which
+ * is why both codes were dead union members with no producer.
+ *
+ * So a refusal throws, carrying the text UCPath rendered, and the commit task
+ * turns it into its own typed code. It is a POST-FENCE failure either way: the
+ * click happened, so the run parks for an operator rather than settling.
+ */
+export class UcpathCommitRefusedError extends Error {
+  readonly elementId: ElementId;
+  readonly refusal: string;
+
+  constructor(input: Readonly<{ elementId: ElementId; refusal: string }>) {
+    super(
+      `UCPath refused the commit through ${String(input.elementId)} and rendered: `
+      + `${JSON.stringify(input.refusal)}`,
+    );
+    this.name = "UcpathCommitRefusedError";
+    this.elementId = input.elementId;
+    this.refusal = input.refusal;
+  }
+}
+
 /**
  * A termination action, in EITHER of the two vocabularies UCPath uses — and
  * there really are two, which a live read on 2026-08-13 is what settled.

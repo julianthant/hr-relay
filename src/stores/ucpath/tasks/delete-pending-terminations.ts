@@ -1,6 +1,9 @@
 import { defineTask } from "../../../base/task.js";
 import { UcpathDeletePendingTerminations } from "../../../domain/contracts/ucpath/delete-pending-terminations.js";
-import { UCPATH_SMART_HR_DELETE_SELECTED_BUTTON } from "../../../domain/ui/ucpath-smart-hr-termination.js";
+import {
+  UCPATH_SMART_HR_DELETE_SELECTED_BUTTON,
+  UcpathCommitRefusedError,
+} from "../../../domain/ui/ucpath-smart-hr-termination.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathPendingSweepVerdict } from "../termination-verdict.js";
 
@@ -21,12 +24,26 @@ export const deletePendingTerminationsTask = defineTask(
   {
     sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
     async run({ input, ctx }) {
-      const action = await ctx.driver.commit(UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, ctx.mutation);
-      if (action.effect !== "external-commit" || !action.performed) {
+      // The refusal arrives as a typed THROW, not a `performed: false` proof —
+      // `UiActionProofSchema.performed` is `z.literal(true)`, so the old
+      // `!action.performed` branch was unreachable and `delete-refused` had no
+      // producer. See `UcpathCommitRefusedError`.
+      const action = await ctx.driver
+        .commit(UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, ctx.mutation)
+        .catch((error: unknown) => {
+          if (!(error instanceof UcpathCommitRefusedError)) throw error;
+          return ctx.fail(
+            "delete-refused",
+            `UCPath refused Delete Selected Transactions for EID ${input.emplId} and rendered `
+            + `${JSON.stringify(error.refusal)}. The click happened, so this is post-fence and parks.`,
+            { subject: input.emplId, cause: error },
+          );
+        });
+      if (action.effect !== "external-commit") {
         return ctx.fail(
           "delete-refused",
-          `UCPath Delete Selected Transactions for EID ${input.emplId} did not report a performed `
-          + "external commit",
+          `UCPath Delete Selected Transactions for EID ${input.emplId} reported effect `
+          + `${action.effect}, not an external commit`,
           { subject: input.emplId },
         );
       }

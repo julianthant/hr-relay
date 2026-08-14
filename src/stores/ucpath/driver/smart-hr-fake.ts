@@ -25,6 +25,8 @@ import {
   UCPATH_SMART_HR_IN_PROGRESS_NAME,
   UCPATH_SS_SMART_HR_DISPLAYED_NAME,
   isUcpathTerminationInProgress,
+  UcpathCommitRefusedError,
+  UcpathEmplIdNotRecognizedError,
   UcpathPendingSweepStagingSchema,
   UcpathTerminationStagingSchema,
   UcpathTransactionScanSchema,
@@ -78,8 +80,23 @@ export interface DeterministicSmartHrOptions {
   readonly sweepStaging?: UcpathPendingSweepStaging;
   /** Page B's displayed name, i.e. who UCPath resolved the typed EID to. */
   readonly displayedName?: string;
-  /** Set to make the commit report a click that did not happen (S47/S50). */
+  /** Set to make the commit report a click UCPath refused (S47/S50). */
   readonly commitPerformed?: boolean;
+  /**
+   * **S48.** Model UCPath refusing the typed Empl ID: Page B's name anchor
+   * renders ZERO nodes, which is the live signal (§9.8/§9.9, 2026-08-14) and
+   * covers both live causes. The fixture must be given `staging` as well, so
+   * that a test asserting this arm cannot pass on the fixture's generic
+   * "does not implement `stageTermination`" refusal instead — which is exactly
+   * what the S48 scenario used to assert.
+   */
+  readonly emplIdNotRecognized?: true;
+  /**
+   * **S45.** The existence probe THROWS rather than answering `unreadable`.
+   * That is a different failure from an unreadable scan and it must propagate:
+   * "the lookup blew up" is not "this person has no termination".
+   */
+  readonly scanThrows?: string;
 }
 
 /**
@@ -97,6 +114,7 @@ export function createDeterministicUcpathSmartHrDriver(
     ...refuseUnimplementedPersonOrgHalf(half),
     system: "ucpath",
     async scanTerminationTransactions(input: Readonly<{ emplId: Eid }>) {
+      if (options.scanThrows !== undefined) throw new Error(options.scanThrows);
       const parsed = UcpathTransactionScanSchema.parse(options.scan);
       if (parsed.emplId !== input.emplId) {
         throw new Error(
@@ -107,6 +125,12 @@ export function createDeterministicUcpathSmartHrDriver(
       return parsed;
     },
     async stageTermination(input) {
+      if (options.emplIdNotRecognized === true) {
+        throw new UcpathEmplIdNotRecognizedError({
+          emplId: input.emplId,
+          detail: "the fixture renders no Page-B name anchor for this Empl ID",
+        });
+      }
       if (options.staging === undefined) refuse(half, "stageTermination");
       const parsed = UcpathTerminationStagingSchema.parse(options.staging);
       if (parsed.emplId !== input.emplId) {
@@ -131,11 +155,13 @@ export function createDeterministicUcpathSmartHrDriver(
         && id !== UCPATH_SMART_HR_DELETE_SELECTED_BUTTON) {
         throw new Error(`${half} has no commit element ${String(id)}`);
       }
-      return UiActionProofSchema.parse({
-        elementId: id,
-        effect: "external-commit",
-        performed: options.commitPerformed ?? true,
-      });
+      if (options.commitPerformed === false) {
+        throw new UcpathCommitRefusedError({
+          elementId: id,
+          refusal: "the fixture models UCPath rendering a refusal after the click",
+        });
+      }
+      return UiActionProofSchema.parse({ elementId: id, effect: "external-commit", performed: true });
     },
     async goto(next) {
       screen = next as typeof UCPATH_SMART_HR_DETAILS_SCREEN;
@@ -154,6 +180,14 @@ export function createDeterministicUcpathSmartHrDriver(
     async read(id) {
       if (id !== UCPATH_SMART_HR_DISPLAYED_PERSON_NAME) {
         throw new Error(`${half} cannot read ${String(id)}`);
+      }
+      if (options.emplIdNotRecognized === true) {
+        // The same absence, read through the kernel's own beat-③ observation:
+        // when UCPath resolves nobody the anchor renders zero nodes, so the
+        // subject read has nothing to return either.
+        throw new Error(
+          `${half} renders no Page-B name anchor: UCPath resolved no person for this Empl ID`,
+        );
       }
       const name = options.displayedName ?? options.staging?.observedName;
       if (name === undefined) {
@@ -310,7 +344,14 @@ export function createDeterministicUcpathSmartHrWorldDriver(
       }
       world.events.push(`commit:${String(id)}`);
       if (!world.commitPerformed) {
-        return UiActionProofSchema.parse({ elementId: id, effect: "external-commit", performed: false });
+        // S47/S50: the click happened and UCPath refused it. The world's rows
+        // are deliberately NOT moved — a refused submit files nothing — and the
+        // throw is what carries the refusal, because a `UiActionProof` is a
+        // proof by construction (`performed: z.literal(true)`).
+        throw new UcpathCommitRefusedError({
+          elementId: id,
+          refusal: "the world models UCPath rendering a refusal after the click",
+        });
       }
       if (id === UCPATH_SMART_HR_DELETE_SELECTED_BUTTON) {
         world.rows = world.rows.filter((row) => !isUcpathTerminationInProgress(row));

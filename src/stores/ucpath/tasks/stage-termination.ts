@@ -1,5 +1,6 @@
 import { defineTask } from "../../../base/task.js";
 import { UcpathStageTermination } from "../../../domain/contracts/ucpath/stage-termination.js";
+import { UcpathEmplIdNotRecognizedError } from "../../../domain/ui/ucpath-smart-hr-termination.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
 /**
@@ -20,7 +21,18 @@ import { ucpathDriver } from "../driver-declaration.js";
 export const stageTerminationTask = defineTask(ucpathDriver, UcpathStageTermination, {
   sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
   async run({ input, ctx }) {
-    const staging = await ctx.driver.stageTermination(input);
+    // **S48.** UCPath refusing the typed Empl ID has no staging value to return
+    // — no subject, no employment record, no page — so the driver throws, and
+    // the TYPE is what lets this become the contract's own `emplid-not-recognized`
+    // rather than an untyped failure indistinguishable from a page crash. Any
+    // other error re-throws untouched.
+    const staging = await ctx.driver.stageTermination(input).catch((error: unknown) => {
+      if (!(error instanceof UcpathEmplIdNotRecognizedError)) throw error;
+      return ctx.fail("emplid-not-recognized", error.message, {
+        subject: input.emplId,
+        cause: error,
+      });
+    });
     if (staging.emplId !== input.emplId) {
       return ctx.fail(
         "subject-mismatch",

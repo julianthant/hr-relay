@@ -22,10 +22,12 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { EidSchema, IsoInstantSchema } from "../../src/domain/ids.js";
 import {
+  UCPATH_SMART_HR_DISPLAYED_PERSON_NAME,
   UCPATH_SMART_HR_TERMINATION_STAGED,
   isUcpathTerminationAction,
   isUcpathTerminationInProgress,
 } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
+import { WriteParkedError } from "../../src/core/write-sequencer.js";
 import type {
   UcpathTerminationStaging,
   UcpathTransactionRow,
@@ -484,13 +486,74 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
 
   it("separations-ucpath-termination/emplid-not-recognized — S48: UCPath never resolved the typed EID", async () => {
     // Legacy discovers this ten seconds later as an opaque timeout on the NEXT
-    // page's first field. Here the staged page cannot produce a name, and the
-    // fixture refuses rather than inventing one.
-    const driver = createDeterministicUcpathSmartHrDriver({ scan: scan([]) });
+    // page's first field. Here Page B's name anchor renders zero nodes — the
+    // live signal (§9.8/§9.9) — and the task answers the contract's OWN code.
+    //
+    // The fixture is deliberately given a complete `staging`, so this cannot
+    // pass on the generic "does not implement `stageTermination`" refusal. That
+    // is what the scenario used to assert, which meant it would have passed for
+    // any reason at all while `emplid-not-recognized` had no producer anywhere.
+    const driver = createDeterministicUcpathSmartHrDriver({
+      scan: scan([]),
+      staging: staging(),
+      emplIdNotRecognized: true,
+    });
     await assert.rejects(
       stageTerminationTask.impl.run({ input: TARGET, ctx: { ...taskCtx, driver } }),
-      /does not implement `stageTermination`/,
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        assert.match(message, /^emplid-not-recognized: /u, message);
+        assert.match(message, new RegExp(EID, "u"), message);
+        assert.doesNotMatch(message, /does not implement/u, message);
+        return true;
+      },
     );
+
+    // And the same absence through the kernel's own beat-③ observation: there
+    // is no subject to bind, so the read refuses rather than inventing a name.
+    await assert.rejects(
+      driver.read(UCPATH_SMART_HR_DISPLAYED_PERSON_NAME),
+      /renders no Page-B name anchor/,
+    );
+  });
+
+  it("separations-ucpath-termination/submit-refused — S47/S50: a refused submit parks, and files nothing", async () => {
+    // The arm that could not fire before: `UiActionProofSchema.performed` is
+    // `z.literal(true)`, so the commit task's `!action.performed` branch was
+    // unreachable and `submit-refused` was a dead union member. A refusal is now
+    // a typed THROW the task turns into its own code — post-fence, so the run
+    // parks for an operator with the intent fenced and NO settlement.
+    const h = harness({ commitPerformed: false });
+    const { run, claim } = terminationClaimRunning(
+      h.database, h.clock, terminationQueuedRun(), TERMINATION_FILE_NODE,
+    );
+
+    await assert.rejects(
+      h.bound(() => h.sequencer.executeTransaction(
+        terminationContext(run, claim, TERMINATION_FILE_NODE),
+      )),
+      (error: unknown) => {
+        assert.ok(error instanceof WriteParkedError, String(error));
+        return true;
+      },
+    );
+
+    // The click DID happen — that is why this parks rather than failing — and
+    // UCPath filed nothing, which is the whole difference from a landed write.
+    assert.equal(
+      h.world.events.filter((event) => event.startsWith("commit:")).length, 1, "exactly one click",
+    );
+    assert.deepEqual(h.world.rows, [], "a refused submit files no transaction");
+    const footprint = terminationDurableFootprint(h, TERMINATION_FILE_NODE, TERMINATION_IDEMPOTENCY_KEY);
+    assert.notEqual(footprint.intent, undefined, "the fence is durable: the click was reachable");
+    const intent = footprint.intent as object;
+    assert.equal(Reflect.get(intent, "status"), "parked", JSON.stringify(intent));
+    assert.equal(Reflect.get(intent, "parkedCode"), "unknown", JSON.stringify(intent));
+    // The CODE reached the durable record, which is the whole point of the
+    // typed arm: an operator reading this park sees `submit-refused`, not an
+    // anonymous "the task threw".
+    assert.match(String(Reflect.get(intent, "message")), /submit-refused: UCPath refused Save and Submit/u);
+    assert.equal(footprint.checkpoint, undefined, "nothing settled over an unknown outcome");
   });
 
   it("separations-ucpath-termination/last-date-worked-not-verified — S49 refuses before any fence", async () => {
@@ -519,16 +582,36 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
   });
 
   it("separations-ucpath-termination/unreadable-probe-is-not-absent — S45/S46 stated as code", async () => {
-    const driver = createDeterministicUcpathSmartHrDriver({
+    // **S46** — the probe answered, and what it answered is "I could not read
+    // this". That is `unknown`, which parks; `absent` would authorize a
+    // duplicate.
+    const unreadableDriver = createDeterministicUcpathSmartHrDriver({
       scan: unreadable("the transaction detail page did not render a Transaction ID"),
       displayedName: NAME,
     });
     const verdict = await matchExistingTerminationTask.impl.run({
       input: TARGET,
-      ctx: { ...taskCtx, driver },
+      ctx: { ...taskCtx, driver: unreadableDriver },
     });
     assert.equal(verdict.state, "unknown");
     assert.notEqual(verdict.state, "absent");
+
+    // **S45** — the probe THROWS. A different failure, and the one this title
+    // used to claim without simulating: it must propagate, never be caught into
+    // a verdict of any kind. "The lookup blew up" is not an answer about this
+    // person's transactions.
+    const throwingDriver = createDeterministicUcpathSmartHrDriver({
+      scan: scan([]),
+      scanThrows: "the SS Smart HR search page never loaded",
+      displayedName: NAME,
+    });
+    await assert.rejects(
+      matchExistingTerminationTask.impl.run({
+        input: TARGET,
+        ctx: { ...taskCtx, driver: throwingDriver },
+      }),
+      /the SS Smart HR search page never loaded/,
+    );
   });
 
   it("separations-ucpath-termination/pending-sweep-refuses-unreadable-scan — a delete never runs on a guess", async () => {
