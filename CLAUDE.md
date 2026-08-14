@@ -91,7 +91,7 @@ on uncertain outcomes; production provider pools and consumers remain Phase 2h.
 **`docs/rebuild/` is the plan SSOT — read it, do not re-derive it.**
 
 - `docs/rebuild/07-master-plan.md` — phases, work items, exit criteria. §4 owns the two-repo model.
-- `docs/rebuild/04-reconciliation.md` — the decision changelog (D1–D190; **D131 is a retired gap —
+- `docs/rebuild/04-reconciliation.md` — the decision changelog (D1–D211; **D131 is a retired gap —
   never reuse it**). A **pointer index**, not a
   spec: it tells you which doc owns a contract. Never implement from it.
 - `00-charter` · `01-task-contract` · `02-workflow-model` · `03-tracker-dashboard` ·
@@ -310,6 +310,26 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-14: a gate DEPENDENCY is not a gate PACKET, and the difference is the digest an approval
+  binds to (D211).** Chunks 4 and 5 each hung a resolved value off the ALWAYS-GATE — the
+  `{template, reasonCode}` map, the Kuali department option — precisely so a refusal would land before
+  a human was asked, and each recorded the same open item in the same words: the value is a gate
+  dependency and *is not yet rendered INTO doc 09 §14.2's packet*. That reads like presentation and is
+  not. §14.5 binds an approval to the digest of the exact packet shown, so a value the gate merely
+  DEPENDS on is a value the approval does not cover: the operator approved a person while the dates,
+  the template and the department their approval was about to authorize sat only in the graph. Moving
+  them INSIDE `IdentityEvidencePacketSchema` makes a reconciled separation date that moves after
+  approval re-derive a different digest and re-open the gate — *an approval of a person is not an
+  approval of a date, and before this the two were the same click.* Two shape rules came with it and
+  generalize: the "this graph composes no plan" arm is **required with a stated reason** rather than an
+  optional field, because an optional block is one a composition can forget to fill while every gate
+  still renders and every guard still passes; and the block's field types are plain rather than
+  re-imported, because every value is already schema-bound by the node that produced it and the packet
+  is a PRESENTATION of decisions, not a second authority over them. The composition's own rule fell
+  out of the same reasoning: **where a refusal lands is decided by what the graph PRODUCES.** Chunk 3
+  reports "no active job" and lets the human decide, which is right for a workflow whose product is an
+  approved subject; the composition files a termination, so a grid it cannot reduce to ONE row is a run
+  that cannot compute what it is about to write, and it refuses before the gate opens.
 - **2026-08-14: an ADDRESS is not an EXPECTATION, and the page the app itself loads often answers the
   question for free (separations 5c).** Chunk 5a recorded that filling Kuali's nine unknown
   `submitDocumentV2` `formKey`s would be "a one-line change". The live capture got all ten on the first

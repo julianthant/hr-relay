@@ -30,10 +30,12 @@
  * *Type of Termination* should not cost an operator a decision it will not be
  * able to act on. Declaring it in the gate's `dependsOn` does that AND satisfies
  * the guard's real property — data must not reach a commit that the operator
- * never saw. **Open for chunk 6:** the resolved `{template, reasonCode}` is a
- * gate DEPENDENCY here but is not yet rendered INTO doc 09 §14.2's packet; the
- * composition should carry it there, so "you are approving a `UC_INVOL_TERM`
- * effective 06/11/2026" is on the screen and not merely in the graph.
+ * never saw. _(CLOSED 2026-08-14 by chunk 6a: the composed `separations` graph
+ * renders the resolved `{template, reasonCode}` INTO doc 09 §14.2's packet
+ * through `SeparationWritePlanSchema`, so "you are approving a `UC_INVOL_TERM`
+ * effective 06/11/2026" is on the screen and inside the digest the approval
+ * binds to — D211, doc 09 §14.10. This descriptor stays the proving harness and
+ * declares `plan: not-composed` with its reason.)_
  *
  * ## Two transaction nodes, in this order, and the sweep is genuinely first
  *

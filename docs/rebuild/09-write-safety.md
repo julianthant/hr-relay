@@ -1754,6 +1754,38 @@ identity in the CLEAR, and the redaction table says so by name: §14.4's standar
 decides without leaving the dashboard, and a wrong-person control whose evidence is redacted is a
 control that cannot be exercised.
 
+### 14.10 The packet carries the WRITE PLAN, and the digest binds to it (D211, 2026-08-14)
+
+§14.4's packet list ends at "the fields that agreed vs disagreed", which is complete for a gate whose
+only question is *is this the right person*. Separations chunks 4 and 5 each discovered the other
+half and each recorded it as an open item in the same words: a resolved `{template, reasonCode}`, and
+a resolved department option, were gate DEPENDENCIES and were **not rendered into the packet** — so
+the operator approved an identity while the values that identity's writes would consume sat only in
+the graph.
+
+**The composition closes it, and the closing is load-bearing rather than presentational.**
+`IdentityEvidencePacketSchema` gains a `plan` block (`src/domain/separations/write-plan.ts`) carrying
+what the writes will consume: the termination type and its mapped template and reason code, the empl
+record, the effective date and last date worked, the initiator comments text, the Kuali department
+option beside UCPath's own spelling of the same department, both payroll titles, the timekeeper, and
+the reconciled dates beside the dates the form carried — plus the pay codes the classifier declined
+to count, because the operator is the person who would recognise a real holiday the rule missed and
+the gate is the one moment they are looking.
+
+Because §14.5 binds an approval to the digest of the exact packet shown, putting the plan INSIDE the
+packet makes the approval bind to those values: a reconciled separation date that moves after
+approval re-derives a different digest and `verify-identity-approval` refuses with
+`identity-approval-evidence-moved`. **An approval of a person is not an approval of a date, and
+before this the two were the same click.**
+
+Two shape rules come with it. The `not-composed` arm is **required with a stated reason** rather than
+an omitted field — an optional block is one a composition can forget to fill while every gate still
+renders and every guard still passes, so a graph that composes no plan says so in a sentence somebody
+wrote. And the block's field types are plain: every value is already schema-bound by the node that
+produced it, and re-importing those schemas would tie the gate's packet to a whole composition's
+import closure for no added strictness. The packet is a PRESENTATION of decisions, not a second
+authority over them.
+
 **The live finding that is the argument for ALWAYS-GATE in one line.** The `T002173685` incident's own
 name pair — Kuali `Hernandez, Jose Santos` versus the UCPath detail's `Santos Hernandez` — classifies
 as **`same`** under the ported tier function, because the token alignment tolerates extra tokens on

@@ -7,7 +7,7 @@
 > `src/infra/providers/**`, the code wins. Regenerate at every slice boundary, and whenever a store
 > gains, loses, or rewires a task.
 >
-> **Last updated:** 2026-08-12
+> **Last updated:** 2026-08-14 (separations chunk 6 — the composition)
 
 **Why this file exists.** Phase 3 migrates 13 more legacy workflows onto stores that already exist
 in this tree. The single most expensive mistake a migration can make is re-implementing a task a
@@ -349,9 +349,10 @@ a service store.
 
 ### `separations` — workflow mini-store, real
 
-**Status:** `defineWorkflowStore("separations", …)`, sessionless, **4 tasks**. Namespace is
+**Status:** `defineWorkflowStore("separations", …)`, sessionless, **9 tasks**. Namespace is
 `workflow:separations`. Same shape as `person-lookup`: a pure, artifact/provider-free fold over prior
-node outputs, with no browser anywhere in its import graph.
+node outputs, with no browser anywhere in its import graph. Complete as of chunk 6 — every decision
+the composed `separations` graph makes between its reads and its writes lives here.
 
 | Item | Kind | Contract id | What it does | Reuse notes |
 |---|---|---|---|---|
@@ -359,11 +360,19 @@ node outputs, with no browser anywhere in its import graph.
 | `matchIdentityTask` | task | `workflow:separations/match-identity` (read) | Chunk 3's pure comparison: folds the Kuali document, the Job Summary grid and the name search into doc 09 §14.2's decision packet plus its evidence digest, and computes the `approvalShape` SERVER-side. | `replay:"checkpoint"`. It classifies the name tier but decides nothing — the gate does. Used by every separation-class write chunk rather than reimplemented. |
 | `verifyIdentityApprovalTask` | task | `workflow:separations/verify-identity-approval` (read) | The post-gate check: re-derives the packet, proves the digest the operator approved is still the digest this run holds, and returns the approved subject. | `replay:"always-rerun"` — an approval is checked against THIS run's evidence, never replayed from a checkpoint. Four distinct refusal codes, including `identity-approval-eid-not-shown`. |
 | `matchDepartmentOptionTask` | task | `workflow:separations/match-department-option` (read) | **S55's upstream half** (chunk 5): resolves a UCPath dept id to the EXACT visible text of the Kuali `Department*` option that carries it, verbatim from the observed list. | `replay:"checkpoint"`. Code match ONLY — legacy's two substring tiers do not port, and neither does a normalized-exact description tier, which would be a quieter fuzzy match. Four distinct refusal codes; the fold lives in `src/domain/separations/department-option.ts`. |
+| `readSeparationPlanTask` | task | `workflow:separations/read-separation-plan` (read) | Chunk 6: everything the composed graph needs from the separation document ALONE — the employee name the UCPath search runs on, the two Kuali dates, and the ±1-month New Kronos window they imply. | `replay:"checkpoint"`. It runs before every other read because its four refusals (blank name, blank LDW, blank separation date, and **S7**'s future date) cost nothing there and cost two browser sessions one node later. S7's reference is the DOCUMENT READ's own instant in `America/Los_Angeles`, never a clock read. |
+| `matchSeparationSubjectTask` | task | `workflow:separations/match-separation-subject` (read) | **S18/S19's fork** (chunk 6): which EID this separation is about, and whether the document named it or a name search resolved it. | `replay:"checkpoint"`. §5 item 10's answer is NO delegation — legacy's conditional person-lookup child run does not port. A blank EID whose name resolves nobody, or several people, REFUSES; and `name-resolved` makes `deriveApprovalShape` demand a typed EID, which is the whole safety property. |
+| `matchActiveEmploymentTask` | task | `workflow:separations/match-active-employment` (read) | **S23/S24** (chunk 6): the ONE employment row the termination is filed against, with its empl record, payroll title code and title. | `replay:"checkpoint"`. It refuses BEFORE the gate, because a grid it cannot reduce to one row is a run that cannot compute what it is about to write. The dept cells pass through AS CELLS — `matchDepartmentOptionTask` owns their refusal, and one fact with two durable codes is worse than one. |
+| `readSeparationDatesTask` | task | `workflow:separations/read-separation-dates` (read) | Chunk 6: the write's payload — LDW = the Kronos last punch, separation date = `max(LDW, last sick, last holiday)`, effective date = +1 — plus the UCPath comment and the Kuali audit lines derived from them. | `replay:"checkpoint"`. A card that opened with NO punch refuses (`no-punch-in-window`): §4b's answer is that no path files a termination on a date nobody read, where legacy files the Kuali date and writes a "per Kronos timesheet" comment citing a card that showed nothing. The fold lives in `src/domain/separations/separation-dates.ts`. |
+| `verifyTerminationReceiptTask` | task | `workflow:separations/verify-termination-receipt` (read) | **D130**, enforced (chunk 6): the `(transactionNumber, approvalStatus)` PAIR, checked between the UCPath termination and the Kuali write that records its number. | `replay:"always-rerun"` — its job is to CHECK a proof, so a replayed checkpoint would be the previous check's answer. `Denied`/`Error`/`Pushed Back` refuse: a refused transaction still carries a well-formed `T…` (live `T002204014`), and legacy's own read-back tests only `/^T\d{6,}$/`. |
 
-The migration doc's §2.5 sketches this mini-store as also owning date reconciliation, the comment
-builders and the Kronos window computation. Those land with the chunks that need them; the
-termination-type resolution came first because §4a's refusal has to exist before anything can consume
-a separation document.
+§2.5's sketch is now fully built: the date reconciliation, the comment builders and the Kronos window
+computation landed with chunk 6, which is the first graph that holds every read they fold together.
+
+Every task here is a task rather than a `derive` for one reason: a fold that can REFUSE needs
+somewhere to put the refusal, and a task has a durable `FailureRecord.code` while a `derive` has only
+a thrown string. Between them the nine carry **28 distinct refusal codes**, and an operator queries
+on those months later.
 
 ---
 
@@ -409,6 +418,41 @@ Module binds exactly `[kualiStore]`. ONE transaction node, `annotate-timekeeper`
 | ③ subject binding | kernel-owned, not a store task | write sequencer's `read(observationId)` off the driver | re-observes the subject on the exact page the fence binds to |
 | ⑤ commit | `kuali/save-timekeeper-annotation` (commit) | `kualiStore.saveTimekeeperAnnotation` | the one external write, under a minted `MutationCapability` |
 | ⑥ verify | `kuali/verify-timekeeper-annotation` (read) | `kualiStore.verifyTimekeeperAnnotation` | reload read-back — the only landing proof |
+
+### `separations` (`src/workflows/separations/`) — the COMPOSITION
+
+Module binds **four** stores: `[kualiStore, ucpathStore, newKronosStore, separationsStore]`. That is
+§3's "one descriptor over reused tasks" made concrete — the composed graph consumes the tasks the
+five sub-workflow descriptors made provable, and those descriptors stay as the harnesses that proved
+them.
+
+Eighteen nodes: eight browser reads and folds, one ALWAYS-GATE, and three transaction nodes in doc
+09's order.
+
+| Node | Contract | Store task | System |
+|---|---|---|---|
+| `document` | `kuali/read-separation-document` (read) | `kualiStore.readSeparationDocument` | kuali |
+| `plan` | `workflow:separations/read-separation-plan` (read) | `separationsStore.readSeparationPlan` | none |
+| `termination-type` | `workflow:separations/match-termination-type` (read) | `separationsStore.resolveTerminationType` | none |
+| `name-search` | `ucpath/search-person-org` (read) | `ucpathStore.searchPersonOrg` | ucpath |
+| `subject` | `workflow:separations/match-separation-subject` (read) | `separationsStore.matchSeparationSubject` | none |
+| `job-summary` | `ucpath/read-job-summary` (read) | `ucpathStore.readJobSummary` | ucpath |
+| `employment` | `workflow:separations/match-active-employment` (read) | `separationsStore.matchActiveEmployment` | none |
+| `department-option` | `workflow:separations/match-department-option` (read) | `separationsStore.matchDepartmentOption` | none |
+| `timecard-search` (`always-rerun`) | `new-kronos/search-employee` (read) | `newKronosStore.searchEmployee` | new-kronos |
+| `timecard` | `new-kronos/read-separation-timecard` (read) | `newKronosStore.readSeparationTimecard` | new-kronos |
+| `dates` | `workflow:separations/read-separation-dates` (read) | `separationsStore.readSeparationDates` | none |
+| `comparison` | `workflow:separations/match-identity` (read) | `separationsStore.matchIdentity` | none |
+| `identity-approval` | **gate**, `resolvedBy: operator` | — | none |
+| `approval` (`always-rerun`) | `workflow:separations/verify-identity-approval` (read) | `separationsStore.verifyIdentityApproval` | none |
+| `clear-pending` | **transaction** — `ucpath/stage-pending-termination-sweep` → `ucpath/delete-pending-terminations` | `ucpathStore` | ucpath |
+| `file-termination` | **transaction** — `ucpath/stage-termination` → `ucpath/create-termination` | `ucpathStore` | ucpath |
+| `receipt` (`always-rerun`) | `workflow:separations/verify-termination-receipt` (read) | `separationsStore.verifyTerminationReceipt` | none |
+| `finalize-kuali` | **transaction** — `kuali/stage-separation-finalization` → `kuali/save-separation-finalization` | `kualiStore` | kuali |
+
+**Zero new store tasks were minted for the browser half.** Every page this workflow visits was already
+mapped, live-verified and proved by a chunk; what chunk 6 added is five pure folds, and every one of
+them is a decision only a graph holding ALL of the reads can make.
 
 ---
 

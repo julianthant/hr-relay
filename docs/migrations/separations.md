@@ -1652,6 +1652,11 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 - **The controlled-commit target.** A UCPath termination and a Kuali finalization the operator approves. None is invented here; naming one is operator work at doc 07 §3.1 step 5 (the *shape* of that choice is §4f2).
 - **Two UCPath facts that need one real submit** (doc 09 §13 item 6): whether the confirmation dialog renders the `T…` inline, and the propagation window between submit and searchability. Both are currently **ported legacy knowledge**, not rebuild-verified.
 - **`recoveryAbsence` for the UCPath termination.** Until a propagation window is measured, a post-fence absence is `operator-only`; inventing a `minSinceFenceMs` is the banned unverified constant (D128's standing rule).
+- **The re-run wall's item 2 — a way for an operator to say "read it again" — is BUILT** (2026-08-14,
+  §9.13 / D211): `separations`' ingress carries an explicit `reRead: {ordinal, reason}`, so a re-read
+  is a NEW logical item with fresh checkpoints and its own gate, and it changes no permanent key.
+  Item 1 was closed earlier by **D199**. The general platform shape — an operator affordance on any
+  read workflow rather than one workflow's ingress field — is still unbuilt and still worth having.
 - **The behavior review's own `unknown — needs live observation` list** (`separations-legacy-behavior.md` §5) — seven items the legacy source cannot answer. Three of them are already routed into decisions above (the Kuali dropdown option list → §4a, whose answer **schedules that capture into the `separations-kuali-read` chunk** as the first instance of §3.2's MAP-EVERYTHING directive; whether an abandoned Kuali draft discards its edits → moot under item 4's draft; whether a "successful" save persisted → settled by §4e). **§4e adds one to the list:** whether the finalization fields all belong to ONE workflow step's section — if not, one save cannot carry them and the node splits, which is a first-live-dry-run finding. The remaining four are live-observation work at build time, not questionnaire answers: whether UCPath auto-redirects for an already-terminated single-record employee (**S22** — the case where the all-terminated guard never runs), the SS Smart HR *search* results-grid scan (live-verified only for the in-progress grid), whether filling the Kuali department first survives the later timekeeper and date writes, and whether `T002173685` has been reversed and student `10833507` ever separated.
 
 ---
@@ -2950,7 +2955,8 @@ that the operator never saw". A department resolved off the graph root and read 
 transaction would be exactly that side read. Declaring it as a gate dependency also lands S55's
 refusal **before a human is asked at all**, which is chunk 4's argument for `termination-type`
 verbatim. **Open for chunk 6:** the resolved option is a gate DEPENDENCY and is not yet rendered
-INTO doc 09 §14.2's packet — the composition should carry it there.
+INTO doc 09 §14.2's packet — the composition should carry it there. _(CLOSED 2026-08-14 by chunk 6a's
+write-plan block, §9.13 / D211.)_
 
 **The department fold** (`src/domain/separations/department-option.ts`). The CODE is the key: Kuali
 renders every option as `<6-digit code> - <description>` (§9.3's S55 capture) and that code IS the
@@ -3009,6 +3015,8 @@ state — by that point the UCPath termination the document was going to record 
    durable authority before finalization is entered; this descriptor takes the number (it is half the
    permanent key) and nothing consumes the approval status, so adding it here would be a dead field.
    It belongs to chunk 6's composition, which holds chunk 4's terminal result and can bind both.
+   _(CLOSED 2026-08-14: chunk 6a's `workflow:separations/verify-termination-receipt` node sits between
+   the two writes and refuses a `Denied`/`Error`/`Pushed Back` receipt by name — §9.13 / D211.)_
 
 ---
 
@@ -3252,8 +3260,218 @@ separately, exactly as chunk 4 recorded, not a decomposition off the run's own s
 - The five unasserted wire shapes, closed by that same beat.
 - The `already-present` arm's live proof, reachable only after the first real finalization.
 - D207's provisional `stabilized` window, confirmed by the same commit.
-- §9.11's two carried items are unchanged: the resolved department option is still not rendered into
-  doc 09 §14.2's gate packet, and the `(transactionNumber, approvalStatus)` receipt pair still belongs
-  to the composition.
+- §9.11's two carried items — **BOTH CLOSED 2026-08-14 by chunk 6a (§9.13, D211)**: the resolved
+  department option is now rendered INTO doc 09 §14.2's packet through the write-plan block, and the
+  `(transactionNumber, approvalStatus)` receipt pair is bound by the composition's own
+  `verify-termination-receipt` node between the two writes.
 
 ---
+
+### 9.13 Chunk 6a — the COMPOSITION, as built (2026-08-14)
+
+**BUILD ONLY. Nothing here has touched the live system.** 6a is the composition; the live pipeline
+dry run is 6b, and the controlled real commits stay open on the operator's §4f2 canaries.
+
+**What landed.** `separations` is registered: **eighteen nodes**, one ALWAYS-GATE and three
+transaction nodes, assembled from the tasks the five sub-workflow descriptors made provable. §5 item
+10's recorded answer applied exactly — **one descriptor over reused tasks, no delegation**, the
+`ChildRunExecutor` seam untouched. **Zero new store tasks were minted for the browser half:** every
+page this workflow visits was already mapped, live-verified and proved by a chunk. What 6a adds is
+five pure folds, and each is a decision only a graph holding ALL of the reads can make.
+
+#### The node graph
+
+| Node | Kind | `dependsOn` | What it is |
+|---|---|---|---|
+| `document` | step `kuali/read-separation-document` | — | chunk 2's whole-form read, reused |
+| `plan` | step `workflow:separations/read-separation-plan` | `document` | **new**: the name, the two Kuali dates, S7's refusal, the Kronos window |
+| `termination-type` | step `workflow:separations/match-termination-type` | `document` | chunk 2's §4a fold, reused |
+| `name-search` | step `ucpath/search-person-org` | `plan` | chunk 3's read, reused — unconditional, `keepNonHdh: true` |
+| `subject` | step `workflow:separations/match-separation-subject` | `document`, `plan`, `name-search` | **new**: S18/S19's fork |
+| `job-summary` | step `ucpath/read-job-summary` | `subject` | chunk 3's read, reused |
+| `employment` | step `workflow:separations/match-active-employment` | `document`, `job-summary` | **new**: S23/S24, the one row filed against |
+| `department-option` | step `workflow:separations/match-department-option` | `document`, `employment` | chunk 5's S55 fold, reused |
+| `timecard-search` | step `new-kronos/search-employee` (`always-rerun`) | `subject` | chunk 1's read, reused |
+| `timecard` | step `new-kronos/read-separation-timecard` | `subject`, `plan`, `timecard-search` | chunk 1's read, reused |
+| `dates` | step `workflow:separations/read-separation-dates` | `plan`, `timecard` | **new**: the write's payload and the two comment texts |
+| `comparison` | step `workflow:separations/match-identity` | `document`, `plan`, `subject`, `job-summary`, `name-search`, `termination-type`, `department-option`, `employment`, `dates` | chunk 3's packet fold — now carrying the WRITE PLAN |
+| `identity-approval` | **gate**, `resolvedBy: operator` | `comparison` | doc 09 §14's ALWAYS-GATE |
+| `approval` | step `workflow:separations/verify-identity-approval` (`always-rerun`) | `comparison`, `identity-approval` | chunk 3's post-gate check, reused |
+| `clear-pending` | **transaction** | `approval` | chunk 4's sweep: `stage-pending-termination-sweep` → `delete-pending-terminations` |
+| `file-termination` | **transaction** | `approval`, `termination-type`, `employment`, `dates`, `clear-pending` | chunk 4's filing: `stage-termination` → `create-termination` |
+| `receipt` | step `workflow:separations/verify-termination-receipt` (`always-rerun`) | `approval`, `dates`, `file-termination` | **new**: D130's receipt PAIR, checked |
+| `finalize-kuali` | **transaction** | `approval`, `document`, `plan`, `employment`, `department-option`, `dates`, `receipt` | chunk 5's finalization: `stage-` → `save-separation-finalization` |
+| *(terminal result)* | — | `approval`, `employment`, `department-option`, `dates`, `receipt`, `clear-pending`, `file-termination`, `finalize-kuali` | |
+
+Each transaction keeps the probe policy and the measured `probeToFenceMaxMs` its own chunk proved:
+`clear-pending` 90 s, `file-termination` 120 s, `finalize-kuali` 45 s. All three declare
+`dryRun: "stop-after-prepare"`, which is what makes the graph dry-startable at all (D209).
+
+#### Item 10, as applied
+
+The answer is **no delegation**, and it is applied literally: no `child-run` node exists in this
+graph, `composeWorkerRuntime` still supplies no `ChildRunExecutor`, and §3.1's lego recomposition is
+what the table above IS — a descriptor assembled from proven store tasks. Legacy's one conditional
+delegation (person-lookup on the blank/short-EID arm) is replaced by the `subject` fold, which
+resolves inline and hands the candidates to the ALWAYS-GATE packet the operator sees on every run
+anyway.
+
+#### Six decisions 6a made inside the answers, each recoverable if the orchestrator disagrees
+
+1. **The gate packet carries a WRITE PLAN, and it is part of the digest.** §9.7 and §9.11 each left
+   the same open item ("the resolved value is a gate DEPENDENCY and is not yet rendered INTO §14.2's
+   packet"). `SeparationWritePlanSchema` closes both: the template, the reason code, the empl record,
+   the department option, the payroll title, both dates and the comment text ride INSIDE
+   `IdentityEvidencePacketSchema`, so §14.5's digest binds the approval to the values the writes will
+   consume. A reconciled date that moves after approval now re-opens the gate. Before this, approving
+   a person and approving a date were the same click. The `not-composed` arm is REQUIRED with a
+   stated reason, so the three sub-workflow harnesses each say in a sentence why they hold no plan.
+2. **The timekeeper name is INGRESS, not config.** Legacy reads `TIMEKEEPER_NAME` from the
+   environment; chunk 5's descriptor already takes it as a per-run variable, and this follows it. A
+   value retained in the canonical input is one `explain run` can show for the run that used it,
+   where an env read is a fact about a machine. `config.operator.timekeeperName` exists and is
+   deliberately not used — recoverable either way, and the cost of moving is one ingress field.
+3. **`match-active-employment` refuses BEFORE the gate on `no-active-job`.** Chunk 3 deliberately
+   does NOT decide "already terminated", and that is right for a workflow whose product is an
+   approved subject and that files nothing. The composition files, and a grid it cannot reduce to one
+   row is a run that cannot compute what it is about to write — so it refuses where chunk 4's
+   `termination-type` and chunk 5's `department-option` do, for their reason: a refusal the operator
+   cannot act on should not cost them a decision first. The gate still shows every row, because
+   `match-identity` carries the whole classification.
+4. **A card that opened with NO punch REFUSES (`no-punch-in-window`).** §4b hard-fails every way the
+   READ can go wrong; this is the one arm where the read succeeded and still established no worked
+   day. Filing the Kuali-carried LDW there is the fallback the operator's answer removed. The
+   distinction survives in the timecard output — `hasPunches` separates S38 from every failure — which
+   is what a future §3.1 recomposition would select on.
+5. **The Kuali finalization comment ALWAYS carries a line naming the filed transaction.** Legacy
+   leaves the control untouched when no date moved, but §4e makes the comments one of the ten fields
+   ONE save writes and `KualiFinalizationCommentsSchema` requires a non-empty value. §9.12 recorded
+   the live consequence of the alternative: a document finalized with an EMPTY comment can never be
+   probed `present`. The sentence is modelled on legacy's own `buildDuplicateTerminationComment`.
+6. **The month shift CLAMPS where legacy's `setMonth` overflows.** `Mar 31 − 1 month` lands on Mar 3
+   in legacy and on Feb 28 here. Wider is the safe direction for a READ window: the fold takes the
+   LAST punch, so extra leading days cannot change an answer while missing trailing days could.
+
+#### What the guards say, and what needed no change
+
+- **`identity-gate-before-commit` needed NO change**, and that is the interesting part. It audits
+  both sinks (D202) and now walks three transaction nodes plus the terminal result. It passes because
+  everything the gate must have seen depends INTO `comparison`, so the gate's own ancestry IS the
+  whole read half — there is no side read anywhere for a write to consume.
+- The graph carries **no branch, no parallel and no `when`**, which is §3.1 and §4d stated
+  structurally rather than by discipline, and `separations/kronos-hard-fails` asserts it.
+- `config/pending-impl-bindings.json` stays **empty**: every contract the descriptor names is bound.
+- `guard-inventory.json` is unchanged — no guard was added, retired or re-scoped.
+
+#### The scenario corpus — seventeen scenarios, one file
+
+Fourteen coverage points derive from the graph (the gate's two, and four per transaction node) and
+all fourteen are claimed.
+
+| Scenario | Kind | Coverage points | S-numbers |
+|---|---|---|---|
+| `plan-refusals` | fold walk | — | **S7** |
+| `subject-resolution` | fold walk | — | **S18/S19** |
+| `employment-refusals` | fold walk | — | **S21–S24** |
+| `date-reconciliation` | fold walk | — | **S39**, §9.1's Observed answer |
+| `receipt-refusals` | fold walk | — | **D130**, S46 |
+| `kronos-hard-fails` | fold walk | — | **S34–S38**, §4b, §4d |
+| `re-read-is-a-new-item` | pure | — | the re-run wall, item 2 |
+| `dry-run-preview` | sequencer walk | `clear-pending`/`file-termination`/`finalize-kuali` `/dry-run` | **S61** |
+| `subject-mismatch` | sequencer walk | the same three `/subject-mismatch` | **S17**'s control, at three fences |
+| `pending-sweep-committed` | sequencer walk | `clear-pending/committed` | **S30/S31** |
+| `pending-sweep-nothing-to-do` | sequencer walk | `clear-pending/already-present` | **S31** |
+| `termination-committed` | sequencer walk | `file-termination/committed` | the happy path |
+| `termination-already-present` | sequencer walk | `file-termination/already-present` | **S27/S44** |
+| `finalization-committed` | sequencer walk | `finalize-kuali/committed` | §4e's one save |
+| `finalization-already-present` | sequencer walk | `finalize-kuali/already-present` | idempotent re-run |
+| `finalization-parks-after-termination` | sequencer walk | — | **§4c / S57 / S60** |
+| `gate-approved` | pure graph walk | `gate:identity-approval/opened`, `/resolved` | **S14–S17**, §14.5 |
+
+**§4c is asserted in ONE run**, which is why the harness holds both browsers: the UCPath termination
+commits for real, the Kuali save lands nothing, and what has to be true afterwards is a settled
+termination checkpoint (carrying the receipt PAIR) beside a `parked`/`unknown` finalization intent
+with no checkpoint over it. Two harnesses could only assert that separately, which is the state the
+operator's head was holding in the first place.
+
+**§4c's honest as-built.** A post-fence Kuali uncertainty PARKS, exactly as §4c asks. A PRE-fence
+refusal after the termination committed (S55's unmatched department option, S56's moved comments)
+terminalizes `failed` — and the receipt pair is durable on `file-termination`'s own checkpoint before
+`finalize-kuali` is ever entered, which is what §4c means by "durable authority rather than a
+remembered fact". A retry of the same item replays that checkpoint and re-enters only the
+finalization, under its own permanent key, with the gate re-crossed (§4d). There is no general
+"park a run at a node" mechanism in this platform and 6a does not invent one.
+
+#### The re-read affordance, as built
+
+§"the re-run wall" item 2 asks for a way for an operator to say *read it again*. The ingress gains an
+optional `reRead: { ordinal, reason }`, and `matchKey` becomes
+`separations:<document>` or `separations:<document>#re-read-<ordinal>`. Three consequences, each
+pinned by a test:
+
+- a re-read is a **new logical item**, so it has its own checkpoints and its own gate — the
+  `observedAt`-differs-by-construction collision chunks 2 and 3 both hit cannot arise;
+- the same ordinal is the same item, so a re-read is a **decision** rather than a nonce;
+- it changes **no permanent key**. Those derive from the EID, the effective date and the document, so
+  a re-read can never file a second termination — doc 09's same-key mutex refuses the second fence.
+
+The `reason` rides in the canonical input, so `explain run` answers *why was this document read
+again* without archaeology. **What it does NOT do:** `reject-active` is per ITEM, so a re-read may be
+enqueued while the original run is still active. The permanent-key mutex is what makes that safe, and
+it is stated here rather than papered over.
+
+#### The wire, verified rather than built
+
+§3's rule is *"verify that; do not build it"*, and
+`tests/unit/separations-composition-wire.test.ts` is that verification — no new server surface:
+
+- the REAL start-plan service plans one item per document, refuses a bad submission retaining its
+  exact raw bytes (D109), and admits a dry run at `{state:"supported", stopsAt:"clear-pending"}`;
+- the REAL run-detail `identity-gate` section serves the whole packet **including the write plan**,
+  with the exact `resultSchemaHash` `executeResolveGate` will demand, and a command built straight
+  off the payload parses through `CommandRequestSchema` unchanged;
+- the gate's `dependsOn` resolves to **exactly one** node holding an identity packet, which is what
+  `buildIdentityGatePayload` requires and what the composed graph satisfies by shape.
+
+#### The parity delta, and the verification of its class
+
+Registering the descriptor moved **twelve** references, all `explorer-graph` / `explorer-transaction`;
+the other 135 checks passed untouched. The a11y diff is exactly two things: eight
+`+ button "separations"` lines (the new registration's own entry in the explorer's workflow list) and
+four lines where `separations-identity-check`'s contract fingerprint moved `96b114e04610` →
+`2f4a394e433a` with its closure file count 38 → 39, because `write-plan.ts` joined its import closure.
+Its result hash is unchanged. PNG deltas appear only on those same two surfaces. That is the
+sanctioned mechanical class in §3's own words — a registry stamp plus a fingerprint line — and it was
+re-frozen with `npm run test:parity:update`.
+
+#### What 6b owes — the live-proof list
+
+1. **The composed dry run through the REAL pipeline** — start-plan → command endpoint → worker →
+   interpreter → `executeDryRun` → `transaction.previewed` → terminal preview record (D209/D210).
+   §9.12 named this as chunk 6's proof, and it is now unblocked. It must reach the gate, park, take a
+   real approval through the real command endpoint, resume, and stop at `clear-pending` with **zero**
+   `write_intents`, **zero** transaction checkpoints and **zero** outbox rows for all three permanent
+   keys.
+2. **The §14.2 packet's NEW fields visible in the gate wire on a live run** — `plan.state: "planned"`
+   carrying the template, the reason code, the department option, the reconciled dates and the
+   unclassified pay codes. The unit lane proves the shape; only a live run proves the values a real
+   document produces.
+3. **The end-to-end read chain on one real subject**: a real Kuali document → the plan → a real name
+   search → the subject → a real Job Summary → the employment row → the department option → a real
+   New Kronos timecard → the reconciled dates. Every one of these pages is individually live-proved;
+   what has never run is the CHAIN, and the chain is where a value one chunk produces meets the
+   schema another chunk expects.
+4. **`probeToFenceMaxMs` off the run's own per-beat spans** for all three nodes — §4f3's follow-up,
+   still open because `executeDryRun` emits no spans (§9.12 item 6); D210's interpreter arm is what
+   makes it reachable.
+5. **A measured cost for the gate-resume re-run of `timecard-search`** — it is `always-rerun` by
+   chunk 1's rule (a node whose product is BROWSER state may not be `replay: "checkpoint"`), so a
+   gated run pays one New Kronos session on resume. The number is unknown and worth having.
+6. **The four items chunk 5c handed forward**, unchanged: the controlled real commits (doc 4524
+   recorded as the natural Kuali candidate, with the `route.abort()` payload read as the recommended
+   first beat), the five unasserted Kuali wire shapes, the `already-present` arm's live proof, and
+   D207's provisional `stabilized` window.
+
+Also honestly NOT RUN: any real write of any kind, and any case where the document's EID is blank
+(every live document observed so far carries one), so `subject`'s `name-resolved` arm and its
+`type-the-eid` gate shape are test-pinned rather than live-verified.

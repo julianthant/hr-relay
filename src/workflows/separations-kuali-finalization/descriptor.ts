@@ -57,10 +57,12 @@
  * guard's real property — the department the write stages is data the operator
  * saw, not a side read hanging off the graph root.
  *
- * **Open for chunk 6:** the resolved option is a gate DEPENDENCY here and is not
- * yet rendered INTO doc 09 §14.2's packet, so the composition should carry it
- * there — "you are finalizing document 4510 against `000412 -
- * Housing/Dining/Hospitality`" belongs on the screen, not merely in the graph.
+ * _(CLOSED 2026-08-14 by chunk 6a: the composed `separations` graph renders the
+ * resolved option INTO doc 09 §14.2's packet, so "you are finalizing document
+ * 4510 against `000412 - Housing/Dining/Hospitality`" is on the screen and
+ * inside the digest the approval binds to — D211, doc 09 §14.10. This descriptor
+ * stays the proving harness and declares `plan: not-composed` with its
+ * reason.)_
  *
  * ## dryRun
  *
