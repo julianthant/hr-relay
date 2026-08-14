@@ -80,10 +80,26 @@ import {
 } from "./url-state.js";
 
 /**
- * The 1i BFF serves no actions yet (the action projection lands with 2g), so
- * every row and panel draws no command controls. That is the honest state of
- * the contract, not a stub: when actions arrive, this constant becomes a read
- * of the served array and nothing else in the tree changes.
+ * No projection serves generic row/panel actions, so every row and panel draws
+ * no command controls. That is the honest state of the contract, not a stub:
+ * when actions arrive, this constant becomes a read of the served array and
+ * nothing else in the tree changes.
+ *
+ * THE EARLIER NOTE HERE WAS STALE AND WRONG ABOUT ITS OWN EXPIRY — it said the
+ * projection "lands with 2g" and the runtime is 2j. R5 f.8 verified what
+ * actually exists, and the answer is a split, not a date:
+ *
+ *  - the two run-detail SECTION payloads that carry decisions do project real
+ *    descriptors (`parked-write` and `identity-gate`, built by
+ *    `server/dashboard/queries/run-detail.ts` and schema-pinned to their own
+ *    target in `domain/dashboard/run-detail.ts`);
+ *  - the generic queue/run-detail `actions[]` has NO schema field and NO
+ *    projector. Both halves are missing, so there is nothing here to read.
+ *
+ * It is therefore a wire gap, not a wiring oversight: the row on the
+ * `docs/plans/2026-08-13-detail-fidelity-audit.md` hookup ledger (queue/run
+ * action descriptors) is what closes it, and `LogPanel`'s `onAction` connects
+ * in the same change that lands the field.
  */
 const SERVED_ACTIONS: readonly ActionDescriptorWire[] = [];
 

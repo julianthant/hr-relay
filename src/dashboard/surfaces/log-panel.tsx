@@ -49,8 +49,8 @@ import {
   CornerDownRight,
   FileText,
   Info,
-  PauseCircle,
-  ReceiptText,
+  Pause,
+  Receipt,
   ScrollText,
   TriangleAlert,
   UserRoundSearch,
@@ -58,18 +58,20 @@ import {
   X,
 } from "lucide-react";
 import type { z } from "zod";
+import { systemClock } from "../../domain/clock.js";
 import { cn } from "../lib/utils.js";
 import {
-  Badge,
   Chip,
   EmptyState,
   FloatingSurface,
   IconButton,
   MetaLine,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   SearchInput,
   SectionLabel,
   StatusDot,
-  StatusPill,
   Tooltip,
   dsStatusText,
   dsBorder,
@@ -82,6 +84,7 @@ import {
   dsSize,
   dsText,
   useDsEnterTransition,
+  type DsStatus,
 } from "../ds/ui.js";
 import type {
   RunDetailSectionResponseSchema,
@@ -176,7 +179,11 @@ const TAB_META: Record<PanelTab, { label: string; icon: typeof ScrollText }> = {
   review: { label: "Review", icon: ClipboardList },
   people: { label: "People", icon: Users },
   logs: { label: "Logs", icon: ScrollText },
-  receipt: { label: "Receipt", icon: ReceiptText },
+  // `Receipt`, not `ReceiptText` (R5 f.9) — the demo's own glyph choice at
+  // `DemoLogPanel.tsx:2176`. The two differ on screen: `ReceiptText` draws
+  // ruled lines inside the slip, which at 14px reads as a second document
+  // icon beside `Logs`.
+  receipt: { label: "Receipt", icon: Receipt },
 };
 
 /**
@@ -574,9 +581,27 @@ const DECISION_TONE: Record<DecisionTone, { border: string; bg: string; fg: stri
   },
 };
 
+/**
+ * Ported from legacy hr-automation@1bffbd65,
+ * src/dashboard/components/dev/rebuild-demo/demo-data.ts:4080-4087
+ * (`gateWaitSec` + `gateAge`).
+ *
+ * HOW LONG A DECISION HAS NEEDED YOU, as the operator reads it.
+ *
+ * It is not the run's total elapsed — that is the queue footer's, and it is
+ * not a triage signal. It is the AGE of the thing that is waiting, which is
+ * the number that decides which of two waiting runs you open first. Relative,
+ * never a wall clock: `since 14:32` makes the operator do the subtraction on
+ * the one figure they are meant to compare across rows.
+ */
+function decisionAge(openedAt: string, nowIso: string): string {
+  return fmtElapsed(elapsedSecondsBetween(openedAt, nowIso));
+}
+
 function DecisionNotice({
   label,
   since,
+  nowIso,
   icon,
   goLabel,
   dismissLabel,
@@ -587,6 +612,8 @@ function DecisionNotice({
   label: string;
   /** the instant the decision started waiting on a human */
   since: string;
+  /** the panel's one clock read, so every age on the surface agrees */
+  nowIso: string;
   icon: ReactNode;
   goLabel: string;
   dismissLabel: string;
@@ -648,7 +675,7 @@ function DecisionNotice({
               {goLabel}
             </span>
             <span className={cn(dsText.nums, "ml-auto shrink-0 text-[color:var(--ds-fg-muted)]")}>
-              {`since ${fmtClock(since)}`}
+              {`open ${decisionAge(since, nowIso)}`}
             </span>
           </span>
         </button>
@@ -985,11 +1012,133 @@ export interface LogPanelProps {
 const NOOP_ACTION: DashboardActionHandler = () => {};
 
 /**
+ * Ported from legacy hr-automation@1bffbd65,
+ * src/dashboard/components/dev/rebuild-demo/DemoLogPanel.tsx:121-128.
+ *
  * The outcome action this panel does not draw, because it already draws what
- * that action travels to: the gate options are on screen in the stream, so a
- * pill that only scrolls to them is redundant.
+ * that action travels to. `open-park` scrolls to the decision card — and the
+ * decision card, in this same scroller, is where the two typed resolutions
+ * live. The queue card keeps its `Resolve`: from out there the pill really
+ * does leave for the surface that can settle the write.
+ *
+ * It used to name `open-gate`, carrying this exact reasoning against the other
+ * key (R5 f.6). The gate is the one that must stay: from the outcome bar it is
+ * the persistent, undismissable route to a decision the operator may have
+ * scrolled past, which is rule 1 at the top of this file.
  */
-const PANEL_OMITS_OUTCOME_ACTIONS = ["open-gate"] as const;
+const PANEL_OMITS_OUTCOME_ACTIONS = ["open-park"] as const;
+
+/**
+ * Ported from legacy hr-automation@1bffbd65,
+ * src/dashboard/components/dev/rebuild-demo/DemoLogPanel.tsx:2186-2193
+ * (`OUTCOME_TONE`).
+ *
+ * THE OUTCOME BAR IS TINTED, and the tint is the band's whole job: it is the
+ * one line that states what the run came to, and a hairline-bordered white
+ * strip states it as quietly as the tab bar under it. The demo keys its six
+ * tones off a SERVED `outcome.tone`; this wire serves none (R5 f.4 → ledger),
+ * so the key is the same `DsStatus` the bar's own `StatusDot` already renders
+ * — which is stronger than a parallel tone field would be, because the dot and
+ * the band physically cannot disagree.
+ *
+ * LITERAL class strings, exhaustive over the closed enum, for the same reason
+ * `DECISION_TONE` above is: a token interpolated into a class name is one
+ * Tailwind cannot see, so it emits no rule and the band paints nothing.
+ */
+const OUTCOME_TONE: Record<DsStatus, string> = {
+  waiting:
+    "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] text-[color:var(--ds-status-waiting-fg)]",
+  parked:
+    "border-[color:var(--ds-status-parked-border)] bg-[var(--ds-status-parked-bg)] text-[color:var(--ds-status-parked-fg)]",
+  failed:
+    "border-[color:var(--ds-status-failed-border)] bg-[var(--ds-status-failed-bg)] text-[color:var(--ds-status-failed-fg)]",
+  verifiedDone:
+    "border-[color:var(--ds-status-verified-done-border)] bg-[var(--ds-status-verified-done-bg)] text-[color:var(--ds-status-verified-done-fg)]",
+  doneWarnings:
+    "border-[color:var(--ds-status-done-warnings-border)] bg-[var(--ds-status-done-warnings-bg)] text-[color:var(--ds-status-done-warnings-fg)]",
+  running:
+    "border-[color:var(--ds-status-running-border)] bg-[var(--ds-status-running-bg)] text-[color:var(--ds-status-running-fg)]",
+  queued:
+    "border-[color:var(--ds-status-queued-border)] bg-[var(--ds-status-queued-bg)] text-[color:var(--ds-status-queued-fg)]",
+  cancelled:
+    "border-[color:var(--ds-status-cancelled-border)] bg-[var(--ds-status-cancelled-bg)] text-[color:var(--ds-status-cancelled-fg)]",
+};
+
+/**
+ * The four panel kinds, in the product's own words.
+ *
+ * FRONTEND COPY over the SERVED closed `panelKind` enum, the same move
+ * `queue.tsx:379-391` makes for the row ⓘ — the sentence is a fact about what
+ * this product's panel does with a kind, not a fact about the run, so the
+ * server serves the enum and the frontend owns the words. A new arm on the
+ * enum fails `tsc` here rather than rendering a hole.
+ *
+ * It is deliberately a SECOND copy of the queue's table for now, not an import
+ * from it: `queue.tsx` is owned by another region of this fidelity pass and is
+ * read-only to this commit. The two fold into one home the next time both
+ * files move together; until then the values here are byte-identical to
+ * `queue.tsx`'s, which is what makes the fold mechanical.
+ */
+const PANEL_KIND_NAME: Record<RunDetailWire["panelKind"], string> = {
+  run: "Run Panel",
+  review: "Review Panel",
+  group: "Group Panel",
+  member: "Member Panel",
+};
+
+const PANEL_KIND_EXPLANATION: Record<RunDetailWire["panelKind"], string> = {
+  run: "Opening it shows the log stream, every value the run read or wrote, and the receipt once it ends.",
+  review: "Opening it starts the review — the scanned page beside the fields read from it, one person at a time.",
+  group: "Opening it lists the people it holds, attention first, and you can open any one of them from there.",
+  member: "Opening it walks the set — previous, next, and a checked mark so you keep your place in it.",
+};
+
+/**
+ * Ported from legacy hr-automation@1bffbd65,
+ * src/dashboard/components/dev/rebuild-demo/DemoLogPanel.tsx:778-812
+ * (`PanelKindInfo`).
+ *
+ * THE PANEL'S OWN ⓘ — and the header's identity rule stated in one line:
+ * title · ⓘ · trace, and nothing else.
+ *
+ * What the header keeps is IDENTITY. What is actionable about the run's STATE
+ * lives one line down, on the outcome bar, where the button that acts on it
+ * is — which is why the status chip and the attempt badge that used to sit
+ * here are gone (R5 f.1/f.2, the operator's own "avoid redundancy").
+ *
+ * Same size, same slot and same behaviour as the ⓘ on every queue row, so the
+ * two read as one affordance. The words are the rebuild's own vocabulary, not
+ * the demo's scaffolding: the demo names its row VARIANT here, which is how
+ * the demo talks about itself and not a fact about a real run.
+ */
+function PanelKindInfo({
+  panelKind,
+  workflowLabel,
+  traceId,
+}: {
+  panelKind: RunDetailWire["panelKind"];
+  workflowLabel: string;
+  traceId: string;
+}) {
+  const panelName = PANEL_KIND_NAME[panelKind];
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <IconButton
+          size="xs"
+          variant="ghost"
+          label={`What kind of panel this is — ${panelName}`}
+          icon={<Info aria-hidden className={dsIcon.sm} />}
+          onClick={(event) => event.stopPropagation()}
+          className="shrink-0 data-[state=open]:bg-[var(--ds-surface-3)] data-[state=open]:text-[color:var(--ds-fg)]"
+        />
+      </PopoverTrigger>
+      <PopoverContent title={panelName} description={PANEL_KIND_EXPLANATION[panelKind]} side="bottom" align="end" width="md">
+        <MetaLine items={[workflowLabel, traceId]} tone="faint" />
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export function LogPanel({
   detail,
@@ -1129,6 +1278,14 @@ export function LogPanel({
     observer.observe(head);
     return () => observer.disconnect();
   }, [detail.runId, effectiveTab]);
+
+  /**
+   * ONE clock read per render, shared by every age on this surface — the
+   * outcome bar's and the floating notice's. Two reads would let the same
+   * decision report two different ages a second apart, which is the class of
+   * defect the shared fold key exists to prevent elsewhere in this file.
+   */
+  const nowIso = systemClock.now().toISOString();
 
   const outcome = detail.outcome;
   const outcomeStatus =
@@ -1304,7 +1461,23 @@ export function LogPanel({
           className="scroll-pt-[var(--ds-panel-head-h,0px)] flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
         >
           <div ref={headRef} className={cn("sticky top-0 shrink-0 bg-[var(--ds-surface-1)]", dsLayer.sticky)}>
-            {/* identity — the title never truncates to make room for the trace */}
+            {/*
+              THE HEADER CARRIES IDENTITY, AND ONLY IDENTITY: title · ⓘ · trace.
+
+              Ported from legacy hr-automation@1bffbd65,
+              `DemoLogPanel.tsx:2496-2538`, including the deletions the demo
+              records there. The status chip and the `attempt N` badge that
+              used to ride this line are GONE (R5 f.1/f.2). The operator's rule,
+              quoted in the demo at :2510-2526: THE HEADER DOES NOT REPEAT A
+              STATE THE BAND DIRECTLY BELOW IT ALREADY STATES — the outcome bar
+              is a hairline away, it names the state in a sentence, it carries
+              the action, and it now carries the decision's age too. The attempt
+              affordance is the rail's, where switching attempts happens.
+
+              The title never truncates to make room for the ⓘ + trace: those
+              ride `ml-auto` and drop under at their natural length when the row
+              is too tight.
+            */}
             <div
               className={cn(
                 "flex flex-wrap items-center border-b",
@@ -1322,12 +1495,11 @@ export function LogPanel({
                 {detail.header.title}
               </span>
               <span className="ml-auto flex min-w-0 max-w-full items-center gap-[var(--ds-space-base)]">
-                {detail.header.attempt > 1 && (
-                  <Badge tone="warning" title={`Attempt ${String(detail.header.attempt)} of this run`}>
-                    attempt {detail.header.attempt}
-                  </Badge>
-                )}
-                <StatusPill status={dsStatusOf(detail.header.status)} size="sm" />
+                <PanelKindInfo
+                  panelKind={detail.panelKind}
+                  workflowLabel={workflowLabel}
+                  traceId={detail.header.traceId}
+                />
                 <span
                   className={cn(
                     dsText.meta,
@@ -1341,12 +1513,18 @@ export function LogPanel({
             </div>
 
             {/* The outcome line — one sentence of "so what", and, on a gated
-                row, the one route to the decision that can never be dismissed. */}
+                row, the one route to the decision that can never be dismissed.
+
+                TINTED (R5 f.3): the band takes the status's own border/bg/fg
+                triple, which is what makes it read as a statement rather than
+                as another hairline strip. Same wrap rule as the identity
+                header — the sentence fills; the age and the action sit beside
+                it when they fit, else under at natural length. */}
             <div
               className={cn(
                 "flex flex-wrap items-center border-b",
-                dsBorder.subtle,
                 "gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]",
+                OUTCOME_TONE[outcomeStatus],
               )}
             >
               {/* `StatusDot`, never a hand-rolled span: DESIGN.md admits exactly
@@ -1356,6 +1534,17 @@ export function LogPanel({
               <StatusDot status={outcomeStatus} />
               <span className={cn(dsText.body, "min-w-0 max-w-full flex-1")}>{outcomeText}</span>
               <span className="ml-auto flex min-w-max items-center gap-[var(--ds-space-base)]">
+                {/* HOW LONG IT HAS NEEDED YOU, and this is the only place on
+                    the surface that says it now that the header chip is gone
+                    (R5 f.5, ported from `DemoLogPanel.tsx:2557-2569`). It is
+                    not the run's total elapsed — see `decisionAge`. It rides
+                    the outcome bar rather than the header because this is the
+                    band that already carries the state and its action. */}
+                {gate.state === "open" && (
+                  <span className={cn(dsText.meta, dsText.nums, "shrink-0 tabular-nums opacity-80")}>
+                    {decisionAge(gate.openedAt, nowIso)}
+                  </span>
+                )}
                 <OutcomeActionButton
                   actions={actions}
                   target={{ runId: detail.runId, expectedVersion: detail.rowRevision }}
@@ -1447,6 +1636,7 @@ export function LogPanel({
             tone="waiting"
             label={gate.label}
             since={gate.openedAt}
+            nowIso={nowIso}
             icon={<UserRoundSearch aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}
             goLabel="Go to the decision"
             dismissLabel="Dismiss this reminder — the decision stays open"
@@ -1454,12 +1644,17 @@ export function LogPanel({
             onDismiss={() => setNoticeDismissed(true)}
           />
         )}
+        {/* `Pause`, not `PauseCircle` (R5 f.15) — the demo's glyph at
+            `DemoLogPanel.tsx:875`, and the same one `STEP_TONE.parked` uses, so
+            the notice and the step it points at draw the same mark. The ringed
+            variant reads as a control at 14px, which this is not. */}
         {parkNoticeShown && parked !== undefined && (
           <DecisionNotice
             tone="parked"
             label={dsStatusText("parked")}
             since={parked.parkedAt}
-            icon={<PauseCircle aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}
+            nowIso={nowIso}
+            icon={<Pause aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}
             goLabel="Go to the parked write"
             dismissLabel="Dismiss this reminder — the write stays parked"
             onGo={goToPark}
