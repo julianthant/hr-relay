@@ -310,6 +310,25 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-14: an ADDRESS is not an EXPECTATION, and the page the app itself loads often answers the
+  question for free (separations 5c).** Chunk 5a recorded that filling Kuali's nine unknown
+  `submitDocumentV2` `formKey`s would be "a one-line change". The live capture got all ten on the first
+  try — off Kuali's own `ActionPage` GraphQL query, observed PASSIVELY on a document open, so the
+  section-ownership question, the whole gadget tree and the stored model came back in one response that
+  cost nothing and sent nothing. And the sentence was still wrong: the mutation sends the document
+  MODEL, which holds a `Date` as epoch milliseconds, a `Dropdown`/`Radios` as `{id,label}` and
+  `Checkboxes` as an array of them, so writing the keys in and leaving the comparison as
+  `data[formKey] === "<the staged string>"` would have made the payload check **unable to pass** for six
+  of ten fields — turning every landed save into a post-fence park. **A check that can only fail is the
+  same defect as one that cannot**, and the tempting middle ground failed too: the `Department*` option
+  `000719 -  Supply Chain Services` carries a double space in Kuali's model while the driver reads
+  options through `HTMLOptionElement.text`, which strips and collapses, so a label comparison is
+  provably wrong before it is ever run. Five fields are asserted, five are RECORDED and named, and the
+  controlled commit closes them by observing the real payload. The generalization: **when you finally
+  learn where a value lives, you have not yet learned what it looks like there** — and a constant table
+  whose comment claims a fail-closed behaviour the code does not implement (this one claimed `commit`
+  refused on unknown keys; it silently skipped them) is worse than no comment.
+
 - **2026-08-13: a loop that terminates on the WIDGET can be right about the widget and wrong about
   the answer — and a mapping can be internally consistent and externally wrong (D205).** Chunk 1's
   live proof stayed open through 14 attempts because the virtualized timecard read stopped when
