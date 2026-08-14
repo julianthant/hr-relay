@@ -44,11 +44,10 @@ import {
   WorkflowPanelToggle,
   WorkflowSidebar,
   WorkflowWindow,
-  parseWorkflowCategories,
+  activeCount,
   parseWorkflows,
   useWorkflowPanelMode,
   type StatusBucket,
-  type WorkflowBootstrapPrimitive,
 } from "../surfaces/shell.js";
 import { StorageBanner } from "../surfaces/settings.js";
 import { TopBar, serverLocalDay, type ShellView } from "../surfaces/top-bar.js";
@@ -82,21 +81,6 @@ const SERVED_ACTIONS: readonly ActionDescriptorWire[] = [];
 
 /** The closed tab vocabulary, so a `?section=` value is validated, not trusted. */
 const PANEL_TABS: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
-
-/**
- * The short code the Run Modal's picker row draws beside a workflow's name.
- *
- * The bootstrap workflow projection does not serve one yet, so this reads it
- * when it is there and answers `undefined` when it is not — the row then draws
- * NOTHING in that slot. Deriving a two-letter code from the label here would
- * put a value the server never issued next to the identity an operator selects
- * a real HR workflow by.
- */
-function workflowCode(workflow: WorkflowBootstrapPrimitive): string | undefined {
-  const served: Record<string, unknown> = { ...workflow };
-  const code = served["code"];
-  return typeof code === "string" && code.length > 0 ? code : undefined;
-}
 
 /** The route, kept in the URL so every screen is addressable. */
 function useRoute(): [AppRouteState, (next: AppRouteState) => void] {
@@ -277,7 +261,6 @@ function LoadedApp({
   const { sections } = usePanelSections(detailValue, effectiveTab);
 
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
-  const categories = useMemo(() => parseWorkflowCategories(boot.workflowCategories), [boot.workflowCategories]);
   const [activeWorkflowId, setActiveWorkflowId] = useState<string>(() => workflows[0]?.id ?? "");
   const [startOpen, setStartOpen] = useState(route.start);
   /**
@@ -292,6 +275,17 @@ function LoadedApp({
   const dayWire = dayResource.state === "loaded" ? dayResource.value : undefined;
   const workflowLabelOf = useCallback(
     (workflowId: string): string => workflows.find((w) => w.id === workflowId)?.label ?? workflowId,
+    [workflows],
+  );
+  /**
+   * The active workflow's served 2-char code. A workflow id the boot document
+   * does not carry has no code, and the launcher then draws NOTHING in that
+   * slot — the demo's own `WORKFLOW_CODE[active] ?? ""`. Deriving two letters
+   * from the label would put a value the server never issued beside the
+   * identity an operator selects a real HR workflow by.
+   */
+  const workflowCodeOf = useCallback(
+    (workflowId: string): string => workflows.find((w) => w.id === workflowId)?.code ?? "",
     [workflows],
   );
 
@@ -313,6 +307,13 @@ function LoadedApp({
   }, [dayWire, activeWorkflowId, filter]);
 
   const dayCount = dayWire?.monthCounts.find((c) => c.day === day)?.count ?? 0;
+  /**
+   * ACTIVE across every workflow today — queued + running, off the day's OWN
+   * served `statusCounts`, which is already day-scoped across workflows. The
+   * launcher and the rail's orange column are then the same quantity at two
+   * scopes and cannot disagree (D81, R2 D3/D4).
+   */
+  const dayActive = activeCount(dayWire?.statusCounts ?? []);
 
   /**
    * The first consumer of `featureAvailability` (2i-G, D178). A feature the
@@ -346,12 +347,11 @@ function LoadedApp({
     return workflows.map((entry): RunStartWorkflow => {
       const workflowId = String(entry.id);
       const declared = WORKFLOW_DESCRIPTORS.find((d) => d.id === workflowId)?.surfaces?.inputRun;
-      const code = workflowCode(entry);
       return {
         workflowId,
         label: entry.label,
         categoryId: entry.categoryId,
-        ...(code === undefined ? {} : { code }),
+        code: entry.code,
         inputRun:
           declared === undefined
             ? { state: "absent", reason: "this workflow declares no typed-input surface" }
@@ -548,7 +548,6 @@ function LoadedApp({
             mode={panelMode.mode}
             onMode={panelMode.setMode}
             workflows={workflows}
-            categories={categories}
             counts={dayWire?.workflowCounts ?? []}
             activeWorkflowId={activeWorkflowId}
             onActive={setActiveWorkflowId}
@@ -676,6 +675,8 @@ function LoadedApp({
                 mode={panelMode.mode}
                 onMode={panelMode.setMode}
                 activeWorkflowLabel={workflowLabelOf(activeWorkflowId)}
+                activeWorkflowCode={workflowCodeOf(activeWorkflowId)}
+                dayActive={dayActive}
                 dayCount={dayCount}
               />
             }
@@ -817,7 +818,6 @@ function LoadedApp({
                 onMode={panelMode.setMode}
                 opened={panelMode.opened}
                 workflows={workflows}
-                categories={categories}
                 counts={dayWire?.workflowCounts ?? []}
                 activeWorkflowId={activeWorkflowId}
                 onActive={setActiveWorkflowId}
@@ -839,7 +839,6 @@ function LoadedApp({
         open={startOpen}
         onOpenChange={setStartOpen}
         workflows={startWorkflows}
-        categories={categories}
         panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
       />

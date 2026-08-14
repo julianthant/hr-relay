@@ -24,7 +24,7 @@
  * start capability is absent is not offered rather than offered and broken.
  *
  * The picker is the demo's, over the SERVED catalogue: the boot document's
- * workflows and categories plus each descriptor's declared input surface are
+ * workflows plus each descriptor's declared input surface are
  * all the list, the grouping, the filter, the selection and the
  * "{n} not startable" count need. (An earlier header claimed the picker waited
  * on a bootstrap start-capability projection. That was wrong — R8 finding 12.)
@@ -72,7 +72,7 @@ import {
 } from "../../domain/workflow/ingress.js";
 import type { StartPlanResponse } from "../client/index.js";
 import { useDashboardClient } from "../state/client-context.js";
-import type { WorkflowCategoryPrimitive } from "./shell.js";
+import { groupWorkflowsByCategory, workflowCategoryLabel } from "./workflow-category.js";
 import {
   EnqueueResultBanner,
   InstanceSelector,
@@ -108,10 +108,11 @@ export interface RunStartWorkflow {
   /** the served category this workflow is filed under — the picker's grouping */
   readonly categoryId: string;
   /**
-   * The short code the demo's picker row carries. The bootstrap workflow
-   * projection does not serve one yet, so it is OPTIONAL and the row renders
-   * nothing at all when it is absent — a placeholder in the slot where an
-   * identity belongs is the fabricated value this tree bans.
+   * The short code the picker row carries — the descriptor's own guarded
+   * 2-char code, served on the bootstrap workflow projection since R2 D1/D2.
+   * It stays OPTIONAL here because the app composes this view-model and the
+   * row must render nothing at all rather than a placeholder if a future
+   * composition has none: a fabricated identity is the value this tree bans.
    */
   readonly code?: string;
   /** the descriptor's declared typed-input surface, or why there is none */
@@ -162,38 +163,15 @@ export function RunStartButton({ onOpen }: { onOpen: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
-// The workflow picker — the served rail categories, inside the dialog
+// The workflow picker — the rail's own categories, inside the dialog
+//
+// The picker's groups are the SHELL RAIL'S OWN RULE, not a restatement of it
+// (R2 D17/D18): `groupWorkflowsByCategory` is called here over the startable
+// catalogue and there over every workflow, so the two lists differ in their
+// ENTRIES and can never differ in their headings or their order. This used to
+// be a hand-copied second implementation, which is exactly the drift one
+// shared helper makes unrepresentable.
 // ---------------------------------------------------------------------------
-
-interface PickerGroup {
-  readonly label: string;
-  readonly entries: readonly RunStartWorkflow[];
-}
-
-/**
- * The picker's groups, in the served category order.
- *
- * This is the shell rail's own rule (`buildWorkflowRailGroups`) restated over
- * the start catalogue rather than shared, because the two lists hold different
- * entries: a category nothing STARTABLE is registered under is dropped, and a
- * workflow whose category the server did not send falls into a trailing
- * `Other` rather than disappearing.
- */
-function pickerGroups(
-  workflows: readonly RunStartWorkflow[],
-  categories: readonly WorkflowCategoryPrimitive[],
-): PickerGroup[] {
-  const ordered = [...categories].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
-  const groups: PickerGroup[] = [];
-  for (const category of ordered) {
-    const entries = workflows.filter((workflow) => workflow.categoryId === category.id);
-    if (entries.length > 0) groups.push({ label: category.label, entries });
-  }
-  const known = new Set(categories.map((category) => category.id));
-  const orphans = workflows.filter((workflow) => !known.has(workflow.categoryId));
-  if (orphans.length > 0) groups.push({ label: "Other", entries: orphans });
-  return groups;
-}
 
 function matchesQuery(workflow: RunStartWorkflow, categoryLabel: string, query: string): boolean {
   const needle = query.trim().toLowerCase();
@@ -209,12 +187,10 @@ function matchesQuery(workflow: RunStartWorkflow, categoryLabel: string, query: 
  */
 function WorkflowPicker({
   workflows,
-  categories,
   value,
   onChange,
 }: {
   workflows: readonly RunStartWorkflow[];
-  categories: readonly WorkflowCategoryPrimitive[];
   value: string;
   onChange: (next: string) => void;
 }) {
@@ -222,10 +198,10 @@ function WorkflowPicker({
   const [showBlocked, setShowBlocked] = useState(false);
   const groups = useMemo(
     () =>
-      pickerGroups(workflows.filter(isStartable), categories)
+      groupWorkflowsByCategory(workflows.filter(isStartable))
         .map((group) => ({ ...group, entries: group.entries.filter((entry) => matchesQuery(entry, group.label, query)) }))
         .filter((group) => group.entries.length > 0),
-    [workflows, categories, query],
+    [workflows, query],
   );
   const blocked = useMemo(() => workflows.filter((workflow) => !isStartable(workflow)), [workflows]);
 
@@ -492,7 +468,6 @@ export function RunStartDialog({
   open,
   onOpenChange,
   workflows,
-  categories,
   panelWorkflowId,
   actorId,
 }: {
@@ -500,8 +475,6 @@ export function RunStartDialog({
   onOpenChange: (open: boolean) => void;
   /** every workflow the boot document serves, with its declared start surface */
   workflows: readonly RunStartWorkflow[];
-  /** the served rail categories — the picker's headings, in the served order */
-  categories: readonly WorkflowCategoryPrimitive[];
   /** the Workflow Panel the operator is standing in — the dialog's default */
   panelWorkflowId: string;
   /** echoed from bootstrap; the server matches it against the request identity */
@@ -544,7 +517,7 @@ export function RunStartDialog({
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
   const inputRun = workflow?.inputRun ?? NO_WORKFLOW_SELECTED;
   const systemInstances = workflow?.systemInstances ?? NO_SYSTEM_INSTANCES;
-  const categoryLabel = categories.find((category) => category.id === workflow?.categoryId)?.label;
+  const categoryLabel = workflow === undefined ? undefined : workflowCategoryLabel(workflow.categoryId);
 
   const supportsDryRun = inputRun.state === "present" && inputRun.surface.supportsDryRun === true;
   const dryRun = supportsDryRun && dryRunRequested;
@@ -653,7 +626,6 @@ export function RunStartDialog({
         <div className="flex min-h-0 flex-1">
           <WorkflowPicker
             workflows={workflows}
-            categories={categories}
             value={workflowId}
             onChange={selectWorkflow}
           />
@@ -890,14 +862,12 @@ export function RunStartSurfaces({
   open,
   onOpenChange,
   workflows,
-  categories,
   panelWorkflowId,
   actorId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workflows: readonly RunStartWorkflow[];
-  categories: readonly WorkflowCategoryPrimitive[];
   panelWorkflowId: string;
   actorId: string;
 }) {
@@ -906,7 +876,6 @@ export function RunStartSurfaces({
       open={open}
       onOpenChange={onOpenChange}
       workflows={workflows}
-      categories={categories}
       panelWorkflowId={panelWorkflowId}
       actorId={actorId}
     />

@@ -55,7 +55,9 @@ function dayOf(surfaces: readonly Record<string, unknown>[]): DashboardDayWire {
     projectionGeneration: 7,
     snapshotCursor: "pc:1",
     monthCounts: [{ day: DAY, count: surfaces.length }],
-    workflowCounts: surfaces.length === 0 ? [] : [{ workflowId: "person-lookup", count: surfaces.length }],
+    workflowCounts: surfaces.length === 0
+      ? []
+      : [{ workflowId: "person-lookup", count: surfaces.length, statusCounts: [{ status: "queued", count: surfaces.length }] }],
     statusCounts: surfaces.length === 0 ? [] : [{ status: "queued", count: surfaces.length }],
     queueSurfaces: surfaces,
     workerCards: [],

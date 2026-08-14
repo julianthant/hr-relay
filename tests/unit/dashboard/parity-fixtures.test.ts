@@ -99,8 +99,10 @@ describe("parity fixture corpus", () => {
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([status, count]) => ({ status, count }));
     expect(FIXTURE_DAY_WIRE.statusCounts).toEqual(expected);
+    // The fixture serves ONE workflow, so the per-workflow status dimension
+    // must be the day's own — the agreement the single projector fold gives.
     expect(FIXTURE_DAY_WIRE.workflowCounts).toEqual([
-      { workflowId: "person-lookup", count: countable.length },
+      { workflowId: "person-lookup", count: countable.length, statusCounts: expected },
     ]);
     expect(
       FIXTURE_DAY_WIRE.monthCounts.find(({ day }) => day === FIXTURE_DAY_WIRE.day)?.count,

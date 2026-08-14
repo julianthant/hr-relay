@@ -556,7 +556,7 @@ const BOOTSTRAP = {
   wireVersion: 1, appVersion: "1.0.0", descriptorHash: HASH_A, settingsSchemaHash: HASH_B,
   projectionGeneration: 1, actor: { id: "local-operator", label: "Local operator" },
   serverClock: { now: NOW, zone: "America/Los_Angeles" },
-  storage: { authority: "healthy", backup: "current", checkedAt: NOW }, workflows: [], workflowCategories: [],
+  storage: { authority: "healthy", backup: "current", checkedAt: NOW }, workflows: [],
   systemInstances: [], settingsSections: [], featureAvailability: [],
 };
 const DAY = {

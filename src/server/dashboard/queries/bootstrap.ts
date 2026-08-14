@@ -60,10 +60,6 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     // authority routes themselves, which throw rather than degrade.
     storageAuthority = "unavailable";
   }
-  const categories = new Map<string, number>();
-  for (const descriptor of deps.descriptors) {
-    if (!categories.has(descriptor.category)) categories.set(descriptor.category, categories.size);
-  }
   const systems = new Set<string>();
   for (const descriptor of deps.descriptors) {
     for (const system of workflowProjections(descriptor).systems) systems.add(system);
@@ -81,17 +77,16 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       backup: deps.backupSummary(),
       checkedAt: deps.clock.now().toISOString(),
     },
+    // `code` is the descriptor's own, guarded 2-char code (doc 13 §3.1). The
+    // category is served RAW: the heading text and the display order are the
+    // frontend's, so nothing here invents a label from an id.
     workflows: deps.descriptors.map((descriptor) => ({
       id: descriptor.id,
+      code: descriptor.code,
       label: descriptor.label,
       categoryId: descriptor.category,
       descriptorFingerprint: descriptor.contractFingerprint,
       availability: { state: "available" },
-    })),
-    workflowCategories: [...categories.entries()].map(([id, order]) => ({
-      id,
-      label: id.replace(/-/g, " "),
-      order,
     })),
     systemInstances: [...systems.values()].sort().map((system) => ({
       system,

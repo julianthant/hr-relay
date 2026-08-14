@@ -790,8 +790,12 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/bootstrap", path: "preflight[].remediation", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "settingsSections[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "systemInstances[].test.reason", origin: "repository-authored" },
-  { surface: "wire/bootstrap", path: "workflowCategories[].label", origin: "repository-authored" },
+  // `workflowCategories[].label` retired with R2 D17/D18: the server invented
+  // that heading from the id, and the display label + order are the
+  // frontend's (`dashboard/surfaces/workflow-category.ts`).
   { surface: "wire/bootstrap", path: "workflows[].availability.reason", origin: "repository-authored" },
+  // `workflows[].code` needs no row: it is regex-constrained to two chars at
+  // the wire boundary, so the scan does not read it as a free-text leaf.
   { surface: "wire/bootstrap", path: "workflows[].label", origin: "repository-authored" },
 
   { surface: "wire/activity-report", path: "categories[].category.reason", origin: "repository-authored" },

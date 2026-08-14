@@ -288,7 +288,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // Pipeline comes from the descriptor's runtime nodes, pending until spans arrive.
     assert.equal(surfaces[0].pipeline.length > 0, true);
     assert.equal(surfaces[0].pipeline.every(({ id }) => typeof id === "string"), true);
-    assert.deepEqual(day.workflowCounts, [{ workflowId: "fixture-graph", count: 1 }]);
+    assert.deepEqual(day.workflowCounts, [
+      { workflowId: "fixture-graph", count: 1, statusCounts: [{ status: "queued", count: 1 }] },
+    ]);
     assert.deepEqual(day.statusCounts, [{ status: "queued", count: 1 }]);
 
     // Detail header + note-backed logs slice.

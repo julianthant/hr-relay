@@ -630,9 +630,12 @@ describe("the fold arms a moving run reaches (doc 03 §2.2)", () => {
       { day: dayOffsetOf(0), count: 2 },
       { day: dayOffsetOf(1), count: 1 },
     ]);
+    // Each workflow carries its OWN status dimension, off the same fold
+    // (R2 D5-D12): the Workflow Panel's `active | all` column and the
+    // workflow-scoped Status Bar both read these entries.
     assert.deepEqual(day.workflowCounts, [
-      { workflowId: "kuali-timekeeper-annotation", count: 1 },
-      { workflowId: "person-lookup", count: 1 },
+      { workflowId: "kuali-timekeeper-annotation", count: 1, statusCounts: [{ status: "queued", count: 1 }] },
+      { workflowId: "person-lookup", count: 1, statusCounts: [{ status: "queued", count: 1 }] },
     ]);
     assert.deepEqual(day.notifications.map(({ title }) => title), ["earlier id", "later id", "oldest"]);
     assert.equal(day.notifications[0].severity, "error");

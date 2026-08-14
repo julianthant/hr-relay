@@ -46,10 +46,7 @@ import {
   dsSurface,
   dsText,
 } from "../ds/ui.js";
-import {
-  WorkflowBootstrapPrimitiveSchema,
-  WorkflowCategoryPrimitiveSchema,
-} from "../../domain/dashboard/bootstrap.js";
+import { WorkflowBootstrapPrimitiveSchema } from "../../domain/dashboard/bootstrap.js";
 import type {
   StatusCountWireSchema,
   WorkerCardWireSchema,
@@ -59,12 +56,12 @@ import type { SubscriptionState } from "../client/index.js";
 import { PROPOSED_STATUS, dsStatusOf, type QueueStatus } from "./status.js";
 import { SystemChip } from "./system-chip.js";
 import { plural } from "./format.js";
+import { groupWorkflowsByCategory, type WorkflowCategoryGroup } from "./workflow-category.js";
 
 export type WorkflowCountWire = z.infer<typeof WorkflowCountWireSchema>;
 export type StatusCountWire = z.infer<typeof StatusCountWireSchema>;
 export type WorkerCardWire = z.infer<typeof WorkerCardWireSchema>;
 export type WorkflowBootstrapPrimitive = z.infer<typeof WorkflowBootstrapPrimitiveSchema>;
-export type WorkflowCategoryPrimitive = z.infer<typeof WorkflowCategoryPrimitiveSchema>;
 
 /**
  * The bootstrap wire types its projection arrays as `unknown[]` on purpose —
@@ -75,10 +72,6 @@ export type WorkflowCategoryPrimitive = z.infer<typeof WorkflowCategoryPrimitive
  */
 export function parseWorkflows(workflows: readonly unknown[]): WorkflowBootstrapPrimitive[] {
   return z.array(WorkflowBootstrapPrimitiveSchema).parse(workflows);
-}
-
-export function parseWorkflowCategories(categories: readonly unknown[]): WorkflowCategoryPrimitive[] {
-  return z.array(WorkflowCategoryPrimitiveSchema).parse(categories);
 }
 
 /**
@@ -101,6 +94,29 @@ export function workflowCount(counts: readonly WorkflowCountWire[], workflowId: 
 
 export function statusCount(counts: readonly StatusCountWire[], status: QueueStatus): number {
   return servedCount(counts, (entry) => entry.status === status);
+}
+
+/** the served per-status dimension of ONE workflow's day, or nothing served yet */
+export function workflowStatusCounts(
+  counts: readonly WorkflowCountWire[],
+  workflowId: string,
+): readonly StatusCountWire[] {
+  return counts.find((entry) => String(entry.workflowId) === workflowId)?.statusCounts ?? [];
+}
+
+/**
+ * ACTIVE — queued PLUS running, the union of "accepted, not finished".
+ *
+ * Ported from the demo's `railEntryCounts` / `attentionAcrossWorkflows`
+ * (hr-automation@1bffbd65, DemoShell.tsx:200-235) with the fold removed: the
+ * demo derived this from a row array, this reads the served counts. `queued`
+ * alone is not "what is happening in this panel" — the moment a run starts it
+ * leaves `queued` and the column reads zero while the workflow is plainly
+ * working. Attention is deliberately NOT folded in: that is a different
+ * question with a different answer surface (the Status Bar's `Needs you`).
+ */
+export function activeCount(counts: readonly StatusCountWire[]): number {
+  return statusCount(counts, "queued") + statusCount(counts, "running");
 }
 
 /* ── the toolbar control shape ───────────────────────────────────────────── */
@@ -235,28 +251,40 @@ function WorkflowPanelControls({ mode, onMode }: PanelModeProps) {
 /**
  * The launcher, and the one control present in all three modes.
  *
- * It carries the SELECTED DAY's served row total — `monthCounts` for the day
- * the whole app is reading. The demo carried "active" (queued + running across
- * every workflow), which the projection does not serve as a fact; deriving it
- * here would mean folding rows, which is the second count path D81 deletes. The
- * number is therefore the day's rows, and it says so in its own label rather
- * than wearing a different quantity's name.
+ * ONE NUMBER, AND IT IS THE DEMAND. It carries ACTIVE — queued + running —
+ * across EVERY workflow on the selected day, the same quantity as the rail's
+ * orange `active` column summed down its length, so the collapsed badge and the
+ * open list cannot disagree. It used to carry the day's row TOTAL, which lit
+ * the amber on an idle day and is a number nobody acts on.
  *
- * At zero it dims rather than vanishing, so the action bar does not reflow every
- * time the day goes idle.
+ * The demo derived both from a row array; here they are read off the day's
+ * served `statusCounts`, which is day-scoped across workflows and therefore
+ * gives `queued + running` exactly — no second fold, no second corpus (D81).
+ *
+ * The scope survives in the tooltip and the accessible name, both of which say
+ * the count spans every workflow, and the control carries the workflow's 2-char
+ * code — the prefix of every one of its trace ids — so it is never an anonymous
+ * glyph. At zero the number dims rather than vanishing, so the action bar does
+ * not reflow every time the day goes idle.
  */
 export function WorkflowPanelToggle({
   mode,
   onMode,
   activeWorkflowLabel,
+  activeWorkflowCode,
+  dayActive,
   dayCount,
 }: PanelModeProps & {
   activeWorkflowLabel: string;
-  /** the selected day's served row total */
+  /** the active workflow's served 2-char code — the prefix of its trace ids */
+  activeWorkflowCode: string;
+  /** queued + running across every workflow on the selected day */
+  dayActive: number;
+  /** the selected day's served row total — the denominator of the sentence */
   dayCount: number;
 }) {
   const showing = mode !== "icon";
-  const scope = `${plural(dayCount, "row")} on this day, across every workflow`;
+  const scope = `${dayActive} of ${plural(dayCount, "row")} across every workflow are queued or running today`;
   return (
     <button
       id={WORKFLOW_PANEL_TOGGLE_ID}
@@ -267,7 +295,7 @@ export function WorkflowPanelToggle({
       // replaces a button's contents outright, so the number was being
       // announced to nobody — the thing this control exists to carry.
       aria-label={`Workflow Panel — ${activeWorkflowLabel}${showing ? `, ${WORKFLOW_PANEL_MODE_LABEL[mode]}` : ", minimised"}. ${scope}`}
-      title={`Workflow Panel — ${activeWorkflowLabel}\n${scope}\nThe Status Bar's Needs you pill is attention, not this count\nw cycles floating · icon · sidebar`}
+      title={`Workflow Panel — ${activeWorkflowLabel} (${activeWorkflowCode})\n${scope}\nThe Status Bar's Needs you pill is attention, not this count\nw cycles floating · icon · sidebar`}
       onClick={() => onMode(showing ? "icon" : "floating")}
       className={cn(
         toolbarControl(),
@@ -283,80 +311,69 @@ export function WorkflowPanelToggle({
       ) : (
         <PanelLeftOpen aria-hidden className={dsIcon.sm} />
       )}
+      <span className={dsText.nums}>{activeWorkflowCode}</span>
+      {/* The rule separates the panel you are IN from a count that belongs to
+          the whole day. It sits on the control's OWN surface, where
+          `--ds-border` against a white card is not a line anybody sees. */}
       <span aria-hidden className={cn("mx-[var(--ds-space-hair)] h-4 w-px shrink-0", "bg-[var(--ds-border-loud)]")} />
+      {/* ACTIVE (queued + running) across every workflow — same orange as the
+          rail's left column, and the same total when you add that column down. */}
       <span
         className={cn(
           dsText.nums,
           "shrink-0 tabular-nums",
           dsMotion.base,
-          dayCount > 0
+          dayActive > 0
             ? "font-semibold text-[color:var(--ds-status-waiting-fg)]"
             : "text-[color:var(--ds-fg-faint)]",
         )}
       >
-        {dayCount}
+        {dayActive}
       </span>
     </button>
   );
 }
 
-export interface WorkflowRailGroup {
-  readonly label: string;
-  readonly entries: readonly WorkflowBootstrapPrimitive[];
-}
+export type WorkflowRailGroup = WorkflowCategoryGroup<WorkflowBootstrapPrimitive>;
 
 /**
- * The rail's groups, in the server's display order.
+ * The rail's groups, in the frontend's display order (R2 D17/D18).
  *
- * Membership is each workflow's OWN `categoryId` and the order is the served
- * category `order` — so a workflow the backend serves can never be missing from
- * the rail and can never sit under a heading the product does not use. A
- * category nothing is registered under is DROPPED rather than rendered as an
- * empty heading; a workflow whose category the server did not send falls into a
- * trailing `Other` rather than disappearing.
+ * Membership is each workflow's OWN `categoryId`; the heading and the order are
+ * `workflow-category.ts`'s, which the Run Modal's picker calls too — so a
+ * workflow the backend serves can never be missing from the rail, can never sit
+ * under a heading the product does not use, and the two surfaces cannot drift
+ * into two orders. A category nothing is registered under is DROPPED rather
+ * than rendered as an empty heading.
  */
 export function buildWorkflowRailGroups(
   workflows: readonly WorkflowBootstrapPrimitive[],
-  categories: readonly WorkflowCategoryPrimitive[],
 ): WorkflowRailGroup[] {
-  const ordered = [...categories].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
-  const groups: WorkflowRailGroup[] = [];
-  for (const category of ordered) {
-    const entries = workflows.filter((workflow) => workflow.categoryId === category.id);
-    if (entries.length > 0) groups.push({ label: category.label, entries });
-  }
-  const known = new Set(categories.map((category) => category.id));
-  const orphans = workflows.filter((workflow) => !known.has(workflow.categoryId));
-  if (orphans.length > 0) groups.push({ label: "Other", entries: orphans });
-  return groups;
+  return groupWorkflowsByCategory(workflows);
 }
 
 function WorkflowEntryList({
   workflows,
-  categories,
   counts,
   activeWorkflowId,
   onActive,
 }: {
   workflows: readonly WorkflowBootstrapPrimitive[];
-  categories: readonly WorkflowCategoryPrimitive[];
   counts: readonly WorkflowCountWire[];
   activeWorkflowId: string;
   onActive: (workflowId: string) => void;
 }) {
-  const groups = useMemo(() => buildWorkflowRailGroups(workflows, categories), [workflows, categories]);
+  const groups = useMemo(() => buildWorkflowRailGroups(workflows), [workflows]);
 
   const entry = (workflow: WorkflowBootstrapPrimitive): ReactElement => {
     const id = String(workflow.id);
     const total = workflowCount(counts, id);
+    const active = activeCount(workflowStatusCounts(counts, id));
     const on = id === activeWorkflowId;
-    const unavailable = workflow.availability.state === "unavailable";
     return (
       <button
         type="button"
         aria-current={on ? "page" : undefined}
-        disabled={unavailable}
-        title={workflow.availability.state === "unavailable" ? workflow.availability.reason : undefined}
         onClick={() => onActive(id)}
         className={cn(
           "group flex w-full cursor-pointer items-stretch text-left",
@@ -365,7 +382,6 @@ function WorkflowEntryList({
           dsRadius.md,
           dsFocus,
           dsMotion.base,
-          "disabled:cursor-default",
           on ? "bg-[var(--ds-surface-selected)]" : "hover:bg-[var(--ds-surface-3)]",
         )}
       >
@@ -384,25 +400,37 @@ function WorkflowEntryList({
             className={cn(
               dsText.ui,
               "truncate",
-              unavailable
-                ? "font-medium text-[color:var(--ds-fg-faint)]"
-                : on
-                  ? "font-semibold text-[color:var(--ds-fg)]"
-                  : "font-medium text-[color:var(--ds-fg-secondary)]",
+              on ? "font-semibold text-[color:var(--ds-fg)]" : "font-medium text-[color:var(--ds-fg-secondary)]",
             )}
           >
             {workflow.label}
           </span>
         </span>
-        {/* The workflow's served row total for the selected day — the SAME
-            number the Status Bar and the queue read, off the same projection.
-            At zero it DIMS rather than disappearing so the eye does not have to
-            re-scan an idle panel. */}
+        {/* `active │ all`, PER WORKFLOW, and it is the ONLY badge on the row —
+            both numbers off the SAME served projection the Status Bar and the
+            queue read. `active` is queued + running, so the column says what
+            the panel is DOING rather than what it has not begun: `queued`
+            alone empties the moment a run starts, and every panel wearing a
+            run then read `0`.
+
+            Active (left) wears the same amber as the launcher badge, and at
+            zero each arm DIMS rather than disappearing so the eye does not
+            have to re-scan an idle panel. */}
         <span
-          title={`${workflow.label}: ${plural(total, "row")} today`}
-          aria-label={`${total} in ${workflow.label}`}
-          className={cn(dsText.meta, dsText.nums, "flex shrink-0 items-center justify-end")}
+          title={`${workflow.label}: ${active} active (queued or running) of ${plural(total, "row")} today`}
+          aria-label={`${active} active of ${total} in ${workflow.label}`}
+          className={cn(dsText.meta, dsText.nums, "flex shrink-0 items-center justify-end gap-[var(--ds-space-hair)]")}
         >
+          <span
+            className={
+              active === 0
+                ? "text-[color:var(--ds-fg-faint)]"
+                : "font-semibold text-[color:var(--ds-status-waiting-fg)]"
+            }
+          >
+            {active}
+          </span>
+          <span aria-hidden className="text-[color:var(--ds-fg-faint)]">│</span>
           <span
             className={
               total === 0
@@ -421,15 +449,19 @@ function WorkflowEntryList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto py-[var(--ds-space-cozy)]">
-      {/* The column is named ONCE, as a head, not per row: a bare number on
-          every entry is the anonymous-badge problem the launcher had. */}
+      {/* The pair is named ONCE, as a column head, not per row: two bare
+          numbers beside a rule is exactly the anonymous-badge problem the
+          launcher had, and a caption on every entry would be the same word
+          fourteen times. */}
       <div
         className={cn(
           dsText.caps,
-          "flex items-center justify-end px-[var(--ds-space-cozy)] pb-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]",
+          "flex items-center justify-end gap-[var(--ds-space-hair)] px-[var(--ds-space-cozy)] pb-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]",
         )}
       >
-        <span>rows</span>
+        <span>active</span>
+        <span aria-hidden className="text-[color:var(--ds-fg-faint)]">│</span>
+        <span>all</span>
       </div>
       {groups.map((group) => (
         <div key={group.label} className="pb-[var(--ds-space-cozy)]">
@@ -468,7 +500,6 @@ function WorkflowPanelHeader({ mode, onMode }: PanelModeProps) {
 
 interface WorkflowPanelProps extends PanelModeProps {
   workflows: readonly WorkflowBootstrapPrimitive[];
-  categories: readonly WorkflowCategoryPrimitive[];
   counts: readonly WorkflowCountWire[];
   activeWorkflowId: string;
   onActive: (workflowId: string) => void;

@@ -775,9 +775,23 @@ export class RunQueueProjection {
     const countable = surfaces.filter((surface) => surface.surfaceKind !== "member");
     const workflowCounts = new Map<string, number>();
     const statusCounts = new Map<string, number>();
+    /**
+     * The status dimension of the SAME fold — one increment per surface, in
+     * this loop, beside the two totals it must agree with. The Workflow
+     * Panel's `active │ all` column and the Status Bar's workflow-scoped pills
+     * (R4-1) read it; a client-side fold over `queueSurfaces` would be the
+     * second count path D81 exists to delete.
+     */
+    const workflowStatusCounts = new Map<string, Map<string, number>>();
     for (const surface of countable) {
       workflowCounts.set(surface.workflowId, (workflowCounts.get(surface.workflowId) ?? 0) + 1);
       statusCounts.set(surface.status, (statusCounts.get(surface.status) ?? 0) + 1);
+      let byStatus = workflowStatusCounts.get(surface.workflowId);
+      if (byStatus === undefined) {
+        byStatus = new Map<string, number>();
+        workflowStatusCounts.set(surface.workflowId, byStatus);
+      }
+      byStatus.set(surface.status, (byStatus.get(surface.status) ?? 0) + 1);
     }
 
     const workerCards = [...this.#workers.values()]
@@ -806,7 +820,13 @@ export class RunQueueProjection {
         .map(([value, count]) => ({ day: value, count })),
       workflowCounts: [...workflowCounts.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([workflowId, count]) => ({ workflowId, count })),
+        .map(([workflowId, count]) => ({
+          workflowId,
+          count,
+          statusCounts: [...(workflowStatusCounts.get(workflowId) ?? new Map<string, number>()).entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([statusKey, statusTotal]) => ({ status: statusKey, count: statusTotal })),
+        })),
       statusCounts: [...statusCounts.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([statusKey, count]) => ({ status: statusKey, count })),

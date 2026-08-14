@@ -165,8 +165,42 @@ export const QueueSurfaceWireSchema = z.union([
 ]);
 
 export const DayCountWireSchema = z.strictObject({ day: LocalDateSchema, count: z.number().int().nonnegative() });
-export const WorkflowCountWireSchema = z.strictObject({ workflowId: WorkflowIdSchema, count: z.number().int().nonnegative() });
 export const StatusCountWireSchema = z.strictObject({ status: QueueStatusSchema, count: z.number().int().nonnegative() });
+/**
+ * One workflow's day, counted ONCE (D81) and served with its status dimension.
+ *
+ * `count` alone could not answer the two questions the shell asks of it: the
+ * Workflow Panel's `active │ all` column needs queued + running for THIS
+ * workflow, and the Status Bar's pills are scoped to the workflow the queue
+ * below them is showing (R4-1) — so a day-wide `statusCounts` fold made
+ * `Failed 3` sit above a queue with no failures. Both are the same fact at
+ * different scopes, and both now come off this one array rather than a second
+ * client-side fold over `queueSurfaces`.
+ *
+ * `statusCounts` is sparse for the same documented reason the day-wide array
+ * is: a status with no row simply has no entry, and absence IS zero. The two
+ * refinements below are what make the shape self-checking — a status may
+ * appear once, and the per-status counts must sum to `count`, because every
+ * countable surface lands in exactly one status bucket.
+ */
+export const WorkflowCountWireSchema = z.strictObject({
+  workflowId: WorkflowIdSchema,
+  count: z.number().int().nonnegative(),
+  statusCounts: z.array(StatusCountWireSchema),
+}).superRefine((entry, context) => {
+  const statuses = entry.statusCounts.map(({ status }) => status);
+  if (new Set(statuses).size !== statuses.length) {
+    context.addIssue({ code: "custom", path: ["statusCounts"], message: "workflow statusCounts identities must be unique" });
+  }
+  const summed = entry.statusCounts.reduce((sum, { count }) => sum + count, 0);
+  if (summed !== entry.count) {
+    context.addIssue({
+      code: "custom",
+      path: ["statusCounts"],
+      message: `workflow statusCounts must sum to count (${summed} !== ${entry.count})`,
+    });
+  }
+});
 export const WorkerCardWireSchema = z.strictObject({
   workerId: WorkerIdSchema,
   system: BrowserSystemIdSchema,

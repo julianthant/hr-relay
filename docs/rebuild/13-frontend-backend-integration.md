@@ -245,7 +245,6 @@ interface FrontendBootstrapWire {
   serverClock: { now: IsoInstant; zone: "America/Los_Angeles" };
   storage: StorageHealthSummaryWire;
   workflows: WorkflowClientProjection[];
-  workflowCategories: WorkflowCategoryProjection[];
   systemInstances: SystemInstanceProjection[];
   settingsSections: SettingsSectionProjection[];
   featureAvailability: FeatureAvailabilityWire[];
@@ -268,6 +267,18 @@ The workflow projection includes label/icon/category/code/version, panel kind, g
 systems, start methods/options/presets, dry-run support or explicit absence reason, input subject,
 status/verdict vocabulary, detail capabilities, action policy summary, and source availability.
 The client derives navigation from this list; no parallel workflow registry survives.
+
+**Category GROUPING is served raw and displayed by the client (R2 D17/D18).** The projection carries
+each workflow's own `category` id and nothing else about grouping — there is no `workflowCategories`
+projection, because the one this wire used to carry invented both of its fields (`label` was
+`id.replace(/-/g, " ")`, `order` was the registry's first-seen index), so the Workflow Panel's
+headings read `separation` in whatever order a module happened to import. Doc 03 §Shell is the
+owner and it is explicit: *the frontend hardcodes only the display order, membership is the
+descriptor's, an unlisted category appends, and an empty category drops.* The heading text and the
+order therefore live in `src/dashboard/surfaces/workflow-category.ts`, typed
+`Record<WorkflowCategory, …>` so a new category in the descriptor vocabulary fails `tsc` rather than
+rendering a hole, and BOTH the Workflow Panel's rail and the Run Modal's picker call its one
+`groupWorkflowsByCategory` — two surfaces that once held hand-copied copies of the same rule.
 
 ### 3.2 `DashboardDayWire`
 
@@ -292,6 +303,15 @@ interface DashboardDayWire {
 may join those ids for layout but may not reinterpret containment or status. Counts and rows are
 folded from the same projection transaction/generation. The calendar, Workflow Panel, Status Bar,
 queue header, and Activity query can therefore never disagree because of different source paths.
+
+**`WorkflowCountWire` carries its own status dimension** — `{ workflowId, count, statusCounts[] }`,
+the per-status counts summing to `count` by refinement (R2 D5–D12, R4-1). One `count` per workflow
+could not answer the two questions the shell asks of it: the Workflow Panel's `active │ all` column
+needs queued + running for THAT workflow, and the Status Bar's pills are scoped to the workflow the
+queue below them is showing — so a day-wide fold put `Failed 3` above a queue with no failures. Both
+are the same fact at two scopes and both come off this one array, filled in the projector's single
+countable loop beside the day-wide totals it must agree with (D81). A client-side fold over
+`queueSurfaces` is the second count path that rule exists to delete, and remains forbidden.
 
 The approved queue contract must include:
 

@@ -304,7 +304,14 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
     { day: "2026-08-02", count: 9 },
     { day: FIXTURE_DAY, count: TOP_LEVEL_COUNT },
   ],
-  workflowCounts: [{ workflowId: WORKFLOW_ID, count: countableSurfaces(rawSurfaces).length }],
+  // One workflow in the fixture, so its per-workflow status dimension IS the
+  // day's — which is exactly the agreement the real projection's single fold
+  // guarantees (R2 D5-D12 widened this array; R4-1 reads the same entries).
+  workflowCounts: [{
+    workflowId: WORKFLOW_ID,
+    count: countableSurfaces(rawSurfaces).length,
+    statusCounts: statusCountsOf(countableSurfaces(rawSurfaces) as { status: string }[]),
+  }],
   statusCounts: statusCountsOf(countableSurfaces(rawSurfaces) as { status: string }[]),
   queueSurfaces: rawSurfaces,
   workerCards: [
@@ -908,12 +915,12 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
   storage: { authority: "healthy", backup: "current", checkedAt: at(0) },
   workflows: [{
     id: WORKFLOW_ID,
+    code: personLookupDescriptor.code,
     label: personLookupDescriptor.label,
     categoryId: personLookupDescriptor.category,
     descriptorFingerprint: CONTRACT_FINGERPRINT,
     availability: { state: "available" },
   }],
-  workflowCategories: [{ id: personLookupDescriptor.category, label: "Search", order: 0 }],
   systemInstances: [
     { system: "ucpath", prod: "available", test: { state: "available" } },
     { system: "crm", prod: "available", test: { state: "unavailable", code: "not-configured", reason: "no CRM test instance is configured" } },

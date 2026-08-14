@@ -51,17 +51,30 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
   checkedAt: IsoInstantSchema,
 });
 
+/**
+ * `code` is the descriptor's OWN 2-char code — the prefix of every one of its
+ * trace ids, guarded `/^[a-z0-9]{2}$/` at `defineWorkflow` (`base/workflow.ts`).
+ * The Workflow Panel's launcher and the Run Modal's picker both draw it, so the
+ * control is never an anonymous glyph; deriving two letters from the label on
+ * the client would put a value the server never issued beside the identity an
+ * operator selects a real HR workflow by.
+ *
+ * `categoryId` is the RAW category the descriptor declares, and it is all the
+ * server contributes to grouping. The heading text and the display ORDER are
+ * the frontend's (doc 03 §Shell: "the frontend hardcodes only the display
+ * order, membership is the descriptor's, an unlisted category appends, and an
+ * empty category drops") — this wire used to also carry a `workflowCategories`
+ * projection whose label was `id.replace(/-/g, " ")` and whose order was
+ * first-seen, i.e. two display decisions the server invented and no operator
+ * chose. Both moved to `dashboard/surfaces/workflow-category.ts`.
+ */
 export const WorkflowBootstrapPrimitiveSchema = z.strictObject({
   id: WorkflowIdSchema,
+  code: z.string().regex(/^[a-z0-9]{2}$/),
   label: z.string().min(1),
   categoryId: z.string().regex(/^[a-z][a-z0-9-]*$/),
   descriptorFingerprint: FingerprintSchema,
   availability: CapabilityAvailabilitySchema,
-});
-export const WorkflowCategoryPrimitiveSchema = z.strictObject({
-  id: z.string().regex(/^[a-z][a-z0-9-]*$/),
-  label: z.string().min(1),
-  order: z.number().int().nonnegative(),
 });
 export const SystemInstancePrimitiveSchema = z.strictObject({
   system: BrowserSystemIdSchema,
@@ -105,7 +118,6 @@ export const PreflightCheckWireSchema = z.strictObject({
 
 interface BootstrapParts {
   readonly workflow: z.ZodType;
-  readonly workflowCategory: z.ZodType;
   readonly systemInstance: z.ZodType;
   readonly settingsSection: z.ZodType;
 }
@@ -122,7 +134,6 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
     serverClock: ServerClockWireSchema,
     storage: StorageHealthSummaryWireSchema,
     workflows: z.array(parts.workflow),
-    workflowCategories: z.array(parts.workflowCategory),
     systemInstances: z.array(parts.systemInstance),
     settingsSections: z.array(parts.settingsSection),
     featureAvailability: z.array(FeatureAvailabilityWireSchema),
@@ -134,17 +145,14 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
 
 export const FrontendBootstrapWireSchema = createFrontendBootstrapWireSchema({
   workflow: WorkflowBootstrapPrimitiveSchema,
-  workflowCategory: WorkflowCategoryPrimitiveSchema,
   systemInstance: SystemInstancePrimitiveSchema,
   settingsSection: SettingsSectionPrimitiveSchema,
 }).superRefine((bootstrap, context) => {
   const workflows = z.array(WorkflowBootstrapPrimitiveSchema).parse(bootstrap.workflows);
-  const workflowCategories = z.array(WorkflowCategoryPrimitiveSchema).parse(bootstrap.workflowCategories);
   const systemInstances = z.array(SystemInstancePrimitiveSchema).parse(bootstrap.systemInstances);
   const settingsSections = z.array(SettingsSectionPrimitiveSchema).parse(bootstrap.settingsSections);
   const identities = [
     ["workflows", workflows.map(({ id }) => id)],
-    ["workflowCategories", workflowCategories.map(({ id }) => id)],
     ["systemInstances", systemInstances.map(({ system }) => system)],
     ["settingsSections", settingsSections.map(({ id }) => id)],
     ["featureAvailability", bootstrap.featureAvailability.map(({ feature }) => feature)],
