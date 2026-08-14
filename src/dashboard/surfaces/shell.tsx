@@ -119,6 +119,24 @@ export function activeCount(counts: readonly StatusCountWire[]): number {
   return statusCount(counts, "queued") + statusCount(counts, "running");
 }
 
+/**
+ * ALL — every row a served per-status array accounts for.
+ *
+ * The demo's `All` segment reads `counts.all` off the SAME record its eight
+ * pills read (`DemoShell.tsx:1348` over `countRows(scopedRows)`), so the
+ * composite is closed under addition with the primitives beside it by
+ * construction. This is the served-count equivalent: it folds the ONE array the
+ * pills render rather than a second aggregation, which is what R4-2 found —
+ * `All` used to come from `monthCounts` (a different scope with a different
+ * member-exclusion predicate) and agreed with the pills only by coincidence.
+ *
+ * The projection already refines that a workflow entry's per-status counts sum
+ * to its `count`, so this fold cannot disagree with the server's own total.
+ */
+export function totalCount(counts: readonly StatusCountWire[]): number {
+  return counts.reduce((total, entry) => total + entry.count, 0);
+}
+
 /* ── the toolbar control shape ───────────────────────────────────────────── */
 
 /**
@@ -694,13 +712,18 @@ export function needsYouCount(counts: readonly StatusCountWire[]): number {
  */
 export function StatusFilters({
   statusCounts,
-  dayCount,
   active,
   onSelect,
 }: {
+  /**
+   * The ACTIVE workflow's served per-status counts — the same scope as the
+   * queue below the bar (R4-1). The band used to be handed the day's counts
+   * folded across every workflow, so `Failed 3` could sit above a queue with
+   * zero failures and the ported title "Every row in this view" was false.
+   * `All` folds this same array (R4-2), so every number in the group answers
+   * one question about one scope.
+   */
   statusCounts: readonly StatusCountWire[];
-  /** the selected day's served row total — the `All` scope's number */
-  dayCount: number;
   active: StatusBucket;
   onSelect: (bucket: StatusBucket) => void;
 }) {
@@ -809,7 +832,15 @@ export function StatusFilters({
       className="flex min-w-0 items-center gap-[var(--ds-space-tight)] overflow-x-auto"
     >
       <div className="inline-flex h-[var(--ds-h-toolbar)] shrink-0" role="group" aria-label="Scope the queue">
-        {scope("all", "All", LayoutDashboard, "text-[color:var(--ds-fg-muted)]", "Every row in this view", dayCount, "start")}
+        {scope(
+          "all",
+          "All",
+          LayoutDashboard,
+          "text-[color:var(--ds-fg-muted)]",
+          "Every row in this view",
+          totalCount(statusCounts),
+          "start",
+        )}
         {scope(
           "needsYou",
           "Needs you",

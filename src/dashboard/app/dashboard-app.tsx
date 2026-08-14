@@ -47,6 +47,7 @@ import {
   activeCount,
   parseWorkflows,
   useWorkflowPanelMode,
+  workflowStatusCounts,
   type StatusBucket,
 } from "../surfaces/shell.js";
 import { StorageBanner } from "../surfaces/settings.js";
@@ -314,6 +315,23 @@ function LoadedApp({
    * scopes and cannot disagree (D81, R2 D3/D4).
    */
   const dayActive = activeCount(dayWire?.statusCounts ?? []);
+
+  /**
+   * THE STATUS BAND'S OWN SCOPE (R4-1) — the ACTIVE workflow's served
+   * per-status counts, read straight out of R2's `workflowCounts` array.
+   *
+   * The band was handed `dayWire.statusCounts`, which the projection folds
+   * across every workflow in the day, while the queue below it renders ONE
+   * workflow — so `Failed 3` could sit above a queue with no failures. The fix
+   * is a re-point, not a client-side fold: `shell.tsx:1-17` refuses counting
+   * rows here by name, and D81's one count path is the reason. `dayCount` above
+   * is deliberately left alone — the panel launcher is a DIFFERENT quantity
+   * (day-wide across workflows), exactly as the demo has it.
+   */
+  const scopedStatusCounts = useMemo(
+    () => workflowStatusCounts(dayWire?.workflowCounts ?? [], activeWorkflowId),
+    [dayWire, activeWorkflowId],
+  );
 
   /**
    * The first consumer of `featureAvailability` (2i-G, D178). A feature the
@@ -706,12 +724,7 @@ function LoadedApp({
               </>
             }
             filters={
-              <StatusFilters
-                statusCounts={dayWire?.statusCounts ?? []}
-                dayCount={dayCount}
-                active={filter}
-                onSelect={onFilter}
-              />
+              <StatusFilters statusCounts={scopedStatusCounts} active={filter} onSelect={onFilter} />
             }
           />
 
