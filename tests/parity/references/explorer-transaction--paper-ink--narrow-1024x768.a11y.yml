@@ -34,6 +34,7 @@
       - button "separations-identity-check"
       - button "separations-ucpath-termination"
       - button "separations-kuali-finalization"
+      - button "separations"
     - text: code sk category timekeeping version 1 shape single enqueue reject-active subject eid system new-kronos edit data none review no run surface none intake none capture none descriptor src/workflows/separations-kronos-timecard/descriptor.ts module src/workflows/separations-kronos-timecard/module.ts contract 485774c4222dresult 07a40fbf2d2e37 files fingerprinted5 scenarios
     - navigation "Graph structure":
       - text: Graph · 2 nodes

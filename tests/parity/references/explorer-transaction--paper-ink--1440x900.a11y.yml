@@ -34,7 +34,8 @@
       - button "separations-identity-check" [pressed]
       - button "separations-ucpath-termination"
       - button "separations-kuali-finalization"
-    - text: code si category separation version 1 shape single enqueue reject-active subject eid system ucpath edit data none review no run surface none intake none capture none descriptor src/workflows/separations-identity-check/descriptor.ts module src/workflows/separations-identity-check/module.ts contract 96b114e04610result 9800a5c657bb38 files fingerprinted15 scenarios
+      - button "separations"
+    - text: code si category separation version 1 shape single enqueue reject-active subject eid system ucpath edit data none review no run surface none intake none capture none descriptor src/workflows/separations-identity-check/descriptor.ts module src/workflows/separations-identity-check/module.ts contract 2f4a394e433aresult 9800a5c657bb39 files fingerprinted15 scenarios
     - navigation "Graph structure":
       - text: Graph · 5 nodes
       - list:
