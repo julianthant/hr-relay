@@ -473,7 +473,11 @@ describe("separations-kuali-finalization scenarios", () => {
     ));
 
     assert.equal(preview.kind, "transaction-dry-run-preview");
-    assert.equal(preview.subject.state, "match");
+    assert.equal(preview.probe.state, "absent");
+    assert.equal(
+      preview.outcome.state === "would-prepare" ? preview.outcome.subject.state : undefined,
+      "match",
+    );
     // The staging really happened — this is a preview of a real preparation.
     assert.ok(h.world.events.includes(`stage-finalization:${FINALIZATION_FIELDS.transactionNumber}`));
     assert.equal(h.world.events.some((event) => event.startsWith("commit:")), false, "zero clicks");

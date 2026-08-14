@@ -236,6 +236,7 @@ export interface ProductionWriteSequencer extends WriteSequencer {
  * module stays its address for every existing caller.
  */
 import {
+  DryRunProbeObservationSchema,
   TransactionDryRunPreviewSchema,
   type TransactionDryRunPreview,
 } from "../domain/write-safety-primitives.js";
@@ -1706,15 +1707,146 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     };
   }
 
+  /**
+   * D215 — the preview runs beat ① FIRST, because the real path does.
+   *
+   * `executeDryRun` used to evaluate `prepare` with no probe, so it rehearsed a
+   * path the real run would never take: separations' `clear-pending` sweep
+   * refused in prepare for the ordinary subject — one with no pending
+   * transaction — while the real run's probe settles that subject
+   * `already-present` before a page is ever staged. Chunk 6b hit it on the FIRST
+   * real subject; a rehearsal that fails where the performance succeeds is a
+   * false rehearsal.
+   *
+   * Everything here is read-only by construction: the durable lookup is a SELECT,
+   * the probe is the same read-lease probe the real path runs, and the
+   * `already-present` arm REPORTS the settlement the real path would reach
+   * without calling `settleAlreadyPresent` — no checkpoint, no observed-present
+   * intent row, no run transition. Every arm the real path refuses on
+   * (`attempting`, `parked`, ambiguous, unknown, foreign absent evidence, and a
+   * present read over a settled-absent durable row) refuses here too, with the
+   * same reason: a preview that answered where the real run stops is the same
+   * defect from the other side.
+   */
   async function executeDryRun(context: WriteSequencerContext): Promise<TransactionDryRunPreview> {
     const node = context.node;
     const commitContract = node.commit.uses;
     const prepareContract = node.prepare.uses;
+    const envelope = context.run.envelope;
     if (node.dryRun !== "stop-after-prepare") {
       throw new TaskError(commitContract.id, "capability-unavailable",
         `transaction node "${node.id}" declares dryRun:"${node.dryRun}"; there is no preview arm to run`);
     }
     const commitInput: unknown = commitContract.input.parse(node.commit.bind(context.scope));
+    const completion = commitContract.writeSafety.completion;
+    const proofSchemaHash = deriveSchemaHash(completion.proofSchema, "output");
+    const outputSchemaHash = deriveSchemaHash(commitContract.output, "output");
+    const system = systemOf(commitContract.id);
+    const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
+    const key = IdempotencyKeySchema.parse(keyRaw);
+    const keyDigest = deriveIdempotencyKeyDigest(system, key);
+
+    /** The settlement the real path would reuse — DERIVED, never fabricated. */
+    const presentFromProof = (proofRaw: unknown): Readonly<{ proof: JsonValue; output: JsonValue }> => {
+      const proof = completion.proofSchema.parse(proofRaw);
+      const outputRaw: unknown = Reflect.apply(completion.outputFromProof, undefined, [proof]);
+      return Object.freeze({
+        proof: JsonValueSchema.parse(proof),
+        output: JsonValueSchema.parse(commitContract.output.parse(outputRaw)),
+      });
+    };
+
+    /* beat ① — the durable permanent-key lookup, before any browser */
+    const durable = deps.authority.authority.writeIntents.findByPermanentKey(system, key);
+    if (durable !== undefined) {
+      if (durable.status === "attempting") {
+        throw new Error(
+          `preview of "${node.id}" found key ${key} mid-submit under run ${durable.runId} attempt `
+          + `${String(durable.runAttempt)}; a preview may not run recovery, and reporting a settlement `
+          + "it did not observe would be the fabrication D144 refuses",
+        );
+      }
+      if (durable.status === "parked") {
+        throw new Error(
+          `preview of "${node.id}" found key ${key} parked (${durable.parkedCode}: ${durable.message}); `
+          + "only the typed operator resolutions may release it, so there is nothing to rehearse",
+        );
+      }
+      if (durable.status === "committed" || durable.status === "observed-present") {
+        const stored = durable.status === "committed" ? durable.completionProof : durable.observedProof;
+        if (stored.schemaHash !== proofSchemaHash) {
+          throw new Error(
+            `preview of "${node.id}": write intent ${durable.writeIntentId} retains proof bound to schema `
+            + `${stored.schemaHash.slice(0, 12)}…, and ${commitContract.id} currently requires `
+            + `${proofSchemaHash.slice(0, 12)}…; refusing to rehearse a drifted proof`,
+          );
+        }
+        const settled = presentFromProof(stored.value);
+        return TransactionDryRunPreviewSchema.parse({
+          kind: "transaction-dry-run-preview",
+          nodeId: String(node.id),
+          probe: {
+            state: "durable-intent",
+            status: durable.status,
+            proof: { schemaHash: proofSchemaHash, value: settled.proof },
+            output: { schemaHash: outputSchemaHash, value: settled.output },
+          },
+          outcome: { state: "already-present", proofSource: "durable-intent" },
+          observedAt: instant(),
+        });
+      }
+      // retryable — the real path re-fences after a fresh probe, so the preview
+      // goes on to that probe exactly as the real path does.
+    }
+
+    /* beat ① — the policy-controlled live probe, on its own read lease */
+    const mustProbe = node.probePolicy === "always"
+      || durable !== undefined
+      || envelope.attempt > 1;
+    let probe: z.input<typeof DryRunProbeObservationSchema>;
+    if (!mustProbe) {
+      probe = { state: "not-required", reason: "policy-retries-and-recovery-only" };
+    } else {
+      const verdict = await runLiveProbe(context, commitContract, commitInput);
+      if (verdict.state === "ambiguous" || verdict.state === "unknown") {
+        const detail = verdict.state === "ambiguous"
+          ? `found ${String(verdict.matches)} matches`
+          : `is indeterminate (${verdict.reason})`;
+        throw new Error(
+          `preview probe for ${commitContract.id} key ${key} ${detail}; the real run would refuse to `
+          + "fence or click here, so the preview refuses too rather than staging a page it could not use",
+        );
+      }
+      if (verdict.state === "present") {
+        if (durable !== undefined) {
+          throw new Error(
+            `preview probe found key ${key} present, but its permanent intent ${durable.writeIntentId} is `
+            + `${durable.status}; a settled-absent key that now reads present needs the operator, not a guess`,
+          );
+        }
+        const settled = presentFromProof(verdict.proof);
+        return TransactionDryRunPreviewSchema.parse({
+          kind: "transaction-dry-run-preview",
+          nodeId: String(node.id),
+          probe: {
+            state: "present",
+            proof: { schemaHash: proofSchemaHash, value: settled.proof },
+            output: { schemaHash: outputSchemaHash, value: settled.output },
+          },
+          outcome: { state: "already-present", proofSource: "live-probe" },
+          observedAt: instant(),
+        });
+      }
+      if (verdict.evidence.idempotencyKeyDigest !== keyDigest) {
+        throw new Error(
+          `preview probe absent evidence binds a different idempotency key digest than ${key}; `
+          + "refusing to treat foreign evidence as absence",
+        );
+      }
+      probe = { state: "absent", evidence: verdict.evidence };
+    }
+
+    /* the staged rehearsal — reached only when the real run would fence */
     const prepareTask = requireTask(prepareContract.id, "prepare");
     const commitTask = requireTask(commitContract.id, "commit");
     const need = commitTask.impl.sessions[0];
@@ -1733,7 +1865,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       const stagedPageState = stagedPageStateOf(prepareOutput, prepareContract);
       const observedAt = instant();
       const subjectSpec = commitContract.subject;
-      let subject: z.input<typeof TransactionDryRunPreviewSchema>["subject"];
+      type PreviewOutcome = z.input<typeof TransactionDryRunPreviewSchema>["outcome"];
+      let subject: Extract<PreviewOutcome, { state: "would-prepare" }>["subject"];
       if (subjectSpec.kind === "none") {
         subject = { state: "unscoped", reviewedReasonId: subjectSpec.reviewedReasonId ?? "unscoped" };
       } else {
@@ -1761,11 +1894,15 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       return TransactionDryRunPreviewSchema.parse({
         kind: "transaction-dry-run-preview",
         nodeId: String(node.id),
-        prepare: {
-          schemaHash: deriveSchemaHash(prepareContract.output, "output"),
-          value: JsonValueSchema.parse(prepareOutput),
+        probe,
+        outcome: {
+          state: "would-prepare",
+          prepare: {
+            schemaHash: deriveSchemaHash(prepareContract.output, "output"),
+            value: JsonValueSchema.parse(prepareOutput),
+          },
+          subject,
         },
-        subject,
         observedAt,
       });
     });

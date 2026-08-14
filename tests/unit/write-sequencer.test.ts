@@ -702,13 +702,19 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
     assert.equal(intentByKey(h.database), undefined);
   });
 
-  it("executeDryRun stages, observes the subject, and creates nothing durable", async () => {
+  it("executeDryRun probes, stages, observes the subject, and creates nothing durable", async () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
+    // D215 — the real path's first act is beat ①'s probe, so the preview's is too.
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     const preview = await h.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true));
     assert.equal(preview.kind, "transaction-dry-run-preview");
-    assert.equal(preview.subject.state, "match");
-    assert.deepEqual(h.world.events, ["prepare", `subject-read:${WRITE_FIXTURE_OBSERVATION}`]);
+    assert.equal(preview.probe.state, "absent");
+    assert.equal(
+      preview.outcome.state === "would-prepare" ? preview.outcome.subject.state : undefined,
+      "match",
+    );
+    assert.deepEqual(h.world.events, ["probe", "prepare", `subject-read:${WRITE_FIXTURE_OBSERVATION}`]);
     assert.equal(intentByKey(h.database), undefined, "zero intents");
     assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")), "zero clicks");
     const minted = h.ids.minted();

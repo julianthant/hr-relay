@@ -81,8 +81,13 @@ describe("Kuali dry run — a staged preview with zero write intent", () => {
     const { run, claim } = kualiClaimRunning(h.database, h.clock, kualiQueuedRun({ dryRun: true }));
     const preview = await h.bound(() => h.sequencer.executeDryRun(kualiContext(run, claim, true)));
 
-    assert.equal(preview.subject.state, "match");
-    assert.equal(preview.prepare.value !== null && typeof preview.prepare.value === "object", true);
+    assert.equal(preview.outcome.state, "would-prepare");
+    if (preview.outcome.state !== "would-prepare") return;
+    assert.equal(preview.outcome.subject.state, "match");
+    assert.equal(
+      preview.outcome.prepare.value !== null && typeof preview.outcome.prepare.value === "object",
+      true,
+    );
     assertNothingHappened(h);
     assert.equal(h.world.lastCapability, undefined, "no mutation capability was minted");
     assert.equal(
@@ -92,15 +97,32 @@ describe("Kuali dry run — a staged preview with zero write intent", () => {
     );
   });
 
-  it("never runs the idempotency probe: a preview asks nothing of the permanent key", async () => {
+  /**
+   * D215 — this test used to assert the DEFECT. A preview that skipped beat ①
+   * rehearsed a path the real run never takes: the probe is the real path's
+   * first act and can settle the node `already-present` before anything is
+   * staged, which is exactly the ordinary separations subject. The probe is
+   * read-only by construction, so running it costs a preview nothing it was
+   * entitled to keep.
+   *
+   * Kuali's probe and its post-click verifier are separate contracts that happen
+   * to read the same field, so they are told apart here by POSITION and COUNT:
+   * exactly one field read, on its own lease, BEFORE the document is opened for
+   * staging. A second one would be a verifier, and a preview never clicks.
+   */
+  it("runs beat ①'s probe FIRST and only then stages, and never verifies a landing", async () => {
     const h = harness();
     const { run, claim } = kualiClaimRunning(h.database, h.clock, kualiQueuedRun({ dryRun: true }));
-    await h.bound(() => h.sequencer.executeDryRun(kualiContext(run, claim, true)));
-    assert.equal(
-      h.world.events.some((event) => event.startsWith("read-back:")),
-      false,
-      "a dry run composes beat ② only",
-    );
+    const preview = await h.bound(() => h.sequencer.executeDryRun(kualiContext(run, claim, true)));
+    assert.equal(preview.probe.state, "absent");
+    const reads = h.world.events.filter((event) => event.startsWith("read-back:"));
+    assert.equal(reads.length, 1, h.world.events.join(","));
+    const probeIndex = h.world.events.findIndex((event) => event.startsWith("read-back:"));
+    const openIndex = h.world.events.findIndex((event) => event.startsWith("open:"));
+    const stageIndex = h.world.events.findIndex((event) => event.startsWith("stage:"));
+    assert.equal(probeIndex, 0, h.world.events.join(","));
+    assert.ok(openIndex > probeIndex && stageIndex > openIndex, h.world.events.join(","));
+    assertNothingHappened(h);
   });
 
   it("refuses a real transaction call that carries the dry-run flag rather than substituting a write", async () => {

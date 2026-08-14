@@ -240,7 +240,30 @@ function pendingTerminationRow(
 }
 
 describe("separations-ucpath-termination scenarios (chunk 4)", () => {
+  /**
+   * D215 — a preview runs beat ①'s probe first, so it reaches the arm the real
+   * run would. Both subject shapes are walked: the sweep stages only when there
+   * is something to sweep, and settles `already-present` for the ORDINARY
+   * subject — the state §9.9 recorded as a prepare-time refusal, which is what
+   * chunk 6b's live pass hit on its first real document.
+   */
   it("separations-ucpath-termination/dry-run-preview — both transactions stage a real preparation and persist NOTHING", async () => {
+    const withPending = harness({ rows: [pendingTerminationRow({ startDate: "05/01/2026" })] });
+    const pending = terminationClaimRunning(
+      withPending.database,
+      withPending.clock,
+      terminationQueuedRun({ dryRun: true }),
+      TERMINATION_SWEEP_NODE,
+    );
+    const sweepWithWork = await withPending.bound(() => withPending.sequencer.executeDryRun(
+      terminationContext(pending.run, pending.claim, TERMINATION_SWEEP_NODE, true),
+    ));
+    assert.equal(sweepWithWork.probe.state, "absent");
+    assert.equal(
+      sweepWithWork.outcome.state === "would-prepare" ? sweepWithWork.outcome.subject.state : undefined,
+      "match",
+    );
+
     const h = harness();
     const { run, claim } = terminationClaimRunning(
       h.database, h.clock, terminationQueuedRun({ dryRun: true }), TERMINATION_SWEEP_NODE,
@@ -255,23 +278,33 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
 
     assert.equal(sweep.kind, "transaction-dry-run-preview");
     assert.equal(filing.kind, "transaction-dry-run-preview");
-    assert.equal(sweep.subject.state, "match");
-    assert.equal(filing.subject.state, "match");
+    // Nothing pending: the sweep's probe settles first and the preview says so,
+    // instead of refusing on a grid that carries no subject to bind.
+    assert.equal(sweep.probe.state, "present");
+    assert.deepEqual(sweep.outcome, { state: "already-present", proofSource: "live-probe" });
+    assert.equal(filing.probe.state, "absent");
+    assert.equal(
+      filing.outcome.state === "would-prepare" ? filing.outcome.subject.state : undefined,
+      "match",
+    );
     // The whole three-page wizard WAS staged — this is a real preparation, not
     // a skipped one — and UCPath is untouched afterwards.
     assert.ok(h.world.events.includes(`stage:${TERMINATION_EFFECTIVE_DATE}`));
     assert.equal(h.world.events.some((event) => event.startsWith("commit:")), false, "zero clicks");
     assert.deepEqual(h.world.rows, [], "UCPath carries no new transaction");
     assert.equal(h.world.lastCapability, undefined, "no mutation capability was ever minted");
+    assert.equal(withPending.world.rows.length, 1, "the pending row was neither swept nor duplicated");
 
-    for (const [node, key] of [
-      [TERMINATION_SWEEP_NODE, SWEEP_IDEMPOTENCY_KEY],
-      [TERMINATION_FILE_NODE, TERMINATION_IDEMPOTENCY_KEY],
-    ] as const) {
-      const footprint = terminationDurableFootprint(h, node, key);
-      assert.equal(footprint.intent, undefined, `${node}: zero write intents`);
-      assert.equal(footprint.checkpoint, undefined, `${node}: zero transaction checkpoints`);
-      assert.deepEqual(footprint.outboxes, [], `${node}: zero ledger/span outboxes`);
+    for (const world of [withPending, h]) {
+      for (const [node, key] of [
+        [TERMINATION_SWEEP_NODE, SWEEP_IDEMPOTENCY_KEY],
+        [TERMINATION_FILE_NODE, TERMINATION_IDEMPOTENCY_KEY],
+      ] as const) {
+        const footprint = terminationDurableFootprint(world, node, key);
+        assert.equal(footprint.intent, undefined, `${node}: zero write intents`);
+        assert.equal(footprint.checkpoint, undefined, `${node}: zero transaction checkpoints`);
+        assert.deepEqual(footprint.outboxes, [], `${node}: zero ledger/span outboxes`);
+      }
     }
 
     assert.deepEqual(claimFor("separations-ucpath-termination/dry-run-preview"), [

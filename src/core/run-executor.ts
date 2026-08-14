@@ -1415,7 +1415,11 @@ export async function executeClaimedRun(
               t: "transaction.previewed",
               ...runSpanIdentity,
               node: node.id,
-              subject: preview.subject.state,
+              // D215 — a preview whose probe settled `already-present` staged
+              // nothing and observed no subject, and says so.
+              subject: preview.outcome.state === "would-prepare"
+                ? preview.outcome.subject.state
+                : "not-observed",
               externalCommit: "none",
             });
             return settlePreview(node, preview);

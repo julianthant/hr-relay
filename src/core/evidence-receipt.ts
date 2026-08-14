@@ -738,11 +738,22 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
       verdict: "unknown",
       evidence: [],
     });
+    /*
+     * D215 — the warning states what the preview actually REACHED. A preview
+     * whose beat-① probe settled `already-present` staged no page and read no
+     * subject, so it has no subject verdict to quote; saying so is the honest
+     * report, and it is also the more useful one — it tells the operator the
+     * real run would have written nothing here either.
+     */
+    const reached = preview.preview.outcome.state === "would-prepare"
+      ? `staged its page and observed subject ${preview.preview.outcome.subject.state}`
+      : `settled ${preview.preview.outcome.state} at its ${preview.preview.probe.state} probe, `
+        + "before anything was staged";
     warnings.push({
       id: entryId("warning", "dry-run-preview"),
       code: ErrorCodeSchema.parse("DRY_RUN_PREVIEW"),
       summary: `this run was a DRY RUN: transaction node "${preview.stoppedAtNodeId}" was previewed `
-        + `(subject ${preview.preview.subject.state}, observed ${preview.preview.observedAt}) and the run ended `
+        + `(${reached}, observed ${preview.preview.observedAt}) and the run ended `
         + "there. No external write was attempted — no write intent, no fence, no commit — so this "
         + "receipt states what WOULD have been written, never what was",
       loadBearing: true,

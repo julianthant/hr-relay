@@ -463,34 +463,85 @@ describe("separations scenarios — the composition", () => {
 
   /* ── the sequencer half: the real sequencer over a real authority DB ────── */
 
+  /**
+   * D215 — the preview runs beat ①'s probe FIRST, so a rehearsal reaches the
+   * same arm the performance would. Both subject shapes are walked here, because
+   * §9.9's recorded refusal was reachable ONLY in the shape the old preview
+   * could not tell apart:
+   *
+   * - a subject WITH a pending transaction: the sweep has work, so it stages;
+   * - the ORDINARY subject, with none: the sweep's probe settles
+   *   `already-present` before any page is staged, which is what the real run
+   *   does — and used to surface as a prepare-time refusal naming a subject the
+   *   grid does not carry. That is the exact state chunk 6b's live pass hit on
+   *   its first real document.
+   *
+   * Nothing durable moves in either shape, asserted against the authority rows.
+   */
   it("separations/dry-run-preview — all three transactions preview and NOTHING durable moves", async () => {
-    const h = harness({ rows: [inProgressTermination()] });
+    const withPending = harness({ rows: [inProgressTermination()] });
+    const pendingRun = compositionClaimRunning(
+      withPending.database, withPending.clock, compositionQueuedRun({ dryRun: true }), SWEEP_NODE,
+    );
+    const sweepWithWork = await withPending.bound(() => withPending.sequencer.executeDryRun(
+      compositionContext(pendingRun.run, pendingRun.claim, SWEEP_NODE, true),
+    ));
+    assert.equal(sweepWithWork.kind, "transaction-dry-run-preview");
+    assert.equal(sweepWithWork.probe.state, "absent", "there is a row to sweep, so the key reads absent");
+    assert.equal(sweepWithWork.outcome.state, "would-prepare");
+    assert.equal(
+      sweepWithWork.outcome.state === "would-prepare" ? sweepWithWork.outcome.subject.state : undefined,
+      "match",
+    );
+    assert.equal(withPending.ucpath.rows.length, 1, "the pending row was neither swept nor duplicated");
+
+    /* ── the ordinary subject: no pending transaction anywhere ────────────── */
+    const h = harness();
     const { run, claim } = compositionClaimRunning(
       h.database, h.clock, compositionQueuedRun({ dryRun: true }), SWEEP_NODE,
     );
 
-    for (const node of [SWEEP_NODE, TERMINATION_NODE, FINALIZE_NODE]) {
+    const sweep = await h.bound(() => h.sequencer.executeDryRun(
+      compositionContext(run, claim, SWEEP_NODE, true),
+    ));
+    // §9.9's state, previewed HONESTLY: the real run settles here too, so the
+    // preview reports the settlement rather than refusing on a page it should
+    // never have staged.
+    assert.equal(sweep.probe.state, "present");
+    assert.deepEqual(sweep.outcome, { state: "already-present", proofSource: "live-probe" });
+    assert.equal(
+      h.ucpath.events.some((event) => event.startsWith("stage:")),
+      false,
+      "nothing was staged: the probe settled first, exactly as the real run does",
+    );
+
+    for (const node of [TERMINATION_NODE, FINALIZE_NODE]) {
       const preview = await h.bound(() => h.sequencer.executeDryRun(
         compositionContext(run, claim, node, true),
       ));
       assert.equal(preview.kind, "transaction-dry-run-preview", node);
-      assert.equal(preview.subject.state, "match", node);
+      assert.equal(preview.probe.state, "absent", node);
+      assert.equal(
+        preview.outcome.state === "would-prepare" ? preview.outcome.subject.state : undefined,
+        "match",
+        node,
+      );
     }
 
-    assert.equal(h.ucpath.events.some((event) => event.startsWith("commit:")), false, "zero UCPath clicks");
-    assert.equal(h.kuali.events.some((event) => event.startsWith("commit:")), false, "zero Kuali clicks");
-    assert.equal(h.kuali.persistedFinalization, undefined, "the document is still unfinalized");
-    assert.equal(h.ucpath.rows.length, 1, "the pending row was neither swept nor duplicated");
-
-    for (const [system, node, key] of [
-      ["ucpath", SWEEP_NODE, SWEEP_IDEMPOTENCY_KEY],
-      ["ucpath", TERMINATION_NODE, TERMINATION_IDEMPOTENCY_KEY],
-      ["kuali", FINALIZE_NODE, FINALIZATION_IDEMPOTENCY_KEY],
-    ] as const) {
-      const footprint = compositionDurableFootprint(h, system, node, key);
-      assert.equal(footprint.intent, undefined, `${node}: zero write intents`);
-      assert.equal(footprint.checkpoint, undefined, `${node}: zero transaction checkpoints`);
-      assert.deepEqual(footprint.outboxes, [], `${node}: zero ledger/span outboxes`);
+    for (const world of [withPending, h]) {
+      assert.equal(world.ucpath.events.some((event) => event.startsWith("commit:")), false, "zero UCPath clicks");
+      assert.equal(world.kuali.events.some((event) => event.startsWith("commit:")), false, "zero Kuali clicks");
+      assert.equal(world.kuali.persistedFinalization, undefined, "the document is still unfinalized");
+      for (const [system, node, key] of [
+        ["ucpath", SWEEP_NODE, SWEEP_IDEMPOTENCY_KEY],
+        ["ucpath", TERMINATION_NODE, TERMINATION_IDEMPOTENCY_KEY],
+        ["kuali", FINALIZE_NODE, FINALIZATION_IDEMPOTENCY_KEY],
+      ] as const) {
+        const footprint = compositionDurableFootprint(world, system, node, key);
+        assert.equal(footprint.intent, undefined, `${node}: zero write intents`);
+        assert.equal(footprint.checkpoint, undefined, `${node}: zero transaction checkpoints`);
+        assert.deepEqual(footprint.outboxes, [], `${node}: zero ledger/span outboxes`);
+      }
     }
 
     assert.deepEqual(claimFor("separations/dry-run-preview"), [

@@ -141,13 +141,18 @@ export const ExecutorSpanEventSchema = z.union([
    * subject verdict the beat-③ observation actually reached and states the one
    * thing an operator must be able to read off the timeline — that no external
    * write was attempted.
+   *
+   * D215 — `not-observed` is the honest subject verdict when beat ①'s probe
+   * settled the node `already-present` before anything was staged: no page was
+   * prepared, so no subject was read, and reporting `match` for a comparison
+   * nobody made would be the fabrication the whole arm exists to prevent.
    */
   z.strictObject({
     t: z.literal("transaction.previewed"),
     ...BaseFields,
     ...RunSpanIdentityFields,
     node: NodeIdSchema,
-    subject: z.enum(["match", "mismatch", "unscoped"]),
+    subject: z.enum(["match", "mismatch", "unscoped", "not-observed"]),
     externalCommit: z.literal("none"),
   }),
   z.strictObject({

@@ -117,18 +117,69 @@ export const TransactionOutcomeSchema = z.discriminatedUnion("disposition", [
  * It lives here, beside `TransactionOutcome`, because the descriptor factory
  * hashes it when a previewed run is terminalized.
  */
+/**
+ * D215 — what beat ①'s READ-ONLY probes answered during a preview.
+ *
+ * The real path's first act is not `prepare`: it is the durable permanent-key
+ * lookup and then the policy-controlled live probe, and either can settle the
+ * node `already-present` before anything is staged. A preview that skipped them
+ * rehearsed a path the real run would never take.
+ *
+ * `not-required` is the honest name for the ONE case where the real path
+ * genuinely skips the live read (`probePolicy:"retries-and-recovery-only"`, no
+ * durable row, first attempt) — the durable lookup is never skipped, so this arm
+ * is about the live half only. Ambiguous, unknown, and a probe that throws have
+ * no arm on purpose: the real path REFUSES on each, so the preview refuses too.
+ */
+export const DryRunProbeObservationSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("durable-intent"),
+    status: z.enum(["committed", "observed-present"]),
+    proof: SchemaBoundCanonicalValueSchema,
+    output: SchemaBoundCanonicalValueSchema,
+  }),
+  z.strictObject({
+    state: z.literal("present"),
+    proof: SchemaBoundCanonicalValueSchema,
+    output: SchemaBoundCanonicalValueSchema,
+  }),
+  z.strictObject({ state: z.literal("absent"), evidence: AbsentEvidenceSchema }),
+  z.strictObject({
+    state: z.literal("not-required"),
+    reason: z.literal("policy-retries-and-recovery-only"),
+  }),
+]);
+export type DryRunProbeObservation = z.infer<typeof DryRunProbeObservationSchema>;
+
 export const TransactionDryRunPreviewSchema = z.strictObject({
   kind: z.literal("transaction-dry-run-preview"),
   nodeId: z.string().min(1),
-  prepare: z.strictObject({ schemaHash: FingerprintSchema, value: JsonValueSchema }),
-  subject: z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("match"), evidence: SubjectEvidenceSchema }),
+  /** Beat ①, run BEFORE any staging, exactly as the real path runs it (D215). */
+  probe: DryRunProbeObservationSchema,
+  /**
+   * What the preview reached. `prepare` and `subject` live INSIDE the
+   * `would-prepare` arm because a preview whose probe settled first staged
+   * nothing and observed no subject — making them unspellable there is the only
+   * shape in which "no staged page" cannot be mistaken for an empty one.
+   */
+  outcome: z.discriminatedUnion("state", [
     z.strictObject({
-      state: z.literal("mismatch"),
-      expected: SubjectEvidenceSchema,
-      observed: SubjectEvidenceSchema,
+      state: z.literal("would-prepare"),
+      prepare: z.strictObject({ schemaHash: FingerprintSchema, value: JsonValueSchema }),
+      subject: z.discriminatedUnion("state", [
+        z.strictObject({ state: z.literal("match"), evidence: SubjectEvidenceSchema }),
+        z.strictObject({
+          state: z.literal("mismatch"),
+          expected: SubjectEvidenceSchema,
+          observed: SubjectEvidenceSchema,
+        }),
+        z.strictObject({ state: z.literal("unscoped"), reviewedReasonId: z.string().min(1) }),
+      ]),
     }),
-    z.strictObject({ state: z.literal("unscoped"), reviewedReasonId: z.string().min(1) }),
+    z.strictObject({
+      state: z.literal("already-present"),
+      proofSource: z.enum(["live-probe", "durable-intent"]),
+    }),
   ]),
   observedAt: IsoInstantSchema,
 });

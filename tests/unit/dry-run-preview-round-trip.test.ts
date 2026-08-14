@@ -76,7 +76,7 @@ interface Harness {
   readonly clock: TestClock;
   readonly world: WriteFixtureWorld;
   readonly emitter: ReturnType<typeof recordingEmitter>;
-  readonly run: (options?: Readonly<{ dryRun?: boolean }>) => Promise<void>;
+  readonly run: (options?: Readonly<{ dryRun?: boolean; probe?: unknown }>) => Promise<void>;
 }
 
 function harness(): Harness {
@@ -97,12 +97,13 @@ function harness(): Harness {
   const log = recordingLogger().log;
   const emitter = recordingEmitter();
 
-  const run = async (options: Readonly<{ dryRun?: boolean }> = {}): Promise<void> => {
+  const run = async (options: Readonly<{ dryRun?: boolean; probe?: unknown }> = {}): Promise<void> => {
     const dryRun = options.dryRun ?? true;
     assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun })).state, "inserted");
-    // A real run would need this; a preview must never reach the probe at all,
-    // which is one of the things the durable assertions below prove.
-    world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    // D215 — a preview runs beat ①'s probe exactly as the real run does, so both
+    // paths need one queued. `probe` on the queue lets a case decide what the
+    // probe answers; the default is the ordinary absent read.
+    world.probeResults.push(options.probe ?? absentProbeEvidence(WRITE_FIXTURE_NOW));
     await runWorkerLoop({
       workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
       workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
@@ -174,7 +175,12 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     assert.equal(preview.externalCommit, "none");
     assert.equal(preview.stoppedAtNodeId, WRITE_FIXTURE_NODE_ID);
     assert.equal(preview.preview.kind, "transaction-dry-run-preview");
-    assert.equal(preview.preview.subject.state, "match");
+    assert.equal(preview.preview.probe.state, "absent");
+    assert.equal(preview.preview.outcome.state, "would-prepare");
+    assert.equal(
+      preview.preview.outcome.state === "would-prepare" ? preview.preview.outcome.subject.state : undefined,
+      "match",
+    );
     // The stop node is the one the graph derivation names — a preview cannot
     // claim to have stopped where the executor could not have stopped it.
     const support = workflowDryRunSupport(writeFixtureDescriptor);
@@ -201,7 +207,18 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
       false,
       "zero commit clicks",
     );
-    assert.equal(h.world.events.includes("probe"), false, "a preview never runs the prewrite probe");
+    /*
+     * D215 — this line used to assert the opposite, and asserting the opposite
+     * was the defect: beat ①'s probe is the real path's FIRST act and can settle
+     * the node before anything is staged, so a preview that skipped it rehearsed
+     * a path the real run never takes. The probe is read-only, and the durable
+     * assertions above are what prove the preview still wrote nothing.
+     */
+    assert.deepEqual(
+      h.world.events.slice(0, 2),
+      ["probe", "prepare"],
+      "the preview probes first, then stages — the real path's order",
+    );
     // The staged page WAS reached and the subject WAS observed — this is a real
     // preview, not an early exit.
     assert.ok(h.world.events.includes("prepare"), h.world.events.join(","));
@@ -277,6 +294,88 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     assert.deepEqual(receipt.output, [], "a preview produced no workflow output");
     // The run's own inputs are still stated — a preview reads for real.
     assert.ok(receipt.input.length > 0);
+  });
+
+  /**
+   * D215 — the OTHER subject shape, and the reason the fix exists. The ordinary
+   * separations subject has nothing pending, so beat ①'s probe settles the node
+   * before any page is staged; the old preview evaluated `prepare` regardless and
+   * reported a refusal the real run would never produce. A rehearsal that fails
+   * where the performance succeeds is a false rehearsal.
+   *
+   * The honest preview is an OUTCOME, not a refusal: the run still ends `done` at
+   * the node with a preview record, and it still writes nothing.
+   */
+  it("previews an already-present subject as an OUTCOME, staging nothing and writing nothing", async () => {
+    const h = harness();
+    await h.run({ probe: { state: "present", proof: { transactionId: "T900001" } } });
+
+    const record = terminalRun(h.database);
+    assert.equal(record.lifecycle.state === "terminal" ? record.lifecycle.outcome : "", "done");
+    const result = h.database.authority.runResults.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(result);
+    assert.equal(result.resultSchemaHash, PREVIEW_RESULT_SCHEMA_HASH);
+    const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
+    assert.equal(preview.preview.probe.state, "present");
+    assert.deepEqual(preview.preview.outcome, { state: "already-present", proofSource: "live-probe" });
+    assert.equal(preview.externalCommit, "none");
+
+    // Nothing was staged, and — the load-bearing half — nothing became durable.
+    // A REAL already-present settlement writes a checkpoint and an
+    // observed-present intent; a preview of one writes neither.
+    assert.deepEqual(h.world.events, ["probe"], "the probe settled it; no page was ever staged");
+    assert.equal(
+      h.database.authority.writeIntents.findByPermanentKey("ucpath", WRITE_FIXTURE_KEY),
+      undefined,
+      "a preview never records an observed-present intent",
+    );
+    assert.equal(
+      h.database.authority.runCheckpoints.latest(
+        WRITE_FIXTURE_WORKFLOW_ID,
+        record.envelope.itemId,
+        WRITE_FIXTURE_NODE_ID,
+      ),
+      undefined,
+      "a preview settles nothing, including an already-present settlement",
+    );
+
+    const previewed = h.emitter.events().filter((event) => event.t === "transaction.previewed");
+    assert.equal(previewed.length, 1);
+    assert.equal(
+      previewed[0]?.subject,
+      "not-observed",
+      "no page was staged, so no subject was read — and the span says so rather than claiming a match",
+    );
+  });
+
+  /**
+   * D215's fail-loud half. The real path refuses to fence on an indeterminate
+   * probe, so the preview refuses too: a rehearsal that answered where the real
+   * run stops is the same defect from the other side, and staging a page the
+   * real run would never have staged is exactly what this arm is fixing.
+   */
+  it("refuses the preview when the probe cannot answer, rather than staging anyway", async () => {
+    const h = harness();
+    await h.run({
+      probe: { state: "unknown", reason: "the grid never rendered", observedAt: WRITE_FIXTURE_NOW },
+    });
+
+    const record = terminalRun(h.database);
+    assert.equal(record.lifecycle.state === "terminal" ? record.lifecycle.outcome : "", "failed");
+    const failureId = record.lifecycle.state === "terminal" ? record.lifecycle.failureId : undefined;
+    assert.ok(failureId);
+    const failure = h.database.authority.failures.get(failureId);
+    assert.ok(failure);
+    assert.match(
+      `${failure.summary} ${failure.causeChain.map(({ summary }) => summary).join(" ")}`,
+      /is indeterminate \(the grid never rendered\)/,
+    );
+    assert.deepEqual(h.world.events, ["probe"], "nothing was staged behind an unanswerable probe");
+    assert.equal(h.database.authority.runResults.get(WRITE_FIXTURE_RUN_ID), undefined);
+    assert.equal(
+      h.database.authority.writeIntents.findByPermanentKey("ucpath", WRITE_FIXTURE_KEY),
+      undefined,
+    );
   });
 
   /**

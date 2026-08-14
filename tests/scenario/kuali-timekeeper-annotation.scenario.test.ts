@@ -61,10 +61,18 @@ describe("kuali-timekeeper-annotation scenarios", () => {
 
     assert.equal(preview.kind, "transaction-dry-run-preview");
     assert.equal(preview.nodeId, KUALI_NODE_ID);
-    assert.equal(preview.subject.state, "match");
-    // The staged preview is real: the document was opened, the value staged and
-    // read back, and the subject observed on that exact page.
+    // D215 — the preview runs beat ①'s probe first, then stages.
+    assert.equal(preview.probe.state, "absent");
+    assert.equal(preview.outcome.state, "would-prepare");
+    assert.equal(
+      preview.outcome.state === "would-prepare" ? preview.outcome.subject.state : undefined,
+      "match",
+    );
+    // The whole rehearsal, in the real path's order: beat ①'s read-only probe on
+    // its own lease, THEN the document opened, the value staged, and the subject
+    // observed on that exact page.
     assert.deepEqual(h.world.events, [
+      `read-back:${KUALI_TIMEKEEPER_VALUE}`,
       `open:${h.world.documentNumber}`,
       `stage:${KUALI_TIMEKEEPER_VALUE}`,
       "read:kuali.rrss-document.displayed-eid",

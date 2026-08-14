@@ -1052,6 +1052,16 @@ double-file.
   termination (it has its own durable key and typed proof: deleting nothing is a validated no-op;
   deleted row identities are its proof).
 
+> **A DRY RUN runs these probes too (D215, 2026-08-14; normative text in doc 02 §2.1).** `executeDryRun`
+> used to evaluate `prepare` with no probe, so it rehearsed a path the real run never takes: the
+> date-agnostic pending sweep above settles `already-present` for a subject with nothing pending —
+> which is the ordinary separations subject — and the preview instead staged a grid with no row to
+> bind and refused. The preview now runs the durable permanent-key lookup and the policy-controlled
+> live probe in this section's own order, REPORTS an `already-present` settlement rather than
+> performing it (zero intent, zero checkpoint, zero transition), and refuses on exactly the verdicts
+> the real path refuses on. `probePolicy` governs the preview's live probe identically; the durable
+> lookup is never skipped in either.
+
 **The per-workflow probe-policy knob (charter §b — decided at migration, NOT defaulted here).** Beat
 ① (the *pre-write* probe) is governed by a per-workflow knob; the *recovery* probe (§4) is always on
 regardless.
