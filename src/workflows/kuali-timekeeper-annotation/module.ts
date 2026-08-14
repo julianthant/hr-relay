@@ -14,6 +14,8 @@ export const kualiTimekeeperAnnotationModule = Object.freeze({
   descriptor: kualiTimekeeperAnnotationDescriptor,
   stores: Object.freeze([kualiStore]),
   // The one-transaction-node workflow that carried D135's controlled-commit
-  // proof; it stands on its own and no composition owns it (D219).
-  role: defineWorkflowRole({ kind: "standalone" }),
+  // proof. It proves kernel machinery rather than doing daily HR work, so the
+  // rail drops it while the picker and the Explorer keep it startable and
+  // documented (D220 — the operator's 2026-08-14 call).
+  role: defineWorkflowRole({ kind: "proving" }),
 });

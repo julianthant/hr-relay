@@ -2437,6 +2437,21 @@ here rather than re-litigated per surface:
   picker lists them only under "not startable" — the nesting applies to whatever list a surface
   renders, not to what is in it.
 
+**Amended same day (D220, 2026-08-14): the RAIL lists main workflows only.** On seeing the nested
+presentation live, the operator ruled the harnesses "not needed at all — only the main workflows
+should be there," and asked the same of `kuali-timekeeper-annotation`, which D219's model could
+only call `standalone` (it proves the kernel, not a composition — doc 02 §1.2.1's new `proving`
+arm is the fact that names this). So the Workflow Panel rail drops every entry whose role is
+`chunk-harness` or `proving` — nested or top-level, the cross-category `separations-kronos-timecard`
+included — and a category whose entries all dropped goes with them rather than rendering an empty
+heading (`buildWorkflowRailGroups`, `dashboard/surfaces/shell.tsx`). D219's one-rule claim narrows
+to the surfaces that still list them: the Run Modal picker (both lists) and the Explorer keep the
+nested, harness-marked presentation, so proving work stays startable and documented. The
+always-visible-nesting rationale (a hidden harness's `Needs you` must not vanish) is answered at
+the rail's level instead: attention reaches the operator through the Status Bar's cross-panel
+`Needs you` total and the notification inbox, neither of which is rail-scoped. Counts, labels,
+registration and §3.2 obligations are all unmoved from D219.
+
 **One composed action bar** replaces the two stacked bars above the queue. The status filters are
 one *group* inside it, not a band of their own; the two composites (`All` / `Needs you`) are a
 segmented control — a different shape for a different kind of thing — and a **zero-count status

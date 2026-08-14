@@ -11,7 +11,8 @@ identity-approval gate
 (doc 09 §14, D77) imposes, and the descriptor's per-run stamp now includes the **app version**
 alongside the workflow version + fingerprint (D80 archive-on-bump, owned by doc 03 §10.2).
 **Amended 2026-08-14 (Round 61):** §1.2.1 — every workflow MODULE declares a required closed
-`role` (`standalone` / `composition` / `chunk-harness of <id>`), validated at the composition root;
+`role` (`standalone` / `composition` / `chunk-harness of <id>` / `proving`, the last per D220),
+validated at the composition root;
 presentation of the role is doc 03's (D219).
 
 ## Ownership (D1)
@@ -617,7 +618,16 @@ role:
   | { kind: "standalone" }                       // an ordinary workflow (person-lookup)
   | { kind: "composition" }                      // a graph assembled from chunk-proven tasks (separations)
   | { kind: "chunk-harness"; of: WorkflowId }    // a per-chunk proving harness for `of`'s migration
+  | { kind: "proving" }                          // proves program machinery; belongs to no composition (D220)
 ```
+
+**The `proving` arm (D220, 2026-08-14).** A workflow registered to prove program MACHINERY — a
+kernel capability, a driver, a write path — rather than to run daily HR work, and belonging to no
+composition. `kuali-timekeeper-annotation` is the type specimen: it exists to carry D135's
+controlled-transaction proof and stays registered and startable because a kernel change may need
+that proof re-run. It deliberately carries no `of` — there is nothing for it to be a step of, and
+`chunk-harness` would force it to name a composition it does not prove. Presentation is doc 03's
+(§Shell, D220 amendment): the rail drops it alongside harnesses; the picker and the Explorer keep it.
 
 **Why the module and not the descriptor** is D170's argument verbatim: taxonomy is presentation and
 server bookkeeping, not part of a run's contract identity — a run of `separations-kuali-finalization`
