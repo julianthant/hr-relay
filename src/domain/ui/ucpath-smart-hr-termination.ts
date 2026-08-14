@@ -166,6 +166,21 @@ export const UCPATH_SMART_HR_DISPLAYED_PERSON_NAME =
 export const UCPATH_SS_SMART_HR_DISPLAYED_NAME =
   ObservationIdSchema.parse("ucpath.ss-smart-hr.displayed-name");
 
+/**
+ * The *Transactions in Progress* grid's own rendering of whose row this is —
+ * the SWEEP's beat-③ subject anchor.
+ *
+ * It is a separate observation from the wizard's because the sweep stages a
+ * DIFFERENT page. `#PERSON_NAME_NAME_DISPLAY` exists only on the wizard's Page
+ * B; the sweep never leaves the Smart HR setup page, where the grid carries the
+ * name in a `Name` column instead. Pointing the sweep at the wizard's anchor is
+ * exactly what the first live dry run refused on — zero fence, zero click — and
+ * it is D203's shape one more time: the declaration must name the surface the
+ * staged page actually has.
+ */
+export const UCPATH_SMART_HR_IN_PROGRESS_NAME =
+  ObservationIdSchema.parse("ucpath.smart-hr.in-progress-displayed-name");
+
 /* ── Values ──────────────────────────────────────────────────────────────── */
 
 /**
@@ -373,6 +388,7 @@ export type UcpathSmartHrStates =
 export type UcpathSmartHrObservations = Readonly<{
   [UCPATH_SMART_HR_DISPLAYED_PERSON_NAME]: string;
   [UCPATH_SS_SMART_HR_DISPLAYED_NAME]: string;
+  [UCPATH_SMART_HR_IN_PROGRESS_NAME]: string;
 }>;
 
 /**

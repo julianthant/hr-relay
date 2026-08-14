@@ -20,7 +20,7 @@
 import { z } from "zod";
 import { EidSchema, ObservationIdSchema, taskId } from "../../ids.js";
 import {
-  UCPATH_SMART_HR_DISPLAYED_PERSON_NAME,
+  UCPATH_SMART_HR_IN_PROGRESS_NAME,
   UCPATH_SMART_HR_TERMINATION_STAGED,
   UcpathPendingSweepStagingSchema,
   UcpathPendingSweepTargetSchema,
@@ -42,7 +42,7 @@ export const UcpathStagePendingTerminationSweep = defineTaskContract({
   subject: {
     kind: "person",
     expected: { fromInput: ContractFieldPathSchema.parse("expectedName"), identity: "name" },
-    observe: ObservationIdSchema.parse(UCPATH_SMART_HR_DISPLAYED_PERSON_NAME),
+    observe: ObservationIdSchema.parse(UCPATH_SMART_HR_IN_PROGRESS_NAME),
     match: "normalized-exact-name",
     requiredAt: "after-prepare-before-fence",
   },

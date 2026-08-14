@@ -22,6 +22,7 @@ import {
   UCPATH_SMART_HR_DELETE_SELECTED_BUTTON,
   UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON,
   UCPATH_SMART_HR_TERMINATION_STAGED,
+  UCPATH_SMART_HR_IN_PROGRESS_NAME,
   UCPATH_SS_SMART_HR_DISPLAYED_NAME,
   isUcpathTerminationInProgress,
   UcpathPendingSweepStagingSchema,
@@ -346,6 +347,12 @@ export function createDeterministicUcpathSmartHrWorldDriver(
     async read(id) {
       world.events.push(`read:${String(id)}`);
       if (id === UCPATH_SMART_HR_DISPLAYED_PERSON_NAME) {
+        return world.displayedNameAfterStage ?? world.displayedName;
+      }
+      // The in-progress grid is a STAGED page too, so it carries the same
+      // beat-③ hazard: the page may show a different person by the time the
+      // kernel observes it.
+      if (id === UCPATH_SMART_HR_IN_PROGRESS_NAME) {
         return world.displayedNameAfterStage ?? world.displayedName;
       }
       if (id === UCPATH_SS_SMART_HR_DISPLAYED_NAME) return world.displayedName;

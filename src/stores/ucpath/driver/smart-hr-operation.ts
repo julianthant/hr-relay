@@ -298,12 +298,22 @@ export async function stageTerminationOnPage(
   }
   const observedName = (await nameDisplay.innerText()).trim();
   const observedEmplRecord = await textOf(page.locator("#HR_TBH_WRK_EMPL_RCD_CHAR"));
+  // The JOB effective date is DISPLAY-ONLY on Page B: UCPath derives it from
+  // the transaction date entered on Page A and renders it `disabled`
+  // (live 2026-08-14 — filling it times out against `PSEDITBOX_DISABLED`). So
+  // it is READ and CHECKED, which is strictly stronger than writing it: it
+  // proves UCPath derived the very date this run asked for, and half the
+  // permanent key is therefore verified rather than asserted.
   const jobEffectiveDate = page.locator("#HR_TBH_WRK_JOB_EFFDT");
-  await jobEffectiveDate.fill(input.effectiveDate);
-  // Read back HERE, on the page that owns the field. Reading it from Page C
-  // would need a catch-and-default, and a defaulted effective date is half the
-  // permanent key invented from the input it was meant to verify.
   const observedEffectiveDate = await textOf(jobEffectiveDate);
+  if (observedEffectiveDate !== input.effectiveDate) {
+    throw new Error(
+      `UCPath derived job effective date ${JSON.stringify(observedEffectiveDate)} from the `
+      + `transaction date this run entered (${input.effectiveDate}); the effective date is half the `
+      + "permanent key, so a derived value that disagrees with the requested one refuses here rather "
+      + "than filing a termination the idempotency probe never asked about",
+    );
+  }
   const options = await readReasonOptions(page);
   const reason = resolveReasonOption(options, input.reasonCode);
   await resolveUcpathElement(page, UCPATH_SMART_HR_REASON_CODE_SELECT)
@@ -360,6 +370,80 @@ export async function stageTerminationOnPage(
  * action. Row identity is established by the EID appearing in the row's own
  * text — the same test legacy uses (`rowMatchesTerminationEid`).
  */
+/**
+ * The name the *Transactions in Progress* grid shows for one person.
+ *
+ * The bind is RELATIVE to a value this read already knows exactly — the cell
+ * whose text IS the Empl ID — and takes that cell's immediate predecessor,
+ * which is the `Name` column in the live column order
+ * (`Select · Transaction Type · Effective Date · Name · Person ID · Action ·
+ * Country`, observed 2026-08-14). That is an anchored relative bind rather than
+ * a fixed offset: it moves with the grid instead of assuming a column count,
+ * and it refuses loudly when the anchor cell is absent.
+ */
+/**
+ * The name the STAGED wizard page renders for the person being terminated.
+ *
+ * Beat ③ observes the page prepare LEFT BEHIND, and that is Page C — where
+ * `#PERSON_NAME_NAME_DISPLAY` does not exist. The first live dry run refused
+ * exactly there (zero fence, zero click), which is the check working: the
+ * declaration named an anchor the staged page cannot render.
+ *
+ * Page C's identity block has no ids at all, but it IS labelled: the row reads
+ * `Template: · UC_INVOL_TERM · Name: · Dreitho Cramia`, with the `Name:` label
+ * and the value each appearing exactly once (live 2026-08-14). So the bind is
+ * anchored on the LABEL and takes the next non-empty cell — the same shape this
+ * tree already prefers over a positional offset, and it refuses loudly when the
+ * label is absent or ambiguous rather than reading a neighbouring cell.
+ */
+export async function readStagedWizardSubjectOnPage(page: Page): Promise<string> {
+  const name = await page.evaluate(() => {
+    const cells = [...document.querySelectorAll("td")];
+    const labels = cells.filter((cell) => (cell.textContent ?? "").trim() === "Name:");
+    if (labels.length !== 1) return { state: "ambiguous" as const, labels: labels.length };
+    let cursor = labels[0]?.nextElementSibling ?? null;
+    while (cursor !== null) {
+      const text = (cursor.textContent ?? "").trim();
+      if (text.length > 0) return { state: "read" as const, name: text };
+      cursor = cursor.nextElementSibling;
+    }
+    return { state: "empty" as const };
+  });
+  if (name.state === "ambiguous") {
+    throw new Error(
+      `the staged Smart HR page carries ${String(name.labels)} "Name:" labels; exactly one is `
+      + "required to bind the subject, and a page that lost or duplicated it is not the page this "
+      + "run staged",
+    );
+  }
+  if (name.state === "empty") {
+    throw new Error(
+      'the staged Smart HR page renders a "Name:" label with no value beside it; there is no '
+      + "subject on this page to bind the write to",
+    );
+  }
+  return name.name;
+}
+
+export async function readInProgressSubjectOnPage(page: Page, emplId: Eid): Promise<string> {
+  const name = await page.evaluate((eid) => {
+    for (const cell of document.querySelectorAll("td")) {
+      if ((cell.textContent ?? "").trim() !== eid) continue;
+      const previous = cell.previousElementSibling;
+      const text = (previous?.textContent ?? "").trim();
+      if (text.length > 0) return text;
+    }
+    return "";
+  }, emplId);
+  if (name.length === 0) {
+    throw new Error(
+      `the Transactions in Progress grid renders no name beside Empl ID ${emplId}; there is no `
+      + "subject on this page to bind a sweep to",
+    );
+  }
+  return name;
+}
+
 export async function stagePendingTerminationSweepOnPage(
   page: Page,
   input: UcpathPendingSweepTarget,
@@ -370,7 +454,6 @@ export async function stagePendingTerminationSweepOnPage(
   const rows = page.locator("tr").filter({ hasText: input.emplId });
   const count = await rows.count();
   const selected: UcpathInProgressRow[] = [];
-  let observedName = "";
   for (let index = 0; index < count; index += 1) {
     const row = rows.nth(index);
     const text = (await row.innerText()).replace(/\s+/gu, " ").trim();
@@ -391,13 +474,16 @@ export async function stagePendingTerminationSweepOnPage(
       );
     }
     await checkbox.check();
-    if (observedName.length === 0) observedName = input.expectedName;
     selected.push({ transactionType: "JOB", effectiveDate: date, action });
   }
+  // The OBSERVED name, read off the grid — never the expected one echoed back.
+  // Prepare only runs when the probe answered `absent`, i.e. when rows exist,
+  // so a grid with no name for this person is a contradiction and refuses.
+  const observedName = await readInProgressSubjectOnPage(page, input.emplId);
   return UcpathPendingSweepStagingSchema.parse({
     stagedPageState: UCPATH_SMART_HR_TERMINATION_STAGED,
     emplId: input.emplId,
-    observedName: observedName.length > 0 ? observedName : input.expectedName,
+    observedName,
     selected,
     observedAt,
   });

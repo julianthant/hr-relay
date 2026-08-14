@@ -33,7 +33,7 @@
 import { z } from "zod";
 import { EidSchema, TaskIdSchema, ObservationIdSchema, taskId } from "../../ids.js";
 import {
-  UCPATH_SMART_HR_DISPLAYED_PERSON_NAME,
+  UCPATH_SMART_HR_IN_PROGRESS_NAME,
   UcpathPendingSweepProofSchema,
   UcpathPendingSweepTargetSchema,
 } from "../../ui/ucpath-smart-hr-termination.js";
@@ -69,7 +69,7 @@ export const UcpathDeletePendingTerminations = defineTaskContract({
   subject: {
     kind: "person",
     expected: { fromInput: ContractFieldPathSchema.parse("expectedName"), identity: "name" },
-    observe: ObservationIdSchema.parse(UCPATH_SMART_HR_DISPLAYED_PERSON_NAME),
+    observe: ObservationIdSchema.parse(UCPATH_SMART_HR_IN_PROGRESS_NAME),
     match: "normalized-exact-name",
     requiredAt: "after-prepare-before-fence",
   },
