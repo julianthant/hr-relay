@@ -442,3 +442,16 @@ id-mint delta only). Full detail in the audit transcript; actionable record:
 
 Fix order (per audit): actions.tsx → park-resolve.tsx → run-start(+kit) → queue-toolbar strings
 now / bulk strip+band with the wire commit → dashboard-app.tsx LAST (overlap with R1/R2/R-shell).
+
+**Run-start slice FIXED + image-verified + committed 2026-08-14 (`c07424c`)** — operator pulled it
+forward. Findings 8, 9, 10, 11, 12, 18 landed as decided; picker built from boot data with both
+honest absences (codes await R2's served field; not-startable reasons await wire). Finding 17
+resolved KEPT-THROW: `parseInputRunText` is the `src/domain/workflow/ingress.ts` contract boundary
+shared with start-plan submission — per-entry tolerance there is a domain edit (forbidden this
+commit), and re-implementing its split rules client-side would preview entries the server never
+receives; commented at `TypedInput` citing this audit. Two recorded deviations: `<ul>` not `<dl>`
+in the not-startable disclosure (every `<dd>` would be empty); `RunStartDialog` takes
+`workflows`+`categories`+`panelWorkflowId` (the demo's global-modal shape) instead of one
+`workflow`. Screenshot comparison passed structurally; parity deferred to the wave-end re-freeze
+as planned. Still open in R8: findings 1–7, 13–16, and the queue-toolbar/bulk + dashboard-app
+(keydown, confirm mount) slices.
