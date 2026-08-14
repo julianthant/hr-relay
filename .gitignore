@@ -56,3 +56,5 @@ Thumbs.db
 OnboardingRoster-*.xlsx
 *.xlsx
 !tests/**/fixtures/**/*.xlsx
+.auth/
+.auth/
