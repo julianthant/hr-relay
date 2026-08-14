@@ -43,7 +43,7 @@
  * edit affordance would be a control with no protocol behind it.
  */
 import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import {
   ArrowDownToLine,
   ArrowLeft,
@@ -99,7 +99,12 @@ import { cn } from "../lib/utils.js";
 import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
 import { DashboardClientError } from "../client/index.js";
 import { useDashboardClient } from "../state/client-context.js";
-import { groupWorkflowsByCategory } from "./workflow-category.js";
+import {
+  groupWorkflowsByCategory,
+  workflowHarnessOfName,
+  type WorkflowGroupEntry,
+  type WorkflowGroupingFacts,
+} from "./workflow-category.js";
 import { plural } from "./format.js";
 
 /* ── the node vocabulary ─────────────────────────────────────────────────── */
@@ -378,12 +383,19 @@ function SourceLink({ label, link }: { label: string; link: SourceLinkWire }) {
  * PANEL ONE — the registry
  * ====================================================================== */
 
+/** the explorer's list view-model: the served wire plus the facts the ONE rule reads */
+interface ExplorerListEntry extends WorkflowGroupingFacts {
+  readonly workflow: ExplorerWorkflowWire;
+}
+
 /**
- * Every workflow the registry serves, grouped by its OWN category.
+ * Every workflow the registry serves, grouped by its OWN category and with each
+ * chunk harness nested under its composition.
  *
  * The grouping is `groupWorkflowsByCategory`, the same projection the workflow
- * rail reads, so the explorer cannot bin a workflow under a heading the product
- * does not use. The demo's two-character codes are deliberately absent from the
+ * rail and the Run Modal's picker read, so the explorer cannot bin a workflow
+ * under a heading the product does not use, and cannot show as a peer workflow
+ * something those surfaces show as a step (D219). The demo's two-character codes are deliberately absent from the
  * row: they are the trace id's first component and they mean something there,
  * but in a list whose every row already carries the full unambiguous label they
  * are a column of noise in the narrowest panel on the page. (They stay one
@@ -399,9 +411,62 @@ function WorkflowListPanel({
   onSelect: (id: string) => void;
 }) {
   const groups = useMemo(
-    () => groupWorkflowsByCategory(workflows.map((workflow) => ({ workflow, categoryId: workflow.category }))),
+    () =>
+      groupWorkflowsByCategory(
+        workflows.map((workflow) => ({
+          workflow,
+          id: String(workflow.id),
+          label: workflow.label,
+          categoryId: workflow.category,
+          role: workflow.role,
+        })),
+      ),
     [workflows],
   );
+
+  /**
+   * ONE row. The Explorer is the registry-INSPECTION surface and its panel has
+   * room for a sentence, so a harness states what it is a harness OF in
+   * secondary text rather than in a token — the same fact the rail affixes,
+   * at the density this surface affords. It sits inside the button, so the
+   * relationship is part of the row's accessible name too.
+   */
+  const row = (node: WorkflowGroupEntry<ExplorerListEntry>): ReactElement => {
+    const workflow = node.entry.workflow;
+    const id = String(workflow.id);
+    const active = id === selected;
+    return (
+      <button
+        type="button"
+        aria-current={active ? "true" : undefined}
+        onClick={() => onSelect(id)}
+        title={`${workflow.label} v${String(workflow.version)} — ${plural(workflow.nodes.length, "node")}`}
+        className={cn(
+          "flex w-full min-w-0 cursor-pointer items-center gap-[var(--ds-space-snug)]",
+          "px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-left",
+          dsText.ui,
+          dsFocus,
+          dsMotion.base,
+          active
+            ? "bg-[var(--ds-surface-selected)] font-semibold text-[color:var(--ds-fg)]"
+            : "text-[color:var(--ds-fg-secondary)] hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
+        )}
+      >
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className={cn("min-w-0", dsClip.text)}>{workflow.label}</span>
+          {node.harness !== undefined && (
+            <span className={cn(dsText.micro, "min-w-0 font-normal text-[color:var(--ds-fg-muted)]", dsClip.text)}>
+              {`a proving harness of ${workflowHarnessOfName(node.harness)}`}
+            </span>
+          )}
+        </span>
+        <span className={cn(dsText.micro, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
+          {workflow.nodes.length}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <Panel className="min-h-0" aria-label="Registered workflows">
       <PanelHeader title="Workflows" meta={String(workflows.length)} />
@@ -412,35 +477,25 @@ function WorkflowListPanel({
               {group.label}
             </SectionLabel>
             <ul>
-              {group.entries.map(({ workflow }) => {
-                const id = String(workflow.id);
-                const active = id === selected;
-                return (
-                  <li key={id}>
-                    <button
-                      type="button"
-                      aria-current={active ? "true" : undefined}
-                      onClick={() => onSelect(id)}
-                      title={`${workflow.label} v${String(workflow.version)} — ${plural(workflow.nodes.length, "node")}`}
-                      className={cn(
-                        "flex w-full min-w-0 cursor-pointer items-center gap-[var(--ds-space-snug)]",
-                        "px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-left",
-                        dsText.ui,
-                        dsFocus,
-                        dsMotion.base,
-                        active
-                          ? "bg-[var(--ds-surface-selected)] font-semibold text-[color:var(--ds-fg)]"
-                          : "text-[color:var(--ds-fg-secondary)] hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
-                      )}
+              {group.entries.map((node) => (
+                <li key={String(node.entry.id)}>
+                  {row(node)}
+                  {/* The registry's own hierarchy, as a real nested list: this
+                      is the surface an operator inspects the registration on,
+                      so a step that looked like a peer here would contradict
+                      every other listing surface (D219). */}
+                  {node.members.length > 0 && (
+                    <ul
+                      aria-label={`Proving harnesses of ${node.entry.label}`}
+                      className="pl-[var(--ds-space-cozy)]"
                     >
-                      <span className={cn("min-w-0 flex-1", dsClip.text)}>{workflow.label}</span>
-                      <span className={cn(dsText.micro, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
-                        {workflow.nodes.length}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
+                      {node.members.map((member) => (
+                        <li key={String(member.entry.id)}>{row(member)}</li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
             </ul>
           </div>
         ))}

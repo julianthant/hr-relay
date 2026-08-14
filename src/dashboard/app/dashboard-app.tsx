@@ -451,6 +451,9 @@ function LoadedApp({
         workflowId,
         label: entry.label,
         categoryId: entry.categoryId,
+        // D219's served taxonomy fact, carried through verbatim: the picker
+        // groups by the same rule the rail does, and neither infers it.
+        role: entry.role,
         code: entry.code,
         inputRun:
           declared === undefined

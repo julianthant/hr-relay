@@ -23,8 +23,19 @@
  * takes the demo's own fallback — appended after the listed groups, in
  * first-seen order, headed by the raw id, because showing the id verbatim is
  * the honest rendering of a category this build has no word for.
+ *
+ * D219 (2026-08-14) adds the second half of the same rule, in the same module
+ * and for the same reason: MEMBERSHIP. A chunk harness is a step of its
+ * composition, never a peer workflow, so inside its category group it renders
+ * nested under its composition's entry rather than beside it. Both facts the
+ * rule reads — `categoryId` and `role` — are served raw; both display
+ * decisions are here; and every workflow-listing surface (the rail, the Run
+ * Modal's picker over BOTH its lists, and the Explorer) calls this one
+ * function, so no two of them can disagree about what is a step and what is a
+ * workflow.
  */
 import type { WorkflowCategory } from "../../domain/workflow/presentation.js";
+import type { WorkflowModuleRole } from "../../domain/workflow/module-role.js";
 
 interface CategoryDisplay {
   /** the operator's heading for this category */
@@ -68,27 +79,142 @@ export function workflowCategoryLabel(categoryId: string): string {
   return displayOf(categoryId)?.label ?? categoryId;
 }
 
+/**
+ * The facts the ONE rule needs from any listed workflow, whatever view-model
+ * the surface hands it. Every workflow-listing wire already serves all four —
+ * the bootstrap primitive, the explorer wire, and the Run Modal's composed
+ * `RunStartWorkflow` — so nothing here is derived, defaulted or inferred.
+ *
+ * `label` is here for ONE reason: a nested harness names the composition it is
+ * a step of, and the only honest source of that composition's name is the
+ * composition's own served entry in the SAME list.
+ */
+export interface WorkflowGroupingFacts {
+  readonly id: string;
+  readonly label: string;
+  readonly categoryId: string;
+  readonly role: WorkflowModuleRole;
+}
+
+/**
+ * The harness marking every listing surface renders (doc 03 §Shell, D219).
+ *
+ * It is present on an entry whose OWN served role is `chunk-harness` and on no
+ * other — *its harness identity comes from its own role, not from its
+ * neighbourhood*, which is what keeps the orphan case (below) honest.
+ */
+export interface WorkflowHarnessMarking {
+  /** the composition this entry proves a step of — always known, it is served */
+  readonly ofWorkflowId: string;
+  /**
+   * The composition's own label when the composition is IN the list this
+   * grouping was called with, and `undefined` when it is not. A surface prints
+   * `workflowHarnessOfName` rather than reading this directly, so a name this
+   * list cannot supply reads as the raw id — the same honest fallback an
+   * unlisted category heading takes — instead of a fabricated title.
+   */
+  readonly ofLabel: string | undefined;
+  /**
+   * `true` when this entry is rendered UNDER its composition's entry in this
+   * group, `false` when it is rendered at top level because the composition is
+   * not in this group (see the orphan rule on `groupWorkflowsByCategory`).
+   */
+  readonly nested: boolean;
+}
+
+/**
+ * ONE rendered entry: the surface's own view-model, its harness marking, and
+ * the harness entries nested under it.
+ *
+ * The return shape is deliberately NOT `Entry[]`. A caller reaches its own
+ * view-model through `.entry`, so a surface written against the old flat shape
+ * fails `tsc` rather than silently rendering harnesses as peers, and `members`
+ * is a field it has to render on purpose. Nesting is exactly ONE level deep by
+ * construction — a member never carries members, and the composition root
+ * already makes a harness-of-a-harness chain unrepresentable (doc 02 §1.2.1).
+ */
+export interface WorkflowGroupEntry<Entry> {
+  readonly entry: Entry;
+  /** the harness marking, or `undefined` for a standalone/composition entry */
+  readonly harness: WorkflowHarnessMarking | undefined;
+  /**
+   * The proving harnesses of this entry, in first-seen order. ALWAYS RENDERED:
+   * doc 03 §Shell decides against a collapse-by-default disclosure, because a
+   * hidden harness's `Needs you` could vanish without an attention-forwarding
+   * rule, and visible-but-subordinate hides nothing.
+   */
+  readonly members: readonly WorkflowGroupEntry<Entry>[];
+}
+
 /** one group: a heading and the workflows the registry binned under it */
 export interface WorkflowCategoryGroup<Entry> {
   readonly label: string;
-  readonly entries: readonly Entry[];
+  readonly entries: readonly WorkflowGroupEntry<Entry>[];
+}
+
+/**
+ * What a surface prints for "a proving harness of ___". A composition this
+ * list does not carry reads as its raw workflow id, because showing the id
+ * verbatim is the honest rendering of a name nothing here supplies.
+ */
+export function workflowHarnessOfName(harness: WorkflowHarnessMarking): string {
+  return harness.ofLabel ?? harness.ofWorkflowId;
+}
+
+function markingFor(
+  role: WorkflowModuleRole,
+  labelById: ReadonlyMap<string, string>,
+  nested: boolean,
+): WorkflowHarnessMarking | undefined {
+  if (role.kind !== "chunk-harness") return undefined;
+  const ofWorkflowId = String(role.of);
+  return { ofWorkflowId, ofLabel: labelById.get(ofWorkflowId), nested };
 }
 
 /**
  * Group any list of served workflows by each entry's OWN `categoryId`, in the
- * display order above. THE one rule — the Workflow Panel's rail and the Run
- * Modal's picker both call it, over different lists (the picker's is filtered
- * to what is startable), so the two surfaces cannot drift into two orders.
+ * display order above, and nest each chunk harness under its composition. THE
+ * one rule — the Workflow Panel's rail, the Run Modal's picker (its startable
+ * AND its "not startable" lists) and the Explorer all call it, over different
+ * lists, so no two surfaces can drift into two orders or disagree about what
+ * is a step and what is a workflow (doc 03 §Shell, D219).
  *
  *  - membership is the entry's `categoryId`;
  *  - listed categories come first in display order, then any unlisted category
  *    in first-seen order;
  *  - a category with no entries is DROPPED rather than rendered as an empty
- *    heading.
+ *    heading;
+ *  - inside a group, an entry whose served role is `chunk-harness` is NOT a
+ *    peer: it renders under its composition's entry, marked as a harness, and
+ *    the top-level order of everything else is untouched by the move.
+ *
+ * ## The orphan rule, stated because the alternative is a lie
+ *
+ * A harness whose composition is not in the list this was called with — a
+ * filtered list that kept the harness and dropped the composition, or (today,
+ * really) `separations-kronos-timecard`, which files itself under
+ * `timekeeping` while its composition files itself under `separation` — has
+ * nowhere to nest. Neither tempting answer is available: nesting it under
+ * nothing and dropping it silently loses a served workflow, and rendering it as
+ * a plain peer says it is a workflow of its own, which D219 decided it is not.
+ * So it renders at TOP LEVEL and still carries its harness marking with
+ * `nested: false` — its harness identity comes from its own role, not from
+ * whether its composition happens to be beside it. A surface renders the
+ * marking either way; only the indent is conditional.
+ *
+ * Nesting also requires the target to be a `composition`, which is what keeps
+ * the structure one level deep no matter what a list contains: a harness
+ * naming a non-composition entry takes the orphan arm rather than nesting
+ * under something that is itself nested.
  */
-export function groupWorkflowsByCategory<Entry extends { readonly categoryId: string }>(
+export function groupWorkflowsByCategory<Entry extends WorkflowGroupingFacts>(
   workflows: readonly Entry[],
 ): WorkflowCategoryGroup<Entry>[] {
+  // Labels come from the WHOLE list: a composition in another category still
+  // names itself, so an orphan harness can say what it is a harness of.
+  const labelById = new Map<string, string>();
+  for (const workflow of workflows) labelById.set(workflow.id, workflow.label);
+
   const byCategory = new Map<string, Entry[]>();
   const seenOrder: string[] = [];
   for (const workflow of workflows) {
@@ -105,6 +231,33 @@ export function groupWorkflowsByCategory<Entry extends { readonly categoryId: st
     .sort((a, b) => (a.display?.order ?? UNLISTED_ORDER) - (b.display?.order ?? UNLISTED_ORDER) || a.seen - b.seen)
     .map(({ categoryId, display }) => ({
       label: display?.label ?? categoryId,
-      entries: byCategory.get(categoryId) ?? [],
+      entries: nestHarnesses(byCategory.get(categoryId) ?? [], labelById),
     }));
+}
+
+/** ONE category's entries, with each harness moved under its composition. */
+function nestHarnesses<Entry extends WorkflowGroupingFacts>(
+  bin: readonly Entry[],
+  labelById: ReadonlyMap<string, string>,
+): readonly WorkflowGroupEntry<Entry>[] {
+  const compositions = new Set(bin.filter((entry) => entry.role.kind === "composition").map((entry) => entry.id));
+  const members = new Map<string, WorkflowGroupEntry<Entry>[]>();
+  const topLevel: Entry[] = [];
+  for (const workflow of bin) {
+    const nestUnder = workflow.role.kind === "chunk-harness" && compositions.has(String(workflow.role.of))
+      ? String(workflow.role.of)
+      : undefined;
+    if (nestUnder === undefined) {
+      topLevel.push(workflow);
+      continue;
+    }
+    const bucket = members.get(nestUnder) ?? [];
+    bucket.push({ entry: workflow, harness: markingFor(workflow.role, labelById, true), members: [] });
+    members.set(nestUnder, bucket);
+  }
+  return topLevel.map((workflow) => ({
+    entry: workflow,
+    harness: markingFor(workflow.role, labelById, false),
+    members: members.get(workflow.id) ?? [],
+  }));
 }

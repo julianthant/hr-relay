@@ -70,9 +70,16 @@ import {
   type InputRunSurface,
   type ParsedInputEntry,
 } from "../../domain/workflow/ingress.js";
+import type { WorkflowModuleRole } from "../../domain/workflow/module-role.js";
 import type { StartPlanResponse } from "../client/index.js";
 import { useDashboardClient } from "../state/client-context.js";
-import { groupWorkflowsByCategory, workflowCategoryLabel } from "./workflow-category.js";
+import {
+  groupWorkflowsByCategory,
+  workflowCategoryLabel,
+  type WorkflowCategoryGroup,
+  type WorkflowGroupEntry,
+} from "./workflow-category.js";
+import { WorkflowHarnessTag } from "./workflow-harness-tag.js";
 import {
   EnqueueResultBanner,
   InstanceSelector,
@@ -107,6 +114,13 @@ export interface RunStartWorkflow {
   readonly label: string;
   /** the served category this workflow is filed under — the picker's grouping */
   readonly categoryId: string;
+  /**
+   * The served taxonomy fact (doc 02 §1.2.1, D219) — composed from the boot
+   * document exactly as served, never inferred from an id prefix. It is what
+   * the ONE grouping rule nests a chunk harness by, and what keeps this
+   * dialog's default selection from opening on a step of a workflow.
+   */
+  readonly role: WorkflowModuleRole;
   /**
    * The short code the picker row carries — the descriptor's own guarded
    * 2-char code, served on the bootstrap workflow projection since R2 D1/D2.
@@ -173,12 +187,118 @@ export function RunStartButton({ onOpen }: { onOpen: () => void }) {
 // shared helper makes unrepresentable.
 // ---------------------------------------------------------------------------
 
-function matchesQuery(workflow: RunStartWorkflow, categoryLabel: string, query: string): boolean {
+function matchesQuery(workflow: RunStartWorkflow, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (needle === "") return true;
   return workflow.label.toLowerCase().includes(needle)
     || (workflow.code !== undefined && workflow.code.toLowerCase().includes(needle))
-    || categoryLabel.toLowerCase().includes(needle);
+    || workflowCategoryLabel(workflow.categoryId).toLowerCase().includes(needle);
+}
+
+/** the picker's own view-model, carrying the identity the ONE rule keys on */
+type PickerEntry = RunStartWorkflow & { readonly id: string };
+
+/**
+ * BOTH picker lists go through the ONE rule (doc 03 §Shell, D219) — the
+ * startable catalogue and the "not startable" disclosure alike — so a chunk
+ * harness is a step under its composition in each of them and a peer in
+ * neither.
+ *
+ * The query filters the LIST, before grouping, rather than each group's
+ * entries after it: filtering afterwards could delete a composition while
+ * keeping a harness that had just been nested under it. Filtering first hands
+ * the rule an honest list, and a harness whose composition the query dropped
+ * takes the rule's own orphan arm — top level, still marked as a harness of
+ * the composition it names.
+ */
+function pickerGroups(
+  workflows: readonly RunStartWorkflow[],
+  query = "",
+): WorkflowCategoryGroup<PickerEntry>[] {
+  return groupWorkflowsByCategory(
+    workflows
+      .filter((workflow) => matchesQuery(workflow, query))
+      .map((workflow) => ({ ...workflow, id: workflow.workflowId })),
+  );
+}
+
+/**
+ * ONE level of picker entries, and the nested level under each of them.
+ *
+ * The nesting is a real nested list inside the parent's own `<li>` rather than
+ * padding on a flat list: the operator hears the same hierarchy the eye reads
+ * (D187), and the nested list names the composition it belongs to. `row` is
+ * supplied by the caller because the two lists this picker draws — the
+ * startable catalogue and the "not startable" disclosure — differ in exactly
+ * one thing, whether a row is a control, and in nothing about the structure.
+ */
+function PickerEntries({
+  nodes,
+  row,
+}: {
+  nodes: readonly WorkflowGroupEntry<PickerEntry>[];
+  row: (node: WorkflowGroupEntry<PickerEntry>) => ReactNode;
+}) {
+  return (
+    <ul className="flex flex-col gap-[var(--ds-space-hair)]">
+      {nodes.map((node) => (
+        <li key={node.entry.workflowId}>
+          {row(node)}
+          {node.members.length > 0 && (
+            <ul
+              aria-label={`Proving harnesses of ${node.entry.label}`}
+              className="flex flex-col gap-[var(--ds-space-hair)] pl-[var(--ds-space-cozy)]"
+            >
+              {node.members.map((member) => (
+                <li key={member.entry.workflowId}>{row(member)}</li>
+              ))}
+            </ul>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** one selectable workflow — or one step of one, marked as such */
+function PickerRow({
+  node,
+  value,
+  onChange,
+}: {
+  node: WorkflowGroupEntry<PickerEntry>;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const workflow = node.entry;
+  const selected = workflow.workflowId === value;
+  return (
+    <button
+      type="button"
+      aria-current={selected ? "true" : undefined}
+      onClick={() => onChange(workflow.workflowId)}
+      className={cn(
+        "flex w-full min-w-0 cursor-pointer items-center gap-[var(--ds-space-snug)] text-left",
+        "h-[var(--ds-h-row)] px-[var(--ds-space-snug)]",
+        dsRadius.md,
+        dsText.ui,
+        dsFocus,
+        dsMotion.fast,
+        selected
+          ? cn("bg-[var(--ds-surface-3)] font-semibold", dsFg.base)
+          : cn("hover:bg-[var(--ds-surface-2)]", node.harness === undefined ? dsFg.secondary : dsFg.muted),
+      )}
+    >
+      <span className="min-w-0 flex-1 truncate">{workflow.label}</span>
+      {node.harness !== undefined && <WorkflowHarnessTag harness={node.harness} />}
+      {/* Served or nothing — see `RunStartWorkflow.code`. */}
+      {workflow.code !== undefined && (
+        <span className={cn(dsText.micro, dsText.nums, selected ? dsFg.muted : dsFg.faint)}>
+          {workflow.code}
+        </span>
+      )}
+    </button>
+  );
 }
 
 /**
@@ -196,14 +316,9 @@ function WorkflowPicker({
 }) {
   const [query, setQuery] = useState("");
   const [showBlocked, setShowBlocked] = useState(false);
-  const groups = useMemo(
-    () =>
-      groupWorkflowsByCategory(workflows.filter(isStartable))
-        .map((group) => ({ ...group, entries: group.entries.filter((entry) => matchesQuery(entry, group.label, query)) }))
-        .filter((group) => group.entries.length > 0),
-    [workflows, query],
-  );
+  const groups = useMemo(() => pickerGroups(workflows.filter(isStartable), query), [workflows, query]);
   const blocked = useMemo(() => workflows.filter((workflow) => !isStartable(workflow)), [workflows]);
+  const blockedGroups = useMemo(() => pickerGroups(blocked), [blocked]);
 
   return (
     <div className="flex w-[204px] shrink-0 flex-col border-r border-[color:var(--ds-border)]">
@@ -234,36 +349,10 @@ function WorkflowPicker({
           groups.map((group) => (
             <div key={group.label} className="mb-[var(--ds-space-cozy)] flex flex-col gap-[var(--ds-space-hair)]">
               <SectionLabel className="px-[var(--ds-space-snug)]">{group.label}</SectionLabel>
-              {group.entries.map((workflow) => {
-                const selected = workflow.workflowId === value;
-                return (
-                  <button
-                    key={workflow.workflowId}
-                    type="button"
-                    aria-current={selected ? "true" : undefined}
-                    onClick={() => onChange(workflow.workflowId)}
-                    className={cn(
-                      "flex w-full min-w-0 cursor-pointer items-center gap-[var(--ds-space-snug)] text-left",
-                      "h-[var(--ds-h-row)] px-[var(--ds-space-snug)]",
-                      dsRadius.md,
-                      dsText.ui,
-                      dsFocus,
-                      dsMotion.fast,
-                      selected
-                        ? cn("bg-[var(--ds-surface-3)] font-semibold", dsFg.base)
-                        : cn("hover:bg-[var(--ds-surface-2)]", dsFg.secondary),
-                    )}
-                  >
-                    <span className="min-w-0 flex-1 truncate">{workflow.label}</span>
-                    {/* Served or nothing — see `RunStartWorkflow.code`. */}
-                    {workflow.code !== undefined && (
-                      <span className={cn(dsText.micro, dsText.nums, selected ? dsFg.muted : dsFg.faint)}>
-                        {workflow.code}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+              <PickerEntries
+                nodes={group.entries}
+                row={(node) => <PickerRow node={node} value={value} onChange={onChange} />}
+              />
             </div>
           ))
         )}
@@ -281,14 +370,32 @@ function WorkflowPicker({
           the names as a list rather than a definition list whose definitions
           would all be empty — and it invents no reason text. */}
       <div className="shrink-0 border-t border-[color:var(--ds-border)] p-[var(--ds-space-base)]">
+        {/* The SAME rule as the list above it (D219): a chunk harness is a step
+            of its composition here too, so the two halves of one picker cannot
+            say different things about the same workflow. */}
         {showBlocked && (
-          <ul className="mb-[var(--ds-space-snug)] flex max-h-[11rem] flex-col gap-[var(--ds-space-snug)] overflow-y-auto">
-            {blocked.map((workflow) => (
-              <li key={workflow.workflowId} className={cn(dsText.meta, "font-semibold", dsFg.base)}>
-                {workflow.label}
-              </li>
+          <div className="mb-[var(--ds-space-snug)] flex max-h-[11rem] flex-col gap-[var(--ds-space-snug)] overflow-y-auto">
+            {blockedGroups.map((group) => (
+              <div key={group.label} className="flex flex-col gap-[var(--ds-space-hair)]">
+                <SectionLabel className="px-[var(--ds-space-snug)]">{group.label}</SectionLabel>
+                <PickerEntries
+                  nodes={group.entries}
+                  row={(node) => (
+                    <span
+                      className={cn(
+                        "flex min-w-0 items-center gap-[var(--ds-space-snug)] px-[var(--ds-space-snug)]",
+                        dsText.meta,
+                        node.harness === undefined ? cn("font-semibold", dsFg.base) : dsFg.secondary,
+                      )}
+                    >
+                      <span className="min-w-0 truncate">{node.entry.label}</span>
+                      {node.harness !== undefined && <WorkflowHarnessTag harness={node.harness} />}
+                    </span>
+                  )}
+                />
+              </div>
             ))}
-          </ul>
+          </div>
         )}
         <Button
           size="sm"
@@ -450,17 +557,28 @@ function TypedInput({
  * The workflow the dialog opens on: the panel the operator is standing in when
  * that workflow can be started, then the first that can, rather than opening on
  * nothing.
+ *
+ * **A chunk harness is never AUTO-picked** (D219). It is a step of its
+ * composition, and a dialog that opens on a step the operator did not ask for
+ * proposes a run of one piece of a workflow — so a harness is only ever the
+ * default when the operator is standing in that harness's own panel, which is
+ * a choice they already made. Every fallback below skips harnesses; if the
+ * served catalogue holds nothing else, the dialog opens with NOTHING selected
+ * and renders the absent state, which is the honest reading of "there is no
+ * whole workflow to default to" rather than a step chosen on the operator's
+ * behalf.
  */
 function defaultWorkflowId(
   workflows: readonly RunStartWorkflow[],
   panelWorkflowId: string,
 ): string {
+  const autoPickable = (workflow: RunStartWorkflow): boolean => workflow.role.kind !== "chunk-harness";
   const startable = workflows.filter(isStartable);
   const onPanel = startable.find((workflow) => workflow.workflowId === panelWorkflowId);
   const chosen = onPanel
-    ?? startable[0]
+    ?? startable.find(autoPickable)
     ?? workflows.find((workflow) => workflow.workflowId === panelWorkflowId)
-    ?? workflows[0];
+    ?? workflows.find(autoPickable);
   return chosen === undefined ? "" : chosen.workflowId;
 }
 

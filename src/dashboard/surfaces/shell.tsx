@@ -56,7 +56,12 @@ import type { SubscriptionState } from "../client/index.js";
 import { PROPOSED_STATUS, dsStatusOf, type QueueStatus } from "./status.js";
 import { SystemChip } from "./system-chip.js";
 import { plural } from "./format.js";
-import { groupWorkflowsByCategory, type WorkflowCategoryGroup } from "./workflow-category.js";
+import {
+  groupWorkflowsByCategory,
+  type WorkflowCategoryGroup,
+  type WorkflowGroupEntry,
+} from "./workflow-category.js";
+import { WorkflowHarnessTag } from "./workflow-harness-tag.js";
 
 export type WorkflowCountWire = z.infer<typeof WorkflowCountWireSchema>;
 export type StatusCountWire = z.infer<typeof StatusCountWireSchema>;
@@ -363,6 +368,12 @@ export type WorkflowRailGroup = WorkflowCategoryGroup<WorkflowBootstrapPrimitive
  * under a heading the product does not use, and the two surfaces cannot drift
  * into two orders. A category nothing is registered under is DROPPED rather
  * than rendered as an empty heading.
+ *
+ * The same function also decides MEMBERSHIP (D219): an entry whose served role
+ * is `chunk-harness` comes back nested under its composition's entry rather
+ * than beside it, which is why a group's entries are `WorkflowGroupEntry`
+ * records and not bare primitives — the rail cannot flatten a step back into a
+ * workflow without saying so.
  */
 export function buildWorkflowRailGroups(
   workflows: readonly WorkflowBootstrapPrimitive[],
@@ -383,11 +394,22 @@ function WorkflowEntryList({
 }) {
   const groups = useMemo(() => buildWorkflowRailGroups(workflows), [workflows]);
 
-  const entry = (workflow: WorkflowBootstrapPrimitive): ReactElement => {
+  const entry = (node: WorkflowGroupEntry<WorkflowBootstrapPrimitive>): ReactElement => {
+    const workflow = node.entry;
     const id = String(workflow.id);
     const total = workflowCount(counts, id);
     const active = activeCount(workflowStatusCounts(counts, id));
     const on = id === activeWorkflowId;
+    // A step reads one weight quieter than a workflow at every selection state:
+    // an indent alone is a hierarchy the eye has to measure against the next
+    // group's left edge, and the selected step still has to look selected.
+    const labelWeight = node.harness !== undefined
+      ? on
+        ? "font-medium text-[color:var(--ds-fg)]"
+        : "font-normal text-[color:var(--ds-fg-secondary)]"
+      : on
+        ? "font-semibold text-[color:var(--ds-fg)]"
+        : "font-medium text-[color:var(--ds-fg-secondary)]";
     return (
       <button
         type="button"
@@ -413,16 +435,9 @@ function WorkflowEntryList({
             on ? "bg-[var(--ds-ring)]" : "bg-transparent group-hover:bg-[var(--ds-border-loud)]",
           )}
         />
-        <span className="flex min-w-0 flex-1 items-center">
-          <span
-            className={cn(
-              dsText.ui,
-              "truncate",
-              on ? "font-semibold text-[color:var(--ds-fg)]" : "font-medium text-[color:var(--ds-fg-secondary)]",
-            )}
-          >
-            {workflow.label}
-          </span>
+        <span className="flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)]">
+          <span className={cn(dsText.ui, "truncate", labelWeight)}>{workflow.label}</span>
+          {node.harness !== undefined && <WorkflowHarnessTag harness={node.harness} />}
         </span>
         {/* `active │ all`, PER WORKFLOW, and it is the ONLY badge on the row —
             both numbers off the SAME served projection the Status Bar and the
@@ -495,8 +510,31 @@ function WorkflowEntryList({
             {group.label}
           </div>
           <ul className="flex flex-col gap-px px-[var(--ds-space-snug)]">
-            {group.entries.map((workflow) => (
-              <li key={String(workflow.id)}>{entry(workflow)}</li>
+            {group.entries.map((node) => (
+              <li key={String(node.entry.id)}>
+                {entry(node)}
+                {/* D219: the harnesses that prove this composition, ALWAYS
+                    visible — a collapsed disclosure would need an
+                    attention-forwarding rule so a hidden step's `Needs you`
+                    could not vanish, and each step keeps its OWN badge (§10.1:
+                    a badge counts exactly the rows its panel shows, so nothing
+                    rolls up).
+
+                    The nesting is a real nested list inside the parent's own
+                    `<li>`, not an indent: a screen reader announces the level
+                    and the group's name, so the hierarchy exists in both
+                    representations of this surface (D187). */}
+                {node.members.length > 0 && (
+                  <ul
+                    aria-label={`Proving harnesses of ${node.entry.label}`}
+                    className="flex flex-col gap-px pl-[var(--ds-space-cozy)]"
+                  >
+                    {node.members.map((member) => (
+                      <li key={String(member.entry.id)}>{entry(member)}</li>
+                    ))}
+                  </ul>
+                )}
+              </li>
             ))}
           </ul>
         </div>
