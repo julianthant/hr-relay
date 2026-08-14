@@ -1,4 +1,9 @@
-# Chunk workflows render as sibling workflows of the Separation composition
+# Workflow taxonomy findings
+
+Records about how workflows, compositions and chunk harnesses are modeled and presented
+(rail, picker, counts, run labels).
+
+## Chunk workflows render as sibling workflows of the Separation composition
 
 **Recorded:** 2026-08-14 · **Status:** recorded (design needed) · **Owning docs to consult:**
 doc 03 (rail/queue), doc 02 (workflow model), doc 07 (migration order), doc 12 (operator trust)
