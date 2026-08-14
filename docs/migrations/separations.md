@@ -2468,16 +2468,21 @@ invented — see §9.3's row 7 and §4a's 2026-08-13 addendum.
 
 #### The contract decomposition this surface forces
 
+The ids below are the SHIPPED ones. The salvage that produced this section named
+the read `ucpath/probe-termination` and the prepare `ucpath/prepare-termination`;
+`EFFECT_VERBS` makes a read a `match-*` and a prepare a `stage-*`, so both were
+renamed before they landed and the old names exist nowhere in `src/`.
+
 | Contract | Kind | What it is |
 |---|---|---|
-| `ucpath/probe-termination` | read | S44 — the `UC_EXTENSIONS.UC_SS_TBH.GBL` read: EID-filtered search plus per-row detail, returning every transaction the page showed |
-| `ucpath/clear-pending-terminations` | **its own transaction** | doc 09 §5's **second** probe kind — the date-agnostic pending sweep (legacy `deletePendingTransaction` deletes ALL in-progress `Terminat*` rows for the EID). It is a mutation, so it is a transaction node of its own, composed BEFORE the termination |
-| `ucpath/prepare-termination` | prepare arm | stages all three wizard pages; zero durable footprint by the crux above |
+| `ucpath/match-existing-termination` | read | S44 — the `UC_EXTENSIONS.UC_SS_TBH.GBL` read: EID-filtered search plus per-row detail, returning every transaction the page showed. Folded date-agnostically by its sibling `ucpath/match-pending-terminations` for the sweep |
+| `ucpath/stage-pending-termination-sweep` + `ucpath/delete-pending-terminations` | **its own transaction** | doc 09 §5's **second** probe kind — the date-agnostic pending sweep (legacy `deletePendingTransaction` deletes ALL in-progress `Terminat*` rows for the EID). It is a mutation, so it is a transaction node of its own, composed BEFORE the termination |
+| `ucpath/stage-termination` | prepare arm | stages all three wizard pages; zero durable footprint by the crux above |
 | `ucpath/create-termination` | commit arm | the `Save and Submit` click **alone** |
 | `ucpath/verify-termination` | read-back | re-probes for the `T#`; **unreadable or unknown PARKS** (S46/S51/S52), never success |
 
 Doc 09 §12's worked example names these `fill-termination` / `submit-termination`; same shape, and the
-repo's own naming rules win. Doc 09 §5 requires **both** probe kinds ported — the idempotency probe
+repo's own naming rules win — as they did over the salvage's `probe-`/`prepare-` names above. Doc 09 §5 requires **both** probe kinds ported — the idempotency probe
 (EID + exact effdt + `"Terminatn"`) and the date-agnostic sweep — and they are genuinely different
 questions, which is why they are two contracts and not one with a flag.
 

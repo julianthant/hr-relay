@@ -27,7 +27,7 @@
  * The read reports what the grid showed: every row, its status **verbatim**, and
  * how many rows there were. "All terminated", "has an active job", "two
  * concurrent jobs" and "already separated" are pure folds over that (see
- * `src/domain/separations/identity-comparison.ts`) — S22's silent risk is that
+ * `src/domain/separations/job-summary-classification.ts`) — S22's silent risk is that
  * legacy only ever *derived* those facts as a side effect of drilling a
  * multi-row grid, so a single-row already-terminated person was never checked at
  * all. A fact that is read unconditionally cannot be skipped by a page layout.

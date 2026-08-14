@@ -394,6 +394,12 @@ Owned by `src/core/receipt-derivation-binding.ts`; pinned by
 
 ### D204 — a gate's evidence is a `gate_results` row, so the approver reaches the receipt
 
+> **`gate_results` is a repository name, not a table.** `authority.gateResults` stores its records in
+> `checkpoint_payloads` keyed `<runId>:<gateId>` (`src/infra/sqlite/authority-database.ts`). This
+> section keeps the repository's vocabulary because that is what the code reads; the OPERATOR-facing
+> receipt sentence deliberately does not, and names "the gate result record" with no table at all —
+> a trust artifact read months later must not send its reader hunting for a table nobody created.
+
 **Ratified 2026-08-12.** D202 built the ALWAYS-GATE and put the answer to doc 09 §14.6 risk 6 ("who
 approved is lost") into authority: the command kernel writes `resolvedBy`/`resolvedAt` onto the
 `gate_results` row inside the same transaction that stores the result and resumes the run, and a

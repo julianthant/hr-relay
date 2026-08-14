@@ -64,6 +64,14 @@
  *
  * ## A gate's evidence is a `gate_results` row, not a checkpoint (D204)
  *
+ * `gate_results` is the REPOSITORY's name (`authority.gateResults`), not a
+ * table: the rows live in `checkpoint_payloads` keyed `<runId>:<gateId>`, which
+ * is why the operator-facing decision sentence below says "the gate result
+ * record" and names no table at all. A receipt an operator reads months later
+ * must not send them looking for a table that does not exist, and re-pointing
+ * the storage to make the sentence true would be renaming authority to suit a
+ * string.
+ *
  * D203 taught the provenance collector that; the receipt still derived from
  * checkpoints alone, so a settled gated run listed its gate node `unknown` and
  * the approver — the whole point of doc 09 §14.6 risk 6 — reached authority and
@@ -965,7 +973,7 @@ interface GateEvidenceInput {
  *
  * The three values that answer §14.6 risk 6 — WHO, WHEN, and on WHAT evidence —
  * come from three different places on purpose. `resolvedBy` and `resolvedAt`
- * are the kernel's own columns on the durable row and are stamped onto every
+ * are the kernel's own fields on the durable record and are stamped onto every
  * fact's source; the decision arm and the bound-evidence digest are payload
  * leaves, resolved through the DECLARED table rather than by field name.
  */
@@ -1033,8 +1041,8 @@ function emitGateEvidence(input: GateEvidenceInput): void {
         ? ""
         : `, bound to the identity evidence it was granted on `
           + `(${String(declaration.boundEvidencePath)} ${bound})`)
-      + ". The approver and the instant are authority's own columns on the `gate_results` row, not "
-      + "values the resolving payload claimed",
+      + ". The approver and the instant are authority's own fields on the gate result record, "
+      + "written by the resolving command, not values the resolving payload claimed",
     evidence: [
       evidenceEntryRef(input.verificationId),
       ...[...evidence.factIds.values()].map(evidenceEntryRef),
