@@ -254,31 +254,39 @@ describe("Kuali separation finalization — the permanent key and the formKey ta
     );
   });
 
-  it("pins the ten formKeys captured live, the two that are honestly unknown, and the five the wire check may assert", () => {
-    // Captured live 2026-08-14 (chunk 5c, §9.12) off Kuali's own `ActionPage`
-    // query — the read the app itself issues when a document route opens. The
-    // two `null`s are §4e's 2026-08-14 amendment: that pass captured the ten
-    // fields staged then, and a fabricated key would make the commit's wire
-    // proof a check that cannot fail.
+  it("pins all TWELVE formKeys captured live, and the five the wire check may assert", () => {
+    // Ten captured live 2026-08-14 (chunk 5c, §9.12) and the two date write-backs
+    // §4e's amendment added captured the same day by chunk 6b (§9.16) — both off
+    // Kuali's own `ActionPage` query, the read the app itself issues when a
+    // document route opens, observed passively with nothing extra sent.
     assert.deepEqual({ ...KUALI_RRSS_FINALIZATION_FORM_KEYS }, {
       department: "JPYGckVxcf",
       payrollTitleCode: "2FlOeR5pd9",
       payrollTitle: "sVmpq6tG9X",
       requestAcknowledged: "xKRU6vmYSY",
       timekeeperName: "QGJ63YrCom",
-      lastDayWorked: null,
-      separationDate: null,
+      lastDayWorked: "ER1WhBzjcm",
+      separationDate: "oEcp1xtQkj",
       terminationEffectiveDate: "DoWSfJhpRm",
       submittedTerminationTemplate: "6Ejy-1rfQJ",
       transactionNumber: "wPyuyY0wT0",
       finalPay: "8CXaCSIvx5",
       timekeeperComments: "J_upFRq074",
     });
-    assert.deepEqual(kualiFinalizationFormKeysMissing(), ["lastDayWorked", "separationDate"]);
+    // The to-do list is empty, and it stays DERIVED — a hand-written second list
+    // is one that can disagree with the table it describes.
+    assert.deepEqual(kualiFinalizationFormKeysMissing(), []);
     // A missing key is a strict subset of the unasserted set — a field whose key
-    // is unknown can never be on the asserted list.
+    // is unknown can never be on the asserted list. Vacuously true today, and
+    // the invariant is what matters if a thirteenth field ever lands.
     for (const field of kualiFinalizationFormKeysMissing()) {
       assert.ok(!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field));
+    }
+    // A captured key is NOT a captured wire shape: both dates stay unasserted,
+    // because a `Date` gadget's model value is epoch ms and the staged value is
+    // `MM/DD/YYYY`. Only the controlled commit's real payload settles them.
+    for (const field of ["lastDayWorked", "separationDate"] as const) {
+      assert.ok(!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field), field);
     }
     // The extraction is validated by the one key this repository already knew:
     // `timekeeperName` came back byte-identical to the 2026-08-04 capture that

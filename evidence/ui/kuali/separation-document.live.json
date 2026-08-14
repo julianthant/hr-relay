@@ -205,6 +205,34 @@
       "capturedValue": false
     },
     {
+      "semanticId": "kuali.rrss-document.last-day-worked-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.lastDayWorked()"
+        }
+      ],
+      "assertion": "exactly-one-editable",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.separation-date-field",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-separation-document-read-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "separationForm.separationDate()"
+        }
+      ],
+      "assertion": "exactly-one-editable",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
       "semanticId": "kuali.rrss-document.separation-ready",
       "screen": "kuali.rrss-document",
       "scenarioId": "ui/kuali-separation-document-read-surface",

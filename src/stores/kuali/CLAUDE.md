@@ -137,31 +137,30 @@ with it.
   legacy's "only when it moved" is a property of its incremental drafts, and under one-pass staging a
   conditional field would need an expectation composed from the page's own prior value — the re-read
   §4e forbids. When nothing moved the two are equal, so the save writes the same string back and the
-  read-back proves it either way. **What this owes the next live pass:** neither control is
-  live-verified EDITABLE (both carry `exactly-one-visible` only, from the 2026-08-12 read-only pass),
-  neither `formKey` has been observed, and the section that owns them has never been read — so §4e's
-  section caveat, discharged for the ten, is re-opened for these two. Both write paths carry
-  `// live-verify: next-live-pass`; `docs/migrations/separations.md` §9.15 is the list.
-- **The write paths ARE live-verified (chunk 5c, 2026-08-14) — for TEN of the twelve.** All ten
-  controls resolved to exactly
-  one EDITABLE node on the editable page of real docs 4502 / 4510 / 4495 / 4524, and the live dry run
-  staged every one of them from the run's variables and read every one back on real doc 4524 in
-  **8.06 s**, then abandoned by hard reload and re-read the document unchanged (S61 proved live). The
-  `// live-verify: 5c` markers are discharged. The two date write-backs §4e's amendment added were
-  NOT part of that pass and carry `// live-verify: next-live-pass` instead — a marker is only
+  read-back proves it either way. **What this owed the next live pass is DISCHARGED (chunk 6b,
+  2026-08-14, §9.16)**: both controls are now live-verified EDITABLE, both `formKey`s are captured,
+  and the section that owns them was read — so §4e's section caveat is discharged for all twelve.
+- **The write paths ARE live-verified — all TWELVE.** Ten by chunk 5c (2026-08-14): each resolved to
+  exactly one EDITABLE node on the editable page of real docs 4502 / 4510 / 4495 / 4524, and the live
+  dry run staged every one of them from the run's variables and read every one back on real doc 4524
+  in **8.06 s**, then abandoned by hard reload and re-read the document unchanged (S61 proved live).
+  The two date write-backs by chunk 6b the same day: one node each, visible / editable / enabled, on
+  two OPEN documents at BOTH live workflow steps (4510 at `Task 1 - Jan`, 4495 at
+  `Task 1 - Kristina & TES`). Both `// live-verify:` markers are discharged; a marker is only
   discharged by the pass that actually verified the control.
-- **Ten of the twelve `formKey`s are known; only FIVE may be asserted on the wire.** The keys came
-  off Kuali's
-  own `ActionPage` query (read-only, 2026-08-14) and the extraction is validated by `timekeeperName`
-  returning `QGJ63YrCom` byte-identical to the 2026-08-04 capture. But `submitDocumentV2` sends the
+- **All twelve `formKey`s are known; only FIVE may be asserted on the wire.** The keys came off
+  Kuali's
+  own `ActionPage` query (read-only, 2026-08-14) and the extraction is validated twice over —
+  `timekeeperName` returning `QGJ63YrCom` byte-identical to the 2026-08-04 capture, and each date
+  gadget's sibling DOM id in the form template (`ORt4nOmlp` / `bKTJvewkM`) matching the id the live
+  editability probe read back off the rendered control. But `submitDocumentV2` sends the
   document MODEL, and only a `Text`/`Textarea` gadget holds the staged STRING there — a `Date` holds
   epoch milliseconds, a `Dropdown`/`Radios` holds `{id,label}` and `Checkboxes` an array of them.
-  `KUALI_RRSS_FINALIZATION_WIRE_ASSERTED` is therefore five fields, `kualiFinalizationWireUnasserted()`
-  names the other seven, and `kualiFinalizationFormKeysMissing()` names the two of those seven whose
-  key is not known at all (§4e's 2026-08-14 amendment added them; a `Date` gadget's wire value is
-  epoch milliseconds anyway, so they would be unassertable even with a key). The controlled commit is
-  what closes them, by OBSERVING the payload. The landing proof is unaffected — it was always the
-  reload read-back, over all twelve.
+  `KUALI_RRSS_FINALIZATION_WIRE_ASSERTED` is therefore five fields and `kualiFinalizationWireUnasserted()`
+  names the other seven — including the two dates, whose keys are now known and whose SHAPE still is
+  not (`06/10/2026` is `1781049600000` in the model). `kualiFinalizationFormKeysMissing()` is empty.
+  The controlled commit is what closes the shapes, by OBSERVING the payload. The landing proof is
+  unaffected — it was always the reload read-back, over all twelve.
 
 ## Provenance
 

@@ -557,10 +557,10 @@ function assertSubmitCarriedValue(
  * repository has never seen on the WRITE wire, plus an option-id table Kuali can
  * republish, so asserting them would be a check that can only fail — the same
  * "write the expectation, then pass" hazard D132 bans, pointed the other way.
- * `KUALI_RRSS_FINALIZATION_WIRE_ASSERTED` names the five that are derivable,
- * `kualiFinalizationWireUnasserted()` names the seven it does not check, and
- * `kualiFinalizationFormKeysMissing()` names the two of those seven whose key is
- * not even known. The controlled commit closes them by OBSERVING the payload.
+ * `KUALI_RRSS_FINALIZATION_WIRE_ASSERTED` names the five that are derivable and
+ * `kualiFinalizationWireUnasserted()` names the seven it does not check. Every
+ * `formKey` is now known (§9.16 captured the last two), so the residue is purely
+ * about SHAPE: the controlled commit closes it by OBSERVING the payload.
  *
  * That does **not** weaken the write's landing proof, because this check never
  * was the proof: `submitDocumentV2` answers `{"status":"Ok","validations":null}`
@@ -576,11 +576,11 @@ function stagedWireValues(expected: StagedExpectation): readonly (readonly [stri
   for (const field of KUALI_FINALIZATION_FIELD_NAMES) {
     if (!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field)) continue;
     const formKey = KUALI_RRSS_FINALIZATION_FORM_KEYS[field];
-    // Two fields carry `null` — §4e's 2026-08-14 amendment added them and their
-    // key has never been observed. They are not in the asserted set, so this is
-    // unreachable today; it throws rather than silently indexing `data[undefined]`,
-    // which would turn a landed save into a post-fence park the day somebody
-    // adds a field to the asserted list before its key is captured.
+    // No field carries `null` today (§9.16 captured the last two), so this is
+    // unreachable. It stays because the table's type still admits `null` for a
+    // field added before its key is captured, and it throws rather than silently
+    // indexing `data[undefined]` — which would turn a landed save into a
+    // post-fence park the day somebody asserts such a field.
     if (formKey === null) {
       throw new Error(
         `Kuali finalization field ${field} is asserted on the wire but its formKey has never been `
@@ -1356,13 +1356,15 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       view.documentNumber,
     );
     await stageText(KUALI_RRSS_TIMEKEEPER_FIELD, fields.timekeeperName, "timekeeper name", view.documentNumber);
-    // live-verify: next-live-pass — §4e's 2026-08-14 amendment. These two
-    // controls carry `exactly-one-visible` from the 2026-08-12 read-only pass
-    // and NOT `exactly-one-editable`: 5c verified the ten controls that were
-    // staged then, and a selector mapped on a read-only record is not a
-    // verified selector for the editable page (D208). The `stageText` discipline
-    // is what makes that safe to ship — a control that does not take the value
-    // is reported by the field-by-field read-back below, never assumed.
+    // live-verify: 6b — §4e's 2026-08-14 amendment, DISCHARGED the same day.
+    // Both controls now carry `exactly-one-editable`, observed on two open
+    // documents at BOTH live workflow steps (4510 / `Task 1 - Jan` and 4495 /
+    // `Task 1 - Kristina & TES`): one node each, visible, editable, enabled,
+    // holding the document's own date. D208's caveat — a selector mapped on a
+    // read-only record is not a verified selector for the editable page — is
+    // answered rather than carried. The `stageText` discipline stands anyway:
+    // a control that does not take the value is reported by the field-by-field
+    // read-back below, never assumed.
     await stageText(
       KUALI_RRSS_LAST_DAY_WORKED_FIELD,
       fields.lastDayWorked,

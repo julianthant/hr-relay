@@ -75,15 +75,16 @@
  * (chunk 5c, §9.12 item 3), with `timekeeper-field` carrying D135's stronger
  * controlled-commit evidence instead.
  *
- * **The two date controls this amendment adds are NOT among them.** 5c verified
- * ten controls because ten were staged; `kuali.rrss-document.last-day-worked-field`
- * and `kuali.rrss-document.separation-date-field` carry `exactly-one-visible`
- * only, from the 2026-08-12 read-only pass — and *a selector mapped on a
- * read-only record is not a verified selector for the editable page* is exactly
- * the legacy lesson that arm exists to answer (D208). So both write paths in the
- * driver carry a `live-verify: next-live-pass` marker, and §9.15 names what that
- * pass owes: their editability, their `formKey`s, and the `sectionSettings` of
- * the section that owns them.
+ * **The two date controls this amendment adds joined them on 2026-08-14** (§9.16).
+ * They carried `exactly-one-visible` only when the amendment shipped, from the
+ * 2026-08-12 read-only pass — and *a selector mapped on a read-only record is not
+ * a verified selector for the editable page* is exactly the legacy lesson that
+ * arm exists to answer (D208). Chunk 6b's read-only pass answered all three
+ * questions §9.15 listed in one document open: both controls resolve to exactly
+ * one EDITABLE node on two open documents at both live workflow steps, their
+ * `formKey`s are `ER1WhBzjcm` / `oEcp1xtQkj`, and the section that owns them
+ * (`eTURtLdMM`) reports `edit` at both steps — so §4e's section caveat is
+ * discharged for all twelve fields, not ten.
  */
 import { z } from "zod";
 import {
@@ -397,13 +398,21 @@ export function compareKualiFinalizationFields(
  * repository already knew: `timekeeperName` came back `QGJ63YrCom`, byte-identical
  * to the 2026-08-04 capture that D135 then confirmed on the wire.
  *
- * **The two date write-backs §4e's 2026-08-14 amendment added are `null`,** because
- * 5c captured the ten fields that were staged then and this repository has never
- * seen the other two on any wire. `null` rather than a guess: a fabricated key
- * makes the commit's wire proof a check that cannot fail, which is the same
- * defect as one that can only fail. `kualiFinalizationFormKeysMissing()` is the
- * to-do list and §9.15 names the pass that closes it — the same passive
- * `ActionPage` read, which costs nothing and sends nothing.
+ * **The two date write-backs §4e's amendment added were captured 2026-08-14 by
+ * chunk 6b** (§9.16), on the same passive `ActionPage` read and at no extra cost:
+ * `lastDayWorked` is `ER1WhBzjcm` and `separationDate` is `oEcp1xtQkj`, both
+ * `Date` gadgets in section `eTURtLdMM`. The extraction validated itself the same
+ * way 5c's did — each key's sibling DOM id in the form template (`ORt4nOmlp`,
+ * `bKTJvewkM`) is the id the live editability probe read back off the rendered
+ * control, so the two halves of the mapping were observed independently and agree.
+ * `kualiFinalizationFormKeysMissing()` is therefore EMPTY, and stays derived from
+ * this table rather than written beside it.
+ *
+ * **A captured key is not a captured wire shape.** Both remain in
+ * `kualiFinalizationWireUnasserted()`: a `Date` gadget's model value is epoch
+ * milliseconds at UTC midnight (doc 4510's `06/10/2026` is `1781049600000`,
+ * doc 4495's `09/02/2026` is `1788307200000`) while the staged value is
+ * `MM/DD/YYYY`, so only the controlled commit's real payload can settle them.
  */
 export const KUALI_RRSS_FINALIZATION_FORM_KEYS: Readonly<
   Record<KualiFinalizationFieldName, string | null>
@@ -413,8 +422,8 @@ export const KUALI_RRSS_FINALIZATION_FORM_KEYS: Readonly<
   payrollTitle: "sVmpq6tG9X",
   requestAcknowledged: "xKRU6vmYSY",
   timekeeperName: KUALI_RRSS_TIMEKEEPER_FORM_KEY,
-  lastDayWorked: null,
-  separationDate: null,
+  lastDayWorked: "ER1WhBzjcm",
+  separationDate: "oEcp1xtQkj",
   terminationEffectiveDate: "DoWSfJhpRm",
   submittedTerminationTemplate: "6Ejy-1rfQJ",
   transactionNumber: "wPyuyY0wT0",
@@ -477,11 +486,11 @@ export function kualiFinalizationFormKeysMissing(): readonly KualiFinalizationFi
  * (§4f2's canary) is what closes the rest**, because it is the first time this
  * repository will see the real payload.
  *
- * §4e's 2026-08-14 amendment added two more unasserted fields for a DIFFERENT
- * reason — their `formKey` is not known at all — and they would be unassertable
- * anyway, because a Kuali `Date` gadget holds epoch milliseconds on the wire,
- * not the `MM/DD/YYYY` string that is staged. `kualiFinalizationFormKeysMissing()`
- * keeps the two reasons distinguishable.
+ * §4e's 2026-08-14 amendment added two more unasserted fields. Their `formKey`s
+ * were captured the same day (§9.16) and they are STILL unasserted, which is the
+ * point worth keeping: a Kuali `Date` gadget holds epoch milliseconds on the
+ * wire, not the `MM/DD/YYYY` string that is staged, so knowing where a value
+ * lives never told anyone what it looks like there.
  */
 export const KUALI_RRSS_FINALIZATION_WIRE_ASSERTED: readonly KualiFinalizationFieldName[] =
   Object.freeze([
@@ -493,9 +502,10 @@ export const KUALI_RRSS_FINALIZATION_WIRE_ASSERTED: readonly KualiFinalizationFi
   ]);
 
 /**
- * The fields whose wire value is NOT asserted — the four gadget kinds whose
- * model value is not the staged string, plus the two whose `formKey` this
- * repository has never observed.
+ * The fields whose wire value is NOT asserted — every gadget kind whose model
+ * value is not the staged string. All twelve `formKey`s are known; seven of the
+ * twelve still cannot be checked, because knowing where a value lives never told
+ * anyone what it looks like there.
  */
 export function kualiFinalizationWireUnasserted(): readonly KualiFinalizationFieldName[] {
   return Object.freeze(
