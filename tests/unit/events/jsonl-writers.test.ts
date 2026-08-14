@@ -1,21 +1,21 @@
 /**
  * The JSONL span/note writers (doc 03 §2.1): O_APPEND lines under the state
  * root, append-at-now partitioning, write-once identity enforcement at emit,
- * schema-owned note redaction with visible drops, the post-append projection
- * hook ordering, and the D86 30-day prune.
+ * schema-owned note redaction with visible drops, the D218 cursor-based tail
+ * reader, and the D86 30-day prune.
  */
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
-import type { SpanEventWire } from "../../../src/events/types.js";
 import {
   appendEventStreamLine,
   listEventStreamFiles,
   pruneEventStreams,
   readEventStreamLines,
+  readEventStreamLinesFrom,
 } from "../../../src/infra/events/jsonl-streams.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
@@ -61,21 +61,14 @@ function queuedEvent(clock: { now(): Date }): Record<string, unknown> {
 }
 
 describe("span JSONL writer", () => {
-  it("appends one strict line per event, stamps pid, and feeds the projector only after the append", () => {
+  it("appends one strict pid-stamped line per event and feeds NO projector — the fold reads disk (D218)", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const seen: SpanEventWire[] = [];
     const writer = createSpanJsonlWriter({
       stateRoot: root,
       clock,
       pid: 4242,
       declaredDetails: () => new Set(["resolvedName"]),
-      onEvent: (event) => {
-        // JSONL first, projection after: the line must be durable already.
-        const lines = readEventStreamLines(root, "spans");
-        assert.equal(lines.at(-1)?.text, JSON.stringify(event));
-        seen.push(event);
-      },
     });
     writer.emit(queuedEvent(clock));
     writer.emit({
@@ -88,7 +81,6 @@ describe("span JSONL writer", () => {
     assert.equal(lines[0].file.date, "2026-08-03");
     const first: unknown = JSON.parse(lines[0].text);
     assert.equal((first as { pid: number }).pid, 4242);
-    assert.equal(seen.length, 2);
   });
 
   it("partitions append-at-now: a midnight-crossing writer starts a new day file", () => {
@@ -189,6 +181,55 @@ describe("note JSONL writer and schema-owned redaction", () => {
       level: "step",
       message: "",
     }));
+  });
+});
+
+describe("the D218 cursor-based tail reader", () => {
+  it("reads only what landed since the cursors, and resumes without re-reading a line", () => {
+    const root = stateRoot();
+    appendEventStreamLine(root, "spans", "person-lookup", "2026-08-03", `{"n":1}`);
+    appendEventStreamLine(root, "spans", "person-lookup", "2026-08-03", `{"n":2}`);
+    const first = readEventStreamLinesFrom(root, "spans", new Map());
+    assert.deepEqual(first.lines.map(({ text, lineNumber }) => ({ text, lineNumber })), [
+      { text: `{"n":1}`, lineNumber: 1 },
+      { text: `{"n":2}`, lineNumber: 2 },
+    ]);
+
+    appendEventStreamLine(root, "spans", "person-lookup", "2026-08-03", `{"n":3}`);
+    // A new file (day roll / new workflow) is picked up from byte 0.
+    appendEventStreamLine(root, "spans", "aa-flow", "2026-08-04", `{"n":4}`);
+    const second = readEventStreamLinesFrom(root, "spans", first.cursors);
+    assert.deepEqual(second.lines.map(({ text, lineNumber }) => ({ text, lineNumber })), [
+      { text: `{"n":3}`, lineNumber: 3 },
+      { text: `{"n":4}`, lineNumber: 1 },
+    ]);
+
+    const third = readEventStreamLinesFrom(root, "spans", second.cursors);
+    assert.deepEqual(third.lines, []);
+  });
+
+  it("does not consume a torn trailing line until its newline lands", () => {
+    const root = stateRoot();
+    appendEventStreamLine(root, "spans", "person-lookup", "2026-08-03", `{"n":1}`);
+    const path = join(root, "spans", "person-lookup-2026-08-03.jsonl");
+    appendFileSync(path, `{"torn":`); // another process mid-append — no newline yet
+    const first = readEventStreamLinesFrom(root, "spans", new Map());
+    assert.deepEqual(first.lines.map(({ text }) => text), [`{"n":1}`]);
+
+    appendFileSync(path, `true}\n`);
+    const second = readEventStreamLinesFrom(root, "spans", first.cursors);
+    assert.deepEqual(second.lines.map(({ text, lineNumber }) => ({ text, lineNumber })), [
+      { text: `{"torn":true}`, lineNumber: 2 },
+    ]);
+  });
+
+  it("fails loud when an append-only file shrank below its cursor", () => {
+    const root = stateRoot();
+    appendEventStreamLine(root, "spans", "person-lookup", "2026-08-03", `{"n":1}`);
+    appendEventStreamLine(root, "spans", "person-lookup", "2026-08-03", `{"n":2}`);
+    const { cursors } = readEventStreamLinesFrom(root, "spans", new Map());
+    truncateSync(join(root, "spans", "person-lookup-2026-08-03.jsonl"), 4);
+    assert.throws(() => readEventStreamLinesFrom(root, "spans", cursors), /shrank .* truncated/);
   });
 });
 

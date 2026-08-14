@@ -5,7 +5,7 @@
  * 30-day prune. The ledger is deliberately NOT here — it has its own
  * serialized outbox projector (doc 09) and is never pruned.
  */
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, unlinkSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, unlinkSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
@@ -94,6 +94,93 @@ export function readEventStreamLines(stateRoot: string, stream: EventStream): re
     }
   }
   return lines;
+}
+
+export interface EventStreamFileCursor {
+  /** Bytes consumed so far — always ending exactly at a newline (or 0). */
+  readonly bytesConsumed: number;
+  /** Newline-terminated lines consumed — the base `lineNumber` continues from. */
+  readonly linesConsumed: number;
+}
+
+export interface EventStreamTailResult {
+  readonly lines: readonly EventStreamLine[];
+  /** The resume state: one entry per currently-listed stream file, keyed by path. */
+  readonly cursors: ReadonlyMap<string, EventStreamFileCursor>;
+}
+
+/**
+ * Cursor-based read — the offset-aware half of the D218 cross-process tailer.
+ * Returns every COMPLETE line appended since `cursors`, in the same
+ * (date, workflow, line) order as `readEventStreamLines`, plus the cursors to
+ * resume from. Three properties are load-bearing:
+ *
+ * - A trailing line whose newline has not landed is NOT consumed: another
+ *   process may be mid-append, and parsing half a record would report real
+ *   history as corrupt. The returned cursor stops at the last newline, so the
+ *   torn tail is read whole on a later call.
+ * - A file SHORTER than its cursor fails loud. These streams are append-only,
+ *   so a shrink is truncation of history, never a state to read around.
+ * - A file the directory no longer lists (the D86 prune) simply leaves the
+ *   result cursors; a file the cursors have never seen (day roll, new
+ *   workflow) is read from byte 0.
+ */
+export function readEventStreamLinesFrom(
+  stateRoot: string,
+  stream: EventStream,
+  cursors: ReadonlyMap<string, EventStreamFileCursor>,
+): EventStreamTailResult {
+  const lines: EventStreamLine[] = [];
+  const nextCursors = new Map<string, EventStreamFileCursor>();
+  for (const file of listEventStreamFiles(stateRoot, stream)) {
+    const cursor = cursors.get(file.path) ?? { bytesConsumed: 0, linesConsumed: 0 };
+    const size = statSync(file.path).size;
+    if (size < cursor.bytesConsumed) {
+      throw new Error(
+        `${file.path} shrank from ${String(cursor.bytesConsumed)} to ${String(size)} bytes; `
+        + "an append-only stream file was truncated and this tail refuses to guess what survived",
+      );
+    }
+    if (size === cursor.bytesConsumed) {
+      nextCursors.set(file.path, cursor);
+      continue;
+    }
+    const chunk = Buffer.alloc(size - cursor.bytesConsumed);
+    const handle = openSync(file.path, "r");
+    try {
+      let filled = 0;
+      while (filled < chunk.length) {
+        const got = readSync(handle, chunk, filled, chunk.length - filled, cursor.bytesConsumed + filled);
+        if (got === 0) {
+          throw new Error(
+            `${file.path} ended ${String(chunk.length - filled)} bytes before its just-observed size; `
+            + "an append-only stream file was truncated mid-read",
+          );
+        }
+        filled += got;
+      }
+    } finally {
+      closeSync(handle);
+    }
+    // A `\n` is a single byte and no UTF-8 continuation byte can equal it, so
+    // splitting on the raw byte before decoding cannot cut a character.
+    const lastNewline = chunk.lastIndexOf(0x0a);
+    if (lastNewline === -1) {
+      nextCursors.set(file.path, cursor);
+      continue;
+    }
+    const segments = chunk.subarray(0, lastNewline + 1).toString("utf8").split("\n");
+    segments.pop(); // the empty segment after the final consumed newline
+    for (const [index, text] of segments.entries()) {
+      if (text === "") continue;
+      lines.push({ file, lineNumber: cursor.linesConsumed + index + 1, text });
+    }
+    nextCursors.set(file.path, {
+      bytesConsumed: cursor.bytesConsumed + lastNewline + 1,
+      linesConsumed: cursor.linesConsumed + segments.length,
+    });
+  }
+  return Object.freeze({ lines: Object.freeze(lines), cursors: nextCursors });
 }
 
 export interface PruneReport {

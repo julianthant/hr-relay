@@ -18,7 +18,7 @@ import { RunRecordSchema, type RunRecord } from "../../../../src/domain/run/reco
 import { FailureRecordSchema, type FailureRecord } from "../../../../src/domain/trust/failure.js";
 import type { RunCheckpointRecord } from "../../../../src/domain/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../../src/domain/write-safety.js";
-import type { RunQueuedWire, SpanEventWire } from "../../../../src/events/types.js";
+import type { RunQueuedWire } from "../../../../src/events/types.js";
 import { createSpanJsonlWriter, type SpanJsonlWriter } from "../../../../src/infra/events/span-jsonl-writer.js";
 import type { ProjectionRepositories } from "../../../../src/infra/sqlite/authority-database.js";
 import {
@@ -208,12 +208,20 @@ export function makeWorld(input?: Readonly<{
   });
   const changes: RunQueueProjectionChange[] = [];
   projection.onChange((change) => changes.push(change));
-  const writer = createSpanJsonlWriter({
+  const jsonlWriter = createSpanJsonlWriter({
     stateRoot,
     clock,
     pid: 4242,
     declaredDetails: () => input?.declaredDetails ?? new Set(["selection-status", "active-state"]),
-    onEvent: (event: SpanEventWire) => projection.apply(event),
+  });
+  // D218: the projection's one live feed is the disk tail. The harness ticks
+  // it after every append so each emitted event folds through the same
+  // read-back-from-disk path production uses.
+  const writer: SpanJsonlWriter = Object.freeze({
+    emit: (event: unknown): void => {
+      jsonlWriter.emit(event);
+      projection.ingestFromDisk();
+    },
   });
   return {
     stateRoot,

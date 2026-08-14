@@ -9,15 +9,22 @@
  * take a second path because no second aggregation function exists.
  *
  * Sources, in the doc's arrow direction: the spans JSONL stream (identity,
- * claims, task spans, gates, ends) folded incrementally, joined per-run
- * against SQLite AUTHORITY facts (lifecycle for parked/terminal/hidden,
- * `version` as the row's CAS revision). The folded rows are persisted to the
- * rebuildable `runs_view` projection table; deleting that table loses nothing
- * — `rebuildFromJsonl` is the `rebuild-from-native-jsonl` recovery class.
+ * claims, task spans, gates, ends) consumed FROM DISK (D218) — a boot
+ * `rebuildFromJsonl` folds the whole history, and `ingestFromDisk` tails the
+ * files by byte cursor for everything appended after, by ANY process. The
+ * worker emits its task spans from its own OS process, so disk is the one
+ * place every span exists; an in-process emit hook covered only this
+ * process's half and served an empty timeline for every run enqueued after
+ * boot. The fold is joined per-run against SQLite AUTHORITY facts (lifecycle
+ * for parked/terminal/hidden, `version` as the row's CAS revision). The
+ * folded rows are persisted to the rebuildable `runs_view` projection table;
+ * deleting that table loses nothing — `rebuildFromJsonl` is the
+ * `rebuild-from-native-jsonl` recovery class.
  *
- * Failure policy (doc 03 §2.3): JSONL append happens BEFORE `apply` is ever
- * called; a failing apply marks the projection degraded and schedules a
- * guarded rebuild — it never throws into the emitting workflow path. A
+ * Failure policy (doc 03 §2.3): JSONL append happens BEFORE any fold sees the
+ * event — structurally, because the fold only reads the file. A failing fold
+ * or an unparsable tailed line marks the projection degraded and schedules a
+ * guarded rebuild — never a skip, and never a throw into the emitting path. A
  * rebuild that itself fails leaves the projection loudly degraded (health
  * carries the exact error); it never serves a half-folded day as healthy.
  *
@@ -63,7 +70,7 @@ import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { sha256Hex } from "../../../domain/sha256.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../events/types.js";
 import type { ProjectionRepositories } from "../../../infra/sqlite/authority-database.js";
-import { readEventStreamLines } from "../../../infra/events/jsonl-streams.js";
+import { readEventStreamLinesFrom, type EventStreamFileCursor, type EventStreamLine } from "../../../infra/events/jsonl-streams.js";
 
 /* ── the persisted fold shape (internal, versioned by its own schema hash) ─ */
 
@@ -222,6 +229,13 @@ export class RunQueueProjection {
   readonly #listeners = new Set<(change: RunQueueProjectionChange) => void>();
   readonly #notifiedStatus = new Map<string, string>();
   readonly #foldSchemaHash: Fingerprint;
+  /**
+   * The D218 tail state: how far into each `spans/` file this projection has
+   * folded, in bytes-through-the-last-newline. Seeded by `rebuildFromJsonl`
+   * (so a rebuild and the tail can never double-fold a line) and advanced
+   * only by `ingestFromDisk`.
+   */
+  #spanCursors: ReadonlyMap<string, EventStreamFileCursor> = new Map();
   #cursorValue = 0;
   #generationValue: number;
   #health: RunQueueProjectionHealth = { state: "live" };
@@ -258,9 +272,11 @@ export class RunQueueProjection {
   }
 
   /**
-   * Incremental ingest — called AFTER the JSONL append. Never throws: a fold
-   * failure degrades the projection and schedules the guarded rebuild
-   * instead of blocking the workflow that emitted the span.
+   * Fold ONE already-durable event. Never throws: a fold failure degrades the
+   * projection and schedules the guarded rebuild instead of blocking the
+   * caller. Production ingest reaches this fold only through `ingestFromDisk`
+   * / `rebuildFromJsonl` (D218) — the emitting process may be a DIFFERENT OS
+   * process, so an in-process call can never be the live feed.
    */
   apply(event: SpanEventWire): void {
     try {
@@ -269,30 +285,72 @@ export class RunQueueProjection {
       this.#persist(affected.runIds);
       this.#notify(affected);
     } catch (error) {
-      this.#health = {
-        state: "degraded",
-        lastError: `projection apply failed for ${event.t}: ${error instanceof Error ? error.message : String(error)}`,
-      };
-      const schedule = this.#deps.scheduleRebuild ?? ((rebuild: () => void): void => rebuild());
-      schedule(() => this.rebuildFromJsonl());
+      this.#degrade(`projection apply failed for ${event.t}: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /**
+   * The cross-process tail (D218): fold every COMPLETE span line any process
+   * appended since the last read. The boot rebuild seeds the byte cursors, so
+   * a line folds exactly once — this projection's own emissions included. An
+   * unparsable or unfoldable line degrades and schedules the guarded rebuild,
+   * never a skip; a torn trailing line stays on disk until its newline lands.
+   */
+  ingestFromDisk(): void {
+    // While degraded, recovery belongs to the scheduled rebuild alone — it
+    // re-reads the whole stream and resets these cursors.
+    if (this.#health.state === "degraded") return;
+    try {
+      const tail = readEventStreamLinesFrom(this.#deps.stateRoot, "spans", this.#spanCursors);
+      this.#spanCursors = tail.cursors;
+      if (tail.lines.length === 0) return;
+      const events = this.#parseSpanLines(tail.lines);
+      for (const event of events) {
+        const affected = this.#fold(event);
+        this.#cursorValue += 1;
+        this.#persist(affected.runIds);
+        this.#notify(affected);
+      }
+    } catch (error) {
+      this.#degrade(`span tail ingest failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Doc 03 §2.3's failure policy, shared by every ingest path: degraded
+   * health carrying the exact error, plus the guarded rebuild.
+   */
+  #degrade(lastError: string): void {
+    this.#health = { state: "degraded", lastError };
+    const schedule = this.#deps.scheduleRebuild ?? ((rebuild: () => void): void => rebuild());
+    schedule(() => this.rebuildFromJsonl());
+  }
+
+  /**
+   * Parse + order a batch of stream lines the way the rebuild always has: a
+   * corrupt line refuses by file:line, and events sort by their own instant —
+   * per-run order still comes from each file's append order, since the sort
+   * is stable and one run's spans ride one workflow's files.
+   */
+  #parseSpanLines(lines: readonly EventStreamLine[]): readonly SpanEventWire[] {
+    const events = lines.map((line) => {
+      try {
+        return SpanEventWireSchema.parse(JSON.parse(line.text));
+      } catch (error) {
+        throw new Error(
+          `corrupt span line ${line.file.path}:${String(line.lineNumber)}: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      }
+    });
+    return events.sort((a, b) => a.ts.localeCompare(b.ts));
   }
 
   /** The `rebuild-from-native-jsonl` recovery class: clear, re-read, re-fold. */
   rebuildFromJsonl(): void {
     try {
-      const lines = readEventStreamLines(this.#deps.stateRoot, "spans");
-      const events = lines.map((line) => {
-        try {
-          return SpanEventWireSchema.parse(JSON.parse(line.text));
-        } catch (error) {
-          throw new Error(
-            `corrupt span line ${line.file.path}:${String(line.lineNumber)}: ${error instanceof Error ? error.message : String(error)}`,
-            { cause: error },
-          );
-        }
-      });
-      events.sort((a, b) => a.ts.localeCompare(b.ts));
+      const whole = readEventStreamLinesFrom(this.#deps.stateRoot, "spans", new Map());
+      const events = this.#parseSpanLines(whole.lines);
       this.#rows.clear();
       this.#workers.clear();
       this.#notifiedStatus.clear();
@@ -305,6 +363,9 @@ export class RunQueueProjection {
         return undefined;
       });
       this.#persist([...touched]);
+      // The tail resumes from exactly what this rebuild consumed — set
+      // together with `live` so the two ingest paths can never overlap.
+      this.#spanCursors = whole.cursors;
       this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
       this.#cursorValue = 1;
       this.#health = { state: "live" };

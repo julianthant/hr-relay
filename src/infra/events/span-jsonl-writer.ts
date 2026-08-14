@@ -17,8 +17,13 @@
  *   a key the workflow's descriptor `details` list does not declare throws
  *   with the offending key and workflow named.
  *
- * The optional `onEvent` hook runs strictly AFTER the line is durable — that
- * ordering is doc 03 §2's "JSONL append first, projection applies after".
+ * This writer feeds NO projection (D218). The run/queue projection consumes
+ * the stream FROM DISK with an offset-aware tailer, because the emitting
+ * process is not necessarily the serving process — the worker is its own OS
+ * process, so an in-process post-append hook could only ever cover one
+ * emitter's half of the stream. "JSONL append first, projection applies
+ * after" (doc 03 §2.3) is therefore structural: the projection can only see
+ * what already landed.
  */
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
@@ -36,8 +41,6 @@ export interface SpanJsonlWriterDeps {
    * means the workflow is unknown here — a patch for it fails loud.
    */
   readonly declaredDetails: (workflow: string) => ReadonlySet<string> | undefined;
-  /** Post-append projection feed; never called for an event that did not land on disk. */
-  readonly onEvent?: (event: SpanEventWire) => void;
 }
 
 export interface SpanJsonlWriter {
@@ -110,7 +113,6 @@ export function createSpanJsonlWriter(deps: SpanJsonlWriterDeps): SpanJsonlWrite
         localDatePart(deps.clock.now()),
         JSON.stringify(parsed),
       );
-      deps.onEvent?.(parsed);
     },
   });
 }

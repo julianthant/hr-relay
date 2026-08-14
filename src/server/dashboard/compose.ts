@@ -158,6 +158,15 @@ export const AUTHORITY_BACKUP_MAX_AGE_MS = 45 * 60 * 1000;
  */
 export const ADVISORY_GEMINI_MODEL_ID = "gemini-3-flash-preview";
 
+/**
+ * D218: how often the dashboard tails `spans/*.jsonl` for lines other
+ * processes appended. The worker's spans have no other way into this
+ * process, so this is the ceiling on how stale a live timeline can be;
+ * command-emitted lines don't wait for it (the command service ticks the
+ * tail itself after emitting).
+ */
+export const SPAN_TAIL_POLL_MS = 250;
+
 export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint {
   return FingerprintSchema.parse(
     sha256Hex(`hrauto:descriptor-set:v1\0${[...fingerprints].sort().join("\n")}`),
@@ -312,7 +321,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       if (descriptor === undefined) return undefined;
       return new Set(descriptor.details.map((detail) => detail.key));
     },
-    onEvent: (event) => projection.apply(event),
   });
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock });
 
@@ -328,6 +336,20 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   if (initialHealth.state === "degraded") {
     throw new Error(`dashboard refused to start over a degraded projection: ${initialHealth.lastError ?? "unknown"}`);
   }
+
+  /**
+   * D218: the ONE live span feed is the disk tail. The worker is a separate
+   * OS process (`createDashboardWorkerSupervisor` refuses to even spawn one
+   * here), so its task spans exist only as lines in `spans/*.jsonl` — the
+   * old in-process writer hook folded this process's own emissions and
+   * nothing else, which served an empty timeline (and empty pipeline chips
+   * and dataFacts) for every run enqueued after boot. The boot rebuild above
+   * seeded the byte cursors; this poll folds whatever ANY process appends
+   * after it, and the command service ticks the same cursor after its own
+   * emissions so an operator's follow-up read is never a poll behind.
+   */
+  const spanTailTimer = setInterval(() => projection.ingestFromDisk(), SPAN_TAIL_POLL_MS);
+  spanTailTimer.unref();
 
   const workerRuntime: WorkerRuntimeExecutor = createPhase1WorkerRuntimeExecutor(
     createDashboardWorkerSupervisor(),
@@ -613,6 +635,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     stop: async (): Promise<void> => {
       await server.close();
       hub.close();
+      clearInterval(spanTailTimer);
       clearInterval(backupTimer);
       // Doc 03 §2.5's graceful-drain trigger: one final verified backup while
       // the database is still open. A failure surfaces AFTER cleanup — loud

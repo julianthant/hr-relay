@@ -8,7 +8,7 @@
  * leaves typed.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -44,6 +44,7 @@ interface Harness {
   readonly clock: ReturnType<typeof manualClock>;
   readonly noteWriter: ReturnType<typeof createNoteJsonlWriter>;
   readonly hub: DashboardStreamHub;
+  readonly projection: ReturnType<typeof createRunQueueProjection>;
 }
 
 const cleanups: (() => void)[] = [];
@@ -82,6 +83,8 @@ function harness(): Harness {
     descriptors,
     projectionStore: database,
   });
+  // D218: no in-process hook — the command service ticks the projection's
+  // disk tail after emitting, exactly as production wires it.
   const spans = createSpanJsonlWriter({
     stateRoot,
     clock,
@@ -90,7 +93,6 @@ function harness(): Harness {
       const descriptor = descriptors.resolve(workflow);
       return descriptor === undefined ? undefined : new Set(descriptor.details.map(({ key }) => key));
     },
-    onEvent: (event) => projection.apply(event),
   });
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
 
@@ -205,7 +207,7 @@ function harness(): Harness {
     explorer: explorerQueryDeps(clock, descriptorSetHash([fixtureDescriptor.contractFingerprint])),
     uiCatalog: uiCatalogQueryDeps(),
   });
-  return { app, database, stateRoot, clock, noteWriter, hub };
+  return { app, database, stateRoot, clock, noteWriter, hub, projection };
 }
 
 async function json(response: Response): Promise<Record<string, unknown>> {
@@ -316,6 +318,68 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     if (snapshot.type !== "snapshot" || snapshot.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
     expect(snapshot.payload).toEqual(day);
     connection.close();
+  });
+
+  it("serves the timeline for a run whose spans a WORKER process appended to disk (D218)", async () => {
+    // The regression the cross-process tail exists for: the run is enqueued
+    // by THIS process, its task spans are appended by ANOTHER process (the
+    // worker), and the run detail must still serve a timeline — before D218
+    // the projection folded only its own emissions and `timeline.events`
+    // stayed [] for every run enqueued after boot.
+    const h = harness();
+    const plan = await json(await h.app.request("/api/v1/start-plans", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        workflowId: "fixture-graph",
+        submissions: [{ eid: "10873698", mode: "read-only" }],
+        dryRun: false,
+      }),
+    }));
+    const planned = plan.planned as { runId: string; traceId: string }[];
+    const fingerprints = plan.fingerprints as Record<string, string>;
+    const commandResponse = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7c",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "start-run",
+        family: "start",
+        type: "start-run",
+        target: { workflowId: "fixture-graph", startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion },
+        payload: {
+          descriptorFingerprint: fingerprints.descriptorFingerprint,
+          configFingerprint: fingerprints.configFingerprint,
+          ingressSchemaHash: fingerprints.ingressSchemaHash,
+          canonicalInputSchemaHash: fingerprints.canonicalInputSchemaHash,
+          inputFingerprint: fingerprints.inputFingerprint,
+        },
+      }),
+    });
+    assert.equal((await json(commandResponse)).state, "applied");
+    const { runId, traceId } = planned[0];
+
+    // The worker process: raw O_APPEND lines in the shared stream file.
+    const base = {
+      workflow: "fixture-graph", pid: 777, runId, attempt: 1, traceId,
+      spanPath: `${traceId}/probe#1`, parentSpanPath: traceId,
+    };
+    const file = join(h.stateRoot, "spans", `fixture-graph-${DAY}.jsonl`);
+    appendFileSync(file, `${JSON.stringify({ ...base, t: "span.started", kind: "task", ts: h.clock.now().toISOString(), name: "probe" })}\n`);
+    appendFileSync(file, `${JSON.stringify({ ...base, t: "span.ended", kind: "task", ts: h.clock.now().toISOString(), outcome: "done" })}\n`);
+
+    // Production's poll tick, invoked directly.
+    h.projection.ingestFromDisk();
+
+    const detail = await json(await h.app.request(`/api/v1/runs/${runId}`));
+    const timeline = detail.timeline as { events: { label: string; state: string }[] };
+    assert.equal(timeline.events.length > 0, true);
+    assert.deepEqual(
+      timeline.events.filter(({ label }) => label === "probe").map(({ state }) => state),
+      ["done"],
+    );
   });
 
   it("refuses malformed and unavailable requests with typed wire errors", async () => {

@@ -13,7 +13,7 @@ import { afterEach, describe, it } from "vitest";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
-import { HASH_A } from "../fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   APP_VERSION,
   atDayOffset,
@@ -283,6 +283,122 @@ describe("THE run/queue projection (D81)", () => {
     w.projection.rebuildFromJsonl();
     assert.equal(w.projection.health().state, "degraded");
     assert.match(w.projection.health().lastError ?? "", /corrupt span line .*person-lookup-2026-08-03\.jsonl:2/);
+  });
+
+  /* ── the D218 cross-process disk tail ──────────────────────────────────── */
+
+  /** A raw stream line as ANOTHER process would append it — no writer, no apply. */
+  function rawQueuedLineOf(w: DashboardWorld, seed: number, workflow: string): string {
+    return JSON.stringify({
+      t: "run.queued", kind: "run", pid: 777,
+      ts: w.clock.now().toISOString(),
+      workflow,
+      runId: uuidOf(seed), attempt: 1,
+      traceId: traceOf(seed), spanPath: traceOf(seed),
+      itemId: uuidOf(seed + 5000),
+      shape: "single", priority: "interactive", dryRun: false,
+      actorId: "local-operator",
+      title: `raw #${String(seed)}`,
+      descriptorVersion: 1,
+      contractFingerprint: HASH_A,
+      resolvedInstance: { ucpath: "prod" },
+      configFingerprint: HASH_B,
+      configSnapshotId: UUID_4,
+    });
+  }
+
+  it("folds a WORKER process's task spans from disk — the run enqueued after boot gets its timeline (D218)", () => {
+    // The daily-use defect this pins: the BFF enqueues a run (its own line,
+    // folded), the worker — a separate OS process — executes it, and the only
+    // place the worker's spans exist is the shared stream file. Before the
+    // tail, `row.taskSpans` stayed [] and the run detail served an empty
+    // timeline for every run enqueued after the dashboard booted.
+    const w = world();
+    queuedEventOf(w, { seed: 1 });
+    claimEventOf(w, 1);
+    const file = join(w.stateRoot, "spans", `person-lookup-${DAY}.jsonl`);
+    const base = {
+      workflow: "person-lookup", pid: 777, runId: uuidOf(1), attempt: 1,
+      traceId: traceOf(1), spanPath: `${traceOf(1)}/searching#1`, parentSpanPath: traceOf(1),
+    };
+    appendFileSync(file, `${JSON.stringify({ ...base, t: "span.started", kind: "task", ts: w.clock.now().toISOString(), name: "searching" })}\n`);
+    appendFileSync(file, `${JSON.stringify({ ...base, t: "span.ended", kind: "task", ts: w.clock.now().toISOString(), outcome: "done" })}\n`);
+
+    w.projection.ingestFromDisk();
+
+    assert.equal(w.projection.health().state, "live");
+    const fold = w.projection.runFold(uuidOf(1));
+    assert.equal(fold?.taskSpans.length, 1);
+    assert.equal(fold?.taskSpans[0].outcome, "done");
+    const detail = buildRunDetail({ stateRoot: w.stateRoot, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } }, uuidOf(1));
+    assert.equal(detail.timeline.events.length > 0, true);
+  });
+
+  it("folds each line exactly once — its own emissions included — and an idle tick changes nothing", () => {
+    const w = world();
+    queuedEventOf(w, { seed: 1 }); // the harness writer already ticked the tail once
+    w.projection.ingestFromDisk();
+    w.projection.ingestFromDisk();
+    assert.equal(w.projection.health().state, "live");
+    // A refold would either throw `run.queued replayed` (degrading) or bump
+    // the event count; exactly-once means neither happened.
+    assert.equal(w.projection.runFold(uuidOf(1))?.eventCount, 1);
+  });
+
+  it("leaves a torn trailing line on disk until its newline lands", () => {
+    const w = world();
+    queuedEventOf(w, { seed: 1 });
+    const file = join(w.stateRoot, "spans", `person-lookup-${DAY}.jsonl`);
+    const line = JSON.stringify({
+      workflow: "person-lookup", pid: 777, runId: uuidOf(1), attempt: 1,
+      traceId: traceOf(1), spanPath: `${traceOf(1)}/searching#1`, parentSpanPath: traceOf(1),
+      t: "span.started", kind: "task", ts: w.clock.now().toISOString(), name: "searching",
+    });
+    appendFileSync(file, line.slice(0, 25)); // a worker mid-append
+    w.projection.ingestFromDisk();
+    assert.equal(w.projection.health().state, "live");
+    assert.equal(w.projection.runFold(uuidOf(1))?.taskSpans.length, 0);
+
+    appendFileSync(file, `${line.slice(25)}\n`);
+    w.projection.ingestFromDisk();
+    assert.equal(w.projection.runFold(uuidOf(1))?.taskSpans.length, 1);
+  });
+
+  it("notices a stream file born after boot — another workflow's process, or a day roll", () => {
+    const w = world();
+    queuedEventOf(w, { seed: 1 });
+    w.authority.put(runRecordOf({ seed: 2, workflow: "zz-flow" }));
+    mkdirSync(join(w.stateRoot, "spans"), { recursive: true });
+    appendFileSync(join(w.stateRoot, "spans", `zz-flow-${DAY}.jsonl`), `${rawQueuedLineOf(w, 2, "zz-flow")}\n`);
+    w.projection.ingestFromDisk();
+    assert.equal(w.projection.health().state, "live");
+    assert.equal(w.projection.runFold(uuidOf(2))?.queued.workflow, "zz-flow");
+  });
+
+  it("degrades on an unparsable tailed line — never a skip — and the guarded rebuild refuses the same line", () => {
+    const w = world({ collectRebuilds: true });
+    queuedEventOf(w, { seed: 1 });
+    appendFileSync(join(w.stateRoot, "spans", `person-lookup-${DAY}.jsonl`), "not-json\n");
+    w.projection.ingestFromDisk();
+    assert.equal(w.projection.health().state, "degraded");
+    assert.match(w.projection.health().lastError ?? "", /span tail ingest failed: corrupt span line .*person-lookup-2026-08-03\.jsonl:2/);
+    assert.equal(w.scheduledRebuilds.length, 1);
+    // The line is real history on disk, so recovery cannot succeed either —
+    // it refuses the same line by name instead of quietly reading past it.
+    w.scheduledRebuilds[0]();
+    assert.equal(w.projection.health().state, "degraded");
+    assert.match(w.projection.health().lastError ?? "", /rebuild-from-native-jsonl failed: corrupt span line/);
+    assert.throws(() => w.projection.buildDashboardDayWire(DAY), /degraded and refuses to serve counts/);
+  });
+
+  it("a rebuild resets the tail cursors, so replayed history is never refolded", () => {
+    const w = world();
+    queuedEventOf(w, { seed: 1 });
+    claimEventOf(w, 1);
+    w.projection.rebuildFromJsonl();
+    w.projection.ingestFromDisk();
+    assert.equal(w.projection.health().state, "live");
+    assert.equal(w.projection.runFold(uuidOf(1))?.eventCount, 2);
   });
 
   it("refuses to render a span-known run that authority does not hold", () => {

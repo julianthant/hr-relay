@@ -167,7 +167,7 @@ function surface(): Surface {
       const descriptor = descriptors.resolve(workflow);
       return descriptor === undefined ? undefined : new Set(descriptor.details.map(({ key }) => key));
     },
-    onEvent: (event) => projection.apply(event),
+    // D218: no in-process hook — the command service ticks the disk tail.
   });
   const commands = createDashboardCommandService({
     kernel,

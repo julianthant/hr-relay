@@ -310,6 +310,27 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-14: an in-process hook feeding a projection is a single-process assumption wearing a
+  cross-process contract — and the surfaces BESIDE the broken one are what hid it (D218).** The
+  BFF's run/queue projection ingested spans two ways: a one-shot boot replay and a post-append
+  `onEvent` hook on its OWN span writer. The worker is a separate OS process, so every run enqueued
+  after the dashboard booted served an EMPTY timeline (plus empty pipeline chips and dataFacts)
+  while its full span history sat in `spans/*.jsonl` — daily-use, since 1i-spine. It hid because
+  run STATUS joins authority per surface and LOGS re-read the notes JSONL per request, so the two
+  surfaces beside the timeline kept working and the gap read as a rendering quirk; the fingerprint
+  was a run whose fold held exactly ONE event, its own `gate.resolved`. The fix takes doc 03 §2.3's
+  "one projector" sentence literally: the ONE live feed is an offset-aware disk tail
+  (`ingestFromDisk`, byte cursors seeded by `rebuildFromJsonl` so the two paths can never
+  double-fold a line), the `onEvent` hook is DELETED so "append first, fold after" is structural,
+  and the command service ticks the SAME cursor after its own emissions so an operator's follow-up
+  read never waits for the 250 ms poll. Tail rules worth reusing: a torn trailing line is not
+  consumed until its newline lands (another process is mid-append — parsing half a record reports
+  real history as corrupt); an unparsable tailed line degrades + schedules the guarded rebuild and
+  the rebuild then refuses the SAME line by name, because a line on disk is durable history and
+  skipping it would silently unfold real events; and a stream file shorter than its cursor throws —
+  append-only files do not shrink. Generalize: a projection fed by an in-process hook is correct
+  only while every emitter lives in that process, and nothing fails when that stops being true —
+  the events just never arrive.
 - **2026-08-14: two schemas that call each other PARITY TWINS still fork on the arm nobody could
   reach — and a fixture emitter is what hides it (separations 6c).** D215 ratified a fourth
   `transaction.previewed` subject verdict, `not-observed`, for the preview that settles

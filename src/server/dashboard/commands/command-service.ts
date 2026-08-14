@@ -16,6 +16,12 @@
  *    (hide/unhide/rename/bump/cancel change authority presentation/lifecycle
  *    only). The run-span END for a cancelled RUNNING run stays executor-owned
  *    — a second emitter here would double-close the span identity.
+ * 4. After emitting, each arm ticks `projection.ingestFromDisk()` (D218) so
+ *    the lines it just appended fold before the response returns — the
+ *    operator's follow-up read then already sees the run it was told about.
+ *    That is the SAME disk cursor the compose-level poll advances, not a
+ *    second ingest path: every event still reaches the fold as bytes read
+ *    back from the stream file.
  *
  * No transport concern reaches the kernel: this service takes the already
  * schema-recognized command envelope as `unknown` and the kernel does its own
@@ -111,6 +117,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
             configSnapshotId: run.envelope.configSnapshotId,
           });
         }
+        deps.projection.ingestFromDisk();
         return result;
       }
 
@@ -178,6 +185,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
             configSnapshotId: run.envelope.configSnapshotId,
           });
         }
+        deps.projection.ingestFromDisk();
         return result;
       }
 
@@ -205,6 +213,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
             sha256Hex(`hrauto:gate-resolved-span:v1\0${canonicalJsonStringify(request.payload.result)}`),
           ),
         });
+        deps.projection.ingestFromDisk();
         return result;
       }
 
@@ -251,6 +260,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
           configFingerprint: run.envelope.configFingerprint,
           configSnapshotId: run.envelope.configSnapshotId,
         });
+        deps.projection.ingestFromDisk();
         return result;
       }
 

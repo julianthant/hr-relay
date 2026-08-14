@@ -223,7 +223,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
     descriptors: descriptorResolver,
     projectionStore: database,
   });
-  const spans = createSpanJsonlWriter({
+  const jsonlWriter = createSpanJsonlWriter({
     stateRoot,
     clock,
     pid: 4242,
@@ -231,7 +231,14 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
       const descriptor = resolve(workflow);
       return descriptor === undefined ? undefined : new Set(descriptor.details.map(({ key }) => key));
     },
-    onEvent: (event) => projection.apply(event),
+  });
+  // D218: the projection's one live feed is the disk tail; the walk ticks it
+  // after every append so each event folds through the production path.
+  const spans: ReturnType<typeof createSpanJsonlWriter> = Object.freeze({
+    emit: (event: unknown): void => {
+      jsonlWriter.emit(event);
+      projection.ingestFromDisk();
+    },
   });
   const receipts = createReceiptService({ database, descriptors });
   const runDetail: RunDetailQueryDeps = {

@@ -773,11 +773,14 @@ owning merge/dedup heuristics (`mergeDisplayItems` collapse survives as a server
   structured failure truth, in-flight write fences, or accepted capture work — they have no JSONL
   double.
 - **Projection tables (rebuildable):** span-shaped read models (`spans`, `gates`, `notes`,
-  `runs_view`) fed by one projector consuming only native rebuild spans.
-  These — and only these — can be deleted and rebuilt from JSONL, with today's operational rules:
-  JSONL writes first, projection applies after, projection failures schedule guarded rebuilds and
-  never block workflows; source identity is `resolve(path)`; deletion tombstones and offline
-  compaction port as-is.
+  `runs_view`) fed by one projector consuming only native rebuild spans — **FROM DISK,
+  cross-process (D218)**: the worker emits its task spans from a separate OS process, so the
+  projector's one live feed is an offset-aware tail of the stream files, never an in-process emit
+  hook. These — and only these — can be deleted and rebuilt from JSONL, with today's operational
+  rules: JSONL writes first, projection applies after (structural under D218 — the fold can only
+  see bytes already landed), projection failures schedule guarded rebuilds and never block
+  workflows; source identity is `resolve(path)`; deletion tombstones and offline compaction port
+  as-is.
 
 The system-of-record class includes a singleton `authority_meta(schema_version,
 authority_generation,updated_at)`. The infra adapter exposes separate authority and projection
@@ -793,6 +796,43 @@ monotonic authority fact rather than a timestamp guess.
 Any sentence in this doc that says "rebuildable" means the projection tables only. The sole
 authority-removal exception is the explicit stopped-system, exact-id, backup-gated Purge procedure
 in §2.4; ordinary cleanup, Hide, projection rebuild, and runtime code cannot reach authority rows.
+
+#### D218 — the projector consumes the span stream FROM DISK, cross-process (2026-08-14)
+
+"One projector" had been implemented single-process: a one-shot boot `rebuildFromJsonl` plus an
+in-process post-append hook on the BFF's OWN span writer. The worker is a separate OS process, so
+its task spans never reached the projection — every run enqueued after the dashboard booted served
+an empty timeline, empty pipeline chips, and empty `dataFacts`, while its full span history sat in
+`spans/<workflow>-<date>.jsonl`. Run STATUS stayed correct (it joins authority per surface) and
+LOGS stayed correct (the notes JSONL is re-read per request), which is exactly why only the
+timeline looked broken; the fingerprint of the defect was a run whose fold held exactly ONE event —
+its own `gate.resolved`, the only span the BFF itself emits mid-run. The defect stood from 1i-spine
+until 2026-08-14; restarting the dashboard masked it for every run already on disk.
+
+As-built contract:
+
+- **The projection's ONE live feed is an offset-aware tail of `spans/*.jsonl`**
+  (`RunQueueProjection.ingestFromDisk` over `readEventStreamLinesFrom`): a byte cursor per file,
+  advanced only through the last landed newline. `rebuildFromJsonl` seeds the cursors from exactly
+  what it consumed, so the rebuild and the tail can never double-fold a line. The span writer's
+  `onEvent` hook is REMOVED — "JSONL writes first, projection applies after" is now structural,
+  because the fold can only read bytes that already landed.
+- **Two triggers, one cursor.** The dashboard polls the tail every 250 ms (`SPAN_TAIL_POLL_MS`,
+  the staleness ceiling for worker-emitted spans), and the command service ticks the SAME cursor
+  after its own emissions (`run.queued`, `gate.resolved`), so an operator's follow-up read never
+  waits for the poll. Neither is a second ingest path: every event reaches the fold as bytes read
+  back from the stream file.
+- **Fail-loud, never skip.** A torn trailing line (another process mid-append) is not consumed
+  until its newline lands. An unparsable tailed line degrades the projection and schedules the
+  guarded rebuild — and since the line is real durable history, the rebuild refuses it by name
+  too, leaving the projection loudly degraded rather than quietly reading past it. A stream file
+  SHORTER than its cursor fails loud (these files are append-only; a shrink is truncation of
+  history). A file the cursors have never seen (day roll, new workflow) is read from byte 0.
+- **Rejected:** per-request re-fold (O(all spans) per call); worker→BFF push (couples the two
+  processes the D88/D181 isolation model keeps apart); reading `runs_view` back (a write-only
+  mirror of the same in-memory rows); and tolerating an empty fold in `buildRunDetail` (the events
+  were never dropped by a filter — they never arrived, and the reader is the wrong place to repair
+  an ingest gap).
 
 ### 2.4 One command protocol with strict target families
 
