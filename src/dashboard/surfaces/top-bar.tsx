@@ -4,17 +4,18 @@
  * navigator, its month grid and the shortcuts popover) and DemoShell.tsx (the
  * Top Bar frame and its history controls).
  *
- * 1i scope, per the work item: BASE nav + calendar only. The notification bell
- * and the search control are 2i and are ABSENT rather than stubbed — a control
- * that opens nothing is worse than no control, and it is exactly what this
- * surface was ported to fix in the first place.
+ * The bar's COMPOSITION is the demo's, left to right: the brand lockup, the
+ * history pair, the product view switcher (Dashboard · Archive · Explorer ·
+ * Activity), the search control, the date navigator, then the quiet icon
+ * cluster. Anything that was in a different place here was in a different place
+ * by accident, not by decision.
  *
  * Every day count on this bar reads `DashboardDayWire.monthCounts` — the ONE
  * projection (D81). The pill, the calendar cells and the Status Bar therefore
  * cannot disagree, because there is nothing here that counts anything.
  */
-import { useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, Bell, Calendar, ChevronLeft, ChevronRight, Keyboard, Moon, ShieldCheck, Sun } from "lucide-react";
+import { useMemo, useRef, useState, type ReactElement } from "react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Bell, BookMarked, Calendar, ChevronLeft, ChevronRight, Keyboard, Moon, ShieldCheck, Sun } from "lucide-react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import {
@@ -40,6 +41,8 @@ import type { ServerClockWireSchema } from "../../domain/dashboard/bootstrap.js"
 import { systemClock } from "../../domain/clock.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DemoShortcutsLegend } from "./shortcuts.js";
+import { DaySearchControl } from "./day-search.js";
+import type { QueueSurfaceWire } from "./queue.js";
 import { fmtClock, plural } from "./format.js";
 import {
   SettingsControl,
@@ -631,15 +634,77 @@ export function ShortcutsPopover({ onOpenHelp }: { onOpenHelp?: () => void }) {
   );
 }
 
+/* ── the product view switcher ───────────────────────────────────────────── */
+
+/**
+ * The four PRODUCT views, ported verbatim from the demo's `SWITCHER_VIEWS`.
+ *
+ * `queue` is the dashboard proper; the other three are takeovers that replace
+ * the main region whole. They are a switcher rather than four buttons in the
+ * toolbar because the operator is choosing WHERE THEY ARE, and where you are is
+ * the one thing the top bar has always answered.
+ */
+export type ShellView = "queue" | "archive" | "explorer" | "activity";
+
+export const SHELL_VIEW_LABEL: Record<ShellView, string> = {
+  queue: "Dashboard",
+  archive: "Archive",
+  explorer: "Explorer",
+  activity: "Activity",
+};
+
+const SHELL_VIEWS: readonly ShellView[] = ["queue", "archive", "explorer", "activity"];
+
+/**
+ * One bordered container, four segments — the same shape the Status Bar's
+ * `All` / `Needs you` composite uses, because both answer "which of these am I
+ * looking at" rather than "do this".
+ */
+function ShellViewSwitcher({
+  view,
+  onView,
+}: {
+  view: ShellView;
+  onView: (view: ShellView) => void;
+}): ReactElement {
+  return (
+    <div
+      className={cn(
+        "inline-flex shrink-0 border p-[var(--ds-space-hair)]",
+        dsRadius.md,
+        dsBorder.base,
+        "bg-[var(--ds-surface-2)]",
+      )}
+    >
+      {SHELL_VIEWS.map((candidate) => (
+        <button
+          key={candidate}
+          type="button"
+          aria-pressed={view === candidate}
+          onClick={() => onView(candidate)}
+          className={cn(
+            "inline-flex cursor-pointer items-center px-[var(--ds-space-base)]",
+            "h-[var(--ds-h-sm)]",
+            dsRadius.sm,
+            dsText.meta,
+            dsFocus,
+            dsMotion.fast,
+            view === candidate
+              ? "bg-[var(--ds-surface-3)] font-semibold text-[color:var(--ds-fg)]"
+              : "font-medium text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]",
+          )}
+        >
+          {SHELL_VIEW_LABEL[candidate]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /* ── the bar ─────────────────────────────────────────────────────────────── */
 
 /**
  * The Top Bar.
- *
- * 1i renders one view, so the demo's Dashboard / Archive / Explorer / Activity
- * switcher is absent rather than rendered with three dead entries — a switcher
- * of one is chrome that teaches the operator nothing. It returns in 2i with the
- * views it switches between.
  */
 export function TopBar({
   notifications,
@@ -656,6 +721,13 @@ export function TopBar({
   onToggleTheme,
   nav,
   onOpenHelp,
+  view,
+  onView,
+  catalogOpen,
+  onOpenCatalog,
+  daySurfaces,
+  workflowLabelOf,
+  onOpenRun,
 }: {
   notifications: readonly NotificationWire[];
   actorId: string;
@@ -678,6 +750,21 @@ export function TopBar({
   onToggleTheme: () => void;
   nav: NavControls;
   onOpenHelp?: () => void;
+  /** which product view owns the main region — the switcher's pressed segment */
+  view: ShellView;
+  onView: (view: ShellView) => void;
+  /**
+   * The UI catalog is REFERENCE scaffolding, and the demo puts exactly that
+   * kind of surface behind a quiet glyph in this cluster (`DemoSurfacesPopover`)
+   * rather than in the product switcher beside Archive and Activity. It keeps
+   * that treatment here: one quiet icon, pressed while it owns the region.
+   */
+  catalogOpen: boolean;
+  onOpenCatalog: () => void;
+  /** the whole day's projection — what the search control finds over */
+  daySurfaces: readonly QueueSurfaceWire[];
+  workflowLabelOf: (workflowId: string) => string;
+  onOpenRun: (runId: string) => void;
 }) {
   return (
     <header
@@ -701,19 +788,25 @@ export function TopBar({
         <h1 className={cn(dsText.ui, dsText.flush, "font-semibold text-[color:var(--ds-fg)]")}>HR Automation</h1>
       </div>
 
+      {/* Product navigation sits beside the history pair: both are ways of
+          changing WHERE YOU ARE, and the switcher is the deliberate one. */}
       <NavHistoryControls nav={nav} />
+
+      <ShellViewSwitcher view={view} onView={onView} />
+
+      {/* Search takes the bar's slack (`ml-auto flex-1`, capped at 240px), which
+          is what pins the date navigator and the icon cluster to the right edge
+          without a spacer div. The date here IS the day the queue reads. */}
+      <DaySearchControl
+        surfaces={daySurfaces}
+        workflowLabelOf={workflowLabelOf}
+        onOpenRun={onOpenRun}
+      />
 
       <DateNav day={day} today={today} monthCounts={monthCounts} onDay={onDay} />
 
-      <span className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-hair)]">
+      <span className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">
         <NotificationBell notifications={notifications} actorId={actorId} />
-        <SettingsControl
-          storage={storage}
-          sections={settingsSections}
-          open={settingsOpen}
-          onOpenChange={onSettingsOpen}
-        />
-        <ShortcutsPopover onOpenHelp={onOpenHelp} />
         {/* The theme pair. One control, and its LABEL names the destination
             ("Switch to Paper Ink"), because a lone sun/moon glyph never says
             which of the two states it is reporting. */}
@@ -728,6 +821,29 @@ export function TopBar({
               <Moon aria-hidden className={dsIcon.md} />
             )
           }
+        />
+        <IconButton
+          size="sm"
+          label="UI catalog"
+          aria-pressed={catalogOpen}
+          onClick={onOpenCatalog}
+          icon={<BookMarked aria-hidden className={dsIcon.md} />}
+          className={cn(catalogOpen && "bg-[var(--ds-surface-3)] text-[color:var(--ds-fg)]")}
+        />
+        {/* THE KEYBOARD GLYPH SURVIVES HERE, and the demo's reason for deleting
+            it is exactly why. The operator removed it there "since we already
+            have help in settings" — this repository's Settings has no Help
+            group, so deleting the glyph would leave `DEMO_SHORTCUTS` with no
+            door at all. It goes when Settings grows the Help section, not
+            before; a reference page nobody can reach is worse than a second
+            door to one. */}
+        <ShortcutsPopover onOpenHelp={onOpenHelp} />
+        {/* The gear opens Settings. It sits last, as in the demo. */}
+        <SettingsControl
+          storage={storage}
+          sections={settingsSections}
+          open={settingsOpen}
+          onOpenChange={onSettingsOpen}
         />
       </span>
     </header>
