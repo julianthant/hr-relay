@@ -679,9 +679,19 @@ them.
    it. A report whose own parts disagree is the bug class D81 exists to make unrepresentable, so it
    is refused at the boundary rather than rendered.
 
-The surface opens with the sentence and the numbers set into it, then the same totals as
-proportional rows — no KPI-card row and no chart runtime, which also keeps the bundle within §8
-guard #13. There is no live stream: the range is an explicit refresh, exactly as §5 specifies.
+The surface opens with a headline tile row under a counterweight-first rule — finished work is
+never read without the work that is not, so the still-open count and the error rate's own
+denominator sit IN the headline row beside the finished totals — then the same totals as
+proportional rows. No chart runtime, which also keeps the bundle within §8 guard #13: every tile
+and proportional bar is a plain element sized from its own share, and no chart library or Node
+built-in enters the bundle. There is no live stream: the range is an explicit refresh, exactly as
+§5 specifies.
+
+*(Amended 2026-08-14. The original as-built read "no KPI-card row", describing the 2i-G surface
+this port replaced. That half carried no reason; the half that did — no chart runtime, §8 #13 —
+is unchanged and still enforced. The operator's demo argues the tile row's case explicitly and the
+ported surface ships it; this restatement is what ratifies the port per doc 04's rule that a
+decision lands in its owning doc.)*
 
 ### 6.8 Phase 3+ workflow migrations
 

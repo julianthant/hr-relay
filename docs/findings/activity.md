@@ -18,7 +18,11 @@ on purpose.
 
 ## Distinct people touched is not served
 
-**Date:** 2026-08-14 · **Status:** recorded
+**Date:** 2026-08-14 · **Status:** triaged 2026-08-14 — blocked on a person axis existing in the
+projection corpus at all: today no row (or member) carries an EID or subject identity (the same
+absence `docs/findings/queue-rows.md` records for titles and the subtitle slot). Once subject
+identity lands on rows AND members, this becomes the same-pass count described below; counting
+before then would have nothing true to count.
 
 **Symptom.** The demo's panel-header meta reads `55 runs · 110 people`, and its `Runs` tile's note
 reads `110 distinct people touched`. The ported surface serves `34 runs` and a note counting DAYS
@@ -44,7 +48,10 @@ way the demo states it in its caveat.
 
 ## Hours saved has no operator-entered minutes source
 
-**Date:** 2026-08-14 · **Status:** recorded
+**Date:** 2026-08-14 · **Status:** triaged 2026-08-14 — decide-first, NOT wire work. The three
+decisions below (durable home, ownership/versioning, wire shape) need an operator-ratified entry
+in doc 13 before anyone builds; a fabricated minutes table is the exact invented-number failure
+this record names. No implementation until then.
 
 **Symptom.** The demo's fifth headline tile is `HOURS SAVED ≈ 3.5` with an `estimate` badge, a note
 reading `operator's per-workflow minutes × runs that finished`, and an ⓘ carrying its provenance.
@@ -125,7 +132,11 @@ two-column version answers half of it. Worth ranking above the ledger.
 
 ## The write ledger is not reachable from this wire
 
-**Date:** 2026-08-14 · **Status:** recorded
+**Date:** 2026-08-14 · **Status:** triaged 2026-08-14 — decide-first. Serving the block requires
+an explicit D81 carve-out (the ledger is a DIFFERENT authority reported beside the one
+projection's totals, with the seam stated), which touches §8 guard #4's pinned constraint —
+ratification, not a projection edit. The recorded argument favors keeping the block and stating
+the seam; awaiting that ratification.
 
 **Symptom.** The demo's last block is `Write ledger — what was actually filed`: a table of
 System / Entries / Production / Test instance, with the test-instance count tinted amber, and a
@@ -153,7 +164,10 @@ the seam, not for hiding it.
 
 ## Export is a button with no command behind it
 
-**Date:** 2026-08-14 · **Status:** recorded
+**Date:** 2026-08-14 · **Status:** triaged 2026-08-14 — decide-first, doc 13 §5's own words
+("export if later served"). Building it needs a served export route plus the caveat decision (an
+export without the "hours saved is an estimate" / "error rate excludes open runs" rules is the
+lying artifact the design prevents). Not built until a doc entry lists it.
 
 **Symptom.** The demo's panel header carries a secondary `Export` button with a download icon,
 beside the ⓘ. The ported header carries the ⓘ only.
@@ -171,37 +185,12 @@ the demo's whole design is built to prevent.
 
 ---
 
-## Doc 13's D180 paragraph describes the surface this port replaces
-
-**Date:** 2026-08-14 · **Status:** recorded — needs ratification, not a fix
-
-**Symptom.** Doc 13 §6.7's D180 as-built closes with: *"The surface opens with the sentence and the
-numbers set into it, then the same totals as proportional rows — no KPI-card row and no chart
-runtime, which also keeps the bundle within §8 guard #13."* The ported surface DOES open with a
-headline tile row, so that sentence and the shipped code now disagree.
-
-**Evidence.** Old surface: one `<p>` reading "34 runs started between … 34 finished; none are still
-in flight", then five `ShareTable`s (day / workflow / category / status / outcome). New surface:
-four tiles, the still-open table, the grouped per-workflow table, durations, By day, By outcome,
-failures, footer.
-
-**Mechanism.** The paragraph is an as-built record written when 2i-G landed, and the half of it that
-carries a REASON — "no chart runtime … keeps the bundle within §8 guard #13" — is still fully
-honoured: this port adds no chart library and no Node built-in, and every proportional bar is still
-a plain element sized from its own share. The half with no reason attached — "no KPI-card row" — is
-the half the operator's demo overrides, and the demo argues the opposite case explicitly: the
-counterweights (still-open, the error rate's denominator) belong IN the headline row so finished
-work is never read without the work that is not.
-
-**What a fix involves.** A doc edit, not a code change: doc 13 §6.7's D180 paragraph restated to
-describe the tile row and its counterweight-first rule, with the bundle constraint kept verbatim.
-Per doc 04 the restatement is what ratifies it — until then this port is ahead of its own doc.
-
----
-
 ## The span control is two date bounds, not the demo's two span chips
 
-**Date:** 2026-08-14 · **Status:** recorded · **Priority:** low, likely won't-fix
+**Date:** 2026-08-14 · **Status:** triaged 2026-08-14 — won't-fix; the two bounds ARE D180's
+ratified control ("an aggregate over a window the caller never named is a number nobody asked
+for"), and preset chips would first need a served `bounds: { earliest, latest }`. Kept as the
+diagnosis for that future option; no work owed. · **Priority:** low
 
 **Symptom.** The demo's page header holds a `role="group"` of two `Chip`s — the selected day
 (`Sat, Jul 25`) and `Every day the tracker holds (3)`. The ported header holds the `From` / `To`

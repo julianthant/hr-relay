@@ -25,6 +25,6 @@ when no existing one fits), each stamped with a date and a `**Status:**` line
 | [queue-rows.md](queue-rows.md) | Queue-row wire gaps: demo/doc-03 row elements the served wire cannot yet power | 10 (recorded) |
 | [archive.md](archive.md) | Archive-surface wire gaps: demo archive/version-bump elements the `/api/v1/archive` wire cannot yet power | 10 (recorded) |
 | [explorer.md](explorer.md) | Workflow-Explorer wire gaps: demo explorer elements the `/api/v1/explorer` projection cannot yet power (the run overlay, field-level contracts) | 8 (recorded) |
-| [activity.md](activity.md) | Activity-report wire gaps: demo report elements the `/api/v1/reports/activity` aggregate cannot yet power (people, hours saved, per-workflow status columns, the write ledger) | 8 (recorded) |
+| [activity.md](activity.md) | Activity-report wire gaps: demo report elements the `/api/v1/reports/activity` aggregate cannot yet power (people, hours saved, per-workflow status columns, the write ledger) | 7 (2 recorded wire gaps, 5 triaged; D180 ratification landed in doc 13 §6.7 and its record deleted) |
 
 This folder is NOT plan SSOT. Nothing here is a ratified decision (doc 04 rules apply).
