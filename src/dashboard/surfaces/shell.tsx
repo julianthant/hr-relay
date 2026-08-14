@@ -111,7 +111,7 @@ export function statusCount(counts: readonly StatusCountWire[], status: QueueSta
  * repeated literal is exactly how one of thirteen came to be 30px in a row
  * of 24.
  */
-const toolbarControl = (): string =>
+export const toolbarControl = (): string =>
   cn(
     "inline-flex shrink-0 cursor-pointer items-center border",
     "h-[var(--ds-h-toolbar)] gap-[var(--ds-space-snug)] px-[var(--ds-space-base)]",
