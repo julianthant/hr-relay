@@ -31,6 +31,7 @@ import {
 import { kualiTimekeeperAnnotationDescriptor } from "../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
 import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations-kuali-finalization/descriptor.js";
 import { separationsUcpathTerminationDescriptor } from "../../src/workflows/separations-ucpath-termination/descriptor.js";
+import { separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
 import {
   PersonLookupCanonicalInput,
   PersonLookupInput,
@@ -243,11 +244,14 @@ describe("start planning", () => {
    * now dry-startable, because the question is what the graph writes rather than
    * whether an operator can paste a line into a textbox.
    */
-  it("makes all three registered write workflows dry-startable through the graph (D209)", () => {
+  it("makes all four registered write workflows dry-startable through the graph (D209)", () => {
     for (const descriptor of [
       kualiTimekeeperAnnotationDescriptor,
       separationsUcpathTerminationDescriptor,
       separationsKualiFinalizationDescriptor,
+      // The composition, whose three transaction nodes each declare the arm —
+      // D209's "every transaction node, not only the first a preview reaches".
+      separationsDescriptor,
     ]) {
       assert.deepEqual(descriptor.surfaces, {}, `${descriptor.id} still has no input surface`);
       assert.equal(supportsDryRun(descriptor), true, `${descriptor.id} must be previewable`);
