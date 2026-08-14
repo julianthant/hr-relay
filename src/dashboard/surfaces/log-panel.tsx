@@ -1356,16 +1356,21 @@ export function LogPanel({
   // it, and defaulting to the spine would flash a collapsed rail over data the
   // operator never asked to hide.
   const railState = useContextRail(threeColumn);
-  // The rail widens to its edit width while the Data section is being edited
+  // The rail widens to its edit width while the Data surface is EXPANDED
   // (`--ds-w-context-rail-wide`, doc 03 D19(d)); the flag resets when the
   // operator switches runs so one run's edit session can never widen another's.
-  const [dataEditing, setDataEditing] = useState(false);
-  useEffect(() => setDataEditing(false), [detail.runId]);
+  const [dataExpanded, setDataExpanded] = useState(false);
+  useEffect(() => setDataExpanded(false), [detail.runId]);
+  /*
+    `context-evidence` IS NOT HANDED TO THE RAIL (R6 f.19). The demo states the
+    rail's order twice — Data · Attempts · Delegation — and moves captures to
+    Receipt explicitly, because evidence QUALIFIES an outcome rather than
+    feeding the live stream. The section re-homes to the Receipt tab; it sits on
+    the audit's hookup ledger so it is relocated, not lost. Nothing regresses
+    today: the arm is `declared-unserved` (D184) and no composition populates it.
+  */
   const railSections: ContextSections = {
     ...(sections["context-data"] === undefined ? {} : { "context-data": sections["context-data"] }),
-    ...(sections["context-evidence"] === undefined
-      ? {}
-      : { "context-evidence": sections["context-evidence"] }),
     ...(sections["context-attempts"] === undefined
       ? {}
       : { "context-attempts": sections["context-attempts"] }),
@@ -1422,7 +1427,7 @@ export function LogPanel({
         "@min-[868px]/detail:grid-rows-[auto_minmax(0,1fr)]",
         railState.collapsed
           ? "@min-[868px]/detail:grid-cols-[minmax(0,1fr)_var(--ds-w-context-spine)]"
-          : dataEditing
+          : dataExpanded
             ? "@min-[868px]/detail:grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail-wide)]"
             : "@min-[868px]/detail:grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail)]",
       )}
@@ -1679,7 +1684,7 @@ export function LogPanel({
           onClose={() => railState.setOpen(false)}
           actorId={actorId}
           liveStatus={surface?.status}
-          onDataEditingChange={setDataEditing}
+          onDataExpandedChange={setDataExpanded}
           onSaved={onDetailEdited}
           className={cn(
             "shrink-0",

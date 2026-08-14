@@ -42,22 +42,38 @@
  * surface never re-derives, re-formats or unmasks one.
  */
 import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
-import { Database, PanelRightClose, PanelRightOpen } from "lucide-react";
+import {
+  Database,
+  History,
+  Info,
+  Maximize2,
+  Minimize2,
+  PanelRightClose,
+  PanelRightOpen,
+  Play,
+  RotateCcw,
+  Save,
+} from "lucide-react";
 import type { z } from "zod";
 import { systemClock } from "../../domain/clock.js";
 import { readEnumPreference, writePreference } from "../lib/preference-storage.js";
 import { cn } from "../lib/utils.js";
 import {
   Badge,
+  BulletList,
   Button,
   EmptyState,
   Field,
   IconButton,
   Input,
   LockedValue,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   SectionLabel,
   Separator,
   ValueField,
+  Well,
   dsIcon,
   dsText,
 } from "../ds/ui.js";
@@ -273,18 +289,33 @@ function ProvenanceMarks({ entry }: { entry: ContextDataEntry }) {
   if (observedAt === undefined && source === undefined && correctedAt === undefined) return null;
   return (
     <>
+      {/* `info`, not `warning` (R6 f.10, demo `DemoContextRail.tsx:363-371`): a
+          correction is a RECORDED FACT about this value, not a hazard about it.
+          Amber on this line put it in the same register as `changed` and
+          `staged`, which are unsaved and unsubmitted respectively — states the
+          operator must still act on. This one is settled.
+
+          And the instant is CLOCKED, never raw ISO: an operator-facing title
+          reading `2026-08-12T14:03:11.284Z` is a machine's answer to a human's
+          question, and `fmtClock` was already imported two lines above. */}
       {correctedAt !== undefined && (
         <Badge
-          tone="warning"
+          tone="info"
           className="shrink-0"
-          title={`Corrected by an operator at ${correctedAt}. The run's own reading is kept beside it on the receipt.`}
+          title={`Corrected by an operator at ${fmtClock(correctedAt)}. The run's own reading is kept beside it on the receipt.`}
         >
           corrected
         </Badge>
       )}
       {/* `live` is the unmarked default — it is what most rows are, and a badge
           on every row is a badge on none. `derived` earns one because a
-          computed value's clock is not a live observation of anything. */}
+          computed value's clock is not a live observation of anything.
+
+          THE `operator` ARM DRAWS NOTHING, and that is deliberate rather than
+          unhandled (R6 f.23). A value whose source is the operator is exactly a
+          value that carries `correctedAt`, so it already has the `corrected`
+          badge above — a second badge saying the same thing in a different word
+          is the redundancy this pass is removing everywhere else. */}
       {source === "derived" && (
         <Badge
           className="shrink-0"
@@ -305,17 +336,37 @@ function ProvenanceMarks({ entry }: { entry: ContextDataEntry }) {
   );
 }
 
+const LEDGER_LABEL_CLASS = cn(
+  dsText.body,
+  dsText.flush,
+  "min-w-0 flex-1 truncate font-medium text-[color:var(--ds-fg-secondary)]",
+);
+
 function LedgerRow({
   label,
+  fieldId,
   marks,
   children,
 }: {
   label: string;
-  /** the row's provenance marks, right-aligned on the label line */
+  /**
+   * The id of the input this row's label names, when the row has one.
+   *
+   * A REAL `htmlFor` pairing, which the one-line row could not have had (R6
+   * f.14, demo `DemoContextRail.tsx:328-352`): the label sat beside the input
+   * rather than above it, so it was written as an `aria-label` and the visible
+   * text was associated with nothing. Stacked, the label IS the field's label
+   * — which also makes it a click target that focuses the input, one more
+   * thing saying "this line takes typing".
+   *
+   * It replaces a `useId` that was minted on every row and referenced by
+   * NOTHING: an id nobody points at is a pairing that does not exist.
+   */
+  fieldId?: string;
+  /** the row's provenance marks, on the label line */
   marks?: ReactNode;
   children: ReactNode;
 }) {
-  const labelId = useId();
   return (
     <div className="flex gap-[var(--ds-space-snug)] py-[var(--ds-space-snug)]">
       {/* The rail spans BOTH lines, which is the whole reason it is a rail and
@@ -333,25 +384,22 @@ function LedgerRow({
         {/* The LABEL gives up width to the marks, never the other way round:
             the marks are already one word each and a truncated badge is
             unreadable, while a clipped label is still recoverable from its
-            `title` and from the value under it. */}
-        <span className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
-          <span
-            id={labelId}
-            title={label}
-            className={cn(
-              dsText.body,
-              dsText.flush,
-              "min-w-0 truncate font-medium text-[color:var(--ds-fg-secondary)]",
-            )}
-          >
-            {label}
-          </span>
-          {marks !== undefined && (
-            <span className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-tight)]">
-              {marks}
+            `title` and from the value under it. It claims the slack with
+            `flex-1` rather than pushing the marks out with `ml-auto` — the
+            demo's own shape (R6 f.15), and the one that keeps the badges
+            reading as a continuation of the label instead of a right rail. */}
+        <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+          {fieldId === undefined ? (
+            <span title={label} className={LEDGER_LABEL_CLASS}>
+              {label}
             </span>
+          ) : (
+            <label htmlFor={fieldId} title={label} className={cn(LEDGER_LABEL_CLASS, "cursor-text")}>
+              {label}
+            </label>
           )}
-        </span>
+          {marks}
+        </div>
         {children}
       </div>
     </div>
@@ -417,36 +465,95 @@ function draftTextOf(
 }
 
 /**
+ * THE ⓘ IS WHERE THE EXPLAINING GOES.
+ *
+ * Ported from legacy hr-automation@1bffbd65,
+ * `DemoContextRail.tsx:600-638` (R6 f.3b). Sentences that are true of every run
+ * in the product and are facts about NONE of them used to be printed on this
+ * surface at all times; they are one press away now and the surface is back to
+ * being a ledger.
+ *
+ * TWO OF THE DEMO'S BULLETS DO NOT PORT, and their absence is named rather
+ * than papered over. The freshness sentence ("reusing reads older than N
+ * minutes takes a reason") and the whole `KeyValueList` above it
+ * (`Generation` · `Captured` · `Accepted age`) all read the CHECKPOINT'S OWN
+ * provenance, and `ContextDataSectionSchema` carries no `capturedAt`,
+ * `maxAgeMin` or consuming node — they ride the batched wire row on the
+ * audit's hookup ledger with the rest of the freshness surface (R6 f.7). A
+ * bullet stating a limit this wire cannot name would be inventing the number.
+ */
+function AboutRunData() {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <IconButton
+          size="xs"
+          label="About run data"
+          icon={<Info aria-hidden className={dsIcon.sm} />}
+          className="text-[color:var(--ds-fg-faint)] hover:text-[color:var(--ds-fg)] data-[state=open]:text-[color:var(--ds-fg)]"
+        />
+      </PopoverTrigger>
+      <PopoverContent title="Run data" side="bottom" align="start" width="lg">
+        <BulletList
+          items={[
+            "This ledger contains every field the run recorded.",
+            "Reads are correctable in place. Writes are shown and never edited — they are the record of what happened.",
+            // The demo's other arm ("saving continues THIS run") belongs to a
+            // save that releases a parked run. `run/edit-checkpoint` never
+            // does: it records a correction that applies when the run next
+            // resumes, so only this sentence is true here.
+            "Saving records a correction on this run. Nothing runs.",
+            "A correction takes a reason, and the reason becomes the field's operator provenance on the receipt.",
+          ]}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
  * Reads are editable in place; the section enters EDITING on the first focus
- * of a value box (the rail widens, the reason + Save footer appears) and
- * leaves it on Cancel or an applied save. A save is one `run/edit-checkpoint`
- * command: field patches CASed on the version this payload was served with —
- * the kernel re-validates everything; this surface only says why a save is
- * not possible BEFORE it is attempted.
+ * of a value box (the reason + Save footer appears) and leaves it on Cancel or
+ * an applied save. A save is one `run/edit-checkpoint` command: field patches
+ * CASed on the version this payload was served with — the kernel re-validates
+ * everything; this surface only says why a save is not possible BEFORE it is
+ * attempted.
+ *
+ * WIDENING IS ITS OWN DECISION (R6 f.3c). The rail used to widen as a side
+ * effect of focusing a value and had no way back — the operator could reach
+ * the wide surface but not leave it. `expanded` is now an explicit
+ * Widen/Narrow control in this section's own header, at the top of the rail so
+ * undoing a press costs no pointer travel, and entering editing still raises
+ * it (doc 03 D19(d): the resting rail is tight to type a date into).
  */
 function DataSection({
   payload,
   actorId,
   liveStatus,
-  onEditingChange,
+  expanded,
+  onExpandedChange,
   onSaved,
+  onLoadPriorRun,
+  onStartCustomRun,
 }: {
   payload: ContextDataPayload;
   actorId: string;
   liveStatus: string | undefined;
-  onEditingChange: (editing: boolean) => void;
+  /** the rail has been widened to be edited in */
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
   onSaved: () => void;
+  /** Seed the ledger from an earlier run of this workflow — unserved, see the dock. */
+  onLoadPriorRun?: () => void;
+  /** Start a fresh run from the values on screen — unserved, see the dock. */
+  onStartCustomRun?: () => void;
 }) {
   const client = useDashboardClient();
-  const [editing, setEditing] = useState(false);
+  const fieldIdBase = useId();
   const [drafts, setDrafts] = useState<Readonly<Record<string, string>>>({});
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-
-  useEffect(() => {
-    onEditingChange(editing);
-  }, [editing, onEditingChange]);
 
   const liveLock = liveLockReasonOf(liveStatus);
   const policies = payload.entries.map((entry) => ({
@@ -461,11 +568,13 @@ function DataSection({
     return [{ entry, policy, draft }];
   });
 
+  // Doc 03 D19(d): the resting rail is tight to type a date into, so the first
+  // focus raises the wide surface. The Narrow control gives it back — which is
+  // the half that did not exist (R6 f.3c).
   const enterEditing = (): void => {
-    setEditing(true);
+    onExpandedChange(true);
   };
-  const cancel = (): void => {
-    setEditing(false);
+  const resetEdits = (): void => {
     setDrafts({});
     setReason("");
     setProblem(null);
@@ -507,7 +616,7 @@ function DataSection({
         setProblem(result.message);
         return;
       }
-      setEditing(false);
+      onExpandedChange(false);
       setDrafts({});
       setReason("");
       onSaved();
@@ -526,55 +635,108 @@ function DataSection({
         : undefined;
 
   return (
-    <section aria-label="Data" className="flex flex-col gap-[var(--ds-space-snug)]">
-      <SectionLabel>Data</SectionLabel>
-      {payload.entries.length === 0 ? (
-        <EmptyState
-          title="No data yet"
-          description="Values this run recorded appear here as it reads them."
-          className="p-[var(--ds-space-cozy)]"
+    <section aria-label="Extracted fields" className="flex shrink-0 flex-col gap-[var(--ds-space-snug)]">
+      {/* THE SECTION HEAD — label · ⓘ · Widen (R6 f.3a/3b/3c). `Extracted
+          fields` is the demo's own word for what this ledger holds
+          (`DemoContextRail.tsx:589`); `Data` said what kind of thing it was,
+          not what is in it, and the rail is already headed `Run data`. */}
+      <div className="flex items-center gap-[var(--ds-space-snug)]">
+        <SectionLabel className="min-w-0 truncate">Extracted fields</SectionLabel>
+        <AboutRunData />
+        {/* The expand affordance, not a modal: the resting rail is tight for
+            typing a date into, so the surface takes the room it needs AND
+            GIVES IT BACK. The second half is the one that did not exist. */}
+        <IconButton
+          size="sm"
+          className="ml-auto"
+          label={expanded ? "Narrow the data surface" : "Widen the data surface to edit"}
+          onClick={() => onExpandedChange(!expanded)}
+          icon={
+            expanded ? (
+              <Minimize2 aria-hidden className={dsIcon.md} />
+            ) : (
+              <Maximize2 aria-hidden className={dsIcon.md} />
+            )
+          }
         />
-      ) : (
-        <div className="flex flex-col">
-          {policies.map(({ entry, policy }, index) => (
-            <LedgerRow
-              key={`${entry.label}:${String(index)}`}
-              label={entry.label}
-              marks={<ProvenanceMarks entry={entry} />}
-            >
-              {policy.kind === "locked" ? (
-                <LockedValue value={entry.valueRedacted} reason={policy.reason} />
-              ) : (
-                <>
-                  {/* Focus is what ENTERS editing: the reason + Save footer and
-                      the widened rail appear before the first keystroke, not
-                      after it. React's onFocus bubbles, so the wrapper hears
-                      the input's focus without ValueField growing a prop. */}
-                  <span className="flex min-w-0 flex-col" onFocus={enterEditing}>
-                    <ValueField
-                      ariaLabel={`${entry.label} — recorded value`}
-                      value={draftTextOf(drafts, policy)}
-                      dirty={dirty.some(({ policy: dirtyPolicy }) => fieldKeyOf(dirtyPolicy) === fieldKeyOf(policy))}
-                      onChange={(next) => {
-                        setDrafts((current) => ({ ...current, [fieldKeyOf(policy)]: next }));
-                      }}
-                    />
-                  </span>
-                  {policy.pending !== undefined && (
-                    <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-                      Corrected {policy.pending.correctedAt} — applies when the run resumes; the run
-                      recorded {String(policy.recorded)}.
-                    </span>
-                  )}
-                </>
-              )}
-            </LedgerRow>
-          ))}
-        </div>
-      )}
+      </div>
 
-      {editing && (
-        <div className="flex flex-col gap-[var(--ds-space-base)]">
+      {payload.entries.length === 0 ? (
+        /* A plain sentence, not an `EmptyState` card (R6 f.17,
+           `DemoContextRail.tsx:659-663`). An illustrated empty card inside a
+           376px rail is a second surface inside a section; the ledger's own
+           absence is one line long. */
+        <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+          No run data recorded — this run has not extracted or written any fields yet.
+        </p>
+      ) : (
+        <>
+          {/* THE SUMMARY CHIP ROW IS GONE — deliberately, and nothing replaced
+              it (demo `DemoContextRail.tsx:665-680`, operator 2026-07-27:
+              "remove these tags in data"). See the rail floor below for where
+              this codebase had put it back. */}
+          <div className="flex flex-col">
+            {policies.map(({ entry, policy }, index) => {
+              const fieldId = `${fieldIdBase}-${String(index)}`;
+              const isDirty = policy.kind === "editable"
+                && dirty.some(({ policy: dirtyPolicy }) => fieldKeyOf(dirtyPolicy) === fieldKeyOf(policy));
+              return (
+                <LedgerRow
+                  key={`${entry.label}:${String(index)}`}
+                  label={entry.label}
+                  {...(policy.kind === "editable" ? { fieldId } : {})}
+                  marks={
+                    <>
+                      {/* A WORD, not just the amber fill on the field below it
+                          (R6 f.2) — the fill is the fast signal and the word is
+                          the one that survives a colour-blind operator or a
+                          forced-colors mode. */}
+                      {isDirty && (
+                        <Badge
+                          tone="warning"
+                          className="shrink-0"
+                          title="You changed this value. It is not saved yet."
+                        >
+                          changed
+                        </Badge>
+                      )}
+                      <ProvenanceMarks entry={entry} />
+                    </>
+                  }
+                >
+                  {policy.kind === "locked" ? (
+                    <LockedValue value={entry.valueRedacted} reason={policy.reason} />
+                  ) : (
+                    <>
+                      {/* Focus is what raises the wide surface: the rail widens
+                          before the first keystroke, not after it. React's
+                          onFocus bubbles, so the wrapper hears the input's
+                          focus without ValueField growing a prop. */}
+                      <span className="flex min-w-0 flex-col" onFocus={enterEditing}>
+                        <ValueField
+                          id={fieldId}
+                          value={draftTextOf(drafts, policy)}
+                          dirty={isDirty}
+                          onChange={(next) => {
+                            setDrafts((current) => ({ ...current, [fieldKeyOf(policy)]: next }));
+                          }}
+                        />
+                      </span>
+                      {policy.pending !== undefined && (
+                        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+                          {/* CLOCKED, never the raw instant (R6 f.22) — this is
+                              a sentence an operator reads. */}
+                          Corrected {fmtClock(policy.pending.correctedAt)} — applies when the run
+                          resumes; the run recorded {String(policy.recorded)}.
+                        </span>
+                      )}
+                    </>
+                  )}
+                </LedgerRow>
+              );
+            })}
+          </div>
+
           {problem !== null && (
             <span role="alert" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
               {problem}
@@ -585,35 +747,127 @@ function DataSection({
               {liveLock}
             </span>
           )}
-          <Field
-            label="Why is this correct?"
-            hint="Recorded as the correction's provenance"
-          >
-            <Input
-              value={reason}
-              placeholder="e.g. CRM shows 2026-07-15; the read mis-parsed the date"
-              onChange={(event) => setReason(event.target.value)}
-            />
-          </Field>
-          <div className="flex items-center gap-[var(--ds-space-base)]">
-            <Button
-              size="sm"
-              disabled={saving || saveBlocked !== undefined}
-              onClick={save}
-              aria-label="Save corrections"
-            >
-              {saving ? "Saving…" : `Save ${plural(dirty.length, "correction")}`}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={cancel} aria-label="Discard corrections">
-              Cancel
-            </Button>
-          </div>
+
+          {/* THE REASON IS AN ON-RECORD DEVIATION FROM THE DEMO (R6 f.21), and
+              the record is the schema: `CheckpointPatchSchema.reason` is
+              `z.string().min(1)` (`src/domain/workflow/checkpoint.ts:257`), so
+              every patch this dock can send carries one and the kernel refuses
+              a patch without it. The demo captures no reason because its save
+              is a mock. Provenance beats demo-exactness: a correction whose
+              justification the operator never typed would have to be
+              fabricated at the wire, which is the one thing this tree forbids.
+              It sits ABOVE the dock rather than inside it — the dock is four
+              commands on one grid, and a text input is not a command. */}
+          {dirty.length > 0 && (
+            <Field label="Why is this correct?" hint="Recorded as the correction's provenance">
+              <Input
+                value={reason}
+                placeholder="e.g. CRM shows 2026-07-15; the read mis-parsed the date"
+                onChange={(event) => setReason(event.target.value)}
+              />
+            </Field>
+          )}
+
+          {/*
+            THE ACTION DOCK — ported from legacy hr-automation@1bffbd65,
+            `DemoContextRail.tsx:822-930` (R6 f.5).
+
+            ONE GRID, TWO ROWS, TWO COLUMNS — and every edge is a column. It was
+            a flat Save/Cancel pair here: two treatments, two widths, sharing
+            neither a left nor a right edge, sitting where the dock belongs.
+
+            So: `grid-cols-2`, every button `w-full`. Column one is a left edge,
+            column two is a right edge, and the cells are the same size whatever
+            the labels say. Reading order is the house order — the quiet,
+            undoable arm first, the commit arm last — so the eye ends on the
+            verb. ONE CONTROL FAMILY: peers are `secondary` and exactly one is
+            `primary`.
+
+            THE STATE LINE lives in the dock's own quiet meta slot: row zero,
+            spanning both columns, `aria-live` so a screen reader hears the
+            count change without the focus moving.
+
+            `Load prior run` and `Start custom run` render ONLY when their
+            handlers are passed, and nothing passes them yet: the prior-runs
+            list and the custom-run descriptor are on the audit's hookup ledger.
+            Their absence is VISIBLE — two cells rather than four — which is the
+            honest rendering; a disabled button that can never enable is a
+            promise the wire cannot keep.
+          */}
+          <Well className="flex flex-col gap-[var(--ds-space-snug)] p-[var(--ds-space-snug)]">
+            <div className="grid grid-cols-2 gap-[var(--ds-space-snug)]">
+              <p
+                aria-live="polite"
+                className={cn(dsText.meta, "col-span-2 text-[color:var(--ds-fg-muted)]")}
+              >
+                {/* The demo's third arm — "Loaded the values from run #N" — is
+                    reachable only through `Load prior run`, which has no wire.
+                    It is not written here as an unreachable branch. */}
+                {dirty.length > 0
+                  ? `${plural(dirty.length, "value")} changed, not saved yet.`
+                  : "No unsaved changes."}
+              </p>
+              {onLoadPriorRun !== undefined && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="w-full"
+                  icon={<History aria-hidden className={dsIcon.sm} />}
+                  onClick={onLoadPriorRun}
+                >
+                  Load prior run
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="secondary"
+                className="w-full"
+                icon={<RotateCcw aria-hidden className={dsIcon.sm} />}
+                disabled={dirty.length === 0}
+                onClick={resetEdits}
+              >
+                Reset edits
+              </Button>
+              <Button
+                size="sm"
+                // ONE CONTROL FAMILY: the dock's peers are `secondary` and
+                // exactly one of them is `primary`. On this surface the commit
+                // arm is that one — the demo lets the SERVER choose between
+                // save and start-custom-run, and only one of the two exists
+                // here.
+                variant="primary"
+                icon={<Save aria-hidden className={dsIcon.sm} />}
+                // A lone commit arm takes the RIGHT-HAND cell, never the left:
+                // the primary's place on this surface is the bottom right
+                // corner, and a grid that lets it slide to column one when its
+                // partner is absent has moved the one control the operator aims
+                // at without saying so.
+                className={cn("w-full", onStartCustomRun === undefined && "col-start-2")}
+                disabled={saving || saveBlocked !== undefined}
+                title={saveBlocked}
+                onClick={save}
+              >
+                {saving ? "Saving…" : `Save ${plural(dirty.length, "correction")}`}
+              </Button>
+              {onStartCustomRun !== undefined && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="w-full"
+                  icon={<Play aria-hidden className={dsIcon.sm} />}
+                  onClick={onStartCustomRun}
+                >
+                  Start custom run
+                </Button>
+              )}
+            </div>
+          </Well>
           {saveBlocked !== undefined && liveLock === undefined && (
             <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
               {saveBlocked}
             </span>
           )}
-        </div>
+        </>
       )}
     </section>
   );
@@ -648,7 +902,12 @@ export function ContextRailSpine({
           replaces, so undoing the press needs no pointer travel. */}
       <span className="flex h-[var(--ds-h-bar)] shrink-0 items-center">
         <IconButton
-          label="Show run data — recorded fields and attempts"
+          // The spine says what it is hiding, in the words the sections
+          // themselves use (R6 f.24, following f.3a). The demo's third noun,
+          // `delegation`, is dropped rather than carried across: no delegation
+          // section renders here, and a spine advertising a section behind it
+          // that does not exist is a control that lies about its own contents.
+          label="Show run data — extracted fields and attempts"
           size="sm"
           onClick={onOpen}
           icon={<PanelRightOpen aria-hidden className={dsIcon.md} />}
@@ -675,7 +934,7 @@ export function ContextRail({
   className,
   actorId,
   liveStatus,
-  onDataEditingChange,
+  onDataExpandedChange,
   onSaved,
 }: {
   summary: ContextSummary;
@@ -686,14 +945,35 @@ export function ContextRail({
   actorId: string;
   /** The run's LIVE queue status off the day stream — the D19 staleness signal. */
   liveStatus: string | undefined;
-  /** The layout owner widens the rail while the Data section is being edited. */
-  onDataEditingChange: (editing: boolean) => void;
+  /** The layout owner widens the rail while the Data surface is expanded. */
+  onDataExpandedChange: (expanded: boolean) => void;
   /** An applied save bumped the run version — the owner refetches detail + sections. */
   onSaved: () => void;
 }) {
   const data = sections["context-data"];
-  const evidence = sections["context-evidence"];
   const attempts = sections["context-attempts"];
+
+  /**
+   * The Data surface has been widened to be edited in — the rail's own state,
+   * because two things read it: this component's header word and the layout
+   * owner's column width. It resets whenever the run changes, which the
+   * `key={data.runId}` on `DataSection` cannot do for a flag held out here.
+   */
+  const [dataExpanded, setDataExpanded] = useState(false);
+  const runId = data !== undefined && isDataPayload(data) ? data.runId : undefined;
+  useEffect(() => setDataExpanded(false), [runId]);
+  const setExpanded = useCallback((next: boolean) => {
+    setDataExpanded(next);
+    onDataExpandedChange(next);
+  }, [onDataExpandedChange]);
+
+  /**
+   * `RunSelector` renders nothing below two attempts, so the HEADING is gated
+   * on the same fact rather than on the component returning null — a labelled
+   * section with nothing under it reads as a failed render (R6 f.18, demo
+   * `DemoContextRail.tsx:1111-1114`).
+   */
+  const hasAttempts = summary.attempts > 1;
 
   return (
     <aside
@@ -714,8 +994,11 @@ export function ContextRail({
         )}
       >
         <Database aria-hidden className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-fg-muted)]")} />
+        {/* The header says what MODE the rail is in (R6 f.4). The state was
+            already plumbed outward to size the column and never read back
+            here, so the one surface that changes shape did not say so. */}
         <span className={cn(dsText.title, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>
-          Run data
+          {dataExpanded ? "Run data · editing" : "Run data"}
         </span>
         <IconButton
           label="Hide run data"
@@ -728,15 +1011,24 @@ export function ContextRail({
 
       <div className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-cozy)] overflow-y-auto p-[var(--ds-space-cozy)]">
         {/**
-         * ORDER: Data · Evidence · Attempts. Captures live in Receipt — they
-         * are evidence that qualifies the outcome, not contextual input beside
-         * the live stream — and provenance is the Log Panel's bottom bar,
-         * beside the stream its version qualifies.
+         * ORDER: Data · Attempts · Delegation — the demo states it twice and
+         * this rail now follows it (R6 f.19).
          *
-         * A section the run did not advertise is not drawn at all. An advertised
-         * section with no entries draws its empty state, because "this run
-         * recorded nothing here" and "this run cannot record here" are
-         * different facts and the operator acts on them differently.
+         * **`Evidence` LEFT THE RAIL.** It was a rebuild-only insertion into a
+         * stated order: captures are evidence that QUALIFIES an outcome, not
+         * contextual input beside the live stream, so the demo moves them to
+         * Receipt explicitly. It is not dropped — `context-evidence` re-homes
+         * to the Receipt tab, recorded on the audit's hookup ledger. Nothing is
+         * lost today either way: the arm is `declared-unserved` (D184) and no
+         * composition can populate it.
+         *
+         * **`Delegation` is a wire gap**, not an omission — nothing in this
+         * tree references a delegation link. It is on the same ledger.
+         *
+         * A section the run did not advertise is not drawn at all. An
+         * advertised section with no entries draws its empty state, because
+         * "this run recorded nothing here" and "this run cannot record here"
+         * are different facts and the operator acts on them differently.
          */}
         {data !== undefined && isDataPayload(data) ? (
           <DataSection
@@ -744,31 +1036,30 @@ export function ContextRail({
             payload={data}
             actorId={actorId}
             liveStatus={liveStatus}
-            onEditingChange={onDataEditingChange}
+            expanded={dataExpanded}
+            onExpandedChange={setExpanded}
             onSaved={onSaved}
           />
         ) : (
           <ContextSection
-            label="Data"
+            label="Extracted fields"
             payload={data}
             emptyDescription="Values this run recorded appear here as it reads them."
             lockReason="Recorded by the run."
           />
         )}
-        {evidence !== undefined && (
+
+        {/* Expanding Data hides ATTEMPTS. The expand control stays in the Data
+            section's own header at the top of the rail, so undoing a press
+            costs no pointer travel. */}
+        {!dataExpanded && attempts !== undefined && hasAttempts && (
           <>
             <Separator />
-            <ContextSection
-              label="Evidence"
-              payload={evidence}
-              emptyDescription="Evidence this run captured appears here."
-              lockReason="Evidence is captured, never edited."
-            />
-          </>
-        )}
-        {attempts !== undefined && (
-          <>
-            <Separator />
+            {/* AN ON-RECORD DEVIATION: the demo puts a `RunSelector` here — a
+                control that CHANGES WHICH ATTEMPT YOU ARE READING. This wire
+                serves the attempts section as labelled values, so the rail
+                renders them as a locked ledger until the selector's wire lands.
+                The `>1` gate above is the demo's, and it applies either way. */}
             <ContextSection
               label="Attempts"
               payload={attempts}
@@ -777,10 +1068,30 @@ export function ContextRail({
             />
           </>
         )}
-        <Separator />
-        <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
-          {plural(summary.dataFacts, "field")} · {plural(summary.attempts, "attempt")}
-        </span>
+
+        {/* R6 f.26 — the hidden section says it is hidden and how to get it
+            back. A section that vanishes on a press the operator made for a
+            different reason reads as a rendering fault.
+
+            It is gated on `hasAttempts` as well as on the expansion, which the
+            demo's own line is not: the demo names two sections and this rail
+            draws one, so an ungated sentence would report hiding a section
+            that was never there on the majority of runs. Same reason the spine
+            label drops `delegation`. */}
+        {dataExpanded && hasAttempts && (
+          <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+            Attempts are hidden while you edit — narrow the surface to bring them back.
+          </p>
+        )}
+
+        {/* THE SUMMARY COUNT ROW IS GONE (R6 f.20). It was banned by the
+            operator on 2026-07-27 — "remove these tags in data" — and the
+            demo's own comment at `DemoContextRail.tsx:665-680` says why in the
+            general case: it restated, above the list, things the list already
+            shows and the eye can count. This codebase had reintroduced it at
+            the rail FLOOR rather than the ledger top, reading
+            `N fields · N attempts` under the very sections that print both.
+            Do not reintroduce a count here. */}
       </div>
     </aside>
   );
