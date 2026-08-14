@@ -2855,4 +2855,106 @@ disagrees.**
   invents a rule for them; if the composition needs them they are a §4e amendment, not a driver
   change.
 
+**Orchestrator dispositions on those three, recorded 2026-08-14 so they are not re-litigated.**
+
+1. **The `formKey` design stands.** The commit's wire proof covers only observed keys; the ten-field
+   reload read-back is the landing proof and always was. 5c fills
+   `kualiFinalizationFormKeysMissing()`'s list.
+2. **`recoveryAbsence: "stabilized"` is ACCEPTED and is now ratified as D207** (doc 09 §4.2), with
+   5a's argument plus one obligation it did not carry: the transferred window is **provisional until
+   this write's own controlled-commit proof confirms it** (doc 07 §3.1 step 5), and the composed
+   workflow may not rely on the stabilized arm in production before that.
+3. **The step-13 date write-backs stay unstaged.** §4e's normative list is built as written; the open
+   question is queued for the operator rather than answered by the driver.
+
+---
+
+### 9.11 Chunk 5b — the descriptor, the department fold and the graph, as built (2026-08-14)
+
+**BUILD ONLY. Nothing here has touched the live system.** 5b is the descriptor + graph third of
+chunk 5. The live pass is 5c.
+
+**The node graph.** `separations-kuali-finalization`, code `sf`, `surfaces: {}` — no input surface,
+same as its siblings.
+
+| Node | Kind | `dependsOn` | What it is |
+|---|---|---|---|
+| `job-summary` | step `ucpath/read-job-summary` | — | chunk 3's read, reused |
+| `name-search` | step `ucpath/search-person-org` | — | chunk 3's read, reused |
+| `department-option` | step `workflow:separations/match-department-option` | — | **new**: S55's upstream fold |
+| `comparison` | step `workflow:separations/match-identity` | `job-summary`, `name-search` | chunk 3's fold, reused |
+| `identity-approval` | **gate**, `resolvedBy: operator` | `comparison`, `department-option` | doc 09 §14's ALWAYS-GATE |
+| `approval` | step `workflow:separations/verify-identity-approval` | `comparison`, `identity-approval` | chunk 3's post-gate check, reused |
+| `finalize-kuali` | **transaction** | `approval`, `department-option` | prepare `kuali/stage-separation-finalization`, commit `kuali/save-separation-finalization` |
+| *(terminal result)* | — | `approval`, `department-option`, `finalize-kuali` | |
+
+`dryRun: "stop-after-prepare"`, `probePolicy: "always"`, `probeToFenceMaxMs: 45_000` — §5 item 3's
+recorded answer, the same value and the same D78 justification the timekeeper-annotation node
+carries. This prepare stages TEN controls where that one stages one, so 5c's first live dry run
+reports probe-complete → prepare-complete off the run's own per-beat spans and tightens or confirms
+it.
+
+**Why `department-option` hangs off the GATE.** `identity-gate-before-commit` audits both sinks
+(D202), and the property it enforces is not "the gate is on every edge" but "no data reaches a sink
+that the operator never saw". A department resolved off the graph root and read straight by the
+transaction would be exactly that side read. Declaring it as a gate dependency also lands S55's
+refusal **before a human is asked at all**, which is chunk 4's argument for `termination-type`
+verbatim. **Open for chunk 6:** the resolved option is a gate DEPENDENCY and is not yet rendered
+INTO doc 09 §14.2's packet — the composition should carry it there.
+
+**The department fold** (`src/domain/separations/department-option.ts`). The CODE is the key: Kuali
+renders every option as `<6-digit code> - <description>` (§9.3's S55 capture) and that code IS the
+UCPath dept id, so an exact code match is a real identity. Legacy's other two tiers — description ⊆
+option text, then option name ⊆ description with a "specific enough" heuristic and a longest-match
+tiebreak (`legacy:src/systems/kuali/navigate.ts:328-400` @ `1bffbd65…`) — do **not** port, for §4a's
+reason one control over. A normalized-exact DESCRIPTION tier is not the safe middle ground it looks
+like and is absent too: UCPath renders `HOUSING/DINING/HOSPITALITY` where Kuali renders
+`Housing/Dining/Hospitality`, so such a tier is either dead or case-insensitive, which is a quieter
+fuzzy match. Both spellings ride on the resolution instead, so the operator compares them and the
+code decides. The option text is returned **verbatim from the list that went in** — `000719 -  Supply
+Chain Services` really is served with a double space (legacy ISS-B05), and a reconstruction would
+produce a string the control does not carry. Four refusals, four durable codes:
+`department-code-unreadable` (S24 — the consumer that NEEDS the department is the one that refuses),
+`department-code-not-offered` (recording every option the control did offer), `department-option-ambiguous`,
+`department-option-unusable`.
+
+**Coverage points and the scenarios that walk them.** One transaction node and one gate, so the
+graph derives six points; the corpus is one file with three kinds of arm.
+
+| Scenario | Kind | Coverage points |
+|---|---|---|
+| `stage-refusals` | task walk (5a) | — |
+| `save-verify-read-back` | task walk (5a) | — |
+| `department-option-refusals` | task walk (5b) | — |
+| `dry-run-preview` | sequencer walk | `transaction:finalize-kuali/dry-run` |
+| `subject-mismatch` | sequencer walk | `transaction:finalize-kuali/subject-mismatch` |
+| `committed` | sequencer walk | `transaction:finalize-kuali/committed` |
+| `already-present` | sequencer walk | `transaction:finalize-kuali/already-present` |
+| `save-not-landed-parks` | sequencer walk | — |
+| `gate-approved` | pure graph walk | `gate:identity-approval/opened`, `gate:identity-approval/resolved` |
+
+**S60 and S61 at graph level.** **S61** is `dry-run-preview`: the run stages all ten controls and
+reads every one of them back, then stops with zero write intents, zero checkpoints, zero outbox rows
+and a document still reading unfinalized — against legacy, whose dry run leaves the timekeeper name
+and a `similar`-tier name rewrite on a live Kuali draft. **S60** is `save-not-landed-parks`: the
+click happens, Kuali keeps nothing, and the post-fence absence PARKS with the intent fenced
+(`status: parked`, `parkedCode: unknown`) and no checkpoint. That is §4c's answer stated as a durable
+state — by that point the UCPath termination the document was going to record is already real, so a
+`failed` run would leave "UCPath done, Kuali not" in the operator's head, which is the exact thing
+§4c refuses.
+
+**What 5b owes beyond §9.10's two items.**
+
+1. **The parity reference corpus is STALE and was deliberately not re-frozen.** Registering a
+   descriptor changes the Workflow Explorer's own button list, so the twelve `explorer-graph--*` /
+   `explorer-transaction--*` references now under-report by one workflow (chunk 4's registration
+   re-froze them in the same commit; this one could not, because a concurrent session owns the
+   dashboard tree and `npm run test:parity` was off-limits for this lane). The repair is one
+   `npm run test:parity:update` and a review of the diff. **`npm run typecheck && npm run lint &&
+   npm run test:coverage` are green; the parity lane is not, and that is the only known red.**
+2. **The receipt PAIR is not on the ingress.** §4c requires `(transactionNumber, approvalStatus)` as
+   durable authority before finalization is entered; this descriptor takes the number (it is half the
+   permanent key) and nothing consumes the approval status, so adding it here would be a dead field.
+   It belongs to chunk 6's composition, which holds chunk 4's terminal result and can bind both.
+
 ---

@@ -607,7 +607,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "da862cfbf94cd47ca4d25cf1e6772c7fb13eaf5efe691d298614012d17a0077c",
+      "fingerprint": "4118b5e697200f10d750bb370f0318943a32cd18c9db301e656255ade0051237",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -631,7 +631,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/kuali/save-separation-finalization.ts",
-          "sha256": "62431c0e916d1e7d73387fea59d6f7303a8716099ef78fb2f3e1d062ec5cf784"
+          "sha256": "24f31a530d6523da6e52a30f59c7b2a6f669f0f2e92bbafec71da58f17e2dccd"
         },
         {
           "path": "src/domain/contracts/kuali/stage-separation-finalization.ts",
@@ -1881,7 +1881,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/fill-timekeeper-annotation"
     },
     {
-      "fingerprint": "55db9e82190cc934696fddd61043178d0c16662ebb7e836e98adf4c5f959ed4e",
+      "fingerprint": "7e34d73097f2918ed254bd4c41d79c5bc26a3a2cfd1fb16f688e2d680f31efe9",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1937,7 +1937,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/kuali/save-separation-finalization.ts",
-          "sha256": "62431c0e916d1e7d73387fea59d6f7303a8716099ef78fb2f3e1d062ec5cf784"
+          "sha256": "24f31a530d6523da6e52a30f59c7b2a6f669f0f2e92bbafec71da58f17e2dccd"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
@@ -2427,7 +2427,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/read-timekeeper-annotation"
     },
     {
-      "fingerprint": "25441a97c132756abfdd4a18e8a4d685fcc61ca7a037a265cdb10de1bf0545b5",
+      "fingerprint": "12057900a8c3a61f2aabbbbecbed987d3ddac3ef494a84deffa9fee0c1aa75ea",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2483,7 +2483,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/kuali/save-separation-finalization.ts",
-          "sha256": "62431c0e916d1e7d73387fea59d6f7303a8716099ef78fb2f3e1d062ec5cf784"
+          "sha256": "24f31a530d6523da6e52a30f59c7b2a6f669f0f2e92bbafec71da58f17e2dccd"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
@@ -2961,7 +2961,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/stage-separation-finalization"
     },
     {
-      "fingerprint": "0ff007a52921213183ab39e8e616110b9a9bdea0d166ef48ddbd8fdaa2dc6fb8",
+      "fingerprint": "55e81bb8aa4936ef29ee6a7c680af2151446d09d34ff3711b3342058995a542a",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3017,7 +3017,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/kuali/save-separation-finalization.ts",
-          "sha256": "62431c0e916d1e7d73387fea59d6f7303a8716099ef78fb2f3e1d062ec5cf784"
+          "sha256": "24f31a530d6523da6e52a30f59c7b2a6f669f0f2e92bbafec71da58f17e2dccd"
         },
         {
           "path": "src/domain/contracts/kuali/verify-separation-finalization.ts",

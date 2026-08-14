@@ -991,6 +991,43 @@ a separate owner, and closing it (re-planning a queued run onto a newer closure)
 than decided here. What D136 guarantees is that the parked *intent* — the durable write-safety
 authority, the thing that records whether a real HR transaction exists — always has a typed way out.
 
+### 4.2 A measured propagation window transfers with the MECHANISM, and only under its own proof (D207, 2026-08-14)
+
+D64/D69 admit `recoveryAbsence.kind:"stabilized"` **only** with a measured propagation window; the
+open question this subsection settles is what a measurement is a measurement *of*. **It is a
+measurement of the MECHANISM — the request that writes and the read that proves it — not of the
+field that happened to be written.** A second contract may reuse an existing window when it names
+the same three things:
+
+1. **the same write request**, not merely the same system (`submitDocumentV2` serializing the
+   current step's whole section, in Kuali's case);
+2. **the same negative read**, the deterministic reload of the same document;
+3. **an absence that is safe in the direction it can be wrong** — settling a false negative must
+   re-do the *identical* external act, never a second distinguishable one.
+
+Where those hold, the numbers are the mechanism's and copying them states a fact rather than
+guessing one. Where any of them fails, the arm is `operator-only` until that contract's own
+measurement exists — which is why chunk 4's UCPath termination stays `operator-only` on both
+commits: settling a negative there would file a **second real termination**, so criterion 3 fails
+before criteria 1 and 2 are even asked.
+
+**The first reuse, and the whole of it.** `kuali/save-separation-finalization` (separations chunk 5,
+§4e) takes D135's Kuali window — `minSinceFenceMs: 30 000`, `consistentReads: 2`,
+`minBetweenReadsMs: 5 000`, `requireSameSourceState: true`, measured over four operator-authorized
+write/restore cycles on real document 4490 against a worst observed fence→trustworthy-negative of
+≈3.3 s (§Phase-2 controlled-commit as-built → *Measured numbers*). All three criteria hold: it is
+the same `submitDocumentV2` on the same RRSS form, proved by the same reload of the same document,
+and settling a negative re-fences and re-saves the identical ten staged values.
+
+**The obligation this creates, stated as an obligation and not as a note.** A transferred window is
+**provisional until that write's OWN controlled-commit proof confirms it** (doc 07 §3.1 step 5). The
+finalization's proof is chunk 5c: its authorized real commit must record the same three
+observations D135 recorded — the save's answer latency, the first agreeing server-side read, and
+the first agreeing browser reload — and either confirm the 30 s bound or move it. **The composed
+separations workflow may not rely on the stabilized arm in production before that confirmation
+lands.** Until then the reuse is a declared, argued inheritance carrying a named owner, which is
+exactly the difference between this and a generous placeholder.
+
 ---
 
 ## 5. Double-submit prevention

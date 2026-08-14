@@ -43,6 +43,14 @@
  *
  * ## Why `recoveryAbsence` is `stabilized`, and where its numbers come from
  *
+ * **Ratified as D207 (doc 09 §4.2), which this is the first reuse under.** A
+ * measured window transfers with the MECHANISM when the reusing contract names
+ * the same write request, the same negative read, and an absence that is safe in
+ * the direction it can be wrong; and the transfer is **provisional until this
+ * write's own controlled-commit proof confirms it** (doc 07 §3.1 step 5 —
+ * chunk 5c). The composed separations workflow may not rely on the stabilized
+ * arm in production before that confirmation lands.
+ *
  * D64/D69 admit a stabilized negative ONLY with a MEASURED propagation window,
  * and Kuali's was measured — on this exact form, through this exact mutation.
  * On 2026-08-04 four operator-authorized write/restore cycles on real document

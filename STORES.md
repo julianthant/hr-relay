@@ -349,18 +349,21 @@ a service store.
 
 ### `separations` — workflow mini-store, real
 
-**Status:** `defineWorkflowStore("separations", …)`, sessionless, **1 task**. Namespace is
+**Status:** `defineWorkflowStore("separations", …)`, sessionless, **4 tasks**. Namespace is
 `workflow:separations`. Same shape as `person-lookup`: a pure, artifact/provider-free fold over prior
 node outputs, with no browser anywhere in its import graph.
 
 | Item | Kind | Contract id | What it does | Reuse notes |
 |---|---|---|---|---|
 | `matchTerminationTypeTask` | task | `workflow:separations/match-termination-type` (read) | §4a's refusal, executed: exact-match the Kuali termination type against the live-captured map, returning `{classification, template, reasonCode}` or failing with one of four distinct codes. | `replay:"checkpoint"`. It checks the OPTION LIST first — a republished control makes every answer suspect, including the ones that still match. There is no substring tier and no default arm; the map lives in `src/domain/separations/termination-type.ts`. |
+| `matchIdentityTask` | task | `workflow:separations/match-identity` (read) | Chunk 3's pure comparison: folds the Kuali document, the Job Summary grid and the name search into doc 09 §14.2's decision packet plus its evidence digest, and computes the `approvalShape` SERVER-side. | `replay:"checkpoint"`. It classifies the name tier but decides nothing — the gate does. Used by every separation-class write chunk rather than reimplemented. |
+| `verifyIdentityApprovalTask` | task | `workflow:separations/verify-identity-approval` (read) | The post-gate check: re-derives the packet, proves the digest the operator approved is still the digest this run holds, and returns the approved subject. | `replay:"always-rerun"` — an approval is checked against THIS run's evidence, never replayed from a checkpoint. Four distinct refusal codes, including `identity-approval-eid-not-shown`. |
+| `matchDepartmentOptionTask` | task | `workflow:separations/match-department-option` (read) | **S55's upstream half** (chunk 5): resolves a UCPath dept id to the EXACT visible text of the Kuali `Department*` option that carries it, verbatim from the observed list. | `replay:"checkpoint"`. Code match ONLY — legacy's two substring tiers do not port, and neither does a normalized-exact description tier, which would be a quieter fuzzy match. Four distinct refusal codes; the fold lives in `src/domain/separations/department-option.ts`. |
 
 The migration doc's §2.5 sketches this mini-store as also owning date reconciliation, the comment
-builders, the Kronos window computation and the name-similarity classification. Those land with the
-chunks that need them; the termination-type resolution came first because §4a's refusal has to exist
-before anything can consume a separation document.
+builders and the Kronos window computation. Those land with the chunks that need them; the
+termination-type resolution came first because §4a's refusal has to exist before anything can consume
+a separation document.
 
 ---
 
