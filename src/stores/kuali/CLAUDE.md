@@ -14,6 +14,10 @@ only the task-safe declaration at `../declaration.ts`.
 | `kuali/fill-timekeeper-annotation` | prepare | stages the timekeeper value |
 | `kuali/save-timekeeper-annotation` | **commit** | clicks `Save` |
 | `kuali/verify-timekeeper-annotation` | read | the reload read-back — the ONLY landing proof |
+| `kuali/match-separation-finalization` | read | the finalization's beat-① probe |
+| `kuali/stage-separation-finalization` | prepare | stages ALL TEN finalization fields in one pass |
+| `kuali/save-separation-finalization` | **commit** | the ONE `Save` that commits the finalization |
+| `kuali/verify-separation-finalization` | read | the reload read-back over all ten fields |
 
 **The read family is a SIBLING on the same `DriverDeclaration`, not a second store.**
 `defineTask(driver, contract, impl)` binds the store's exact invariant declaration, so a second
@@ -101,6 +105,40 @@ addressable through this store at all.
 - **Post-fence absence is `stabilized`** (`minSinceFenceMs: 30_000`, 2 reads, 5s apart), on four
   authorized write/restore cycles measured 2026-08-04 on doc 4490: click→response 2 459–3 036ms,
   Kuali's own state agreeing on the first ~270ms sample, a browser reload agreeing within ~3s.
+
+## The finalization family (chunk 5a) — §4e's staged-variables model
+
+`docs/migrations/separations.md` §4e is normative and the module header of
+`src/domain/ui/kuali-separation-finalization.ts` restates it: every read lands first as a typed
+variable, ONE prepare stages every field from those variables, ONE save, ONE reload read-back that
+compares every written field against the EXACT staged variables. Nothing re-reads a value to compute
+with it.
+
+- **Seven variables, three ratified assertions.** `requestAcknowledged` and
+  `submittedTerminationTemplate` are checked unconditionally (legacy steps 10b and 16), and the
+  final-pay radio is **§4g**'s operator-ratified business assertion of 2026-08-12 — *Does not need
+  Final Pay (student employee)* on every RRSS separation, with no data behind it and the residual
+  risk named rather than hidden. They are constants, not inputs, so a caller cannot vary them, and
+  `tests/unit/kuali-finalization-fields.test.ts` pins the value — which is precisely what S58 said
+  legacy lacked.
+- **The comparison is EXACT, with no tolerance arm.** A department option that merely contains the
+  code is a different department; a comments field that kept a prefix has dropped somebody's note.
+  A mismatch names the field, and `<empty>` / `unchecked` / `<none selected>` render distinguishably
+  because they are three different observations.
+- **S57 does not port.** Legacy, finding the transaction number blank, fills everything except it and
+  saves the document "blank for manual entry". Here the number is a required `T`+6–12-digit variable,
+  so an empty one refuses before a control is touched.
+- **S56 is strengthened.** The prepare re-reads the comments control and refuses when it no longer
+  holds what the read this run composed from saw. That re-read decides a REFUSAL, never a value.
+- **`Last Day Worked` / `Separation Date` are deliberately absent.** Legacy's step 13 writes them
+  back; they are in neither §4e's field list nor §5 item 1's mutation table, so nothing here invents
+  a rule for them.
+- **Two things chunk 5c owes.** Every write path carries a `// live-verify: 5c` marker — the fourteen
+  controls were live-verified as READS on 2026-08-12 and none has been observed being WRITTEN, and a
+  selector mapped on a read-only page is not a verified selector for the editable one. And nine of
+  the ten `submitDocumentV2` `formKey`s are unknown, so the commit's wire proof covers only
+  `timekeeperName`; the rest are `null` rather than guessed, because a fabricated key makes a check
+  that cannot fail. The landing proof is unaffected — it was always the reload read-back.
 
 ## Provenance
 

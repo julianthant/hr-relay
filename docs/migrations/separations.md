@@ -2788,3 +2788,71 @@ predated this workflow. It was stopped and restarted. The lock is what made that
 explicit rather than silent, which is what it is for.
 
 ---
+
+### 9.10 Chunk 5a — the Kuali finalization contracts and driver, as built (2026-08-14)
+
+**BUILD ONLY. Nothing here has touched the live system.** 5a is the contracts + driver third of
+chunk 5; the descriptor, its transaction node and the scenarios that walk it are 5b, and the live
+pass is 5c.
+
+**What landed.** Four contracts on the existing `kuali` driver declaration —
+`kuali/match-separation-finalization` (probe), `kuali/stage-separation-finalization` (prepare),
+`kuali/save-separation-finalization` (commit) and `kuali/verify-separation-finalization` (the
+read-back) — plus the driver operations, the deterministic-fake arms and the pure folds. §4e's
+staged-variables model is implemented literally: ten fields, one prepare pass, one save, one reload
+read-back compared field by field against the exact staged variables, with no tolerance arm.
+
+**Where the ten values come from.** Seven are per-run variables (department option text, payroll
+title code, payroll title, timekeeper name, termination effective date, transaction number, the full
+comments text). Three are unconditional assertions carried as constants so a caller cannot vary
+them: *Request Acknowledged* and *Submitted Termination Template* (legacy steps 10b and 16), and the
+final-pay radio, which is **§4g** verbatim and is pinned by value in a unit test — the one thing S58
+actually objected to.
+
+**Scenarios chunk 5 owns, and how 5a covers them.**
+
+| Scenario | 5a's answer |
+|---|---|
+| **S55** no matching Kuali department option | `department-option-not-offered`, carrying the COMPLETE observed option list (§3.2). Legacy's refusal is sound; what is new is the recorded list |
+| **S56** existing timekeeper comments unreadable | **strengthened.** The prepare re-reads the control and refuses (`comments-changed-since-read`) when it no longer holds what the read this run composed from saw — legacy refuses only when the READ throws, so an edit made in between is silently overwritten |
+| **S57** transaction number empty at finalization | **does not port.** The number is a required `T`+6–12-digit variable, so the "fill everything except it and save blank for manual entry" path cannot arise. That is legacy's own `verifyTxnNumberFilled` intent moved into the type system |
+| **S58** the final-pay radio | §4g's ratified constant, in code with its ratification and pinned by test |
+| **S59** `Save` clicked, Kuali persists nothing | the reload read-back over ALL TEN fields is the only landing proof; a partial save is `absent` and parks, naming every field that disagreed. This is the answer to the behavior review's open question under S59 |
+| **S60** UCPath filed, Kuali finalization fails | a parked write with a named intent (§4c). The graph-level arm is 5b's |
+| **S61** dry run writes to Kuali | the prepare saves nothing and the scenario asserts the document still reads unfinalized. 5c re-opens the document after its dry run, which is the verification legacy never did |
+| **S42** timekeeper-name fill fails | folded into `stage-not-persisted`: every one of the ten controls is read back and a disagreement names the field |
+
+**Two things 5c owes, recorded here so they are not rediscovered.**
+
+1. **No write path is live-verified.** The fourteen controls were live-verified as READS on
+   2026-08-12 (§9.3); none has been observed being WRITTEN by this repository, and *a selector mapped
+   on a read-only record is not a verified selector for the editable page* is legacy's own lesson.
+   Every write path in `src/stores/kuali/driver/interpreter.ts` carries a `// live-verify: 5c`
+   marker. The registry's two new facts (the staged page state and the Transaction Number
+   observation) are structural claims about that same read-only pass, and both evidence manifests
+   keep `externalWriteAttempted: false`.
+2. **Nine of the ten `submitDocumentV2` `formKey`s are unknown.** Only `timekeeperName`'s
+   (`QGJ63YrCom`) was ever observed, live 2026-08-04 off Kuali's own `ActionPage` query. The rest are
+   `null` rather than guessed — a fabricated key makes the commit's wire proof a check that cannot
+   fail — so that proof covers one field today. The landing proof is unaffected because it was never
+   the wire check; what is incomplete is the earlier, louder half of the defence.
+   `kualiFinalizationFormKeysMissing()` is the to-do list, and filling the table is a one-line change.
+
+**Three judgements 5a made inside §4e/§4g rather than deferring, each recoverable if the orchestrator
+disagrees.**
+
+- **`recoveryAbsence` is `stabilized`**, reusing D135's measured Kuali window (`minSinceFenceMs`
+  30 000, two reads 5 s apart, same source state). The measurement transfers because the MECHANISM
+  transfers — the same `submitDocumentV2` on the same form, proved by the same reload of the same
+  document — and the arm is safe in the direction it can be wrong: settling a negative here re-fences
+  and re-saves the identical field set, which is why this is not chunk 4's `operator-only` case,
+  where the retry would be a second real termination.
+- **The permanent key omits the action id and the field values.** An action id names a workflow STEP,
+  not a document (D129), so keying on it would mint a second key for the same external transaction;
+  and a differently composed comments string is not a second finalization.
+- **Legacy's step-13 date write-backs (`Last Day Worked`, `Separation Date`) are NOT staged.** They
+  appear in neither §4e's normative field list nor §5 item 1's five-mutation table. Nothing here
+  invents a rule for them; if the composition needs them they are a §4e amendment, not a driver
+  change.
+
+---
