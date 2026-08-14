@@ -546,8 +546,27 @@ function RowFooterLine({
         >
           {surface.traceId}
         </span>
+        {/*
+          The subtitle is the one footer segment whose length the SERVER
+          chooses, and it is the segment DESIGN.md wrote the footer rule for:
+          *"A row footer's facts WRAP; they never truncate … so a run with a
+          queue note takes a second line instead of cutting its trace id to
+          `1…`"*. The demo's own span carries `whitespace-nowrap`
+          (`DemoQueue.tsx:715`) and gets away with it because every fixture
+          subtitle is a short identifier — an EID or a document number. This
+          projection serves the run's NOTE here, and a real one measured **1096
+          px inside a 375 px card**: `nowrap` made it neither wrap nor
+          ellipsize, so the card's own `overflow-hidden` cut it mid-word with
+          nothing on screen saying anything was cut — the exact silent-clip this
+          file's `rowChip` comment refuses one element up.
+
+          Wrapping is therefore the port, not a deviation: on a demo-shaped
+          short subtitle the two treatments render identically, and on a long
+          one only this treatment obeys the rule the demo states. The trace chip
+          beside it keeps `nowrap` — it is the segment that may never be cut.
+        */}
         {showSubtitle && surface.subtitle.state === "present" && (
-          <span className="whitespace-nowrap text-[color:var(--ds-fg-secondary)]" title={surface.subtitle.value}>
+          <span className="min-w-0 break-words text-[color:var(--ds-fg-secondary)]" title={surface.subtitle.value}>
             {surface.subtitle.value}
           </span>
         )}
