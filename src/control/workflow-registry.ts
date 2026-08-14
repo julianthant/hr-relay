@@ -29,6 +29,7 @@ import { kualiTimekeeperAnnotationModule } from "../workflows/kuali-timekeeper-a
 import { personLookupModule } from "../workflows/person-lookup/module.js";
 import { separationsIdentityCheckModule } from "../workflows/separations-identity-check/module.js";
 import { separationsKronosTimecardModule } from "../workflows/separations-kronos-timecard/module.js";
+import { separationsKualiFinalizationModule } from "../workflows/separations-kuali-finalization/module.js";
 import { separationsKualiReadModule } from "../workflows/separations-kuali-read/module.js";
 import { separationsUcpathTerminationModule } from "../workflows/separations-ucpath-termination/module.js";
 
@@ -39,6 +40,7 @@ export const WORKFLOW_MODULES = Object.freeze([
   separationsKualiReadModule,
   separationsIdentityCheckModule,
   separationsUcpathTerminationModule,
+  separationsKualiFinalizationModule,
 ]);
 
 export const DESCRIPTORS: readonly AnyWorkflowDescriptor[] = Object.freeze(

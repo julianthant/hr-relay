@@ -39,11 +39,11 @@ const SEPARATIONS_IDENTITY_CHECK_FILE = "tests/scenario/separations-identity-che
 const SEPARATIONS_UCPATH_TERMINATION_FILE =
   "tests/scenario/separations-ucpath-termination.scenario.test.ts";
 /**
- * Chunk 5a's Kuali finalization — the CONTRACT-level arms. They are not graph
- * walks: the descriptor lands in 5b with its own rows, and these two exercise
- * the real task implementations against the deterministic driver, which is the
- * only way to observe "it refused" rather than "it returned something
- * plausible".
+ * Chunk 5's Kuali finalization — one file, three kinds of arm. 5a's contract
+ * walks run the real task implementations against the deterministic driver
+ * (the only way to observe "it refused" rather than "it returned something
+ * plausible"); 5b's sequencer walks drive the real write sequencer over a real
+ * authority database; 5b's pure graph walk covers the gate.
  */
 const SEPARATIONS_KUALI_FINALIZATION_FILE =
   "tests/scenario/separations-kuali-finalization.scenario.test.ts";
@@ -232,6 +232,15 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
     scenarioId: "separations-kuali-finalization/department-option-refusals",
     file: SEPARATIONS_KUALI_FINALIZATION_FILE,
   },
+  { scenarioId: "separations-kuali-finalization/dry-run-preview", file: SEPARATIONS_KUALI_FINALIZATION_FILE },
+  { scenarioId: "separations-kuali-finalization/subject-mismatch", file: SEPARATIONS_KUALI_FINALIZATION_FILE },
+  { scenarioId: "separations-kuali-finalization/committed", file: SEPARATIONS_KUALI_FINALIZATION_FILE },
+  { scenarioId: "separations-kuali-finalization/already-present", file: SEPARATIONS_KUALI_FINALIZATION_FILE },
+  {
+    scenarioId: "separations-kuali-finalization/save-not-landed-parks",
+    file: SEPARATIONS_KUALI_FINALIZATION_FILE,
+  },
+  { scenarioId: "separations-kuali-finalization/gate-approved", file: SEPARATIONS_KUALI_FINALIZATION_FILE },
 ]));
 
 export const EXECUTABLE_SCENARIO_IDS: readonly ScenarioId[] = Object.freeze(

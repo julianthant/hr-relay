@@ -174,6 +174,43 @@ const UCPATH_STAGE_TERMINATION = taskOutput("ucpath/stage-termination");
 const UCPATH_CREATE_TERMINATION = taskOutput("ucpath/create-termination");
 const UCPATH_STAGE_SWEEP = taskOutput("ucpath/stage-pending-termination-sweep");
 const UCPATH_DELETE_PENDING = taskOutput("ucpath/delete-pending-terminations");
+const KUALI_FINALIZATION_INPUT = workflowInput("separations-kuali-finalization");
+const KUALI_FINALIZATION_RESULT = workflowResult("separations-kuali-finalization");
+const KUALI_FINALIZATION_GATE = gateResult("separations-kuali-finalization", "identity-approval");
+const DEPARTMENT_OPTION = taskOutput("workflow:separations/match-department-option");
+const KUALI_STAGE_FINALIZATION = taskOutput("kuali/stage-separation-finalization");
+const KUALI_SAVE_FINALIZATION = taskOutput("kuali/save-separation-finalization");
+
+/**
+ * The ten values one Kuali finalization save writes, relative to a prefix.
+ *
+ * They appear four times over — the prepare's `previousFields` and
+ * `stagedFields`, the commit's claimed `savedState.fields`, and the terminal
+ * result's proof — and declaring them from one list is what keeps those copies
+ * from drifting apart. Only the timekeeper is a PERSON; the rest describe WHAT
+ * is being recorded, which is chunk 4's rule for `initiatorComments` applied to
+ * the same kind of field.
+ */
+function finalizationFieldLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => `${prefix}.${path}`;
+  return [
+    ...person(scope, at("timekeeperName")),
+    ...open(scope, at("department"), at("payrollTitleCode"), at("payrollTitle"),
+      at("requestAcknowledged"), at("terminationEffectiveDate"),
+      at("submittedTerminationTemplate"), at("transactionNumber"), at("finalPay"),
+      at("timekeeperComments")),
+  ];
+}
+
+/** The reload read-back's proof: the document, the person it displayed, the ten fields. */
+function savedFinalizationLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => `${prefix}.${path}`;
+  return [
+    ...person(scope, at("observedEid")),
+    ...open(scope, at("kind"), at("actionId"), at("documentNumber"), at("source")),
+    ...finalizationFieldLeaves(scope, at("fields")),
+  ];
+}
 
 /** The termination receipt PAIR — the person, plus the transaction it names. */
 function terminationProofLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
@@ -508,6 +545,48 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...approvedSubjectLeaves(UCPATH_TERMINATION_RESULT, "approved"),
   ...sweepProofLeaves(UCPATH_TERMINATION_RESULT, "pendingSweep.proof"),
   ...terminationProofLeaves(UCPATH_TERMINATION_RESULT, "termination.proof"),
+
+  /* separations-kuali-finalization ingress (chunk 5). The identity half repeats
+     chunk 3's split verbatim; the timekeeper is a person like every other name.
+     The dept id and the department description are UNIT facts, not person facts,
+     and the two comment fields describe what is being recorded — the same call
+     chunk 4 makes for `initiatorComments`. */
+  ...person(KUALI_FINALIZATION_INPUT, "employeeName", "emplId", "documentEid.value",
+    "timekeeperName"),
+  ...open(KUALI_FINALIZATION_INPUT, "actionId", "documentNumber", "emplIdSource",
+    "documentEid.state", "documentEid.reason", "ucpathDeptId.state", "ucpathDeptId.value",
+    "ucpathDeptId.reason", "ucpathDepartment.state", "ucpathDepartment.value",
+    "ucpathDepartment.reason", "observedDepartmentOptions", "payrollTitleCode", "payrollTitle",
+    "terminationEffectiveDate", "transactionNumber", "timekeeperComments",
+    "observedExistingComments"),
+
+  /* The ALWAYS-GATE a third time, on this workflow's own scope (D204). */
+  ...person(KUALI_FINALIZATION_GATE, "eid"),
+  ...open(KUALI_FINALIZATION_GATE, "decision", "chosenFrom", "evidenceDigest", "reason"),
+
+  /* workflow:separations/match-department-option — S55's upstream fold. Both
+     spellings of the department are carried because the operator compares them;
+     nothing here is a person. */
+  ...open(DEPARTMENT_OPTION, "option", "departmentCode", "optionDescription", "ucpathDepartment",
+    "observedOptionCount"),
+
+  /* kuali/stage-separation-finalization — the one staging pass, plus the
+     operator's undo record and §3.2's option capture. */
+  ...person(KUALI_STAGE_FINALIZATION, "observedEid"),
+  ...open(KUALI_STAGE_FINALIZATION, "stagedPageState", "actionId", "documentNumber",
+    "observedDepartmentOptions", "observedAt"),
+  ...finalizationFieldLeaves(KUALI_STAGE_FINALIZATION, "previousFields"),
+  ...finalizationFieldLeaves(KUALI_STAGE_FINALIZATION, "stagedFields"),
+
+  /* kuali/save-separation-finalization — the commit's CLAIM about what it
+     targeted. Beat ⑥ replaces it with the reload read-back's proof. */
+  ...savedFinalizationLeaves(KUALI_SAVE_FINALIZATION, "savedState"),
+
+  /* separations-kuali-finalization terminal result */
+  ...open(KUALI_FINALIZATION_RESULT, "documentNumber", "department.option",
+    "department.departmentCode", "finalization.disposition"),
+  ...approvedSubjectLeaves(KUALI_FINALIZATION_RESULT, "approved"),
+  ...savedFinalizationLeaves(KUALI_FINALIZATION_RESULT, "finalization.proof"),
 ].map((entry) => Object.freeze(EvidenceFieldClassificationSchema.parse(entry))));
 
 const BY_SCOPE_AND_PATH = new Map<string, EvidenceFieldClassification>();

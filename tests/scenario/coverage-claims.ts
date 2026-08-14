@@ -140,6 +140,33 @@ export const SEPARATIONS_UCPATH_TERMINATION_CLAIMS: readonly ScenarioCoverageCla
   ]),
 ]);
 
+/**
+ * separations-kuali-finalization is ONE transaction node behind the ALWAYS-GATE
+ * (§4e collapses mutations C and D into a single Kuali save), so it derives the
+ * four transaction paths plus the gate's two. Its other four scenarios —
+ * S55-S59's contract halves and S60's park — walk no graph path and correctly
+ * claim none.
+ */
+export const SEPARATIONS_KUALI_FINALIZATION_CLAIMS: readonly ScenarioCoverageClaim[] =
+  Object.freeze([
+    claim("separations-kuali-finalization/gate-approved", [
+      "gate:identity-approval/opened",
+      "gate:identity-approval/resolved",
+    ]),
+    claim("separations-kuali-finalization/dry-run-preview", [
+      "transaction:finalize-kuali/dry-run",
+    ]),
+    claim("separations-kuali-finalization/subject-mismatch", [
+      "transaction:finalize-kuali/subject-mismatch",
+    ]),
+    claim("separations-kuali-finalization/committed", [
+      "transaction:finalize-kuali/committed",
+    ]),
+    claim("separations-kuali-finalization/already-present", [
+      "transaction:finalize-kuali/already-present",
+    ]),
+  ]);
+
 export const SCENARIO_COVERAGE_CLAIMS: Readonly<Record<string, readonly ScenarioCoverageClaim[]>> =
   Object.freeze({
     "person-lookup": PERSON_LOOKUP_CLAIMS,
@@ -149,4 +176,5 @@ export const SCENARIO_COVERAGE_CLAIMS: Readonly<Record<string, readonly Scenario
     "separations-kuali-read": SEPARATIONS_KUALI_READ_CLAIMS,
     "separations-identity-check": SEPARATIONS_IDENTITY_CHECK_CLAIMS,
     "separations-ucpath-termination": SEPARATIONS_UCPATH_TERMINATION_CLAIMS,
+    "separations-kuali-finalization": SEPARATIONS_KUALI_FINALIZATION_CLAIMS,
   });

@@ -133,6 +133,31 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     ],
     boundEvidencePath: "evidenceDigest",
   },
+  {
+    /**
+     * Chunk 5's Kuali finalization, declaring its own answer for the third time
+     * — and the repetition is the contract, not an oversight (D204). What
+     * `rejected` means here is different again: no separation is recorded on the
+     * source document, so the UCPath termination this run was going to cite
+     * stays unattributed on the Kuali record an auditor reads.
+     */
+    workflowId: "separations-kuali-finalization",
+    gateId: "identity-approval",
+    decisionPath: "decision",
+    arms: [
+      {
+        value: "approved",
+        outcome: "approved",
+        summary: "an operator approved this identity before the Kuali document was finalized",
+      },
+      {
+        value: "rejected",
+        outcome: "rejected",
+        summary: "an operator REJECTED this identity, so the Kuali document was not finalized",
+      },
+    ],
+    boundEvidencePath: "evidenceDigest",
+  },
 ].map((entry) => Object.freeze(GateDecisionDeclarationSchema.parse(entry))));
 
 const BY_WORKFLOW_AND_GATE = new Map<string, GateDecisionDeclaration>();
