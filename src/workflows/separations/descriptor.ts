@@ -837,6 +837,7 @@ export const separationsDescriptor = defineWorkflowDescriptor({
     "separations/finalization-already-present",
     "separations/finalization-parks-after-termination",
     "separations/re-read-is-a-new-item",
+    "separations/gate-resume-shape",
   ],
   flow: separationsFlow,
 });

@@ -1638,7 +1638,7 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 - [x] **§5 questionnaire answered and recorded above, and every §4 decision answered** — §4a–§4g and all twelve §5 items landed 2026-08-12, including item 5's residuals 5A/5B (the freshness values and the date fields' override column) — `new-kronos/read-separation-timecard` can now be authored against a real `freshness` field
 - [x] `typecheck` + `lint` + `test:coverage` green (D191); the descriptor passes `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing — green at `1d019ee`
 - [x] Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id, and subject observation resolves; no raw Page/Locator/selector outside the system driver
-- [ ] **Live dry-run green** against Kuali, UCPath, and New Kronos (submit-free, zero durable write rows asserted) — and, per §4f3, the UCPath preparation interval measured on that run — **PARTLY MET (§9.14)**: the composed graph ran the whole read chain live on two real subjects, parked at the ALWAYS-GATE, took a real approval through the real command endpoint and resumed, with **zero durable write rows proved from authority**. The preview terminal is blocked by two PLATFORM items, neither a write-safety failure — `executeDryRun` previewing `clear-pending`'s prepare without its probe, and an `always-rerun` node colliding with its own checkpoint across a gate resume. §4f3's per-beat interval stays unmeasured because no transaction node emitted a span
+- [ ] **Live dry-run green** against Kuali, UCPath, and New Kronos (submit-free, zero durable write rows asserted) — and, per §4f3, the UCPath preparation interval measured on that run — **PARTLY MET (§9.14)**: the composed graph ran the whole read chain live on two real subjects, parked at the ALWAYS-GATE, took a real approval through the real command endpoint and resumed, with **zero durable write rows proved from authority**. The preview terminal was blocked by two PLATFORM items, neither a write-safety failure — `executeDryRun` previewing `clear-pending`'s prepare without its probe, and an `always-rerun` node colliding with its own checkpoint across a gate resume — and **both are FIXED (D215, D214; platform slice 2, 2026-08-14)**, so what remains for this criterion is a re-run of the live pass rather than a platform change. §4f3's per-beat interval stays unmeasured because no transaction node emitted a span
 - [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **OPEN on all three commits**; the §4f2 canary is still unnamed
 - [x] `identity-gate-before-separation-commit` green — every commit is graph-reachable only through the gate node (doc 09 §14.6 guard #2; the structural half of §4d) — and §14.5's digest binding is now proved LIVE (§9.14): the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's
 - [ ] D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved
@@ -3517,6 +3517,18 @@ succeeds is a false rehearsal, and the ordinary separation subject has no pendin
 this is the COMMON case, not the corner. It is recorded rather than fixed because running the probe
 inside `executeDryRun` changes what D210's `stop-after-prepare` means and belongs to doc 09's owner,
 not to a live-proof slice.
+
+**RESOLVED (D215).** The owner's answer is that it does NOT change what `stop-after-prepare` means —
+it completes it. `stop-after-prepare` names where a preview STOPS, and beat ① runs before prepare on
+the real path, so a preview that skipped it was stopping in the right place having started in the
+wrong one. `executeDryRun` now runs the durable permanent-key lookup and the policy-controlled live
+probe in the real path's order, REPORTS an `already-present` settlement instead of performing one
+(zero intent, zero checkpoint, zero run transition), and refuses on exactly the verdicts the real
+path refuses on. `TransactionDryRunPreview` gained a `probe` observation and an outcome union whose
+`would-prepare` arm owns `prepare` and `subject`, so a preview that staged nothing cannot spell an
+empty staged page. Both subject shapes are now walked by `separations/dry-run-preview` — a subject
+WITH a pending row stages, the ordinary subject settles `already-present` — with zero durable rows
+asserted in both.
 
 The two subjects mapped so far are jointly unsatisfiable on exactly what the preview needs: **10001799**
 (doc 4510) HAS the pending `T002209631` and is already terminated, so `match-active-employment`

@@ -266,6 +266,7 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
   { scenarioId: "separations/finalization-already-present", file: SEPARATIONS_FILE },
   { scenarioId: "separations/finalization-parks-after-termination", file: SEPARATIONS_FILE },
   { scenarioId: "separations/re-read-is-a-new-item", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/gate-resume-shape", file: SEPARATIONS_FILE },
 ]));
 
 export const EXECUTABLE_SCENARIO_IDS: readonly ScenarioId[] = Object.freeze(

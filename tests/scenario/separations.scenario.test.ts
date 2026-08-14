@@ -25,6 +25,7 @@ import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import { WriteParkedError } from "../../src/core/write-sequencer.js";
 import { NewKronosReadSeparationTimecard } from "../../src/domain/contracts/new-kronos/read-separation-timecard.js";
 import { deriveItemId } from "../../src/domain/identifiers.js";
+import { checkpointLookupKey } from "../../src/domain/workflow/checkpoint.js";
 import { DateOnlySchema, EidSchema, IsoInstantSchema } from "../../src/domain/ids.js";
 import { MatchIdentityOutputSchema } from "../../src/domain/contracts/separations/match-identity.js";
 import { deriveIdentityEvidenceDigest } from "../../src/domain/separations/identity-evidence.js";
@@ -430,10 +431,10 @@ describe("separations scenarios — the composition", () => {
 
   it("separations/re-read-is-a-new-item — an explicit re-read is a new ITEM and never a second write", () => {
     // §"the re-run wall" item 2. A checkpoint is keyed (workflow, itemId, node,
-    // attempt) with no run id, so a second run of one document replays the
-    // first run's reads — whose `observedAt` differs by construction. The
-    // operator's explicit re-read is part of the canonical input, therefore
-    // part of `matchKey`, therefore a NEW logical item.
+    // attempt, claimGeneration) with no run id, so a second run of one document
+    // replays the first run's reads — whose `observedAt` differs by
+    // construction. The operator's explicit re-read is part of the canonical
+    // input, therefore part of `matchKey`, therefore a NEW logical item.
     const base = SeparationsCanonicalInput.parse({ ...COMPOSITION_RUN_INPUT });
     const reRead = SeparationsCanonicalInput.parse({
       ...COMPOSITION_RUN_INPUT,
@@ -459,6 +460,58 @@ describe("separations scenarios — the composition", () => {
     assert.equal(SWEEP_IDEMPOTENCY_KEY.includes("re-read"), false);
     assert.equal(FINALIZATION_IDEMPOTENCY_KEY.includes("re-read"), false);
 
+  });
+
+  /**
+   * D214 over the REAL composed graph — the shape chunk 6b's run `00419600` died
+   * in, asserted structurally rather than re-driven.
+   *
+   * The composition puts an `always-rerun` node (`timecard-search`, by chunk 1's
+   * rule that a node whose product is BROWSER state may not replay) UPSTREAM of
+   * the ALWAYS-GATE, with task nodes downstream of it — so a gate resume
+   * necessarily re-executes it inside the same attempt. Two things must both
+   * hold, and either one alone is not enough: the graph must be that shape (or
+   * this whole class of defect is unreachable and the guard is theatre), and the
+   * checkpoint identity must tell the two executions apart. The interpreter walk
+   * that proves the second end-to-end is
+   * `tests/unit/gate-resume-always-rerun.test.ts`.
+   */
+  it("separations/gate-resume-shape — an always-rerun node sits before the gate, and its executions are distinct", () => {
+    const nodes = descriptorRuntimeNodes(separationsDescriptor);
+    const gateIndex = nodes.findIndex((node) => node.kind === "gate");
+    assert.ok(gateIndex > 0, "the composition has exactly one gate, and it is not first");
+    assert.equal(nodes.filter((node) => node.kind === "gate").length, 1);
+
+    const alwaysRerunBeforeGate = nodes
+      .slice(0, gateIndex)
+      .filter((node) => node.kind === "task" && node.replay === "always-rerun")
+      .map((node) => String(node.id));
+    assert.deepEqual(
+      alwaysRerunBeforeGate,
+      ["timecard-search"],
+      "chunk 1's rule puts a browser-state node upstream of the gate; the resume re-executes it",
+    );
+    assert.ok(
+      nodes.slice(gateIndex + 1).some((node) => node.kind === "task" || node.kind === "transaction"),
+      "the resume must actually reach a node past the gate",
+    );
+
+    /*
+     * And the durable identity separates the park's execution from the resume's.
+     * A gate resume advances no attempt — it is the same attempt, re-claimed —
+     * so before D214 these two keys were equal and the second observation was
+     * refused as "already exists with different content".
+     */
+    const itemId = deriveItemId(COMPOSITION_WORKFLOW_ID, `separations:${COMPOSITION_DOCUMENT}`);
+    const atGeneration = (claimGeneration: number): string =>
+      checkpointLookupKey(String(separationsDescriptor.id), itemId, "timecard-search", 1, claimGeneration);
+    assert.notEqual(atGeneration(1), atGeneration(2));
+    // …while a row stored before D214 keeps the exact four-component key it was
+    // written under, so nothing this database already holds becomes unreachable.
+    assert.equal(
+      checkpointLookupKey(String(separationsDescriptor.id), itemId, "timecard-search", 1),
+      [String(separationsDescriptor.id), itemId, "timecard-search", "1"].join("\u0000"),
+    );
   });
 
   /* ── the sequencer half: the real sequencer over a real authority DB ────── */
