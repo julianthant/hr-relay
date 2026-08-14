@@ -531,7 +531,8 @@ describe("run claim store", () => {
   it("lists every run of one logical item", () => {
     const database = openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
-    database.authority.runs.enqueue(siblingRun({}, { itemId: ITEM_ID, retryOf: RUN_ID }));
+    // D221 — the retry takes the ITEM's next attempt; attempt 1 is spent.
+    database.authority.runs.enqueue(siblingRun({}, { itemId: ITEM_ID, retryOf: RUN_ID, attempt: 2 }));
     const runs = database.authority.runs.listByItem({ workflow: WORKFLOW_ID, itemId: ITEM_ID });
     assert.equal(runs.length, 2);
   });

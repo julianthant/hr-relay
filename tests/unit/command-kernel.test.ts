@@ -530,7 +530,8 @@ describe("D113 run arms", () => {
     const retried = harness.database.authority.runs.get(newTarget.runId);
     assert.ok(retried !== undefined);
     assert.equal(retried.envelope.retryOf, runId);
-    assert.equal(retried.envelope.attempt, 1);
+    // D221 — a retry is the ITEM's next attempt, never a second attempt 1.
+    assert.equal(retried.envelope.attempt, 2);
     assert.equal(retried.lifecycle.state, "queued");
     assert.deepEqual(retried.input, harness.database.authority.runs.get(runId)?.input);
   });

@@ -142,7 +142,15 @@ export function fanOutQueuedRuns(
         shape: envelope.shape,
         priority: envelope.priority,
         dryRun: envelope.dryRun,
-        attempt: 1,
+        /*
+         * D221 — the attempt belongs to the ITEM. A fan-out entry whose item has
+         * run before (a re-run of the same subject, a superseded predecessor)
+         * takes the next attempt, so its executions never land on a key an
+         * earlier run of that item already owns. Read per entry, inside this
+         * transaction, AFTER any supersede above: two entries of one fan-out can
+         * name the same item.
+         */
+        attempt: repositories.runs.nextItemAttempt({ workflow: envelope.workflow, itemId: entry.itemId }),
         enqueuedAt: now,
       },
       input: {

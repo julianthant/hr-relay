@@ -249,11 +249,18 @@ export const RunRecordSchema = z.strictObject({
   if (Date.parse(record.updatedAt) < Date.parse(record.createdAt)) {
     context.addIssue({ code: "custom", path: ["updatedAt"], message: "run record updatedAt precedes createdAt" });
   }
-  if (record.createdAt !== record.envelope.enqueuedAt && record.envelope.attempt === 1) {
+  /*
+   * D221: the anchor is the record's VERSION, not its attempt. A run is created
+   * at version 1 and every later write advances it, so version 1 is exactly "as
+   * enqueued" — while `attempt === 1` stopped meaning that the moment an item's
+   * second run began at the item's next attempt, which would have quietly
+   * narrowed this check to nothing on every retry.
+   */
+  if (record.createdAt !== record.envelope.enqueuedAt && record.version === 1) {
     context.addIssue({
       code: "custom",
       path: ["createdAt"],
-      message: "a first-attempt run record is created at the moment it is enqueued",
+      message: "a newly enqueued run record is created at the moment it is enqueued",
     });
   }
   if (!isClaimedRunState(record.lifecycle.state) || !("heartbeatAt" in record.lifecycle)) return;

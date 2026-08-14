@@ -212,6 +212,8 @@ describe("start planning", () => {
       shape: "single",
       priority: "bulk",
       dryRun: false,
+      // D221 — the item's first attempt; nothing has run for it yet.
+      attempt: database.authority.runs.nextItemAttempt({ workflow: "person-lookup", itemId }),
       now: NOW,
     }));
 

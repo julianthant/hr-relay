@@ -314,7 +314,8 @@ describe("failure, retry, and resume", () => {
     assert.equal(ucpathSearches, 1);
 
     // Cross-run retry: a NEW run on the same logical item (doc 02 §6).
-    const retryRun = personLookupQueuedRun({ runId: UUID_5 });
+    // D221 — a retry is the ITEM's next attempt, not a second attempt 1.
+    const retryRun = personLookupQueuedRun({ runId: UUID_5, attempt: 2 });
     const retryEnvelope = retryRun.envelope as Record<string, unknown>;
     retryEnvelope.runId = UUID_5;
     retryEnvelope.retryOf = RUN_ID;

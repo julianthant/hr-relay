@@ -82,6 +82,16 @@ export const RunEnvelopeSchema = z.strictObject({
   injected: z.array(CheckpointPatchSchema).min(1).optional(),
   freshnessOverride: z.array(FreshnessOverrideSchema).min(1).optional(),
   retryOf: RunIdSchema.optional(),
+  /**
+   * D221 — the attempt at the ITEM, not at this run.
+   *
+   * `(workflow, itemId)` is the logical item and the checkpoint key is scoped to
+   * it (doc 02 §5.7), so every component of that key must be item-scoped too. A
+   * new run for an item — an operator retry, or any fresh enqueue of an item
+   * that has run before — therefore takes the item's NEXT attempt, and a requeue
+   * inside a run advances the same counter. Two runs of one item may never hold
+   * the same attempt; `runs.enqueue` refuses one that would.
+   */
   attempt: PositiveIntSchema,
   enqueuedAt: IsoInstantSchema,
 }).superRefine((envelope, context) => {
@@ -158,11 +168,26 @@ export type RunEnvelope = z.infer<typeof RunEnvelopeSchema>;
  * "no start node". Dropping them is also the contract, not tidiness: a
  * freshness override authorizes exactly one attempt, and injected patches have
  * already been persisted as checkpoints by the executor that applied them.
+ *
+ * **`nextAttempt` is supplied, never computed as `attempt + 1` (D221).** The
+ * attempt counts attempts at the ITEM, not at this run — the checkpoint key is
+ * item-scoped and the write sequencer reads `attempt > 1` as "this item has been
+ * attempted before" — so the next one is whatever the item has not used yet, and
+ * only authority can say what that is. It must strictly advance: an attempt that
+ * stood still or went backwards would put this requeue's executions under a key
+ * another execution already owns.
  */
-export function nextAttemptEnvelope(envelope: RunEnvelope): RunEnvelope {
+export function nextAttemptEnvelope(envelope: RunEnvelope, nextAttempt: number): RunEnvelope {
   const { startAt, injected, freshnessOverride, ...carried } = envelope;
   void startAt;
   void injected;
   void freshnessOverride;
-  return RunEnvelopeSchema.parse({ ...carried, attempt: carried.attempt + 1 });
+  const advanced = PositiveIntSchema.parse(nextAttempt);
+  if (advanced <= carried.attempt) {
+    throw new Error(
+      `run ${carried.runId} is at attempt ${String(carried.attempt)} and cannot requeue into attempt `
+      + `${String(advanced)}; an item's attempt counter only advances`,
+    );
+  }
+  return RunEnvelopeSchema.parse({ ...carried, attempt: advanced });
 }

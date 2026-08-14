@@ -401,6 +401,19 @@ type RunRepository = Readonly<{
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
   get(runId: string): RunRecord | undefined;
   listByItem(input: unknown): readonly RunRecord[];
+  /**
+   * D221 — the attempt a run enqueued for this logical item must take: one past
+   * the highest attempt any run of `(workflow, itemId)` has ever held, or 1 for
+   * an item with no runs.
+   *
+   * Callers read it inside the SAME authority transaction that inserts the run,
+   * which is what makes it a reservation rather than a guess; `enqueue` refuses
+   * a record whose attempt this item has ALREADY spent, so a stale read is loud
+   * at the insert instead of a checkpoint collision three nodes later. A gap is
+   * allowed — an unspent attempt can collide with nothing — but a re-used one is
+   * the defect itself.
+   */
+  nextItemAttempt(input: unknown): number;
   listByWorker(workerId: string): readonly RunRecord[];
   listChildren(parentRunId: string): readonly RunRecord[];
   /**
@@ -772,6 +785,8 @@ const MetaRowSchema = z.strictObject({
 });
 const TableNameRowSchema = z.strictObject({ name: z.string() });
 const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
+/** D221 — `max()` over no rows is SQL NULL, which is "this item has never run". */
+const MaxAttemptRowSchema = z.strictObject({ attempt: z.number().int().positive().nullable() });
 const PageCountRowSchema = z.strictObject({ page_count: z.number().int().positive() });
 const QuickCheckRowSchema = z.strictObject({ quick_check: z.literal("ok") });
 const AuthorityRecordFingerprintRowSchema = z.strictObject({ record_key: z.string(), record_json: z.string() });
@@ -3708,6 +3723,23 @@ export class AuthorityDatabase implements Disposable {
     return this.#readRecord("tasks", runId, RunRecordSchema);
   }
 
+  /**
+   * D221 — the attempt the NEXT run of this logical item must take.
+   *
+   * The `attempt` column is the envelope's own value (the integrity audit pins
+   * the two together), and runs are never deleted, so the maximum over the item
+   * is the whole history of attempts that item has spent. One past it is the
+   * only attempt no execution of that item can already own.
+   */
+  #nextItemAttempt(workflow: string, itemId: string): number {
+    const row = MaxAttemptRowSchema.parse(this.#database.prepare(`
+      SELECT max(attempt) AS attempt FROM tasks WHERE workflow = ? AND item_id = ?
+    `).get(WorkflowIdSchema.parse(workflow), ItemIdSchema.parse(itemId)));
+    const highest = row.attempt;
+    if (highest === null) return 1;
+    return highest + 1;
+  }
+
   #writeRunRow(record: RunRecord, mode: "insert" | "update"): void {
     const claim = runClaim(record);
     const json = canonicalJsonStringify(record);
@@ -3813,6 +3845,27 @@ export class AuthorityDatabase implements Disposable {
             }
             return Object.freeze({ state: "existing" as const, record: existing });
           }
+          /*
+           * D221 — a new run of a logical item takes the item's NEXT attempt.
+           *
+           * The checkpoint key is `(workflow, item_id, node_id, attempt,
+           * claim_generation)` and every one of those components is item-scoped
+           * except the two the run supplies, so a second run born at an attempt
+           * the item already spent puts its executions under keys the first run
+           * owns — which is exactly how a retry of a failed run died on the
+           * first `always-rerun` node it reached. The check is here, in the one
+           * transaction that can see the whole item, and not at the two call
+           * sites that build run records.
+           */
+          const next = this.#nextItemAttempt(record.envelope.workflow, record.envelope.itemId);
+          if (record.envelope.attempt < next) {
+            throw new Error(
+              `run ${record.envelope.runId} is enqueued for ${record.envelope.workflow} item `
+              + `${record.envelope.itemId} at attempt ${String(record.envelope.attempt)}, which that item has `
+              + `already spent (its next unspent attempt is ${String(next)}); an attempt is the item's, not `
+              + "the run's, and no two runs of one item may hold the same one",
+            );
+          }
           this.#writeRunRow(record, "insert");
           return Object.freeze({ state: "inserted" as const, record });
         });
@@ -3849,6 +3902,10 @@ export class AuthorityDatabase implements Disposable {
           SELECT record_json FROM tasks WHERE workflow = ? AND item_id = ? ORDER BY created_at, record_key
         `).all(query.workflow, query.itemId);
         return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
+      },
+      nextItemAttempt: (input: unknown) => {
+        const query = RunItemQuerySchema.parse(input);
+        return this.#nextItemAttempt(query.workflow, query.itemId);
       },
       listByWorker: (workerId: string) => {
         const rows = this.#database.prepare(`
@@ -3962,8 +4019,13 @@ export class AuthorityDatabase implements Disposable {
             // A new attempt drops every single-resume affordance: a freshness
             // override authorized ONE attempt (doc 02 §5.5), and injected
             // patches have already been persisted as checkpoints by the
-            // executor that applied them.
-            envelope: nextAttemptEnvelope(current.envelope),
+            // executor that applied them. D221: the attempt it advances INTO is
+            // the item's next one, never this run's `+ 1` — a sibling run of the
+            // same item may already hold that.
+            envelope: nextAttemptEnvelope(
+              current.envelope,
+              this.#nextItemAttempt(current.envelope.workflow, current.envelope.itemId),
+            ),
             lifecycle: {
               state: "queued",
               requeuedFrom: request.cause,
@@ -4168,7 +4230,10 @@ export class AuthorityDatabase implements Disposable {
             }
             const requeued = RunRecordSchema.parse({
               ...current,
-              envelope: nextAttemptEnvelope(current.envelope),
+              envelope: nextAttemptEnvelope(
+                current.envelope,
+                this.#nextItemAttempt(current.envelope.workflow, current.envelope.itemId),
+              ),
               lifecycle: { state: "queued", requeuedFrom: "recovery" },
               version: current.version + 1,
               updatedAt: request.now,

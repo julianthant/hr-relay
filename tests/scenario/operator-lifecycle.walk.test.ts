@@ -708,7 +708,14 @@ describe("the operator lifecycle, across slices", () => {
 
     assert.notEqual(freshTarget.runId, settledRunId, "a relaunch is a new run");
     assert.equal(fresh.envelope.retryOf, undefined, "a relaunch is NOT a retry");
-    assert.equal(fresh.envelope.attempt, 1);
+    /*
+     * D221 — but it IS another attempt at the same ITEM, and the attempt counter
+     * is the item's. The archived run spent attempt 1, so this one takes 2 and
+     * its executions can never land on a key the archived run's checkpoints own.
+     * (The relaunch is the general case: not every second run of an item is a
+     * `retry` command.)
+     */
+    assert.equal(fresh.envelope.attempt, 2);
     assert.equal(fresh.lifecycle.state, "queued");
     assert.equal(fresh.envelope.descriptorVersion, 2, "the fresh run carries the CURRENT identity");
     assert.equal(fresh.envelope.contractFingerprint, INTAKE_V2.contractFingerprint);

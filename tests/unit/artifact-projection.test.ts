@@ -360,12 +360,17 @@ function projectionDescriptor(): AnyWorkflowDescriptor {
   });
 }
 
-function queuedRunFor(descriptor: AnyWorkflowDescriptor, runId?: string) {
+/**
+ * D221 — a second run of the SAME logical item takes the item's next attempt;
+ * authority refuses one that reuses an attempt the item already spent.
+ */
+function queuedRunFor(descriptor: AnyWorkflowDescriptor, runId?: string, attempt = 1) {
   return {
     ...QUEUED_RUN,
     envelope: {
       ...QUEUED_RUN.envelope,
       ...(runId === undefined ? {} : { runId }),
+      attempt,
       workflow: descriptor.id,
       traceId: TraceIdSchema.parse(`${descriptor.code}-170000-2222`),
       contractFingerprint: descriptor.contractFingerprint,
@@ -446,7 +451,7 @@ describe("executor projection wiring", () => {
 
     // A second run of the same item replays the checkpoint; nothing is owed,
     // so the workbook and head stay EXACTLY as they were.
-    database.authority.runs.enqueue(queuedRunFor(descriptor, "cccccccc-cccc-4ccc-8ccc-cccccccccccc"));
+    database.authority.runs.enqueue(queuedRunFor(descriptor, "cccccccc-cccc-4ccc-8ccc-cccccccccccc", 2));
     const second = claim(database, descriptor);
     const replayed = await executeClaimedRun(harness.deps, { ...second, signal: SIGNAL });
     assert.equal(replayed.state, "done");
@@ -492,7 +497,7 @@ describe("executor projection wiring", () => {
     // The operator resolves the conflict; a relaunch replays the checkpoint
     // and the resume arm projects the pending row to done.
     rmSync(join(root, "retention.xlsx"));
-    database.authority.runs.enqueue(queuedRunFor(descriptor, "cccccccc-cccc-4ccc-8ccc-cccccccccccc"));
+    database.authority.runs.enqueue(queuedRunFor(descriptor, "cccccccc-cccc-4ccc-8ccc-cccccccccccc", 2));
     const second = claim(database, descriptor);
     const resumed = await executeClaimedRun(harness.deps, { ...second, signal: SIGNAL });
     assert.equal(resumed.state, "done");

@@ -596,7 +596,21 @@ function executeRetry(
       priority: current.envelope.priority,
       dryRun: current.envelope.dryRun,
       retryOf: current.envelope.runId,
-      attempt: 1,
+      /*
+       * D221 — a retry is the item's NEXT attempt, which is what doc 02 §5.6 #1
+       * has always said a retry is ("failure at node k ⇒ retry = new attempt").
+       * Minting it at 1 made the new run re-execute its `always-rerun` nodes
+       * under the retried run's own checkpoint keys, and the immutable insert
+       * refused them by name — so a run that failed at or after such a node
+       * could not be retried at all. D214 refused ADVANCING THE ATTEMPT for a
+       * gate resume because that would rewrite an in-flight envelope and label a
+       * park as a retry; neither reason reaches here, where a fresh envelope is
+       * minted for something that IS a retry.
+       */
+      attempt: repositories.runs.nextItemAttempt({
+        workflow: current.envelope.workflow,
+        itemId: current.envelope.itemId,
+      }),
       enqueuedAt: now,
     },
     // Immutable parsed input and its exact raw/schema identities are reused;

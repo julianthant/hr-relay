@@ -96,6 +96,8 @@ export function personLookupQueuedRun(options: Readonly<{
   includeCrmDates?: boolean;
   startAt?: string;
   dryRun?: boolean;
+  /** D221 — the ITEM's attempt. A second run of one item takes the next one. */
+  attempt?: number;
 }> = {}): Record<string, unknown> {
   const parsedValue = {
     emplId: EXECUTOR_EID,
@@ -110,6 +112,7 @@ export function personLookupQueuedRun(options: Readonly<{
       ...(options.itemId === undefined ? {} : { itemId: options.itemId }),
       ...(options.startAt === undefined ? {} : { startAt: options.startAt }),
       ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
+      ...(options.attempt === undefined ? {} : { attempt: options.attempt }),
       contractFingerprint: personLookupDescriptor.contractFingerprint,
     },
     input: {

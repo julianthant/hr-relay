@@ -183,7 +183,11 @@ export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExit
     claimGeneration: 0,
     hidden: false,
     version: 1,
-    createdAt: ATTEMPT_2_AT,
+    // The real run's record was created when it was ENQUEUED; attempt 2 came
+    // later, through a requeue this seed compresses away. (D221 anchors the
+    // "created at enqueue" invariant on the record version rather than on
+    // `attempt === 1`, so the seed has to be truthful about that instant.)
+    createdAt: ENQUEUED_AT,
     updatedAt: ATTEMPT_2_AT,
   });
 

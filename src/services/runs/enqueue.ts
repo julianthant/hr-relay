@@ -33,6 +33,13 @@ export interface QueuedRunSpec {
   readonly dryRun: boolean;
   readonly parent?: RunParent;
   readonly retryOf?: string;
+  /**
+   * D221 — the ITEM's next attempt, read from authority inside the transaction
+   * that inserts this run. It is required rather than defaulted to 1 because a
+   * default would be a claim about the item's history that this function cannot
+   * see, and a wrong one collides with a stored checkpoint rather than failing.
+   */
+  readonly attempt: number;
   /** The running app build, stamped at enqueue and never rewritten (D179). */
   readonly appVersion: string;
   readonly now: string;
@@ -56,7 +63,7 @@ export function buildQueuedRun(spec: QueuedRunSpec): RunRecord {
     priority: spec.priority,
     dryRun: spec.dryRun,
     ...(spec.retryOf === undefined ? {} : { retryOf: spec.retryOf }),
-    attempt: 1,
+    attempt: spec.attempt,
     enqueuedAt,
   });
   return RunRecordSchema.parse({
