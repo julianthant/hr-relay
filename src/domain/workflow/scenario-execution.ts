@@ -47,6 +47,14 @@ const SEPARATIONS_UCPATH_TERMINATION_FILE =
  */
 const SEPARATIONS_KUALI_FINALIZATION_FILE =
   "tests/scenario/separations-kuali-finalization.scenario.test.ts";
+/**
+ * Chunk 6's COMPOSITION — the largest graph in the program, and one file for
+ * the same three kinds of arm chunk 5 established: pure fold walks for the five
+ * composition-only refusals, sequencer walks over a real authority database for
+ * the three transaction nodes' twelve paths, and a pure graph walk for the gate
+ * and the terminal derive.
+ */
+const SEPARATIONS_FILE = "tests/scenario/separations.scenario.test.ts";
 
 export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
   { scenarioId: "person-lookup/happy-by-eid", file: "tests/scenario/person-lookup.scenario.test.ts" },
@@ -241,6 +249,23 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
     file: SEPARATIONS_KUALI_FINALIZATION_FILE,
   },
   { scenarioId: "separations-kuali-finalization/gate-approved", file: SEPARATIONS_KUALI_FINALIZATION_FILE },
+  { scenarioId: "separations/plan-refusals", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/subject-resolution", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/employment-refusals", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/date-reconciliation", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/receipt-refusals", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/kronos-hard-fails", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/gate-approved", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/dry-run-preview", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/subject-mismatch", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/pending-sweep-committed", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/pending-sweep-nothing-to-do", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/termination-committed", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/termination-already-present", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/finalization-committed", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/finalization-already-present", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/finalization-parks-after-termination", file: SEPARATIONS_FILE },
+  { scenarioId: "separations/re-read-is-a-new-item", file: SEPARATIONS_FILE },
 ]));
 
 export const EXECUTABLE_SCENARIO_IDS: readonly ScenarioId[] = Object.freeze(

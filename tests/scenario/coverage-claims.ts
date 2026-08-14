@@ -167,6 +167,43 @@ export const SEPARATIONS_KUALI_FINALIZATION_CLAIMS: readonly ScenarioCoverageCla
     ]),
   ]);
 
+/**
+ * Chunk 6's COMPOSITION — the largest graph in the program. Fourteen derived
+ * points: the gate's two, and four per transaction node.
+ *
+ * Twelve of them are claimed by scenarios that drive the REAL write sequencer
+ * over a REAL authority database and BOTH deterministic browsers, so `dry-run`
+ * and `subject-mismatch` are backed by "zero rows in `write_intents`" rather
+ * than by a function returning. The gate's two are claimed by the graph walk,
+ * which runs every one of the descriptor's binds and its terminal derive.
+ *
+ * The seven fold walks and §4c's park appear in NO row: they walk no graph
+ * path, and a refusal that lands before the gate or a park that lands after a
+ * fence is a fact about a node rather than about a path.
+ */
+export const SEPARATIONS_CLAIMS: readonly ScenarioCoverageClaim[] = Object.freeze([
+  claim("separations/gate-approved", [
+    "gate:identity-approval/opened",
+    "gate:identity-approval/resolved",
+  ]),
+  claim("separations/dry-run-preview", [
+    "transaction:clear-pending/dry-run",
+    "transaction:file-termination/dry-run",
+    "transaction:finalize-kuali/dry-run",
+  ]),
+  claim("separations/subject-mismatch", [
+    "transaction:clear-pending/subject-mismatch",
+    "transaction:file-termination/subject-mismatch",
+    "transaction:finalize-kuali/subject-mismatch",
+  ]),
+  claim("separations/pending-sweep-committed", ["transaction:clear-pending/committed"]),
+  claim("separations/pending-sweep-nothing-to-do", ["transaction:clear-pending/already-present"]),
+  claim("separations/termination-committed", ["transaction:file-termination/committed"]),
+  claim("separations/termination-already-present", ["transaction:file-termination/already-present"]),
+  claim("separations/finalization-committed", ["transaction:finalize-kuali/committed"]),
+  claim("separations/finalization-already-present", ["transaction:finalize-kuali/already-present"]),
+]);
+
 export const SCENARIO_COVERAGE_CLAIMS: Readonly<Record<string, readonly ScenarioCoverageClaim[]>> =
   Object.freeze({
     "person-lookup": PERSON_LOOKUP_CLAIMS,
@@ -177,4 +214,5 @@ export const SCENARIO_COVERAGE_CLAIMS: Readonly<Record<string, readonly Scenario
     "separations-identity-check": SEPARATIONS_IDENTITY_CHECK_CLAIMS,
     "separations-ucpath-termination": SEPARATIONS_UCPATH_TERMINATION_CLAIMS,
     "separations-kuali-finalization": SEPARATIONS_KUALI_FINALIZATION_CLAIMS,
+    separations: SEPARATIONS_CLAIMS,
   });
