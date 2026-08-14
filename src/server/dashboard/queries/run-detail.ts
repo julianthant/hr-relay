@@ -49,6 +49,7 @@ import {
 } from "../../../infra/events/jsonl-streams.js";
 import { NoteWireSchema as NoteAtRestSchema } from "../../../events/types.js";
 import type { RunFoldRecord, RunQueueProjection } from "../projectors/run-queue-projection.js";
+import { resolveSubjectTitle } from "../projectors/run-subject-title.js";
 import { deterministicUuid } from "../support.js";
 
 /**
@@ -95,6 +96,8 @@ export interface RunDetailDescriptorView {
     label: string;
     source: Readonly<{ nodeId: string; fieldPath: string }>;
   }>[];
+  /** Doc 03 §1.2: where the RUN resolves the subject's name, if it ever does. */
+  readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
   /** Absent for a descriptor with no gate node; empty is the same answer. */
   readonly gateNodes?: readonly RunDetailGateNodeView[];
   readonly capabilities?: Readonly<{
@@ -293,7 +296,21 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
       traceId: row.queued.traceId,
       workflowId: row.queued.workflow,
       actorId: row.queued.actorId,
-      title: authority.displayName ?? row.queued.title,
+      /**
+       * The SAME title the queue row shows, through the same resolver (doc 03
+       * §1.2): the composed start-input title, replaced by the subject's name
+       * once this run has resolved one, with the operator's own name winning
+       * over both. Two surfaces naming one run two ways is the divergence this
+       * doc's "one projection" rule exists to prevent, and the row and the
+       * panel it opens are the pair an operator sees side by side.
+       */
+      title: authority.displayName
+        ?? resolveSubjectTitle(
+          deps.descriptors.resolve(row.queued.workflow)?.subjectProjection,
+          { workflowId: row.queued.workflow, itemId: authority.envelope.itemId },
+          deps.authority,
+        )
+        ?? row.queued.title,
       status,
       attempt: row.attempt,
     },

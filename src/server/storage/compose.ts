@@ -187,6 +187,8 @@ function rebuildStagedProjections(
           isArchived: (runId) => staged.authority.archivedRuns.isArchived(runId),
           getFailure: (failureId) => staged.authority.failures.get(failureId),
           getReceipt: (runId) => staged.authority.evidenceReceipts.findByRun(runId),
+          latestCheckpoint: (workflowId, itemId, nodeId) =>
+            staged.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
         },
         descriptors: { resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor },
         projectionStore: staged,

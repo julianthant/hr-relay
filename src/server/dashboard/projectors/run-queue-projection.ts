@@ -70,7 +70,9 @@ import type { FailureRecord } from "../../../domain/trust/failure.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { sha256Hex } from "../../../domain/sha256.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../events/types.js";
+import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
 import { queueRowActions } from "./queue-row-actions.js";
+import { resolveSubjectTitle } from "./run-subject-title.js";
 import type { ProjectionRepositories } from "../../../infra/sqlite/authority-database.js";
 import { readEventStreamLinesFrom, type EventStreamFileCursor, type EventStreamLine } from "../../../infra/events/jsonl-streams.js";
 
@@ -166,6 +168,22 @@ export interface RunQueueProjectionDeps {
      * that, which is the honest answer rather than a fabricated zero.
      */
     getReceipt(runId: string): RunEvidenceReceipt | undefined;
+    /**
+     * Doc 02 §5.7's "latest compatible attempt wins" read, for the ONE fact the
+     * row derives from a stored node output: the subject's display name, at the
+     * leaf the descriptor declares (doc 03 §1.2, `run-subject-title.ts`).
+     *
+     * It is read here rather than folded from a span because no producer emits
+     * one — the `span.patched` detail channel has a declared vocabulary and no
+     * emitter in this build, so a title that read `row.details` would be a title
+     * that never changes. The checkpoint is the record the identity chunk
+     * actually writes.
+     */
+    latestCheckpoint(
+      workflowId: string,
+      itemId: string,
+      nodeId: string,
+    ): RunCheckpointRecord | undefined;
   };
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   /** The rebuildable projection tables (doc 03 §2.3). */
@@ -842,6 +860,28 @@ export class RunQueueProjection {
     return { state: "present", count: receipt.warnings.length, first: first.summary };
   }
 
+  /**
+   * Doc 03 §1.2: the subject's name, once this run has resolved one.
+   *
+   * The whole decision lives in `run-subject-title.ts` — a declared address,
+   * one checkpoint read, no per-workflow branch — so the queue row and the
+   * run-detail header cannot come to two different conclusions about who a run
+   * is about. `undefined` means *keep the composed title*, and it covers the
+   * three honest reasons for that: the workflow declares no subject leaf, the
+   * declared node has no checkpoint yet, or the leaf's union arm was not taken.
+   *
+   * A workflow with no registered descriptor in this build resolves nothing,
+   * exactly as `#pipeline` shows only observed nodes for one: a build that
+   * cannot read the declaration must not invent an address into it.
+   */
+  #subjectTitle(workflowId: string, authority: RunRecord): string | undefined {
+    return resolveSubjectTitle(
+      this.#deps.descriptors.resolve(workflowId)?.subjectProjection,
+      { workflowId, itemId: authority.envelope.itemId },
+      this.#deps.authority,
+    );
+  }
+
   #pipeline(row: RunFoldRecord): QueueSurfaceWire["pipeline"] {
     const descriptor = this.#deps.descriptors.resolve(row.queued.workflow);
     const spanByNode = new Map<string, z.infer<typeof TaskSpanFoldSchema>>();
@@ -920,7 +960,21 @@ export class RunQueueProjection {
       updatedAt: authority.updatedAt,
       endedAt: this.#endedAt(row, authority, status),
       gateOpenedAt: this.#gateOpenedAt(row, authority, status),
-      title: authority.displayName ?? queued.title,
+      /**
+       * Doc 03 §1.2: the document number the plan composed, REPLACED once the
+       * run's own reads have settled the subject's name at the leaf this
+       * workflow declares. A workflow that declares no subject leaf, and a run
+       * whose declared node has not produced a checkpoint yet, both keep the
+       * composed title — never a blank, never a guess.
+       *
+       * The operator's own name for the run is NOT folded in here: it rides
+       * `displayName` beside this, so a renamed row can still state the subject
+       * it was renamed away from.
+       */
+      title: this.#subjectTitle(queued.workflow, authority) ?? queued.title,
+      displayName: authority.displayName === undefined
+        ? { state: "absent", reason: "the operator has not renamed this run" }
+        : { state: "present", value: authority.displayName },
       subtitle: queued.subtitle === undefined
         ? { state: "absent", reason: "the start plan proposed no subtitle" }
         : { state: "present", value: queued.subtitle },

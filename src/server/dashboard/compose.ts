@@ -309,6 +309,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
+      // Doc 03 §1.2: the one stored node output a queue row reads — the
+      // subject's name, at the leaf the descriptor declares.
+      latestCheckpoint: (workflowId, itemId, nodeId) =>
+        database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
     descriptors,
     projectionStore: database,

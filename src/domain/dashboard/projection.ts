@@ -112,7 +112,40 @@ const QueueBaseFields = {
     z.strictObject({ state: z.literal("present"), value: IsoInstantSchema }),
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
+  /**
+   * What this run is ABOUT, in the system's own words (doc 03 §1.2).
+   *
+   * It starts as the title the workflow's `presentation.title` composed from
+   * the start input — `Separation 4502`, `EID 10620118` — and is REPLACED, once,
+   * when the run's own reads have settled the subject's name at the leaf the
+   * descriptor DECLARES (`subjectProjection`). A run that has not resolved a
+   * subject yet, and a workflow that declares no subject leaf at all, both keep
+   * the composed title: there is no blank arm and no guessed one, because a
+   * title is the one column an operator scans before acting.
+   *
+   * This is NOT the operator's own name for the run — see `displayName`, which
+   * is served beside it rather than folded into it, so a renamed row can still
+   * say what the system thinks it is about.
+   */
   title: z.string().min(1),
+  /**
+   * The operator's own name for this run, when they have given it one.
+   *
+   * Durable and authority-owned (`RunRecord.displayName`, written only by the
+   * `rename` run command), and served in its own right rather than collapsed
+   * into `title`. The collapse is what made the demo's
+   * *"Named by you — subject is …"* tooltip unbuildable: once the two strings
+   * are one field, no surface can tell an operator-authored title from a
+   * system-derived one, and the operator loses the subject they renamed away.
+   *
+   * The row renders `displayName ?? title`; the absent arm has exactly one
+   * reason, which is the same shape `subtitle` carries for the same kind of
+   * fact.
+   */
+  displayName: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
   subtitle: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
