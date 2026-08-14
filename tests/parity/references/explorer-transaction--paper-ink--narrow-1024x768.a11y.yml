@@ -1,7 +1,7 @@
 # explorer-transaction--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: explorer-transaction
-# descriptorHash: bae8ba95b1a5059387f94b0828a84db77769ac68a82e24fe828fbcb175fed033
+# descriptorHash: c0af42d671c0e7e8b563f39fa3479dbf391df7f03b159804a1c2bc886e9a592a
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -34,7 +34,7 @@
       - button "separations-identity-check"
       - button "separations-ucpath-termination"
       - button "separations-kuali-finalization"
-    - text: code sk category timekeeping version 1 shape single enqueue reject-active subject eid system new-kronos edit data none review no run surface none intake none capture none descriptor src/workflows/separations-kronos-timecard/descriptor.ts module src/workflows/separations-kronos-timecard/module.ts contract 25fcaeaf479dresult 07a40fbf2d2e37 files fingerprinted5 scenarios
+    - text: code sk category timekeeping version 1 shape single enqueue reject-active subject eid system new-kronos edit data none review no run surface none intake none capture none descriptor src/workflows/separations-kronos-timecard/descriptor.ts module src/workflows/separations-kronos-timecard/module.ts contract 485774c4222dresult 07a40fbf2d2e37 files fingerprinted5 scenarios
     - navigation "Graph structure":
       - text: Graph · 2 nodes
       - list:
@@ -45,7 +45,7 @@
       - text: Result search timecard
     - heading "search" [level=3]
     - text: Task Employee Search Depends on Nothing — this node may start immediately. replay always-rerun condition always runs
-    - region "new-kronos/search-employee": runs new-kronos/search-employee Search New Kronos For Employee Implemented by store new-kronos kind browser driver new-kronos Subject binding the Employee Search results panel renders a candidate list; the subject is proved on the timecard's own displayed-eid observation (S37) Errors new-kronos-unavailable unexpected-page-state employee-not-found search-returned-no-match search-no-signal Freshness default unbounded Provenance default live UI vocabulary screen new-kronos.employee-search element new-kronos.employee-search.close-button element new-kronos.employee-search.go-to-button element new-kronos.employee-search.go-to-timecard-option page-state new-kronos.employee-search.no-results element new-kronos.employee-search.no-results-text element new-kronos.employee-search.open-button element new-kronos.employee-search.query-field element new-kronos.employee-search.result-select-checkbox element new-kronos.employee-search.result-slat page-state new-kronos.employee-search.results-ready element new-kronos.employee-search.submit-button Scenarios separations-kronos-timecard/reads-a-real-timecard separations-kronos-timecard/employee-not-found separations-kronos-timecard/search-no-signal Source contract src/domain/contracts/new-kronos/search-employee.ts impl src/stores/new-kronos/tasks/search-employee.ts input 07b97d04e376output c4abaefb7580impl 84f40ee7fc29
+    - region "new-kronos/search-employee": runs new-kronos/search-employee Search New Kronos For Employee Implemented by store new-kronos kind browser driver new-kronos Subject binding the Employee Search results panel renders a candidate list; the subject is proved on the timecard's own displayed-eid observation (S37) Errors new-kronos-unavailable unexpected-page-state employee-not-found search-returned-no-match search-no-signal Freshness default unbounded Provenance default live UI vocabulary screen new-kronos.employee-search element new-kronos.employee-search.close-button element new-kronos.employee-search.go-to-button element new-kronos.employee-search.go-to-timecard-option page-state new-kronos.employee-search.no-results element new-kronos.employee-search.no-results-text element new-kronos.employee-search.open-button element new-kronos.employee-search.query-field element new-kronos.employee-search.result-select-checkbox element new-kronos.employee-search.result-slat page-state new-kronos.employee-search.results-ready element new-kronos.employee-search.submit-button Scenarios separations-kronos-timecard/reads-a-real-timecard separations-kronos-timecard/employee-not-found separations-kronos-timecard/search-no-signal Source contract src/domain/contracts/new-kronos/search-employee.ts impl src/stores/new-kronos/tasks/search-employee.ts input 07b97d04e376output c4abaefb7580impl 6b0594dc7dcc
     - region "Scenarios": Scenarios separations-kronos-timecard/employee-not-found walks tests/scenario/separations-kronos-timecard.scenario.test.ts separations-kronos-timecard/reads-a-real-timecard walks tests/scenario/separations-kronos-timecard.scenario.test.ts separations-kronos-timecard/search-no-signal walks tests/scenario/separations-kronos-timecard.scenario.test.ts separations-kronos-timecard/timecard-without-punches walks tests/scenario/separations-kronos-timecard.scenario.test.ts separations-kronos-timecard/wrong-employee-timecard walks tests/scenario/separations-kronos-timecard.scenario.test.ts
 - region "Session Panel":
   - button "Sessions 1 running 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
