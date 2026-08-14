@@ -1200,8 +1200,11 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
    * value at all, because there is no model commit to wait for and the
    * field-by-field comparison at the end of staging is what reports it.
    *
-   * live-verify: 5c — every control below was live-verified as a READ on
-   * 2026-08-12; none has been observed being WRITTEN by this repository.
+   * live-verified 5c, 2026-08-14: this path staged every text control the
+   * finalization writes on real doc 4524 through `executeDryRun` and read each
+   * one back, in 8.06 s for all ten controls. A hard reload then re-read the
+   * document unchanged — so the staging is proved to reach React's state and
+   * proved NOT to reach Kuali (§9.12, S61).
    */
   async function stageText(
     id: ElementId,
@@ -1241,7 +1244,9 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
    * instantly would otherwise be stamped AFTER its own re-render and then waited
    * on forever.
    *
-   * live-verify: 5c.
+   * live-verified 5c, 2026-08-14: the `Department*` select, both checkboxes and
+   * the Final Pay radio all committed inside the bound on real doc 4524. The
+   * stamp-first order is what made that observable instead of a timeout.
    */
   async function stageDiscrete(
     locator: Locator,
