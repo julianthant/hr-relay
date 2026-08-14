@@ -332,7 +332,18 @@ test.describe("park resolutions", () => {
 
       // The record's own control, by its SERVED label — a rename on the server
       // must fail this test rather than silently re-photograph a new word.
-      await page.getByRole("button", { name: arm.label, exact: true }).click();
+      //
+      // ANCHORED, NOT EXACT, since R8's `ParkResolutions` port: the two
+      // resolutions are no longer bare pills, they are the demo's tinted CARDS,
+      // and each card's accessible name is now the label FOLLOWED BY the
+      // server's own `detail` sentence — which is the whole reason they became
+      // cards (a pill can carry a verb; what separates these two verbs is a
+      // sentence about what each one unlocks). A leading-anchored regex keeps
+      // the property this locator was written for — the served label must still
+      // be the first thing the control says — without pinning the sentence
+      // beside it, which the reference images already review.
+      const control = new RegExp(`^${arm.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+      await page.getByRole("button", { name: control }).click();
       // Radix moves focus into the dialog on open; wait for the surface itself
       // rather than a duration, so the capture is never of a half-mounted box.
       await expect(page.getByRole("dialog")).toBeVisible();

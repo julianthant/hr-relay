@@ -1017,6 +1017,10 @@ function LoadedApp({
                   actorId={boot.actor.id}
                   onDetailEdited={() => setDetailNonce((nonce) => nonce + 1)}
                   aiAdvisory={advisoryAvailability}
+                  /* The SAME instant `viewState.nowIso` dates the queue's rows
+                     from, so a waiting run's age is one number wherever it is
+                     read. The panel used to take its own wall clock. */
+                  servedNow={boot.serverClock.now}
                 />
             ) : (
               <Panel className="min-h-0">

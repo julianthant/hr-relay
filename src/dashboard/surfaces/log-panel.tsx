@@ -58,7 +58,6 @@ import {
   X,
 } from "lucide-react";
 import type { z } from "zod";
-import { systemClock } from "../../domain/clock.js";
 import { cn } from "../lib/utils.js";
 import {
   Chip,
@@ -1021,6 +1020,14 @@ export interface LogPanelProps {
    * provider is composed, rather than the affordance vanishing.
    */
   aiAdvisory: CapabilityAvailability;
+  /**
+   * The server's own clock, from the bootstrap document — the SAME instant the
+   * queue dates its rows from. Every age on this panel is measured against it,
+   * so a gate cannot report one age in the queue and another in the panel
+   * beside it. See the `nowIso` note in the body for why this is a prop rather
+   * than a local clock read.
+   */
+  servedNow: string;
 }
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
@@ -1168,6 +1175,7 @@ export function LogPanel({
   actorId,
   onDetailEdited,
   aiAdvisory,
+  servedNow,
 }: LogPanelProps) {
   const available = tabsFor(detail);
   const fallback = defaultTabFor(detail);
@@ -1312,12 +1320,20 @@ export function LogPanel({
   }, [detail.runId, effectiveTab]);
 
   /**
-   * ONE clock read per render, shared by every age on this surface — the
-   * outcome bar's and the floating notice's. Two reads would let the same
-   * decision report two different ages a second apart, which is the class of
-   * defect the shared fold key exists to prevent elsewhere in this file.
+   * ONE clock, shared by every age on this surface — the outcome bar's and the
+   * floating notice's — and it is the SERVER'S, handed down by the composition
+   * (`QueueViewState.nowIso` is the same value).
+   *
+   * R5 f.5 landed this as a local `systemClock.now()`, which was one read per
+   * render but the WRONG read: the queue beside this panel dates its rows from
+   * `boot.serverClock.now`, so the same gate could report two different ages a
+   * few seconds apart depending on which surface you looked at — D124's defect
+   * with the clocks swapped. The wave-end parity gate is what surfaced it, and
+   * it surfaced it the way a non-deterministic value always shows up: as a
+   * reference that drifts by a minute every time the lane runs
+   * (`identity-review 258h 22m` → `258h 31m`), which no re-freeze can settle.
    */
-  const nowIso = systemClock.now().toISOString();
+  const nowIso = servedNow;
 
   const outcome = detail.outcome;
   const outcomeStatus =

@@ -742,8 +742,28 @@ function DataSection({
               {problem}
             </span>
           )}
+          {/*
+            THE LIVE LOCK IS A STANDING STATE, NOT AN ALERT — and the wave-end
+            parity gate is what proved the difference matters.
+
+            R6 lifted these two lines out of the old `editing` gate so the
+            reason is on screen before the operator reaches for a field. That
+            was right for `problem` above, which is `null` until a save is
+            refused, and wrong for this one: `liveLockReasonOf` is a fact about
+            the RUN, true from the moment the panel opens, so `role="alert"`
+            shouted it assertively on page load for every terminal or claimed
+            run. `dual-adapter.spec.ts` caught it as a role the fixture adapter
+            rendered and the seeded adapter did not — the seeded backend serves
+            no context-data entries, so it never reaches this branch at all.
+
+            It keeps `aria-live`, because the lock CAN arrive mid-session: the
+            day stream moves the row's status while the panel is open, and a
+            rail that silently goes read-only under the operator's hands is the
+            thing D19 exists to prevent. Polite, not assertive — nothing here
+            interrupts, and the same sentence is on every row's own lock.
+          */}
           {liveLock !== undefined && (
-            <span role="alert" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
+            <span aria-live="polite" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
               {liveLock}
             </span>
           )}
