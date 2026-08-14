@@ -186,6 +186,7 @@ function rebuildStagedProjections(
           listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),
           isArchived: (runId) => staged.authority.archivedRuns.isArchived(runId),
           getFailure: (failureId) => staged.authority.failures.get(failureId),
+          getReceipt: (runId) => staged.authority.evidenceReceipts.findByRun(runId),
         },
         descriptors: { resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor },
         projectionStore: staged,

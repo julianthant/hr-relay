@@ -65,6 +65,7 @@ import {
 } from "../../../domain/ids.js";
 import { NotificationRecordSchema } from "../../../domain/notifications.js";
 import type { RunRecord } from "../../../domain/run/record.js";
+import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
 import type { FailureRecord } from "../../../domain/trust/failure.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { sha256Hex } from "../../../domain/sha256.js";
@@ -154,6 +155,16 @@ export interface RunQueueProjectionDeps {
     isArchived(runId: string): boolean;
     /** D180: the failure breakdown the Activity report aggregates. */
     getFailure(failureId: string): FailureRecord | undefined;
+    /**
+     * The run's ALREADY-DERIVED evidence receipt, for the `△ N` warning count
+     * (D22/D126). Deliberately a plain lookup and never `ensureReceipt`: D141
+     * makes derivation an on-demand act that PERSISTS a row, and a read model
+     * that wrote authority as a side effect of rendering a queue would be a
+     * projection deciding when a durable record exists. A run whose receipt
+     * has not been derived yet serves an absent warning count naming exactly
+     * that, which is the honest answer rather than a fabricated zero.
+     */
+    getReceipt(runId: string): RunEvidenceReceipt | undefined;
   };
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   /** The rebuildable projection tables (doc 03 §2.3). */
@@ -713,6 +724,123 @@ export class RunQueueProjection {
     };
   }
 
+  /**
+   * D12: when the OPEN gate opened, for the row's `Waiting on you · 10m`.
+   *
+   * Sourced from the GATE'S OWN RECORD — the `gate.opened` span the executor
+   * emits, which is exactly what the run-detail decision notice reads, so the
+   * two surfaces cannot date one gate two ways. `updatedAt` is never a source:
+   * it moves on every patch and would report an aging gate as young, which is
+   * the one direction this fact may never err in.
+   *
+   * Authority's `lifecycle.parkedAt` is the FALLBACK rather than the preferred
+   * value, which inverts `#endedAt`'s ordering on purpose. The executor emits
+   * `gate.opened`, then releases the browser session, THEN transitions to
+   * `parked-gate` — so `parkedAt` is the LATER of the two instants by however
+   * long a session close takes, and preferring it would systematically shave
+   * that off every gate's age.
+   */
+  #gateOpenedAt(
+    row: RunFoldRecord,
+    authority: RunRecord,
+    status: QueueSurfaceWire["status"],
+  ): { state: "present"; value: string } | { state: "absent"; reason: string } {
+    if (status !== "awaiting-approval") {
+      return { state: "absent", reason: `run is ${status} and is not waiting on a gate` };
+    }
+    const open = row.openGates.at(-1);
+    if (open !== undefined) return { state: "present", value: open.openedAt };
+    if (authority.lifecycle.state === "parked-gate") {
+      return { state: "present", value: authority.lifecycle.parkedAt };
+    }
+    return {
+      state: "absent",
+      reason: "run reads awaiting-approval but neither an open gate span nor a parked-gate lifecycle dates the gate",
+    };
+  }
+
+  /**
+   * D13: a failed row says WHY on the card, in the failure record's own words.
+   *
+   * The summary is mirrored VERBATIM — D13 is explicit that a parent mirrors
+   * its child's error rather than composing one, and "never 'Unknown error'"
+   * is the same rule stated for the substitution this projector must not make.
+   * Every other status carries a named absence: no producer authors a live
+   * progress sentence on this wire, and inventing one for a running run would
+   * be narration the run never emitted.
+   *
+   * A terminal-failed run whose failure record authority does not hold serves
+   * a NAMED absence rather than throwing. `buildActivityReportWire` throws on
+   * the same hole because a breakdown with a gap in it is a wrong aggregate;
+   * here the same hole would degrade the ONE projection every surface renders,
+   * so the row states the missing record by id — and the queue's ⓘ popover
+   * prints exactly that reason, which puts the hole in front of the operator
+   * instead of behind an outage.
+   */
+  #liveMessage(
+    authority: RunRecord,
+    status: QueueSurfaceWire["status"],
+  ): { state: "present"; value: string } | { state: "absent"; reason: string } {
+    const { lifecycle } = authority;
+    if (lifecycle.state !== "terminal" || lifecycle.outcome !== "failed") {
+      if (status === "failed") {
+        return {
+          state: "absent",
+          reason: "the run span reports a failure authority has not settled, so no failure record exists to mirror",
+        };
+      }
+      return TERMINAL_QUEUE_STATUSES.has(status)
+        ? { state: "absent", reason: `run settled ${status}; only a failed run carries an error sentence` }
+        : { state: "absent", reason: `run is ${status}; no producer authors a live progress sentence on this wire` };
+    }
+    const { failureId } = lifecycle;
+    if (failureId === undefined) {
+      return { state: "absent", reason: "run settled failed without a structured failure record" };
+    }
+    const failure = this.#deps.authority.getFailure(failureId);
+    if (failure === undefined) {
+      return {
+        state: "absent",
+        reason: `run settled failed against failure ${failureId}, which authority does not hold`,
+      };
+    }
+    return { state: "present", value: failure.summary };
+  }
+
+  /**
+   * D22/D126: the REAL warning count behind the `△ N` chip, plus the first
+   * warning's own sentence for its title.
+   *
+   * The warning set lives on the run's evidence receipt (doc 12's uncertainty
+   * evidence) — the terminal result record stores the workflow's declared
+   * result and knows nothing about uncertainty. The read is a plain lookup of
+   * an already-derived receipt: deriving one here would make rendering a queue
+   * write authority (D141), and this projection never mutates authority.
+   *
+   * Three distinct absences, never collapsed into a zero: the run has not
+   * settled, no receipt has been derived, or the receipt records no warning.
+   */
+  #warnings(
+    runId: string,
+    status: QueueSurfaceWire["status"],
+  ): { state: "present"; count: number; first: string } | { state: "absent"; reason: string } {
+    if (!TERMINAL_QUEUE_STATUSES.has(status)) {
+      return { state: "absent", reason: `run is ${status} and has not produced a terminal result` };
+    }
+    const receipt = this.#deps.authority.getReceipt(runId);
+    if (receipt === undefined) {
+      return {
+        state: "absent",
+        reason: "no evidence receipt has been derived for this run, so its warning set is unknown",
+      };
+    }
+    const first = receipt.warnings[0];
+    if (first === undefined) {
+      return { state: "absent", reason: "this run's evidence receipt records no warning" };
+    }
+    return { state: "present", count: receipt.warnings.length, first: first.summary };
+  }
+
   #pipeline(row: RunFoldRecord): QueueSurfaceWire["pipeline"] {
     const descriptor = this.#deps.descriptors.resolve(row.queued.workflow);
     const spanByNode = new Map<string, z.infer<typeof TaskSpanFoldSchema>>();
@@ -779,15 +907,24 @@ export class RunQueueProjection {
       descriptorHash: queued.contractFingerprint,
       configFingerprint: queued.configFingerprint,
       resolvedInstances: Object.entries(queued.resolvedInstance).map(([system, instance]) => ({ system, instance })),
+      /**
+       * D6: the flag's one home is the run envelope, so the row reads it from
+       * AUTHORITY rather than from the `run.queued` span's copy of it. The two
+       * agree by construction, and when they could not, the durable record is
+       * the one that decided whether the write kernel was allowed to commit.
+       */
+      dryRun: authority.envelope.dryRun,
       startedAt: queued.ts,
       updatedAt: authority.updatedAt,
       endedAt: this.#endedAt(row, authority, status),
+      gateOpenedAt: this.#gateOpenedAt(row, authority, status),
       title: authority.displayName ?? queued.title,
       subtitle: queued.subtitle === undefined
         ? { state: "absent", reason: "the start plan proposed no subtitle" }
         : { state: "present", value: queued.subtitle },
       status,
-      liveMessage: { state: "absent", reason: "live messages ride the notes projection, which lands after 1g" },
+      liveMessage: this.#liveMessage(authority, status),
+      warnings: this.#warnings(queued.runId, status),
       pipeline: this.#pipeline(row),
       panelKind: panelKindOf(shape),
       availableSections: [

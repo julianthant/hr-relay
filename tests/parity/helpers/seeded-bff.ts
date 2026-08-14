@@ -77,7 +77,11 @@ export const SEEDED_COVERAGE_GAPS: readonly string[] = Object.freeze([
   + "(done|failed|cancelled|discarded|superseded|interrupted only), so no real transition produces it",
   "surfaceKind 'preview': the shape is legal but nothing in the 1i slice enqueues a preview run",
   "worker-card states waiting|paused|failed: the projection derives only stopped|working|idle",
-  "liveMessage 'present': the projection always serves absent until the notes projection lands after 1g",
+  "liveMessage 'present' on a NON-failed row: the projection serves the terminal FailureRecord's "
+  + "summary for a failed run (D13) and nothing else authors a live progress sentence, so every other "
+  + "status carries a reasoned absence",
+  "warnings 'present': the count comes off the run's ALREADY-DERIVED evidence receipt, and this seed "
+  + "derives none — D141 makes derivation an on-demand act and the projection never writes authority",
   "subtitle 'present': the start-plan path this seed uses proposes no subtitle",
 ]);
 
@@ -703,6 +707,7 @@ export async function startSeededServer(
       listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
+      getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
     },
     descriptors,
     projectionStore: database,

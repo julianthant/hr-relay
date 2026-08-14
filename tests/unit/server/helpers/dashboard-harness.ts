@@ -15,6 +15,7 @@ import { localDatePart, manualClock, type TestClock } from "../../../../src/doma
 import { FingerprintSchema } from "../../../../src/domain/ids.js";
 import { NotificationRecordSchema } from "../../../../src/domain/notifications.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/domain/run/record.js";
+import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/domain/trust/evidence.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../../src/domain/trust/failure.js";
 import type { RunCheckpointRecord } from "../../../../src/domain/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../../src/domain/write-safety.js";
@@ -85,6 +86,9 @@ export interface AuthorityFake {
   isArchived(runId: string): boolean;
   readonly failures: Map<string, FailureRecord>;
   getFailure(failureId: string): FailureRecord | undefined;
+  /** D22/D126: the already-derived receipts the `△ N` warning count reads. */
+  readonly receipts: Map<string, RunEvidenceReceipt>;
+  getReceipt(runId: string): RunEvidenceReceipt | undefined;
   /** Doc 09 §4.1: the durable write-safety rows the parked-write section reads. */
   readonly writeIntents: Map<string, WriteIntentRecord>;
   getWriteIntent(writeIntentId: string): WriteIntentRecord | undefined;
@@ -96,6 +100,7 @@ export function authorityFake(): AuthorityFake {
   const checkpoints = new Map<string, RunCheckpointRecord>();
   const archived = new Set<string>();
   const failures = new Map<string, FailureRecord>();
+  const receipts = new Map<string, RunEvidenceReceipt>();
   const writeIntents = new Map<string, WriteIntentRecord>();
   const notifications: NotificationRecord[] = [];
   const checkpointKey = (workflowId: string, itemId: string, nodeId: string): string =>
@@ -115,6 +120,8 @@ export function authorityFake(): AuthorityFake {
     isArchived: (runId) => archived.has(runId),
     failures,
     getFailure: (failureId) => failures.get(failureId),
+    receipts,
+    getReceipt: (runId) => receipts.get(runId),
     writeIntents,
     getWriteIntent: (writeIntentId) => writeIntents.get(writeIntentId),
     putWriteIntent: (record) => writeIntents.set(record.writeIntentId, record),
@@ -252,6 +259,8 @@ export interface SeedRunInput {
   readonly enqueuedAt?: string;
   /** Pending checkpoint corrections riding the envelope (D166/2i-C). */
   readonly injected?: unknown;
+  /** D6: the rehearsal flag, whose one home is the envelope. */
+  readonly dryRun?: boolean;
 }
 
 export function runRecordOf(input: SeedRunInput): RunRecord {
@@ -276,7 +285,7 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
       }),
       shape: input.shape ?? "single",
       priority: "interactive",
-      dryRun: false,
+      dryRun: input.dryRun ?? false,
       ...(input.injected === undefined ? {} : { injected: input.injected }),
       attempt: 1,
       enqueuedAt,
@@ -390,6 +399,47 @@ export function failureRecordOf(input: Readonly<{
     causeChain: [{ code: input.code, summary: `seeded ${input.code}`, role: "primary", transient }],
     remediation: [{ kind: "operator-action", message: "seeded remediation" }],
     occurredAt: NOW,
+  });
+}
+
+/**
+ * A minimal `done-with-warnings` evidence receipt for a run — the source the
+ * queue row's `△ N` count reads (D22/D126). Everything the schema does not
+ * need for the warning arm is deliberately empty: the point of the fixture is
+ * the warning SET and its first summary, not a second receipt derivation.
+ */
+export function receiptWithWarningsOf(input: Readonly<{
+  seed: number;
+  summaries: readonly string[];
+  workflow?: string;
+}>): RunEvidenceReceipt {
+  return RunEvidenceReceiptSchema.parse({
+    receiptId: uuidOf(input.seed + 7000),
+    runId: uuidOf(input.seed),
+    traceId: traceOf(input.seed),
+    workflowId: input.workflow ?? "person-lookup",
+    attempt: 1,
+    generatedAt: NOW,
+    descriptorFingerprint: HASH_A,
+    configFingerprint: HASH_B,
+    retryOf: { state: "absent" },
+    failure: { state: "absent" },
+    input: [],
+    observations: [],
+    decisions: [],
+    actions: [],
+    verification: [],
+    output: [],
+    reuse: [],
+    warnings: input.summaries.map((summary, index) => ({
+      id: uuidOf(input.seed + 7100 + index),
+      code: "REPLAYED_FACT_OLDER_THAN_FRESHNESS_LIMIT",
+      summary,
+      loadBearing: false,
+      evidence: [],
+    })),
+    confidence: "partial",
+    result: "done-with-warnings",
   });
 }
 

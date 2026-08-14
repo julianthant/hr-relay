@@ -219,6 +219,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
       isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId) => database.authority.failures.get(failureId),
+      getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
     },
     descriptors: descriptorResolver,
     projectionStore: database,

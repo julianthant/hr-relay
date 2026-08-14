@@ -10,9 +10,10 @@ import assert from "node:assert/strict";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
+import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
+import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
 import { HASH_A, HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   APP_VERSION,
@@ -21,10 +22,12 @@ import {
   DAY,
   dayOffsetOf,
   DESCRIPTOR_SET_HASH,
+  failureRecordOf,
   instantOffsetOf,
   makeWorld,
   notificationRecordOf,
   queuedEventOf,
+  receiptWithWarningsOf,
   runEndedEventOf,
   runRecordOf,
   taskEventsOf,
@@ -756,5 +759,162 @@ describe("the fold arms a moving run reaches (doc 03 §2.2)", () => {
     assert.deepEqual(day.notifications.map(({ title }) => title), ["earlier id", "later id", "oldest"]);
     assert.equal(day.notifications[0].severity, "error");
     assert.equal(day.notifications[0].state, "unread");
+  });
+});
+
+/**
+ * The four row facts that had a consumer and no producer (doc 03 §1.2, §9
+ * D12/D13/D22/D126). Each one is a field the queue component already drew the
+ * moment it arrived, so what these arms pin is where the value comes FROM —
+ * and, for three of them, which absences the row must state instead of
+ * inventing a value.
+ */
+describe("the queue row's served facts (D12/D13/D22/D126)", () => {
+  /** A terminal-failed run whose failure record authority holds. */
+  function seedFailed(w: DashboardWorld, seed = 4): void {
+    queuedEventOf(w, { seed });
+    claimEventOf(w, seed);
+    taskEventsOf(w, seed, "searching", "failed");
+    w.writer.emit({
+      t: "span.ended", kind: "run", ts: w.clock.now().toISOString(), workflow: "person-lookup",
+      runId: uuidOf(seed), attempt: 1, traceId: traceOf(seed), spanPath: traceOf(seed),
+      outcome: "failed", failureId: uuidOf(seed + 9000),
+    });
+    w.authority.put(runRecordOf({
+      seed,
+      lifecycle: {
+        state: "terminal", outcome: "failed",
+        endedAt: "2026-08-03T17:12:00.000Z", failureId: uuidOf(seed + 9000),
+      },
+      version: 3,
+    }));
+  }
+
+  function rowOf(w: DashboardWorld, seed: number) {
+    const surface = w.projection.buildDashboardDayWire(DAY).queueSurfaces
+      .find((row) => row.runId === uuidOf(seed));
+    assert.ok(surface);
+    return surface;
+  }
+
+  it("D13: a failed row carries its terminal failure summary VERBATIM", () => {
+    const w = world();
+    seedFailed(w);
+    const failure = failureRecordOf({ seed: 4, code: "CRM_UNAVAILABLE" });
+    w.authority.failures.set(String(failure.failureId), failure);
+
+    assert.deepEqual(rowOf(w, 4).liveMessage, { state: "present", value: failure.summary });
+  });
+
+  it("D13: a failure record authority does not hold is NAMED, never replaced by a guess", () => {
+    const w = world();
+    // The failure id rides the lifecycle; nothing puts the record.
+    seedFailed(w);
+    const { liveMessage } = rowOf(w, 4);
+    assert.equal(liveMessage.state, "absent");
+    assert.match(
+      liveMessage.state === "absent" ? liveMessage.reason : "",
+      new RegExp(`failure ${uuidOf(9004)}, which authority does not hold`),
+    );
+  });
+
+  it("every non-failed row states WHY it carries no sentence rather than carrying one", () => {
+    const w = world();
+    seedWorld(w);
+    const running = rowOf(w, 2);
+    const done = rowOf(w, 3);
+    assert.equal(running.liveMessage.state, "absent");
+    assert.match(
+      running.liveMessage.state === "absent" ? running.liveMessage.reason : "",
+      /run is running/,
+    );
+    assert.equal(done.liveMessage.state, "absent");
+    assert.match(
+      done.liveMessage.state === "absent" ? done.liveMessage.reason : "",
+      /only a failed run carries an error sentence/,
+    );
+  });
+
+  it("D6: `dryRun` comes off the run envelope and is served on every row", () => {
+    const w = world();
+    queuedEventOf(w, { seed: 1, dryRun: true });
+    queuedEventOf(w, { seed: 2 });
+    assert.equal(rowOf(w, 1).dryRun, true);
+    assert.equal(rowOf(w, 2).dryRun, false);
+  });
+
+  it("D12: only an awaiting row dates its gate, and the instant is the GATE's own", () => {
+    const w = world();
+    seedWorld(w);
+    const gated = rowOf(w, 9);
+    assert.equal(gated.status, "awaiting-approval");
+    const openedAt = w.projection.runFold(uuidOf(9))?.openGates.at(-1)?.openedAt;
+    assert.deepEqual(gated.gateOpenedAt, { state: "present", value: openedAt });
+    // …and it is NOT `updatedAt`, which moves on every patch.
+    assert.notEqual(gated.gateOpenedAt.state === "present" ? gated.gateOpenedAt.value : "", gated.updatedAt);
+    for (const seed of [1, 2, 3, 4]) {
+      assert.equal(rowOf(w, seed).gateOpenedAt.state, "absent");
+    }
+  });
+
+  it("D12: a parked-gate run whose gate span is missing falls back to authority's park instant", () => {
+    const w = world();
+    queuedEventOf(w, { seed: 1 });
+    w.authority.put(runRecordOf({
+      seed: 1,
+      lifecycle: {
+        state: "parked-gate", gateId: "approval",
+        parkedAt: "2026-08-03T17:05:00.000Z", resumeAt: "cross-verify",
+      },
+      version: 2,
+    }));
+    assert.deepEqual(rowOf(w, 1).gateOpenedAt, { state: "present", value: "2026-08-03T17:05:00.000Z" });
+  });
+
+  it("the wire refuses a gate instant on a row that is not waiting", () => {
+    const w = world();
+    seedWorld(w);
+    const running = rowOf(w, 2);
+    assert.equal(QueueSurfaceWireSchema.safeParse({
+      ...running,
+      gateOpenedAt: { state: "present", value: "2026-08-03T17:05:00.000Z" },
+    }).success, false);
+  });
+
+  it("D22/D126: the △ chip's count is the receipt's real warning set, titled by the first", () => {
+    const w = world();
+    seedWorld(w);
+    w.authority.receipts.set(uuidOf(3), receiptWithWarningsOf({
+      seed: 3,
+      summaries: ["CRM dates were replayed past their freshness limit", "the second warning"],
+    }));
+    assert.deepEqual(rowOf(w, 3).warnings, {
+      state: "present",
+      count: 2,
+      first: "CRM dates were replayed past their freshness limit",
+    });
+  });
+
+  it("D22/D126: three distinct absences, and never a fabricated zero", () => {
+    const w = world();
+    seedWorld(w);
+    // in flight — nothing has settled
+    const running = rowOf(w, 2).warnings;
+    assert.equal(running.state, "absent");
+    assert.match(running.state === "absent" ? running.reason : "", /has not produced a terminal result/);
+    // terminal, but no receipt has been derived
+    const noReceipt = rowOf(w, 3).warnings;
+    assert.equal(noReceipt.state, "absent");
+    assert.match(noReceipt.state === "absent" ? noReceipt.reason : "", /no evidence receipt has been derived/);
+    // terminal, receipt derived, genuinely no warning
+    w.authority.receipts.set(uuidOf(3), RunEvidenceReceiptSchema.parse({
+      ...receiptWithWarningsOf({ seed: 3, summaries: ["only warning"] }),
+      warnings: [],
+      confidence: "verified",
+      result: "verified-done",
+    }));
+    const clean = rowOf(w, 3).warnings;
+    assert.equal(clean.state, "absent");
+    assert.match(clean.state === "absent" ? clean.reason : "", /records no warning/);
   });
 });

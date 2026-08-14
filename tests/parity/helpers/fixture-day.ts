@@ -84,6 +84,14 @@ interface SurfaceSeed {
   readonly parentSeed?: number;
   readonly subtitle?: string | { absent: string };
   readonly liveMessage?: string | { absent: string };
+  /** D6 — the rehearsal flag. Every envelope carries it; the corpus pins both arms. */
+  readonly dryRun?: boolean;
+  /**
+   * D22/D126 — the `△ N` chip's real count and the first warning's sentence.
+   * Deliberately NOT `1` on the row that carries it: a corpus whose served
+   * count equals the constant it replaced cannot tell the two renderings apart.
+   */
+  readonly warnings?: { count: number; first: string };
   readonly pipeline?: readonly [PipelineState, PipelineState, PipelineState, PipelineState];
   readonly startedMinute?: number;
   readonly memberSeeds?: readonly number[];
@@ -115,6 +123,22 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
     : typeof input.liveMessage === "string"
       ? present(input.liveMessage)
       : absent(input.liveMessage.absent);
+  /**
+   * D12 — an `awaiting-approval` row is the ONLY row that may date a gate, and
+   * the instant comes from the gate's own record rather than from `updatedAt`.
+   * The fixture opens the gate two minutes after the run started so the age is
+   * a real interval and not a zero.
+   */
+  const gateOpenedAt = input.status === "awaiting-approval"
+    ? present(at(Math.min(startedMinute + 2, 59)))
+    : absent(`run is ${input.status} and is not waiting on a gate`);
+  const warnings = input.warnings === undefined
+    ? absent(
+      TERMINAL.has(input.status)
+        ? "this run's evidence receipt records no warning"
+        : `run is ${input.status} and has not produced a terminal result`,
+    )
+    : { state: "present", count: input.warnings.count, first: input.warnings.first } as const;
   const base = {
     runId: uuidOf(input.seed),
     itemId: uuidOf(input.seed + 5000),
@@ -138,6 +162,10 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
       { system: "ucpath", instance: "prod" },
       { system: "crm", instance: "prod" },
     ],
+    // D6: the flag lives on the envelope, so every row carries it and there is
+    // no absent arm — a rehearsal that renders like a real filing is the
+    // cheapest way to read a dry run as a submitted transaction.
+    dryRun: input.dryRun ?? false,
     startedAt: at(startedMinute),
     // D124: a settled run carries its own terminal instant, so the row can
     // show what it TOOK instead of counting since it started, and the
@@ -150,10 +178,12 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
     endedAt: TERMINAL.has(input.status)
       ? { state: "present", value: at(settledMinute) }
       : { state: "absent", reason: `run is ${input.status} and has not ended` },
+    gateOpenedAt,
     title: input.title,
     subtitle,
     status: input.status,
     liveMessage,
+    warnings,
     pipeline: pipeline(input.pipeline ?? ["pending", "pending", "pending", "pending"]),
     panelKind: kind === "operation" ? "group" : kind === "member" ? "member" : "run",
     availableSections: input.status === "failed"
@@ -237,6 +267,7 @@ const GROUPS: readonly { group: SurfaceSeed; members: SurfaceSeed[] }[] = [
       memberSeeds: [71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83],
       memberStatuses: ["done", "done", "done", "done", "done", "done", "done", "done", "done", "failed", "failed", "cancelled", "running"],
       liveMessage: "2 members failed", startedMinute: 10,
+      warnings: { count: 2, first: "member EID 10990031 replayed a checkpoint older than its freshness limit" },
     },
     members: [
       ...Array.from({ length: 9 }, (_, index): SurfaceSeed => ({
@@ -264,8 +295,8 @@ const SINGLE_SEEDS: readonly SurfaceSeed[] = [
   { seed: 5, status: "awaiting-approval", title: "Blirea, Glaundi", liveMessage: "Waiting on identity review", pipeline: ["done", "blocked", "pending", "pending"], startedMinute: 47 },
   { seed: 6, status: "blocked", title: "EID 10777012", subtitle: { absent: "no subtitle was derived for this input" }, liveMessage: "A write to UCPath is parked pending proof", pipeline: ["done", "active", "pending", "pending"], startedMinute: 44 },
   { seed: 7, status: "cancelled", title: "EID 10222009", liveMessage: { absent: "run is terminal" }, pipeline: ["done", "skipped", "skipped", "skipped"], startedMinute: 26 },
-  { seed: 8, status: "partial", title: "EID 10333015", subtitle: "with CRM dates", liveMessage: { absent: "run is terminal" }, pipeline: ["done", "done", "done", "failed"], startedMinute: 24 },
-  { seed: 9, status: "queued", title: "EID 10873698", surfaceKind: "preview", subtitle: "preview", liveMessage: { absent: "preview rows do not execute" }, startedMinute: 57 },
+  { seed: 8, status: "partial", title: "EID 10333015", subtitle: "with CRM dates", liveMessage: { absent: "run is terminal" }, pipeline: ["done", "done", "done", "failed"], startedMinute: 24, warnings: { count: 3, first: "CRM separation dates were replayed from a checkpoint older than the freshness limit" } },
+  { seed: 9, status: "queued", title: "EID 10873698", surfaceKind: "preview", subtitle: "preview", liveMessage: { absent: "preview rows do not execute" }, startedMinute: 57, dryRun: true },
 ];
 
 const rawSurfaces: Record<string, unknown>[] = [

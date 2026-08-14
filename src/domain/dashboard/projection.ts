@@ -63,6 +63,18 @@ const QueueBaseFields = {
   descriptorHash: FingerprintSchema,
   configFingerprint: FingerprintSchema,
   resolvedInstances: z.array(ResolvedInstanceSchema),
+  /**
+   * Whether this run is a REHEARSAL (doc 02 §2's envelope, D6 — the one home
+   * for the flag; doc 09's `executeDryRun` vs `executeTransaction` is the same
+   * bit deciding whether a real HR write may happen at all).
+   *
+   * There is no absent arm and there must never be one: every envelope carries
+   * the flag, so "we do not know whether this run writes" is not a state this
+   * system can be in. The queue is the one column an operator scans before
+   * acting, and a rehearsal that renders identically to a real filing is the
+   * cheapest possible way to read a dry run as a submitted transaction.
+   */
+  dryRun: z.boolean(),
   startedAt: IsoInstantSchema,
   updatedAt: IsoInstantSchema,
   /**
@@ -80,6 +92,25 @@ const QueueBaseFields = {
     z.strictObject({ state: z.literal("present"), value: IsoInstantSchema }),
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
+  /**
+   * When the OPEN gate opened (D12) — the row's `Waiting on you · 10m`.
+   *
+   * D12's whole claim is that *an aging gate is the most actionable fact in
+   * the queue*, and an age is only computable from an instant the server dates
+   * the gate with. It is present ONLY on an `awaiting-approval` row (the
+   * refinement below is what enforces that), because a run that is not parked
+   * on a gate has no open gate whose age could be measured.
+   *
+   * **It is never derived from `updatedAt`.** That instant moves on every
+   * patch — a heartbeat, a rename, a version bump — so an age computed from it
+   * would report a gate as YOUNGER than it is, and "younger" is the one
+   * direction this fact may never err in: a gate that has been waiting an hour
+   * rendering as `· 2m` is exactly the row an operator scrolls past.
+   */
+  gateOpenedAt: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: IsoInstantSchema }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
   title: z.string().min(1),
   subtitle: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
@@ -88,6 +119,31 @@ const QueueBaseFields = {
   status: QueueStatusSchema,
   liveMessage: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
+  /**
+   * The `△ N` chip's REAL count (D22 as amended by D126).
+   *
+   * D126's argument for letting `verifiedDone` and `doneWarnings` draw the same
+   * visible word rests on three visible channels separating them — icon, hue,
+   * and *this count*. A chip that always read `1` because nothing counted made
+   * the third channel a constant, which is weaker than the argument assumes.
+   *
+   * The present arm carries a POSITIVE count and the first warning's own
+   * sentence (the chip's title). There is deliberately no `count: 0` arm:
+   * absence IS zero here, exactly as it is for this file's sparse count arrays,
+   * and a zero-count present arm would be a chip with nothing to say. The
+   * absent arm's `reason` is what distinguishes "this run recorded no warning"
+   * from "nothing has derived this run's warning set yet" — collapsing those
+   * two into one silent zero is the absence-versus-failure conflation this
+   * program bans.
+   */
+  warnings: z.discriminatedUnion("state", [
+    z.strictObject({
+      state: z.literal("present"),
+      count: PositiveIntSchema,
+      first: z.string().min(1),
+    }),
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
   pipeline: z.array(PipelineStepWireSchema),
@@ -123,15 +179,43 @@ function refineEndedAt(
   }
 }
 
+/**
+ * Only a row that IS waiting may date a gate (D12).
+ *
+ * The same shape as `refineEndedAt` and for the same reason: a `running` or
+ * settled row carrying a gate instant would let a surface print `· 40m` beside
+ * a status that names no wait at all, and an age that outlives its gate is a
+ * standing invitation to act on a decision somebody already made.
+ */
+function refineGateOpenedAt(
+  surface: {
+    status: z.infer<typeof QueueStatusSchema>;
+    gateOpenedAt: { state: "present" | "absent" };
+  },
+  context: z.RefinementCtx,
+): void {
+  if (surface.status !== "awaiting-approval" && surface.gateOpenedAt.state === "present") {
+    context.addIssue({
+      code: "custom",
+      path: ["gateOpenedAt"],
+      message: `a ${surface.status} run is not waiting on a gate and cannot carry a gate instant`,
+    });
+  }
+}
+
 const RegularQueueSurfaceWireSchema = z.strictObject({
   ...QueueBaseFields,
   surfaceKind: z.enum(["single", "preview"]),
-}).superRefine(refineEndedAt);
+}).superRefine((surface, context) => {
+  refineEndedAt(surface, context);
+  refineGateOpenedAt(surface, context);
+});
 const MemberQueueSurfaceWireSchema = z.strictObject({
   ...QueueBaseFields,
   surfaceKind: z.literal("member"),
 }).superRefine((surface, context) => {
   refineEndedAt(surface, context);
+  refineGateOpenedAt(surface, context);
   if (surface.lineage.state !== "child") {
     context.addIssue({ code: "custom", path: ["lineage"], message: "member surfaces require a parent run" });
   }
@@ -147,6 +231,7 @@ const OperationQueueSurfaceWireSchema = z.strictObject({
   }),
 }).superRefine((surface, context) => {
   refineEndedAt(surface, context);
+  refineGateOpenedAt(surface, context);
   if (new Set(surface.memberRunIds).size !== surface.memberRunIds.length) {
     context.addIssue({ code: "custom", path: ["memberRunIds"], message: "operation member ids must be unique" });
   }

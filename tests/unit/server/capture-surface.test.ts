@@ -208,6 +208,7 @@ function surface(options: SurfaceOptions = {}): Surface {
       listNotifications: () => [],
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
+      getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
     },
     descriptors,
     projectionStore: database,
