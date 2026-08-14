@@ -27,6 +27,15 @@ projection/wire work.
 - The archive is currently EMPTY in live data — build fixtures/tests accordingly; a sweep
   must be run to see real rows on screen.
 
+## Working mode (operator's standing dispatch policy)
+
+You are the ORCHESTRATOR — do not do everything inline and do not hand the whole task to
+one mega-subagent. Decompose into NARROW sequential briefs and dispatch each as a subagent:
+**Opus or Sonnet only, high effort, ~300k tokens max per subagent.** You keep for yourself:
+doc reads, design judgment, gate runs, verification after each return, small fixes, and the
+findings/doc bookkeeping. Sequential-on-master; verify each subagent's commits and a clean
+tree before dispatching the next. Never push.
+
 ## Verification before resuming
 
 ```bash

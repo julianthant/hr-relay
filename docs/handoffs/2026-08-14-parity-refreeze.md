@@ -45,3 +45,11 @@ Commit the corpus as one `test(parity): re-freeze …` commit naming what moved.
 - `CLAUDE.md` root — the D132 lesson ("a reference corpus that rewrites itself…") and D187.
 - The fidelity commits whose drift is expected: `8e89a6d`, `8f55a16`, `6deaeb4`, `1a716ab`,
   `793e2a5`, `a2ff17f`.
+
+## Working mode (operator's standing dispatch policy)
+
+This task is small enough to run INLINE — one re-freeze, one review, one commit. If the
+diff review surfaces real repair work, the standing policy applies to that work: act as
+orchestrator and dispatch NARROW subagent briefs — **Opus or Sonnet only, high effort,
+~300k tokens max per subagent** — keeping doc reads, judgment, gates and verification
+yourself. Sequential-on-master; never push.
