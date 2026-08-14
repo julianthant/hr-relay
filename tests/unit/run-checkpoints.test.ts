@@ -12,6 +12,7 @@ import {
   RunCheckpointRecordSchema,
   assertCheckpointFreshness,
   auditCheckpointFreshness,
+  checkpointLookupKey,
   checkpointRecordKey,
   defineCheckpointMigration,
   loadCheckpoint,
@@ -39,6 +40,7 @@ function checkpoint(overrides: Readonly<Record<string, unknown>> = {}): RunCheck
     itemId: "33333333-3333-4333-8333-333333333333",
     nodeId: "probe",
     attempt: 1,
+    claimGeneration: 1,
     runId: "22222222-2222-4222-8222-222222222222",
     output: { schemaHash: HASH_C, value: { eid: "10800000", present: true } },
     descriptorVersion: 1,
@@ -257,11 +259,39 @@ describe("run checkpoints", () => {
     assert.match(forbidden.join("\n"), /override:"forbidden" and must be re-read/);
   });
 
-  it("keys a checkpoint row by the logical item, node, and attempt", () => {
+  it("keys a checkpoint row by the logical item, node, attempt, and execution", () => {
     assert.equal(
       checkpointRecordKey(checkpoint()),
-      ["fixture-graph", "33333333-3333-4333-8333-333333333333", "probe", "1"].join("\u0000"),
+      ["fixture-graph", "33333333-3333-4333-8333-333333333333", "probe", "1", "1"].join("\u0000"),
     );
     assert.notEqual(checkpointRecordKey(checkpoint()), checkpointRecordKey(checkpoint({ attempt: 2 })));
+    /*
+     * D214 — the whole point: two executions of ONE attempt (a gate park and
+     * its resume are two claims) are two different rows, so an `always-rerun`
+     * node's second observation no longer collides with its first.
+     */
+    assert.notEqual(
+      checkpointRecordKey(checkpoint()),
+      checkpointRecordKey(checkpoint({ claimGeneration: 2 })),
+    );
+  });
+
+  /**
+   * D133 read-forward, as a negative control: a row stored BEFORE D214 carries
+   * no generation, and its key must still be the exact four-component key it was
+   * written under — otherwise every checkpoint this program has ever stored
+   * becomes unreachable by its own durable key.
+   */
+  it("leaves a pre-D214 row's key byte-identical, with nothing appended", () => {
+    const legacy = { ...checkpoint() };
+    delete (legacy as { claimGeneration?: number }).claimGeneration;
+    assert.equal(
+      checkpointRecordKey(RunCheckpointRecordSchema.parse(legacy)),
+      ["fixture-graph", "33333333-3333-4333-8333-333333333333", "probe", "1"].join("\u0000"),
+    );
+    assert.equal(
+      checkpointLookupKey("fixture-graph", "33333333-3333-4333-8333-333333333333", "probe", 1),
+      checkpointRecordKey(RunCheckpointRecordSchema.parse(legacy)),
+    );
   });
 });

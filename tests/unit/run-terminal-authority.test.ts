@@ -191,6 +191,7 @@ function resultAndOutbox(database: AuthorityDatabase, run: ReturnType<typeof sta
     itemId: run.envelope.itemId,
     nodeId: "active-status",
     attempt: run.envelope.attempt,
+    claimGeneration: 1,
     runId: run.envelope.runId,
     output: { schemaHash: deriveSchemaHash(ReadActiveStatus.output, "output"), value: ACTIVE },
     descriptorVersion: run.envelope.descriptorVersion,
@@ -543,6 +544,7 @@ describe("atomic success terminal authority", () => {
       itemId: running.envelope.itemId,
       nodeId: "crm-dates",
       attempt: running.envelope.attempt,
+      claimGeneration: 1,
       runId: running.envelope.runId,
       output: {
         schemaHash: deriveSchemaHash(ReadOnboardingDatesOutputSchema, "output"),

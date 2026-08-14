@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 13;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 14;
 
 /** The run lifecycle states in which exactly one worker owns the row (doc 02 §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -260,6 +260,11 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   // NODE, so the doc's `step_id` column is `node_id` here. Payloads are
   // system-of-record under D14: pruned only on logical-item deletion, never on
   // the 7-day JSONL clock.
+  //
+  // **This constant is the v3 SHAPE and is frozen there.** D214 added the
+  // `claim_generation` column and widened the uniqueness tuple; that rebuild is
+  // migration v14's own literal SQL, because v3 hashes these exact bytes and a
+  // released migration is immutable. Read v14 for the live shape.
   run_checkpoints: `
     CREATE TABLE run_checkpoints (
       record_key TEXT PRIMARY KEY,
@@ -957,6 +962,57 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEGIN
           SELECT RAISE(ABORT, 'relaunch provenance is never deleted');
         END`,
+    ],
+  },
+  {
+    /*
+     * D214 — a run ATTEMPT is not one execution of its graph, so the checkpoint
+     * identity gains the claim generation that executed the node.
+     *
+     * A gate park and its resume are two executions inside ONE attempt, and an
+     * `always-rerun` node re-executes across that boundary by design (doc 02
+     * §5.3). Under `UNIQUE (workflow, item_id, node_id, attempt)` the second
+     * execution's genuinely different observation collided with the first
+     * execution's row and the immutable insert refused it — so a graph with a
+     * gate upstream of an always-rerun node could not pass its own gate.
+     *
+     * `claim_generation` is NULLABLE and every pre-D214 row copies across as
+     * NULL, because a row written before the component existed does not name an
+     * execution and writing `1` into it would be fabricating a fact nobody
+     * recorded (D133 read-forward). NULLs are distinct under SQLite's UNIQUE, so
+     * the constraint alone would not stop two unrecorded rows for one tuple —
+     * two things make that unreachable: the copied rows were already unique
+     * under the OLD constraint, and `runCheckpoints.insert` refuses a record
+     * carrying no generation, so no further NULL row can ever be written.
+     *
+     * The rebuild is table-copy rather than `ALTER TABLE ADD COLUMN` because a
+     * UNIQUE constraint cannot be widened in place. `record_key` is copied
+     * VERBATIM: `checkpointLookupKey` appends nothing for an absent generation,
+     * so every stored key stays byte-identical and every stored row stays
+     * resolvable by the exact key it was written under.
+     */
+    version: 14,
+    statements: [
+      `CREATE TABLE run_checkpoints_d214 (
+      record_key TEXT PRIMARY KEY,
+      workflow TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      node_id TEXT NOT NULL,
+      attempt INTEGER NOT NULL CHECK (attempt >= 1),
+      claim_generation INTEGER CHECK (claim_generation IS NULL OR claim_generation >= 1),
+      run_id TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      UNIQUE (workflow, item_id, node_id, attempt, claim_generation)
+    ) STRICT`,
+      `INSERT INTO run_checkpoints_d214
+        (record_key, workflow, item_id, node_id, attempt, claim_generation, run_id, record_json, created_at)
+      SELECT record_key, workflow, item_id, node_id, attempt, NULL, run_id, record_json, created_at
+      FROM run_checkpoints`,
+      "DROP TABLE run_checkpoints",
+      "ALTER TABLE run_checkpoints_d214 RENAME TO run_checkpoints",
+      "CREATE INDEX run_checkpoints_item_node_idx ON "
+        + "run_checkpoints(workflow, item_id, node_id, attempt DESC, claim_generation DESC)",
     ],
   },
 ] as const);

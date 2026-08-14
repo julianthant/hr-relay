@@ -71,6 +71,7 @@ function crmDatesCheckpoint(seed: number, provenance: readonly unknown[] = []) {
     itemId: uuidOf(seed + 5000),
     nodeId: "crm-dates",
     attempt: 1,
+    claimGeneration: 1,
     runId: uuidOf(seed),
     output: {
       schemaHash: HASH_A,
@@ -146,6 +147,7 @@ describe("context-data edit projection (2i-C)", () => {
       itemId: uuidOf(5001),
       nodeId: "searching",
       attempt: 1,
+      claimGeneration: 1,
       runId: uuidOf(1),
       output: { schemaHash: HASH_A, value: { selection: { status: "resolved" } } },
       descriptorVersion: 1,
@@ -376,6 +378,7 @@ describe("context-data edit projection (2i-C)", () => {
         itemId: uuidOf(5001),
         nodeId: "searching",
         attempt: 1,
+        claimGeneration: 1,
         runId: uuidOf(1),
         output: { schemaHash: HASH_A, value: { selection: { status: "resolved" } } },
         descriptorVersion: 1,

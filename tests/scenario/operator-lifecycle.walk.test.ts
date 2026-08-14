@@ -407,6 +407,7 @@ function settleOneQueuedRunDone(world: World, descriptor: AnyWorkflowDescriptor)
     itemId: running.run.envelope.itemId,
     nodeId: "probe",
     attempt: running.run.envelope.attempt,
+    claimGeneration: 1,
     runId,
     output: {
       schemaHash: deriveSchemaHash(FixtureReadReceipt.output, "output"),

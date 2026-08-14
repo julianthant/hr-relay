@@ -401,6 +401,7 @@ function terminalizeDone(world: SeedWorld, run: RunRecord, outboxId: string): vo
     itemId: run.envelope.itemId,
     nodeId: "active-status",
     attempt: run.envelope.attempt,
+    claimGeneration: 1,
     runId: run.envelope.runId,
     output: {
       schemaHash: deriveSchemaHash(ReadActiveStatus.output, "output"),

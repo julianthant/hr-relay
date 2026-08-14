@@ -142,6 +142,7 @@ describe("no positional identity", () => {
       itemId: UUID_3,
       nodeId: "searching",
       attempt: 1,
+      claimGeneration: 1,
       runId: UUID_TEXT,
       output: { schemaHash: HASH_A, value: { ok: true } },
       descriptorVersion: 1,

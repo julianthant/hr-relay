@@ -816,6 +816,15 @@ function executeEditCheckpoint(
         patches: nodePatches,
         outputSchema: node.uses.output,
         attempt: current.envelope.attempt,
+        /*
+         * D214 — the generation the RESUMING claim will carry (a claim advances
+         * it by exactly one). This record is validated and thrown away; the
+         * executor mints the durable one under the claim it actually holds, so
+         * nothing here can put a wrong execution id on a stored row. It is
+         * supplied rather than omitted because the applier mints a whole
+         * checkpoint record and a record without it would not parse.
+         */
+        claimGeneration: current.claimGeneration + 1,
         runId: current.envelope.runId,
         writtenAt: now,
       });

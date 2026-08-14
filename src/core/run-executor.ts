@@ -735,6 +735,7 @@ export async function executeClaimedRun(
                 patches: nodePatches,
                 outputSchema: node.uses.output,
                 attempt: envelope.attempt,
+                claimGeneration: claim.claimGeneration,
                 runId,
                 writtenAt: instant(),
               });
@@ -1054,6 +1055,11 @@ export async function executeClaimedRun(
         itemId: envelope.itemId,
         nodeId: String(node.id),
         attempt: envelope.attempt,
+        // D214 — WHICH execution of this attempt produced the row. A gate
+        // resume is a fresh claim, so an `always-rerun` node re-executing after
+        // one writes under a key nothing owns instead of colliding with its own
+        // earlier observation.
+        claimGeneration: claim.claimGeneration,
         runId,
         output: {
           schemaHash: deriveSchemaHash(contract.output, "output"),
@@ -1175,7 +1181,7 @@ export async function executeClaimedRun(
       const need = task.impl.sessions[0];
       for (let taskAttempt = 1; taskAttempt <= attempts; taskAttempt += 1) {
         transitionTo(runningLifecycle(node.id));
-        const spanPath = taskSpanPath(envelope.traceId, node.id, taskAttempt);
+        const spanPath = taskSpanPath(envelope.traceId, node.id, taskAttempt, claim.claimGeneration);
         emit({
           t: "span.started", kind: "task",
           ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,
@@ -1303,7 +1309,7 @@ export async function executeClaimedRun(
             }
             if (!condition) {
               skippedReasons.set(String(node.id), "condition-false");
-              const spanPath = taskSpanPath(envelope.traceId, node.id, 1);
+              const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
               emit({
                 t: "span.started", kind: "task",
                 ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,

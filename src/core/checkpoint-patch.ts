@@ -65,6 +65,8 @@ export function applyCheckpointPatches(input: Readonly<{
   patches: readonly CheckpointPatch[];
   outputSchema: z.ZodType;
   attempt: number;
+  /** D214 — the execution minting this row; see `RunCheckpointRecordSchema`. */
+  claimGeneration: number;
   runId: string;
   writtenAt: string;
 }>): AppliedCheckpointPatches {
@@ -118,6 +120,7 @@ export function applyCheckpointPatches(input: Readonly<{
     itemId: replayed.itemId,
     nodeId: replayed.nodeId,
     attempt: input.attempt,
+    claimGeneration: input.claimGeneration,
     runId: RunIdSchema.parse(input.runId),
     output: { schemaHash: replayed.output.schemaHash, value: JsonValueSchema.parse(parsed) },
     descriptorVersion: replayed.descriptorVersion,

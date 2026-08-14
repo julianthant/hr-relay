@@ -254,6 +254,7 @@ function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
     itemId: seeded.envelope.itemId,
     nodeId: "comparison",
     attempt: 1,
+    claimGeneration: 1,
     runId: RUN_ID,
     output: {
       schemaHash: deriveSchemaHash(MatchIdentityOutputSchema, "output"),

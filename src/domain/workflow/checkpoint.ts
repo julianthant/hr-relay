@@ -63,6 +63,27 @@ export const RunCheckpointRecordSchema = z.strictObject({
   itemId: ItemIdSchema,
   nodeId: NodeIdSchema,
   attempt: PositiveIntSchema,
+  /**
+   * D214 — WHICH EXECUTION of `(item, node, attempt)` produced this row.
+   *
+   * A run attempt is not one execution of its graph: a gate park and its resume
+   * are two, inside one attempt, and an `always-rerun` node re-executes across
+   * that boundary by design (§5.3). Without this component the second execution
+   * writes a genuinely different observation under the first execution's key,
+   * and the immutable insert refuses it — so a graph could not pass its own gate.
+   * The run's `claimGeneration` is the fact that already distinguishes them: it
+   * advances by exactly one on every claim and never resets, a resume IS a fresh
+   * claim (§4), and within one claim the interpreter visits each node once.
+   *
+   * **Optional because it is read forward, never back-filled (D133's rule).**
+   * Rows written before D214 carry none, and under the key those rows were
+   * written under at most ONE row per `(item, node, attempt)` could exist — so
+   * an absent value is reported as absent rather than fabricated as `1`, and
+   * `checkpointLookupKey` omits the component entirely, leaving every stored
+   * pre-D214 `record_key` byte-identical and still resolvable. Every writer from
+   * D214 forward must supply it; the repository refuses an insert that does not.
+   */
+  claimGeneration: PositiveIntSchema.optional(),
   runId: RunIdSchema,
   /** The schema-parsed node output, bound to the hash of the schema that parsed it. */
   output: SchemaBoundCanonicalValueSchema,
@@ -488,19 +509,34 @@ export function migrateCanonicalInputSnapshot(
 }
 
 /**
- * The durable key of a checkpoint row — the logical item plus node plus
- * attempt. The separator is NUL because it cannot appear in any component, so
- * two different tuples can never collide into one key.
+ * The durable key of a checkpoint row — the logical item plus node plus attempt
+ * plus, from D214, the claim generation that executed it. The separator is NUL
+ * because it cannot appear in any component, so two different tuples can never
+ * collide into one key.
+ *
+ * An ABSENT `claimGeneration` appends nothing, which is what keeps every stored
+ * pre-D214 row's key byte-identical and still resolvable (D133 read-forward). It
+ * is not a default: a caller holding the generation must pass it, and a caller
+ * without one is naming a row written before the component existed.
  */
 export function checkpointLookupKey(
   workflowId: string,
   itemId: string,
   nodeId: string,
   attempt: number,
+  claimGeneration?: number,
 ): string {
-  return [workflowId, itemId, nodeId, String(attempt)].join("\u0000");
+  const base = [workflowId, itemId, nodeId, String(attempt)];
+  if (claimGeneration === undefined) return base.join("\u0000");
+  return [...base, String(PositiveIntSchema.parse(claimGeneration))].join("\u0000");
 }
 
 export function checkpointRecordKey(record: RunCheckpointRecord): string {
-  return checkpointLookupKey(record.workflowId, record.itemId, record.nodeId, record.attempt);
+  return checkpointLookupKey(
+    record.workflowId,
+    record.itemId,
+    record.nodeId,
+    record.attempt,
+    record.claimGeneration,
+  );
 }

@@ -86,6 +86,7 @@ function checkpointFrom(
     itemId: "33333333-3333-4333-8333-333333333333",
     nodeId,
     attempt: 1,
+    claimGeneration: 1,
     runId: "aaaaaaaa-0001-4000-8000-000100000000",
     output: {
       schemaHash: deriveSchemaHash(outputSchema, "output"),

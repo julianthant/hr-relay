@@ -366,8 +366,27 @@ export interface AuthorityTerminalizationHooks {
  */
 type RunCheckpointRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<RunCheckpointRecord>;
-  get(workflowId: string, itemId: string, nodeId: string, attempt: number): RunCheckpointRecord | undefined;
+  /**
+   * The exact row. `claimGeneration` names WHICH execution of the attempt
+   * (D214); omitting it names a row stored before that component existed, which
+   * is the only shape that carries no generation.
+   */
+  get(
+    workflowId: string,
+    itemId: string,
+    nodeId: string,
+    attempt: number,
+    claimGeneration?: number,
+  ): RunCheckpointRecord | undefined;
+  /** The LATEST EXECUTION — highest attempt, then highest claim generation. */
   latest(workflowId: string, itemId: string, nodeId: string): RunCheckpointRecord | undefined;
+  /** Every execution of one node inside one attempt, in the order they ran. */
+  listByAttempt(
+    workflowId: string,
+    itemId: string,
+    nodeId: string,
+    attempt: number,
+  ): readonly RunCheckpointRecord[];
   /** Doc 12 §2.3: a receipt explains one logical item across every attempt. */
   listByItem(workflowId: string, itemId: string): readonly RunCheckpointRecord[];
 }>;
@@ -1818,17 +1837,17 @@ export class AuthorityDatabase implements Disposable {
   #assertStoredTerminalDependencies(result: RunResultRecord, current: RunRecord): void {
     for (const dependency of result.dependencies) {
       if (dependency.state === "not-run") {
-        const currentAttemptCheckpoint = this.#readRecord(
-          "run_checkpoints",
-          checkpointLookupKey(
-            result.workflowId,
-            current.envelope.itemId,
-            dependency.nodeId,
-            result.attempt,
-          ),
-          RunCheckpointRecordSchema,
-        );
-        if (currentAttemptCheckpoint !== undefined) {
+        /*
+         * D214: an attempt can hold SEVERAL executions of one node, so "did this
+         * node run at the terminal attempt" is a question about the whole
+         * attempt and not about one key. A count is the only reading that stays
+         * true once a gate resume can add a second row.
+         */
+        const executions = CountRowSchema.parse(this.#database.prepare(`
+          SELECT count(*) AS count FROM run_checkpoints
+          WHERE workflow = ? AND item_id = ? AND node_id = ? AND attempt = ?
+        `).get(result.workflowId, current.envelope.itemId, dependency.nodeId, result.attempt));
+        if (executions.count > 0) {
           throw new Error(
             `terminal dependency ${dependency.nodeId} is marked ${dependency.reason} `
             + "but has a stored checkpoint for the terminal attempt",
@@ -1843,6 +1862,7 @@ export class AuthorityDatabase implements Disposable {
           dependency.checkpoint.itemId,
           dependency.nodeId,
           dependency.checkpoint.attempt,
+          dependency.checkpoint.claimGeneration,
         ),
         RunCheckpointRecordSchema,
       );
@@ -3038,6 +3058,23 @@ export class AuthorityDatabase implements Disposable {
       runCheckpoints: Object.freeze({
         insert: (input: unknown) => {
           const record = RunCheckpointRecordSchema.parse(input);
+          /*
+           * D214: the schema makes `claimGeneration` optional so that rows
+           * stored before the component existed still PARSE (D133 read-forward).
+           * Absence is a fact about history, never a shape a writer may adopt —
+           * a new row that does not name the execution which produced it would
+           * be indistinguishable from a pre-D214 row and could collide with the
+           * next execution exactly as before. Every writer holds the claim it is
+           * running under, so this is a refusal and not a default.
+           */
+          const claimGeneration = record.claimGeneration;
+          if (claimGeneration === undefined) {
+            throw new Error(
+              `run checkpoint ${record.workflowId}/${record.itemId}/${record.nodeId} attempt `
+              + `${String(record.attempt)} names no claim generation; every checkpoint written from D214 `
+              + "forward records WHICH execution of its attempt produced it",
+            );
+          }
           const json = canonicalJsonStringify(record);
           const recordKey = checkpointRecordKey(record);
           return this.#authorityWrite("run_checkpoints", () => {
@@ -3050,34 +3087,58 @@ export class AuthorityDatabase implements Disposable {
             }
             const result = this.#database.prepare(`
               INSERT INTO run_checkpoints
-                (record_key, workflow, item_id, node_id, attempt, run_id, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (record_key, workflow, item_id, node_id, attempt, claim_generation, run_id, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
               recordKey, record.workflowId, record.itemId, record.nodeId,
-              record.attempt, record.runId, json, record.writtenAt,
+              record.attempt, claimGeneration, record.runId, json, record.writtenAt,
             );
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
           });
         },
-        get: (workflowId: string, itemId: string, nodeId: string, attempt: number) => this.#readRecord(
+        get: (
+          workflowId: string,
+          itemId: string,
+          nodeId: string,
+          attempt: number,
+          claimGeneration?: number,
+        ) => this.#readRecord(
           "run_checkpoints",
-          checkpointLookupKey(workflowId, itemId, nodeId, attempt),
+          checkpointLookupKey(workflowId, itemId, nodeId, attempt, claimGeneration),
           RunCheckpointRecordSchema,
         ),
+        /**
+         * D214 — the LATEST EXECUTION, not merely the latest attempt. A NULL
+         * `claim_generation` (a pre-D214 row) sorts last under `DESC` in SQLite,
+         * which is the honest order: any row that names its execution was
+         * written after every row that could not.
+         */
         latest: (workflowId: string, itemId: string, nodeId: string) => {
           const row = this.#database.prepare(`
             SELECT record_json FROM run_checkpoints
             WHERE workflow = ? AND item_id = ? AND node_id = ?
-            ORDER BY attempt DESC LIMIT 1
+            ORDER BY attempt DESC, claim_generation DESC LIMIT 1
           `).get(workflowId, itemId, nodeId);
           if (row === undefined) return undefined;
           return parseJsonRecord(RunCheckpointRecordSchema, JsonRowSchema.parse(row).record_json);
+        },
+        /** Every execution of `(item, node, attempt)`, in the order they ran. */
+        listByAttempt: (workflowId: string, itemId: string, nodeId: string, attempt: number) => {
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM run_checkpoints
+            WHERE workflow = ? AND item_id = ? AND node_id = ? AND attempt = ?
+            ORDER BY claim_generation
+          `).all(WorkflowIdSchema.parse(workflowId), ItemIdSchema.parse(itemId), nodeId, attempt);
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            RunCheckpointRecordSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
         },
         listByItem: (workflowId: string, itemId: string) => {
           const rows = this.#database.prepare(`
             SELECT record_json FROM run_checkpoints
             WHERE workflow = ? AND item_id = ?
-            ORDER BY attempt, node_id
+            ORDER BY attempt, claim_generation, node_id
           `).all(WorkflowIdSchema.parse(workflowId), ItemIdSchema.parse(itemId));
           return Object.freeze(rows.map((row) => parseJsonRecord(
             RunCheckpointRecordSchema,

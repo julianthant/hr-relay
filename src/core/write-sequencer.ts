@@ -740,6 +740,9 @@ function buildTransactionCheckpoint(
     itemId: envelope.itemId,
     nodeId: identity.nodeId,
     attempt: envelope.attempt,
+    // D214 — the execution that settled this write. A committed run holds a
+    // claim by construction, so the generation is the row's own fact.
+    claimGeneration: identity.run.claimGeneration,
     runId: envelope.runId,
     output: {
       schemaHash: TRANSACTION_OUTCOME_SCHEMA_HASH,
@@ -967,6 +970,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       itemId: envelope.itemId,
       nodeId: String(context.node.id),
       attempt: envelope.attempt,
+      claimGeneration: context.run.claimGeneration,
       runId: envelope.runId,
       output: { schemaHash: TRANSACTION_OUTCOME_SCHEMA_HASH, value: JsonValueSchema.parse(outcome) },
       descriptorVersion: context.descriptor.version,

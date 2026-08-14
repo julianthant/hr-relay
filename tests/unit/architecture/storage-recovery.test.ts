@@ -217,6 +217,7 @@ function seedTerminalAuthority(database: AuthorityDatabase) {
     itemId: done.run.envelope.itemId,
     nodeId: "active-status",
     attempt: done.run.envelope.attempt,
+    claimGeneration: 1,
     runId: done.run.envelope.runId,
     output: {
       schemaHash: deriveSchemaHash(ReadActiveStatus.output, "output"),

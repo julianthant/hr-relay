@@ -183,9 +183,28 @@ export function runSpanPath(traceId: TraceId): string {
   return traceId;
 }
 
-/** Task span path: `<traceId>/<nodeId>#<taskAttempt>` (doc 02 §6). */
-export function taskSpanPath(traceId: TraceId, nodeId: NodeId, taskAttempt: number): string {
-  return `${traceId}/${nodeId}#${String(PositiveIntSchema.parse(taskAttempt))}`;
+/**
+ * Task span path: `<traceId>/<nodeId>#<claimGeneration>.<taskAttempt>`
+ * (doc 02 §6, D214).
+ *
+ * The claim generation is what makes two executions of ONE node inside one run
+ * attempt distinguishable. A gate park and its resume are two claims, and an
+ * `always-rerun` node re-executes across that boundary — before D214 both
+ * executions emitted the same path, so the projector's `(runId, attempt,
+ * spanPath)` fold and the timeline's React seed each collapsed two genuinely
+ * different executions into one (the D123 lesson, one level further in).
+ *
+ * The node id is still everything before the LAST `#`, which is what every
+ * reader parses, so nothing that reads a stored pre-D214 stream breaks.
+ */
+export function taskSpanPath(
+  traceId: TraceId,
+  nodeId: NodeId,
+  taskAttempt: number,
+  claimGeneration: number,
+): string {
+  return `${traceId}/${nodeId}#${String(PositiveIntSchema.parse(claimGeneration))}`
+    + `.${String(PositiveIntSchema.parse(taskAttempt))}`;
 }
 
 /** Worker span path: `worker/<workflow>/<workerId>` (doc 03 §1.1's example form). */

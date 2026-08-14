@@ -120,6 +120,7 @@ function provenance(
 function checkpoint(input: Readonly<{
   nodeId: string;
   attempt: number;
+  claimGeneration: 1,
   schema: Parameters<typeof deriveSchemaHash>[0];
   value: unknown;
   provenance: readonly unknown[];
@@ -130,6 +131,7 @@ function checkpoint(input: Readonly<{
     itemId: EXIT_ITEM_ID,
     nodeId: input.nodeId,
     attempt: input.attempt,
+    claimGeneration: 1,
     runId: EXIT_RUN_ID,
     output: { schemaHash: deriveSchemaHash(input.schema, "output"), value: input.value },
     descriptorVersion: personLookupDescriptor.version,
@@ -215,6 +217,7 @@ export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExit
   const searching = checkpoint({
     nodeId: "searching",
     attempt: 1,
+    claimGeneration: 1,
     schema: SearchPersonOrg.output,
     value: SEARCH_OUTPUT,
     provenance: provenance(
@@ -231,6 +234,7 @@ export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExit
   const crossVerify = checkpoint({
     nodeId: "cross-verify",
     attempt: 2,
+    claimGeneration: 1,
     schema: CrmReadOnboardingRecord.output,
     value: CRM_OUTPUT,
     provenance: provenance(
@@ -243,6 +247,7 @@ export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExit
   const activeStatus = checkpoint({
     nodeId: "active-status",
     attempt: 2,
+    claimGeneration: 1,
     schema: ReadActiveStatus.output,
     value: ACTIVE_STATUS_OUTPUT,
     provenance: provenance(["state", "reason", "hdh"], "derived", ACTIVE_STATUS_AT),
@@ -376,6 +381,7 @@ export function kualiReceiptEvidence(): KualiReceiptEvidence {
     itemId: KUALI_ITEM_ID,
     nodeId: "annotate-timekeeper",
     attempt: 1,
+    claimGeneration: 1,
     runId: KUALI_RUN_ID,
     output: {
       schemaHash: deriveSchemaHash(TransactionOutcomeSchema, "output"),
@@ -553,6 +559,7 @@ export function identityGateReceiptEvidence(): IdentityGateReceiptEvidence {
     itemId: GATE_ITEM_ID,
     nodeId: "approval",
     attempt: 1,
+    claimGeneration: 1,
     runId: GATE_RUN_ID,
     output: {
       schemaHash: deriveSchemaHash(SeparationsVerifyIdentityApproval.output, "output"),

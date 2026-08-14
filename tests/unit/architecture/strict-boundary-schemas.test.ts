@@ -348,6 +348,7 @@ const RUN_CHECKPOINT = {
   itemId: "33333333-3333-4333-8333-333333333333",
   nodeId: "searching",
   attempt: 1,
+  claimGeneration: 1,
   runId: "22222222-2222-4222-8222-222222222222",
   output: { schemaHash: "a".repeat(64), value: { verified: true } },
   descriptorVersion: 1,

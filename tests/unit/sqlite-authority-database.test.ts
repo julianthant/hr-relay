@@ -213,6 +213,7 @@ const RUN_CHECKPOINT = {
   itemId: UUID_3,
   nodeId: "searching",
   attempt: 1,
+  claimGeneration: 1,
   runId: UUID_1,
   output: SCHEMA_BOUND_VALUE,
   descriptorVersion: 1,
@@ -384,6 +385,7 @@ function terminalSuccessRequest(database: AuthorityDatabase, run: ReturnType<typ
     itemId: run.envelope.itemId,
     nodeId: "active-status",
     attempt: run.envelope.attempt,
+    claimGeneration: run.claimGeneration,
     runId: run.envelope.runId,
     output: {
       schemaHash: deriveSchemaHash(ReadActiveStatus.output, "output"),
@@ -400,6 +402,7 @@ function terminalSuccessRequest(database: AuthorityDatabase, run: ReturnType<typ
     checkpoint.itemId,
     checkpoint.nodeId,
     checkpoint.attempt,
+    checkpoint.claimGeneration,
   ) === undefined) {
     database.authority.runCheckpoints.insert(checkpoint);
   }

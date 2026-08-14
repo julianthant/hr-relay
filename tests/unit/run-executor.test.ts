@@ -150,14 +150,14 @@ describe("person-lookup full walk", () => {
       "outcome" in event ? event.outcome : "",
     ]);
     assert.deepEqual(spans, [
-      ["span.started", taskSpanPath(trace, node("searching"), 1), ""],
-      ["span.ended", taskSpanPath(trace, node("searching"), 1), "done"],
-      ["span.started", taskSpanPath(trace, node("cross-verify"), 1), ""],
-      ["span.ended", taskSpanPath(trace, node("cross-verify"), 1), "done"],
-      ["span.started", taskSpanPath(trace, node("active-status"), 1), ""],
-      ["span.ended", taskSpanPath(trace, node("active-status"), 1), "done"],
-      ["span.started", taskSpanPath(trace, node("crm-dates"), 1), ""],
-      ["span.ended", taskSpanPath(trace, node("crm-dates"), 1), "skipped"],
+      ["span.started", taskSpanPath(trace, node("searching"), 1, 1), ""],
+      ["span.ended", taskSpanPath(trace, node("searching"), 1, 1), "done"],
+      ["span.started", taskSpanPath(trace, node("cross-verify"), 1, 1), ""],
+      ["span.ended", taskSpanPath(trace, node("cross-verify"), 1, 1), "done"],
+      ["span.started", taskSpanPath(trace, node("active-status"), 1, 1), ""],
+      ["span.ended", taskSpanPath(trace, node("active-status"), 1, 1), "done"],
+      ["span.started", taskSpanPath(trace, node("crm-dates"), 1, 1), ""],
+      ["span.ended", taskSpanPath(trace, node("crm-dates"), 1, 1), "skipped"],
       ["span.ended", trace, "done"],
     ]);
 
@@ -280,10 +280,10 @@ describe("failure, retry, and resume", () => {
       .filter((event) => event.spanPath.includes("/cross-verify#"))
       .map((event) => [event.t, event.spanPath, "outcome" in event ? event.outcome : ""]);
     assert.deepEqual(crossVerifySpans, [
-      ["span.started", taskSpanPath(trace, node("cross-verify"), 1), ""],
-      ["span.ended", taskSpanPath(trace, node("cross-verify"), 1), "failed"],
-      ["span.started", taskSpanPath(trace, node("cross-verify"), 2), ""],
-      ["span.ended", taskSpanPath(trace, node("cross-verify"), 2), "done"],
+      ["span.started", taskSpanPath(trace, node("cross-verify"), 1, 1), ""],
+      ["span.ended", taskSpanPath(trace, node("cross-verify"), 1, 1), "failed"],
+      ["span.started", taskSpanPath(trace, node("cross-verify"), 2, 1), ""],
+      ["span.ended", taskSpanPath(trace, node("cross-verify"), 2, 1), "done"],
     ]);
   });
 

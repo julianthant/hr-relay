@@ -150,6 +150,9 @@ describe("D144 — a transaction node can be a terminal dependency", () => {
         workflowId: KUALI_WORKFLOW_ID,
         itemId: KUALI_ITEM_ID,
         attempt: 1,
+        // D214 — the evidence cites the EXECUTION, and the sequencer settled
+        // this write under the run's first (and only) claim.
+        claimGeneration: stored.claimGeneration,
         runId: KUALI_RUN_ID,
       },
       outputSchemaHash: stored.output.schemaHash,

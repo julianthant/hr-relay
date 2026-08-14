@@ -1252,7 +1252,10 @@ Every resumable read node declares `replay` explicitly — **no default**:
   neither uses a read-node replay policy.
   Read checkpoints replay only after re-validation **and the freshness walk (§5.5)**.
 - `"always-rerun"` — output is volatile (live-page dupe probes) or a cheap pure derivation.
-  Stored for audit but never replayed.
+  Stored for audit but never replayed. **Stored PER EXECUTION** (D214, §5.7): an attempt can execute
+  such a node more than once — a gate park and its resume are two claims — and each execution is its
+  own immutable row keyed by the claim generation that produced it. Two executions of one attempt are
+  two observations, and folding them onto one key made the second one a refusal.
 
 **Write gating derives from node shape and contract effects.** A commit contract cannot be added by
 `.step`; it is accepted only in `transaction.commit`, where `probePolicy` is required. A committed
@@ -1394,6 +1397,46 @@ CREATE TABLE run_checkpoints (
 );
 ```
 
+> **A run ATTEMPT is not one execution of its graph, so the checkpoint identity carries the CLAIM
+> GENERATION that executed the node (D214, 2026-08-14).** A gate park and its resume are two
+> executions inside ONE attempt — §4's resolution re-enqueues the run and the fresh claim is the same
+> attempt, by design — and an `always-rerun` node re-executes across that boundary, also by design
+> (§5.3). Under `(workflow, item_id, node_id, attempt)` the second execution's genuinely different
+> observation landed on the first execution's key and the immutable insert refused it by name, so a
+> graph with an `always-rerun` node upstream of a gate **could not pass its own gate**. Separations
+> chunk 6b found it live: run `00419600` read thirteen nodes, parked, took a real approval, resumed,
+> and died one node later; its sibling `6a6c6f44` survived only because a killed worker had bumped
+> the attempt, and a crash is not a recovery path.
+>
+> The durable key is now `(workflow, item_id, node_id, attempt, claim_generation)`. **The generation
+> is not invented for this** — `RunRecord.claimGeneration` already advances by exactly one on every
+> claim and never resets, a resume IS a fresh claim, and the interpreter visits each node at most
+> once per claim, so it distinguishes exactly the executions that need distinguishing and nothing
+> else. The three rejected alternatives are worth naming: writing NO checkpoint for an `always-rerun`
+> node contradicts §5.3's "stored for audit" and strands D110/D114 terminal evidence and D115
+> downstream provenance; ADVANCING THE ATTEMPT on resume would rewrite an immutable envelope and
+> re-label a park as a retry; and UPDATING or deleting-and-reinserting the row is the exact
+> overwrite D144/D199 refuse.
+>
+> Four properties come with it. **(1) Read forward, never back-filled (D133).** The field is optional
+> and `checkpointLookupKey` appends NOTHING when it is absent, so every row stored before D214 keeps a
+> byte-identical `record_key` and stays resolvable; writing `1` into one would fabricate a fact nobody
+> recorded, and under the old key at most one row per `(item, node, attempt)` could exist anyway.
+> A WRITER may not adopt that shape: `runCheckpoints.insert` refuses a record naming no generation,
+> which is also what keeps SQLite's distinct-NULL UNIQUE from admitting a second unrecorded row.
+> **(2) Replay is unchanged for `replay:"checkpoint"` nodes** — they still replay their one stored
+> row, and `latest` now means the latest EXECUTION (highest attempt, then highest generation; an
+> unrecorded generation sorts last, because any row that names one was written after every row that
+> could not). **(3) Terminal evidence cites the execution the run consumed**, and authority re-reads
+> that exact key before it will settle: `ResolvedTerminalDependency.checkpoint` carries the
+> generation, and the `not-run` contradiction check counts EVERY execution of the attempt rather than
+> probing one key. **(4) The span path carries it too** (§6), so the two executions are two rows on
+> the timeline instead of one.
+>
+> Migration **v14** rebuilds `run_checkpoints` (a UNIQUE constraint cannot be widened in place),
+> copying `record_key` verbatim and every pre-D214 generation as `NULL`. The v3 DDL constant is
+> frozen where it is, because a released migration hashes its exact bytes.
+
 - Latest compatible attempt wins. Any descriptor/contract/implementation fingerprint mismatch
   refuses resume unless a checked-in, version-to-version checkpoint migration parses and records
   the transformed payload. Output-schema equality alone is insufficient: changed selection/bind
@@ -1446,8 +1489,12 @@ storage, SSE. This section keeps only the engine-side semantics that doc 02 owns
 - **Span identity + path grammar.** The proven trace id is kept byte-for-byte
   (`<code>-<HHMMSS>-<runId4>`, frozen once, root-prefix propagation, retry inherits it). Span
   identity is `(runId, attempt, spanPath)` with readable path-style ids — `pl-104233-9f3e`
-  (run) → `pl-104233-9f3e/searching#2` (task, `#attempt`). `/` never appears in trace ids, so
-  everything stays greppable.
+  (run) → `pl-104233-9f3e/searching#1.2` (task, `#<claimGeneration>.<taskAttempt>`). `/` never
+  appears in trace ids, so everything stays greppable. **The claim generation is part of the path
+  (D214)**: two executions of one node inside one run attempt — a gate park and its resume — used to
+  emit the same path, so the queue projection's `(runId, attempt, spanPath)` fold and the timeline's
+  React seed each collapsed two genuinely different executions into one row. The node id is still
+  everything before the LAST `#`, which is what every reader parses.
 - **What the engine brackets.** The engine opens/closes a node span around graph execution; a
   transaction contains separate prepare and commit child task spans under one lease. It emits
   `gate.opened`/`gate.resolved` at §4's park

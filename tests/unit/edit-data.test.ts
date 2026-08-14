@@ -162,6 +162,7 @@ const REPLAYED: RunCheckpointRecord = RunCheckpointRecordSchema.parse({
   itemId: QUEUED_RUN.envelope.itemId,
   nodeId: "extract",
   attempt: 1,
+  claimGeneration: 1,
   runId: RUN_ID,
   output: { schemaHash: deriveSchemaHash(EditOutput, "output"), value: OUTPUT_VALUE },
   descriptorVersion: 1,
@@ -184,6 +185,7 @@ describe("applyCheckpointPatches", () => {
       patches: [PATCH],
       outputSchema: EditOutput,
       attempt: 2,
+      claimGeneration: 1,
       runId: RUN2_ID,
       writtenAt: "2026-08-08T13:01:00.000Z",
     });
@@ -208,6 +210,7 @@ describe("applyCheckpointPatches", () => {
       patches: [{ ...PATCH, value: "not-an-eid" }],
       outputSchema: EditOutput,
       attempt: 2,
+      claimGeneration: 1,
       runId: RUN2_ID,
       writtenAt: NOW,
     }));
@@ -220,6 +223,7 @@ describe("applyCheckpointPatches", () => {
         patches: [{ ...PATCH, fieldPath: ContractFieldPathSchema.parse("salary.rate") }],
         outputSchema: EditOutput,
         attempt: 2,
+        claimGeneration: 1,
         runId: RUN2_ID,
         writtenAt: NOW,
       }),
@@ -445,8 +449,17 @@ describe("executor consume — injected corrections at replay", () => {
     const corrected = await executeClaimedRun(harness.deps, { ...second, signal: SIGNAL });
     assert.equal(corrected.state, "done");
 
-    const row = database.authority.runCheckpoints.get(String(descriptor.id), QUEUED_RUN.envelope.itemId, "extract", 2);
+    // D214 — the corrected row is keyed by the EXECUTION that minted it: the
+    // claim run 2 actually holds, read off the run row rather than assumed.
+    const row = database.authority.runCheckpoints.get(
+      String(descriptor.id),
+      QUEUED_RUN.envelope.itemId,
+      "extract",
+      2,
+      second.claim.claimGeneration,
+    );
     assert.ok(row !== undefined);
+    assert.equal(row.claimGeneration, second.claim.claimGeneration);
     assert.deepEqual(row.output.value, { ...OUTPUT_VALUE, eid: "10999999" });
     const fact = row.provenance.find((entry) => String(entry.path) === "eid");
     assert.equal(fact?.source, "operator");

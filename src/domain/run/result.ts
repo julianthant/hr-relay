@@ -32,6 +32,13 @@ export const ResolvedTerminalDependencySchema = z.strictObject({
     workflowId: WorkflowIdSchema,
     itemId: ItemIdSchema,
     attempt: PositiveIntSchema,
+    /**
+     * D214 — WHICH execution of that attempt this evidence cites. Optional for
+     * the same read-forward reason the checkpoint row's own field is (D133): a
+     * result stored before D214 names a row that carries no generation, and its
+     * lookup key omits the component exactly as the stored row's key does.
+     */
+    claimGeneration: PositiveIntSchema.optional(),
     runId: RunIdSchema,
   }),
   outputSchemaHash: FingerprintSchema,

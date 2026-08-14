@@ -303,9 +303,18 @@ function pickCheckpoint(
   nodeId: string,
   attempt: number,
 ): RunCheckpointRecord | undefined {
+  /*
+   * D214 — an attempt can hold several EXECUTIONS of one node (a gate resume is
+   * a fresh claim and an `always-rerun` node re-executes across it), so the tie
+   * inside one attempt is broken by the claim generation. A row that names no
+   * generation predates the component, and every row that names one was written
+   * after it, so absence sorts LAST — the same order the authority index uses.
+   */
   return records
     .filter((record) => record.nodeId === nodeId && record.attempt <= attempt)
-    .sort((left, right) => right.attempt - left.attempt)[0];
+    .sort((left, right) =>
+      right.attempt - left.attempt
+      || (right.claimGeneration ?? 0) - (left.claimGeneration ?? 0))[0];
 }
 
 export function buildRunEvidenceReceipt(input: ReceiptBuildInput): RunEvidenceReceipt {
