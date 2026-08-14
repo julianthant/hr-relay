@@ -85,7 +85,7 @@ import { isLiveWorker } from "../domain/run/worker.js";
 import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../domain/schema-bound-value.js";
 import type { WriteIntentRecord } from "../domain/write-safety.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
-import { resolveInstances, supportsDryRun } from "../services/start/plan.js";
+import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../services/start/plan.js";
 
 /* ── the Phase-1f arm partition (doc 03 §Phase-1f authority) ─────────────── */
 
@@ -1403,11 +1403,7 @@ function executeIntake(
       const projection = requireProjection();
       const descriptor = resolveDescriptorOrReject(dependencies, request, current.workflow);
       if (request.payload.dryRun && !supportsDryRun(descriptor)) {
-        reject(
-          request,
-          "policy-refused",
-          `${current.workflow} declares no dry-run boundary; enqueue this file for real or not at all`,
-        );
+        reject(request, "policy-refused", dryRunRefusalMessage(descriptor));
       }
       const layout = currentLayout();
       const planning = workflowPlanning(descriptor);

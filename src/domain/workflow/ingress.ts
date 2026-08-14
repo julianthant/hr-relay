@@ -323,6 +323,15 @@ export function assertFileAccepted(accepts: readonly FileAcceptSpec[], file: Upl
 export const InputRunSurfaceSchema = z.strictObject({
   placeholder: z.string().min(1),
   parser: InputParserSpecSchema,
+  /**
+   * **DERIVED, never authored (D209).** `defineWorkflowDescriptor` stamps this
+   * from the graph — every transaction node declaring `dryRun:"stop-after-prepare"`
+   * — and REFUSES a descriptor that declares it, because whether a workflow can
+   * be previewed is a property of what it writes, not of how an operator types
+   * into it. It stays on this surface because the run-start surface composes
+   * `surfaces.inputRun` client-side off the bundled descriptor and reads the flag
+   * there; the value that reader sees is now the graph's answer.
+   */
   supportsDryRun: z.boolean().optional(),
   emptyOpensUpload: z.boolean().optional(),
 });

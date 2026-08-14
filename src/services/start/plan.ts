@@ -12,7 +12,7 @@
  * silently planning three. Dropping the fourth would be the same failure mode
  * as a fallback: the operator would act on a lie.
  */
-import { workflowPlanning, workflowProjections } from "../../base/workflow.js";
+import { workflowDryRunSupport, workflowPlanning, workflowProjections } from "../../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../base/workflow.js";
 import { JsonValueSchema } from "../../domain/canonical-json.js";
 import type { JsonValue } from "../../domain/canonical-json.js";
@@ -96,9 +96,33 @@ export function resolveInstances(
   return InstanceSelectionSchema.parse(resolved);
 }
 
-/** Whether the descriptor's own start surface offers a dry run at all (doc 02 §2). */
+/**
+ * Whether this GRAPH can be previewed (doc 02 §2, D209) — never whether it has
+ * a paste-a-line input surface. The derivation lives on the descriptor's own
+ * projection so the planner, the command kernel and the explorer wire all read
+ * ONE answer.
+ */
 export function supportsDryRun(descriptor: AnyWorkflowDescriptor): boolean {
-  return descriptor.surfaces.inputRun?.supportsDryRun === true;
+  return workflowDryRunSupport(descriptor).state === "supported";
+}
+
+/**
+ * The refusal a dry-run start earns, in the graph's own words. The two arms are
+ * genuinely different situations and a single message would misdescribe one of
+ * them: a read-only graph HAS no write to stop before, while a write graph with
+ * an `unsupported` transaction node has one and declares no preview arm for it.
+ */
+export function dryRunRefusalMessage(descriptor: AnyWorkflowDescriptor): string {
+  const support = workflowDryRunSupport(descriptor);
+  if (support.state === "supported") {
+    throw new Error(`${descriptor.id} supports a dry run; there is no refusal to describe`);
+  }
+  if (support.reason === "no-transaction-node") {
+    return `${descriptor.id} has no transaction node, so a dry run would be indistinguishable from a real `
+      + "run; start it for real or not at all";
+  }
+  return `${descriptor.id} transaction node "${support.nodeId}" declares dryRun:"unsupported"; `
+    + "start it for real or not at all";
 }
 
 export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): StartPlanRecord {
@@ -142,7 +166,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     };
 
     if (request.dryRun && !supportsDryRun(descriptor)) {
-      refuse("dry-run-unsupported", `${descriptor.id} declares no dry-run boundary; start it for real or not at all`);
+      refuse("dry-run-unsupported", dryRunRefusalMessage(descriptor));
       continue;
     }
 

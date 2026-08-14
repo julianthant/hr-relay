@@ -306,6 +306,63 @@ export interface WorkflowProjections {
   /** Registered graph scenarios unioned with every used task contract's scenarios. */
   readonly scenarios: readonly ScenarioId[];
   readonly contracts: readonly AnyTaskContract[];
+  /** D209 — whether this GRAPH can be previewed, and where a preview stops. */
+  readonly dryRun: WorkflowDryRunSupport;
+}
+
+/**
+ * D209 — dry-runnability is a property of the GRAPH, not of the start surface.
+ *
+ * The question a start plan asks is "can this workflow be run without touching a
+ * live HR system", and only the node tuple can answer it: a transaction node is
+ * the one node kind that can commit externally, and its own `dryRun` declaration
+ * says whether it has a preview arm. Binding the answer to
+ * `surfaces.inputRun?.supportsDryRun` bound it instead to whether an operator can
+ * paste a line into a textbox, which is why all three registered write workflows
+ * — every one of them `surfaces: {}` by design — were structurally un-previewable
+ * through the pipeline (`docs/migrations/separations.md` §9.9 gap 1).
+ *
+ * A graph with NO transaction node is `no-transaction-node`, which is a REFUSAL
+ * and not a trivial yes: a dry run of such a graph is byte-for-byte an ordinary
+ * run, so answering "supported" would silently redefine what the operator asked
+ * for. Refusing names the reason instead.
+ */
+export type WorkflowDryRunSupport =
+  | Readonly<{
+    state: "supported";
+    /** The first transaction node; a preview stops there (doc 01 §10.1). */
+    stopsAt: string;
+  }>
+  | Readonly<{ state: "unsupported"; reason: "no-transaction-node" }>
+  | Readonly<{
+    state: "unsupported";
+    reason: "node-declares-unsupported";
+    /** The FIRST transaction node that declares no preview arm. */
+    nodeId: string;
+  }>;
+
+/**
+ * Every transaction node must declare `stop-after-prepare`, not just the first
+ * one a preview would reach. A graph whose second write says `unsupported` is a
+ * graph that cannot be previewed to its end, and reporting it as previewable
+ * because the run happens to stop earlier is the same class of true-about-the-
+ * wrong-thing statement D205 was written about. The first offender is named.
+ */
+function deriveDryRunSupport(nodes: readonly RuntimeFlowNode[]): WorkflowDryRunSupport {
+  const transactions = nodes.filter((node) => node.kind === "transaction");
+  const [first] = transactions;
+  if (first === undefined) return Object.freeze({ state: "unsupported", reason: "no-transaction-node" });
+  for (const node of transactions) {
+    if (node.dryRun !== "stop-after-prepare") {
+      return Object.freeze({ state: "unsupported", reason: "node-declares-unsupported", nodeId: String(node.id) });
+    }
+  }
+  return Object.freeze({ state: "supported", stopsAt: String(first.id) });
+}
+
+/** The ONE derivation every consumer shares — the projection computes it once. */
+export function workflowDryRunSupport(descriptor: AnyWorkflowDescriptor): WorkflowDryRunSupport {
+  return workflowProjections(descriptor).dryRun;
 }
 
 /**
@@ -829,10 +886,32 @@ export function defineWorkflowDescriptor<
     .flatMap((contract) => contract.requires ?? [])
     .map((name) => SecretNameSchema.parse(name)))].sort());
 
+  const dryRun = deriveDryRunSupport(nodes);
+  /**
+   * D209 — `supportsDryRun` is DERIVED here and may not be authored. The
+   * dashboard's run-start surface composes `surfaces.inputRun` client-side off
+   * the bundled descriptor, so the flag has to keep existing where that reader
+   * looks; what changes is that the graph, not the author, decides its value.
+   * An authored one is refused rather than overwritten — silently replacing a
+   * declaration is how a descriptor comes to say one thing and mean another.
+   */
+  if (spec.surfaces.inputRun !== undefined && "supportsDryRun" in spec.surfaces.inputRun) {
+    throw new Error(
+      `${id}: surfaces.inputRun.supportsDryRun is derived from the graph (D209) and cannot be authored; `
+      + "delete it — whether this workflow can be previewed is decided by its transaction nodes",
+    );
+  }
+  const surfaces = Object.freeze({
+    ...spec.surfaces,
+    ...(spec.surfaces.inputRun === undefined
+      ? {}
+      : { inputRun: Object.freeze({ ...spec.surfaces.inputRun, supportsDryRun: dryRun.state === "supported" }) }),
+  });
   const descriptor: WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D> = Object.freeze({
     ...spec,
     id,
     contractFingerprint,
+    surfaces,
     input: spec.flow.input,
     result: spec.flow.result,
     nodes: spec.flow.nodes,
@@ -845,6 +924,7 @@ export function defineWorkflowDescriptor<
     requires,
     coveragePoints: deriveGraphCoveragePoints(nodes),
     scenarios,
+    dryRun,
     contracts: Object.freeze(contracts),
   }));
   PLANNING.set(descriptor, Object.freeze({

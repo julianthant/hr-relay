@@ -21,7 +21,16 @@ import {
 } from "../../src/domain/run/start-plan.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { buildQueuedRun } from "../../src/services/runs/enqueue.js";
-import { planStart, resolveInstances, supportsDryRun } from "../../src/services/start/plan.js";
+import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../src/base/workflow.js";
+import {
+  dryRunRefusalMessage,
+  planStart,
+  resolveInstances,
+  supportsDryRun,
+} from "../../src/services/start/plan.js";
+import { kualiTimekeeperAnnotationDescriptor } from "../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations-kuali-finalization/descriptor.js";
+import { separationsUcpathTerminationDescriptor } from "../../src/workflows/separations-ucpath-termination/descriptor.js";
 import {
   PersonLookupCanonicalInput,
   PersonLookupInput,
@@ -29,6 +38,11 @@ import {
 } from "../../src/workflows/person-lookup/descriptor.js";
 import { HASH_A, HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import {
+  defineAuthoredDryRunDescriptor,
+  WRITE_FIXTURE_NODE_ID,
+  writeFixtureDescriptorWithoutDryRunArm,
+} from "./fixtures/write-sequencer-fixtures.js";
 
 const CLOCK = manualClock(new Date(NOW));
 const PLAN_TTL_MS = 10 * 60 * 1000;
@@ -207,13 +221,65 @@ describe("start planning", () => {
     assert.match(plan.refused[0].message, /pl-170000-aaaa/);
   });
 
-  it("refuses a dry run the descriptor does not offer", () => {
+  it("refuses a dry run the GRAPH does not offer, and says which fact refused it (D209)", () => {
     const database = openDatabase();
+    // Person Lookup is read-only. A dry run of it would execute exactly the same
+    // nodes as a real run, so "supported" would silently redefine the request.
     assert.equal(supportsDryRun(personLookupDescriptor), false);
+    assert.deepEqual(workflowDryRunSupport(personLookupDescriptor), {
+      state: "unsupported",
+      reason: "no-transaction-node",
+    });
     const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }], { dryRun: true }));
     assert.equal(plan.planned.length, 0);
     assert.equal(plan.refused[0].code, "dry-run-unsupported");
     assert.deepEqual(plan.refused[0].rawInput, { emplId: "10873698" });
+    assert.match(plan.refused[0].message, /has no transaction node/);
+  });
+
+  /**
+   * D209's whole point, stated as a test on the SHIPPED descriptors: every
+   * registered write workflow carries `surfaces: {}` and every one of them is
+   * now dry-startable, because the question is what the graph writes rather than
+   * whether an operator can paste a line into a textbox.
+   */
+  it("makes all three registered write workflows dry-startable through the graph (D209)", () => {
+    for (const descriptor of [
+      kualiTimekeeperAnnotationDescriptor,
+      separationsUcpathTerminationDescriptor,
+      separationsKualiFinalizationDescriptor,
+    ]) {
+      assert.deepEqual(descriptor.surfaces, {}, `${descriptor.id} still has no input surface`);
+      assert.equal(supportsDryRun(descriptor), true, `${descriptor.id} must be previewable`);
+      const support = workflowDryRunSupport(descriptor);
+      assert.equal(support.state, "supported");
+      // The stop node is the FIRST transaction node, which is where doc 01
+      // §10.1 says a preview ends.
+      const firstTransaction = descriptorRuntimeNodes(descriptor)
+        .find((node) => node.kind === "transaction");
+      assert.ok(firstTransaction);
+      assert.equal(support.state === "supported" ? support.stopsAt : "", String(firstTransaction.id));
+    }
+  });
+
+  it("refuses a graph whose transaction node declares no preview arm, by node name (D209)", () => {
+    assert.deepEqual(workflowDryRunSupport(writeFixtureDescriptorWithoutDryRunArm), {
+      state: "unsupported",
+      reason: "node-declares-unsupported",
+      nodeId: WRITE_FIXTURE_NODE_ID,
+    });
+    assert.equal(supportsDryRun(writeFixtureDescriptorWithoutDryRunArm), false);
+    assert.match(
+      dryRunRefusalMessage(writeFixtureDescriptorWithoutDryRunArm),
+      new RegExp(`transaction node "${WRITE_FIXTURE_NODE_ID}" declares dryRun:"unsupported"`),
+    );
+  });
+
+  it("refuses an AUTHORED supportsDryRun rather than overwriting it (D209)", () => {
+    assert.throws(
+      () => defineAuthoredDryRunDescriptor(),
+      /surfaces\.inputRun\.supportsDryRun is derived from the graph \(D209\) and cannot be authored/,
+    );
   });
 
   it("resolves every reached system to production unless test is requested", () => {

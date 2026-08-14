@@ -521,7 +521,8 @@ export interface WorkflowDescriptor<
   surfaces: {
     /** Typed-text start (InputRunPanel). Absent ⇒ no input-run affordance. */
     inputRun?: { placeholder: string; parser: InputParserSpec;
-                 supportsDryRun?: boolean; emptyOpensUpload?: boolean };
+                 supportsDryRun?: boolean /* DERIVED — D209, never authored */;
+                 emptyOpensUpload?: boolean };
     /** File-upload start (RunModal). Absent ⇒ no upload-run affordance. */
     uploadRun?: { title: TextTemplate; fields: readonly UploadFieldSpec[];
                   accepts: readonly FileAcceptSpec[]; successMessage: TextTemplate };
@@ -698,6 +699,41 @@ learns goes into the run context (§5), never back into input.
 `dryRun` is **kernel-owned envelope state, never workflow input** (D6): workflow schemas cannot
 declare it, and the executor compiles a dry-run graph with transaction commit arms absent. No
 TaskCtx exposes a dry-run flag.
+
+**Whether a dry run may be STARTED is a property of the GRAPH (D209).** The start plan and the
+command kernel both answer it from one derivation, `workflowDryRunSupport(descriptor)`, computed by
+the descriptor factory over the node tuple and served on `workflowProjections(...).dryRun`:
+
+| graph | answer | what a dry-run start does |
+|---|---|---|
+| every transaction node declares `dryRun: "stop-after-prepare"` | `{state:"supported", stopsAt}` | starts; `stopsAt` is the first transaction node, where the preview ends (doc 01 §10.1) |
+| some transaction node declares `dryRun: "unsupported"` | `{state:"unsupported", reason:"node-declares-unsupported", nodeId}` | refuses `dry-run-unsupported`, naming that node |
+| no transaction node at all | `{state:"unsupported", reason:"no-transaction-node"}` | refuses `dry-run-unsupported`, naming the absence |
+
+Three things this settles, each because the alternative is a lie somewhere:
+
+1. **The old reading — `descriptor.surfaces.inputRun?.supportsDryRun` — asked the wrong question.**
+   It bound previewability to whether the workflow offers a paste-a-line input surface, so all three
+   registered write workflows (each `surfaces: {}` by design, their ingress being many correlated
+   values a line parser cannot invent) were structurally un-startable as dry runs while being exactly
+   the workflows a preview exists for. `docs/migrations/separations.md` §9.9 gap 1 is the measured
+   report of that; chunk 4's dry-run proof had to be driven through a harness because of it.
+2. **Every transaction node must declare the arm, not just the first one a preview would reach.** A
+   run stops at the first, so checking only the first would be a true statement about the wrong
+   thing (D205): a graph whose second write declares `unsupported` cannot be previewed to its end,
+   and the refusal names the first offender.
+3. **A read-only graph REFUSES rather than trivially succeeding.** A dry run of a graph with no
+   transaction node executes byte-for-byte the same nodes as a real run, so answering "supported"
+   would silently redefine what the operator asked for — the same substitution the charter's
+   fail-loud rule bans everywhere else. `person-lookup` therefore keeps refusing, now for the reason
+   that is actually true of it.
+
+`surfaces.inputRun.supportsDryRun` survives as a **derived, un-authorable** field: the run-start
+surface composes `surfaces.inputRun` client-side off the bundled descriptor and reads the flag
+there, so the field has to keep existing where that reader looks. `defineWorkflowDescriptor` stamps
+it from the same derivation and **refuses a descriptor that authors it**, naming the field — an
+authored value is not overwritten, because silently replacing a declaration is how a descriptor
+comes to say one thing and mean another.
 
 ```ts
 // src/domain/run/envelope.ts   (client-safe shape; kernel is the only writer)

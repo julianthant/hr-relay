@@ -469,14 +469,19 @@ describe("D171 enqueue-intake-manifest — the readiness gate", () => {
     assert.equal(database.authority.intakeManifests.findBySource(HASH_A).length, 0);
   });
 
-  it("refuses a dry run the workflow declares no boundary for", () => {
+  it("refuses a dry run the GRAPH cannot offer (D209)", () => {
     const { send, mapAndValidate } = harness();
     send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
     mapAndValidate();
     const result = enqueue(send, true);
     assert.equal(result.state, "rejected");
     assert.equal(result.state === "rejected" ? result.code : "", "policy-refused");
-    assert.match(result.state === "rejected" ? result.message : "", /no dry-run boundary/);
+    // D209 — the refusal names the graph fact, not the absent input surface:
+    // this fixture is read-only, so a preview of it would BE an ordinary run.
+    assert.match(
+      result.state === "rejected" ? result.message : "",
+      /has no transaction node, so a dry run would be indistinguishable from a real run/,
+    );
   });
 
   it("conflicts when the session moved since the plan was reviewed", () => {

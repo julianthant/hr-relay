@@ -400,6 +400,8 @@ interface FixtureDescriptorOptions {
   readonly contractFingerprint?: string;
   readonly version?: number;
   readonly commitEid?: string;
+  /** D209 negative control — a transaction node with no preview arm. */
+  readonly dryRun?: "stop-after-prepare" | "unsupported";
 }
 
 function buildDescriptor(
@@ -416,7 +418,7 @@ function buildDescriptor(
         uses: commitContract,
         bind: ({ input }) => ({ eid: EidSchema.parse(commitEid === undefined ? input.eid : commitEid) }),
       },
-      dryRun: "stop-after-prepare",
+      dryRun: options.dryRun ?? "stop-after-prepare",
       probePolicy: "always",
       probeToFenceMaxMs: 30_000,
     })
@@ -448,6 +450,67 @@ function buildDescriptor(
 }
 
 export const writeFixtureDescriptor = buildDescriptor("receipt");
+
+/**
+ * D209's negative control: the same graph whose one transaction node declares
+ * `dryRun:"unsupported"`. A dry-run start must refuse naming THAT node — the
+ * refusal has to point at the fact that decided it, not at the workflow.
+ */
+export const writeFixtureDescriptorWithoutDryRunArm = buildDescriptor("receipt", {
+  contractFingerprint: FingerprintSchema.parse("d".repeat(64)),
+  dryRun: "unsupported",
+});
+
+/**
+ * D209's other half: a descriptor that AUTHORS `supportsDryRun`. It is a
+ * function rather than a value because construction is what must throw, and a
+ * module-level `const` would take the whole fixture module down with it.
+ */
+export function defineAuthoredDryRunDescriptor(): AnyWorkflowDescriptor {
+  return defineWorkflowDescriptor({
+    id: WorkflowIdSchema.parse("authored-dry-run-fixture"),
+    version: 1,
+    contractFingerprint: FingerprintSchema.parse("e".repeat(64)),
+    code: "ad",
+    label: "Authored Dry Run Fixture",
+    icon: "ShieldCheck",
+    category: "operations",
+    canonicalInput: WriteFixtureCanonicalInput,
+    inputSubject: "eid",
+    surface: { shape: "single" },
+    enqueue: "reject-active",
+    actions: STANDARD_WORKFLOW_ACTIONS,
+    surfaces: {
+      inputRun: {
+        placeholder: "Enter an EID",
+        parser: {
+          split: { kind: "whole-text" },
+          rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "eid" }],
+        },
+        // The one thing D209 refuses: a hand-declared answer to a graph question.
+        supportsDryRun: true,
+      },
+    },
+    details: [],
+    identity: { matchKey: (input) => `eid:${input.eid}` },
+    presentation: { title: (input) => `Authored dry run ${input.eid}` },
+    scenarios: ["write-fixture/happy"],
+    flow: flow(WriteFixtureInput)
+      .transaction(WRITE_FIXTURE_NODE_ID, {
+        dependsOn: [],
+        prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
+        commit: { uses: WriteFixtureCommit, bind: ({ input }) => ({ eid: input.eid }) },
+        dryRun: "stop-after-prepare",
+        probePolicy: "always",
+        probeToFenceMaxMs: 30_000,
+      })
+      .build({
+        schema: z.strictObject({ transactionId: z.string().min(1) }),
+        dependsOn: [WRITE_FIXTURE_NODE_ID],
+        derive: ({ outputs }) => ({ transactionId: outputs[WRITE_FIXTURE_NODE_ID].output.transactionId }),
+      }),
+  });
+}
 export const writeFixtureSaveDescriptor = buildDescriptor("save-verify");
 
 /* ── D136 drift variants ─────────────────────────────────────────────────── */

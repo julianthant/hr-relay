@@ -213,7 +213,6 @@ export const personLookupDescriptor = defineWorkflowDescriptor({
           { field: "includeCrmDates", value: { kind: "boolean", value: false } },
         ],
       },
-      supportsDryRun: false,
     },
   },
   details: [

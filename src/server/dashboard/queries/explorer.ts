@@ -26,7 +26,11 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { workflowProjections, workflowTerminalResultExecution } from "../../../base/workflow.js";
+import {
+  workflowDryRunSupport,
+  workflowProjections,
+  workflowTerminalResultExecution,
+} from "../../../base/workflow.js";
 import { descriptorRuntimeNodes } from "../../../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import type { RegisteredTaskStore } from "../../../base/store.js";
@@ -613,7 +617,10 @@ function workflowWire(
         : {
           state: "declared",
           placeholder: descriptor.surfaces.inputRun.placeholder,
-          supportsDryRun: descriptor.surfaces.inputRun.supportsDryRun === true,
+          // D209 — the graph's answer, through the same derivation the start
+          // plan refuses on. Reading the stamped surface field would agree, but
+          // one call keeps a second reading from ever drifting into existence.
+          supportsDryRun: workflowDryRunSupport(descriptor).state === "supported",
         },
       intake: module.intake === undefined
         ? {

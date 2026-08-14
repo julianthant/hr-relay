@@ -1448,7 +1448,11 @@ export interface SessionProvider<S extends BrowserSystemId> {
 - A prepare task has no `MutationCapability`; a commit task is never invoked in a dry run. Ported
   external-write helpers accept `CommitTaskCtx["mutation"]`, so read/prepare code cannot call them.
 - `dryRun:"unsupported"` belongs on the **transaction node**, not the commit task. The executor
-  rejects such a run before launching a browser.
+  rejects such a run before launching a browser — and so does the START PLAN, because the node
+  declaration is the whole of the answer: **dry-runnability is a property of the graph** (D209, doc
+  02 §2). A graph is previewable when every transaction node declares `stop-after-prepare`; a graph
+  with no transaction node refuses by name rather than trivially succeeding, since previewing it
+  would be indistinguishable from running it.
 - A genuine no-op established by durable history/live prewrite probe short-circuits before commit
   and yields doc 02's typed `TransactionOutcome{disposition:"already-present"}` reconstructed from
   validated proof. The commit impl is not called and no ledger entry claims this run filed it. It is
