@@ -1,7 +1,7 @@
 # run-done--graphite-warm--1280x720
 # adapter: fixture
 # fixture: run-done
-# descriptorHash: c0af42d671c0e7e8b563f39fa3479dbf391df7f03b159804a1c2bc886e9a592a
+# descriptorHash: 7295c22a830aaf14d4616e9db2e42e61c1ab757cdd2518abcd83724b7dafb5c2
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -20,7 +20,6 @@
   - button "Today is the newest day" [disabled]
   - button "Notifications — 1 unread"
   - button "Switch to Paper Ink"
-  - button "UI catalog"
   - button "Settings"
 - main:
   - button "Workflow Panel — Person Lookup, floating window. 5 of 14 rows across every workflow are queued or running today" [expanded]: pl 5

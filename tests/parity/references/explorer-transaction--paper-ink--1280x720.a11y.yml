@@ -1,7 +1,7 @@
 # explorer-transaction--paper-ink--1280x720
 # adapter: fixture
 # fixture: explorer-transaction
-# descriptorHash: c0af42d671c0e7e8b563f39fa3479dbf391df7f03b159804a1c2bc886e9a592a
+# descriptorHash: 7295c22a830aaf14d4616e9db2e42e61c1ab757cdd2518abcd83724b7dafb5c2
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -20,34 +20,68 @@
   - button "Today is the newest day" [disabled]
   - button "Notifications — 1 unread"
   - button "Switch to Graphite Warm"
-  - button "UI catalog"
   - button "Settings"
 - main:
   - region "Workflow explorer":
-    - text: Workflow explorer Separation Document — the as-built graph, read from the registered descriptor Read-only
-    - button "Close the explorer"
-    - group "Registered workflows":
-      - button "person-lookup"
-      - button "kuali-timekeeper-annotation"
-      - button "separations-kronos-timecard"
-      - button "separations-kuali-read" [pressed]
-      - button "separations-identity-check"
-      - button "separations-ucpath-termination"
-      - button "separations-kuali-finalization"
-      - button "separations"
-    - text: code sd category separation version 1 shape single enqueue reject-active subject document system kuali edit data none review no run surface none intake none capture none descriptor src/workflows/separations-kuali-read/descriptor.ts module src/workflows/separations-kuali-read/module.ts contract 0de665ed2459result 74ecc1970f8931 files fingerprinted5 scenarios
-    - navigation "Graph structure":
-      - text: Graph · 2 nodes
+    - button "Back to the dashboard"
+    - text: Explorer read-only
+    - region "Registered workflows":
+      - text: Workflows 8 Separations
       - list:
         - listitem:
-          - button "document Task · 1 contract"
+          - button "Separation 18"
+          - list "Proving harnesses of Separation":
+            - listitem:
+              - button "Separation Document a proving harness of Separation 2"
+            - listitem:
+              - button "Identity Check a proving harness of Separation 5"
+            - listitem:
+              - button "UCPath Termination a proving harness of Separation 8"
+            - listitem:
+              - button "Kuali Finalization a proving harness of Separation 7"
+      - text: Timekeeping
+      - list:
         - listitem:
-          - button "termination-type Task · 1 contract"
-      - text: Result document termination-type
-    - heading "document" [level=3]
-    - text: Task Separation Document Depends on Nothing — this node may start immediately. replay checkpoint condition always runs Detail projections Form formType.observed
-    - region "kuali/read-separation-document": runs kuali/read-separation-document Read Kuali Separation Document Implemented by store kuali kind browser driver kuali Subject binding kind artifact from input documentNumber identity document-id observes kuali.rrss-document.displayed-number match exact required at before-subject-read Errors kuali-unavailable unexpected-page-state document-unavailable document-number-mismatch not-a-separation-document unparseable-date unreadable-eid Freshness default unbounded Provenance default live UI vocabulary screen kuali.rrss-document element kuali.rrss-document.department-field observation kuali.rrss-document.displayed-eid observation kuali.rrss-document.displayed-form-type observation kuali.rrss-document.displayed-number observation kuali.rrss-document.displayed-timekeeper observation kuali.rrss-document.displayed-transaction-number element kuali.rrss-document.eid-field element kuali.rrss-document.employee-name-field element kuali.rrss-document.final-pay-student-radio page-state kuali.rrss-document.finalization-staged element kuali.rrss-document.last-day-worked-field element kuali.rrss-document.location-field element kuali.rrss-document.payroll-title-code-field element kuali.rrss-document.payroll-title-field page-state kuali.rrss-document.ready element kuali.rrss-document.request-acknowledged-checkbox element kuali.rrss-document.separation-date-field page-state kuali.rrss-document.separation-ready element kuali.rrss-document.submitted-template-checkbox element kuali.rrss-document.termination-effective-date-field element kuali.rrss-document.termination-type-field element kuali.rrss-document.timekeeper-comments-field element kuali.rrss-document.timekeeper-field element kuali.rrss-document.transaction-number-field Scenarios separations-kuali-read/reads-a-real-separation-document separations-kuali-read/unprocessed-document-absent-arms separations-kuali-read/non-separation-document Source contract src/domain/contracts/kuali/read-separation-document.ts impl src/stores/kuali/tasks/read-separation-document.ts input 5bb0d8b402b3output e3ac2b78779fimpl 5df6f229f4fa
-    - region "Scenarios": Scenarios separations-kuali-read/non-separation-document walks tests/scenario/separations-kuali-read.scenario.test.ts separations-kuali-read/reads-a-real-separation-document walks tests/scenario/separations-kuali-read.scenario.test.ts separations-kuali-read/unknown-termination-type walks tests/scenario/separations-kuali-read.scenario.test.ts separations-kuali-read/unparseable-separation-date walks tests/scenario/separations-kuali-read.scenario.test.ts separations-kuali-read/unprocessed-document-absent-arms walks tests/scenario/separations-kuali-read.scenario.test.ts
+          - button "Separation Timecard a proving harness of Separation 2"
+      - text: Search
+      - list:
+        - listitem:
+          - button "Person Lookup 4"
+      - text: Operations
+      - list:
+        - listitem:
+          - button "Kuali Timekeeper Annotation 1"
+    - text: Kuali Timekeeper Annotation v1 1 node · 0 reads · 2 writes
+    - button "What is this graph? — Kuali Timekeeper Annotation"
+    - group "Kuali Timekeeper Annotation identity": code kt category operations version 1 shape single enqueue reject-active subject eid system kuali
+    - list:
+      - listitem:
+        - text: a dry run stops here
+        - button "annotate-timekeeper Timekeeper Annotation Transaction system kuali 2 contracts"
+    - region "Scenarios": Scenarios kuali-timekeeper-annotation/already-present walks tests/scenario/kuali-timekeeper-annotation.scenario.test.ts kuali-timekeeper-annotation/committed walks tests/scenario/kuali-timekeeper-annotation.scenario.test.ts kuali-timekeeper-annotation/dry-run-preview walks tests/scenario/kuali-timekeeper-annotation.scenario.test.ts kuali-timekeeper-annotation/subject-mismatch walks tests/scenario/kuali-timekeeper-annotation.scenario.test.ts
+    - text: annotate-timekeeper Timekeeper Annotation
+    - button "What is this node? — annotate-timekeeper"
+    - text: Transaction system kuali changes a system of record a dry run stops here — the commit does not run
+    - table "annotate-timekeeper contract":
+      - rowgroup:
+        - row "Contract System Declared":
+          - columnheader "Contract"
+          - columnheader "System"
+          - columnheader "Declared"
+      - rowgroup:
+        - row "Writes":
+          - cell "Writes"
+        - row "kuali/fill-timekeeper-annotation prepares · Stage Kuali Timekeeper Annotation kuali checkpoint in-memory-only":
+          - cell "kuali/fill-timekeeper-annotation prepares · Stage Kuali Timekeeper Annotation"
+          - cell "kuali"
+          - cell "checkpoint in-memory-only"
+        - row "kuali/save-timekeeper-annotation commits · Save Kuali Timekeeper Annotation kuali proof save-verify":
+          - cell "kuali/save-timekeeper-annotation commits · Save Kuali Timekeeper Annotation"
+          - cell "kuali"
+          - cell "proof save-verify"
+    - text: Depends on Nothing — this node may start immediately. Write sequence dry run stop-after-prepare probe always probe→fence 45s lease transaction retry before fence none Detail projections Timekeeper savedState.timekeeperName Coverage points transaction:annotate-timekeeper/dry-run — transaction annotate-timekeeper previews prepare and creates no intent transaction:annotate-timekeeper/subject-mismatch — transaction annotate-timekeeper observes a mismatched subject and never fences transaction:annotate-timekeeper/committed — transaction annotate-timekeeper commits once and proves it transaction:annotate-timekeeper/already-present — transaction annotate-timekeeper finds its permanent key already satisfied
+    - region "kuali/fill-timekeeper-annotation": prepares kuali/fill-timekeeper-annotation Stage Kuali Timekeeper Annotation Implemented by store kuali kind browser driver kuali Subject binding kind person from input emplId identity eid observes kuali.rrss-document.displayed-eid match normalized-exact-eid required at after-prepare-before-fence Errors kuali-unavailable unexpected-page-state subject-mismatch fill-not-persisted UI vocabulary screen kuali.rrss-document observation kuali.rrss-document.displayed-eid observation kuali.rrss-document.displayed-timekeeper observation kuali.rrss-document.displayed-transaction-number element kuali.rrss-document.eid-field page-state kuali.rrss-document.finalization-staged page-state kuali.rrss-document.ready element kuali.rrss-document.timekeeper-field page-state kuali.rrss-document.timekeeper-staged Scenarios kuali-timekeeper-annotation/dry-run-preview Source contract src/domain/contracts/kuali/fill-timekeeper-annotation.ts impl src/stores/kuali/tasks/fill-timekeeper-annotation.ts input 6308707bae18output 453b257cb9e7impl 0ab8d330cb06
+    - region "kuali/save-timekeeper-annotation": commits kuali/save-timekeeper-annotation Save Kuali Timekeeper Annotation Implemented by store kuali kind browser driver kuali Subject binding kind person from input emplId identity eid observes kuali.rrss-document.displayed-eid match normalized-exact-eid required at after-prepare-before-fence Write safety completion save-verify verifies with kuali/verify-timekeeper-annotation probes with kuali/read-timekeeper-annotation absence after fence stabilized · 30000ms · 2 reads Errors kuali-unavailable unexpected-page-state subject-mismatch save-refused UI vocabulary screen kuali.rrss-document observation kuali.rrss-document.displayed-eid observation kuali.rrss-document.displayed-transaction-number element kuali.rrss-document.eid-field page-state kuali.rrss-document.finalization-staged page-state kuali.rrss-document.ready element kuali.rrss-document.save-button page-state kuali.rrss-document.timekeeper-staged Scenarios kuali-timekeeper-annotation/dry-run-preview Source contract src/domain/contracts/kuali/save-timekeeper-annotation.ts impl src/stores/kuali/tasks/save-timekeeper-annotation.ts input 6308707bae18output 159d3f0de361impl e200203f59d8
 - region "Session Panel":
   - button "Sessions 1 running 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
   - text: app 0.1.0

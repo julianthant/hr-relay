@@ -1,7 +1,7 @@
 # activity-report--graphite-warm--1280x720
 # adapter: fixture
 # fixture: activity-report
-# descriptorHash: c0af42d671c0e7e8b563f39fa3479dbf391df7f03b159804a1c2bc886e9a592a
+# descriptorHash: 7295c22a830aaf14d4616e9db2e42e61c1ab757cdd2518abcd83724b7dafb5c2
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -20,22 +20,56 @@
   - button "Today is the newest day" [disabled]
   - button "Notifications — 1 unread"
   - button "Switch to Paper Ink"
-  - button "UI catalog"
   - button "Settings"
 - main:
   - region "Activity report":
-    - button "Dashboard"
-    - text: Activity From
+    - text: Activity report From
     - textbox "From": 2026-07-01
     - text: To
     - textbox "To": 2026-08-03
-    - paragraph:
-      - strong: "12"
-      - text: runs started between 2026-07-01 and 2026-08-03.
-      - strong: "10"
-      - text: finished and
-      - strong: "2"
-      - text: are still in flight.
+    - text: Automation activity Wed, Jul 1 – Mon, Aug 3 12 runs
+    - button "How it is counted"
+    - text: Runs 12 3 days with runs in this span Finished 7 7 read back · 0 with warnings Still open
+    - button "How still open is counted"
+    - text: 2 counted in neither the error rate nor the outcome totals Error rate 20% 2 failed of 10 terminal runs Still open — by what it is waiting on
+    - table "Outstanding runs by what they are waiting on":
+      - rowgroup:
+        - row "State Runs":
+          - columnheader "State"
+          - columnheader "Runs"
+      - rowgroup:
+        - row "Running 2":
+          - cell "Running"
+          - cell "2"
+    - text: By workflow
+    - table "Activity by workflow, grouped by category":
+      - rowgroup:
+        - row "Workflow Runs Share":
+          - columnheader "Workflow"
+          - columnheader "Runs"
+          - columnheader "Share"
+      - rowgroup:
+        - row "people 1 workflow":
+          - cell "people 1 workflow"
+        - row "Person Lookup 9 75%":
+          - cell "Person Lookup"
+          - cell "9"
+          - cell "75%"
+        - row "people — subtotal 9 75%":
+          - cell "people — subtotal"
+          - cell "9"
+          - cell "75%"
+      - rowgroup:
+        - row "unregistered 1 workflow the workflows behind these runs are no longer registered":
+          - cell "unregistered 1 workflow the workflows behind these runs are no longer registered"
+        - row "retired-workflow 3 25%":
+          - cell "retired-workflow"
+          - cell "3"
+          - cell "25%"
+        - row "unregistered — subtotal 3 25%":
+          - cell "unregistered — subtotal"
+          - cell "3"
+          - cell "25%"
     - text: How long they took median 14m 34slongest 27m 12s9 measured 1 finished run has no recorded end instant, so it is excluded from every duration above rather than counted as zero. By day
     - table "By day":
       - rowgroup:
@@ -60,73 +94,6 @@
           - cell
           - cell "5"
           - cell "42%"
-    - text: By workflow
-    - table "By workflow":
-      - rowgroup:
-        - row "Name Share Runs %":
-          - columnheader "Name"
-          - columnheader "Share"
-          - columnheader "Runs"
-          - columnheader "%"
-      - rowgroup:
-        - row "Person Lookup 9 75%":
-          - cell "Person Lookup"
-          - cell
-          - cell "9"
-          - cell "75%"
-        - row "retired-workflow 3 25%":
-          - cell "retired-workflow"
-          - cell
-          - cell "3"
-          - cell "25%"
-    - text: By category
-    - table "By category":
-      - rowgroup:
-        - row "Name Share Runs %":
-          - columnheader "Name"
-          - columnheader "Share"
-          - columnheader "Runs"
-          - columnheader "%"
-      - rowgroup:
-        - row "people 9 75%":
-          - cell "people"
-          - cell
-          - cell "9"
-          - cell "75%"
-        - row "the workflows behind these runs are no longer registered 3 25%":
-          - cell "the workflows behind these runs are no longer registered"
-          - cell
-          - cell "3"
-          - cell "25%"
-    - text: By status
-    - table "By status":
-      - rowgroup:
-        - row "Name Share Runs %":
-          - columnheader "Name"
-          - columnheader "Share"
-          - columnheader "Runs"
-          - columnheader "%"
-      - rowgroup:
-        - row "done 7 58%":
-          - cell "done"
-          - cell
-          - cell "7"
-          - cell "58%"
-        - row "failed 2 17%":
-          - cell "failed"
-          - cell
-          - cell "2"
-          - cell "17%"
-        - row "running 2 17%":
-          - cell "running"
-          - cell
-          - cell "2"
-          - cell "17%"
-        - row "cancelled 1 8%":
-          - cell "cancelled"
-          - cell
-          - cell "1"
-          - cell "8%"
     - text: By outcome
     - table "By outcome":
       - rowgroup:
@@ -170,7 +137,7 @@
           - cell "1"
           - cell "0"
           - cell "aa11bb22-0002-4000-8000-aa11bb220002"
-    - paragraph: Every total here is a rendering of the one run/queue projection the Queue Panel reads, generated 2026-08-03T11:00:00.000Z. Hidden and archived runs are excluded once, inside it, so this report and the day it summarises cannot disagree.
+    - text: generated 4:00 AMlocal-operatorapp 0.1.0Wed, Jul 1 – Mon, Aug 312 runs
 - region "Session Panel":
   - button "Sessions 1 running 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
   - text: app 0.1.0
