@@ -22,7 +22,7 @@
  *
  * ## Variables versus assertions
  *
- * Seven of the ten values are genuine per-run VARIABLES. Three are
+ * Nine of the twelve values are genuine per-run VARIABLES. Three are
  * unconditional business assertions that legacy also writes unconditionally,
  * and they are constants here rather than inputs so that a caller cannot
  * quietly vary them:
@@ -41,24 +41,49 @@
  *    carries the constant with no comment and no test — this comment, and
  *    `KUALI_FINALIZATION_ASSERTIONS`' own unit test, are what answer it.
  *
- * ## `Last Day Worked` / `Separation Date` are deliberately NOT here
+ * ## `Last Day Worked` / `Separation Date` ARE here — §4e's amendment, 2026-08-14
  *
- * Legacy's step 13 writes those two back onto the Kuali document when date
- * reconciliation moved them. They appear in neither §4e's normative field list
- * nor §5 item 1's five-mutation table, so this module does not stage them and
- * does not invent a rule for them. That gap is recorded for the orchestrator
- * rather than closed by guesswork.
+ * They were not, and 5a recorded the gap rather than inventing a rule for it
+ * (§9.10 judgement 3, and the orchestrator's disposition that they stay
+ * unstaged). The operator answered the question on 2026-08-14, verbatim:
+ *
+ * > *"so what we are doing here is to collect all data first and then fill in
+ * > the forms at the end."*
+ *
+ * That is the staged-variables model applied to legacy's step-13 date
+ * write-backs, so the model does not change and the staged set grows by two.
+ * Both are staged from the RECONCILED variables — the `dates` node's own
+ * `lastDayWorked` and `separationDate` — never re-read off the page and never
+ * recomputed at fill time, exactly like the other ten.
+ *
+ * **Both are staged UNCONDITIONALLY**, which is the honest form under one-pass
+ * staging even though legacy writes them only when reconciliation moved them.
+ * Legacy's condition is a property of its INCREMENTAL drafts: it saves the
+ * document several times across its flow and touches a control only when it has
+ * a reason to. Here there is ONE pass and ONE read-back, and the read-back
+ * compares against the exact staged variables — so a conditionally staged field
+ * would need an expectation composed from the page's own prior value, which is
+ * the re-read §4e forbids. When nothing moved the reconciled value EQUALS what
+ * the document already carried, so the unconditional save writes the same
+ * string back and the read-back proves it either way.
  *
  * ## Anchors
  *
- * Every control this surface writes is ALREADY a registered, live-verified
- * element: the fourteen read elements were live-verified 2026-08-12 on real
- * documents 4510/4502/4495 (§9.3) and `Save` on 2026-08-04, re-counted on
- * 2026-08-12. This module mints no new element. What it has NOT observed is any
- * of those controls being WRITTEN — a selector mapped on a read-only pass is not
- * a verified selector for the editable page (the legacy lesson quoted in the
- * behavior review) — so every write path in the driver carries a
- * `live-verify: 5c` marker.
+ * Every control this surface writes is ALREADY a registered element. Ten of the
+ * twelve are live-verified EDITABLE — `exactly-one-editable` at
+ * `verifiedAt: 2026-08-14` in `evidence/ui/kuali/separation-document.live.json`
+ * (chunk 5c, §9.12 item 3), with `timekeeper-field` carrying D135's stronger
+ * controlled-commit evidence instead.
+ *
+ * **The two date controls this amendment adds are NOT among them.** 5c verified
+ * ten controls because ten were staged; `kuali.rrss-document.last-day-worked-field`
+ * and `kuali.rrss-document.separation-date-field` carry `exactly-one-visible`
+ * only, from the 2026-08-12 read-only pass — and *a selector mapped on a
+ * read-only record is not a verified selector for the editable page* is exactly
+ * the legacy lesson that arm exists to answer (D208). So both write paths in the
+ * driver carry a `live-verify: next-live-pass` marker, and §9.15 names what that
+ * pass owes: their editability, their `formKey`s, and the `sectionSettings` of
+ * the section that owns them.
  */
 import { z } from "zod";
 import {
@@ -101,7 +126,7 @@ export const KUALI_RRSS_FINALIZATION_STAGED = PageStateIdSchema.parse(
  * It is the observation an ABSENCE of this write is sourced from, because it is
  * the half of the permanent key the document itself carries: the key asks "is
  * document N already finalized against transaction T?", and this control is
- * where T would be. The full verdict still compares all ten fields — this names
+ * where T would be. The full verdict still compares all twelve fields — this names
  * where the decisive one is read.
  */
 export const KUALI_RRSS_DISPLAYED_TRANSACTION_NUMBER = ObservationIdSchema.parse(
@@ -169,6 +194,19 @@ export const KualiFinalizationVariablesSchema = z.strictObject({
   payrollTitleCode: KualiPayrollTitleCodeSchema,
   payrollTitle: KualiPayrollTitleSchema,
   timekeeperName: KualiTimekeeperNameSchema,
+  /**
+   * §4e's amendment of 2026-08-14 — legacy's step-13 write-backs, as staged
+   * variables.
+   *
+   * Both come from the `dates` node's RECONCILED output and from nowhere else:
+   * `lastDayWorked` is the New Kronos last punch and `separationDate` is
+   * `max(lastDayWorked, last sick, last holiday)`. They are the values the
+   * operator approved at the gate (they ride in D211's write plan), so staging
+   * them re-reads nothing and re-derives nothing. Unconditional by design — see
+   * the module header.
+   */
+  lastDayWorked: KualiFormDateSchema,
+  separationDate: KualiFormDateSchema,
   terminationEffectiveDate: KualiFormDateSchema,
   transactionNumber: KualiTransactionNumberSchema,
   timekeeperComments: KualiFinalizationCommentsSchema,
@@ -212,6 +250,8 @@ export const KualiFinalizationFieldsSchema = z.strictObject({
   payrollTitle: KualiPayrollTitleSchema,
   requestAcknowledged: z.boolean(),
   timekeeperName: KualiTimekeeperNameSchema,
+  lastDayWorked: KualiFormDateSchema,
+  separationDate: KualiFormDateSchema,
   terminationEffectiveDate: KualiFormDateSchema,
   submittedTerminationTemplate: z.boolean(),
   transactionNumber: KualiTransactionNumberSchema,
@@ -226,6 +266,11 @@ export const KualiFinalizationFieldNameSchema = z.enum([
   "payrollTitle",
   "requestAcknowledged",
   "timekeeperName",
+  // The three dates sit together on purpose: a mismatch report that names two
+  // of them reads as one fact about the reconciliation, not as two unrelated
+  // controls. The page's own order is different and is not what this list is.
+  "lastDayWorked",
+  "separationDate",
   "terminationEffectiveDate",
   "submittedTerminationTemplate",
   "transactionNumber",
@@ -253,6 +298,8 @@ export function kualiFinalizationFields(
     payrollTitle: variables.payrollTitle,
     requestAcknowledged: KUALI_FINALIZATION_ASSERTIONS.requestAcknowledged,
     timekeeperName: variables.timekeeperName,
+    lastDayWorked: variables.lastDayWorked,
+    separationDate: variables.separationDate,
     terminationEffectiveDate: variables.terminationEffectiveDate,
     submittedTerminationTemplate: KUALI_FINALIZATION_ASSERTIONS.submittedTerminationTemplate,
     transactionNumber: variables.transactionNumber,
@@ -262,13 +309,18 @@ export function kualiFinalizationFields(
 }
 
 /**
- * What the page ACTUALLY shows, in the same ten slots.
+ * What the page ACTUALLY shows, in the same twelve slots.
  *
  * Deliberately permissive where the field set is strict: an unprocessed
  * document sits on `- - -`, holds `""` in five controls and has no Final Pay
  * radio selected at all (§9.3's doc 4502), and every one of those is a real
  * observation this shape must be able to carry. Refusing to PARSE the page is
  * how a genuine "the write did not land" turns into an unreadable `unknown`.
+ *
+ * The two date write-backs are permissive for a second reason: they are
+ * REQUIRED controls a live document normally already carries, so their ordinary
+ * observation is a well-formed date that may simply disagree with the
+ * reconciled one — which is a mismatch to report, never a parse to refuse.
  */
 export const KualiObservedFinalizationFieldsSchema = z.strictObject({
   department: z.string(),
@@ -276,6 +328,8 @@ export const KualiObservedFinalizationFieldsSchema = z.strictObject({
   payrollTitle: z.string(),
   requestAcknowledged: z.boolean(),
   timekeeperName: z.string(),
+  lastDayWorked: z.string(),
+  separationDate: z.string(),
   terminationEffectiveDate: z.string(),
   submittedTerminationTemplate: z.boolean(),
   transactionNumber: z.string(),
@@ -336,21 +390,31 @@ export function compareKualiFinalizationFields(
  * on the wire and `BWmkKqx40` in the DOM), so a payload check written against
  * the DOM id would never match anything.
  *
- * **All ten were captured live 2026-08-14** (chunk 5c, `docs/migrations/
+ * **Ten of the twelve were captured live 2026-08-14** (chunk 5c, `docs/migrations/
  * separations.md` §9.12) off Kuali's own `ActionPage` GraphQL query — the read
  * the app itself issues when a document route opens, observed passively with
  * nothing extra sent. The extraction was validated against the one key this
  * repository already knew: `timekeeperName` came back `QGJ63YrCom`, byte-identical
  * to the 2026-08-04 capture that D135 then confirmed on the wire.
+ *
+ * **The two date write-backs §4e's 2026-08-14 amendment added are `null`,** because
+ * 5c captured the ten fields that were staged then and this repository has never
+ * seen the other two on any wire. `null` rather than a guess: a fabricated key
+ * makes the commit's wire proof a check that cannot fail, which is the same
+ * defect as one that can only fail. `kualiFinalizationFormKeysMissing()` is the
+ * to-do list and §9.15 names the pass that closes it — the same passive
+ * `ActionPage` read, which costs nothing and sends nothing.
  */
 export const KUALI_RRSS_FINALIZATION_FORM_KEYS: Readonly<
-  Record<KualiFinalizationFieldName, string>
+  Record<KualiFinalizationFieldName, string | null>
 > = Object.freeze({
   department: "JPYGckVxcf",
   payrollTitleCode: "2FlOeR5pd9",
   payrollTitle: "sVmpq6tG9X",
   requestAcknowledged: "xKRU6vmYSY",
   timekeeperName: KUALI_RRSS_TIMEKEEPER_FORM_KEY,
+  lastDayWorked: null,
+  separationDate: null,
   terminationEffectiveDate: "DoWSfJhpRm",
   submittedTerminationTemplate: "6Ejy-1rfQJ",
   transactionNumber: "wPyuyY0wT0",
@@ -359,13 +423,29 @@ export const KUALI_RRSS_FINALIZATION_FORM_KEYS: Readonly<
 });
 
 /**
+ * The fields whose `formKey` this repository has never observed — the list the
+ * next live `ActionPage` read closes.
+ *
+ * It is deliberately derived from the table rather than written beside it: a
+ * hand-maintained second list is one that can disagree with the table it
+ * describes.
+ */
+export function kualiFinalizationFormKeysMissing(): readonly KualiFinalizationFieldName[] {
+  return Object.freeze(
+    KUALI_FINALIZATION_FIELD_NAMES.filter(
+      (field) => KUALI_RRSS_FINALIZATION_FORM_KEYS[field] === null,
+    ),
+  );
+}
+
+/**
  * The fields whose wire value IS the staged string, so the save's payload check
  * can compare them with no invented transformation.
  *
- * ## Why this set is five and not ten — the thing 5c's live pass actually found
+ * ## Why this set is five and not twelve — the thing 5c's live pass actually found
  *
  * Kuali's `submitDocumentV2` sends the whole document MODEL keyed by `formKey`,
- * and the model does not hold ten strings. Read off the live model of real docs
+ * and the model does not hold twelve strings. Read off the live model of real docs
  * 4510 / 4495 / 4502 on 2026-08-14:
  *
  * | gadget | field(s) | model value |
@@ -391,11 +471,17 @@ export const KUALI_RRSS_FINALIZATION_FORM_KEYS: Readonly<
  * same discipline that kept them `null` before: a comparison whose expected
  * value has to be invented is not a check. The landing proof is unaffected and
  * always was — `readSavedSeparationFinalization`'s reload read-back compares all
- * ten fields, and `submitDocumentV2` answers `{"status":"Ok","validations":null}`
+ * twelve fields, and `submitDocumentV2` answers `{"status":"Ok","validations":null}`
  * for a mutation that dropped a field entirely. What moved is the earlier,
  * louder half of the defence: from one field to five. **The controlled commit
- * (§4f2's canary) is what closes the other five**, because it is the first time
- * this repository will see the real payload.
+ * (§4f2's canary) is what closes the rest**, because it is the first time this
+ * repository will see the real payload.
+ *
+ * §4e's 2026-08-14 amendment added two more unasserted fields for a DIFFERENT
+ * reason — their `formKey` is not known at all — and they would be unassertable
+ * anyway, because a Kuali `Date` gadget holds epoch milliseconds on the wire,
+ * not the `MM/DD/YYYY` string that is staged. `kualiFinalizationFormKeysMissing()`
+ * keeps the two reasons distinguishable.
  */
 export const KUALI_RRSS_FINALIZATION_WIRE_ASSERTED: readonly KualiFinalizationFieldName[] =
   Object.freeze([
@@ -407,8 +493,9 @@ export const KUALI_RRSS_FINALIZATION_WIRE_ASSERTED: readonly KualiFinalizationFi
   ]);
 
 /**
- * The fields whose wire value the controlled commit still owes — the four
- * gadget kinds whose model value is not the staged string.
+ * The fields whose wire value is NOT asserted — the four gadget kinds whose
+ * model value is not the staged string, plus the two whose `formKey` this
+ * repository has never observed.
  */
 export function kualiFinalizationWireUnasserted(): readonly KualiFinalizationFieldName[] {
   return Object.freeze(

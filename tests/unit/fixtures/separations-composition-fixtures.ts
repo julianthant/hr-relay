@@ -47,6 +47,7 @@ import {
   kualiFinalizationFields,
   type KualiFinalizationFields,
   type KualiFinalizationVariables,
+  type KualiObservedFinalizationFields,
 } from "../../../src/domain/ui/kuali-separation-finalization.js";
 import type { UcpathTransactionRow } from "../../../src/domain/ui/ucpath-smart-hr-termination.js";
 import type { RuntimeFlowNode } from "../../../src/domain/workflow/graph.js";
@@ -130,6 +131,13 @@ export const COMPOSITION_VARIABLES: KualiFinalizationVariables = Object.freeze({
   payrollTitleCode: "004921",
   payrollTitle: "STDT 2",
   timekeeperName: COMPOSITION_TIMEKEEPER,
+  // §4e's 2026-08-14 amendment, taken from the SAME reconciled constants the
+  // `dates` node output below carries — never re-spelled, so the fixture cannot
+  // agree with itself while disagreeing with the graph. This fixture's
+  // separation date MOVED (06/12 → 06/19 on a holiday), which is the case the
+  // write-back exists for.
+  lastDayWorked: COMPOSITION_LAST_DAY_WORKED,
+  separationDate: COMPOSITION_SEPARATION_DATE,
   terminationEffectiveDate: COMPOSITION_EFFECTIVE_DATE,
   transactionNumber: COMPOSITION_RECEIPT,
   timekeeperComments: COMPOSITION_FINALIZATION_COMMENTS,
@@ -294,8 +302,15 @@ export function compositionHarness(options: Readonly<{
   ucpathNameAfterStage?: string;
   /** Who the Kuali document shows AFTER staging — the same arm, one system over. */
   kualiEidAfterStage?: string;
-  /** Seed the Kuali document as ALREADY finalized with exactly these ten values. */
-  persistedFinalization?: KualiFinalizationFields;
+  /**
+   * Seed the Kuali document with exactly these values.
+   *
+   * Typed as the OBSERVED shape rather than the staged one so a partly filled
+   * document is spellable — a real RRSS document normally carries its two date
+   * controls and nothing else, which is precisely the starting state §4e's
+   * 2026-08-14 date write-backs act on.
+   */
+  persistedFinalization?: KualiObservedFinalizationFields;
   /** The Kuali Save click succeeds and Kuali keeps the old values — S59 / D128. */
   kualiCommitDoesNotPersist?: boolean;
 }> = {}): CompositionHarness {

@@ -544,10 +544,12 @@ function assertSubmitCarriedValue(
  * The `(formKey, value)` pairs the save's `data` map must carry for THIS
  * staging.
  *
- * ## The finalization asserts FIVE of ten, and that is stated, not hidden
+ * ## The finalization asserts FIVE of twelve, and that is stated, not hidden
  *
- * All ten `formKey`s are known since chunk 5c's live capture (2026-08-14, §9.12),
- * but a key is not an expectation. `submitDocumentV2` sends the document MODEL,
+ * Ten of the twelve `formKey`s are known since chunk 5c's live capture
+ * (2026-08-14, §9.12) — the two §4e's 2026-08-14 amendment added have never been
+ * observed and are `null` — but a key is not an expectation either.
+ * `submitDocumentV2` sends the document MODEL,
  * and only a `Text`/`Textarea` gadget holds the staged string there: a `Date`
  * holds epoch milliseconds, a `Dropdown`/`Radios` holds `{id,label}` and
  * `Checkboxes` holds an array of them — all four observed live on real docs
@@ -555,14 +557,16 @@ function assertSubmitCarriedValue(
  * repository has never seen on the WRITE wire, plus an option-id table Kuali can
  * republish, so asserting them would be a check that can only fail — the same
  * "write the expectation, then pass" hazard D132 bans, pointed the other way.
- * `KUALI_RRSS_FINALIZATION_WIRE_ASSERTED` names the five that are derivable and
- * `kualiFinalizationWireUnasserted()` names the five the controlled commit owes.
+ * `KUALI_RRSS_FINALIZATION_WIRE_ASSERTED` names the five that are derivable,
+ * `kualiFinalizationWireUnasserted()` names the seven it does not check, and
+ * `kualiFinalizationFormKeysMissing()` names the two of those seven whose key is
+ * not even known. The controlled commit closes them by OBSERVING the payload.
  *
  * That does **not** weaken the write's landing proof, because this check never
  * was the proof: `submitDocumentV2` answers `{"status":"Ok","validations":null}`
  * for a mutation that dropped a field entirely, so the ONLY thing that can turn
  * a Kuali save into `done` is `readSavedSeparationFinalization`'s reload
- * read-back — and that compares all ten fields.
+ * read-back — and that compares all twelve fields.
  */
 function stagedWireValues(expected: StagedExpectation): readonly (readonly [string, unknown])[] {
   if (expected.kind === "timekeeper") {
@@ -571,7 +575,19 @@ function stagedWireValues(expected: StagedExpectation): readonly (readonly [stri
   const pairs: (readonly [string, unknown])[] = [];
   for (const field of KUALI_FINALIZATION_FIELD_NAMES) {
     if (!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field)) continue;
-    pairs.push([KUALI_RRSS_FINALIZATION_FORM_KEYS[field], expected.fields[field]] as const);
+    const formKey = KUALI_RRSS_FINALIZATION_FORM_KEYS[field];
+    // Two fields carry `null` — §4e's 2026-08-14 amendment added them and their
+    // key has never been observed. They are not in the asserted set, so this is
+    // unreachable today; it throws rather than silently indexing `data[undefined]`,
+    // which would turn a landed save into a post-fence park the day somebody
+    // adds a field to the asserted list before its key is captured.
+    if (formKey === null) {
+      throw new Error(
+        `Kuali finalization field ${field} is asserted on the wire but its formKey has never been `
+        + "observed; refusing to check a payload against a key this repository invented",
+      );
+    }
+    pairs.push([formKey, expected.fields[field]] as const);
   }
   return pairs;
 }
@@ -1157,7 +1173,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
   }
 
   /**
-   * The ten finalization controls, read exactly as the page holds them, plus
+   * The twelve finalization controls, read exactly as the page holds them, plus
    * the department control's COMPLETE option list (§3.2).
    *
    * Nothing here parses or classifies: an unset select reads `- - -` and an
@@ -1179,6 +1195,12 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         payrollTitle: await readTrimmedInput(page, KUALI_RRSS_PAYROLL_TITLE_FIELD),
         requestAcknowledged: await readCheckbox(KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX),
         timekeeperName: await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_FIELD),
+        // §4e's 2026-08-14 amendment: the two step-13 date write-backs. Read
+        // through the SAME recipes the separation read uses — this surface
+        // mints no element — so the read half is already live-verified; what is
+        // not is writing them (see `stageSeparationFinalization`).
+        lastDayWorked: await readTrimmedInput(page, KUALI_RRSS_LAST_DAY_WORKED_FIELD),
+        separationDate: await readTrimmedInput(page, KUALI_RRSS_SEPARATION_DATE_FIELD),
         terminationEffectiveDate: await readTrimmedInput(page, KUALI_RRSS_TERMINATION_EFF_DATE_FIELD),
         submittedTerminationTemplate: await readCheckbox(KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX),
         transactionNumber: await readTrimmedInput(page, KUALI_RRSS_TRANSACTION_NUMBER_FIELD),
@@ -1202,7 +1224,9 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
    *
    * live-verified 5c, 2026-08-14: this path staged every text control the
    * finalization writes on real doc 4524 through `executeDryRun` and read each
-   * one back, in 8.06 s for all ten controls. A hard reload then re-read the
+   * one back, in 8.06 s for all ten controls staged then (§4e's amendment has
+   * since made it twelve; the two new date controls are `live-verify:
+   * next-live-pass`). A hard reload then re-read the
    * document unchanged — so the staging is proved to reach React's state and
    * proved NOT to reach Kuali (§9.12, S61).
    */
@@ -1332,6 +1356,25 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       view.documentNumber,
     );
     await stageText(KUALI_RRSS_TIMEKEEPER_FIELD, fields.timekeeperName, "timekeeper name", view.documentNumber);
+    // live-verify: next-live-pass — §4e's 2026-08-14 amendment. These two
+    // controls carry `exactly-one-visible` from the 2026-08-12 read-only pass
+    // and NOT `exactly-one-editable`: 5c verified the ten controls that were
+    // staged then, and a selector mapped on a read-only record is not a
+    // verified selector for the editable page (D208). The `stageText` discipline
+    // is what makes that safe to ship — a control that does not take the value
+    // is reported by the field-by-field read-back below, never assumed.
+    await stageText(
+      KUALI_RRSS_LAST_DAY_WORKED_FIELD,
+      fields.lastDayWorked,
+      "last day worked",
+      view.documentNumber,
+    );
+    await stageText(
+      KUALI_RRSS_SEPARATION_DATE_FIELD,
+      fields.separationDate,
+      "separation date",
+      view.documentNumber,
+    );
     await stageText(
       KUALI_RRSS_TERMINATION_EFF_DATE_FIELD,
       fields.terminationEffectiveDate,

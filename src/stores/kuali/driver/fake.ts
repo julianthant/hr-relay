@@ -90,6 +90,13 @@ export const KUALI_FAKE_UNFINALIZED_FIELDS: KualiObservedFinalizationFields = Ob
   payrollTitle: "",
   requestAcknowledged: false,
   timekeeperName: "",
+  // A real unfinalized document normally CARRIES these two — they are required
+  // fields the requester fills — but a fake that started them populated would
+  // make "the write-back landed" and "nobody touched it" the same observation
+  // for every scenario that does not set them deliberately. Blank is the
+  // starting state that can only be reached by the write.
+  lastDayWorked: "",
+  separationDate: "",
   terminationEffectiveDate: "",
   submittedTerminationTemplate: false,
   transactionNumber: "",

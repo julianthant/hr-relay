@@ -95,6 +95,8 @@ export const KualiStageSeparationFinalization = defineTaskContract({
       payrollTitle: "",
       requestAcknowledged: false,
       timekeeperName: "",
+      lastDayWorked: "",
+      separationDate: "",
       terminationEffectiveDate: "",
       submittedTerminationTemplate: false,
       transactionNumber: "",

@@ -17,7 +17,7 @@
  * ## ONE transaction node, and that is §4e's answer
  *
  * The staged-variables model is normative: every read lands first as a typed
- * variable, ONE prepare stages all ten Kuali fields in one pass from those
+ * variable, ONE prepare stages all twelve Kuali fields in one pass from those
  * variables, ONE save, ONE reload read-back comparing every written field
  * against the exact staged variables. That answers §5 item 1D as well —
  * mutations C and D collapse into ONE Kuali transaction node, and legacy's early
@@ -27,10 +27,14 @@
  * It is Option A's rule ("one reload read-back per commit node") applied to a
  * graph with exactly one commit node — **not** Option B, whose trailing verify
  * over several fences could not say which fence landed. §4e's caveat is carried
- * as-is and is a first-live-dry-run finding, not a design assumption: if the ten
+ * as-is and is a first-live-dry-run finding, not a design assumption: if the
  * fields turn out to span sections owned by DIFFERENT Kuali workflow steps, one
  * save cannot carry them and this node splits into one (save, read-back) pair
- * per step, each with its own fence and its own permanent key.
+ * per step, each with its own fence and its own permanent key. 5c DISCHARGED it
+ * for the ten fields staged then (three sections, all `edit` at both live steps,
+ * §9.12 item 1); §4e's 2026-08-14 amendment RE-OPENS it for exactly two, because
+ * `Last Day Worked` and `Separation Date` sit in the *Employee Information*
+ * block whose section id nothing has read.
  *
  * ## Why a "Kuali write chunk" carries the identity gate
  *
@@ -67,7 +71,7 @@
  * ## dryRun
  *
  * `stop-after-prepare`. A dry run reads UCPath, parks at the gate, and on
- * approval stages all ten Kuali controls and reads every one of them back —
+ * approval stages all twelve Kuali controls and reads every one of them back —
  * then stops with no intent, no fence, no click and nothing durable. A Kuali
  * Build document holds staged edits in its own in-page form model until an
  * explicit `Save`, so the document is unchanged afterwards. Legacy makes the
@@ -147,6 +151,14 @@ const FinalizationInputShape = {
   payrollTitleCode: KualiPayrollTitleCodeSchema,
   payrollTitle: KualiPayrollTitleSchema,
   timekeeperName: KualiTimekeeperNameSchema,
+  /**
+   * §4e's 2026-08-14 amendment: legacy's step-13 date write-backs, as staged
+   * variables. Both are the RECONCILED values — chunk 6's `dates` node output —
+   * and are staged unconditionally, so this ingress carries them like any other
+   * variable no read on THIS graph produces.
+   */
+  lastDayWorked: KualiFormDateSchema,
+  separationDate: KualiFormDateSchema,
   terminationEffectiveDate: KualiFormDateSchema,
   /** §4c's receipt: the finalization is never entered without the filed transaction. */
   transactionNumber: KualiTransactionNumberSchema,
@@ -175,6 +187,8 @@ export const SeparationsKualiFinalizationCanonicalInput = defineCanonicalInput(
       payrollTitleCode: "004921",
       payrollTitle: "STDT 2",
       timekeeperName: "Deterministic Timekeeper",
+      lastDayWorked: "06/09/2026",
+      separationDate: "06/10/2026",
       terminationEffectiveDate: "06/11/2026",
       transactionNumber: "T002209631",
       timekeeperComments: "Termination effective date set from the reconciled separation date.",
@@ -287,6 +301,8 @@ const separationsKualiFinalizationFlow = flow(SeparationsKualiFinalizationInput)
           payrollTitleCode: input.payrollTitleCode,
           payrollTitle: input.payrollTitle,
           timekeeperName: input.timekeeperName,
+          lastDayWorked: input.lastDayWorked,
+          separationDate: input.separationDate,
           terminationEffectiveDate: input.terminationEffectiveDate,
           transactionNumber: input.transactionNumber,
           timekeeperComments: input.timekeeperComments,
@@ -312,6 +328,8 @@ const separationsKualiFinalizationFlow = flow(SeparationsKualiFinalizationInput)
           payrollTitleCode: input.payrollTitleCode,
           payrollTitle: input.payrollTitle,
           timekeeperName: input.timekeeperName,
+          lastDayWorked: input.lastDayWorked,
+          separationDate: input.separationDate,
           terminationEffectiveDate: input.terminationEffectiveDate,
           transactionNumber: input.transactionNumber,
           timekeeperComments: input.timekeeperComments,
@@ -332,7 +350,7 @@ const separationsKualiFinalizationFlow = flow(SeparationsKualiFinalizationInput)
      * open observed 2026-08-04. It is short enough that a stalled page discards
      * its staged form rather than clicking on a stale probe.
      *
-     * This prepare stages TEN controls where the annotation stages one, so 5c's
+     * This prepare stages TWELVE controls where the annotation stages one, so 5c's
      * first live dry-run reports probe-complete → prepare-complete off the run's
      * own per-beat spans and tightens or confirms this number.
      */

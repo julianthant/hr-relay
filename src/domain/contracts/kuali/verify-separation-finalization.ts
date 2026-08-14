@@ -10,6 +10,12 @@
  * looks finalized and is not — and not the page's own echo, which is what the
  * in-memory form model would return whether or not anything persisted.
  *
+ * "EVERY written field" is **twelve** since §4e's 2026-08-14 amendment, which
+ * added legacy's step-13 `Last Day Worked` / `Separation Date` write-backs to
+ * the staged set. That changes nothing about this contract's shape: the two
+ * dates are staged from the reconciled variables like the other ten, and are
+ * compared here against those exact variables.
+ *
  * ## Every non-`present` verdict parks. That is the whole scenario set.
  *
  * | Scenario | Legacy | Here |

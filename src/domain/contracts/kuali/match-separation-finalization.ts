@@ -5,7 +5,7 @@
  * It answers exactly one question: does this document ALREADY carry this
  * finalization? The answer is a four-state `ProbeVerdict`, never a boolean.
  *
- *  - `present`   — the reloaded document shows every one of the ten staged
+ *  - `present`   — the reloaded document shows every one of the twelve staged
  *                  fields, exactly ⇒ typed proof.
  *  - `absent`    — the document was read and disagrees on at least one field ⇒
  *                  typed evidence naming every disagreement. That is the COMMON
@@ -58,6 +58,8 @@ export const EXAMPLE_KUALI_FINALIZATION_FIELDS = Object.freeze({
   payrollTitle: "STDT 2",
   requestAcknowledged: true,
   timekeeperName: "Deterministic Timekeeper",
+  lastDayWorked: "06/09/2026",
+  separationDate: "06/10/2026",
   terminationEffectiveDate: "06/11/2026",
   submittedTerminationTemplate: true,
   transactionNumber: "T002209631",

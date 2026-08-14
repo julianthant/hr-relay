@@ -29,7 +29,7 @@ import { deriveIdempotencyKeyDigest } from "../../domain/write-safety.js";
  *
  * It binds the absence to the document AND to every staged value, not just to
  * the permanent key: the key asks "is this document finalized against this
- * transaction", while the READ asked "does it carry these ten values". An
+ * transaction", while the READ asked "does it carry these twelve values". An
  * absence gathered for a different field set is a different question and can
  * never be counted toward this key's settlement.
  */

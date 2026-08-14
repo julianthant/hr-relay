@@ -87,6 +87,12 @@ export const FINALIZATION_VARIABLES: KualiFinalizationVariables = Object.freeze(
   payrollTitleCode: "004921",
   payrollTitle: "STDT 2",
   timekeeperName: "Deterministic Timekeeper",
+  // §4e's 2026-08-14 amendment. `terminationEffectiveDate` is
+  // `separationDate + 1` by the reconciliation's own rule, and the last day
+  // worked sits a day earlier — the MOVED case, so a fixture that dropped one
+  // of the two would be visible.
+  lastDayWorked: "06/09/2026",
+  separationDate: "06/10/2026",
   terminationEffectiveDate: "06/11/2026",
   transactionNumber: FINALIZATION_TRANSACTION_NUMBER,
   timekeeperComments: "Termination effective date set from the reconciled separation date.",
@@ -117,6 +123,8 @@ export const FINALIZATION_RUN_INPUT = Object.freeze({
   payrollTitleCode: FINALIZATION_VARIABLES.payrollTitleCode,
   payrollTitle: FINALIZATION_VARIABLES.payrollTitle,
   timekeeperName: FINALIZATION_VARIABLES.timekeeperName,
+  lastDayWorked: FINALIZATION_VARIABLES.lastDayWorked,
+  separationDate: FINALIZATION_VARIABLES.separationDate,
   terminationEffectiveDate: FINALIZATION_VARIABLES.terminationEffectiveDate,
   transactionNumber: FINALIZATION_VARIABLES.transactionNumber,
   timekeeperComments: FINALIZATION_VARIABLES.timekeeperComments,

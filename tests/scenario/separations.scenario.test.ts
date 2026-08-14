@@ -48,6 +48,7 @@ import {
   SeparationsCanonicalInput,
   separationsDescriptor,
 } from "../../src/workflows/separations/descriptor.js";
+import { KUALI_FAKE_UNFINALIZED_FIELDS } from "../../src/stores/kuali/driver/fake.js";
 import { SEPARATIONS_CLAIMS } from "./coverage-claims.js";
 import { walkDescriptor } from "./helpers/pure-walk.js";
 import {
@@ -579,6 +580,17 @@ describe("separations scenarios — the composition", () => {
         "match",
         node,
       );
+      // §4e's 2026-08-14 amendment shows up in the REHEARSAL: the Kuali preview
+      // stages twelve fields, and the two date write-backs carry the reconciled
+      // values rather than the document's own stale ones.
+      if (node === FINALIZE_NODE && preview.outcome.state === "would-prepare") {
+        const staged = (preview.outcome.prepare.value as {
+          stagedFields: Record<string, unknown>;
+        }).stagedFields;
+        assert.equal(Object.keys(staged).length, 12);
+        assert.equal(staged["lastDayWorked"], COMPOSITION_LAST_DAY_WORKED);
+        assert.equal(staged["separationDate"], COMPOSITION_SEPARATION_DATE);
+      }
     }
 
     for (const world of [withPending, h]) {
@@ -735,8 +747,17 @@ describe("separations scenarios — the composition", () => {
     ]);
   });
 
-  it("separations/finalization-committed — one save writes all ten fields, and the reload read-back is the proof", async () => {
-    const h = harness();
+  it("separations/finalization-committed — one save writes all twelve fields, and the reload read-back is the proof", async () => {
+    // The document starts the way a real one does: the requester already filled
+    // the two date controls, and they hold the STALE dates the reconciliation
+    // moved. §4e's 2026-08-14 amendment is what replaces them.
+    const h = harness({
+      persistedFinalization: {
+        ...KUALI_FAKE_UNFINALIZED_FIELDS,
+        lastDayWorked: COMPOSITION_KUALI_LDW,
+        separationDate: COMPOSITION_KUALI_LDW,
+      },
+    });
     const { run, claim } = compositionClaimRunning(
       h.database, h.clock, compositionQueuedRun(), FINALIZE_NODE,
     );
@@ -754,6 +775,14 @@ describe("separations scenarios — the composition", () => {
       h.kuali.persistedFinalization?.timekeeperComments,
       COMPOSITION_FINALIZATION_COMMENTS,
     );
+    // §4e's 2026-08-14 amendment, at composed level and for the case it exists
+    // for: this fixture's separation date MOVED (06/12 → 06/19 on a holiday),
+    // and the value the document ends up carrying is the `dates` node's
+    // RECONCILED one — not the stale date the document was read with. Legacy's
+    // step 13 is what this replaces, and §9.14's doc 4524 is the live case.
+    assert.equal(h.kuali.persistedFinalization?.separationDate, COMPOSITION_SEPARATION_DATE);
+    assert.equal(h.kuali.persistedFinalization?.lastDayWorked, COMPOSITION_LAST_DAY_WORKED);
+    assert.notEqual(COMPOSITION_SEPARATION_DATE, COMPOSITION_KUALI_LDW);
     assert.equal(
       h.kuali.events.filter((event) => event.startsWith("commit:")).length, 1, "exactly one click",
     );

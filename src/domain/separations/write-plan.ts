@@ -73,7 +73,18 @@ export const SeparationWritePlanSchema = z.discriminatedUnion("state", [
       terminationEffectiveDate: z.string().min(1),
       timekeeperName: z.string().min(1),
     }),
-    /** How the dates were reconciled, with what the form said beside them. */
+    /**
+     * How the dates were reconciled, with what the form said beside them.
+     *
+     * Since §4e's 2026-08-14 amendment, `lastDayWorked` and `separationDate` are
+     * not only inputs to the UCPath filing — they are STAGED ONTO the Kuali
+     * document by the same one-pass save the `document` block describes. They
+     * are named here and not repeated there on purpose: the packet is a
+     * PRESENTATION of decisions, never a second authority over them (D211), and
+     * one value rendered in two places is a value that can disagree with itself.
+     * The digest binds them either way, so a reconciled date that moves after
+     * approval re-opens the gate.
+     */
     dates: z.strictObject({
       kualiLastDayWorked: z.string().min(1),
       lastDayWorked: z.string().min(1),

@@ -19,6 +19,7 @@ import {
   KualiFinalizationVariablesSchema,
   compareKualiFinalizationFields,
   kualiFinalizationFields,
+  kualiFinalizationFormKeysMissing,
   KUALI_RRSS_FINALIZATION_WIRE_ASSERTED,
   kualiFinalizationWireUnasserted,
 } from "../../src/domain/ui/kuali-separation-finalization.js";
@@ -34,6 +35,8 @@ const VARIABLES: KualiFinalizationVariables = KualiFinalizationVariablesSchema.p
   payrollTitleCode: "004921",
   payrollTitle: "STDT 2",
   timekeeperName: "Julian Zaw",
+  lastDayWorked: "06/09/2026",
+  separationDate: "06/10/2026",
   terminationEffectiveDate: "06/11/2026",
   transactionNumber: "T002209631",
   timekeeperComments: "Termination effective date set from the reconciled separation date.",
@@ -49,13 +52,19 @@ const TARGET: KualiFinalizationTarget = Object.freeze({
   variables: VARIABLES,
 });
 
-/** Live doc 4502's shape: five blanks and the `- - -` sentinel (2026-08-12). */
+/**
+ * Live doc 4502's shape: five blanks and the `- - -` sentinel (2026-08-12), plus
+ * the two date write-backs §4e's 2026-08-14 amendment added — blank here so the
+ * comparison below can name every one of the twelve.
+ */
 const UNFINALIZED: KualiObservedFinalizationFields = Object.freeze({
   department: "- - -",
   payrollTitleCode: "",
   payrollTitle: "",
   requestAcknowledged: false,
   timekeeperName: "",
+  lastDayWorked: "",
+  separationDate: "",
   terminationEffectiveDate: "",
   submittedTerminationTemplate: false,
   transactionNumber: "",
@@ -64,7 +73,7 @@ const UNFINALIZED: KualiObservedFinalizationFields = Object.freeze({
 });
 
 describe("Kuali separation finalization — the staged-variables fold", () => {
-  it("composes the ten written fields from seven variables and three ratified assertions", () => {
+  it("composes the twelve written fields from nine variables and three ratified assertions", () => {
     const fields = kualiFinalizationFields(VARIABLES);
     assert.deepEqual(Object.keys(fields).sort(), [...KUALI_FINALIZATION_FIELD_NAMES].sort());
     // §4g, operator-ratified 2026-08-12: the final-pay radio is an
@@ -97,6 +106,43 @@ describe("Kuali separation finalization — the staged-variables fold", () => {
     assert.ok(bad({ transactionNumber: "pending" }));
     assert.ok(bad({ terminationEffectiveDate: "2026-06-11" }));
     assert.ok(bad({ timekeeperComments: "" }));
+    // §4e's 2026-08-14 amendment: the two date write-backs are Kuali form dates
+    // like the effective date, so an ISO spelling or a blank refuses before a
+    // control is touched. A blank one is the state legacy would have written.
+    assert.ok(bad({ lastDayWorked: "2026-06-09" }));
+    assert.ok(bad({ separationDate: "" }));
+    assert.ok(bad({ separationDate: "6/10/2026" }));
+  });
+
+  it("stages the two date write-backs UNCONDITIONALLY, from the reconciled variables", () => {
+    // §4e's amendment: legacy writes these back only when reconciliation moved
+    // them, which is a property of its incremental drafts. Under one-pass
+    // staging the staged set IS the finalized state, so both are always there.
+    const moved = kualiFinalizationFields(VARIABLES);
+    assert.equal(moved.lastDayWorked, VARIABLES.lastDayWorked);
+    assert.equal(moved.separationDate, VARIABLES.separationDate);
+
+    // The ordinary case — nothing moved, so the reconciled value equals what
+    // the document already carries and the save writes the same string back.
+    // The FIELD SET is the same shape either way; there is no conditional arm
+    // for the read-back to have to know about.
+    const unmoved = kualiFinalizationFields(KualiFinalizationVariablesSchema.parse({
+      ...VARIABLES,
+      lastDayWorked: "06/10/2026",
+      separationDate: "06/10/2026",
+    }));
+    assert.deepEqual(Object.keys(unmoved), Object.keys(moved));
+    assert.equal(unmoved.lastDayWorked, "06/10/2026");
+    assert.equal(unmoved.separationDate, "06/10/2026");
+
+    // The two folds differ in exactly the field whose VALUE differs, and in
+    // nothing else: the amendment changes the staged set, not the fold. The
+    // separation date is equal in both, so it reports no mismatch — which is
+    // what makes an unconditional stage of an unchanged value harmless.
+    assert.deepEqual(
+      compareKualiFinalizationFields(moved, unmoved).map((entry) => entry.field),
+      ["lastDayWorked"],
+    );
   });
 });
 
@@ -109,6 +155,8 @@ describe("Kuali separation finalization — the read-back comparison", () => {
       payrollTitle: expected.payrollTitle,
       requestAcknowledged: expected.requestAcknowledged,
       timekeeperName: expected.timekeeperName,
+      lastDayWorked: expected.lastDayWorked,
+      separationDate: expected.separationDate,
       terminationEffectiveDate: expected.terminationEffectiveDate,
       submittedTerminationTemplate: expected.submittedTerminationTemplate,
       transactionNumber: expected.transactionNumber,
@@ -126,6 +174,42 @@ describe("Kuali separation finalization — the read-back comparison", () => {
       timekeeperComments: expected.timekeeperComments.slice(0, 20),
     });
     assert.deepEqual(nearMisses.map((entry) => entry.field), ["department", "timekeeperComments"]);
+  });
+
+  it("names a stale date write-back — §9.14's doc 4524, where the separation date genuinely moved", () => {
+    // Live 2026-08-14: doc 4524 carried `06/18/2026` and the reconciliation
+    // moved the separation date forward to `07/03/2026` on a holiday, while the
+    // Kuali document kept the stale date. That is the case §4e's amendment
+    // exists for, and it must be an `absent` naming the field — never absorbed.
+    const expected = kualiFinalizationFields(KualiFinalizationVariablesSchema.parse({
+      ...VARIABLES,
+      lastDayWorked: "06/18/2026",
+      separationDate: "07/03/2026",
+      terminationEffectiveDate: "07/04/2026",
+    }));
+    const stillStale = compareKualiFinalizationFields(expected, {
+      ...UNFINALIZED,
+      department: expected.department,
+      payrollTitleCode: expected.payrollTitleCode,
+      payrollTitle: expected.payrollTitle,
+      requestAcknowledged: expected.requestAcknowledged,
+      timekeeperName: expected.timekeeperName,
+      lastDayWorked: "06/18/2026",
+      // What the document still holds — the value the write-back replaces.
+      separationDate: "06/18/2026",
+      terminationEffectiveDate: expected.terminationEffectiveDate,
+      submittedTerminationTemplate: expected.submittedTerminationTemplate,
+      transactionNumber: expected.transactionNumber,
+      finalPay: expected.finalPay,
+      timekeeperComments: expected.timekeeperComments,
+    });
+    assert.deepEqual(stillStale, [
+      { field: "separationDate", expected: "07/03/2026", observed: "06/18/2026" },
+    ]);
+    // A blank date control is `<empty>`, distinguishable from a wrong one.
+    const blank = compareKualiFinalizationFields(expected, UNFINALIZED)
+      .filter((entry) => entry.field === "lastDayWorked" || entry.field === "separationDate");
+    assert.deepEqual(blank.map((entry) => entry.observed), ["<empty>", "<empty>"]);
   });
 
   it("names every disagreeing field, in declaration order, and renders each state distinguishably", () => {
@@ -170,21 +254,32 @@ describe("Kuali separation finalization — the permanent key and the formKey ta
     );
   });
 
-  it("pins all ten formKeys as captured live, and the five the wire check may assert", () => {
+  it("pins the ten formKeys captured live, the two that are honestly unknown, and the five the wire check may assert", () => {
     // Captured live 2026-08-14 (chunk 5c, §9.12) off Kuali's own `ActionPage`
-    // query — the read the app itself issues when a document route opens.
+    // query — the read the app itself issues when a document route opens. The
+    // two `null`s are §4e's 2026-08-14 amendment: that pass captured the ten
+    // fields staged then, and a fabricated key would make the commit's wire
+    // proof a check that cannot fail.
     assert.deepEqual({ ...KUALI_RRSS_FINALIZATION_FORM_KEYS }, {
       department: "JPYGckVxcf",
       payrollTitleCode: "2FlOeR5pd9",
       payrollTitle: "sVmpq6tG9X",
       requestAcknowledged: "xKRU6vmYSY",
       timekeeperName: "QGJ63YrCom",
+      lastDayWorked: null,
+      separationDate: null,
       terminationEffectiveDate: "DoWSfJhpRm",
       submittedTerminationTemplate: "6Ejy-1rfQJ",
       transactionNumber: "wPyuyY0wT0",
       finalPay: "8CXaCSIvx5",
       timekeeperComments: "J_upFRq074",
     });
+    assert.deepEqual(kualiFinalizationFormKeysMissing(), ["lastDayWorked", "separationDate"]);
+    // A missing key is a strict subset of the unasserted set — a field whose key
+    // is unknown can never be on the asserted list.
+    for (const field of kualiFinalizationFormKeysMissing()) {
+      assert.ok(!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field));
+    }
     // The extraction is validated by the one key this repository already knew:
     // `timekeeperName` came back byte-identical to the 2026-08-04 capture that
     // D135 then confirmed on the WIRE — and is still not the DOM id.
@@ -192,7 +287,8 @@ describe("Kuali separation finalization — the permanent key and the formKey ta
     assert.notEqual(KUALI_RRSS_FINALIZATION_FORM_KEYS.timekeeperName, "BWmkKqx40");
     // Every key is distinct: two fields sharing one key would silently make the
     // wire check assert one field twice and the other never.
-    const keys = Object.values(KUALI_RRSS_FINALIZATION_FORM_KEYS);
+    const keys = Object.values(KUALI_RRSS_FINALIZATION_FORM_KEYS)
+      .filter((key): key is string => key !== null);
     assert.equal(new Set(keys).size, keys.length);
 
     // A key is not an expectation. `submitDocumentV2` sends the document MODEL,
@@ -209,6 +305,8 @@ describe("Kuali separation finalization — the permanent key and the formKey ta
     assert.deepEqual(kualiFinalizationWireUnasserted(), [
       "department",
       "requestAcknowledged",
+      "lastDayWorked",
+      "separationDate",
       "terminationEffectiveDate",
       "submittedTerminationTemplate",
       "finalPay",

@@ -56,7 +56,7 @@
  *
  * `clear-pending` (S30/S31 — legacy's first mutation, unfenced and unverified)
  * → `file-termination` (the real HR write) → `finalize-kuali` (§4e's one save
- * over ten staged fields). Each carries its own permanent key, its own probe and
+ * over twelve staged fields). Each carries its own permanent key, its own probe and
  * its own landing proof, and each is a node chunk 4 or chunk 5 already proved
  * alone against a real authority database.
  *
@@ -609,6 +609,14 @@ const separationsFlow = flow(SeparationsInput)
           payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
           payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
           timekeeperName: input.timekeeperName,
+          // §4e's 2026-08-14 amendment — legacy's step-13 write-backs, staged
+          // from the RECONCILED variables and UNCONDITIONALLY. When nothing
+          // moved these equal what the document already carries, so the save
+          // writes the same string back and the read-back proves it either way;
+          // a conditional stage would need an expectation composed from the
+          // page's own prior value, which is the re-read §4e forbids.
+          lastDayWorked: outputs[DATES_NODE].lastDayWorked,
+          separationDate: outputs[DATES_NODE].separationDate,
           terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
           transactionNumber: outputs[RECEIPT_NODE].transactionNumber,
           timekeeperComments: buildFinalizationComments({
@@ -640,6 +648,9 @@ const separationsFlow = flow(SeparationsInput)
           payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
           payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
           timekeeperName: input.timekeeperName,
+          // §4e's 2026-08-14 amendment, bound identically to the prepare's.
+          lastDayWorked: outputs[DATES_NODE].lastDayWorked,
+          separationDate: outputs[DATES_NODE].separationDate,
           terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
           transactionNumber: outputs[RECEIPT_NODE].transactionNumber,
           timekeeperComments: buildFinalizationComments({

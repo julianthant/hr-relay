@@ -190,7 +190,7 @@ const SEPARATION_DATES = taskOutput("workflow:separations/read-separation-dates"
 const TERMINATION_RECEIPT = taskOutput("workflow:separations/verify-termination-receipt");
 
 /**
- * The ten values one Kuali finalization save writes, relative to a prefix.
+ * The twelve values one Kuali finalization save writes, relative to a prefix.
  *
  * They appear four times over — the prepare's `previousFields` and
  * `stagedFields`, the commit's claimed `savedState.fields`, and the terminal
@@ -204,13 +204,14 @@ function finalizationFieldLeaves(scope: EvidenceValueScope, prefix: string): unk
   return [
     ...person(scope, at("timekeeperName")),
     ...open(scope, at("department"), at("payrollTitleCode"), at("payrollTitle"),
-      at("requestAcknowledged"), at("terminationEffectiveDate"),
+      at("requestAcknowledged"), at("lastDayWorked"), at("separationDate"),
+      at("terminationEffectiveDate"),
       at("submittedTerminationTemplate"), at("transactionNumber"), at("finalPay"),
       at("timekeeperComments")),
   ];
 }
 
-/** The reload read-back's proof: the document, the person it displayed, the ten fields. */
+/** The reload read-back's proof: the document, the person it displayed, the twelve fields. */
 function savedFinalizationLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   const at = (path: string): string => `${prefix}.${path}`;
   return [
@@ -627,8 +628,8 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "documentEid.state", "documentEid.reason", "ucpathDeptId.state", "ucpathDeptId.value",
     "ucpathDeptId.reason", "ucpathDepartment.state", "ucpathDepartment.value",
     "ucpathDepartment.reason", "observedDepartmentOptions", "payrollTitleCode", "payrollTitle",
-    "terminationEffectiveDate", "transactionNumber", "timekeeperComments",
-    "observedExistingComments"),
+    "lastDayWorked", "separationDate", "terminationEffectiveDate", "transactionNumber",
+    "timekeeperComments", "observedExistingComments"),
 
   /* The ALWAYS-GATE a third time, on this workflow's own scope (D204). */
   ...person(KUALI_FINALIZATION_GATE, "eid"),

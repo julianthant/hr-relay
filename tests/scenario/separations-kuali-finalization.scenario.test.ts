@@ -108,12 +108,22 @@ const ACTION_ID = "6a7a33b2ac106d428b3217e0";
 const DOCUMENT_NUMBER = "4510";
 const EID = EidSchema.parse("10001799");
 
-/** Live doc 4510's finalization, verbatim (2026-08-12). */
+/**
+ * Live doc 4510's finalization, verbatim (2026-08-12) — except the two date
+ * write-backs §4e's 2026-08-14 amendment added, which that read-only pass did
+ * not capture for this document. They are composed CONSISTENTLY with the
+ * captured effective date instead of being invented from nothing: the
+ * reconciliation's own rule is `terminationEffectiveDate = separationDate + 1`,
+ * so `06/11/2026` fixes the separation date at `06/10/2026`, and this is the
+ * ordinary case where no leave day moved it off the last day worked.
+ */
 const VARIABLES: KualiFinalizationVariables = Object.freeze({
   department: "000412 - Housing/Dining/Hospitality",
   payrollTitleCode: "004921",
   payrollTitle: "STDT 2",
   timekeeperName: "Julian Zaw",
+  lastDayWorked: "06/10/2026",
+  separationDate: "06/10/2026",
   terminationEffectiveDate: "06/11/2026",
   transactionNumber: "T002209631",
   timekeeperComments: "Termination effective date set from the reconciled separation date.",
@@ -271,6 +281,12 @@ describe("separations-kuali-finalization scenarios", () => {
     });
     assert.equal(staging.stagedPageState, "kuali.rrss-document.finalization-staged");
     assert.deepEqual(staging.stagedFields, kualiFinalizationFields(VARIABLES));
+    // Twelve fields since §4e's 2026-08-14 amendment, and the two date
+    // write-backs are staged like every other variable — asserted here rather
+    // than left to the field-set fold, because "one pass stages EVERY field" is
+    // the property this walk exists to hold.
+    assert.equal(staging.stagedFields.lastDayWorked, VARIABLES.lastDayWorked);
+    assert.equal(staging.stagedFields.separationDate, VARIABLES.separationDate);
     assert.deepEqual(staging.previousFields, KUALI_FAKE_UNFINALIZED_FIELDS);
     assert.ok(staging.observedDepartmentOptions.includes(VARIABLES.department));
     // Staging saves NOTHING. S61 is legacy's dry run mutating a live document,
@@ -312,6 +328,20 @@ describe("separations-kuali-finalization scenarios", () => {
       await refusalCode(() => stageSeparationFinalizationTask.impl.run({
         input: TARGET,
         ctx: { ...taskCtx, driver: driverFor(dropped) },
+      })),
+      "stage-not-persisted",
+    );
+
+    // §4e's 2026-08-14 amendment, on the same arm: the two date write-backs are
+    // ordinary staged fields, so a control that drops one refuses exactly like
+    // the transaction number does — which is what keeps them from being a
+    // best-effort write nobody notices failing.
+    const droppedDates = world();
+    droppedDates.finalizationStagingDrops = ["lastDayWorked", "separationDate"];
+    assert.equal(
+      await refusalCode(() => stageSeparationFinalizationTask.impl.run({
+        input: TARGET,
+        ctx: { ...taskCtx, driver: driverFor(droppedDates) },
       })),
       "stage-not-persisted",
     );
@@ -458,11 +488,12 @@ describe("separations-kuali-finalization scenarios", () => {
 
   /* ── the graph half (5b): the real sequencer, over a real authority DB ──── */
 
-  it("separations-kuali-finalization/dry-run-preview — a complete ten-field staging that persists NOTHING", async () => {
+  it("separations-kuali-finalization/dry-run-preview — a complete twelve-field staging that persists NOTHING", async () => {
     // **S61**, at graph level. Legacy's dry run leaves the timekeeper name and a
     // `similar`-tier name rewrite on the live Kuali draft; this one stages all
-    // ten controls, reads every one of them back, and leaves the document as it
-    // found it.
+    // twelve controls — including §4e's two date write-backs, which are exactly
+    // the fields legacy's step 13 would have written for real — reads every one
+    // of them back, and leaves the document as it found it.
     const h = harness();
     const { run, claim } = finalizationClaimRunning(
       h.database, h.clock, finalizationQueuedRun({ dryRun: true }),
@@ -482,6 +513,15 @@ describe("separations-kuali-finalization scenarios", () => {
     assert.ok(h.world.events.includes(`stage-finalization:${FINALIZATION_FIELDS.transactionNumber}`));
     assert.equal(h.world.events.some((event) => event.startsWith("commit:")), false, "zero clicks");
     assert.equal(h.world.persistedFinalization, undefined, "the document is still unfinalized");
+    // The preview's staged value is the reconciled separation date the run WOULD
+    // write back — §4e's amendment visible in the rehearsal, not only in the run.
+    assert.equal(
+      preview.outcome.state === "would-prepare"
+        ? (preview.outcome.prepare.value as { stagedFields: { separationDate: string } })
+          .stagedFields.separationDate
+        : undefined,
+      FINALIZATION_FIELDS.separationDate,
+    );
     assert.equal(h.world.lastCapability, undefined, "no mutation capability was ever minted");
 
     const footprint = finalizationDurableFootprint(h);
@@ -517,7 +557,7 @@ describe("separations-kuali-finalization scenarios", () => {
     ]);
   });
 
-  it("separations-kuali-finalization/committed — ONE fenced click writes all ten fields, and the reload read-back is the proof", async () => {
+  it("separations-kuali-finalization/committed — ONE fenced click writes all twelve fields, and the reload read-back is the proof", async () => {
     const h = harness();
     const { run, claim } = finalizationClaimRunning(h.database, h.clock);
 
