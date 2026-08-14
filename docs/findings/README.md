@@ -22,7 +22,7 @@ when no existing one fits), each stamped with a date and a `**Status:**` line
 | --- | --- | --- |
 | [dashboard-projection.md](dashboard-projection.md) | The BFF's span-fold/projection layer: anything where served surfaces disagree with the on-disk streams | 1 (diagnosed) |
 | [workflow-taxonomy.md](workflow-taxonomy.md) | How workflows/compositions/chunks are modeled and presented (rail, picker, counts) | 1 (recorded) |
-| [queue-rows.md](queue-rows.md) | Queue-row wire gaps: demo/doc-03 row elements the served wire cannot yet power | 8 (6 recorded wire gaps, 2 diagnosed served-but-undrawn; liveMessage + warnings landed 2026-08-14 and deleted) |
+| [queue-rows.md](queue-rows.md) | Queue-row wire gaps: demo/doc-03 row elements the served wire cannot yet power | 7 (5 recorded wire gaps, 2 diagnosed served-but-undrawn; liveMessage + warnings + actions[] landed 2026-08-14 and deleted) |
 | [archive.md](archive.md) | Archive-surface wire gaps: demo archive/version-bump elements the `/api/v1/archive` wire cannot yet power | 11 (7 recorded wire gaps, 4 triaged decide-first/blocked/deferred) |
 | [explorer.md](explorer.md) | Workflow-Explorer wire gaps: demo explorer elements the `/api/v1/explorer` projection cannot yet power (field-level contracts, authored prose) | 3 (recorded; 5 dispositioned into doc 12 §5.7's exclusions/as-built and deleted) |
 | [activity.md](activity.md) | Activity-report wire gaps: demo report elements the `/api/v1/reports/activity` aggregate cannot yet power (people, hours saved, per-workflow status columns, the write ledger) | 7 (2 recorded wire gaps, 5 triaged; D180 ratification landed in doc 13 §6.7 and its record deleted) |

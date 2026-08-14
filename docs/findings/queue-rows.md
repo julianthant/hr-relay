@@ -25,6 +25,13 @@ than a wire gap — so both records stay below, rewritten to state exactly what 
 it. **The opening claim above no longer holds for those two:** the frontend is not 1:1 on them, and
 neither gap closes by serving another field.
 
+**Landed 2026-08-14, second pass — per-row actions.** The "No per-row action controls" record is
+deleted: `actions[]` is served per row (descriptor policy ∩ kernel preconditions, CAS-bound to
+`rowRevision`, `queue-row-actions.ts`) and `FooterActions`/`RowContextMenu`/confirm-first all draw
+it; doc 03's as-built delta owns the contract. The one remainder is NOT a regression of that
+record: no `outcome`-placement descriptor is served because those are navigation-shaped and need
+the linked-run wire fields — that half rides the "No linked-run chip" record below.
+
 ---
 
 ## The title is a document number, not a subject
@@ -124,36 +131,6 @@ pair a glance has to separate.
 token pair, or a ratified reason the rehearsal chip shares a tone with `test`. That is a UI
 session's call, not a backend one; the field is served and the chip is one line the moment the tone
 exists.
-
----
-
-## No per-row action controls
-
-**Recorded:** 2026-08-14 · **Status:** recorded · **Owning doc:** doc 03 §2.4 (command
-protocol), doc 13 §0.4
-
-**Symptom.** Every demo row carries its frequent commands at the footer's right edge: a queued
-row shows `≫` (promote) and `×` (cancel); a finished row shows `↺` (re-run) and `🗑` (delete);
-the full set is a right-click away. The rebuild draws none, on any row, in any state — the
-queue's only affordance is selecting the row.
-
-**Demo element.** `FooterActions` (footer, right) + `RowContextMenu` (right-click) +
-`OutcomeActionButton` (on the subline).
-
-**Missing wire.** BOTH halves are missing, which is why this is a wire gap rather than a wiring
-oversight: there is no `actions[]` field on `QueueBaseFields` and no projector that would build
-one. `src/dashboard/app/dashboard-app.tsx:118` holds `SERVED_ACTIONS = []` with the same
-diagnosis.
-
-**Where it would come from.** A per-row projection of `ActionDescriptorWire[]` bound to the
-row's `rowRevision` as its CAS target. **The consumer is already complete**: `FooterActions`,
-`RowContextMenu` and the confirm-first dialog are ported and mounted, `onAction` is passed on
-both panels and routes into `runAction` → `composeCommandRequest` → the one command client. The
-day the field is served, every row control is live with no frontend change.
-
-*(Precedent to copy: the two run-detail SECTION payloads that carry decisions — `parked-write`
-and `identity-gate` — already project real descriptors in
-`src/server/dashboard/queries/run-detail.ts`. The generic row-level arm is the only one absent.)*
 
 ---
 
