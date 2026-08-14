@@ -851,6 +851,14 @@ per step** — each its own fence, each its own permanent key, per Option A's ru
 and not assumed false. The staged-variables model is unchanged either way: the variables are still
 read first and staged in one pass; only the number of (save, read-back) pairs can grow.
 
+**ANSWERED 2026-08-14 by chunk 5c's live pass (§9.12) — ONE save stands.** The ten fields do span
+three sections (`m9LaWN3zL` ×7, `cF6IPyCVw` ×2, `a_Alfq9a2` ×1, read off Kuali's own `ActionPage`
+query), and **all three report `sectionSettings: "edit"` at BOTH live workflow steps** — `Task 1 - Jan`
+and `Task 1 - Kristina & TES` served the identical ten-entry map. So the structure is not forced to
+grow: one fence, one save, one reload read-back, one permanent key. Two cautions ride with the answer:
+the section is a gadget id in the form template and is **not** derivable from the rendered headings,
+and the map is a property of the STEP, so a step nothing has stood on could still report `hide`.
+
 **One consequence to carry into item 5.** Reading everything first and writing at the end deliberately
 **widens the gap** between each read and the write it feeds — and the identity gate sits inside that
 gap as a human wait. The per-read `maxAge` values are what bound that gap, which is exactly why item
@@ -2824,14 +2832,15 @@ actually objected to.
 
 **Two things 5c owes, recorded here so they are not rediscovered.**
 
-1. **No write path is live-verified.** The fourteen controls were live-verified as READS on
+1. **No write path is live-verified.** _(DISCHARGED 2026-08-14 — §9.12.)_ The fourteen controls were live-verified as READS on
    2026-08-12 (§9.3); none has been observed being WRITTEN by this repository, and *a selector mapped
    on a read-only record is not a verified selector for the editable page* is legacy's own lesson.
    Every write path in `src/stores/kuali/driver/interpreter.ts` carries a `// live-verify: 5c`
    marker. The registry's two new facts (the staged page state and the Transaction Number
    observation) are structural claims about that same read-only pass, and both evidence manifests
    keep `externalWriteAttempted: false`.
-2. **Nine of the ten `submitDocumentV2` `formKey`s are unknown.** Only `timekeeperName`'s
+2. **Nine of the ten `submitDocumentV2` `formKey`s are unknown.** _(CAPTURED 2026-08-14 — and the
+   capture found that filling the table was necessary and not sufficient; §9.12 item 2.)_ Only `timekeeperName`'s
    (`QGJ63YrCom`) was ever observed, live 2026-08-04 off Kuali's own `ActionPage` query. The rest are
    `null` rather than guessed — a fabricated key makes the commit's wire proof a check that cannot
    fail — so that proof covers one field today. The landing proof is unaffected because it was never
@@ -2911,9 +2920,12 @@ reason one control over. A normalized-exact DESCRIPTION tier is not the safe mid
 like and is absent too: UCPath renders `HOUSING/DINING/HOSPITALITY` where Kuali renders
 `Housing/Dining/Hospitality`, so such a tier is either dead or case-insensitive, which is a quieter
 fuzzy match. Both spellings ride on the resolution instead, so the operator compares them and the
-code decides. The option text is returned **verbatim from the list that went in** — `000719 -  Supply
-Chain Services` really is served with a double space (legacy ISS-B05), and a reconstruction would
-produce a string the control does not carry. Four refusals, four durable codes:
+code decides. The option text is returned **verbatim from the list that went in**, and a reconstruction would
+produce a string the control does not carry. _(Corrected by 5c's live pass, §9.12: the double space
+in `000719 -  Supply Chain Services` is what the DOM and Kuali's model carry, but the driver reads
+options through `HTMLOptionElement.text`, which strips and collapses — so what "verbatim" means here
+is "the normalized spelling every read in this pipeline produces", which is self-consistent and is
+the spelling `selectOption({label})` can match.)_ Four refusals, four durable codes:
 `department-code-unreadable` (S24 — the consumer that NEEDS the department is the one that refuses),
 `department-code-not-offered` (recording every option the control did offer), `department-option-ambiguous`,
 `department-option-unusable`.
@@ -2956,5 +2968,249 @@ state — by that point the UCPath termination the document was going to record 
    durable authority before finalization is entered; this descriptor takes the number (it is half the
    permanent key) and nothing consumes the approval status, so adding it here would be a dead field.
    It belongs to chunk 6's composition, which holds chunk 4's terminal result and can bind both.
+
+---
+
+### 9.12 Chunk 5c — the live read-only + dry-run pass, 2026-08-14: what ran, what it found, and what is genuinely blocked
+
+Read-only against the real Kuali production space, Duo cleared hands-off by Duo Autopilot. **Nothing
+was saved.** `Save`, `Send Back` and `Mark Complete` were never clicked; `submitDocumentV2` was never
+issued — and could not have been, because every session in this pass ran behind a route guard that
+aborts that mutation by name. The durable footprint of the whole pass is **zero**: no `write_intents`
+row for the permanent key, no transaction checkpoint. The controlled real commit stays OPEN on the
+operator's unnamed §4f2 canary.
+
+#### The honest status of doc 07 §3.1 step 4 for chunk 5: **MET for the dry-run half**
+
+| Asked for | Status |
+|---|---|
+| Every `// live-verify: 5c` write path exercised against the editable page | **MET** — both markers discharged |
+| The ten controls proved to be exactly one EDITABLE node on the editable page | **MET** — four documents, two workflow steps |
+| §4e's section-ownership caveat settled | **MET** — one save stands; see below |
+| The nine unknown `formKey`s | **MET, and it found more than a key** — see below |
+| A live dry run staging all ten, abandoned, document proved unchanged (S61) | **MET** — real doc 4524, 8.06 s, zero durable rows |
+| `probeToFenceMaxMs` confirmed or tightened | **CONFIRMED at 45 s**, on a measured 11.4 s worst leg |
+| The probe live | **MET for `absent`; `present` is NOT-RUN and cannot be run yet** — see below |
+| The run driven through start-plan → command endpoint → worker | **NOT MET** — §9.9's two platform gaps, unchanged and not this chunk's |
+
+#### The live inventory, and one document that did not exist a week ago
+
+The Action List holds **four** RRSS separation documents, all still open, all `Task`:
+
+| Doc | Action id | Workflow step | Finalization state (Kuali's own model) |
+|---|---|---|---|
+| **4524** | `6a7e45bcbac487bbc6a2ceae` | Task 1 - Kristina & TES | **NEW** (created Aug 13) — all ten fields empty |
+| 4510 | `6a7a33b2ac106d428b3217e0` | Task 1 - Jan | nine of ten populated; `timekeeperComments` empty |
+| 4502 | `6a766ae6f0549046f7f0dc06` | Task 1 - Jan | only `timekeeperComments` populated |
+| 4495 | `6a73abda824c9a5388e0ceaa` | Task 1 - Kristina & TES | five populated, five empty |
+
+All three chunk-2 action ids still resolve, on the same steps §9.3 recorded — so the D129 warning
+("an action id names a workflow STEP") has not yet bitten this set, and `openDocument`'s heading proof
+is what makes that an observation rather than a hope.
+
+Measured: cold login (browser launch + full SSO + Duo, hands-off) **24.1 s**; the Action List
+**2.8 s**; a warm-profile document open **2.34–3.08 s**; a whole warm session (login → document →
+survey → close) **8.1–8.6 s**.
+
+#### The instrument: Kuali's own `ActionPage` query, observed and never issued
+
+Every finding below came from a **passive** response listener on the GraphQL endpoint. Kuali issues
+`ActionPage` itself on every document route open; this pass read the answer and sent nothing extra.
+That single response carries three things chunk 5 needed and nothing else in the tree could give:
+
+- `data.action.details.sectionSettings` — `edit` / `hide` **per section id, per workflow step**;
+- `data.action.document.form.template` — every gadget's `formKey`, DOM `id`, `type` and owning section;
+- `data.action.document.data` — the document MODEL, keyed by `formKey`, which is the same map
+  `submitDocumentV2` sends.
+
+#### 1. §4e's caveat is ANSWERED: the ten fields span three sections, and all three are `edit` at both live steps
+
+The headline question. The ten finalization fields do **not** live in one section — they live in
+three — and the sections are not the visible `<h2>`/`<h3>` headings:
+
+| Section id | Fields it owns | `Task 1 - Jan` | `Task 1 - Kristina & TES` |
+|---|---|---|---|
+| `m9LaWN3zL` | `terminationEffectiveDate`, `department`, `payrollTitleCode`, `payrollTitle`, `submittedTerminationTemplate`, `transactionNumber`, `finalPay` | `edit` | `edit` |
+| `cF6IPyCVw` | `requestAcknowledged`, `timekeeperName` | `edit` | `edit` |
+| `a_Alfq9a2` | `timekeeperComments` | `edit` | `edit` |
+
+Both live workflow steps served the **identical** ten-entry `sectionSettings` map (the two `hide`
+entries, `4WIES6A7P` and `VhuKxRTrN`, own no finalization field). **So §4e's one-save model stands:
+ONE save, ONE reload read-back, one fence, one permanent key.** Nothing is restructured, and the
+§4e caveat is discharged rather than carried forward.
+
+Two cautions that come with the answer. The mapping is *field → section id*, and a section id is a
+gadget id in the form template — it is not derivable from the rendered headings, so a future check
+must read it from `ActionPage`, not from the DOM. And the map is a property of the STEP: a step this
+pass never stood on could still report `hide`, which is exactly why the finding is stated as "at both
+live steps" rather than "always".
+
+#### 2. All ten `formKey`s captured — and filling the table turned out NOT to be a one-line change
+
+§9.10 recorded "filling the table is a one-line change". The capture succeeded on the first attempt
+and the sentence was still wrong, which is the most useful thing this pass found.
+
+| Field | `formKey` | Gadget | Model value, live |
+|---|---|---|---|
+| `payrollTitleCode` | `2FlOeR5pd9` | Text | `"004921"` |
+| `payrollTitle` | `sVmpq6tG9X` | Text | `"STDT 2"` |
+| `timekeeperName` | `QGJ63YrCom` | Textarea | `"Julian Zaw"` |
+| `transactionNumber` | `wPyuyY0wT0` | Text | `"T002209631"` |
+| `timekeeperComments` | `J_upFRq074` | Textarea | `"Hold off entering this termination…"` |
+| `department` | `JPYGckVxcf` | Dropdown | `{"id":"GfKti1EX5VL","label":"000412 - Housing/Dining/Hospitality"}` |
+| `terminationEffectiveDate` | `DoWSfJhpRm` | Date | `1781136000000` — epoch ms at UTC midnight |
+| `requestAcknowledged` | `xKRU6vmYSY` | Checkboxes | `[{"id":"5ZaHvv-OLS","label":"Request Acknowledged - In Progress"}]` |
+| `submittedTerminationTemplate` | `6Ejy-1rfQJ` | Checkboxes | `[{"id":"y_VXzkty8","label":"Submitted Termination Template"}]` |
+| `finalPay` | `8CXaCSIvx5` | Radios | `{"id":"s9ziHeMcl","label":"Does not need Final Pay (student employee)"}` |
+
+**The extraction validated itself before it was trusted:** `timekeeperName` came back `QGJ63YrCom`,
+byte-identical to the 2026-08-04 capture D135 then confirmed on the wire, and still not the DOM id
+`BWmkKqx40`. The Date reading was confirmed on two independent documents (4510's 06/11/2026 →
+`1781136000000`; 4524's 06/18/2026 → `1781740800000`).
+
+**Why that is not enough.** `submitDocumentV2` sends the document MODEL, and the model holds ten
+values of five different shapes. Writing the nine keys into the table and leaving the comparison as
+`data[formKey] === "<the staged string>"` would have made the wire check **unable to pass** for six of
+ten fields — turning every landed save into a post-fence PARK. A check that can only fail is the same
+defect as a check that cannot, pointed the other way.
+
+The tempting middle ground — compare the option `label` — is provably wrong too, and one live fact
+settles it: the `Department*` option `000719 -  Supply Chain Services` carries a **double space** in
+Kuali's model, while the driver reads options through `HTMLOptionElement.text`, which collapses
+whitespace. (The same live capture shows `Student Title Code` options carrying literal TABs, so this
+is a property of the form, not of one option.) Comparing the option `id` instead would need a
+declared option-id table Kuali can republish at will.
+
+So the fix ships **five** asserted fields, not ten: `KUALI_RRSS_FINALIZATION_WIRE_ASSERTED` names the
+`Text`/`Textarea` five whose expected wire value is the staged string with no transformation, and
+`kualiFinalizationWireUnasserted()` names the other five and says why. That is up from ONE, and the
+remaining five close at the controlled commit — by **observing** the real payload, which is the only
+evidence that can settle them. The landing proof is untouched and always was the reload read-back
+over all ten fields.
+
+Two smaller findings fell out of the same reading. The old table's comment claimed `commit` "refuses
+to click Save while any staged field's key is unknown" — **it never did**; `stagedWireValues` simply
+skipped the null keys. And the correction is moot now, but a comment asserting a fail-closed
+behaviour the code does not have is worse than no comment at all.
+
+#### 3. The write surface is live-verified EDITABLE
+
+On all four documents and both workflow steps, each of the ten controls resolved to **exactly one**
+node that was neither `disabled` nor `readOnly` (`isEditable()` for the text controls, `isEnabled()`
+for the select, checkboxes and radio). §9.10's caveat — *a selector mapped on a read-only record is
+not a verified selector for the editable page* — is discharged.
+
+The registry now says so in a way `exactly-one-visible` could not: a new
+`exactly-one-editable` assertion arm, carried by nine of the ten in
+`evidence/ui/kuali/separation-document.live.json` at `verifiedAt: 2026-08-14`. The tenth,
+`timekeeper-field`, is deliberately left on the 2026-08-04 write pair, where it already carries the
+strongest evidence in this tree — D135's controlled commit. **`externalWriteAttempted` stays `false`
+in every manifest**: a staged value a reload discards is not an external write.
+
+#### 4. The live dry run — S61 proved on a real document
+
+`executeDryRun` on real doc **4524** (EID `10630962`), driven through the REAL write sequencer over a
+real authority database with the REAL Playwright driver:
+
+| Leg | Measured |
+|---|---|
+| preview: open → stage all ten → read all ten back → beat-③ subject observation | **8.06 s** (warm session) |
+| the abandon: hard reload + whole-form re-read through `readSeparationDocument` | **5.14 s** |
+| whole harness, login to close | **13.20 s** |
+
+The preview returned `kind: "transaction-dry-run-preview"`, `subject.state: "match"`, a
+`stagedPageState` of `kuali.rrss-document.finalization-staged`, `previousFields` recording the
+document's exact prior state (five blanks, `- - -`, two unchecked boxes, no radio) and `stagedFields`
+carrying all ten staged values. Then:
+
+- **zero `write_intents` rows for the permanent key** `kuali:4524|finalization|T009999999`;
+- **zero transaction checkpoints**;
+- and the hard reload re-read the document with **every one of the ten controls back to its prior
+  value** — five `absent`, the department on `- - -`, both checkboxes `false`, no radio selected.
+
+That last line is §4e/S61's whole point and is the check legacy's own dry run never did: legacy's dry
+run leaves the timekeeper name and a `similar`-tier name rewrite on a live Kuali draft.
+
+**One real defect the preview exposed.** `observedDepartmentOptions` came back with
+`000719 - Supply Chain Services` — a SINGLE space — while §9.3's capture, Kuali's form model and the
+DOM's `textContent` all carry a double space. The cause is `HTMLOptionElement.text`, which
+strips-and-collapses. It is **not** a bug in the run: `separations-kuali-read` reads options through
+the same `readSelect`, so the fold's input, the fold's output and the prepare's S55 check are all on
+the normalized form and agree with each other — and 5b's fixtures already use the single-space
+spelling. What is wrong is §9.11's sentence claiming the text is served "verbatim … with a double
+space": the DOM serves it that way and this driver has never returned it that way. Corrected here
+rather than in the code, because changing the read to `textContent` would move a value every stored
+chunk-2 receipt binds — and would put the pipeline on a spelling the `selectOption({label})` staging
+cannot match.
+
+#### 5. The probe live — `absent` twice, and `present` is structurally NOT-RUN
+
+`readSavedSeparationFinalization` + `kualiFinalizationVerdict` against two real documents:
+
+| Case | Read-back | Verdict | Time |
+|---|---|---|---|
+| doc **4510**, probed with its nine real values and a comments string it does not carry | `absent` | `absent` | **3.13 s** |
+| doc **4524**, probed with the dry run's ten values | `absent` | `absent` | **3.30 s** |
+
+4510 is the useful one: it is the near-identity case, and the read-back named **exactly one**
+mismatch — `timekeeperComments`, `expected: "chunk 5c probe — …"`, `observed: "<empty>"` — while
+reporting the other nine fields verbatim and equal. That is the ten-field comparison working on real
+data, and it is also the strongest available evidence that a `present` verdict would be reached if a
+document carried the run's exact field set.
+
+**`present` is NOT-RUN, and it cannot be run before the controlled commit.** Two independent reasons,
+both structural rather than accidental: no live document carries a finalization this repository
+composed (only a real save produces one), and `timekeeperComments` is a required ≥1-character
+variable, so doc 4510 — which is finalized with **empty** comments — cannot be probed with its own
+exact field set at all. Worth carrying into chunk 6 as a live fact about the contract: **a document
+finalized with no timekeeper comment can never be probed `present`.** For runs of this workflow that
+is harmless (the run always composes a non-empty comment), and it means the `already-present` arm's
+live proof belongs to the first document this repository finalizes.
+
+#### 6. `probeToFenceMaxMs` — CONFIRMED at 45 s
+
+The bound covers probe-complete → fence, on a session already in hand, so login is out of scope.
+Measured worst legs: probe **3.30 s** + prepare **8.06 s** = **11.4 s**, against a shipped bound of
+**45 000 ms** — roughly **4x headroom**, on a prepare that stages ten controls where D135's measured
+one staged a single field. A cold document open adds ~1 s. The value is **unchanged**; tightening it
+on one warm measurement would be trading real headroom for nothing, and chunk 4 kept its own bound at
+1.8x on the same argument.
+
+Per-beat spans are still **not obtainable** — `executeDryRun` runs the prepare arm only and emits no
+spans (§9.9 gap 2). The number above is therefore an end-to-end measurement of the two legs
+separately, exactly as chunk 4 recorded, not a decomposition off the run's own spans.
+
+#### What is honestly NOT RUN
+
+1. **The controlled real commit.** Out of scope by the chunk's absolute rule and open on the
+   operator's §4f2 canary. Doc **4524** is the natural candidate and is recorded as such, not chosen:
+   it is a fresh separation with all ten fields empty, so a finalization on it writes nothing over an
+   operator's work and its whole prior state is `previousFields`' five blanks.
+2. **The wire shapes of the five unasserted fields.** Only the commit can see the real payload. The
+   zero-write instrument D135 recorded — routing `submitDocumentV2` to `route.abort()` and reading the
+   payload Kuali WOULD have sent — is the right tool and was deliberately NOT used here, because it
+   requires clicking `Save`, and this chunk's rule is that `Save` is never clicked. **It is the
+   recommended first step of the controlled commit**: one aborted save answers all five shapes before
+   a single byte reaches Kuali.
+3. **A `present` probe verdict** — structurally unreachable, above.
+4. **The pipeline half** (start-plan → command → worker). §9.9's two platform gaps are unchanged:
+   `supportsDryRun` reads `descriptor.surfaces.inputRun?.supportsDryRun` and this descriptor has
+   `surfaces: {}`, and the interpreter still has no dry-run preview arm. Neither is chunk 5's to move.
+5. **`recoveryAbsence: "stabilized"`'s confirmation.** D207 made the transferred window provisional
+   until this write's own controlled-commit proof; nothing here could confirm it, because a dry run
+   fences nothing and therefore measures no propagation window.
+6. **A step where a finalization section reports `hide`.** Both live steps report `edit` throughout;
+   no document in the operator's Action List sits anywhere else.
+
+#### What chunk 6 inherits from this pass
+
+- The controlled commit, with doc 4524 recorded as the candidate and the `route.abort()` payload read
+  as its recommended first beat.
+- The five unasserted wire shapes, closed by that same beat.
+- The `already-present` arm's live proof, reachable only after the first real finalization.
+- D207's provisional `stabilized` window, confirmed by the same commit.
+- §9.11's two carried items are unchanged: the resolved department option is still not rendered into
+  doc 09 §14.2's gate packet, and the `(transactionNumber, approvalStatus)` receipt pair still belongs
+  to the composition.
 
 ---
