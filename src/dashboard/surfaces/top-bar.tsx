@@ -26,6 +26,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Tooltip,
   dsBorder,
   dsFocus,
   dsIcon,
@@ -389,12 +390,26 @@ export function DateNav({
         }}
         icon={<ChevronLeft aria-hidden className={dsIcon.md} />}
       />
+      {/*
+        THE HINT IS A `Tooltip`, NOT A `title`, and the operator filed the
+        difference as a defect. A native `title` is painted by the browser at
+        the CURSOR, so this one appeared adrift in the middle of the page with
+        nothing tying it to the pill it describes. The primitive anchors to its
+        trigger and opens BELOW it — this control is 10px from the top of the
+        window, so `top` would be a flip on every hover.
+
+        It wraps the Popover TRIGGER rather than the Popover, so the hint
+        belongs to the button the pointer is actually over.
+      */}
       <Popover open={open} onOpenChange={setOpen}>
+        <Tooltip
+          content={`${plural(count, "row")} on this day · the projection serves ${plural(days.length, "day")}`}
+          side="bottom"
+        >
         <PopoverTrigger asChild>
           <button
             type="button"
             aria-label={`Pick a day — showing ${dayLabelWithToday(day, today)}, ${plural(count, "row")}`}
-            title={`${plural(count, "row")} on this day · the projection serves ${plural(days.length, "day")}`}
             className={cn(
               "inline-flex cursor-pointer items-center border border-transparent",
               "h-[var(--ds-h-sm)] gap-1.5 px-1.5",
@@ -411,6 +426,7 @@ export function DateNav({
             <CountBadge value={count} tone={day === today ? "info" : "neutral"} />
           </button>
         </PopoverTrigger>
+        </Tooltip>
         <PopoverContent title="Pick a day" hideTitle width="md" align="center" side="bottom">
           <DateCalendar
             day={day}

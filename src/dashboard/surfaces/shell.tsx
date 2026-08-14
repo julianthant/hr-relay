@@ -33,6 +33,7 @@ import { readEnumPreference, writePreference } from "../lib/preference-storage.j
 import { cn } from "../lib/utils.js";
 import {
   IconButton,
+  Tooltip,
   dsBorder,
   dsClip,
   dsElev,
@@ -649,6 +650,16 @@ export function needsYouCount(counts: readonly StatusCountWire[]): number {
  *  - **A zero genuinely recedes** — it drops its border, its fill AND its
  *    label, down to an icon and a `0` at `--ds-fg-faint`. It is still there, it
  *    is still clickable, and it still carries its full name to a screen reader.
+ *
+ * ONE DELIBERATE DEPARTURE FROM THE DEMO, and the operator filed it as a
+ * defect. Every hint in this group was a native `title`, which the browser
+ * paints as an OS widget AT THE CURSOR: it is anchored to the pointer rather
+ * than to the control, so it lands over the rows below the bar and reads as
+ * detached from the thing it is about. The `Tooltip` primitive is what
+ * DESIGN.md already names for a hint — it anchors to its trigger, floats above
+ * it, flips on collision, and is drawn in the product's own surface tokens. The
+ * accessible name on each control is unchanged and still carries the status and
+ * its count, so nothing load-bearing moved into a hover-only surface.
  */
 export function StatusFilters({
   statusCounts,
@@ -673,11 +684,10 @@ export function StatusFilters({
   ): ReactElement => {
     const on = active === key;
     return (
+      <Tooltip key={key} content={title} side="top">
       <button
-        key={key}
         type="button"
         aria-pressed={on}
-        title={title}
         onClick={() => onSelect(on ? "all" : key)}
         className={cn(
           // Same OUTER height as every status pill (`--ds-h-toolbar`).
@@ -698,6 +708,7 @@ export function StatusFilters({
         {label}
         <span className={dsText.nums}>{value}</span>
       </button>
+      </Tooltip>
     );
   };
 
@@ -708,8 +719,8 @@ export function StatusFilters({
     const spec = PROPOSED_STATUS[dsStatusOf(status)];
     const Icon = spec.icon;
     return (
+      <Tooltip key={status} content={spec.meaning} side="top">
       <button
-        key={status}
         type="button"
         aria-pressed={on}
         // The ACCESSIBLE name, not the drawn word: `verifiedDone` and
@@ -718,7 +729,6 @@ export function StatusFilters({
         // `Done — 2` and a screen-reader operator could not tell which pill
         // was which (D22, amended 2026-08-04). The visible pill is untouched.
         aria-label={`${spec.accessibleLabel} — ${value}`}
-        title={spec.meaning}
         onClick={() => onSelect(on ? "all" : status)}
         className={cn(
           "inline-flex shrink-0 cursor-pointer items-center border",
@@ -755,6 +765,7 @@ export function StatusFilters({
         {!empty && spec.label}
         <span className={dsText.nums}>{value}</span>
       </button>
+      </Tooltip>
     );
   };
 
