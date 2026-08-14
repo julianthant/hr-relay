@@ -1,3 +1,4 @@
+import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
 import { kualiStore } from "../../stores/kuali/index.js";
 import { separationsStore } from "../../stores/separations/index.js";
 import { separationsKualiReadDescriptor } from "./descriptor.js";
@@ -11,4 +12,6 @@ import { separationsKualiReadDescriptor } from "./descriptor.js";
 export const separationsKualiReadModule = Object.freeze({
   descriptor: separationsKualiReadDescriptor,
   stores: Object.freeze([kualiStore, separationsStore]),
+  // A proving harness for one step of `separations`, never a peer workflow (D219).
+  role: defineWorkflowRole({ kind: "chunk-harness", of: "separations" }),
 });

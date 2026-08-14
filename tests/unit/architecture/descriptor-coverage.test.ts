@@ -24,10 +24,13 @@ import {
   INTAKE_PROJECTIONS,
   SERVER_REGISTRY,
   WORKFLOW_MODULES,
+  WORKFLOW_ROLES,
   auditImplBindings,
   auditWorkflowModuleBindings,
+  auditWorkflowModuleRoles,
   intakeProjectionRegistry,
   readPendingImplBindings,
+  workflowRoleRegistry,
 } from "../../../src/control/workflow-registry.js";
 import { flow } from "../../../src/base/flow.js";
 import { defineWorkflowDescriptor, workflowProjections } from "../../../src/base/workflow.js";
@@ -38,6 +41,10 @@ import { defineIntakeProjection } from "../../../src/domain/intake/projection.js
 import { BUILD_MANIFEST, BUILD_MANIFEST_PATH } from "../../../src/domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
 import { ICON_NAMES, STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
+import {
+  WorkflowModuleRoleSchema,
+  defineWorkflowRole,
+} from "../../../src/domain/workflow/module-role.js";
 import {
   auditBuildManifestBytes,
   collectSourceClosure,
@@ -118,6 +125,60 @@ describe("descriptor coverage", () => {
     assert.equal(new Set(moduleIds).size, moduleIds.length);
     assert.equal(WORKFLOW_MODULES.length, DESCRIPTORS.length);
     assert.deepEqual(Object.keys(SERVER_REGISTRY).sort(), descriptorIds);
+  });
+
+  /**
+   * §1.4 item 2's second half (doc 02 §1.2.1, D219).
+   *
+   * Every module DECLARES a role — the schema makes an absent one a type error
+   * and `defineWorkflowRole` makes a mis-shaped one a parse error, so what is
+   * left to check here is the cross-module fact no single module can see: a
+   * `chunk-harness.of` resolving to a registered COMPOSITION. The negative arms
+   * run the real audit against violating tuples, because a check that only ever
+   * sees the passing corpus is a check that cannot fail.
+   */
+  it("declares one role per module, every chunk harness naming a registered composition", () => {
+    assert.deepEqual(auditWorkflowModuleRoles(WORKFLOW_MODULES), []);
+    for (const module of WORKFLOW_MODULES) {
+      assert.ok(
+        WorkflowModuleRoleSchema.safeParse(module.role).success,
+        `${String(module.descriptor.id)} must declare a role the closed union admits`,
+      );
+    }
+    // The registry's own frozen projection agrees with the tuple, both ways.
+    assert.deepEqual(
+      Object.keys(WORKFLOW_ROLES).sort(),
+      WORKFLOW_MODULES.map((module) => String(module.descriptor.id)).sort(),
+    );
+
+    const harness = WORKFLOW_MODULES.find((module) => module.role.kind === "chunk-harness");
+    const composition = WORKFLOW_MODULES.find((module) => module.role.kind === "composition");
+    if (harness === undefined || composition === undefined) {
+      throw new Error("the role fixtures require one registered chunk harness and one composition");
+    }
+
+    // A dangling `of`: the composition is simply not in the tuple.
+    const dangling = auditWorkflowModuleRoles(
+      WORKFLOW_MODULES.filter((module) => module !== composition),
+    );
+    assert.match(dangling.join("\n"), /which is not a registered workflow/);
+    assert.match(dangling.join("\n"), new RegExp(String(harness.descriptor.id)));
+
+    // An `of` that resolves to a workflow which is NOT a composition — the
+    // harness-of-a-harness chain, and the standalone target, in one arm.
+    const notAComposition = auditWorkflowModuleRoles(WORKFLOW_MODULES.map((module) =>
+      module === composition
+        ? { descriptor: module.descriptor, role: defineWorkflowRole({ kind: "standalone" }) }
+        : module));
+    assert.match(notAComposition.join("\n"), /whose own role is standalone rather than composition/);
+
+    // The load-time refusal is the SAME audit, so the throw and the guard can
+    // never disagree about what a violation is.
+    assert.throws(
+      () => workflowRoleRegistry(WORKFLOW_MODULES.filter((module) => module !== composition)),
+      /which is not a registered workflow/,
+    );
+    assert.doesNotThrow(() => workflowRoleRegistry(WORKFLOW_MODULES));
   });
 
   it("resolves every contract's placement, example, freshness, and provenance", () => {

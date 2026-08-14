@@ -4,6 +4,7 @@
  * names — `ucpath` for the reads and both transactions, and the pure
  * `separations` mini-store for the two folds (identity match, §4a's map).
  */
+import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
 import { separationsStore } from "../../stores/separations/index.js";
 import { ucpathStore } from "../../stores/ucpath/index.js";
 import { separationsUcpathTerminationDescriptor } from "./descriptor.js";
@@ -11,4 +12,6 @@ import { separationsUcpathTerminationDescriptor } from "./descriptor.js";
 export const separationsUcpathTerminationModule = Object.freeze({
   descriptor: separationsUcpathTerminationDescriptor,
   stores: Object.freeze([ucpathStore, separationsStore]),
+  // A proving harness for one step of `separations`, never a peer workflow (D219).
+  role: defineWorkflowRole({ kind: "chunk-harness", of: "separations" }),
 });

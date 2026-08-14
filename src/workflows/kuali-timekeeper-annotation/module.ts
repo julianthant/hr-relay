@@ -6,10 +6,14 @@
  * verifier, prepare, commit — resolves through this exact factory-defined store
  * and that no other store is listed.
  */
+import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
 import { kualiStore } from "../../stores/kuali/index.js";
 import { kualiTimekeeperAnnotationDescriptor } from "./descriptor.js";
 
 export const kualiTimekeeperAnnotationModule = Object.freeze({
   descriptor: kualiTimekeeperAnnotationDescriptor,
   stores: Object.freeze([kualiStore]),
+  // The one-transaction-node workflow that carried D135's controlled-commit
+  // proof; it stands on its own and no composition owns it (D219).
+  role: defineWorkflowRole({ kind: "standalone" }),
 });

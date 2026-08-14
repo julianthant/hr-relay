@@ -6,6 +6,7 @@
  * the pure `separations` mini-store for the identity comparison, the approval
  * check and §4e's department-option fold.
  */
+import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
 import { kualiStore } from "../../stores/kuali/index.js";
 import { separationsStore } from "../../stores/separations/index.js";
 import { ucpathStore } from "../../stores/ucpath/index.js";
@@ -14,4 +15,6 @@ import { separationsKualiFinalizationDescriptor } from "./descriptor.js";
 export const separationsKualiFinalizationModule = Object.freeze({
   descriptor: separationsKualiFinalizationDescriptor,
   stores: Object.freeze([kualiStore, ucpathStore, separationsStore]),
+  // A proving harness for one step of `separations`, never a peer workflow (D219).
+  role: defineWorkflowRole({ kind: "chunk-harness", of: "separations" }),
 });

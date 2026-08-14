@@ -24,6 +24,7 @@ import {
   isFactoryDefinedCaptureIntakeBinding,
   type CaptureIntakeBinding,
 } from "../domain/capture-intake.js";
+import type { WorkflowModuleRole } from "../domain/workflow/module-role.js";
 import { taskStoreRegistry } from "../stores/index.js";
 import { kualiTimekeeperAnnotationModule } from "../workflows/kuali-timekeeper-annotation/module.js";
 import { personLookupModule } from "../workflows/person-lookup/module.js";
@@ -193,6 +194,76 @@ export function captureIntakeRegistry(
 export const CAPTURE_INTAKE_BINDINGS = captureIntakeRegistry(WORKFLOW_MODULES);
 
 /**
+ * A module as the role audit needs to see it (doc 02 §1.2.1, D219).
+ *
+ * `role` is REQUIRED here for the same reason it is required on the module: an
+ * optional field is one a new module forgets to fill while every surface still
+ * renders, and there is no honest default — a workflow that declared nothing
+ * would be silently standalone.
+ */
+export interface WorkflowRoleView {
+  readonly descriptor: AnyWorkflowDescriptor;
+  readonly role: WorkflowModuleRole;
+}
+
+/**
+ * Every `chunk-harness` names a registered COMPOSITION.
+ *
+ * A dangling `of`, or an `of` pointing at a standalone workflow or at another
+ * harness, is a membership claim nothing can render — and the surfaces that
+ * consume it (rail, picker, explorer) would each have to invent a fallback,
+ * which is how three surfaces come to disagree about what is a step and what is
+ * a workflow. Refusing it here makes both states unrepresentable rather than
+ * banned.
+ */
+export function auditWorkflowModuleRoles(
+  modules: readonly WorkflowRoleView[],
+): readonly string[] {
+  const violations: string[] = [];
+  const roleById = new Map<string, WorkflowModuleRole>();
+  for (const module of modules) roleById.set(String(module.descriptor.id), module.role);
+  for (const module of modules) {
+    if (module.role.kind !== "chunk-harness") continue;
+    const workflowId = String(module.descriptor.id);
+    const target = String(module.role.of);
+    const targetRole = roleById.get(target);
+    if (targetRole === undefined) {
+      violations.push(
+        `workflow ${workflowId} declares role chunk-harness of ${target}, which is not a registered workflow`,
+      );
+      continue;
+    }
+    if (targetRole.kind !== "composition") {
+      violations.push(
+        `workflow ${workflowId} declares role chunk-harness of ${target}, whose own role is `
+        + `${targetRole.kind} rather than composition`,
+      );
+    }
+  }
+  return violations;
+}
+
+/**
+ * The id → role projection, validated at LOAD.
+ *
+ * Fail-loud at the composition root, exactly as `intakeProjectionRegistry`
+ * does: a process that cannot say what a registered workflow IS must not serve
+ * a surface that groups by it. The audit above is the one implementation — the
+ * throw and the CI guard can never disagree about what a violation is.
+ */
+export function workflowRoleRegistry(
+  modules: readonly WorkflowRoleView[],
+): Readonly<Record<string, WorkflowModuleRole>> {
+  const violations = auditWorkflowModuleRoles(modules);
+  if (violations.length > 0) throw new Error(violations.join("; "));
+  return Object.freeze(Object.fromEntries(
+    modules.map((module) => [String(module.descriptor.id), module.role]),
+  ));
+}
+
+export const WORKFLOW_ROLES = workflowRoleRegistry(WORKFLOW_MODULES);
+
+/**
  * A globally bound task is not enough: the workflow module itself is the
  * server composition boundary. Every contract must resolve through one of that
  * module's own stores, and every listed store must serve at least one contract
@@ -237,7 +308,10 @@ export function auditWorkflowModuleBindings(
  * explicitly tracked as pending.
  */
 export function auditImplBindings(bindings: PendingImplBindings): readonly string[] {
-  const violations: string[] = [...auditWorkflowModuleBindings(WORKFLOW_MODULES)];
+  const violations: string[] = [
+    ...auditWorkflowModuleBindings(WORKFLOW_MODULES),
+    ...auditWorkflowModuleRoles(WORKFLOW_MODULES),
+  ];
   const bound = new Set(boundTaskIds());
   const pending = new Map(bindings.tasks.map((entry) => [String(entry.taskId), entry]));
   const used = new Set<string>();

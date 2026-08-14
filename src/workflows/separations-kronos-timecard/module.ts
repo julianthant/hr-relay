@@ -1,3 +1,4 @@
+import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
 import { newKronosStore } from "../../stores/new-kronos/index.js";
 import { separationsKronosTimecardDescriptor } from "./descriptor.js";
 
@@ -9,4 +10,6 @@ import { separationsKronosTimecardDescriptor } from "./descriptor.js";
 export const separationsKronosTimecardModule = Object.freeze({
   descriptor: separationsKronosTimecardDescriptor,
   stores: Object.freeze([newKronosStore]),
+  // A proving harness for one step of `separations`, never a peer workflow (D219).
+  role: defineWorkflowRole({ kind: "chunk-harness", of: "separations" }),
 });

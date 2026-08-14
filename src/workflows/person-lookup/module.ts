@@ -9,6 +9,7 @@
  * All three implementing stores land with 1f. The control registry verifies at boot that every
  * descriptor contract resolves through one of these exact factory-defined stores.
  */
+import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
 import { defineIntakeProjection } from "../../domain/intake/projection.js";
 import { CANONICAL_FIELDS } from "../../domain/fields/registry.js";
 import { crmStore } from "../../stores/crm/index.js";
@@ -48,4 +49,6 @@ export const personLookupModule = Object.freeze({
   descriptor: personLookupDescriptor,
   stores: Object.freeze([ucpathStore, crmStore, personLookupStore]),
   intake: personLookupIntake,
+  // An ordinary workflow that stands on its own — no composition owns it (D219).
+  role: defineWorkflowRole({ kind: "standalone" }),
 });
