@@ -310,6 +310,35 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-14: "our graph refuses it" and "the system refuses it" are different facts, and recording
+  only the first makes the platform look more constrained than reality (separations §9.16).** Doc
+  4510's subject is `Inactive` in UCPath Person Org, so `match-active-employment` refuses
+  `no-active-job` before the gate — a correct refusal, and one every prior record stated as though it
+  settled the question. It does not: typed into the Smart HR wizard's Page B, that same EID resolved a
+  name in **836 ms**, so UCPath itself would stage a termination for it. The refusal is ours. A record
+  that does not attribute a refusal to its owner is one nobody can act on — the operator reading "we
+  cannot file this" cannot tell whether to change the workflow or change the subject. Two more things
+  the same pass found, both about the world moving under a written-down plan. **A recorded canary can
+  be gone by the next pass**: doc 4524 — the natural Kuali controlled-commit candidate since §9.12 and
+  the best-mapped subject of §9.14's live run — had its Kuali action COMPLETED between the two passes,
+  and `ActionPage` now answers `document: null` for it, so the read task that made it the candidate
+  can no longer read it. And **clearing a blocker can delete an arm's only witness**: deleting the
+  pending `T002209631` cleared the canary path exactly as intended, and it also removed the one mapped
+  subject that had anything for `clear-pending`'s COMMITTED arm to sweep. Neither is a defect; both
+  are reasons a live inventory belongs in the as-built with a date on it, not in a plan sentence.
+- **2026-08-14: a fix that lands in the tree is not a fix that reaches the runtime, and a singleton
+  is where that gap hides (separations §9.16 §5).** The composed dry run's live re-proof — the last
+  thing standing between separations and its §3.2 dry-run criterion — could not run, and nothing was
+  wrong with the code. The dashboard BFF is a singleton by construction (port pinned by
+  `config/runtime-isolation.json`, D181's `server` role lock admits one holder), the one running had
+  booted before that morning's descriptor changes, and `run-executor.ts` refuses a run whose
+  `envelope.contractFingerprint` is not the descriptor's — so every run that process could plan was
+  structurally unclaimable by a worker built from the current tree. The interesting part is that every
+  gate was green and every unit and scenario arm passed: **a stale long-lived process is invisible to
+  a test suite by definition, because the suite composes its own.** D181's lock is what makes it
+  legible at all (§9.9 hit the same thing once before), and the standing habit that follows is to
+  compare the SERVED descriptor fingerprint against the tree's before blaming a live run — one
+  `GET /api/v1/explorer` answers it.
 - **2026-08-14: applying a settled model to two more fields costs nothing structurally and everything
   evidentially — a new staged field inherits NO evidence (D217).** The operator's answer to chunk 5a's
   queued question (*"collect all data first and then fill in the forms at the end"*) put legacy's
