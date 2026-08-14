@@ -46,8 +46,8 @@ serve and where it plugs in — see "Wire-hookup ledger" below.
 | R2 | Workflow panel — ALL THREE modes (floating/icon/sidebar): header row, mode toggles, category labels, count alignment, the ACTIVE\|ALL row (no window footer — audit confirmed the demo has none) | `DemoShell.tsx` :160-235 + :636-1180, `RebuildDemo.tsx` (mount + keyboard), `demo-wire.ts` | `surfaces/shell.tsx` :106-600 + `app/dashboard-app.tsx` (NOT `use-panel-sections.ts` — that is log-panel plumbing) | [a] |
 | R3 | Queue rows — chips, footers, member wells, section bands NEEDS YOU / ACTIVE / QUEUED / FINISHED TODAY | `DemoQueue.tsx` | `surfaces/queue.tsx` + `queue-toolbar.tsx` | [ ] |
 | R4 | Status pills band | `demo-status.tsx` | `surfaces/status.tsx` | [ ] |
-| R5 | Run-detail header row (log panel header) | `DemoLogPanel.tsx` (header region) | `surfaces/log-panel.tsx` | [ ] |
-| R6 | Context rail rows — observation clock, badges, row anatomy | `DemoContextRail.tsx` | `surfaces/context-rail.tsx` | [ ] |
+| R5 | Run-detail header row (log panel header) | `DemoLogPanel.tsx` (header region) | `surfaces/log-panel.tsx` | [a] |
+| R6 | Context rail rows — observation clock, badges, row anatomy | `DemoContextRail.tsx` | `surfaces/context-rail.tsx` (+ rail mount in `log-panel.tsx`) | [a] |
 | R7 | Session footer | `DemoShell.tsx` (footer region) | `surfaces/shell.tsx` (footer) | [ ] |
 | R8 | Dialogs — confirm-first dialogs, park/resolve, run-start, bulk bar (+ `DemoActions.tsx`, `DemoRunStartKit.tsx` — audit widened the oracle set) | `DemoParkResolve.tsx`, `DemoActions.tsx`, `DemoRunStart.tsx`, `DemoRunStartKit.tsx`, `DemoBulkBar.tsx` | `surfaces/park-resolve.tsx`, `actions.tsx`, `run-start.tsx`, `run-start-kit.tsx`, `queue-toolbar.tsx` | [a] |
 
@@ -97,7 +97,15 @@ Running list (grown during the audit; initial entries from the known-open items)
 | active-run policy control | run-start group 01 (R8 f.8) | `DemoRunStart.tsx` ENQUEUE_POLICY | to declare (already noted `run-start.tsx:28-29`) |
 | per-workflow unstartable reasons | picker disclosure `<dl>` (R8 f.12) | `DemoRunStart.tsx:152-253` | to declare (picker body itself needs NO wire) |
 | park fence window / settling / present-proof schema | park dialog blocks (R8 f.20) | `DemoParkResolve.tsx` fence+settling | refused-by-name in code (`park-resolve.tsx:20-34`) — declare for backend visibility |
-| queue/run action descriptors (`SERVED_ACTIONS`) | confirm-first flow mount (R8 f.4) | `DemoActions.tsx:430-447` | to declare |
+| queue/run action descriptors (`SERVED_ACTIONS`) | confirm-first flow mount (R8 f.4) + `LogPanel onAction` (R5 f.8) | `DemoActions.tsx:430-447` | verify vs 2g action projection first |
+| `OutcomeWireSchema` `text` + `tone` (the served "so what" sentence) | outcome bar (R5 f.4) | `demo-data.ts:440` + fixture sentences | to declare |
+| `ContextDataSectionSchema` entries batch: `step`, `staged`/`unconfirmed`/policy `tag`, freshness (`capturedAt`/`maxAgeMin`/consumer), `feedsInto`, `dir`+`system` | context-rail ledger levels, badges, stale line + override dialog, FeedsIntoLine, DirectionMark/SystemChip (R6 f.1/7/9/11/12) | `DemoContextRail.tsx` DemoDataPoint | to declare (ONE batched wire change) |
+| command-result `conflict` arm (server-current values per patched field) | CAS re-offer surface (R6 f.6) | `DemoContextRail.tsx:699-749` | to declare |
+| delegation links projection | rail Delegation section (R6 f.8) | `DemoContextRail.tsx:1000-1048` | to declare |
+| member roster/conveyor + shared member pipeline | ConveyorHeader/MemberSourceBlock + SharedPipelineStrip (R5 f.12/14) | `DemoLogPanel.tsx:2069-2165,736-776` | to declare |
+| `GateDecisionWireSchema.kind` + tab attention counts | DecisionNotice icon arm, per-tab dot (R5 f.10/15) | `DemoLogPanel.tsx:874-876,2651-2656` | to declare (low priority) |
+| prior-runs list + custom-run descriptor for the rail dock | `Load prior run` / `Start custom run` (R6 f.5) | `DemoContextRail.tsx:822-930` | to declare |
+| `context-evidence` re-home | Receipt tab (leaves the rail per demo order, R6 f.19) | demo Receipt section | to declare with Receipt tab |
 
 ## Execution structure
 
@@ -235,10 +243,119 @@ pending-wire-bindings entry — they are served and consumed in the same commit.
 
 (Audits in flight.)
 
-### R5 — Run-detail header · R6 — Context rail
+### R5 — Run-detail header (audited 2026-08-13; 37 elements: 16 match, 8 divergent, 11 missing, 2 extra; findings 1–17)
 
-(Audits in flight — dispatched 2026-08-13 after R1/R2 as one pair. With these plus R8 below,
-the Phase-A sweep covers all eight regions.)
+Oracle: `DemoLogPanel.tsx` head block (+ `DemoActions.tsx` OutcomeActionButton — verified
+line-for-line ported). Rebuild: `log-panel.tsx` :1306-1408 head, composed `dashboard-app.tsx:648-662`.
+
+1. **Header StatusPill is a banned reintroduction** — demo deleted it under the quoted operator
+   rule "THE HEADER DOES NOT REPEAT A STATE THE BAND DIRECTLY BELOW IT ALREADY STATES"
+   (`DemoLogPanel.tsx:2510-2526`); rebuild redraws it at `log-panel.tsx:1330`. DELETE.
+2. **`attempt N` warning Badge** — no demo counterpart anywhere (demo's attempt affordance is the
+   rail's RunSelector). DELETE.
+3. **Outcome bar lost its whole tone treatment** — demo tints the band via the six-arm
+   `OUTCOME_TONE` map; rebuild's band is untinted, colour collapsed onto a 6px dot. Pure-port
+   (literal class strings keyed off the computed `outcomeStatus`; never interpolate tokens).
+4. **Outcome sentence client-derived from the enum** (`done-with-warnings · 14:32`) vs demo's
+   served one-sentence "so what". Wire-gap: `OutcomeWireSchema` grows `text` + `tone`
+   (`run-detail.ts:110-113`; shape oracle `demo-data.ts:440` + fixtures).
+5. **Gate age gone from the outcome bar** — served-addition (`gate.openedAt` already consumed at
+   :429; `fmtElapsed` imported). The demo's comment: it is the number deciding which of two
+   waiting runs opens first.
+6. **`PANEL_OMITS_OUTCOME_ACTIONS` INVERTED** — demo omits `open-park`, rebuild omits
+   `open-gate`; the rebuild's comment asserts the demo's reasoning but applies it to the other
+   key. Flip to `["open-park"]`.
+7. **Tab shortcut `1–4` (and the whole registry) advertised, bound nowhere** — no window keydown
+   handler exists in the rebuild. Same defect family as R2 D13/D14 and R8 f.7.
+8. **Panel never handed an action dispatcher** — `onAction` unpassed (NOOP), `SERVED_ACTIONS=[]`
+   pinned with a comment whose stated expiry ("lands with 2g") has passed; runtime is 2j.
+9. Receipt tab glyph `ReceiptText` vs demo `Receipt`. Pure-port.
+10. Per-tab attention dot missing — wire-gap (unread/attention counts on the detail wire); low
+    priority while review/people tabs render UnservedTab.
+11. `PanelKindInfo` ⓘ missing — header identity rule is title · ⓘ · trace; `panelKind`,
+    `workflowLabel`, `traceId` all in hand.
+12. `SharedPipelineStrip` missing — wire-gap (shared member pipeline on `TimelineWireSchema`).
+13. Settling band — D198-cited, structurally unreachable; already on the ledger. No action.
+14. Member branch (`ConveyorHeader` + `MemberSourceBlock`, 11 elements) — wire-gap: no
+    sibling/parent roster on the detail wire.
+15. `DecisionNotice`: `Pause` vs `PauseCircle` glyph + `open {age}` vs `since {clock}` are
+    pure-ports; the per-`gate.kind` icon arm is a wire-gap (`GateDecisionWireSchema` has no kind).
+16. Region breakpoints (container-query remap) — decision-cited, test-pinned, renders identically.
+    Leave.
+17. `StatusDot` — match, no action.
+
+**Orchestrator decisions (R5):** 1, 2 delete; 3, 5, 6, 9, 15 (pure halves) apply; 11 PORTS (the ⓘ
+affordance is not scaffolding — the vocabulary inside it uses the rebuild's real labels). 4 →
+ledger; UI keeps the honest enum composition as the fallback arm until `text`/`tone` are served
+(prints the wire's own value — not a fabrication). 8: fix agent verifies whether 2g's action
+projection actually serves descriptors; if so, wire `onAction` + retire `SERVED_ACTIONS=[]`; if
+not, ledger + comment correction. 7 folds into the ONE global keydown handler (with R2 D13/D14 and
+R8 f.7) in the final dashboard-app commit. 10, 12, 14, 15-kind → ledger.
+
+### R6 — Context rail (audited 2026-08-13; 52 elements: 13 match, 9 divergent, 24 missing, 6 extra; findings 1–26)
+
+Oracle: `DemoContextRail.tsx`. Rebuild: `surfaces/context-rail.tsx` (+ rail mount in
+`log-panel.tsx:1201-1215,1471-1495`).
+
+Major (full table in audit transcript):
+
+1. **Three-level ledger lost its top level** — demo groups values under producing STEP (Well +
+   recessed caps band + divided rows); rebuild renders one flat list. Wire: `entries[]` grows
+   `step` (`ContextDataSectionSchema`, `run-detail.ts:263-296`).
+2. `changed` badge (the word, not just the amber fill — colour-blind/forced-colors rationale)
+   missing; `dirty` already computed. Pure-port.
+3. **Data-section header row missing entirely**: "Extracted fields" label (rebuild says "Data"),
+   the About-run-data ⓘ popover (bullets portable now; KeyValueList needs wire), and the explicit
+   Widen/Narrow control (rebuild widens only implicitly, and can't narrow back). Pure-port + gap.
+4. Rail header never says `Run data · editing` — state already plumbed outward, never read back.
+   Served-addition (client state).
+5. **Demo's four-button action dock replaced by a flat Save/Cancel pair** — missing: aria-live
+   status line, `Load prior run`, `Reset edits`, `Start custom run`, and the pinned `grid-cols-2`
+   geometry ("the primary's place is the bottom right corner").
+6. **CAS-conflict re-offer surface absent** — demo's yours/server-now chips + "Keep my edits
+   against generation N" / "Discard and load fresh"; rebuild flattens every non-applied outcome to
+   one danger span ("a patch is never silently dropped and never merged blind"). Wire-gap: the
+   command result union needs a `conflict` arm carrying server-current values.
+7. Freshness stale line + override dialog (11 elements) — wire-gap (capturedAt/maxAgeMin/consumer).
+8. `Delegation` section — wire-gap (nothing in the tree references delegation).
+9. `FeedsIntoLine` — wire-gap (`feedsInto` on the wire).
+10. `corrected` badge: wrong tone (warning vs info) + RAW ISO INSTANT in an operator-facing title
+    (`fmtClock` imported two lines above). Pure-port.
+11. `staged` / `unconfirmed` / locked-policy `tag` badges — wire-gap (edit schema has no flags, no
+    one-word tag).
+12/13. DirectionMark + SystemChip / `refreshed` badge — decision-cited absences, correctly
+    refused. Named on the wire batch, no UI action.
+14. Label lost `htmlFor` pairing; `labelId` is minted and DEAD (referenced by nothing) — also
+    loses click-to-focus and `cursor-text`. Pure-port.
+15. Label-line `flex-1` + gap-token drift (one step wider than demo). Pure-port.
+16. Observation-clock fold omission — decision-cited, arithmetic checks out. Leave.
+17. Data empty state: EmptyState component + different copy vs demo's plain `<p>`. Pure-port.
+18. Attempts: locked ContextSection substitute for RunSelector, missing the `>1` gate ("a labelled
+    section with nothing under it reads as a failed render").
+19. **`Evidence` section in the rail is a rebuild-only insertion** — demo states the rail order
+    twice (Data · Attempts · Delegation) and moves captures to Receipt explicitly.
+20. **The summary count row the operator BANNED is back** (verbatim ban comment in the demo,
+    dated 2026-07-27), moved from the ledger top to the rail floor. DELETE.
+21. Inline reason Field + Cancel in the editing footer — rebuild-only, sits where the dock belongs.
+22. Pending-correction sentence — keep (cited) but `fmtClock` the raw instant.
+23. `derived` badge — keep (cited); the wire's `operator` arm is unhandled — dismiss it explicitly
+    in the comment.
+24. Spine label vocabulary — follows 3a/8. Pure-port.
+25. `useContextRail` shape + storage key — decision-cited / operational isolation. Leave.
+26. "Attempts and delegation are hidden while you edit" hint + its gate — missing; follows 3c.
+
+**Orchestrator decisions (R6):** 20 delete; 19 REMOVE from the rail per the demo's stated order —
+`context-evidence` re-homes to the Receipt tab when it lands (recorded on the ledger row, not
+dropped). 2, 3a, 3c, 4, 10, 14, 15, 17, 24, 26 apply as pure-ports; 22, 23 keep-with-fix as
+audited. 5+21 together: the dock geometry, aria-live line, and `Reset edits` port NOW (client
+state); `Load prior run` / `Start custom run` render when their wire arms exist (→ ledger). The
+inline reason Field: if the correction command's wire REQUIRES a reason, it stays as an on-record
+deviation (provenance beats demo-exactness there); otherwise demo-exact. 18: add the `>1` gate
+now; the ContextSection substitute is recorded as an on-record deviation pending RunSelector.
+3b: port ⓘ with the portable bullets now. Wire batch → ONE ledger row on
+`ContextDataSectionSchema` (`step`, `staged`/`unconfirmed`/`tag`, freshness trio, `feedsInto`,
+`dir`+`system`); separate rows for the command-result `conflict` arm, delegation, and the R5
+member/pipeline gaps. R6 fixes touch `log-panel.tsx` (rail mount) — sequence WITH R5 as one wave.
 
 ### R8 — Dialogs (audited 2026-08-13; park/resolve 25 · confirm 11 · run-start 61 · bulk bar 57 elements; findings 1–22)
 
