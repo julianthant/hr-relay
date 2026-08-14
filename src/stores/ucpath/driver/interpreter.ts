@@ -1,4 +1,5 @@
 import type { Page } from "playwright";
+import { assertMintedMutationCapability } from "../../../base/mutation-capability.js";
 import { EidSchema } from "../../../domain/ids.js";
 import { UiActionProofSchema } from "../../../domain/ui/driver.js";
 import type { PageStateProof, UiActionProof } from "../../../domain/ui/driver.js";
@@ -16,7 +17,13 @@ import {
   UCPATH_PERSON_ORG_SEARCH_READY,
   UCPATH_PERSON_ORG_SEARCH_SCREEN,
 } from "../../../domain/ui/ucpath-person-org.js";
-import type { UcpathPersonOrgDriver } from "../../../domain/ui/ucpath-person-org.js";
+import type { UcpathStoreDriver } from "../../../domain/ui/ucpath-driver.js";
+import {
+  UCPATH_SMART_HR_DISPLAYED_PERSON_NAME,
+  UCPATH_SS_SMART_HR_DISPLAYED_NAME,
+} from "../../../domain/ui/ucpath-smart-hr-termination.js";
+import { nowIso, ucpathSmartHrOperations } from "./smart-hr-operation.js";
+import type { UcpathSmartHrOperations } from "./smart-hr-operation.js";
 import type {
   SearchPersonOrgInputSchema,
   SearchPersonOrgOutput,
@@ -52,13 +59,38 @@ export const ucpathPersonOrgOperations: UcpathPersonOrgOperations = Object.freez
   readJobSummary: readJobSummaryOnPage,
 });
 
+/**
+ * The store's ONE driver, joining both screen families (D197 rule 1, D206).
+ *
+ * The name is kept for its callers; what it returns is the whole
+ * `UcpathStoreDriver`, because `defineTask(ucpathDriver, …)` binds a single
+ * invariant declaration and a second one is what `task-driver-boundary`
+ * refuses.
+ */
 export function createUcpathPersonOrgDriver(
   page: Page,
   clock: Clock = systemClock,
   operations: UcpathPersonOrgOperations = ucpathPersonOrgOperations,
-): UcpathPersonOrgDriver {
+  smartHr: UcpathSmartHrOperations = ucpathSmartHrOperations,
+): UcpathStoreDriver {
   return {
     system: "ucpath",
+    async scanTerminationTransactions(input) {
+      return smartHr.scanTerminationTransactions(page, input, nowIso(clock));
+    },
+    async stageTermination(input) {
+      return smartHr.stageTermination(page, input, nowIso(clock));
+    },
+    async stagePendingTerminationSweep(input) {
+      return smartHr.stagePendingTerminationSweep(page, input, nowIso(clock));
+    },
+    async commit(id, capability) {
+      // Defence in depth, and deliberately not delegated: the token is checked
+      // HERE as well as inside the operation, so an operations seam swapped for
+      // a test double still cannot click without a sequencer-minted capability.
+      assertMintedMutationCapability(capability);
+      return smartHr.commit(page, id, capability);
+    },
     async searchPersonOrg(input) {
       return operations.searchPersonOrg(page, input);
     },
@@ -70,11 +102,9 @@ export function createUcpathPersonOrgDriver(
       );
     },
     async goto(screen) {
-      if (screen !== UCPATH_PERSON_ORG_SEARCH_SCREEN && screen !== UCPATH_PERSON_ORG_DETAIL_SCREEN) {
-        throw new Error(`UCPath Person Org navigation received an unknown screen ${screen}`);
-      }
       throw new Error(
-        `UCPath Person Org standalone navigation for ${screen} is unsupported; use the subject-bound searchPersonOrg operation`,
+        `UCPath standalone navigation for ${String(screen)} is unsupported; every screen in this `
+        + "store is reached through a subject-bound semantic operation",
       );
     },
     async waitFor(stateId) {
@@ -90,6 +120,24 @@ export function createUcpathPersonOrgDriver(
       return UiActionProofSchema.parse({ elementId: id, effect: "prepare", performed: true });
     },
     async read(id) {
+      // The two Smart HR observations are read straight off their live anchors
+      // rather than through the registry: neither is a PUBLISHED element,
+      // because legacy has no selector key for either and a registry row with
+      // no ported provenance is a fabricated one (D196's rule, D206 §4).
+      if (id === UCPATH_SMART_HR_DISPLAYED_PERSON_NAME || id === UCPATH_SS_SMART_HR_DISPLAYED_NAME) {
+        const selector = id === UCPATH_SMART_HR_DISPLAYED_PERSON_NAME
+          ? "#PERSON_NAME_NAME_DISPLAY"
+          : '[id="NAME$0"]';
+        const raw = await page.locator(selector).first().textContent();
+        const name = (raw ?? "").trim();
+        if (name.length === 0) {
+          throw new Error(
+            `${String(id)} rendered no text; on the Smart HR wizard that means UCPath resolved no `
+            + "person for the Empl ID, which is a refusal rather than an empty subject",
+          );
+        }
+        return name;
+      }
       const elementId = id === UCPATH_PERSON_ORG_DISPLAYED_EID
         ? UCPATH_PERSON_ORG_EID_DISPLAY
         : id === UCPATH_PERSON_ORG_DISPLAYED_NAME

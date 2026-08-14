@@ -325,13 +325,32 @@ export const UcpathTerminationStagingSchema = z.strictObject({
 });
 export type UcpathTerminationStaging = z.infer<typeof UcpathTerminationStagingSchema>;
 
+/**
+ * One row of the *Transactions in Progress* grid, as that grid can actually
+ * name it.
+ *
+ * It is NOT a transaction id, and that is a live finding rather than a
+ * simplification: the in-progress grid's columns are
+ * `Select · Transaction Type · Effective Date · Name · Person ID · Action ·
+ * Country` (observed 2026-08-14) — there is no Transaction ID column at all,
+ * because an in-progress transaction has not been assigned one yet. A
+ * `selected` list of `T…` ids would therefore be a list this page cannot
+ * produce, which is a schema describing something that does not exist.
+ */
+export const UcpathInProgressRowSchema = z.strictObject({
+  transactionType: z.string().min(1),
+  effectiveDate: UcpathUsDateSchema,
+  action: z.string().min(1),
+});
+export type UcpathInProgressRow = z.infer<typeof UcpathInProgressRowSchema>;
+
 /** What the sweep's `prepare` proved it selected, before any Delete click. */
 export const UcpathPendingSweepStagingSchema = z.strictObject({
   stagedPageState: z.literal(UCPATH_SMART_HR_TERMINATION_STAGED),
   emplId: EidSchema,
   observedName: z.string().min(1),
-  /** The in-progress rows this sweep ticked, by transaction id. */
-  selected: z.array(UcpathTransactionReceiptSchema),
+  /** The in-progress rows this sweep ticked, by what the grid renders. */
+  selected: z.array(UcpathInProgressRowSchema),
   observedAt: IsoInstantSchema,
 });
 export type UcpathPendingSweepStaging = z.infer<typeof UcpathPendingSweepStagingSchema>;

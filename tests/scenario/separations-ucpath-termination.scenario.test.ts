@@ -377,8 +377,14 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
 
     assert.equal(Reflect.get(outcome as object, "disposition"), "committed");
     assert.deepEqual(h.world.rows, [], "both in-progress rows were swept");
-    // The selection happened BEFORE the fence and the delete AFTER it.
-    assert.ok(h.world.events.includes("select:T009000000,T009000002"));
+    // The selection happened BEFORE the fence and the delete AFTER it. The
+    // grid names a row by its effective date and action, never by a transaction
+    // id — an in-progress transaction has not been assigned one yet.
+    assert.ok(
+      h.world.events.some((event) => event.startsWith("select:")
+        && event.includes("06/11/2026") && event.includes("05/01/2026")),
+      h.world.events.join(" | "),
+    );
     const footprint = terminationDurableFootprint(h, TERMINATION_SWEEP_NODE, SWEEP_IDEMPOTENCY_KEY);
     assert.notEqual(footprint.intent, undefined, "a delete gets a fence like every other write");
 

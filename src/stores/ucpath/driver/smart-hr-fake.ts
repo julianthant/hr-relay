@@ -286,8 +286,12 @@ export function createDeterministicUcpathSmartHrWorldDriver(
       });
     },
     async stagePendingTerminationSweep(input) {
-      const selected = world.rows.filter(isUcpathTerminationInProgress).map((row) => row.transactionId);
-      world.events.push(`select:${selected.join(",")}`);
+      const selected = world.rows.filter(isUcpathTerminationInProgress).map((row) => ({
+        transactionType: "JOB",
+        effectiveDate: row.startDate,
+        action: "Terminatn",
+      }));
+      world.events.push(`select:${selected.map(({ effectiveDate }) => effectiveDate).join(",")}`);
       return UcpathPendingSweepStagingSchema.parse({
         stagedPageState: UCPATH_SMART_HR_TERMINATION_STAGED,
         emplId: input.emplId,

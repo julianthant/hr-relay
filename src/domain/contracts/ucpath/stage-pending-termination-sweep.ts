@@ -52,7 +52,7 @@ export const UcpathStagePendingTerminationSweep = defineTaskContract({
     stagedPageState: UCPATH_SMART_HR_TERMINATION_STAGED,
     emplId: EidSchema.parse("10800000"),
     observedName: "Deterministic Person",
-    selected: ["T002209631"],
+    selected: [{ transactionType: "JOB", effectiveDate: "06/11/2026", action: "Terminatn" }],
     observedAt: "2026-08-13T10:18:00.000Z",
   },
 });
