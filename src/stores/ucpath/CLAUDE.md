@@ -54,6 +54,25 @@ this family is `page` and legacy's `getContentFrame` funnel does not apply.
 
 ## Lessons learned
 
+- **2026-08-14: beat ③ observes the page PREPARE LEFT BEHIND, and three of this
+  store's subject bindings named a page that was already gone.** The first live
+  dry runs refused three times in a row, each time at the subject observation and
+  each time correctly — zero fence, zero click, durable footprint empty. (a) Both
+  SWEEP contracts pointed at `#PERSON_NAME_NAME_DISPLAY`, a wizard Page-B anchor,
+  while the sweep never leaves the Smart HR setup page. (b) The WIZARD's own
+  binding pointed there too, and beat ③ runs after `Continue` — on Page C, where
+  that anchor does not exist. (c) On the way, `#HR_TBH_WRK_JOB_EFFDT` turned out
+  to be `disabled`: UCPath derives it from the Page-A transaction date, so the
+  fill timed out and the read now VERIFIES it instead. Page C has no ids at all
+  but it is LABELLED (`Template: · UC_INVOL_TERM · Name: · Dreitho Cramia`, each
+  exactly once), so the subject binds on the label and takes the next non-empty
+  cell. Generalise it: **when a contract declares an observation, ask which page
+  the kernel will be standing on when it reads it** — `requiredAt:
+  "after-prepare-before-fence"` means the page prepare ENDED on, not the page it
+  learned the fact on. And a `prepare` that reports the EXPECTED value as the
+  OBSERVED one (which the sweep's staging did) is a fallback wearing a field
+  name.
+
 - **2026-08-14: a closed vocabulary must be read off the surface that renders it, and one system may
   have two.** `isUcpathTerminationAction` shipped testing legacy's `/Terminat/i` prefix. The SS Smart
   HR search grid and its transaction detail render the PeopleSoft CODE `TER`; only the *Transactions

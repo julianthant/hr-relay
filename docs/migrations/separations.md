@@ -2639,3 +2639,129 @@ per-step bound stays mandatory.
   performed — so the work is unblocked and scoped, not blocked.
 
 ---
+
+### 9.9 Chunk 4 — the live dry-run pass, 2026-08-14: what ran, what it found, and what is genuinely blocked
+
+Read-only against production, Duo cleared hands-off by Duo Autopilot. **Nothing
+was submitted.** `Save and Submit` was never clicked; `Delete Selected
+Transactions` was never clicked. Five sequencer-driven attempts, each ending in
+a refusal, and **the durable footprint was `absent` on every one** — no
+`write_intents` row for either permanent key, no transaction checkpoint for
+either node. That is the structural commit-freedom claim, asserted against the
+authority database rather than against logs, five times over.
+
+#### The honest status of doc 07 §3.1 step 4 for chunk 4: **PARTLY MET**
+
+| Asked for | Status |
+|---|---|
+| The prepare arm exercised end to end against live UCPath, on the real driver, through the real sequencer | **MET** — the whole three-page wizard staged for a real active employee, `Transaction ID` reading `"NEW"`, reaching the beat-③ subject observation |
+| Structural commit-freedom proved from durable state | **MET** — zero intents, zero checkpoints, five for five |
+| The run driven through start-plan → command endpoint → worker | **NOT MET** — refused at ingress, see the two platform gaps below |
+| `probeToFenceMaxMs` read off per-beat spans | **NOT MET as specified** — the dry-run arm neither probes nor emits spans; the bound is instead CONFIRMED by an end-to-end measurement, below |
+
+#### Two platform gaps, both named and both provable
+
+**(1) A dry run cannot be STARTED for this workflow.** `supportsDryRun` reads
+`descriptor.surfaces.inputRun?.supportsDryRun`, so whether a run can be
+previewed is bound to whether the workflow has a paste-a-line INPUT SURFACE.
+Chunk 4 has none by §3's no-frontend directive (its ingress is ten correlated
+values; a line parser would have to invent nine), so the start plan refuses:
+
+> `dry-run-unsupported` — *separations-ucpath-termination declares no dry-run
+> boundary; start it for real or not at all*
+
+`kuali-timekeeper-annotation` has the same `surfaces: {}` and therefore the same
+refusal, which is why its own dry-run proof was driven through a harness rather
+than the pipeline. **Whether a graph can be previewed is a property of the GRAPH
+— does every transaction node declare `dryRun: "stop-after-prepare"` — not of
+whether an operator can paste a line into a textbox.** Moving it is a platform
+decision, not chunk 4's to take.
+
+**(2) The interpreter has no dry-run preview arm.** Even past ingress, the
+executor calls `executeTransaction` with `dryRun` from the envelope, and the
+sequencer refuses by name: *"the Phase-1f interpreter has no preview outcome arm
+yet, and the sequencer refuses to substitute a real write — use `executeDryRun`"*.
+Doc 01 §6.2 says what the missing behaviour is — *"records an honest
+`transaction.previewed` span, and ends the run at the node"* — and no producer
+emits that span today. A dry run of a graph with a transaction node also cannot
+reach `build()`, because a preview has no `disposition` and no commit output,
+so the terminal derive has nothing to fold; ending the run at the node needs a
+terminal disposition the lifecycle does not yet have.
+
+**These two are why the pipeline half is NOT MET, and the reason is stated
+rather than worked around.** The alternative — starting the run for real — was
+refused on sight: a non-dry run reaches the fence and files a real termination,
+and §4f2's canary has not been named.
+
+#### §4f3 — the bound is CONFIRMED, and the per-beat decomposition is not obtainable today
+
+`executeDryRun` runs the **prepare arm only**: it performs no probe and emits no
+spans. So "probe-complete → prepare-complete off the run's own per-beat spans"
+cannot be read from a dry run at all — the measurement plan §4f3's answer
+described assumed a preview that records both beats, and the implementation
+records neither.
+
+What WAS measured, on the real driver against production:
+
+| Leg | Measured |
+|---|---|
+| `executeDryRun` on `file-termination`, entry → beat-③ observation | **51.5 s** (cold: browser launch + full SSO/Duo + all three wizard pages) |
+| of which the SSO + Duo login alone | ≈ **14.0 s** |
+| the probe's own page work, measured separately (§9.8) | search open **4.6 s** + search run **7.4 s** + **753 ms** per transaction detail |
+
+So probe + prepare on a cold session lands near **65 s** worst observed against a
+shipped bound of **120 s** — roughly **1.8x headroom**, and about **2.3x** on the
+prepare leg alone. **The 120 s stands, now on a live measurement rather than on
+step timings alone**, and the descriptor is unchanged. The per-beat
+decomposition stays open behind gap (2).
+
+#### Three defects the pass found, all at the subject binding
+
+Each refused BEFORE the fence, which is why they are findings rather than
+incidents.
+
+1. **The sweep named an anchor its own staged page cannot render.** Both sweep
+   contracts bound beat ③ to `#PERSON_NAME_NAME_DISPLAY` — a Page-B anchor —
+   while the sweep never leaves the Smart HR setup page. It now has its own
+   observation read off the in-progress grid, by an anchored relative bind (the
+   cell whose text IS the Empl ID, then its predecessor). The staging also
+   stopped reporting the EXPECTED name as the OBSERVED one, a fallback hiding in
+   plain sight.
+2. **The JOB effective date is DISPLAY-ONLY.** `#HR_TBH_WRK_JOB_EFFDT` is
+   rendered `disabled` (`PSEDITBOX_DISABLED`) and pre-filled by UCPath from the
+   Page-A transaction date, so filling it timed out. It is now READ and CHECKED
+   — strictly stronger, because half the permanent key becomes a verified
+   derivation instead of an asserted input.
+3. **The wizard's beat-③ anchor was on the wrong page too.** Beat ③ observes the
+   page prepare LEFT BEHIND, which is Page C. Page C's identity block carries no
+   ids — but it is LABELLED: `Template: · UC_INVOL_TERM · Name: · Dreitho Cramia`,
+   with the `Name:` label and its value each appearing **exactly once**. The read
+   is anchored on the label and takes the next non-empty cell, refusing on
+   absence or ambiguity.
+
+All three are D203's shape: **the declaration must name the surface the staged
+page actually has, and the reader moves to meet it.**
+
+#### Two more live facts worth keeping
+
+- **An already-terminated employee is refused by the wizard itself.** EID
+  `10001799` (HR Status `Inactive`) answers *"Invalid value -- press the prompt
+  button or hyperlink for a list of valid values (15,11)"* on the Page-B Empl ID
+  prompt, and no name ever renders. So S48's `emplid-not-recognized` covers BOTH
+  live causes — an Empl ID UCPath has never seen, and one it knows but has no
+  terminable employment record for — and the absence of the name is the signal
+  for both.
+- **A sweep with nothing to sweep has no subject to bind.** The in-progress grid
+  holds no row for a person with no pending transaction, so `stage` refuses for
+  want of a subject. That state is unreachable on the real path — the sweep's
+  probe settles `already-present` before any staging — and it is recorded here
+  because a dry run previews the prepare arm regardless of the probe.
+
+#### Operational note
+
+The dashboard BFF was found holding D181's runtime process lock from a
+handed-off session five and a half hours earlier, serving a registry that
+predated this workflow. It was stopped and restarted. The lock is what made that
+explicit rather than silent, which is what it is for.
+
+---
