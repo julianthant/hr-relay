@@ -310,6 +310,36 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-14: a run ATTEMPT is not one execution of its graph, and a rehearsal that skips the real
+  path's first act is a false rehearsal (D214/D215).** Chunk 6b's live pass left two platform items,
+  and they turned out to be the same mistake in two places: a model that was true of the ordinary
+  case and silently wrong outside it. **(1)** The checkpoint key was `(workflow, item, node, attempt)`
+  — right for a graph that runs once per attempt, and a gate park and its resume are TWO executions
+  inside one attempt by design, with an `always-rerun` node re-executing across the boundary also by
+  design. So the second execution's genuinely different observation landed on the first's key and the
+  immutable insert refused it: *a composed graph could not pass its own gate*, and the one live run
+  that survived did so only because a crash had bumped the attempt. The fix is the identity the
+  platform already had — `claimGeneration`, +1 per claim, never reset — and the three tempting
+  alternatives each break something the docs own: writing NO row contradicts "stored for audit" and
+  strands terminal evidence and downstream provenance; advancing the attempt rewrites an immutable
+  envelope; UPDATE or delete-and-reinsert is D144/D199's forbidden overwrite. Read-forward is the
+  whole reason the key is *conditional*: an absent generation appends nothing, so every row this
+  database already holds keeps a byte-identical `record_key` — while a WRITER may not adopt that
+  shape, because a new row that named no execution would be indistinguishable from a historical one.
+  The same defect had a second face nobody looked at: both executions emitted the same span path, so
+  the projector's `(runId, attempt, spanPath)` fold collapsed them — D123's lesson one level in.
+  **(2)** `executeDryRun` evaluated `prepare` with no probe, and doc 09 §5's probes are part of the
+  transaction's safety story rather than an optimization. For the ORDINARY separations subject — one
+  with nothing pending — the real run's beat-① probe settles `already-present` before a page is
+  staged, while the preview staged a grid with no row to bind and *refused*. **A rehearsal that fails
+  where the performance succeeds is a false rehearsal**, and it was the common case, not the corner.
+  Two shape rules came out of the fix and generalize: an `already-present` preview REPORTS the
+  settlement the real path would reach without performing it (no checkpoint, no observed-present
+  intent, no transition), and the preview's `prepare`/`subject` moved INSIDE its `would-prepare` arm
+  so a preview that staged nothing cannot spell an empty staged page. Where the real path refuses —
+  ambiguous, unknown, parked, mid-submit — the preview refuses too: *a preview that answered where
+  the real run stops is the same defect from the other side.*
+
 - **2026-08-14: a GATE RESUME advances no counter, so a re-executed node is identical to its first
   execution in every identity this platform has — and a DRY RUN that skips a probe rehearses a path
   the real run would never take (separations 6b).** The composed workflow's first live pass reached
