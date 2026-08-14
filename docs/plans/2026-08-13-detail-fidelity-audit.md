@@ -49,7 +49,7 @@ serve and where it plugs in — see "Wire-hookup ledger" below.
 | R5 | Run-detail header row (log panel header) | `DemoLogPanel.tsx` (header region) | `surfaces/log-panel.tsx` | [ ] |
 | R6 | Context rail rows — observation clock, badges, row anatomy | `DemoContextRail.tsx` | `surfaces/context-rail.tsx` | [ ] |
 | R7 | Session footer | `DemoShell.tsx` (footer region) | `surfaces/shell.tsx` (footer) | [ ] |
-| R8 | Dialogs — confirm-first dialogs, park/resolve, run-start, bulk bar | `DemoParkResolve.tsx`, `DemoRunStart.tsx`, `DemoBulkBar.tsx`, `ds/primitives-overlay.tsx` | `surfaces/park-resolve.tsx`, `run-start.tsx`, `actions.tsx` | [ ] |
+| R8 | Dialogs — confirm-first dialogs, park/resolve, run-start, bulk bar (+ `DemoActions.tsx`, `DemoRunStartKit.tsx` — audit widened the oracle set) | `DemoParkResolve.tsx`, `DemoActions.tsx`, `DemoRunStart.tsx`, `DemoRunStartKit.tsx`, `DemoBulkBar.tsx` | `surfaces/park-resolve.tsx`, `actions.tsx`, `run-start.tsx`, `run-start-kit.tsx`, `queue-toolbar.tsx` | [a] |
 
 R1 and R2 first — the operator named them explicitly. Each region gets its own divergence log
 section appended to this file as the audit reaches it.
@@ -86,9 +86,18 @@ Running list (grown during the audit; initial entries from the known-open items)
 
 | Binding (proposed) | Consumer (UI, ready) | Shape oracle in demo | Status |
 |---|---|---|---|
-| bootstrap workflow `code` (2-char) | panel toggle + panel rows | `demo-data.ts` workflow defs | to declare |
-| `QueueSurfaceWire.actions[]` (bulk) | Select strip / bulk bar | `demo-commands.ts` bulk actions | booked (handoff) |
+| bootstrap workflow `code` (2-char) | panel toggle + panel rows | `demo-data.ts` workflow defs | served-addition (R2 fix commit) |
+| `QueueBaseFields.actions[]` + per-row `expectedVersion` (bulk) | bulk strip + result-vector band (R8 f.5/6) | `DemoBulkBar.tsx:65-77` via `demo-wire.ts` `actionsAt` | booked — shape pinned by R8 audit |
 | pool `expectedVersion` on footer `+` | session footer add control | `demo-workers-wire.ts` | to declare |
+| preflight/storage summary + doctor-rerun command | top-bar doctor popover (R1) | `DemoShell.tsx:296` DemoDoctorPopover | to declare |
+| cross-day search corpus | day-search Day column (R1) | `DemoTopBarSurfaces.tsx` search | to declare (D184 copy until served) |
+| per-workflow `queued`/`running` on `WorkflowCountWireSchema` | panel ACTIVE│ALL column (R2) | `DemoShell.tsx:160-235` counting | served-addition (R2 fix commit) |
+| `InputRunSurfaceSchema` `examples[]` / `parserLabel` / value-noun | run-start typed input (R8 f.17) | `DemoRunStart.tsx:405-472` | to declare |
+| `capability.note` + method tabs | run-start workflow-setup block (R8 f.11) | `DemoRunStart.tsx:696-715` | to declare (2h scope) |
+| active-run policy control | run-start group 01 (R8 f.8) | `DemoRunStart.tsx` ENQUEUE_POLICY | to declare (already noted `run-start.tsx:28-29`) |
+| per-workflow unstartable reasons | picker disclosure `<dl>` (R8 f.12) | `DemoRunStart.tsx:152-253` | to declare (picker body itself needs NO wire) |
+| park fence window / settling / present-proof schema | park dialog blocks (R8 f.20) | `DemoParkResolve.tsx` fence+settling | refused-by-name in code (`park-resolve.tsx:20-34`) — declare for backend visibility |
+| queue/run action descriptors (`SERVED_ACTIONS`) | confirm-first flow mount (R8 f.4) | `DemoActions.tsx:430-447` | to declare |
 
 ## Execution structure
 
@@ -225,3 +234,94 @@ pending-wire-bindings entry — they are served and consumed in the same commit.
 ### R3 — Queue rows · R4 — Status band · R7 — Session footer
 
 (Audits in flight.)
+
+### R5 — Run-detail header · R6 — Context rail
+
+(Audits in flight — dispatched 2026-08-13 after R1/R2 as one pair. With these plus R8 below,
+the Phase-A sweep covers all eight regions.)
+
+### R8 — Dialogs (audited 2026-08-13; park/resolve 25 · confirm 11 · run-start 61 · bulk bar 57 elements; findings 1–22)
+
+Oracle: `DemoParkResolve.tsx`, `DemoActions.tsx` (ConfirmCommandDialog + ParkResolutions),
+`DemoRunStart.tsx`, `DemoRunStartKit.tsx`, `DemoBulkBar.tsx`. Rebuild: `surfaces/park-resolve.tsx`,
+`actions.tsx`, `run-start.tsx`, `run-start-kit.tsx`, `queue-toolbar.tsx`, composed in
+`dashboard-app.tsx` + `log-panel.tsx`. Overlay primitives re-checked CLEAN (one cited ToastProvider
+id-mint delta only). Full detail in the audit transcript; actionable record:
+
+1. **ParkResolutions never ported** — the two write-resolution exits render as bare pills; the demo's
+   tinted cards (`CheckCircle2`/`CircleSlash`, success/danger tints, `detail` sentence) are absent
+   and the SERVED `detail` (`run-detail.ts:516-551`, on the wire at `actions.ts:62`) is dropped.
+   The deferral comment at `actions.tsx:17` is now false. Pure-port from `DemoActions.tsx:231-280`
+   + the `PARK_COMMANDS` filter on `BannerActions`.
+2. **Refusal code discarded** — `park-resolve.tsx` throws away `result.code` and prints a hardcoded
+   `command-refused`; demo branches on `hasRefusalCode` (Refusal vs no-code danger Banner) and
+   raises a persistent danger toast. Served-addition + fabricated-constant smell. Port all three.
+3. **Present arm draws the ABSENT glyph** — `variant="danger"` + `CircleSlash` unconditional;
+   demo arms it `primary`+`CheckCircle2` when present. Pure-port (`arm` already computed :354).
+4. **ConfirmCommandDialog mounted nowhere** — `SERVED_ACTIONS=[]` pins the whole confirm-first flow
+   unreachable (park path is the wired exception). Composition gap + action-projection wire-gap.
+   `PendingCommand.subject` is a dead prop — render it per demo.
+5. **Bulk commands absent** — the four-button strip (`Retry/Bump/Cancel/Delete`, dangerGhost on
+   hide, disabled-at-zero, exact titles) is PURE-PORT (kernel already accepts all four verbs);
+   only per-row `actions[]` + `expectedVersion` + `notOffered` derivation is the booked wire gap.
+6. **Bulk result-vector band missing entirely** (`DemoBulkBar.tsx:267-376`) — the partial-result
+   surface (counts, per-result rows, notOffered details, both closing copy arms). Markup + copy
+   pure-port; data rides the same `actions[]` wire gap.
+7. **No global keydown listener at all** — `r` (+ the whole shortcuts registry) advertised and
+   unbound. Pure-port of `RebuildDemo.tsx:444-457` behind `useDsModalOpen()`, lands in
+   `dashboard-app.tsx` (OVERLAP: sequence after R1/R2 fixes).
+8. **Run-start aside lost its header + three numbered RunControlGroups** (01 Queue behavior /
+   02 Safety & mode / 03 Destination). Pure-port; only `Active-run policy` inside group 01 is a
+   real wire-gap (documented at `run-start.tsx:28-29`).
+9. **`@container` regressed to viewport query** on the DialogBody grid. Pure-port.
+10. **Dialog 220px narrower** than demo (`max-w-[min(96vw,1320px)]` dropped). Pure-port.
+11. **Workflow-setup block lost the category Chip** (served-addition — boot already carries
+    categoryId+labels), the `capability.note`/`MethodTabs`/`methodWire.note` (wire-gaps, 2h), and
+    the `What this will create` SectionLabel + `Workflow setup` label strings (pure-port).
+12. **Workflow picker is a SERVED-ADDITION, not a wire-gap** — list, grouping, filter, selection
+    and the `{n} not startable` count all derive from `boot.workflows`/`workflowCategories`/
+    `WORKFLOW_DESCRIPTORS` already parsed in `dashboard-app.tsx`; only per-workflow unstartable
+    REASON strings are wire. The header comment claiming otherwise is wrong.
+13. Park dialog `size="md"` vs demo `lg` — pure-port.
+14. Fence facts: `ChipRow` grid vs demo's flex-wrap Well — pure-port to the demo row.
+15. Confirm dialog: subject line wrongly wrapped in `DialogBody` padding; nested title type class.
+16. Empty-note error routed only into a disabled button's tooltip; demo puts it on the Field. Pure-port.
+17. Typed input: Examples row / value-noun label / parserLabel / per-entry problem banners —
+    wire-gaps per audit; rebuild-only parsed-entry preview has no demo counterpart.
+18. **Vocabulary drift in 9 strings** (sort aria-label, multi-select title, launcher title, dialog
+    description, Workflow setup, plan copy, test-instance banner truncation, EID placeholder, sort
+    notes).
+19. Park title/body/verb server-authored (doc 13 §8.5) — intentional, on record, NOT drift.
+20. Three demo park blocks correctly absent (fence window / SettlingPanel / present-proof entry —
+    confirmed unserved, correctly refused); subject radio correctly read-only (one proven subject).
+21. `ProofUnserved` Refusal + reserved-space RefusedNotice: rebuild-only, cited, KEEP.
+22. Minor extras: `Select all` disabled-at-zero (uncited), StageRail (cited, keep), transport
+    Banner (keep), absent-input EmptyState (keep), `InlineParkedWrite` geometry claim → owned by
+    the log-stream region, not R8.
+
+**Orchestrator decisions for the R8 fix:**
+
+- Findings 1, 2, 3, 8–11 (pure-port halves), 13, 14, 15, 16 apply as written. For 3: the ARM split
+  (variant+icon) ports; the server-authored strings stay (19 — on-record deviation, doc 13 §8.5).
+- **Picker (12) builds NOW from boot data** — served-addition; only the unstartable-reasons
+  disclosure waits on wire (→ ledger). Correct the false header comment in the same commit.
+- **Bulk strip + result band (5, 6) build NOW to demo spec** behind the optional `actions[]`
+  field: buttons render disabled-with-reason until served, band renders when results exist. Wire:
+  `QueueBaseFields` grows optional `actions[]` (+ per-row `expectedVersion`) → ledger entry
+  updates the booked row with the pinned shape (`projection.ts:46`, shape oracle `demo-wire.ts` +
+  `DemoBulkBar.tsx:65-77`).
+- **Keydown handler (7) + ConfirmCommandDialog mount (4)** land in the LAST dashboard-app commit
+  of the wave (after R1/R2), keydown first, confirm mount with the action-projection wiring.
+- **Vocabulary (18): revert the six undefended strings** to the demo's. On-record exceptions: the
+  three sort notes and the EID placeholder (rebuild wording is more truthful about the projection /
+  avoids a fixture EID); `Select all` disabled-at-zero reverts to demo (enabled).
+- **Typed-input preview (17):** at fix time, check whether the demo's per-entry problem model is
+  client-side parser code — if so, port it and drop the rebuild-only preview; if it needs unserved
+  data, keep the preview with a comment citing this audit. Examples/value-noun/parserLabel →
+  ledger entries on `InputRunSurfaceSchema` (`ingress.ts:323`).
+- New ledger rows: `InputRunSurfaceSchema` examples/parserLabel/valueNoun; `capability.note` +
+  method tabs (2h); active-run policy; picker unstartable reasons; park fence-window/settling/
+  proof-schema (already refused-by-name in code — ledger makes them visible to backend).
+
+Fix order (per audit): actions.tsx → park-resolve.tsx → run-start(+kit) → queue-toolbar strings
+now / bulk strip+band with the wire commit → dashboard-app.tsx LAST (overlap with R1/R2/R-shell).
