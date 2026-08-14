@@ -63,8 +63,10 @@ harness and declares `plan: not-composed`" — but that fact is not projected to
 
 ## `kuali-timekeeper-annotation` sits in the rail as a main workflow, but is a proving workflow
 
-**Recorded:** 2026-08-14 · **Status:** recorded (disposition needed) · **Owning docs:**
-doc 02 §1.2.1 (D219 role model), doc 03 (rail presentation)
+**Recorded:** 2026-08-14 · **Status:** triaged — ratified as **D220** the same day (doc 02
+§1.2.1 gains the `proving` arm; doc 03 §Shell's rail amendment drops `chunk-harness` and
+`proving` entries; implemented in `module-role.ts`, the kuali-timekeeper module, and
+`buildWorkflowRailGroups`) · **Owning docs:** doc 02 §1.2.1, doc 03 §Shell
 
 The rail now lists main workflows only (compositions + standalones; chunk harnesses are
 dropped — operator call amending D219's first rail presentation, see `shell.tsx`
