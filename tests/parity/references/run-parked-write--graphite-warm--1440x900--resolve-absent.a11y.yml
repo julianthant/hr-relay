@@ -1,20 +1,25 @@
 # run-parked-write--graphite-warm--1440x900--resolve-absent
 # adapter: fixture
 # fixture: run-parked-write
-# descriptorHash: ceb5bb8474683b81b96efcdc6ed9f5d4eebe4cfad336c9370e961876fb99d1bb
+# descriptorHash: bae8ba95b1a5059387f94b0828a84db77769ac68a82e24fe828fbcb175fed033
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: resolve-absent
 # capturedAt: 2026-08-03
 
+- main:
+  - complementary "Run data":
+    - region "Extracted fields":
+      - text: The run is now blocked — it moved while this data was open, so these values may be stale. Reopen the run to edit.
+      - paragraph: No unsaved changes.
 - dialog "Confirm the transaction is absent":
   - banner:
     - heading "Confirm the transaction is absent" [level=2]
     - paragraph: This authorizes a fresh attempt against ucpath. If the transaction does exist, the retry submits it a SECOND time.
     - button "Close"
   - text: system ucpath fenced 9:44 AM generation 1 key 777777777777… eid 7012 binding 333333333333… proof 00000000-0907-4000-8000-000000000907 observed 9:44 AM What did you check, and what did you see? (required)
-  - textbox "What did you check, and what did you see? (required)":
+  - textbox "What did you check, and what did you see? (required)" [invalid]:
     - /placeholder: Job Data and Person Org Summary for this EID — no termination row of any effective date; last action is the 2024 hire.
-  - paragraph: The only record of why a retry was permitted to submit for real.
+  - alert: Write what you checked — an empty note is not evidence.
   - contentinfo:
     - text: 00000000-0006-4000-8000-000000000006 · rev 6 · generation 1
     - button "Not yet"

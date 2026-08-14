@@ -1,7 +1,7 @@
 # explorer-graph--graphite-warm--1280x720
 # adapter: fixture
 # fixture: explorer-graph
-# descriptorHash: ceb5bb8474683b81b96efcdc6ed9f5d4eebe4cfad336c9370e961876fb99d1bb
+# descriptorHash: bae8ba95b1a5059387f94b0828a84db77769ac68a82e24fe828fbcb175fed033
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -17,11 +17,10 @@
   - button "Search this day’s runs": Search this day… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
-  - button "This is the newest day served" [disabled]
-  - button "Notifications — 1 unread item": "1"
+  - button "Today is the newest day" [disabled]
+  - button "Notifications — 1 unread"
   - button "Switch to Paper Ink"
   - button "UI catalog"
-  - button "Keyboard shortcuts"
   - button "Settings"
 - main:
   - region "Workflow explorer":
@@ -34,7 +33,8 @@
       - button "separations-kuali-read" [pressed]
       - button "separations-identity-check"
       - button "separations-ucpath-termination"
-    - text: code sd category separation version 1 shape single enqueue reject-active subject document system kuali edit data none review no run surface none intake none capture none descriptor src/workflows/separations-kuali-read/descriptor.ts module src/workflows/separations-kuali-read/module.ts contract b4fda93a2e8eresult 74ecc1970f8931 files fingerprinted5 scenarios
+      - button "separations-kuali-finalization"
+    - text: code sd category separation version 1 shape single enqueue reject-active subject document system kuali edit data none review no run surface none intake none capture none descriptor src/workflows/separations-kuali-read/descriptor.ts module src/workflows/separations-kuali-read/module.ts contract 37e128d2d413result 74ecc1970f8931 files fingerprinted5 scenarios
     - navigation "Graph structure":
       - text: Graph · 2 nodes
       - list:
@@ -45,9 +45,9 @@
       - text: Result document termination-type
     - heading "document" [level=3]
     - text: Task Separation Document Depends on Nothing — this node may start immediately. replay checkpoint condition always runs Detail projections Form formType.observed
-    - region "kuali/read-separation-document": runs kuali/read-separation-document Read Kuali Separation Document Implemented by store kuali kind browser driver kuali Subject binding kind artifact from input documentNumber identity document-id observes kuali.rrss-document.displayed-number match exact required at before-subject-read Errors kuali-unavailable unexpected-page-state document-unavailable document-number-mismatch not-a-separation-document unparseable-date unreadable-eid Freshness default unbounded Provenance default live UI vocabulary screen kuali.rrss-document element kuali.rrss-document.department-field observation kuali.rrss-document.displayed-eid observation kuali.rrss-document.displayed-form-type observation kuali.rrss-document.displayed-number observation kuali.rrss-document.displayed-timekeeper element kuali.rrss-document.eid-field element kuali.rrss-document.employee-name-field element kuali.rrss-document.final-pay-student-radio element kuali.rrss-document.last-day-worked-field element kuali.rrss-document.location-field element kuali.rrss-document.payroll-title-code-field element kuali.rrss-document.payroll-title-field page-state kuali.rrss-document.ready element kuali.rrss-document.request-acknowledged-checkbox element kuali.rrss-document.separation-date-field page-state kuali.rrss-document.separation-ready element kuali.rrss-document.submitted-template-checkbox element kuali.rrss-document.termination-effective-date-field element kuali.rrss-document.termination-type-field element kuali.rrss-document.timekeeper-comments-field element kuali.rrss-document.timekeeper-field element kuali.rrss-document.transaction-number-field Scenarios separations-kuali-read/reads-a-real-separation-document separations-kuali-read/unprocessed-document-absent-arms separations-kuali-read/non-separation-document Source contract src/domain/contracts/kuali/read-separation-document.ts impl src/stores/kuali/tasks/read-separation-document.ts input 5bb0d8b402b3output e3ac2b78779fimpl ce0961fffdf3
+    - region "kuali/read-separation-document": runs kuali/read-separation-document Read Kuali Separation Document Implemented by store kuali kind browser driver kuali Subject binding kind artifact from input documentNumber identity document-id observes kuali.rrss-document.displayed-number match exact required at before-subject-read Errors kuali-unavailable unexpected-page-state document-unavailable document-number-mismatch not-a-separation-document unparseable-date unreadable-eid Freshness default unbounded Provenance default live UI vocabulary screen kuali.rrss-document element kuali.rrss-document.department-field observation kuali.rrss-document.displayed-eid observation kuali.rrss-document.displayed-form-type observation kuali.rrss-document.displayed-number observation kuali.rrss-document.displayed-timekeeper observation kuali.rrss-document.displayed-transaction-number element kuali.rrss-document.eid-field element kuali.rrss-document.employee-name-field element kuali.rrss-document.final-pay-student-radio page-state kuali.rrss-document.finalization-staged element kuali.rrss-document.last-day-worked-field element kuali.rrss-document.location-field element kuali.rrss-document.payroll-title-code-field element kuali.rrss-document.payroll-title-field page-state kuali.rrss-document.ready element kuali.rrss-document.request-acknowledged-checkbox element kuali.rrss-document.separation-date-field page-state kuali.rrss-document.separation-ready element kuali.rrss-document.submitted-template-checkbox element kuali.rrss-document.termination-effective-date-field element kuali.rrss-document.termination-type-field element kuali.rrss-document.timekeeper-comments-field element kuali.rrss-document.timekeeper-field element kuali.rrss-document.transaction-number-field Scenarios separations-kuali-read/reads-a-real-separation-document separations-kuali-read/unprocessed-document-absent-arms separations-kuali-read/non-separation-document Source contract src/domain/contracts/kuali/read-separation-document.ts impl src/stores/kuali/tasks/read-separation-document.ts input 5bb0d8b402b3output e3ac2b78779fimpl d40ac4d99844
     - region "Scenarios": Scenarios separations-kuali-read/non-separation-document walks tests/scenario/separations-kuali-read.scenario.test.ts separations-kuali-read/reads-a-real-separation-document walks tests/scenario/separations-kuali-read.scenario.test.ts separations-kuali-read/unknown-termination-type walks tests/scenario/separations-kuali-read.scenario.test.ts separations-kuali-read/unparseable-separation-date walks tests/scenario/separations-kuali-read.scenario.test.ts separations-kuali-read/unprocessed-document-absent-arms walks tests/scenario/separations-kuali-read.scenario.test.ts
 - region "Session Panel":
-  - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
+  - button "Sessions 1 running 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
   - text: app 0.1.0
   - status: Live

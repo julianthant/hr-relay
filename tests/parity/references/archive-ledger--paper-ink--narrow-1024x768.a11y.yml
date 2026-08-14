@@ -1,7 +1,7 @@
 # archive-ledger--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: archive-ledger
-# descriptorHash: ceb5bb8474683b81b96efcdc6ed9f5d4eebe4cfad336c9370e961876fb99d1bb
+# descriptorHash: bae8ba95b1a5059387f94b0828a84db77769ac68a82e24fe828fbcb175fed033
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -17,11 +17,10 @@
   - button "Search this day’s runs": Search this day… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
-  - button "This is the newest day served" [disabled]
-  - button "Notifications — 1 unread item": "1"
+  - button "Today is the newest day" [disabled]
+  - button "Notifications — 1 unread"
   - button "Switch to Graphite Warm"
   - button "UI catalog"
-  - button "Keyboard shortcuts"
   - button "Settings"
 - main:
   - region "Archive":
@@ -48,7 +47,7 @@
           - cell "3:00 AM"
           - cell
     - region "Version bump":
-      - text: Version bump A bump moves every prior-version run out of the live surfaces and into this archive. app 0.1.0 Person Lookup now v2 · ceb5bb840 archivable1 blocking
+      - text: Version bump A bump moves every prior-version run out of the live surfaces and into this archive. app 0.1.0 Person Lookup now v2 · bae8ba950 archivable1 blocking
       - button "Plan a bump"
       - text: Reviewed plan plan aa11bb220 would be archived1 would blockplanned 3:30 AM
       - list:
@@ -68,6 +67,6 @@
             - cell "parked-write"
             - cell "Resolve the parked write present or absent — an unresolved possible-submit is never archived."
 - region "Session Panel":
-  - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
+  - button "Sessions 1 running 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
   - text: app 0.1.0
   - status: Live
