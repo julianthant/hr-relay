@@ -45,10 +45,10 @@ serve and where it plugs in — see "Wire-hookup ledger" below.
 | R1 | Top bar — every glyph, spacing, date-nav pill, notification cluster, tabs, search | `DemoShell.tsx` (top-bar half) + `DemoTopBarSurfaces.tsx` | `surfaces/top-bar.tsx` | [ ] |
 | R2 | Workflow panel — ALL THREE modes (floating/icon/sidebar): header row, mode toggles, category labels, count alignment, the ACTIVE\|ALL row (no window footer — audit confirmed the demo has none) | `DemoShell.tsx` :160-235 + :636-1180, `RebuildDemo.tsx` (mount + keyboard), `demo-wire.ts` | `surfaces/shell.tsx` :106-600 + `app/dashboard-app.tsx` (NOT `use-panel-sections.ts` — that is log-panel plumbing) | [a] |
 | R3 | Queue rows — chips, footers, member wells, section bands NEEDS YOU / ACTIVE / QUEUED / FINISHED TODAY | `DemoQueue.tsx` | `surfaces/queue.tsx` (toolbar needs no R3 edit — bulk parts are R8's) | [a] |
-| R4 | Status pills band | `demo-status.tsx` | `surfaces/status.tsx` | [ ] |
+| R4 | Status pills band (band itself lives in `DemoShell.tsx:1183-1364` → `shell.tsx:602-795`; `demo-status.tsx` is the vocabulary adapter) | `demo-status.tsx` + `DemoShell.tsx` | `surfaces/status.tsx` + `shell.tsx:602-795` | [a] |
 | R5 | Run-detail header row (log panel header) | `DemoLogPanel.tsx` (header region) | `surfaces/log-panel.tsx` | [a] |
 | R6 | Context rail rows — observation clock, badges, row anatomy | `DemoContextRail.tsx` | `surfaces/context-rail.tsx` (+ rail mount in `log-panel.tsx`) | [a] |
-| R7 | Session footer | `DemoShell.tsx` (footer region) | `surfaces/shell.tsx` (footer) | [ ] |
+| R7 | Session footer | `DemoShell.tsx:1366-1958` + `demo-workers-wire.ts` | `surfaces/shell.tsx:797-1068` | [a] |
 | R8 | Dialogs — confirm-first dialogs, park/resolve, run-start, bulk bar (+ `DemoActions.tsx`, `DemoRunStartKit.tsx` — audit widened the oracle set) | `DemoParkResolve.tsx`, `DemoActions.tsx`, `DemoRunStart.tsx`, `DemoRunStartKit.tsx`, `DemoBulkBar.tsx` | `surfaces/park-resolve.tsx`, `actions.tsx`, `run-start.tsx`, `run-start-kit.tsx`, `queue-toolbar.tsx` | [a] |
 
 R1 and R2 first — the operator named them explicitly. Each region gets its own divergence log
@@ -88,10 +88,12 @@ Running list (grown during the audit; initial entries from the known-open items)
 |---|---|---|---|
 | bootstrap workflow `code` (2-char) | panel toggle + panel rows | `demo-data.ts` workflow defs | served-addition (R2 fix commit) |
 | `QueueBaseFields.actions[]` + per-row `expectedVersion` (bulk) | bulk strip + result-vector band (R8 f.5/6) | `DemoBulkBar.tsx:65-77` via `demo-wire.ts` `actionsAt` | booked — shape pinned by R8 audit |
-| pool `expectedVersion` on footer `+` | session footer add control | `demo-workers-wire.ts` | to declare |
+| pool `expectedVersion` on footer `+` | session footer add control + AddWorkersDialog (R7-2, anatomy pinned) | `demo-workers-wire.ts:151-209` | to declare — SECOND blocker: dashboard supervisor throws for spawnWorker (`compose.ts:178-186`, doc 05 lane) |
+| worker-lease `version` on `WorkerCardWireSchema` (distinct from `revision`, which is a span counter) | footer `Stop` button (R7-4 — server half already complete) | `DemoShell.tsx:1706-1708` | to declare (priority: smallest change, restores a real control) |
+| `WorkerCardWireSchema` batch: `workflowId`, `startedAt`/elapsed (already folded in the projector), `waiting` lease block, `browsers[]` (health/label/url/session id), `crashed`, state-enum lifecycle (`authenticating`/`keepalive`/`waiting`/`paused`/`failed` via the authority lease fold) | card identity/subline, footer clock, lease-wait block, BrowserTile grid + menus, crashed arm, attention chips (R7-1/3/5/6/7/8/9) | `demo-workers-wire.ts:19-57` | to declare (ONE batched change with the projector) |
 | preflight/storage summary + doctor-rerun command | top-bar doctor popover (R1) | `DemoShell.tsx:296` DemoDoctorPopover | to declare |
 | cross-day search corpus | day-search Day column (R1) | `DemoTopBarSurfaces.tsx` search | to declare (D184 copy until served) |
-| per-workflow `queued`/`running` on `WorkflowCountWireSchema` | panel ACTIVE│ALL column (R2) | `DemoShell.tsx:160-235` counting | served-addition (R2 fix commit) |
+| per-workflow status counts on `WorkflowCountWireSchema` — WIDENED to the full per-status shape (was queued/running only) | panel ACTIVE│ALL column (R2) + status-band scoping (R4-1/R4-2) + worker-card `queued` chip (R7-5) | `DemoShell.tsx:159-235` counting helpers | served-addition (ONE change, rides the R2 fix commit) |
 | `InputRunSurfaceSchema` `examples[]` / `parserLabel` / value-noun | run-start typed input (R8 f.17) | `DemoRunStart.tsx:405-472` | to declare |
 | `capability.note` + method tabs | run-start workflow-setup block (R8 f.11) | `DemoRunStart.tsx:696-715` | to declare (2h scope) |
 | active-run policy control | run-start group 01 (R8 f.8) | `DemoRunStart.tsx` ENQUEUE_POLICY | to declare (already noted `run-start.tsx:28-29`) |
@@ -301,9 +303,72 @@ the R3 commit. The batched wire change (finding-order 4) is ONE `QueueBaseFields
 change → single ledger row below; its consuming UI ports ride the same commit when the wire lands.
 23/24 stay deferred with named triggers.
 
-### R4 — Status band · R7 — Session footer
+### R4 — Status pills band (audited 2026-08-14; band is byte-equivalent to the demo — every defect is in the DATA reaching it)
 
-(Audit in flight.)
+Oracle: `demo-status.tsx` (vocabulary adapter) + `DemoShell.tsx:1183-1364` (the band). Rebuild:
+`status.tsx` + `shell.tsx:602-795`, composed `dashboard-app.tsx:298,610-616`.
+
+- **R4-1 (HIGH, wire-gap): the pills count the whole day; the queue below shows one workflow.**
+  Demo scopes every number to the active workflow; rebuild serves `statusCounts` folded over
+  every surface in the day — so `Failed 3` can sit above a queue with zero failures, and the
+  ported title "Every row in this view" is now FALSE. Fix is a per-workflow dimension on the
+  served counts inside the same countable loop (D81's one-count-path); NEVER a client-side fold
+  over `queueSurfaces` (`shell.tsx:1-17` refuses it by name). COUPLING: `dayCount` feeds BOTH this
+  band and R2's panel toggle, and in the demo those are deliberately DIFFERENT quantities
+  (toggle = day-wide across workflows; band = workflow-scoped) — the fix adds a NEW scoped count
+  and leaves `dayCount` alone.
+- **R4-2 (MED, served-addition): `All` and the eight pills come from two different aggregations**
+  (`monthCounts` vs `statusCounts`, different member-exclusion predicates — agree today by
+  coincidence). Once R4-1 serves the scoped array, fold `All` from the same array.
+- R4-3 Tooltip-vs-title (keep, documented), R4-4 accessibleLabel (D22/D126, keep), R4-5 unused
+  `MemberOutcomeWord` (documented, waits on R3's wire), R4-6 order/tones/arms all match. No-ops.
+
+**Orchestrator decisions (R4):** R4-1's wire consolidates with R2's — ONE per-workflow counts
+change (`WorkflowCountWireSchema` grows the full per-status shape, not just queued/running) serves
+R2's ACTIVE│ALL column, R4's band scoping, AND R7-5's per-card `queued` chip. R4's re-point + R4-2
+then ride as served-additions. The R2 fix dispatch carries this widened shape.
+
+### R7 — Session footer (audited 2026-08-14; 41 elements: 17 match, 5 divergent, 19 missing, 3 extras; findings R7-1..14)
+
+Oracle: `DemoShell.tsx:1366-1958` + `demo-workers-wire.ts`. Rebuild: `shell.tsx:797-1068`,
+composed `dashboard-app.tsx:734-738`. OVERLAP: R7's whole footprint is `shell.tsx:797+` —
+collision-free with R2 (:126-600) and R4 (:602-795) except the shared import block (:18-61);
+sequence R7's fix after R2+R4 land.
+
+- **R7-1 (HIGH): half of `WORKER_TONE` is dead** — the projector emits only
+  working/idle/stopped, so `waiting`/`paused`/`failed` are unreachable, the "N workers need
+  attention" chip can NEVER fire, and a live-but-unauthenticated daemon is misread as `idle`
+  (the exact misread the demo's comment names). Real lease states exist in authority
+  (`command-kernel.ts:1767-1796`).
+- **R7-4 (MED): `Stop` is fully implementable and absent** — server half complete, workerId
+  served; the ONLY gap is that `WorkerCardWire.revision` is a span counter, NOT the lease
+  `version` the CAS needs — binding with it would fabricate the fact the CAS checks (and the
+  kernel currently ignores the field, making that worse). One wire field.
+- **R7-2: the `+` / AddWorkersDialog** (known ledger item, now pinned): needs pool
+  `expectedVersion` AND a second blocker — `compose.ts:178-186` supervisor THROWS for
+  spawnWorker (dashboard can't launch workers; doc 05's lane). Dialog anatomy fully pinned for
+  the port.
+- **R7-3: the browser-health half doesn't exist** — HEALTH_TONE (6 arms), BrowserTile grid,
+  right-click menu (Peek/Check/Front/Refresh/Reopen/Pause), "N browsers need attention" chip.
+  Wire: `browsers[]` on `WorkerCardWireSchema`. The rebuild's SystemChip is an honest
+  substitution until then.
+- R7-5/6/7/8: card identity renders workerId where demo renders WORKFLOW (one join away);
+  lease-wait block ("why is nothing moving"); reserved micro-pipeline band (its token ALREADY
+  exists unoccupied) + elapsed clock (projector already folds startedAt/endedAt — one field);
+  crashed-worker arm. All wire-gaps on `WorkerCardWireSchema`.
+- R7-9/10/11 (pure-ports, no wire): `working`→`Running` label; restore module-scope
+  `capacityChip` (anti-drift helper the demo argues for); app-version title's MAJOR/MINOR
+  sentence — the D179 archive semantics the rebuild implements and dropped the only place the
+  operator is told.
+- R7-12 connection indicator: rebuild-only, doc 13 §3.5, STRICTLY better — keep. R7-13 shell
+  byte-equivalent. R7-14 negative sweep clean (no banned reintroductions, no unbound keys here).
+
+**Orchestrator decisions (R7):** R7-1 keeps the six arms + the chip (renders only >0 — honest
+absence under the build-ready-to-connect instruction) with a comment citing this audit and naming
+the projector lease-fold that makes them reachable → ledger row. R7-4's lease `version` is the
+priority wire field (smallest change, restores a real control). The R7 fix commit (after R2+R4):
+pure-ports R7-9/10/11 + the `mt-auto` wrapper and reserved band shell of R7-7. Everything else
+rides the `WorkerCardWireSchema` batch → ledger. R7-2 stays last (two named blockers).
 
 ### R5 — Run-detail header (audited 2026-08-13; 37 elements: 16 match, 8 divergent, 11 missing, 2 extra; findings 1–17)
 
