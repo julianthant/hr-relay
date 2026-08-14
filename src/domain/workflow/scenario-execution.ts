@@ -38,6 +38,15 @@ const SEPARATIONS_IDENTITY_CHECK_FILE = "tests/scenario/separations-identity-che
 /** Chunk 4's UCPath termination write — the two transactions share one file. */
 const SEPARATIONS_UCPATH_TERMINATION_FILE =
   "tests/scenario/separations-ucpath-termination.scenario.test.ts";
+/**
+ * Chunk 5a's Kuali finalization — the CONTRACT-level arms. They are not graph
+ * walks: the descriptor lands in 5b with its own rows, and these two exercise
+ * the real task implementations against the deterministic driver, which is the
+ * only way to observe "it refused" rather than "it returned something
+ * plausible".
+ */
+const SEPARATIONS_KUALI_FINALIZATION_FILE =
+  "tests/scenario/separations-kuali-finalization.scenario.test.ts";
 
 export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
   { scenarioId: "person-lookup/happy-by-eid", file: "tests/scenario/person-lookup.scenario.test.ts" },
@@ -210,6 +219,14 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
   {
     scenarioId: "separations-ucpath-termination/pending-sweep-refuses-unreadable-scan",
     file: SEPARATIONS_UCPATH_TERMINATION_FILE,
+  },
+  {
+    scenarioId: "separations-kuali-finalization/stage-refusals",
+    file: SEPARATIONS_KUALI_FINALIZATION_FILE,
+  },
+  {
+    scenarioId: "separations-kuali-finalization/save-verify-read-back",
+    file: SEPARATIONS_KUALI_FINALIZATION_FILE,
   },
 ]));
 

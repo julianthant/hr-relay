@@ -102,9 +102,12 @@ describe("semantic UI registry", () => {
   it("publishes a schema-valid catalog with no private recipe or captured value", () => {
     const catalog = UiCatalogSchema.parse(buildSafeUiCatalog());
     const serialized = JSON.stringify(catalog);
-    // 51 ucpath + 13 crm + 25 kuali + 23 new-kronos. UCPath gained 23 facts
+    // 51 ucpath + 13 crm + 27 kuali + 23 new-kronos. UCPath gained 23 facts
     // with the Smart HR termination family: 4 screens, 14 elements, 5 states.
-    assert.equal(catalog.entries.length, 112);
+    // Kuali gained 2 with chunk 5a's finalization write: the staged page state
+    // the fence binds to, and the Transaction Number completion observation.
+    // It gained no ELEMENT — every control it writes is already a read element.
+    assert.equal(catalog.entries.length, 114);
     assert.doesNotMatch(
       serialized,
       /#main_target_win0|PERSON_NPC_VW_EMPLID|Empl ID|legacyKey|locator|selector|capturedValue|valueType|timeoutMs/,
