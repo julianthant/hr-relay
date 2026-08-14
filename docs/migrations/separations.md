@@ -3567,9 +3567,11 @@ Doc **4524** is the clean single-run measurement — cold sessions on all three 
 | `comparison` | 13 ms | pure fold |
 | **claim → `gate.opened`** | **82.23 s** | thirteen nodes, three browsers, one real subject |
 
-Doc **4502**'s chain ran the same nodes across two runs (`document`/`plan`/`termination-type` at
-6.13 s / 5 ms / 1 ms; `name-search` 23.25 s warm; `job-summary` 4.01 s; `timecard-search` 11.26 s
-warm; `timecard` 7.63 s), reaching its gate in 65 s of node time.
+Doc **4502**'s chain ran the same nodes across two runs and agrees within the noise of a session
+login: `document` 6.123 s / `plan` 5 ms / `termination-type` 1 ms; `name-search` **23.492 s**;
+`job-summary` 4.014 s; `timecard-search` **29.263 s**; `timecard` 7.625 s; every fold ≤ 8 ms. Claim
+to `gate.opened`, **64.4 s**. The three long nodes are the three nodes that open a browser session,
+and nothing else in the chain costs more than 8 s.
 
 **The `always-rerun` cost on gate resume — the answer to §9.13 item 5: 30.4 s.** Measured twice
 independently and they agree: 30.385 s on doc 4502's resume, 30.481 s on doc 4524's. It is almost
@@ -3686,7 +3688,7 @@ warning is NOT-RUN: no preview ever settled, so nothing has yet asked the receip
 | # | Run / trace | Doc · subject | Outcome |
 |---|---|---|---|
 | 1 | `1fd7b3a4` · `sp-064821-1fd7` | 4502 · 10001754 | **failed** at `timecard` after nine nodes — the stale Kronos grid. **D212**, fixed in `d00b66c` |
-| 2 | `1c96fabc` · `sp-070056-1c96` | 4502 (re-read 1) | **failed** at `name-search` at **exactly 60.000 s** — D125's `timeouts.sessionAcquireMs` bound, firing as designed on a UCPath session that would not come up |
+| 2 | `1c96fabc` · `sp-070056-1c96` | 4502 (re-read 1) | **failed** at `name-search` at **60.002 s** — D125's `timeouts.sessionAcquireMs` bound, firing as designed on a UCPath session that would not come up |
 | 3 | `6a6c6f44` · `sp-070306-6a6c` | 4502 · 10001754 | retry of #2. Whole chain **done**, `gate.opened` 14:04:19, **approved live** 14:05:18. The worker was then killed by the previous session's watchdog mid-resume |
 | 3′ | (same run, resumed by this pass) | | D200's startup self-sweep released the orphaned claim on the first poll and it resumed at attempt 2: `timecard-search` re-ran (30.4 s), `approval` passed in 2 ms, and `clear-pending` refused in prepare — §9.9's state. **terminal `failed`**, zero writes |
 | 4 | `49f5e1ee` · `sp-075614-49f5` | 4495 | **failed** at `plan` in 26 ms: `SEPARATION_DATE_IN_FUTURE` — *"carries a Last Day Worked of 09/02/2026, which is after 08/14/2026"*. **S7 refused live for the first time**, on a real document |
