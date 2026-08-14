@@ -10,7 +10,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { EidSchema } from "../../src/domain/ids.js";
+import { EidSchema, IsoInstantSchema } from "../../src/domain/ids.js";
 import { kualiFinalizationIdempotencyKey } from "../../src/domain/contracts/kuali/save-separation-finalization.js";
 import {
   KUALI_FINALIZATION_ASSERTIONS,
@@ -38,6 +38,8 @@ const VARIABLES: KualiFinalizationVariables = KualiFinalizationVariablesSchema.p
   timekeeperComments: "Termination effective date set from the reconciled separation date.",
   observedExistingComments: "",
 });
+
+const OBSERVED_AT = IsoInstantSchema.parse("2026-08-14T10:18:00.000Z");
 
 const TARGET: KualiFinalizationTarget = Object.freeze({
   actionId: "6a7a33b2ac106d428b3217e0",
@@ -195,7 +197,7 @@ describe("Kuali separation finalization — the probe verdict", () => {
       observedEid: TARGET.emplId,
       observedFields: UNFINALIZED,
       mismatches: [{ field: "transactionNumber", expected: "T002209631", observed: "<empty>" }],
-      observedAt: "2026-08-14T10:18:00.000Z",
+      observedAt: OBSERVED_AT,
     });
     assert.equal(verdict.state, "absent");
     if (verdict.state !== "absent") return;
@@ -212,7 +214,7 @@ describe("Kuali separation finalization — the probe verdict", () => {
         observedEid: TARGET.emplId,
         observedFields: UNFINALIZED,
         mismatches: [{ field: "transactionNumber", expected: "T002209631", observed: "<empty>" }],
-        observedAt: "2026-08-14T10:18:00.000Z",
+        observedAt: OBSERVED_AT,
       },
     );
     assert.equal(other.state, "absent");
@@ -226,7 +228,7 @@ describe("Kuali separation finalization — the probe verdict", () => {
     const verdict = kualiFinalizationVerdict(TARGET, {
       state: "unknown",
       reason: "Kuali finalization reload read-back failed: the document route never rendered",
-      observedAt: "2026-08-14T10:18:00.000Z",
+      observedAt: OBSERVED_AT,
     });
     assert.equal(verdict.state, "unknown");
   });
