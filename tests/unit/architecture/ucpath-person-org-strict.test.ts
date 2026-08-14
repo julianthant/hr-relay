@@ -42,7 +42,10 @@ export function auditStrictPersonOrgSource(source: string): readonly string[] {
   for (const [label, required] of [
     ["row-to-detail subject proof", "detail.observedEid !== row.emplId"],
     ["query-to-observation subject proof", "candidate.emplId !== input.emplId"],
-    ["positive no-results marker", "text.includes(NO_RESULTS_TEXT)"],
+    // D213 moved this check into `classifyPersonOrgSearchOutcome`, where the
+    // banner is read as a LIST marker and only PeopleSoft's own text answers
+    // not-found. The invariant is unchanged and the reader moved to meet it.
+    ["positive no-results marker", "bannerText.includes(NO_RESULTS_TEXT)"],
     ["empty results grid failure", "results grid rendered without rows; refusing to report not-found"],
     ["empty assignment failure", "detail has no parsed assignment rows"],
     ["Employment Instances expansion", "await ensureEmploymentInstancesExpanded(page);"],

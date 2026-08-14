@@ -541,8 +541,18 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       id: UCPATH_PERSON_ORG_NO_RESULTS_STATUS,
       system: "ucpath",
       screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
-      label: "Person Org no-results status",
-      searchTerms: ["ucpath person org positive no results marker"],
+      /**
+       * D213 — this is PeopleSoft's search-CRITERIA banner. It renders on every
+       * result LIST page, stating the count and the criteria: live
+       * `No matching values were found`, and live
+       * `4 results   -   Last Name "Ezeunala"   Name "Chim…"` above a populated
+       * grid. Only the first text means nobody matched, and the element id keeps
+       * its shipped `no-results-status` name (durable catalogs and selector
+       * provenance bind it) while the label stops claiming a fact the live page
+       * disproves. `classifyPersonOrgSearchOutcome` owns the reading.
+       */
+      label: "Person Org search criteria banner",
+      searchTerms: ["ucpath person org search criteria result count banner"],
       role: "status",
       effect: "observe",
       sensitivity: "hr",

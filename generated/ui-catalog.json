@@ -271,9 +271,9 @@
     },
     {
       "system": "ucpath",
-      "label": "Person Org no-results status",
+      "label": "Person Org search criteria banner",
       "searchTerms": [
-        "ucpath person org positive no results marker"
+        "ucpath person org search criteria result count banner"
       ],
       "sensitivity": "hr",
       "verification": {

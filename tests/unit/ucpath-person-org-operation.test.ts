@@ -6,6 +6,7 @@ import {
   assignmentDetailsToCells,
   buildLastFirstSearchNames,
   buildPersonOrgNameSearchAttempts,
+  classifyPersonOrgSearchOutcome,
   deriveAssignmentDetailsFromCells,
   ensurePersonOrgViewAllExpanded,
   parsePersonOrgGridRows,
@@ -376,6 +377,82 @@ describe("strict UCPath Person Org operation", () => {
         keepNonHdh: true,
       }),
       /expected EID 10873698 but displayed 10001573/,
+    );
+  });
+
+  /**
+   * D213 — the live defect: the criteria banner and the result grid render
+   * TOGETHER on every multi-result page, and the settle wait treated the banner
+   * as a no-results marker that excluded them.
+   */
+  it("reads the criteria banner as a list marker, never as a verdict", () => {
+    // The live doc-4524 page: four results, banner AND grid, and the banner text
+    // is a COUNT. Before D213 this pair was rejected as an ambiguous outcome.
+    assert.deepEqual(
+      classifyPersonOrgSearchOutcome({
+        bannerVisible: true,
+        detailVisible: false,
+        gridVisible: true,
+        bannerText: "4 results   -   Last Name \"Ezeunala\"   Name \"Chim\"",
+      }),
+      { kind: "grid" },
+    );
+    // A grid with no banner is still a grid; the banner is not load-bearing here.
+    assert.deepEqual(
+      classifyPersonOrgSearchOutcome({
+        bannerVisible: false, detailVisible: false, gridVisible: true, bannerText: undefined,
+      }),
+      { kind: "grid" },
+    );
+    // The one and only not-found: the banner alone, carrying PeopleSoft's text.
+    assert.deepEqual(
+      classifyPersonOrgSearchOutcome({
+        bannerVisible: true,
+        detailVisible: false,
+        gridVisible: false,
+        bannerText: "No matching values were found",
+      }),
+      { kind: "not-found", marker: "No matching values were found" },
+    );
+    // The single-match page UCPath auto-drills to.
+    assert.deepEqual(
+      classifyPersonOrgSearchOutcome({
+        bannerVisible: false, detailVisible: true, gridVisible: false, bannerText: undefined,
+      }),
+      { kind: "detail" },
+    );
+  });
+
+  it("refuses every page shape it cannot name, and never calls a count 'nobody matched'", () => {
+    // A count banner with no grid: the page did not render what it announced.
+    // Reading this as not-found would report an unknown person for a search that
+    // found four — the silent wrong value this program forbids.
+    assert.throws(
+      () => classifyPersonOrgSearchOutcome({
+        bannerVisible: true, detailVisible: false, gridVisible: false, bannerText: "4 results",
+      }),
+      /only "No matching values were found" means nobody matched/,
+    );
+    // Genuinely contradictory: one page cannot be a detail AND a list.
+    assert.throws(
+      () => classifyPersonOrgSearchOutcome({
+        bannerVisible: false, detailVisible: true, gridVisible: true, bannerText: undefined,
+      }),
+      /cannot be both/,
+    );
+    // Nothing settled at all.
+    assert.throws(
+      () => classifyPersonOrgSearchOutcome({
+        bannerVisible: false, detailVisible: false, gridVisible: false, bannerText: undefined,
+      }),
+      /cannot say what the page is/,
+    );
+    // A visible banner that rendered no text is an unreadable page, not an empty one.
+    assert.throws(
+      () => classifyPersonOrgSearchOutcome({
+        bannerVisible: true, detailVisible: false, gridVisible: false, bannerText: undefined,
+      }),
+      /rendered no text/,
     );
   });
 });

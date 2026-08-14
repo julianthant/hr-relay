@@ -756,6 +756,68 @@ async function extractDetail(page: Page): Promise<PersonOrgDetail> {
   });
 }
 
+/**
+ * What a settled Person Org search page turned out to be (D213).
+ *
+ * `#PTS_CRITTEXT_DISP` is PeopleSoft's **search-criteria banner**, not a
+ * no-results marker: it renders on EVERY list page and states the count and the
+ * criteria — live `No matching values were found` with nothing beside it, and
+ * live `4 results   -   Last Name "Ezeunala"   Name "Chim…"` directly above a
+ * populated grid. The registry's own label calls it a "positive no results
+ * marker", which was true of every subject this store had ever searched, because
+ * chunks 3 and 4's two live subjects each matched exactly one person and UCPath
+ * navigates straight to the detail page in that case. The first search that
+ * returned FOUR rows is what showed the mapping was externally wrong.
+ *
+ * So the banner is not an outcome; it is the page saying "you are looking at a
+ * result list". The outcome is decided by what sits beside it, and only two
+ * things are genuinely contradictory: a detail page cannot also be a list, and a
+ * page that settled as none of the three is not a page this driver models.
+ */
+type PersonOrgSearchOutcomeKind =
+  | Readonly<{ kind: "not-found"; marker: string }>
+  | Readonly<{ kind: "detail" }>
+  | Readonly<{ kind: "grid" }>;
+
+export function classifyPersonOrgSearchOutcome(observed: Readonly<{
+  bannerVisible: boolean;
+  detailVisible: boolean;
+  gridVisible: boolean;
+  bannerText: string | undefined;
+}>): PersonOrgSearchOutcomeKind {
+  const { bannerVisible, detailVisible, gridVisible, bannerText } = observed;
+  if (detailVisible && gridVisible) {
+    throw new Error(
+      "Person Org search settled as BOTH a person detail page and a result grid; "
+      + "one page cannot be both, so neither reading is trustworthy",
+    );
+  }
+  if (detailVisible) return Object.freeze({ kind: "detail" as const });
+  if (gridVisible) return Object.freeze({ kind: "grid" as const });
+  if (!bannerVisible) {
+    throw new Error(
+      "Person Org search settled with no detail page, no result grid and no criteria banner; "
+      + "this driver cannot say what the page is",
+    );
+  }
+  if (bannerText === undefined) {
+    throw new Error("Person Org search criteria banner is visible but rendered no text");
+  }
+  if (!bannerText.includes(NO_RESULTS_TEXT)) {
+    /**
+     * A banner reporting a count with NO grid beside it is a page this driver
+     * does not model — never a not-found. Reading it as "nobody matched" is the
+     * exact silent-wrong-value this program forbids: the run would report an
+     * unknown person for a search that found several.
+     */
+    throw new Error(
+      `Person Org search criteria banner reports ${JSON.stringify(bannerText)} with no result grid `
+      + `and no detail page; only ${JSON.stringify(NO_RESULTS_TEXT)} means nobody matched`,
+    );
+  }
+  return Object.freeze({ kind: "not-found" as const, marker: bannerText });
+}
+
 async function visible(locator: Locator): Promise<boolean> {
   return locator.isVisible();
 }
@@ -791,25 +853,36 @@ function createPlaywrightPersonOrgPage(page: Page): PersonOrgPagePort {
       }
       await resolveUcpathElement(page, UCPATH_PERSON_ORG_SEARCH_BUTTON).click();
 
-      const noResults = resolveUcpathElement(page, UCPATH_PERSON_ORG_NO_RESULTS_STATUS);
+      const criteriaBanner = resolveUcpathElement(page, UCPATH_PERSON_ORG_NO_RESULTS_STATUS);
       const displayedEid = resolveUcpathElement(page, UCPATH_PERSON_ORG_EID_DISPLAY);
       const resultsGrid = resolveUcpathElement(page, UCPATH_PERSON_ORG_RESULTS_GRID);
-      await noResults.or(displayedEid).or(resultsGrid).waitFor({
+      /**
+       * D213 — `.first()` is REQUIRED, not decoration. Playwright's `.or()` builds
+       * one union locator and `waitFor` runs it under strict mode, so the wait
+       * throws the moment two arms match at once. The banner and the grid DO match
+       * at once on every multi-result page (live: four results for the doc-4524
+       * subject), which is why this settle wait crashed on the first live search
+       * that returned more than one row. `.first()` re-evaluates each poll and asks
+       * the honest question — "has ANY outcome rendered yet" — leaving the
+       * classification below to decide WHICH.
+       */
+      await criteriaBanner.or(displayedEid).or(resultsGrid).first().waitFor({
         state: "visible",
         timeout: OUTCOME_TIMEOUT_MS,
       });
-      const states = await Promise.all([visible(noResults), visible(displayedEid), visible(resultsGrid)]);
-      if (states.filter(Boolean).length !== 1) {
-        throw new Error(`Person Org search outcome is ambiguous: no-results/detail/grid=${states.join("/")}`);
-      }
-      if (states[0] === true) {
-        const text = await readRequiredText(noResults, "no-results status");
-        if (!text.includes(NO_RESULTS_TEXT)) {
-          throw new Error(`Person Org no-results status contained unexpected text ${JSON.stringify(text)}`);
-        }
-        return { kind: "not-found", marker: text };
-      }
-      if (states[1] === true) return { kind: "detail", detail: await extractDetail(page) };
+      const [bannerVisible, detailVisible, gridVisible] = await Promise.all([
+        visible(criteriaBanner),
+        visible(displayedEid),
+        visible(resultsGrid),
+      ]);
+      const outcome = classifyPersonOrgSearchOutcome({
+        bannerVisible,
+        detailVisible,
+        gridVisible,
+        bannerText: bannerVisible ? await readRequiredText(criteriaBanner, "search criteria banner") : undefined,
+      });
+      if (outcome.kind === "not-found") return { kind: "not-found", marker: outcome.marker };
+      if (outcome.kind === "detail") return { kind: "detail", detail: await extractDetail(page) };
       await ensureResultsExpanded(page);
       const cellsByRow = await resultsGrid.locator("tr").evaluateAll((elements) => elements.map((row) =>
         Array.from((row as HTMLTableRowElement).cells).map((cell) => cell.textContent?.trim() ?? "")
