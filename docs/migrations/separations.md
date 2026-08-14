@@ -2687,10 +2687,50 @@ authority database rather than against logs, five times over.
 |---|---|
 | The prepare arm exercised end to end against live UCPath, on the real driver, through the real sequencer | **MET** — the whole three-page wizard staged for a real active employee, `Transaction ID` reading `"NEW"`, reaching the beat-③ subject observation |
 | Structural commit-freedom proved from durable state | **MET** — zero intents, zero checkpoints, five for five |
-| The run driven through start-plan → command endpoint → worker | **NOT MET** — refused at ingress, see the two platform gaps below |
+| The run driven through start-plan → command endpoint → worker | **NOT MET** at the time of this pass — refused at ingress, see the two platform gaps below. _(The two BLOCKERS are closed as of 2026-08-14, D209/D210; the pipeline run itself is chunk 6's.)_ |
 | `probeToFenceMaxMs` read off per-beat spans | **NOT MET as specified** — the dry-run arm neither probes nor emits spans; the bound is instead CONFIRMED by an end-to-end measurement, below |
 
-#### Two platform gaps, both named and both provable
+#### Two platform gaps, both named and both provable — **BOTH CLOSED 2026-08-14 (D209 · D210)**
+
+> **Status, 2026-08-14.** Both gaps below are FIXED by the dry-run platform
+> slice. They are left standing verbatim because they are the measured report
+> that motivated the two decisions, and a gap rewritten after the fact stops
+> being evidence. What changed:
+>
+> - **Gap (1) → D209** (doc 02 §2, normative; doc 01 §6.2). Dry-runnability is
+>   derived from the GRAPH — every transaction node declaring
+>   `dryRun: "stop-after-prepare"` — by one factory-computed projection the start
+>   plan, the command kernel and the explorer wire all share. All three
+>   registered write workflows are dry-startable through the pipeline with
+>   `surfaces: {}` unchanged. Two rules came with it: **every** transaction node
+>   must declare the arm and not merely the first a preview would reach (D205's
+>   true-about-the-wrong-thing), and a graph with **no** transaction node refuses
+>   BY NAME rather than trivially succeeding, since previewing it is byte-for-byte
+>   an ordinary run. `surfaces.inputRun.supportsDryRun` survives as a derived,
+>   un-authorable field for the client-composed run-start surface.
+> - **Gap (2) → D210** (doc 02 §2.1, normative; doc 01 §6.2). The interpreter's
+>   preview arm: a run whose envelope says `dryRun` reaches its transaction node,
+>   runs the sequencer's REAL `executeDryRun` (zero intent, zero fence, zero
+>   commit), emits `transaction.previewed`, and ENDS THE RUN THERE. The paragraph
+>   below is right that the terminal derive has nothing to fold, and the answer is
+>   a different RECORD rather than a fabricated outcome: the lifecycle outcome is
+>   `done` (§10.1's "stops successfully", discriminated by `envelope.dryRun`,
+>   which is already the durable record of the request), and the terminal result
+>   is a `RunDryRunPreviewResult` in the same `run_results` row bound to the
+>   PREVIEW schema hash — no new table, no schema version. The receipt reports
+>   `completion.terminal-result` as `unknown` plus a load-bearing
+>   `DRY_RUN_PREVIEW` warning, so a previewed run settles at `partial` and
+>   `verified-done` is structurally unreachable.
+>
+> `executeTransaction` still refuses a dry run by name; that guard is not retired
+> by the arm landing, and its message was corrected — it used to say the arm did
+> not exist yet. **What is NOT closed by this slice:** the queue row and the
+> timeline have no arm for a preview, so `transaction.previewed` rides the span
+> stream and `run-queue-projection` deliberately IGNORES it rather than folding it
+> into a `span.ended` it is not; the operator-facing truth is carried today by the
+> evidence receipt. Surfacing it on the queue row is a wire + UI change and is
+> chunk 6's to carry, beside the composed pipeline dry run itself — which is the
+> proof this slice enables and does not perform.
 
 **(1) A dry run cannot be STARTED for this workflow.** `supportsDryRun` reads
 `descriptor.surfaces.inputRun?.supportsDryRun`, so whether a run can be
@@ -2719,8 +2759,9 @@ reach `build()`, because a preview has no `disposition` and no commit output,
 so the terminal derive has nothing to fold; ending the run at the node needs a
 terminal disposition the lifecycle does not yet have.
 
-**These two are why the pipeline half is NOT MET, and the reason is stated
-rather than worked around.** The alternative — starting the run for real — was
+**These two were why the pipeline half was NOT MET, and the reason was stated
+rather than worked around** (both are closed as of 2026-08-14 — see the status
+block above; the composed pipeline dry run that exercises them is chunk 6's). The alternative — starting the run for real — was
 refused on sight: a non-dry run reaches the fence and files a real termination,
 and §4f2's canary has not been named.
 
@@ -2991,7 +3032,7 @@ operator's unnamed §4f2 canary.
 | A live dry run staging all ten, abandoned, document proved unchanged (S61) | **MET** — real doc 4524, 8.06 s, zero durable rows |
 | `probeToFenceMaxMs` confirmed or tightened | **CONFIRMED at 45 s**, on a measured 11.4 s worst leg |
 | The probe live | **MET for `absent`; `present` is NOT-RUN and cannot be run yet** — see below |
-| The run driven through start-plan → command endpoint → worker | **NOT MET** — §9.9's two platform gaps, unchanged and not this chunk's |
+| The run driven through start-plan → command endpoint → worker | **NOT MET** — §9.9's two platform gaps, unchanged at the time and not this chunk's. _(Both closed 2026-08-14, D209/D210.)_ |
 
 #### The live inventory, and one document that did not exist a week ago
 
@@ -3193,9 +3234,11 @@ separately, exactly as chunk 4 recorded, not a decomposition off the run's own s
    recommended first step of the controlled commit**: one aborted save answers all five shapes before
    a single byte reaches Kuali.
 3. **A `present` probe verdict** — structurally unreachable, above.
-4. **The pipeline half** (start-plan → command → worker). §9.9's two platform gaps are unchanged:
-   `supportsDryRun` reads `descriptor.surfaces.inputRun?.supportsDryRun` and this descriptor has
-   `surfaces: {}`, and the interpreter still has no dry-run preview arm. Neither is chunk 5's to move.
+4. **The pipeline half** (start-plan → command → worker). _(Both blockers CLOSED 2026-08-14 by
+   D209/D210 — see §9.9's status block. At the time of this pass §9.9's two platform gaps were
+   unchanged: `supportsDryRun` read `descriptor.surfaces.inputRun?.supportsDryRun` and this
+   descriptor has `surfaces: {}`, and the interpreter had no dry-run preview arm. Neither was chunk
+   5's to move; running the COMPOSED workflow through the now-open pipeline is chunk 6's proof.)_
 5. **`recoveryAbsence: "stabilized"`'s confirmation.** D207 made the transferred window provisional
    until this write's own controlled-commit proof; nothing here could confirm it, because a dry run
    fences nothing and therefore measures no propagation window.

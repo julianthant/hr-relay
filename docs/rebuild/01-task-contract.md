@@ -1445,6 +1445,12 @@ export interface SessionProvider<S extends BrowserSystemId> {
 - Read nodes execute normally. A transaction node executes its `prepare` arm under a retained page
   lease, records an honest `transaction.previewed` span, and ends the run at the node when dry-run
   policy is `stop-after-prepare`. Its `commit` arm is absent from the executable plan.
+  **How it ends is D210, normative in doc 02 §2.1:** the outcome is `done` (§10.1's "stops
+  successfully", discriminated by `envelope.dryRun`, which is already the durable record of the
+  request), and the terminal result is a `RunDryRunPreviewResult` — the prepare output plus the
+  beat-③ subject observation, `externalCommit: "none"` — bound to the PREVIEW schema hash rather
+  than the workflow's declared result, so no consumer can read a preview as a completed write. The
+  authored `derive` is never invoked and no `TransactionOutcome` is fabricated to make it fold.
 - A prepare task has no `MutationCapability`; a commit task is never invoked in a dry run. Ported
   external-write helpers accept `CommitTaskCtx["mutation"]`, so read/prepare code cannot call them.
 - `dryRun:"unsupported"` belongs on the **transaction node**, not the commit task. The executor

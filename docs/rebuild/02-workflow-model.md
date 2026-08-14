@@ -735,6 +735,58 @@ it from the same derivation and **refuses a descriptor that authors it**, naming
 authored value is not overwritten, because silently replacing a declaration is how a descriptor
 comes to say one thing and mean another.
 
+### 2.1 How a previewed run ENDS (D210)
+
+Doc 01 §6.2 says what a dry run does at a transaction node — *"records an honest
+`transaction.previewed` span, and ends the run at the node"* — and §10.1 says it stops there
+**successfully**. This is the terminal half of that sentence.
+
+**The lifecycle outcome is `done`, and `RunOutcome` gains no arm.** `envelope.dryRun` is already the
+durable, immutable, kernel-owned record of what the operator asked for (D6); encoding the same fact
+a second time in the outcome would be the two-derivations-of-one-identity surface D103 refuses, and
+the two could then disagree. What the run did is exactly what it was asked to do, so `done` is
+true — *given the envelope*, which is where the discriminant lives.
+
+**The terminal RESULT is a preview, and its schema hash says so.** The authored `derive` never runs:
+a preview has no `disposition` and no commit output, and fabricating a `TransactionOutcome` to make
+the fold succeed is the banned plausible-wrong value (D144 refused the same shape from the other
+side). A previewed run settles with `RunDryRunPreviewResult` instead —
+
+```ts
+{ kind: "dry-run-preview";
+  stoppedAtNodeId: NodeId;      // the graph's FIRST transaction node
+  externalCommit: "none";
+  preview: TransactionDryRunPreview }   // the prepare output + the beat-③ subject observation
+```
+
+— stored in the same `run_results` row, with `resultSchemaHash` naming **the preview schema**. That
+is the only hash that truthfully describes the bytes stored, so a consumer demanding the descriptor's
+declared result compares hashes and refuses by name rather than reading a preview as a completed
+workflow. **No new authority table and no schema version**: nothing about the ROW changed, only what
+it is bound to.
+
+**Its dependencies are the transaction node's own `dependsOn`,** not `terminalDependsOn` — the exact
+upstream facts that node's `prepare` and `commit` binds read. Claiming the terminal set would claim a
+derivation that did not happen. The sealed `buildPreview` shares `build`'s run-identity checks, its
+dependency resolution and its unforgeable seal; what it does not share is the authored derive. It
+additionally refuses a run whose `envelope.dryRun` is false, and a preview naming any node other than
+the graph's own `stopsAt`.
+
+**The receipt states it as a load-bearing uncertainty.** `completion.terminal-result` reports
+`unknown` — D187's honest arm for a record-less obligation — and a `DRY_RUN_PREVIEW` warning names the
+node, the subject verdict and the fact that no external write was attempted. Both together make
+`verified-done` structurally unreachable, so a previewed run's receipt settles at `partial` with
+`unknown` confidence. It emits **no** `output` facts: a preview produced no workflow result, and
+putting staged-then-discarded values in the section an operator reads as "what this run produced" is
+the confusion the whole arm exists to prevent. The staged values are not lost — they are on the
+durable terminal row.
+
+**Named carry-forward.** The queue row and the timeline have no arm for a preview: their vocabulary
+is task spans and terminal outcomes, and a preview is neither. `transaction.previewed` is therefore
+carried on the span stream and deliberately IGNORED by `run-queue-projection` rather than folded into
+a `span.ended` it is not, and the operator-facing truth is carried today by the evidence receipt.
+Surfacing it on the queue row is a wire + UI change, and it is named here rather than left silent.
+
 ```ts
 // src/domain/run/envelope.ts   (client-safe shape; kernel is the only writer)
 export interface RunEnvelope {
