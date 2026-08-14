@@ -158,6 +158,34 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     ],
     boundEvidencePath: "evidenceDigest",
   },
+  {
+    /**
+     * Chunk 6's COMPOSITION, declaring its own answer for the fourth time — and
+     * here the repetition earns the most, because this gate is the only one
+     * whose approval dominates THREE real writes across two systems. What
+     * `rejected` means: no pending sweep, no UCPath termination and no Kuali
+     * finalization happen at all, so the separation the department filed stays
+     * exactly as they left it.
+     */
+    workflowId: "separations",
+    gateId: "identity-approval",
+    decisionPath: "decision",
+    arms: [
+      {
+        value: "approved",
+        outcome: "approved",
+        summary: "an operator approved this identity, and the write plan it consumes, before any "
+          + "termination was filed",
+      },
+      {
+        value: "rejected",
+        outcome: "rejected",
+        summary: "an operator REJECTED this identity, so no termination was filed and the Kuali "
+          + "document was left untouched",
+      },
+    ],
+    boundEvidencePath: "evidenceDigest",
+  },
 ].map((entry) => Object.freeze(GateDecisionDeclarationSchema.parse(entry))));
 
 const BY_WORKFLOW_AND_GATE = new Map<string, GateDecisionDeclaration>();

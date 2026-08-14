@@ -31,6 +31,7 @@ import { separationsIdentityCheckModule } from "../workflows/separations-identit
 import { separationsKronosTimecardModule } from "../workflows/separations-kronos-timecard/module.js";
 import { separationsKualiFinalizationModule } from "../workflows/separations-kuali-finalization/module.js";
 import { separationsKualiReadModule } from "../workflows/separations-kuali-read/module.js";
+import { separationsModule } from "../workflows/separations/module.js";
 import { separationsUcpathTerminationModule } from "../workflows/separations-ucpath-termination/module.js";
 
 export const WORKFLOW_MODULES = Object.freeze([
@@ -41,6 +42,7 @@ export const WORKFLOW_MODULES = Object.freeze([
   separationsIdentityCheckModule,
   separationsUcpathTerminationModule,
   separationsKualiFinalizationModule,
+  separationsModule,
 ]);
 
 export const DESCRIPTORS: readonly AnyWorkflowDescriptor[] = Object.freeze(

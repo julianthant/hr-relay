@@ -19,6 +19,7 @@ import { separationsKronosTimecardDescriptor } from "./separations-kronos-timeca
 import { separationsKualiFinalizationDescriptor } from "./separations-kuali-finalization/descriptor.js";
 import { separationsKualiReadDescriptor } from "./separations-kuali-read/descriptor.js";
 import { separationsUcpathTerminationDescriptor } from "./separations-ucpath-termination/descriptor.js";
+import { separationsDescriptor } from "./separations/descriptor.js";
 
 export const WORKFLOW_DESCRIPTORS = Object.freeze([
   personLookupDescriptor,
@@ -28,4 +29,5 @@ export const WORKFLOW_DESCRIPTORS = Object.freeze([
   separationsIdentityCheckDescriptor,
   separationsUcpathTerminationDescriptor,
   separationsKualiFinalizationDescriptor,
+  separationsDescriptor,
 ] as const);

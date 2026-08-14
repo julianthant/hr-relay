@@ -180,6 +180,14 @@ const KUALI_FINALIZATION_GATE = gateResult("separations-kuali-finalization", "id
 const DEPARTMENT_OPTION = taskOutput("workflow:separations/match-department-option");
 const KUALI_STAGE_FINALIZATION = taskOutput("kuali/stage-separation-finalization");
 const KUALI_SAVE_FINALIZATION = taskOutput("kuali/save-separation-finalization");
+const SEPARATIONS_INPUT = workflowInput("separations");
+const SEPARATIONS_RESULT = workflowResult("separations");
+const SEPARATIONS_GATE = gateResult("separations", "identity-approval");
+const SEPARATION_PLAN = taskOutput("workflow:separations/read-separation-plan");
+const SEPARATION_SUBJECT = taskOutput("workflow:separations/match-separation-subject");
+const ACTIVE_EMPLOYMENT = taskOutput("workflow:separations/match-active-employment");
+const SEPARATION_DATES = taskOutput("workflow:separations/read-separation-dates");
+const TERMINATION_RECEIPT = taskOutput("workflow:separations/verify-termination-receipt");
 
 /**
  * The ten values one Kuali finalization save writes, relative to a prefix.
@@ -323,9 +331,71 @@ function jobClassificationLeaves(scope: EvidenceValueScope, prefix: string): unk
  * a receipt says "four fields were compared, two disagreed" through the counts
  * around it rather than reprinting both people's names.
  */
+/**
+ * The gate packet's WRITE PLAN block — both arms, because which one a run takes
+ * is decided by the descriptor and a receipt may not depend on that choice to be
+ * classifiable (the same rule the gate's own two arms follow).
+ *
+ * Nothing in it is a person. A template, a reason code, an empl record, a
+ * department option, a payroll title, a date and a comment text all describe the
+ * TRANSACTION being filed — which is chunk 4's call for `initiatorComments` and
+ * chunk 5's for the ten finalization fields, applied to the block that shows an
+ * operator what those two writes are about to consume. The one name in it, the
+ * timekeeper, is a `direct-identifier` here for the reason the module header
+ * gives: `src/domain/secrets.ts` already classifies `TIMEKEEPER_NAME` that way,
+ * and one field cannot carry two classifications.
+ */
+function writePlanLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => `${prefix}.${path}`;
+  return [
+    ...person(scope, at("document.timekeeperName")),
+    ...open(scope,
+      at("state"), at("reason"),
+      at("termination.terminationType"), at("termination.classification"),
+      at("termination.template"), at("termination.reasonCode"),
+      at("termination.emplRecord"), at("termination.effectiveDate"),
+      at("termination.lastDateWorked"), at("termination.initiatorComments"),
+      at("document.documentNumber"), at("document.department"),
+      at("document.departmentCode"), at("document.ucpathDepartment"),
+      at("document.payrollTitleCode"), at("document.payrollTitle"),
+      at("document.terminationEffectiveDate"),
+      at("dates.kualiLastDayWorked"), at("dates.lastDayWorked"),
+      at("dates.lastDayWorkedChanged"), at("dates.kualiSeparationDate"),
+      at("dates.separationDate"), at("dates.separationDateChanged"),
+      at("dates.separationDeterminingLeave"), at("dates.unclassifiedPayCodes")),
+  ];
+}
+
+/**
+ * The reconciled dates, relative to a prefix. Dates, flags and pay-code names
+ * describe the TRANSACTION being filed; the comment texts are what will be
+ * typed into UCPath and Kuali, which is the same call chunk 4 makes for
+ * `initiatorComments`.
+ */
+function reconciledDateLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
+  return open(scope,
+    at("lastDayWorked"), at("separationDate"), at("terminationEffectiveDate"),
+    at("kualiLastDayWorked"), at("kualiSeparationDate"), at("lastDayWorkedChanged"),
+    at("separationDateChanged"), at("latestSickDate"), at("firstHolidayDate"),
+    at("latestHolidayDate"), at("separationDeterminingLeave"), at("unclassifiedPayCodes"),
+    at("terminationComments"), at("dateChangeComments"));
+}
+
+/** §4c's receipt PAIR — the transaction it names, and the person it is about. */
+function terminationReceiptLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
+  return [
+    ...person(scope, at("emplId"), at("displayedName")),
+    ...open(scope, at("transactionNumber"), at("approvalStatus"), at("effectiveDate"),
+      at("disposition")),
+  ];
+}
+
 function identityPacketLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
   return [
+    ...writePlanLeaves(scope, at("plan")),
     ...person(scope, at("emplId"), at("documentEidText"), at("documentName"), at("ucpathName"),
       at("nameSearch.candidate.eid"), at("nameSearch.candidate.name")),
     ...population(scope, at("comparisons"), at("approvableEids"), at("nameSearch.candidateEids")),
@@ -587,6 +657,61 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "department.departmentCode", "finalization.disposition"),
   ...approvedSubjectLeaves(KUALI_FINALIZATION_RESULT, "approved"),
   ...savedFinalizationLeaves(KUALI_FINALIZATION_RESULT, "finalization.proof"),
+
+  /* separations ingress (chunk 6, the composition). One typed document number,
+     one action id, the timekeeper who files it, the search bound, and the
+     operator's explicit re-read — a document and a decision, not a person,
+     except the timekeeper's own name. */
+  ...person(SEPARATIONS_INPUT, "timekeeperName"),
+  ...open(SEPARATIONS_INPUT, "actionId", "documentNumber", "searchTimeoutMs",
+    "reRead.ordinal", "reRead.reason"),
+
+  /* The ALWAYS-GATE a FOURTH time, on the composition's own scope (D204) — and
+     here it dominates three real writes across two systems. */
+  ...person(SEPARATIONS_GATE, "eid"),
+  ...open(SEPARATIONS_GATE, "decision", "chosenFrom", "evidenceDigest", "reason"),
+
+  /* workflow:separations/read-separation-plan — the document's own facts,
+     validated. The employee name is the PERSON; the dates, the window and the
+     as-of day describe the read. */
+  ...person(SEPARATION_PLAN, "employeeName"),
+  ...open(SEPARATION_PLAN, "documentNumber", "kualiLastDayWorked", "kualiSeparationDate",
+    "asOfDate", "timecardWindow.start", "timecardWindow.end"),
+
+  /* workflow:separations/match-separation-subject — S18/S19's fork. The EID and
+     the searched name are the person; WHERE the EID came from and how many
+     candidates the search resolved describe the decision, and doc 09 §14.4
+     calls the count decisive. */
+  ...person(SEPARATION_SUBJECT, "emplId", "searchedName"),
+  ...open(SEPARATION_SUBJECT, "emplIdSource", "candidateCount"),
+
+  /* workflow:separations/match-active-employment — one employment row. Nothing
+     here is a person: an empl record, an HR status, a business unit, a title
+     and a department describe the APPOINTMENT being ended. */
+  ...open(ACTIVE_EMPLOYMENT, "rowIndex", "emplRecord", "hrStatus", "businessUnit",
+    "deptId.state", "deptId.value", "deptId.reason",
+    "department.state", "department.value", "department.reason",
+    "payrollTitleCode", "payrollTitle",
+    "effectiveDate.state", "effectiveDate.value", "effectiveDate.reason", "rowCount"),
+
+  /* workflow:separations/read-separation-dates — the write's payload. */
+  ...reconciledDateLeaves(SEPARATION_DATES, ""),
+
+  /* workflow:separations/verify-termination-receipt — D130's pair, checked. */
+  ...terminationReceiptLeaves(TERMINATION_RECEIPT, ""),
+
+  /* separations terminal result — the whole composition's product. */
+  ...open(SEPARATIONS_RESULT, "documentNumber", "employment.emplRecord",
+    "employment.payrollTitleCode", "employment.payrollTitle",
+    "department.option", "department.departmentCode",
+    "dates.kualiLastDayWorked", "dates.lastDayWorked", "dates.kualiSeparationDate",
+    "dates.separationDate", "dates.terminationEffectiveDate",
+    "dates.lastDayWorkedChanged", "dates.separationDateChanged",
+    "pendingSweep.disposition", "finalization.disposition"),
+  ...approvedSubjectLeaves(SEPARATIONS_RESULT, "approved"),
+  ...sweepProofLeaves(SEPARATIONS_RESULT, "pendingSweep.proof"),
+  ...terminationReceiptLeaves(SEPARATIONS_RESULT, "termination"),
+  ...savedFinalizationLeaves(SEPARATIONS_RESULT, "finalization.proof"),
 ].map((entry) => Object.freeze(EvidenceFieldClassificationSchema.parse(entry))));
 
 const BY_SCOPE_AND_PATH = new Map<string, EvidenceFieldClassification>();
