@@ -38,6 +38,7 @@ import {
   kualiDurableFootprint,
   kualiHarness,
   kualiQueuedRun,
+  KUALI_TIMEKEEPER_VALUE,
   type KualiHarness,
 } from "./fixtures/kuali-transaction-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "./fixtures/phase1f-executor-harness.js";
@@ -288,12 +289,84 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     assert.ok(warning, "a preview is a load-bearing uncertainty, not a footnote");
     assert.equal(warning.loadBearing, true);
     assert.match(warning.summary, /No external write was attempted/);
+    // The `would-prepare` half of D215's branch: this preview reached a staged
+    // page and read a subject, and the warning says which.
+    assert.match(warning.summary, /staged its page and observed subject match/);
 
     assert.equal(receipt.result, "partial");
     assert.equal(receipt.confidence, "unknown");
     assert.deepEqual(receipt.output, [], "a preview produced no workflow output");
     // The run's own inputs are still stated — a preview reads for real.
     assert.ok(receipt.input.length > 0);
+  });
+
+  /**
+   * The OTHER receipt arm, and the reason it needed its own case: D215's
+   * `DRY_RUN_PREVIEW` summary BRANCHES on the preview outcome, and until this
+   * test only the `would-prepare` branch was ever executed. An
+   * `already-present` preview staged no page and read no subject, so quoting a
+   * subject verdict would be quoting a fact nobody observed — the warning must
+   * say what the preview actually reached, which is its probe.
+   *
+   * Everything else about the receipt is identical to the arm above, and that
+   * is the claim being pinned: the operator-facing verdict of a preview does
+   * not improve because the probe settled it early.
+   */
+  it("derives an already-present preview's receipt, naming the probe rather than a subject", async () => {
+    // A document whose persisted timekeeper name ALREADY equals the value this
+    // run would write is exactly the `already-present` subject: beat ①'s probe
+    // reads it back and settles the node before a page is staged.
+    const k = kualiHarness({ persistedTimekeeperName: KUALI_TIMEKEEPER_VALUE });
+    kualiOpen.push(k);
+    const { run, claim } = kualiClaimRunning(k.database, k.clock, kualiQueuedRun({ dryRun: true }));
+    const preview = await k.bound(() => k.sequencer.executeDryRun(kualiContext(run, claim, true)));
+
+    assert.equal(preview.probe.state, "present");
+    assert.equal(preview.outcome.state, "already-present");
+
+    const built = buildRunPreviewResult(kualiTimekeeperAnnotationDescriptor, run, preview, [], k.clock);
+    assert.equal(built.record.resultSchemaHash, PREVIEW_RESULT_SCHEMA_HASH);
+
+    const terminal = {
+      ...run,
+      lifecycle: { state: "terminal", outcome: "done", endedAt: built.record.createdAt },
+    };
+    const { receipt } = deriveRunEvidenceReceipt({
+      descriptor: kualiTimekeeperAnnotationDescriptor,
+      run: terminal,
+      result: built.record,
+      checkpoints: [],
+    });
+
+    const warning = receipt.warnings.find(({ code }) => code === "DRY_RUN_PREVIEW");
+    assert.ok(warning, "a preview is a load-bearing uncertainty on either arm");
+    assert.equal(warning.loadBearing, true);
+    assert.match(warning.summary, /settled already-present at its present probe, before anything was staged/);
+    assert.doesNotMatch(
+      warning.summary,
+      /observed subject/,
+      "no page was staged, so there is no subject verdict to quote",
+    );
+    assert.match(warning.summary, /No external write was attempted/);
+
+    // The verdict is unchanged: an early settlement is still a preview.
+    const terminalCheck = receipt.verification
+      .find(({ obligation }) => obligation === "completion.terminal-result");
+    assert.ok(terminalCheck);
+    assert.equal(terminalCheck.verdict, "unknown");
+    assert.equal(terminalCheck.mandatory, true);
+    assert.equal(receipt.result, "partial");
+    assert.equal(receipt.confidence, "unknown");
+    assert.deepEqual(receipt.output, [], "a preview produced no workflow output");
+
+    // And the durable half, because a receipt is a projection and this program
+    // asserts absence against the database: an already-present PREVIEW records
+    // neither the observed-present intent nor the settlement checkpoint a real
+    // already-present run would.
+    const footprint = kualiDurableFootprint(k);
+    assert.equal(footprint.intent, undefined);
+    assert.equal(footprint.checkpoint, undefined);
+    assert.deepEqual(footprint.outboxes, []);
   });
 
   /**
