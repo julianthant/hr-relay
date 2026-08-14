@@ -8,29 +8,10 @@ cannot power. Nothing here was faked on the surface; see `README.md` for the sta
 
 Owning doc for every record below: **doc 12 §5.2 / §5.7** (`12-operator-trust-and-authoring.md`).
 
-## The run overlay — the whole right half of the demo's graph panel
-
-**Status:** recorded (DEFERRED BY PLAN, not a defect — logged so the gap is legible)
-
-The demo lays a chosen run over the descriptor graph: a `Run` select in the panel toolbar listing
-every run of that workflow in the corpus with its status, coverage (`5/7`) and clock; a `StatusPill`
-+ trace id + `dry run` chip beside it; per-node state (`done` / `running` / `waiting on you` /
-`failed` / `off this path` / `not reached`), duration, attempt count, recorded-value count,
-`evidence captured`, `skippedBecause`, and a delegation `childNote`; a version-skew banner when the
-run ran under a different descriptor version; and, in the node panel, the values that run actually
-moved plus `replayed` / `corrected` / `staged` / `not read back` marks and the run's own key lines.
-
-**Evidence.** `/api/v1/explorer` carries no run-scoped field at all
-(`WorkflowExplorerWireSchema` = registry metadata only). Doc 12 §5.7's FIRST named exclusion says
-this is deliberate: "the same graph carrying timings, attempts, checkpoint reuse, failures,
-children, evidence and safe actions is NOT in this slice … joining the two projections is its own
-work with its own wire".
-
-**What a fix involves.** A second wire (or a documented join) over `run_records` + spans +
-checkpoints keyed by `(workflowId, runId)`, and the presentation decision doc 12 §5.7 defers:
-whether this is a second run view beside the run-detail timeline operators already use. The ported
-surface keeps the toolbar slot the picker occupied (it carries the workflow identity band now), so
-adding the overlay is an insert rather than a re-layout.
+Five records were dispositioned 2026-08-14 and deleted per the ledger rule (landed in the
+owning doc): the run overlay, the `1 file` header count, lanes, the `Version registry`
+action, and the delegation child row are all covered by doc 12 §5.7's exclusions and its
+2026-08-14 presentation as-built delta. The three records below are the genuine open gaps.
 
 ## Field-level contract rows — `Field · System · Recorded`
 
@@ -93,54 +74,3 @@ honest and says less than the demo's line.
 **What a fix involves.** An authored `whenLabel` beside the predicate (the same shape D104's case
 names already take), never a decompiled rendering of the closure.
 
-## `1 file` — the artifact axis of the header count
-
-**Status:** recorded
-
-The demo's graph header counts files beside reads and writes (`6 nodes · 9 reads · 4 writes · 1
-file`) because its corpus has workflows that produce documents.
-
-**Evidence.** `artifacts: "content-addressed"` is served per task, so "this contract produces
-artifacts" IS available — what is not available is a count of the artifacts a workflow produces,
-which is a per-run fact anyway. The ported header omits the segment entirely rather than printing a
-count of contracts as if it were a count of files.
-
-## Lanes — the demo's `laneOf` section dividers
-
-**Status:** recorded
-
-The demo groups a graph's rows into named lanes (`DELEGATED BATCH`, `PER PERSON`, `MATCH MODE`) with
-a divider and a `SectionLabel`, which is how it expresses "this stretch of the graph is one phase".
-
-**Evidence.** No lane, phase or group field exists anywhere in `ExplorerNodeWireSchema`, and none
-exists in the descriptor either — the concept is the demo wire's own. The ported graph is a flat
-declaration-order list with the connector carrying the edges, which is the demo's presentation minus
-the dividers.
-
-**What a fix involves.** A descriptor-authored `phase` per node (presentation only, so it would sit
-inside doc 12 §5.3's closed editable set once Phase B exists), or dropping the idea — 18 nodes read
-fine without it.
-
-## `Version registry` — the demo's page-header action
-
-**Status:** recorded
-
-The demo's explorer header carries a `Version registry` button beside the read-only badge, which
-opens Settings' version table.
-
-**Evidence.** No version-registry surface exists in this tree, and the archive's `Versions & bumps`
-view is the nearest thing (a different takeover, reached from the Archive). The ported header keeps
-the back button and the read-only badge and omits the action rather than wiring a button to a page
-that does not exist.
-
-## Delegation — `visibility` is served, the child's own row is not
-
-**Status:** recorded
-
-The demo's delegation node carries a `childNote` naming what the child run did (`6 answers returned
-to the OCR run`) and links to the child's queue row.
-
-**Evidence.** `child-run` shape facts (target, edge id, cardinality, await, join, onChildFailed,
-cascadeCancel, afterChildRetry, visibility) are all served and all rendered; the child RUN is a
-run-scoped fact and belongs to the same overlay gap as the first record above. No registered
-workflow declares a `child-run` node today, so this arm has never rendered against real data either.

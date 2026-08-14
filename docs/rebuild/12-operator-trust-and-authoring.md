@@ -1305,6 +1305,24 @@ with only the arms Phase A can hold; §5.3/§5.4's draft union, stale-base apply
 have no code, so the guard has no arms for them and its inventory entry states that in as many
 words. The guard gains them in the commit that builds them.
 
+**Presentation as-built delta (2026-08-14 — no contract change, no new wire field).** The surface
+is now the operator demo's three-panel explorer (`src/dashboard/surfaces/explorer.tsx`, provenance
+`hr-automation@1bffbd65`) over the SAME `/api/v1/explorer` projection this section describes. Where
+the demo draws a fact this wire does not serve, the port omits or restates rather than fabricates:
+the toolbar slot the demo's run picker occupies carries the workflow identity band (the run overlay
+stays excluded per the first exclusion above — the demo's per-node run state, recorded values,
+provenance lines and delegation child rows are ALL that one exclusion, seen from four angles); the
+node panel's contract table lists TASK ARMS, not contract fields, with its header counting arms and
+the ⓘ saying so in as many words; the graph header omits the demo's file-count segment (a per-run
+fact, not a registry one); no lane dividers exist because no lane fact exists on the descriptor
+(a descriptor-authored phase would sit inside §5.3's closed editable set once Phase B exists); and
+the demo's `Version registry` header action is absent because no version-registry surface exists in
+this tree. The conditional-node line prints "runs when the descriptor's own when() predicate
+holds" — honest, and less than the demo's authored sentence; an authored `whenLabel` / node
+`purpose` / workflow `summary` (descriptor presentation data, projected like the label) is the
+recorded path to the demo's prose and is data authoring, not an exclusion. Read-only per D186
+throughout: no edit affordances anywhere.
+
 ### 5.8 The generated UI catalog gets a surface, and it serves the COMMITTED artifact (2026-08-09, D177)
 
 §1.3's catalog was reachable only from `npm run selector:search` and two markdown projections. It
