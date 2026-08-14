@@ -19,7 +19,8 @@ import {
   KualiFinalizationVariablesSchema,
   compareKualiFinalizationFields,
   kualiFinalizationFields,
-  kualiFinalizationFormKeysMissing,
+  KUALI_RRSS_FINALIZATION_WIRE_ASSERTED,
+  kualiFinalizationWireUnasserted,
 } from "../../src/domain/ui/kuali-separation-finalization.js";
 import type {
   KualiFinalizationTarget,
@@ -169,22 +170,55 @@ describe("Kuali separation finalization — the permanent key and the formKey ta
     );
   });
 
-  it("pins the ONE observed formKey and names the nine chunk 5c still owes", () => {
-    // Live 2026-08-04, off Kuali's own `ActionPage` query for docs 4489/4490.
+  it("pins all ten formKeys as captured live, and the five the wire check may assert", () => {
+    // Captured live 2026-08-14 (chunk 5c, §9.12) off Kuali's own `ActionPage`
+    // query — the read the app itself issues when a document route opens.
+    assert.deepEqual({ ...KUALI_RRSS_FINALIZATION_FORM_KEYS }, {
+      department: "JPYGckVxcf",
+      payrollTitleCode: "2FlOeR5pd9",
+      payrollTitle: "sVmpq6tG9X",
+      requestAcknowledged: "xKRU6vmYSY",
+      timekeeperName: "QGJ63YrCom",
+      terminationEffectiveDate: "DoWSfJhpRm",
+      submittedTerminationTemplate: "6Ejy-1rfQJ",
+      transactionNumber: "wPyuyY0wT0",
+      finalPay: "8CXaCSIvx5",
+      timekeeperComments: "J_upFRq074",
+    });
+    // The extraction is validated by the one key this repository already knew:
+    // `timekeeperName` came back byte-identical to the 2026-08-04 capture that
+    // D135 then confirmed on the WIRE — and is still not the DOM id.
     assert.equal(KUALI_RRSS_FINALIZATION_FORM_KEYS.timekeeperName, "QGJ63YrCom");
-    // The rest are `null` rather than guessed: a fabricated key would make the
-    // commit's wire proof a check that cannot fail.
-    assert.deepEqual(kualiFinalizationFormKeysMissing(), [
-      "department",
+    assert.notEqual(KUALI_RRSS_FINALIZATION_FORM_KEYS.timekeeperName, "BWmkKqx40");
+    // Every key is distinct: two fields sharing one key would silently make the
+    // wire check assert one field twice and the other never.
+    const keys = Object.values(KUALI_RRSS_FINALIZATION_FORM_KEYS);
+    assert.equal(new Set(keys).size, keys.length);
+
+    // A key is not an expectation. `submitDocumentV2` sends the document MODEL,
+    // and only a Text/Textarea gadget holds the staged string there — a Date
+    // holds epoch ms, a Dropdown/Radios holds `{id,label}`, Checkboxes an array
+    // of them (all observed live on real docs 4510/4495/4502).
+    assert.deepEqual([...KUALI_RRSS_FINALIZATION_WIRE_ASSERTED], [
       "payrollTitleCode",
       "payrollTitle",
+      "timekeeperName",
+      "transactionNumber",
+      "timekeeperComments",
+    ]);
+    assert.deepEqual(kualiFinalizationWireUnasserted(), [
+      "department",
       "requestAcknowledged",
       "terminationEffectiveDate",
       "submittedTerminationTemplate",
-      "transactionNumber",
       "finalPay",
-      "timekeeperComments",
     ]);
+    // The two halves partition the field set — a field in neither would be
+    // silently unchecked with nothing naming it.
+    assert.equal(
+      KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.length + kualiFinalizationWireUnasserted().length,
+      Object.keys(KUALI_RRSS_FINALIZATION_FORM_KEYS).length,
+    );
   });
 });
 

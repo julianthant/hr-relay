@@ -97,6 +97,7 @@ import type {
 import {
   KUALI_FINALIZATION_FIELD_NAMES,
   KUALI_RRSS_FINALIZATION_FORM_KEYS,
+  KUALI_RRSS_FINALIZATION_WIRE_ASSERTED,
   KUALI_RRSS_FINALIZATION_STAGED,
   KualiCommentsChangedError,
   KualiDepartmentOptionNotOfferedError,
@@ -543,24 +544,25 @@ function assertSubmitCarriedValue(
  * The `(formKey, value)` pairs the save's `data` map must carry for THIS
  * staging.
  *
- * ## The finalization's coverage is PARTIAL today, and that is stated, not hidden
+ * ## The finalization asserts FIVE of ten, and that is stated, not hidden
  *
- * Only `timekeeperName`'s `formKey` has ever been observed by this repository
- * (`QGJ63YrCom`, live 2026-08-04 off Kuali's own `ActionPage` query). The other
- * nine are `null` in `KUALI_RRSS_FINALIZATION_FORM_KEYS` and are therefore NOT
- * asserted, because a fabricated key would make the check unable to fail —
- * which is exactly how D128's false positive happened, and exactly the
- * "write the expectation, then pass" shape D132 bans.
+ * All ten `formKey`s are known since chunk 5c's live capture (2026-08-14, §9.12),
+ * but a key is not an expectation. `submitDocumentV2` sends the document MODEL,
+ * and only a `Text`/`Textarea` gadget holds the staged string there: a `Date`
+ * holds epoch milliseconds, a `Dropdown`/`Radios` holds `{id,label}` and
+ * `Checkboxes` holds an array of them — all four observed live on real docs
+ * 4510/4495/4502. Deriving those expected values needs a transformation this
+ * repository has never seen on the WRITE wire, plus an option-id table Kuali can
+ * republish, so asserting them would be a check that can only fail — the same
+ * "write the expectation, then pass" hazard D132 bans, pointed the other way.
+ * `KUALI_RRSS_FINALIZATION_WIRE_ASSERTED` names the five that are derivable and
+ * `kualiFinalizationWireUnasserted()` names the five the controlled commit owes.
  *
  * That does **not** weaken the write's landing proof, because this check never
  * was the proof: `submitDocumentV2` answers `{"status":"Ok","validations":null}`
  * for a mutation that dropped a field entirely, so the ONLY thing that can turn
  * a Kuali save into `done` is `readSavedSeparationFinalization`'s reload
- * read-back — and that compares all ten fields. What is missing is the earlier,
- * louder half of the defence. **Chunk 5c owes the nine keys**
- * (`kualiFinalizationFormKeysMissing()` is the to-do list); filling the table is
- * a one-line change and this function then covers every field with no other
- * edit.
+ * read-back — and that compares all ten fields.
  */
 function stagedWireValues(expected: StagedExpectation): readonly (readonly [string, unknown])[] {
   if (expected.kind === "timekeeper") {
@@ -568,9 +570,8 @@ function stagedWireValues(expected: StagedExpectation): readonly (readonly [stri
   }
   const pairs: (readonly [string, unknown])[] = [];
   for (const field of KUALI_FINALIZATION_FIELD_NAMES) {
-    const formKey = KUALI_RRSS_FINALIZATION_FORM_KEYS[field];
-    if (formKey === null) continue;
-    pairs.push([formKey, expected.fields[field]] as const);
+    if (!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field)) continue;
+    pairs.push([KUALI_RRSS_FINALIZATION_FORM_KEYS[field], expected.fields[field]] as const);
   }
   return pairs;
 }

@@ -133,12 +133,19 @@ with it.
 - **`Last Day Worked` / `Separation Date` are deliberately absent.** Legacy's step 13 writes them
   back; they are in neither §4e's field list nor §5 item 1's mutation table, so nothing here invents
   a rule for them.
-- **Two things chunk 5c owes.** Every write path carries a `// live-verify: 5c` marker — the fourteen
-  controls were live-verified as READS on 2026-08-12 and none has been observed being WRITTEN, and a
-  selector mapped on a read-only page is not a verified selector for the editable one. And nine of
-  the ten `submitDocumentV2` `formKey`s are unknown, so the commit's wire proof covers only
-  `timekeeperName`; the rest are `null` rather than guessed, because a fabricated key makes a check
-  that cannot fail. The landing proof is unaffected — it was always the reload read-back.
+- **The write paths ARE live-verified (chunk 5c, 2026-08-14).** All ten controls resolved to exactly
+  one EDITABLE node on the editable page of real docs 4502 / 4510 / 4495 / 4524, and the live dry run
+  staged every one of them from the run's variables and read every one back on real doc 4524 in
+  **8.06 s**, then abandoned by hard reload and re-read the document unchanged (S61 proved live). The
+  `// live-verify: 5c` markers are discharged.
+- **All ten `formKey`s are known; only FIVE may be asserted on the wire.** The keys came off Kuali's
+  own `ActionPage` query (read-only, 2026-08-14) and the extraction is validated by `timekeeperName`
+  returning `QGJ63YrCom` byte-identical to the 2026-08-04 capture. But `submitDocumentV2` sends the
+  document MODEL, and only a `Text`/`Textarea` gadget holds the staged STRING there — a `Date` holds
+  epoch milliseconds, a `Dropdown`/`Radios` holds `{id,label}` and `Checkboxes` an array of them.
+  `KUALI_RRSS_FINALIZATION_WIRE_ASSERTED` is therefore five fields, `kualiFinalizationWireUnasserted()`
+  names the other five, and the controlled commit is what closes them. The landing proof is
+  unaffected — it was always the reload read-back over all ten.
 
 ## Provenance
 
@@ -183,6 +190,29 @@ reached a document through the Action List search box; the deep link is live-ver
 
 ## Lessons learned
 
+- **2026-08-14: a `formKey` is an ADDRESS, not an expectation — and filling the table was necessary,
+  not sufficient (chunk 5c).** §9.10 recorded "filling the table is a one-line change"; the live
+  capture found the other half. `submitDocumentV2` sends the whole document MODEL keyed by `formKey`,
+  and the model holds a `Date` as epoch milliseconds, a `Dropdown`/`Radios` as `{id,label}` and
+  `Checkboxes` as an array of them — so writing the nine keys in and leaving the comparison as
+  `data[formKey] === "<staged string>"` would have turned every landed save into a post-fence PARK for
+  six of ten fields. The check that can only fail is the same defect as the check that cannot, and one
+  live fact settles the tempting middle ground of comparing the option `label`: the `Department*`
+  option `000719 -  Supply Chain Services` carries a DOUBLE space in Kuali's model while the driver
+  reads it through `HTMLOptionElement.text`, which collapses whitespace. Five fields are asserted, five
+  are recorded and named, and the controlled commit closes them by OBSERVING the payload rather than
+  by asserting a shape nobody has seen. (Side finding: the old table's comment claimed `commit`
+  "refuses to click Save while any staged field's key is unknown" — it never did; `stagedWireValues`
+  simply skipped them. A comment asserting a fail-closed behaviour the code does not have is worse
+  than no comment.)
+- **2026-08-14: the page the app itself loads answers the section-ownership question for free.**
+  Kuali's `ActionPage` GraphQL query — issued by Kuali on every document route open, so observing it
+  costs nothing and sends nothing — carries `details.sectionSettings` (`edit`/`hide` per section id)
+  AND `document.form.template` (every gadget's `formKey`, `id`, `type` and owning section) AND
+  `document.data` (the model, keyed by `formKey`). Attach a response listener and navigate; do not
+  issue a query of your own. That is how 5c settled §4e's caveat — the ten finalization fields sit in
+  three sections (`m9LaWN3zL` ×7, `cF6IPyCVw` ×2, `a_Alfq9a2` ×1) and all three report `edit` at BOTH
+  live workflow steps — without touching the operator's data.
 - **2026-08-12: legacy's `Location` field was never optional — its selector never matched.** S13 is
   recorded as "location absent ⇒ caught, set to `''`, genuinely optional", and that is wrong in the
   most instructive way: legacy asks for the accessible name `"Location  *"` (a space before the

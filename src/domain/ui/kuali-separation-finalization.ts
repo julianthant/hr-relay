@@ -327,46 +327,94 @@ export function compareKualiFinalizationFields(
   return Object.freeze(mismatches);
 }
 
-/* ── The `formKey` table, and why most of it is `null` ────────────────────── */
+/* ── The `formKey` table, and what a key alone does NOT buy ───────────────── */
 
 /**
  * The `formKey` each finalization gadget is serialized under in Kuali's own
  * `submitDocumentV2` mutation — NOT the control's DOM id. A Kuali Build gadget
- * carries both and they are unrelated strings, so a payload check written
- * against the DOM id would never match anything.
+ * carries both and they are unrelated strings (`timekeeperName` is `QGJ63YrCom`
+ * on the wire and `BWmkKqx40` in the DOM), so a payload check written against
+ * the DOM id would never match anything.
  *
- * Exactly one key is known: `timekeeperName`, read live 2026-08-04 off the
- * app's own `ActionPage` query for docs 4489/4490 and confirmed on the wire
- * (D135). **The other nine are `null` because this repository has never
- * observed them**, and a fabricated key would make the commit's wire proof a
- * check that cannot fail — the exact shape D132 bans and the exact way D128's
- * false positive happened.
- *
- * The consequence is deliberate and fail-CLOSED: `commit` refuses to click Save
- * on a finalization while any staged field's key is unknown, naming them. A
- * `dryRun:"stop-after-prepare"` never reaches `commit`, so chunk 5c's first
- * live dry-run can still run — and capturing these ten keys off `ActionPage` is
- * its first job.
+ * **All ten were captured live 2026-08-14** (chunk 5c, `docs/migrations/
+ * separations.md` §9.12) off Kuali's own `ActionPage` GraphQL query — the read
+ * the app itself issues when a document route opens, observed passively with
+ * nothing extra sent. The extraction was validated against the one key this
+ * repository already knew: `timekeeperName` came back `QGJ63YrCom`, byte-identical
+ * to the 2026-08-04 capture that D135 then confirmed on the wire.
  */
 export const KUALI_RRSS_FINALIZATION_FORM_KEYS: Readonly<
-  Record<KualiFinalizationFieldName, string | null>
+  Record<KualiFinalizationFieldName, string>
 > = Object.freeze({
-  department: null,
-  payrollTitleCode: null,
-  payrollTitle: null,
-  requestAcknowledged: null,
+  department: "JPYGckVxcf",
+  payrollTitleCode: "2FlOeR5pd9",
+  payrollTitle: "sVmpq6tG9X",
+  requestAcknowledged: "xKRU6vmYSY",
   timekeeperName: KUALI_RRSS_TIMEKEEPER_FORM_KEY,
-  terminationEffectiveDate: null,
-  submittedTerminationTemplate: null,
-  transactionNumber: null,
-  finalPay: null,
-  timekeeperComments: null,
+  terminationEffectiveDate: "DoWSfJhpRm",
+  submittedTerminationTemplate: "6Ejy-1rfQJ",
+  transactionNumber: "wPyuyY0wT0",
+  finalPay: "8CXaCSIvx5",
+  timekeeperComments: "J_upFRq074",
 });
 
-/** The fields whose `formKey` chunk 5c still owes, in declaration order. */
-export function kualiFinalizationFormKeysMissing(): readonly KualiFinalizationFieldName[] {
+/**
+ * The fields whose wire value IS the staged string, so the save's payload check
+ * can compare them with no invented transformation.
+ *
+ * ## Why this set is five and not ten — the thing 5c's live pass actually found
+ *
+ * Kuali's `submitDocumentV2` sends the whole document MODEL keyed by `formKey`,
+ * and the model does not hold ten strings. Read off the live model of real docs
+ * 4510 / 4495 / 4502 on 2026-08-14:
+ *
+ * | gadget | field(s) | model value |
+ * |---|---|---|
+ * | `Text` / `Textarea` | the five below | the plain string |
+ * | `Dropdown` | `department` | `{"id":"GfKti1EX5VL","label":"000412 - Housing/Dining/Hospitality"}` |
+ * | `Date` | `terminationEffectiveDate` | `1781136000000` — epoch ms at UTC midnight |
+ * | `Checkboxes` | `requestAcknowledged`, `submittedTerminationTemplate` | `[{"id":"5ZaHvv-OLS","label":"Request Acknowledged - In Progress"}]` |
+ * | `Radios` | `finalPay` | `{"id":"s9ziHeMcl","label":"Does not need Final Pay (student employee)"}` |
+ *
+ * So filling the key table was necessary and not sufficient: asserting
+ * `data[formKey] === "06/19/2026"` for a `Date`, or `=== "000412 - …"` for a
+ * `Dropdown`, is a check that can only fail — it would turn every landed save
+ * into a post-fence park. Deriving the expected value instead needs a
+ * transformation this repository has **never observed on the write wire**, and
+ * for the option-bearing gadgets it needs an option-id table Kuali can
+ * republish. One live fact makes that concrete: the `Department*` option
+ * `000719 -  Supply Chain Services` carries a DOUBLE space in Kuali's model and
+ * the driver reads it through `HTMLOptionElement.text`, which collapses
+ * whitespace — so a label comparison there is already provably wrong.
+ *
+ * The unasserted five are therefore **recorded, not asserted**, which is the
+ * same discipline that kept them `null` before: a comparison whose expected
+ * value has to be invented is not a check. The landing proof is unaffected and
+ * always was — `readSavedSeparationFinalization`'s reload read-back compares all
+ * ten fields, and `submitDocumentV2` answers `{"status":"Ok","validations":null}`
+ * for a mutation that dropped a field entirely. What moved is the earlier,
+ * louder half of the defence: from one field to five. **The controlled commit
+ * (§4f2's canary) is what closes the other five**, because it is the first time
+ * this repository will see the real payload.
+ */
+export const KUALI_RRSS_FINALIZATION_WIRE_ASSERTED: readonly KualiFinalizationFieldName[] =
+  Object.freeze([
+    "payrollTitleCode",
+    "payrollTitle",
+    "timekeeperName",
+    "transactionNumber",
+    "timekeeperComments",
+  ]);
+
+/**
+ * The fields whose wire value the controlled commit still owes — the four
+ * gadget kinds whose model value is not the staged string.
+ */
+export function kualiFinalizationWireUnasserted(): readonly KualiFinalizationFieldName[] {
   return Object.freeze(
-    KUALI_FINALIZATION_FIELD_NAMES.filter((field) => KUALI_RRSS_FINALIZATION_FORM_KEYS[field] === null),
+    KUALI_FINALIZATION_FIELD_NAMES.filter(
+      (field) => !KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field),
+    ),
   );
 }
 
