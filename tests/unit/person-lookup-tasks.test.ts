@@ -188,13 +188,23 @@ describe("Phase 1f Person Lookup task implementations", () => {
         "ucpath/verify-pending-terminations-cleared",
         "ucpath/verify-termination",
         "workflow:person-lookup/read-active-status",
-        // The `separations` pure workflow mini-store: §4a's termination-type
-        // refusal, plus chunk 3's identity comparison and post-gate check — all
-        // sessionless and browser-free.
+        // The `separations` pure workflow mini-store, complete as of chunk 6:
+        // §4a's termination-type refusal, chunk 3's identity comparison and
+        // post-gate check, chunk 5's department fold, and the five decisions
+        // only a graph holding ALL of the reads can make — the document's own
+        // plan (S7's future refusal and the Kronos window), S18/S19's subject
+        // fork, S23/S24's employment selection, the date reconciliation that is
+        // the write's payload, and D130's receipt-pair check. Every one of them
+        // is sessionless and browser-free.
+        "workflow:separations/match-active-employment",
         "workflow:separations/match-department-option",
         "workflow:separations/match-identity",
+        "workflow:separations/match-separation-subject",
         "workflow:separations/match-termination-type",
+        "workflow:separations/read-separation-dates",
+        "workflow:separations/read-separation-plan",
         "workflow:separations/verify-identity-approval",
+        "workflow:separations/verify-termination-receipt",
       ],
     );
   });
