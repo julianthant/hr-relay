@@ -79,6 +79,10 @@ import {
   KUALI_RRSS_TRANSACTION_NUMBER_FIELD,
   KUALI_SEPARATION_FORM_TYPE,
 } from "../../../domain/ui/kuali-separation-document.js";
+import {
+  KUALI_RRSS_DISPLAYED_TRANSACTION_NUMBER,
+  KUALI_RRSS_FINALIZATION_STAGED,
+} from "../../../domain/ui/kuali-separation-finalization.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../domain/trust/preflight-scenarios.js";
 
 const LEGACY_COMMIT = "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc";
@@ -98,6 +102,22 @@ const WRITE_SURFACE_SCENARIO = "ui/kuali-rrss-timekeeper-write-surface";
 const READ_FIXTURE_EVIDENCE = "evidence/ui/kuali/separation-document.fixture.json";
 const READ_LIVE_EVIDENCE = "evidence/ui/kuali/separation-document.live.json";
 const READ_SURFACE_SCENARIO = "ui/kuali-separation-document-read-surface";
+
+/**
+ * Chunk 5a's finalization write surface. It mints no new ELEMENT — every
+ * control it writes is one of the fourteen read elements above — so it carries
+ * the read surface's evidence pair and its 2026-08-12 verification date. What
+ * it does add is the two facts the write needs and the read did not: the
+ * staged page state the fence binds to, and the Transaction Number observation
+ * an absence of this write is sourced from. Both are structural claims about
+ * that same read-only pass, which counted every one of these controls at
+ * exactly one node on real documents 4510 / 4502 / 4495.
+ *
+ * live-verify: 5c owes the other half — that these controls accept a WRITE.
+ * Nothing in this repository has observed that, and no manifest here claims it
+ * (`externalWriteAttempted` stays `false` in both).
+ */
+const FINALIZATION_SURFACE_SCENARIO = "ui/kuali-rrss-finalization-write-surface";
 
 const EID_PORT_KEY = "separationForm.eid()";
 const TIMEKEEPER_PORT_KEY = "timekeeperTasks.timekeeperName()";
@@ -284,6 +304,17 @@ function readVerification(legacyKey: string) {
     fixtureEvidenceRef: READ_FIXTURE_EVIDENCE,
     liveReadOnlyEvidenceRef: READ_LIVE_EVIDENCE,
     scenarios: [ScenarioIdSchema.parse(READ_SURFACE_SCENARIO)],
+    portMapRows: [{ system: "kuali" as const, legacyKey }],
+  };
+}
+
+/** The finalization write surface, against the read surface's evidence pair. */
+function finalizationVerification(legacyKey: string) {
+  return {
+    verifiedAt: DateOnlySchema.parse(READ_VERIFIED_AT),
+    fixtureEvidenceRef: READ_FIXTURE_EVIDENCE,
+    liveReadOnlyEvidenceRef: READ_LIVE_EVIDENCE,
+    scenarios: [ScenarioIdSchema.parse(FINALIZATION_SURFACE_SCENARIO)],
     portMapRows: [{ system: "kuali" as const, legacyKey }],
   };
 }
@@ -601,6 +632,32 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       timeoutMs: 30_000,
       verification: readVerification("separationForm.employeeName()"),
     },
+    {
+      id: KUALI_RRSS_FINALIZATION_STAGED,
+      system: "kuali",
+      screen: KUALI_RRSS_DOCUMENT_SCREEN,
+      label: "RRSS separation document with an unsaved staged finalization",
+      searchTerms: ["kuali rrss document finalization staged state"],
+      sensitivity: "restricted",
+      /**
+       * Structural evidence only, exactly like the timekeeper staging: that the
+       * controls hold the STAGED values is proved by the prepare's own
+       * field-by-field read-back, not by a page-state rule — a value-dependent
+       * state id would be a different state per run and could not be registered.
+       */
+      evidence: [
+        { kind: "action-view-url", space: KUALI_RRSS_SPACE_ID },
+        { kind: "document-number-heading", level: 1 },
+        { kind: "element", element: KUALI_RRSS_TERMINATION_EFF_DATE_FIELD },
+        { kind: "element", element: KUALI_RRSS_DEPARTMENT_FIELD },
+        { kind: "element", element: KUALI_RRSS_TRANSACTION_NUMBER_FIELD },
+        { kind: "element", element: KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX },
+        { kind: "element", element: KUALI_RRSS_FINAL_PAY_STUDENT_RADIO },
+        { kind: "element", element: KUALI_RRSS_SAVE_BUTTON },
+      ],
+      timeoutMs: 30_000,
+      verification: finalizationVerification("transactionResults.transactionNumber()"),
+    },
   ],
   observations: [
     {
@@ -658,6 +715,30 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       authoritativeFor: ["page-state"],
       verification: readVerification("separationForm.terminationType()"),
     },
+    {
+      id: KUALI_RRSS_DISPLAYED_TRANSACTION_NUMBER,
+      system: "kuali",
+      screen: KUALI_RRSS_DOCUMENT_SCREEN,
+      label: "Displayed RRSS document transaction number",
+      searchTerms: ["authoritative kuali rrss displayed transaction number"],
+      sensitivity: "hr",
+      valueType: "text",
+      read: {
+        kind: "input-value",
+        element: KUALI_RRSS_TRANSACTION_NUMBER_FIELD,
+        trim: true,
+        valueType: "text",
+      },
+      /**
+       * The finalization's COMPLETION observation: it is the half of the
+       * permanent key `<documentNumber>|finalization|<transactionNumber>` that
+       * the document itself carries, so an absence of this write is sourced
+       * from it. The verdict still compares all ten fields — this names where
+       * the decisive one is read.
+       */
+      authoritativeFor: ["completion"],
+      verification: finalizationVerification("transactionResults.transactionNumber()"),
+    },
   ],
   scenarios: [
     {
@@ -712,6 +793,16 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       fixtureEvidenceRef: READ_FIXTURE_EVIDENCE,
       liveReadOnlyEvidenceRef: READ_LIVE_EVIDENCE,
       assertions: ["recipe-resolves", "exactly-one-visible"],
+    },
+    {
+      id: FINALIZATION_SURFACE_SCENARIO,
+      kind: "ui-verification",
+      title: "The Kuali finalization write surface names one staged state and one completion read",
+      system: "kuali",
+      semanticIds: [KUALI_RRSS_FINALIZATION_STAGED, KUALI_RRSS_DISPLAYED_TRANSACTION_NUMBER],
+      fixtureEvidenceRef: READ_FIXTURE_EVIDENCE,
+      liveReadOnlyEvidenceRef: READ_LIVE_EVIDENCE,
+      assertions: ["recipe-resolves"],
     },
   ],
 }));

@@ -245,6 +245,34 @@
       "assertion": "recipe-resolves",
       "matchedCount": 1,
       "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.finalization-staged",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-rrss-finalization-write-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "transactionResults.transactionNumber()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.rrss-document.displayed-transaction-number",
+      "screen": "kuali.rrss-document",
+      "scenarioId": "ui/kuali-rrss-finalization-write-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "transactionResults.transactionNumber()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
     }
   ],
   "rejectedCandidates": [

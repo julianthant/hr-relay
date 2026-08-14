@@ -94,6 +94,29 @@ import type {
   KualiTextField,
   KualiTransactionNumberField,
 } from "../../../domain/ui/kuali-separation-document.js";
+import {
+  KUALI_FINALIZATION_FIELD_NAMES,
+  KUALI_RRSS_FINALIZATION_FORM_KEYS,
+  KUALI_RRSS_FINALIZATION_STAGED,
+  KualiCommentsChangedError,
+  KualiDepartmentOptionNotOfferedError,
+  KualiFinalizationReadBackSchema,
+  KualiFinalizationStageNotPersistedError,
+  KualiFinalizationStagingSchema,
+  KualiFinalizationTargetSchema,
+  KualiObservedFinalizationFieldsSchema,
+  KualiSaveRefusedError,
+  KualiSavedFinalizationProofSchema,
+  compareKualiFinalizationFields,
+  kualiFinalizationFields,
+} from "../../../domain/ui/kuali-separation-finalization.js";
+import type {
+  KualiFinalizationFields,
+  KualiFinalizationReadBack,
+  KualiFinalizationStaging,
+  KualiFinalizationTarget,
+  KualiObservedFinalizationFields,
+} from "../../../domain/ui/kuali-separation-finalization.js";
 import { KUALI_RRSS_SPACE_ID, KUALI_UI_REGISTRY } from "./ui-registry.js";
 
 const KUALI_HOST = "ucsd.kualibuild.com";
@@ -325,6 +348,30 @@ const SubmitResponseSchema = z.object({
   }).loose().nullish(),
 });
 
+/**
+ * What the last successful staging on the page proved, retained so `commit` can
+ * check the save's payload against it.
+ *
+ * It is a UNION because this store now has two write families that both click
+ * the same one `Save` button. `commit` receives only an element id and a
+ * capability, so without this it would have nothing to compare — and a Save
+ * clicked with no staging behind it is exactly the no-op write the 2026-08-04
+ * attempt performed.
+ */
+type StagedExpectation =
+  | Readonly<{
+    kind: "timekeeper";
+    actionId: string;
+    documentNumber: string;
+    timekeeperName: string;
+  }>
+  | Readonly<{
+    kind: "finalization";
+    actionId: string;
+    documentNumber: string;
+    fields: KualiFinalizationFields;
+  }>;
+
 /** Every Kuali input read trims; a padded value is the norm, not an anomaly. */
 async function readTrimmedInput(page: Page, id: ElementId): Promise<string> {
   const locator = await exactlyOne(page, id);
@@ -380,6 +427,26 @@ async function awaitModelCommit(
   handle: ElementHandle<SVGElement | HTMLElement>,
   documentNumber: string,
 ): Promise<void> {
+  await stampModelProps(handle, documentNumber, "timekeeper");
+  await awaitModelPropsReplaced(page, handle, documentNumber, "timekeeper");
+}
+
+/**
+ * Half one of the model-commit barrier: remember the control's CURRENT React
+ * props object so a later replacement is observable.
+ *
+ * Splitting the barrier in two is what lets a caller stamp BEFORE it acts. The
+ * timekeeper path stamps after typing and is safe there only because the gadget
+ * debounces ~723 ms; a control that commits INSTANTLY (a select, a checkbox, a
+ * radio) can re-render before a post-hoc stamp runs, and then a wait for "a
+ * different props object" would time out on a staging that actually worked.
+ * Every finalization control is therefore stamped first and awaited after.
+ */
+async function stampModelProps(
+  handle: ElementHandle<SVGElement | HTMLElement>,
+  documentNumber: string,
+  what: string,
+): Promise<void> {
   const stamped = await handle.evaluate((node, marker) => {
     const element = node as unknown as Record<string, unknown>;
     const propsKey = Object.keys(element).find((key) => key.startsWith("__reactProps"));
@@ -389,11 +456,20 @@ async function awaitModelCommit(
   }, STAGED_PROPS_MARKER);
   if (!stamped) {
     throw new Error(
-      `Kuali document ${documentNumber} exposes no React props on the timekeeper control, so the `
-      + "point at which it commits the typed value into the document model cannot be observed; "
-      + "refusing to reach the fence on an unprovable staging",
+      `Kuali document ${documentNumber} exposes no React props on the ${what} control, so the point at `
+      + "which it commits the typed value into the document model cannot be observed; refusing to reach "
+      + "the fence on an unprovable staging",
     );
   }
+}
+
+/** Half two: wait for the parent re-render that the model update causes. */
+async function awaitModelPropsReplaced(
+  page: Page,
+  handle: ElementHandle<SVGElement | HTMLElement>,
+  documentNumber: string,
+  what: string,
+): Promise<void> {
   try {
     await page.waitForFunction((bound: { node: SVGElement | HTMLElement; marker: string }) => {
       const element = bound.node as unknown as Record<string, unknown>;
@@ -406,9 +482,9 @@ async function awaitModelCommit(
     // Not a swallow: the timeout IS the observation that the model never took
     // the value, and continuing would click Save on a payload without it.
     throw new Error(
-      `Kuali document ${documentNumber} did not commit the staged timekeeper value into its document `
-      + `model within ${String(MODEL_COMMIT_TIMEOUT_MS)}ms (measured commit point: ~723ms after the `
-      + "last keystroke); refusing to reach the fence",
+      `Kuali document ${documentNumber} did not commit the staged ${what} value into its document model `
+      + `within ${String(MODEL_COMMIT_TIMEOUT_MS)}ms (measured commit point: ~723ms after the last `
+      + "keystroke); refusing to reach the fence",
       { cause: error },
     );
   }
@@ -426,13 +502,13 @@ async function awaitModelCommit(
  */
 function assertSubmitCarriedValue(
   request: Readonly<{ postData: () => string | null }>,
-  expected: Readonly<{ actionId: string; documentNumber: string; timekeeperName: string }>,
+  expected: StagedExpectation,
 ): void {
   const raw = request.postData();
   if (raw === null) {
     throw new Error(
       `Kuali document ${expected.documentNumber} issued a ${KUALI_SUBMIT_OPERATION} with no request body; `
-      + "the save cannot be proved to carry the staged timekeeper value",
+      + "the save cannot be proved to carry the staged values",
     );
   }
   const parsed: unknown = JSON.parse(raw);
@@ -451,16 +527,52 @@ function assertSubmitCarriedValue(
       + `is action ${expected.actionId}; refusing to treat it as this write`,
     );
   }
-  const sent = variables.data.data[KUALI_RRSS_TIMEKEEPER_FORM_KEY];
-  if (sent !== expected.timekeeperName) {
+  for (const [formKey, value] of stagedWireValues(expected)) {
+    const sent = variables.data.data[formKey];
+    if (sent === value) continue;
     throw new Error(
-      `Kuali save on document ${expected.documentNumber} did NOT carry the staged timekeeper value: `
-      + `${KUALI_SUBMIT_OPERATION} sent ${JSON.stringify(sent ?? null)} at formKey `
-      + `${KUALI_RRSS_TIMEKEEPER_FORM_KEY} instead of ${JSON.stringify(expected.timekeeperName)}. `
-      + "Kuali accepts and reports success for such a save while persisting nothing of this field, so "
-      + "this is reported as a failed write, not a completed one",
+      `Kuali save on document ${expected.documentNumber} did NOT carry a staged value: `
+      + `${KUALI_SUBMIT_OPERATION} sent ${JSON.stringify(sent ?? null)} at formKey ${formKey} instead of `
+      + `${JSON.stringify(value)}. Kuali accepts and reports success for such a save while persisting `
+      + "nothing of that field, so this is reported as a failed write, not a completed one",
     );
   }
+}
+
+/**
+ * The `(formKey, value)` pairs the save's `data` map must carry for THIS
+ * staging.
+ *
+ * ## The finalization's coverage is PARTIAL today, and that is stated, not hidden
+ *
+ * Only `timekeeperName`'s `formKey` has ever been observed by this repository
+ * (`QGJ63YrCom`, live 2026-08-04 off Kuali's own `ActionPage` query). The other
+ * nine are `null` in `KUALI_RRSS_FINALIZATION_FORM_KEYS` and are therefore NOT
+ * asserted, because a fabricated key would make the check unable to fail —
+ * which is exactly how D128's false positive happened, and exactly the
+ * "write the expectation, then pass" shape D132 bans.
+ *
+ * That does **not** weaken the write's landing proof, because this check never
+ * was the proof: `submitDocumentV2` answers `{"status":"Ok","validations":null}`
+ * for a mutation that dropped a field entirely, so the ONLY thing that can turn
+ * a Kuali save into `done` is `readSavedSeparationFinalization`'s reload
+ * read-back — and that compares all ten fields. What is missing is the earlier,
+ * louder half of the defence. **Chunk 5c owes the nine keys**
+ * (`kualiFinalizationFormKeysMissing()` is the to-do list); filling the table is
+ * a one-line change and this function then covers every field with no other
+ * edit.
+ */
+function stagedWireValues(expected: StagedExpectation): readonly (readonly [string, unknown])[] {
+  if (expected.kind === "timekeeper") {
+    return [[KUALI_RRSS_TIMEKEEPER_FORM_KEY, expected.timekeeperName]];
+  }
+  const pairs: (readonly [string, unknown])[] = [];
+  for (const field of KUALI_FINALIZATION_FIELD_NAMES) {
+    const formKey = KUALI_RRSS_FINALIZATION_FORM_KEYS[field];
+    if (formKey === null) continue;
+    pairs.push([formKey, expected.fields[field]] as const);
+  }
+  return pairs;
 }
 
 /**
@@ -500,10 +612,10 @@ async function assertSubmitNotRefused(response: Response, documentNumber: string
     );
   }
   if (parsed.data.errors !== undefined && parsed.data.errors.length > 0) {
-    throw new Error(
-      `Kuali refused the save on document ${documentNumber}: `
-      + parsed.data.errors.map((entry) => entry.message).join("; "),
-    );
+    throw new KualiSaveRefusedError({
+      documentNumber,
+      refusal: parsed.data.errors.map((entry) => entry.message).join("; "),
+    });
   }
   const result = parsed.data.data?.submitDocumentV2 ?? undefined;
   if (result === undefined || result === null) {
@@ -512,13 +624,17 @@ async function assertSubmitNotRefused(response: Response, documentNumber: string
     );
   }
   if (result.status !== "Ok") {
-    throw new Error(`Kuali reported save status ${JSON.stringify(result.status)} on document ${documentNumber}`);
+    throw new KualiSaveRefusedError({
+      documentNumber,
+      refusal: `${KUALI_SUBMIT_OPERATION} reported status ${JSON.stringify(result.status)}`,
+    });
   }
   if (result.validations !== null && result.validations !== undefined) {
-    throw new Error(
-      `Kuali returned validations for the save on document ${documentNumber}: `
-      + `${JSON.stringify(result.validations).slice(0, 400)}`,
-    );
+    throw new KualiSaveRefusedError({
+      documentNumber,
+      refusal: `${KUALI_SUBMIT_OPERATION} returned validations: `
+        + JSON.stringify(result.validations).slice(0, 400),
+    });
   }
 }
 
@@ -576,14 +692,8 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
   // comes from the injected clock, never from `new Date()`.
   const now = (): string => IsoInstantSchema.parse(clock.now().toISOString());
 
-  /**
-   * What the last successful staging on THIS page proved, retained so `commit`
-   * can check the save's payload against it. `commit` receives only an element
-   * id and a capability, so without this it would have nothing to compare — and
-   * a Save clicked with no staging behind it is exactly the no-op write the
-   * 2026-08-04 attempt performed.
-   */
-  let staged: Readonly<{ actionId: string; documentNumber: string; timekeeperName: string }> | undefined;
+  /** See `StagedExpectation` — the staging this page's `Save` may act on, if any. */
+  let staged: StagedExpectation | undefined;
 
   async function openDocument(input: Readonly<{
     actionId: string;
@@ -845,24 +955,10 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         };
 
     // The final-pay group: ONE registry element (the only radio legacy has a
-    // key for) plus its three live siblings, read driver-internally.
-    const finalPayChecks: readonly (readonly [KualiFinalPayChoice, boolean])[] = [
-      ["submitted-final-pay-request",
-        await (await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_SUBMITTED)).isChecked({ timeout: FIELD_TIMEOUT_MS })],
-      ["does-not-need-final-pay-student", await readCheckbox(KUALI_RRSS_FINAL_PAY_STUDENT_RADIO)],
-      ["does-not-need-final-pay-transfer",
-        await (await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_TRANSFER)).isChecked({ timeout: FIELD_TIMEOUT_MS })],
-      ["other",
-        await (await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_OTHER)).isChecked({ timeout: FIELD_TIMEOUT_MS })],
-    ];
-    const selectedFinalPay = finalPayChecks.filter(([, checked]) => checked);
-    if (selectedFinalPay.length > 1) {
-      throw new Error(
-        `Kuali document ${heading.documentNumber} reports ${String(selectedFinalPay.length)} Final Pay `
-        + "radios checked at once; a radio group with two selections is a page we cannot describe",
-      );
-    }
-    const finalPayChoice = selectedFinalPay[0]?.[0];
+    // key for) plus its three live siblings, read driver-internally. It is the
+    // SAME implementation the finalization read-back uses, so the two families
+    // cannot disagree about what the document carries.
+    const finalPayChoice = await readFinalPayChoice(heading.documentNumber);
 
     return KualiSeparationDocumentReadSchema.parse({
       state: "read",
@@ -968,7 +1064,12 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     // The Save button must already resolve uniquely BEFORE the fence: a page
     // that cannot name exactly one Save is a page we must not fence on.
     await exactlyOne(page, KUALI_RRSS_SAVE_BUTTON);
-    staged = { actionId: view.actionId, documentNumber: view.documentNumber, timekeeperName };
+    staged = {
+      kind: "timekeeper",
+      actionId: view.actionId,
+      documentNumber: view.documentNumber,
+      timekeeperName,
+    };
     return KualiTimekeeperStagingSchema.parse({
       pageStateId: KUALI_RRSS_TIMEKEEPER_STAGED,
       actionId: view.actionId,
@@ -1019,6 +1120,309 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       return KualiTimekeeperReadBackSchema.parse({
         state: "unknown",
         reason: `Kuali reload read-back failed: ${error instanceof Error ? error.message : "non-Error thrown"}`,
+        observedAt: now(),
+      });
+    }
+  }
+
+  /* ── The finalization write (chunk 5) ──────────────────────────────────── */
+
+  /**
+   * The one place the Final Pay radio group is read, shared by the separation
+   * read and the finalization read-back.
+   *
+   * Two selections at once is a page we cannot describe, so it throws rather
+   * than picking one — and `undefined` (no radio checked) is a REAL state, seen
+   * live on documents 4502 and 4495.
+   */
+  async function readFinalPayChoice(documentNumber: string): Promise<KualiFinalPayChoice | undefined> {
+    const checks: readonly (readonly [KualiFinalPayChoice, boolean])[] = [
+      ["submitted-final-pay-request",
+        await (await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_SUBMITTED)).isChecked({ timeout: FIELD_TIMEOUT_MS })],
+      ["does-not-need-final-pay-student", await readCheckbox(KUALI_RRSS_FINAL_PAY_STUDENT_RADIO)],
+      ["does-not-need-final-pay-transfer",
+        await (await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_TRANSFER)).isChecked({ timeout: FIELD_TIMEOUT_MS })],
+      ["other",
+        await (await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_OTHER)).isChecked({ timeout: FIELD_TIMEOUT_MS })],
+    ];
+    const selected = checks.filter(([, checked]) => checked);
+    if (selected.length > 1) {
+      throw new Error(
+        `Kuali document ${documentNumber} reports ${String(selected.length)} Final Pay radios checked at `
+        + "once; a radio group with two selections is a page we cannot describe",
+      );
+    }
+    return selected[0]?.[0];
+  }
+
+  /**
+   * The ten finalization controls, read exactly as the page holds them, plus
+   * the department control's COMPLETE option list (§3.2).
+   *
+   * Nothing here parses or classifies: an unset select reads `- - -` and an
+   * empty control reads `""`, because the comparison against the staged fields
+   * is what decides meaning. A read that normalised `- - -` to "absent" would
+   * make "the department did not save" and "the department saved as the
+   * sentinel" the same fact.
+   */
+  async function readFinalizationFields(documentNumber: string): Promise<{
+    readonly fields: KualiObservedFinalizationFields;
+    readonly departmentOptions: readonly string[];
+  }> {
+    const department = await readSelect(KUALI_RRSS_DEPARTMENT_FIELD);
+    const finalPay = await readFinalPayChoice(documentNumber);
+    return {
+      fields: KualiObservedFinalizationFieldsSchema.parse({
+        department: department.selected,
+        payrollTitleCode: await readTrimmedInput(page, KUALI_RRSS_PAYROLL_TITLE_CODE_FIELD),
+        payrollTitle: await readTrimmedInput(page, KUALI_RRSS_PAYROLL_TITLE_FIELD),
+        requestAcknowledged: await readCheckbox(KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX),
+        timekeeperName: await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_FIELD),
+        terminationEffectiveDate: await readTrimmedInput(page, KUALI_RRSS_TERMINATION_EFF_DATE_FIELD),
+        submittedTerminationTemplate: await readCheckbox(KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX),
+        transactionNumber: await readTrimmedInput(page, KUALI_RRSS_TRANSACTION_NUMBER_FIELD),
+        finalPay: finalPay ?? null,
+        timekeeperComments: await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD),
+      }),
+      departmentOptions: department.options,
+    };
+  }
+
+  /**
+   * Fill one text control, verify it read back, and wait for Kuali's document
+   * model to take it.
+   *
+   * `fillWithVerify` (legacy `navigate.ts:16-39`): Kuali controls silently drop
+   * a `fill()` often enough that an unverified staging is worthless, so one
+   * retry through key events. The model barrier is stamped BEFORE the fill —
+   * see `stampModelProps` — and is skipped when the control did not take the
+   * value at all, because there is no model commit to wait for and the
+   * field-by-field comparison at the end of staging is what reports it.
+   *
+   * live-verify: 5c — every control below was live-verified as a READ on
+   * 2026-08-12; none has been observed being WRITTEN by this repository.
+   */
+  async function stageText(
+    id: ElementId,
+    value: string,
+    what: string,
+    documentNumber: string,
+  ): Promise<void> {
+    const field = await exactlyOne(page, id);
+    const handle = await field.elementHandle({ timeout: FIELD_TIMEOUT_MS });
+    if (handle === null) {
+      throw new Error(
+        `Kuali document ${documentNumber} lost the ${what} control while staging; refusing to reach the fence`,
+      );
+    }
+    try {
+      await stampModelProps(handle, documentNumber, what);
+      await field.fill(value, { timeout: FIELD_TIMEOUT_MS });
+      let displayed = (await field.inputValue({ timeout: FIELD_TIMEOUT_MS })).trim();
+      if (displayed !== value) {
+        await field.clear({ timeout: FIELD_TIMEOUT_MS });
+        await field.pressSequentially(value, { delay: 30, timeout: FIELD_TIMEOUT_MS });
+        displayed = (await field.inputValue({ timeout: FIELD_TIMEOUT_MS })).trim();
+      }
+      if (displayed !== value) return;
+      await awaitModelPropsReplaced(page, handle, documentNumber, what);
+    } finally {
+      await handle.dispose();
+    }
+  }
+
+  /**
+   * Set one discrete control (a select, a checkbox, a radio) and wait for the
+   * model commit.
+   *
+   * These do not debounce the way a text gadget does, which is exactly why the
+   * props stamp happens before the interaction: a control that re-renders
+   * instantly would otherwise be stamped AFTER its own re-render and then waited
+   * on forever.
+   *
+   * live-verify: 5c.
+   */
+  async function stageDiscrete(
+    locator: Locator,
+    act: () => Promise<void>,
+    what: string,
+    documentNumber: string,
+  ): Promise<void> {
+    const handle = await locator.elementHandle({ timeout: FIELD_TIMEOUT_MS });
+    if (handle === null) {
+      throw new Error(
+        `Kuali document ${documentNumber} lost the ${what} control while staging; refusing to reach the fence`,
+      );
+    }
+    try {
+      await stampModelProps(handle, documentNumber, what);
+      await act();
+      await awaitModelPropsReplaced(page, handle, documentNumber, what);
+    } finally {
+      await handle.dispose();
+    }
+  }
+
+  /** The control that carries each Final Pay choice. Only one has a legacy key. */
+  async function finalPayLocator(choice: KualiFinalPayChoice): Promise<Locator> {
+    if (choice === "does-not-need-final-pay-student") {
+      return exactlyOne(page, KUALI_RRSS_FINAL_PAY_STUDENT_RADIO);
+    }
+    if (choice === "submitted-final-pay-request") {
+      return exactlyOneInternal("radio", INTERNAL_FINAL_PAY_SUBMITTED);
+    }
+    if (choice === "does-not-need-final-pay-transfer") {
+      return exactlyOneInternal("radio", INTERNAL_FINAL_PAY_TRANSFER);
+    }
+    return exactlyOneInternal("radio", INTERNAL_FINAL_PAY_OTHER);
+  }
+
+  async function stageSeparationFinalization(
+    input: KualiFinalizationTarget,
+  ): Promise<KualiFinalizationStaging> {
+    const target = KualiFinalizationTargetSchema.parse(input);
+    const fields = kualiFinalizationFields(target.variables);
+    staged = undefined;
+    const view = await openDocument({
+      actionId: target.actionId,
+      documentNumber: target.documentNumber,
+    });
+    const before = await readFinalizationFields(view.documentNumber);
+
+    // **S56, strengthened.** The staged comments text was composed upstream from
+    // a read of THIS control; if it has moved since, saving would blank an edit.
+    if (before.fields.timekeeperComments !== target.variables.observedExistingComments) {
+      throw new KualiCommentsChangedError({
+        documentNumber: view.documentNumber,
+        expected: target.variables.observedExistingComments,
+        observed: before.fields.timekeeperComments,
+      });
+    }
+    // **S55.** Refuse an option the live control does not offer, and record the
+    // whole list it did offer.
+    if (!before.departmentOptions.includes(fields.department)) {
+      throw new KualiDepartmentOptionNotOfferedError({
+        documentNumber: view.documentNumber,
+        requested: fields.department,
+        observedOptions: before.departmentOptions,
+      });
+    }
+
+    // ONE pass, every field, from the staged variables only.
+    const departmentControl = await exactlyOne(page, KUALI_RRSS_DEPARTMENT_FIELD);
+    await stageDiscrete(
+      departmentControl,
+      async () => { await departmentControl.selectOption({ label: fields.department }, { timeout: FIELD_TIMEOUT_MS }); },
+      "department",
+      view.documentNumber,
+    );
+    await stageText(KUALI_RRSS_PAYROLL_TITLE_CODE_FIELD, fields.payrollTitleCode, "payroll title code", view.documentNumber);
+    await stageText(KUALI_RRSS_PAYROLL_TITLE_FIELD, fields.payrollTitle, "payroll title", view.documentNumber);
+    const acknowledged = await exactlyOne(page, KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX);
+    await stageDiscrete(
+      acknowledged,
+      async () => { await acknowledged.setChecked(fields.requestAcknowledged, { timeout: FIELD_TIMEOUT_MS }); },
+      "request acknowledged",
+      view.documentNumber,
+    );
+    await stageText(KUALI_RRSS_TIMEKEEPER_FIELD, fields.timekeeperName, "timekeeper name", view.documentNumber);
+    await stageText(
+      KUALI_RRSS_TERMINATION_EFF_DATE_FIELD,
+      fields.terminationEffectiveDate,
+      "termination effective date",
+      view.documentNumber,
+    );
+    const template = await exactlyOne(page, KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX);
+    await stageDiscrete(
+      template,
+      async () => { await template.setChecked(fields.submittedTerminationTemplate, { timeout: FIELD_TIMEOUT_MS }); },
+      "submitted termination template",
+      view.documentNumber,
+    );
+    await stageText(KUALI_RRSS_TRANSACTION_NUMBER_FIELD, fields.transactionNumber, "transaction number", view.documentNumber);
+    const finalPay = await finalPayLocator(fields.finalPay);
+    await stageDiscrete(
+      finalPay,
+      async () => { await finalPay.check({ timeout: FIELD_TIMEOUT_MS }); },
+      "final pay radio",
+      view.documentNumber,
+    );
+    await stageText(KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD, fields.timekeeperComments, "timekeeper comments", view.documentNumber);
+
+    // Every control read back, against the exact staged field set.
+    const after = await readFinalizationFields(view.documentNumber);
+    const mismatches = compareKualiFinalizationFields(fields, after.fields);
+    if (mismatches.length > 0) {
+      throw new KualiFinalizationStageNotPersistedError({
+        documentNumber: view.documentNumber,
+        mismatches,
+      });
+    }
+    // The Save button must already resolve uniquely BEFORE the fence: a page
+    // that cannot name exactly one Save is a page we must not fence on.
+    await exactlyOne(page, KUALI_RRSS_SAVE_BUTTON);
+    staged = {
+      kind: "finalization",
+      actionId: view.actionId,
+      documentNumber: view.documentNumber,
+      fields,
+    };
+    return KualiFinalizationStagingSchema.parse({
+      stagedPageState: KUALI_RRSS_FINALIZATION_STAGED,
+      actionId: view.actionId,
+      documentNumber: view.documentNumber,
+      observedEid: view.observedEid,
+      previousFields: before.fields,
+      stagedFields: fields,
+      observedDepartmentOptions: after.departmentOptions,
+      observedAt: now(),
+    });
+  }
+
+  async function readSavedSeparationFinalization(
+    input: KualiFinalizationTarget,
+  ): Promise<KualiFinalizationReadBack> {
+    const target = KualiFinalizationTargetSchema.parse(input);
+    const expected = kualiFinalizationFields(target.variables);
+    try {
+      // The reload IS the proof mechanism. Reading the in-page form model would
+      // report the staged values whether or not the save landed.
+      await page.reload({ waitUntil: "domcontentloaded", timeout: NAVIGATION_TIMEOUT_MS });
+      const view = await openDocument({
+        actionId: target.actionId,
+        documentNumber: target.documentNumber,
+      });
+      const observed = await readFinalizationFields(view.documentNumber);
+      const mismatches = compareKualiFinalizationFields(expected, observed.fields);
+      if (mismatches.length === 0) {
+        return KualiFinalizationReadBackSchema.parse({
+          state: "present",
+          proof: KualiSavedFinalizationProofSchema.parse({
+            kind: "kuali-saved-finalization",
+            actionId: view.actionId,
+            documentNumber: view.documentNumber,
+            observedEid: view.observedEid,
+            fields: expected,
+            source: "reload-read-back",
+          }),
+          observedAt: now(),
+        });
+      }
+      return KualiFinalizationReadBackSchema.parse({
+        state: "absent",
+        actionId: view.actionId,
+        documentNumber: view.documentNumber,
+        observedEid: view.observedEid,
+        observedFields: observed.fields,
+        mismatches,
+        observedAt: now(),
+      });
+    } catch (error) {
+      // A failed check is NOT "found nothing". Everything that throws becomes
+      // `unknown`, which parks — it can never become retry authority.
+      return KualiFinalizationReadBackSchema.parse({
+        state: "unknown",
+        reason: `Kuali finalization reload read-back failed: ${error instanceof Error ? error.message : "non-Error thrown"}`,
         observedAt: now(),
       });
     }
@@ -1086,6 +1490,8 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     readSeparationDocument,
     stageTimekeeperName,
     readSavedTimekeeper,
+    stageSeparationFinalization,
+    readSavedSeparationFinalization,
     commit,
   };
   return Object.freeze(z.custom<KualiRrssDocumentDriver>(() => true).parse(

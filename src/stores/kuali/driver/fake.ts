@@ -58,7 +58,44 @@ import type {
   KualiTextField,
   KualiTransactionNumberField,
 } from "../../../domain/ui/kuali-separation-document.js";
+import {
+  KUALI_RRSS_FINALIZATION_STAGED,
+  KualiCommentsChangedError,
+  KualiDepartmentOptionNotOfferedError,
+  KualiFinalizationReadBackSchema,
+  KualiFinalizationStageNotPersistedError,
+  KualiFinalizationStagingSchema,
+  KualiFinalizationTargetSchema,
+  KualiObservedFinalizationFieldsSchema,
+  compareKualiFinalizationFields,
+  kualiFinalizationFields,
+} from "../../../domain/ui/kuali-separation-finalization.js";
+import type {
+  KualiFinalizationFieldName,
+  KualiFinalizationReadBack,
+  KualiFinalizationStaging,
+  KualiFinalizationTarget,
+  KualiObservedFinalizationFields,
+} from "../../../domain/ui/kuali-separation-finalization.js";
 import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../domain/separations/termination-type.js";
+
+/**
+ * A document nobody has finalized: every finalization control blank, the
+ * department on Kuali's sentinel, no Final Pay radio selected. This is live doc
+ * 4502's shape (2026-08-12), and it is the COMMON starting state.
+ */
+export const KUALI_FAKE_UNFINALIZED_FIELDS: KualiObservedFinalizationFields = Object.freeze({
+  department: "- - -",
+  payrollTitleCode: "",
+  payrollTitle: "",
+  requestAcknowledged: false,
+  timekeeperName: "",
+  terminationEffectiveDate: "",
+  submittedTerminationTemplate: false,
+  transactionNumber: "",
+  finalPay: null,
+  timekeeperComments: "",
+});
 
 /**
  * The option lists the live 2026-08-12 form rendered, so a fixture that does
@@ -170,6 +207,32 @@ export interface KualiFakeWorld {
    * and the read refuses loudly rather than inventing a form.
    */
   separationForm?: KualiFakeSeparationForm;
+
+  /* ── The finalization write (chunk 5) ────────────────────────────────── */
+
+  /**
+   * The PERSISTED finalization field set. Staging does not change it; only a
+   * commit does — so "staged but never saved" reads exactly as the live page
+   * would. Unset means an unfinalized document (`KUALI_FAKE_UNFINALIZED_FIELDS`).
+   */
+  persistedFinalization?: KualiObservedFinalizationFields;
+  /** What the `Department*` control offers. Set it to drive **S55**. */
+  finalizationDepartmentOptions?: readonly string[];
+  /**
+   * Controls the page silently refuses to take, by field name — the
+   * `fillWithVerify` failure Kuali is known for. Drives `stage-not-persisted`.
+   */
+  finalizationStagingDrops?: readonly KualiFinalizationFieldName[];
+  /**
+   * When set, the document model never takes a staged finalization value, so
+   * the model-commit barrier times out and throws BEFORE any fence exists.
+   */
+  finalizationModelNeverCommits?: boolean;
+  /**
+   * When set, the Save click SUCCEEDS but Kuali keeps the old finalization —
+   * **S59** / D128, the UI-silent failure only a reload read-back can see.
+   */
+  commitFinalizationDoesNotPersist?: boolean;
 }
 
 /**
@@ -238,6 +301,8 @@ export function createDeterministicKualiDriver(
   const now = (): string => IsoInstantSchema.parse(clock.now().toISOString());
   /** What the field currently shows: the staged value if any, else the persisted one. */
   let stagedTimekeeperName: string | undefined;
+  /** The finalization staged on this page, if any — the other thing `Save` may commit. */
+  let stagedFinalization: KualiObservedFinalizationFields | undefined;
   /** What the field SHOWS: the staged value when one is staged, else the persisted one. */
   const displayedTimekeeper = (): string =>
     (stagedTimekeeperName === undefined ? world.persistedTimekeeperName : stagedTimekeeperName);
@@ -529,6 +594,129 @@ export function createDeterministicKualiDriver(
     });
   }
 
+  /* ── The finalization write (chunk 5) ──────────────────────────────────── */
+
+  const persistedFinalization = (): KualiObservedFinalizationFields =>
+    world.persistedFinalization ?? KUALI_FAKE_UNFINALIZED_FIELDS;
+
+  const departmentOptions = (): readonly string[] =>
+    world.finalizationDepartmentOptions ?? KUALI_FAKE_DEPARTMENT_OPTIONS;
+
+  async function stageSeparationFinalization(
+    input: KualiFinalizationTarget,
+  ): Promise<KualiFinalizationStaging> {
+    const target = KualiFinalizationTargetSchema.parse(input);
+    const fields = kualiFinalizationFields(target.variables);
+    stagedFinalization = undefined;
+    const view = await openDocument(target);
+    world.events.push(`stage-finalization:${target.variables.transactionNumber}`);
+    const before = persistedFinalization();
+
+    if (before.timekeeperComments !== target.variables.observedExistingComments) {
+      throw new KualiCommentsChangedError({
+        documentNumber: world.documentNumber,
+        expected: target.variables.observedExistingComments,
+        observed: before.timekeeperComments,
+      });
+    }
+    const options = departmentOptions();
+    if (!options.includes(fields.department)) {
+      throw new KualiDepartmentOptionNotOfferedError({
+        documentNumber: world.documentNumber,
+        requested: fields.department,
+        observedOptions: options,
+      });
+    }
+    if (world.finalizationModelNeverCommits === true) {
+      throw new Error(
+        `Kuali document ${world.documentNumber} did not commit the staged department value into its `
+        + "document model within 20000ms (measured commit point: ~723ms after the last keystroke); "
+        + "refusing to reach the fence",
+      );
+    }
+
+    // Every control the page did NOT silently drop takes its staged value.
+    const dropped = new Set(world.finalizationStagingDrops ?? []);
+    const settled = KualiObservedFinalizationFieldsSchema.parse({
+      ...before,
+      ...Object.fromEntries(
+        Object.entries(fields).filter(([field]) => !dropped.has(field as KualiFinalizationFieldName)),
+      ),
+    });
+    const mismatches = compareKualiFinalizationFields(fields, settled);
+    if (mismatches.length > 0) {
+      throw new KualiFinalizationStageNotPersistedError({
+        documentNumber: world.documentNumber,
+        mismatches,
+      });
+    }
+    stagedFinalization = settled;
+    const staging = KualiFinalizationStagingSchema.parse({
+      stagedPageState: KUALI_RRSS_FINALIZATION_STAGED,
+      actionId: world.actionId,
+      documentNumber: world.documentNumber,
+      observedEid: view.observedEid,
+      previousFields: before,
+      stagedFields: fields,
+      observedDepartmentOptions: options,
+      observedAt: now(),
+    });
+    world.onStage?.();
+    if (world.displayedEidAfterStage !== undefined) {
+      // The page moved under us between prepare and the fence.
+      const next = world.displayedEidAfterStage;
+      if (EidSchema.safeParse(next).success) world.displayedEid = next;
+      else world.unreadableEid = next;
+    }
+    return staging;
+  }
+
+  async function readSavedSeparationFinalization(
+    input: KualiFinalizationTarget,
+  ): Promise<KualiFinalizationReadBack> {
+    const target = KualiFinalizationTargetSchema.parse(input);
+    world.events.push(`read-back-finalization:${target.variables.transactionNumber}`);
+    try {
+      if (world.readBackThrows !== undefined) throw world.readBackThrows;
+      requireDocument(target);
+      // The reload drops unsaved staging — exactly what the live page does.
+      stagedFinalization = undefined;
+      const observedEid = readEid();
+      const expected = kualiFinalizationFields(target.variables);
+      const observed = persistedFinalization();
+      const mismatches = compareKualiFinalizationFields(expected, observed);
+      if (mismatches.length === 0) {
+        return KualiFinalizationReadBackSchema.parse({
+          state: "present",
+          proof: {
+            kind: "kuali-saved-finalization",
+            actionId: world.actionId,
+            documentNumber: world.documentNumber,
+            observedEid,
+            fields: expected,
+            source: "reload-read-back",
+          },
+          observedAt: now(),
+        });
+      }
+      return KualiFinalizationReadBackSchema.parse({
+        state: "absent",
+        actionId: world.actionId,
+        documentNumber: world.documentNumber,
+        observedEid,
+        observedFields: observed,
+        mismatches,
+        observedAt: now(),
+      });
+    } catch (error) {
+      return KualiFinalizationReadBackSchema.parse({
+        state: "unknown",
+        reason: `Kuali finalization reload read-back failed: ${error instanceof Error ? error.message : "non-Error thrown"}`,
+        observedAt: now(),
+      });
+    }
+  }
+
   async function read(id: ObservationId): Promise<string> {
     world.events.push(`read:${id}`);
     if (id === KUALI_RRSS_DISPLAYED_EID) return readEid();
@@ -548,13 +736,19 @@ export function createDeterministicKualiDriver(
     if (id !== KUALI_RRSS_SAVE_BUTTON) {
       throw new Error(`Kuali driver refuses to commit through ${id}; only ${KUALI_RRSS_SAVE_BUTTON} may be clicked`);
     }
-    if (stagedTimekeeperName === undefined) {
+    if (stagedTimekeeperName === undefined && stagedFinalization === undefined) {
       throw new Error(
         "Kuali driver refuses to click Save without a staging on this exact page; a Save with nothing "
         + "staged re-submits the document unchanged and Kuali still answers 200 with `Form saved`",
       );
     }
     world.events.push(`commit:${id}`);
+    if (stagedFinalization !== undefined) {
+      if (world.commitFinalizationDoesNotPersist !== true) {
+        world.persistedFinalization = stagedFinalization;
+      }
+      return UiActionProofSchema.parse({ elementId: id, effect: "external-commit", performed: true });
+    }
     if (world.commitPayloadOmitsValue === true) {
       // The click HAPPENED — this is a post-fence throw, exactly like the live
       // case — but the mutation carried nothing of this field, so nothing
@@ -580,6 +774,8 @@ export function createDeterministicKualiDriver(
     readSeparationDocument,
     stageTimekeeperName,
     readSavedTimekeeper,
+    stageSeparationFinalization,
+    readSavedSeparationFinalization,
     commit,
   }));
 }

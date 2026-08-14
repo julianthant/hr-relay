@@ -2057,6 +2057,33 @@
     },
     {
       "system": "kuali",
+      "label": "RRSS separation document with an unsaved staged finalization",
+      "searchTerms": [
+        "kuali rrss document finalization staged state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-rrss-finalization-write-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation",
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "kuali.rrss-document.finalization-staged",
+      "screen": "kuali.rrss-document"
+    },
+    {
+      "system": "kuali",
       "label": "Displayed RRSS document EID",
       "searchTerms": [
         "authoritative kuali rrss displayed eid"
@@ -2164,6 +2191,36 @@
       "screen": "kuali.rrss-document",
       "authoritativeFor": [
         "page-state"
+      ]
+    },
+    {
+      "system": "kuali",
+      "label": "Displayed RRSS document transaction number",
+      "searchTerms": [
+        "authoritative kuali rrss displayed transaction number"
+      ],
+      "sensitivity": "hr",
+      "verification": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "evidence/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/separation-document.live.json",
+        "scenarios": [
+          "ui/kuali-rrss-finalization-write-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation",
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "observation",
+      "id": "kuali.rrss-document.displayed-transaction-number",
+      "screen": "kuali.rrss-document",
+      "authoritativeFor": [
+        "completion"
       ]
     },
     {
