@@ -437,7 +437,13 @@ function WorkflowEntryList({
         <span
           title={`${workflow.label}: ${active} active (queued or running) of ${plural(total, "row")} today`}
           aria-label={`${active} active of ${total} in ${workflow.label}`}
-          className={cn(dsText.meta, dsText.nums, "flex shrink-0 items-center justify-end gap-[var(--ds-space-hair)]")}
+          className={cn(
+            dsText.meta,
+            dsText.nums,
+            // The row gap alone leaves a truncated label crowding the numbers;
+            // this pad keeps the label→count boundary at 16px minimum.
+            "flex shrink-0 items-center justify-end gap-[var(--ds-space-hair)] pl-[var(--ds-space-base)]",
+          )}
         >
           <span
             className={
