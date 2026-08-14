@@ -54,6 +54,15 @@ export const UiVerificationSchema = UiCatalogVerificationSchema.extend({
 
 export const UiVerificationAssertionSchema = z.enum([
   "exactly-one-visible",
+  /**
+   * Strictly stronger than `exactly-one-visible`: the recipe resolved to one
+   * node AND that node was ENABLED and (for a text control) EDITABLE on the
+   * live page. It exists because a selector mapped on a read-only record is not
+   * a verified selector for the editable page — separations chunk 5c's own
+   * caveat — and `exactly-one-visible` cannot say the difference. It still
+   * claims nothing about a WRITE: `externalWriteAttempted` stays `false`.
+   */
+  "exactly-one-editable",
   "accepts-canonical-eid",
   "displayed-eid-equals-query",
   "recipe-resolves",

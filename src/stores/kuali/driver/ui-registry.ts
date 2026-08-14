@@ -124,7 +124,7 @@ const TIMEKEEPER_PORT_KEY = "timekeeperTasks.timekeeperName()";
 const SAVE_PORT_KEY = "save.navbarSaveButton()";
 
 const VERIFIED_AT = "2026-08-04";
-const READ_VERIFIED_AT = "2026-08-12";
+const READ_VERIFIED_AT = "2026-08-14";
 
 const GitBlobSchema = z.string().regex(/^[0-9a-f]{40}$/u);
 const LegacySelectorProvenanceSchema = z.strictObject({
@@ -792,7 +792,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       ],
       fixtureEvidenceRef: READ_FIXTURE_EVIDENCE,
       liveReadOnlyEvidenceRef: READ_LIVE_EVIDENCE,
-      assertions: ["recipe-resolves", "exactly-one-visible"],
+      assertions: ["recipe-resolves", "exactly-one-visible", "exactly-one-editable"],
     },
     {
       id: FINALIZATION_SURFACE_SCENARIO,

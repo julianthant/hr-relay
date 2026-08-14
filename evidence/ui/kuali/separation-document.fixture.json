@@ -5,7 +5,7 @@
   "screens": [
     "kuali.rrss-document"
   ],
-  "verifiedAt": "2026-08-12",
+  "verifiedAt": "2026-08-14",
   "method": "deterministic-driver",
   "assertions": [
     {

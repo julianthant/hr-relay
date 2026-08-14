@@ -5,7 +5,7 @@
   "screens": [
     "kuali.rrss-document"
   ],
-  "verifiedAt": "2026-08-12",
+  "verifiedAt": "2026-08-14",
   "method": "playwright-cli-duo-autopilot",
   "assertions": [
     {
@@ -88,7 +88,7 @@
           "legacyKey": "timekeeperTasks.requestAcknowledgedCheckbox()"
         }
       ],
-      "assertion": "exactly-one-visible",
+      "assertion": "exactly-one-editable",
       "matchedCount": 1,
       "capturedValue": false
     },
@@ -102,7 +102,7 @@
           "legacyKey": "timekeeperTasks.timekeeperComments()"
         }
       ],
-      "assertion": "exactly-one-visible",
+      "assertion": "exactly-one-editable",
       "matchedCount": 1,
       "capturedValue": false
     },
@@ -116,7 +116,7 @@
           "legacyKey": "finalTransactions.terminationEffDate()"
         }
       ],
-      "assertion": "exactly-one-visible",
+      "assertion": "exactly-one-editable",
       "matchedCount": 1,
       "capturedValue": false
     },
@@ -130,7 +130,7 @@
           "legacyKey": "finalTransactions.department()"
         }
       ],
-      "assertion": "exactly-one-visible",
+      "assertion": "exactly-one-editable",
       "matchedCount": 1,
       "capturedValue": false
     },
@@ -144,7 +144,7 @@
           "legacyKey": "finalTransactions.payrollTitleCode()"
         }
       ],
-      "assertion": "exactly-one-visible",
+      "assertion": "exactly-one-editable",
       "matchedCount": 1,
       "capturedValue": false
     },
@@ -158,7 +158,7 @@
           "legacyKey": "finalTransactions.payrollTitle()"
         }
       ],
-      "assertion": "exactly-one-visible",
+      "assertion": "exactly-one-editable",
       "matchedCount": 1,
       "capturedValue": false
     },
@@ -172,7 +172,7 @@
           "legacyKey": "transactionResults.submittedTemplateCheckbox()"
         }
       ],
-      "assertion": "exactly-one-visible",
+      "assertion": "exactly-one-editable",
       "matchedCount": 1,
       "capturedValue": false
     },
@@ -186,7 +186,7 @@
           "legacyKey": "transactionResults.transactionNumber()"
         }
       ],
-      "assertion": "exactly-one-visible",
+      "assertion": "exactly-one-editable",
       "matchedCount": 1,
       "capturedValue": false
     },
@@ -200,7 +200,7 @@
           "legacyKey": "transactionResults.doesNotNeedFinalPayRadio()"
         }
       ],
-      "assertion": "exactly-one-visible",
+      "assertion": "exactly-one-editable",
       "matchedCount": 1,
       "capturedValue": false
     },
