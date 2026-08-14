@@ -13,6 +13,29 @@
    `ds/tokens.ts` / `ds/ui.tsx` exactly as the legacy demo loads it; its theme
    blocks re-scope these semantic tokens under `data-demo-theme`, and its
    `:root` fallback aliases the values below. */
+/* THE PRODUCT'S TYPEFACE, AS A BUILD INPUT.
+
+   `--font-sans` / `--font-mono` below have named IBM Plex since this file was
+   ported, and NOTHING EVER LOADED IT. `document.fonts` was empty, so every
+   string in the product fell through the stack to the system UI font and
+   rendered 3-5% wider than the visual oracle at every size — which is what the
+   operator saw as "incorrect fonts". The demo loads it from Google Fonts with a
+   `<link>` in its `index.html`; this tree self-hosts the same faces instead,
+   for a reason the demo does not have to care about: doc 13 §7's parity lane
+   compares at `maxDiffPixels: 0`, and a typeface that arrives over the network
+   is a reference corpus that passes or fails on whether the network was up.
+
+   The weights are exactly the ones legacy's link requests — Sans 400/500/600/
+   700, Mono 400/500/600 — and no more: an unused weight is bytes on a page that
+   an operator loads all day. */
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-sans/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));

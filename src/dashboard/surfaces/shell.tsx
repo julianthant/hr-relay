@@ -33,6 +33,7 @@ import { readEnumPreference, writePreference } from "../lib/preference-storage.j
 import { cn } from "../lib/utils.js";
 import {
   IconButton,
+  Tooltip,
   dsBorder,
   dsClip,
   dsElev,
@@ -111,7 +112,7 @@ export function statusCount(counts: readonly StatusCountWire[], status: QueueSta
  * repeated literal is exactly how one of thirteen came to be 30px in a row
  * of 24.
  */
-const toolbarControl = (): string =>
+export const toolbarControl = (): string =>
   cn(
     "inline-flex shrink-0 cursor-pointer items-center border",
     "h-[var(--ds-h-toolbar)] gap-[var(--ds-space-snug)] px-[var(--ds-space-base)]",
@@ -649,6 +650,16 @@ export function needsYouCount(counts: readonly StatusCountWire[]): number {
  *  - **A zero genuinely recedes** — it drops its border, its fill AND its
  *    label, down to an icon and a `0` at `--ds-fg-faint`. It is still there, it
  *    is still clickable, and it still carries its full name to a screen reader.
+ *
+ * ONE DELIBERATE DEPARTURE FROM THE DEMO, and the operator filed it as a
+ * defect. Every hint in this group was a native `title`, which the browser
+ * paints as an OS widget AT THE CURSOR: it is anchored to the pointer rather
+ * than to the control, so it lands over the rows below the bar and reads as
+ * detached from the thing it is about. The `Tooltip` primitive is what
+ * DESIGN.md already names for a hint — it anchors to its trigger, floats above
+ * it, flips on collision, and is drawn in the product's own surface tokens. The
+ * accessible name on each control is unchanged and still carries the status and
+ * its count, so nothing load-bearing moved into a hover-only surface.
  */
 export function StatusFilters({
   statusCounts,
@@ -673,11 +684,10 @@ export function StatusFilters({
   ): ReactElement => {
     const on = active === key;
     return (
+      <Tooltip key={key} content={title} side="top">
       <button
-        key={key}
         type="button"
         aria-pressed={on}
-        title={title}
         onClick={() => onSelect(on ? "all" : key)}
         className={cn(
           // Same OUTER height as every status pill (`--ds-h-toolbar`).
@@ -698,6 +708,7 @@ export function StatusFilters({
         {label}
         <span className={dsText.nums}>{value}</span>
       </button>
+      </Tooltip>
     );
   };
 
@@ -708,8 +719,8 @@ export function StatusFilters({
     const spec = PROPOSED_STATUS[dsStatusOf(status)];
     const Icon = spec.icon;
     return (
+      <Tooltip key={status} content={spec.meaning} side="top">
       <button
-        key={status}
         type="button"
         aria-pressed={on}
         // The ACCESSIBLE name, not the drawn word: `verifiedDone` and
@@ -718,7 +729,6 @@ export function StatusFilters({
         // `Done — 2` and a screen-reader operator could not tell which pill
         // was which (D22, amended 2026-08-04). The visible pill is untouched.
         aria-label={`${spec.accessibleLabel} — ${value}`}
-        title={spec.meaning}
         onClick={() => onSelect(on ? "all" : status)}
         className={cn(
           "inline-flex shrink-0 cursor-pointer items-center border",
@@ -755,6 +765,7 @@ export function StatusFilters({
         {!empty && spec.label}
         <span className={dsText.nums}>{value}</span>
       </button>
+      </Tooltip>
     );
   };
 
@@ -971,7 +982,19 @@ export function SessionPanel({
           <span className={cn(dsText.ui, "shrink-0 font-semibold text-[color:var(--ds-fg)]")}>Sessions</span>
           <span className={cn(dsText.meta, "flex shrink-0 items-center gap-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>
             {tallies.map((tally) => (
-              <span key={tally.state} className="inline-flex items-center gap-[var(--ds-space-tight)]">
+              <span
+                key={tally.state}
+                className={cn(
+                  "inline-flex items-center gap-[var(--ds-space-tight)]",
+                  // Only `failed` takes ink, and only when there is one: the
+                  // demo tints the whole segment rather than the dot alone,
+                  // because a 6px red dot beside muted grey words is colour
+                  // doing the work on its own. Every other state stays muted —
+                  // a bar where five of six tallies are coloured is a bar where
+                  // none of them is.
+                  tally.state === "failed" && tally.count > 0 && WORKER_TONE.failed.text,
+                )}
+              >
                 <span aria-hidden className={cn("size-1.5 rounded-full", WORKER_TONE[tally.state].dot)} />
                 {tally.count} {WORKER_TONE[tally.state].label.toLowerCase()}
               </span>
@@ -994,11 +1017,22 @@ export function SessionPanel({
           )}
         </button>
         <span className="flex shrink-0 items-center gap-[var(--ds-space-snug)]">
+          {/*
+            THE DEMO'S `+` (Add workers) IS ABSENT, and the reason is a CAS
+            basis nobody serves. `spawn-worker` and `plan-worker-count` are real
+            composed kernel commands, but both target
+            `{workflowId, expectedVersion}` and the projection serves no version
+            for a workflow's worker pool — `WorkerCardWire.revision` is one
+            worker's row, not the pool's. A button that guessed an
+            `expectedVersion` would be inventing the exact fact the CAS exists
+            to check. It lands when the projection serves the pool version, and
+            not by a client picking one.
+          */}
           <span
             title={`App ${appVersion} — every run on screen is being served by this build. A run that RAN under a different version carries its own.`}
             className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}
           >
-            v{appVersion}
+            app {appVersion}
           </span>
           <span aria-hidden className="h-[var(--ds-h-xs)] w-px shrink-0 bg-[var(--ds-border)]" />
           {/* The subscription, named. This is the live / reconnecting state the

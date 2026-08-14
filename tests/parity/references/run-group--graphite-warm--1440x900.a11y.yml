@@ -10,19 +10,21 @@
   - heading "HR Automation" [level=1]
   - button "Back" [disabled]
   - button "Forward" [disabled]
+  - button "Dashboard" [pressed]
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity"
+  - button "Search this day’s runs": Search this day… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "This is the newest day served" [disabled]
   - button "Notifications — 1 unread item": "1"
-  - button "Settings"
-  - button "Keyboard shortcuts"
   - button "Switch to Paper Ink"
+  - button "UI catalog"
+  - button "Keyboard shortcuts"
+  - button "Settings"
 - main:
   - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
-  - button "Archive"
-  - button "Activity"
-  - button "Explore graph"
-  - button "UI catalog"
   - button "Import spreadsheet"
   - button "Start a run"
   - group "Filter the queue by status":
@@ -37,6 +39,12 @@
     - button "Done with warnings — 2": Done 2
     - button "Failed — 1": Failed 1
     - button "Cancelled — 1": Cancelled 1
+  - combobox "Order the queue":
+    - option "Attention first" [selected]
+    - option "Newest first"
+    - option "Oldest first"
+    - option "Longest running"
+  - button "Select"
   - region "Queue":
     - heading "Person Lookup" [level=2]
     - text: Needs you 3
@@ -155,5 +163,5 @@
         - button "Person Lookup 14 in Person Lookup": Person Lookup 14
 - region "Session Panel":
   - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
-  - text: v0.1.0
+  - text: app 0.1.0
   - status: Live

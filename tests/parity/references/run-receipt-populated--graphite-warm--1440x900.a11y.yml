@@ -10,22 +10,24 @@
   - heading "HR Automation" [level=1]
   - button "Back" [disabled]
   - button "Forward" [disabled]
+  - button "Dashboard" [pressed]
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity"
+  - button "Search this day’s runs": Search this day… /
   - button "No earlier day is served" [disabled]
   - button "Pick a day — showing Mon, Aug 3 · today, 8 rows": Mon, Aug 3 · today 8
   - button "This is the newest day served" [disabled]
   - button "Notifications": "0"
-  - button "Settings — storage needs attention"
-  - button "Keyboard shortcuts"
   - button "Switch to Paper Ink"
+  - button "UI catalog"
+  - button "Keyboard shortcuts"
+  - button "Settings — storage needs attention"
 - main:
   - status:
     - text: Storage has no restore point Runs and writes are unaffected; no verified backup was found, so there is no restore point. checked 10:00 AM
     - button "Storage health"
   - button "Workflow Panel — Person Lookup, minimised. 8 rows on this day, across every workflow": "8"
-  - button "Archive"
-  - button "Activity"
-  - button "Explore graph"
-  - button "UI catalog"
   - button "Import spreadsheet"
   - button "Start a run"
   - group "Filter the queue by status":
@@ -40,6 +42,12 @@
     - button "Done with warnings — 0": "0"
     - button "Failed — 1": Failed 1
     - button "Cancelled — 1": Cancelled 1
+  - combobox "Order the queue":
+    - option "Attention first" [selected]
+    - option "Newest first"
+    - option "Oldest first"
+    - option "Longest running"
+  - button "Select"
   - region "Queue":
     - heading "Person Lookup" [level=2]
     - text: Needs you 2
@@ -108,5 +116,5 @@
     - text: 3 fields · 1 attempt
 - region "Session Panel":
   - button "Sessions 1 working 0 idle"
-  - text: v0.1.0
+  - text: app 0.1.0
   - status: Live

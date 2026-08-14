@@ -149,6 +149,58 @@ function bandOf(status: ProposedStatus): QueueBandKey {
 
 const BAND_ORDER: QueueBandKey[] = ["attention", "active", "queued", "finished"];
 
+/* ── ordering inside a band ──────────────────────────────────────────────── */
+
+/**
+ * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+ * `demo-data.ts` `DEMO_SORTS` / `sortDemoRows`.
+ *
+ * THE DEFAULT REORDERS NOTHING. `attention` is the projection's own order,
+ * rendered verbatim — the bands are already attention-first and the server
+ * already ordered inside them, so the honest default is to pass the array
+ * through untouched rather than re-derive the same answer client-side.
+ *
+ * The other three are PRESENTATIONS the operator asked for by name, and the
+ * control on the toolbar is what makes the reorder visible. They reorder WITHIN
+ * a band and never across one: a band is what a run's status means, and no
+ * sort may move a row out of the group that says a human is blocking.
+ */
+export type QueueSortKey = "attention" | "newest" | "oldest" | "longest";
+
+export const QUEUE_SORTS: readonly { key: QueueSortKey; label: string; note: string }[] = [
+  { key: "attention", label: "Attention first", note: "The projection's own order — what needs you, then what broke, then the rest." },
+  { key: "newest", label: "Newest first", note: "Most recently started at the top of each band." },
+  { key: "oldest", label: "Oldest first", note: "The rows that have been sitting the longest, first in each band." },
+  { key: "longest", label: "Longest running", note: "Biggest elapsed or recorded duration first — where the time is going." },
+];
+
+/**
+ * How long a row has been working: recorded when it ended, live while it runs.
+ * `endedAt` is the served union (D124), so a terminal row whose end instant is
+ * genuinely unknown counts as its elapsed-to-now rather than being ranked as
+ * zero — and nothing here substitutes `now` for a missing END on a row the
+ * server said is still in flight.
+ */
+function elapsedMs(surface: QueueSurfaceWire, nowIso: string): number {
+  const started = Date.parse(surface.startedAt);
+  const ended = surface.endedAt.state === "present" ? Date.parse(surface.endedAt.value) : Date.parse(nowIso);
+  return Math.max(0, ended - started);
+}
+
+export function sortQueueBand(
+  rows: readonly QueueSurfaceWire[],
+  key: QueueSortKey,
+  nowIso: string,
+): readonly QueueSurfaceWire[] {
+  if (key === "attention") return rows;
+  const born = (surface: QueueSurfaceWire): number => Date.parse(surface.startedAt);
+  return [...rows].sort((a, b) => {
+    if (key === "newest") return born(b) - born(a);
+    if (key === "oldest") return born(a) - born(b);
+    return elapsedMs(b, nowIso) - elapsedMs(a, nowIso);
+  });
+}
+
 /* ── small row pieces ────────────────────────────────────────────────────── */
 
 /**
@@ -1017,6 +1069,7 @@ export function QueuePanel({
   panelLabel,
   dayLabel,
   filterLabel,
+  sort = "attention",
 }: {
   /** the day's flat queue projection, already scoped to this panel's workflow */
   surfaces: readonly QueueSurfaceWire[];
@@ -1030,14 +1083,21 @@ export function QueuePanel({
   dayLabel: string;
   /** the active filter's own word, so the empty state names what the operator set */
   filterLabel?: string;
+  /** the toolbar's ordering control; the default passes the projection through */
+  sort?: QueueSortKey;
 }) {
   const { top, membersOf } = partition(surfaces);
   const bands = BAND_ORDER.map((key) => ({
     key,
     label: BAND_LABEL[key],
-    // Row order INSIDE a band is the server's; the client never re-sorts a
-    // projection, it only groups it.
-    rows: top.filter((surface) => bandOf(dsStatusOf(surface.status)) === key),
+    // Row order inside a band is the projection's until the operator names
+    // another one on the toolbar — and even then the reorder stays inside the
+    // band, so nothing leaves the group its status put it in.
+    rows: sortQueueBand(
+      top.filter((surface) => bandOf(dsStatusOf(surface.status)) === key),
+      sort,
+      state.nowIso,
+    ),
   }));
 
   return (
@@ -1157,12 +1217,18 @@ export function QueuePanel({
  */
 export function visibleRunIds(
   surfaces: readonly QueueSurfaceWire[],
+  sort: QueueSortKey = "attention",
+  nowIso: string = new Date(0).toISOString(),
 ): string[] {
   const { top, membersOf } = partition(surfaces);
   const ids: string[] = [];
   for (const key of BAND_ORDER) {
-    for (const surface of top) {
-      if (bandOf(dsStatusOf(surface.status)) !== key) continue;
+    const band = sortQueueBand(
+      top.filter((surface) => bandOf(dsStatusOf(surface.status)) === key),
+      sort,
+      nowIso,
+    );
+    for (const surface of band) {
       ids.push(surface.runId);
       for (const member of orderMembers(membersOf.get(surface.runId) ?? [])) ids.push(member.runId);
     }

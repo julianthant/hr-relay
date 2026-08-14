@@ -23,7 +23,7 @@ import {
 import { CapabilityAvailabilitySchema, type CapabilityAvailability } from "../../domain/absence.js";
 import { InputRunSurfaceSchema } from "../../domain/workflow/ingress.js";
 import { WORKFLOW_DESCRIPTORS } from "../../workflows/descriptor-registry.js";
-import { Archive as ArchiveIcon, BookMarked, ChartNoAxesColumn, FileSpreadsheet, GitBranch, PanelRight } from "lucide-react";
+import { FileSpreadsheet, PanelRight } from "lucide-react";
 import { Button, EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, dsIcon, useDemoTheme } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
@@ -35,7 +35,8 @@ import { ARCHIVE_INDEX, ArchiveWorkspace } from "../surfaces/archive.js";
 import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { UiCatalogWorkspace } from "../surfaces/ui-catalog.js";
 import { LogPanel, defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel.js";
-import { QueuePanel, type QueueSurfaceWire, type QueueViewState } from "../surfaces/queue.js";
+import { QueuePanel, type QueueSortKey, type QueueSurfaceWire, type QueueViewState } from "../surfaces/queue.js";
+import { QueueToolbar } from "../surfaces/queue-toolbar.js";
 import { RunStartButton, RunStartSurfaces, type RunStartWorkflow } from "../surfaces/run-start.js";
 import {
   SessionPanel,
@@ -49,7 +50,7 @@ import {
   type StatusBucket,
 } from "../surfaces/shell.js";
 import { StorageBanner } from "../surfaces/settings.js";
-import { TopBar, serverLocalDay } from "../surfaces/top-bar.js";
+import { TopBar, serverLocalDay, type ShellView } from "../surfaces/top-bar.js";
 import { usePanelSections } from "./use-panel-sections.js";
 import {
   INTAKE_NEW,
@@ -96,6 +97,10 @@ export function DashboardApp() {
   const [filter, setFilter] = useState<StatusBucket>("all");
   const [openWells, setOpenWells] = useState<ReadonlySet<string>>(() => new Set());
   const [tab, setTab] = useState<PanelTab | undefined>(undefined);
+  /** the toolbar's ordering control and its select mode — client UI state, D18 */
+  const [sort, setSort] = useState<QueueSortKey>("attention");
+  const [selectMode, setSelectMode] = useState(false);
+  const [bulkIds, setBulkIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const boot = bootstrap.state === "loaded" ? bootstrap.value : undefined;
   const today = boot === undefined ? undefined : serverLocalDay(boot.serverClock);
@@ -126,6 +131,12 @@ export function DashboardApp() {
           onWells={setOpenWells}
           tab={tab}
           onTab={setTab}
+          sort={sort}
+          onSort={setSort}
+          selectMode={selectMode}
+          onSelectMode={setSelectMode}
+          bulkIds={bulkIds}
+          onBulkIds={setBulkIds}
         />
       )}
     </ToastProvider>
@@ -179,6 +190,12 @@ interface LoadedAppProps {
   onWells: (next: ReadonlySet<string>) => void;
   tab: PanelTab | undefined;
   onTab: (tab: PanelTab) => void;
+  sort: QueueSortKey;
+  onSort: (sort: QueueSortKey) => void;
+  selectMode: boolean;
+  onSelectMode: (on: boolean) => void;
+  bulkIds: ReadonlySet<string>;
+  onBulkIds: (next: ReadonlySet<string>) => void;
 }
 
 function LoadedApp({
@@ -196,6 +213,12 @@ function LoadedApp({
   onWells,
   tab,
   onTab,
+  sort,
+  onSort,
+  selectMode,
+  onSelectMode,
+  bulkIds,
+  onBulkIds,
 }: LoadedAppProps) {
   const { day: dayResource, connection } = useDashboardDay(day);
   // Bumped by an applied Data correction: the save moved the run version, so
@@ -295,9 +318,22 @@ function LoadedApp({
   const viewState: QueueViewState = {
     ...(route.run === undefined ? {} : { selectedRunId: route.run }),
     openWells,
+    selectMode,
+    bulkIds,
     panelWorkflowId: activeWorkflowId,
     nowIso: boot.serverClock.now,
   };
+
+  /**
+   * What `Select all in view` may take: the TOP-LEVEL rows drawn on screen, in
+   * the order they are drawn. A member is acted on through its group or on its
+   * own row and is never half-selected with it, which is why it never enters
+   * this set — `visibleRunIds` includes members, so it is not the same list.
+   */
+  const selectableIds = useMemo(
+    () => surfaces.filter((s) => s.lineage.state !== "child").map((s) => String(s.runId)),
+    [surfaces],
+  );
 
   const selectRun = useCallback(
     (runId: string) => {
@@ -312,6 +348,36 @@ function LoadedApp({
   // cannot disagree with a link that carries more than one key.
   const takeover = activeTakeover(route);
 
+  /**
+   * The Top Bar's switcher is a VIEW of the route, never a second copy of it.
+   *
+   * `activeTakeover` already resolves which key owns the main region, so the
+   * pressed segment is derived from that one answer — a link carrying both
+   * `?archive=` and `?explore=` lights the segment the region actually renders,
+   * because both read the same resolution. The two views the switcher does not
+   * name (intake and the catalog) fall back to `queue`: neither is a product
+   * page, and lighting nothing would be the switcher claiming the operator is
+   * nowhere.
+   */
+  const shellView: ShellView =
+    takeover === "archive" ? "archive" : takeover === "explore" ? "explorer" : takeover === "activity" ? "activity" : "queue";
+
+  /**
+   * Switching views CLEARS the other three keys rather than layering one over
+   * another. Anything else lets a link accumulate takeovers whose precedence
+   * the operator cannot see, and leaves a closed view still in the URL.
+   */
+  const onShellView = useCallback(
+    (next: ShellView): void => {
+      const base = { ...route, intake: undefined, archive: undefined, activity: undefined, explore: undefined, catalog: undefined };
+      if (next === "archive") setRoute({ ...base, archive: ARCHIVE_INDEX });
+      else if (next === "activity") setRoute({ ...base, activity: "" });
+      else if (next === "explorer") setRoute({ ...base, explore: activeWorkflowId });
+      else setRoute(base);
+    },
+    [route, setRoute, activeWorkflowId],
+  );
+
   return (
     <div
       data-demo-theme={theme}
@@ -319,6 +385,13 @@ function LoadedApp({
       className={cn("flex h-screen min-h-0 flex-col bg-[color:var(--ds-bg)] text-[color:var(--ds-fg)]")}
     >
       <TopBar
+        view={shellView}
+        onView={onShellView}
+        catalogOpen={takeover === "catalog"}
+        onOpenCatalog={() => setRoute({ ...route, catalog: "" })}
+        daySurfaces={dayWire?.queueSurfaces ?? []}
+        workflowLabelOf={workflowLabelOf}
+        onOpenRun={selectRun}
         notifications={dayWire?.notifications ?? []}
         actorId={boot.actor.id}
         storage={boot.storage}
@@ -371,73 +444,6 @@ function LoadedApp({
             onOpenSettings={() => setSettingsOpen(true)}
             className="mx-[var(--ds-shell-inset)] mt-[var(--ds-space-tight)]"
           />
-
-          <div className="flex shrink-0 items-center gap-[var(--ds-space-base)] px-[var(--ds-shell-inset)] py-[var(--ds-space-tight)]">
-            <WorkflowPanelToggle
-              mode={panelMode.mode}
-              onMode={panelMode.setMode}
-              activeWorkflowLabel={workflowLabelOf(activeWorkflowId)}
-              dayCount={dayCount}
-            />
-            <div className="flex-1" />
-            {/*
-              The two reference entries sit here, beside the panel they describe,
-              because both are read from the ACTIVE workflow's context: the
-              explorer opens on it, and the catalog is the vocabulary its browser
-              tasks are written in. Neither is a command — they take no argument
-              from the operator and change nothing — so both are secondary.
-            */}
-            {/*
-              Archive and Activity sit with the two reference entries rather
-              than in the top bar, and that is a decision, not an omission: the
-              takeovers replace the MAIN REGION only, while the top bar carries
-              the day nav, the calendar and the workflow counts — every one of
-              which is about the dashboard view specifically. A switcher up
-              there would sit above controls that do not apply to the view it
-              switched to.
-            */}
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<ArchiveIcon aria-hidden className={dsIcon.sm} />}
-              onClick={() => setRoute({ ...route, archive: ARCHIVE_INDEX })}
-            >
-              Archive
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<ChartNoAxesColumn aria-hidden className={dsIcon.sm} />}
-              onClick={() => setRoute({ ...route, activity: "" })}
-            >
-              Activity
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<GitBranch aria-hidden className={dsIcon.sm} />}
-              onClick={() => setRoute({ ...route, explore: activeWorkflowId })}
-            >
-              Explore graph
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<BookMarked aria-hidden className={dsIcon.sm} />}
-              onClick={() => setRoute({ ...route, catalog: "" })}
-            >
-              UI catalog
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={<FileSpreadsheet aria-hidden className={dsIcon.sm} />}
-              onClick={() => setRoute({ ...route, intake: INTAKE_NEW })}
-            >
-              Import spreadsheet
-            </Button>
-            <RunStartButton onOpen={() => setStartOpen(true)} />
-          </div>
 
           {/*
             The intake workspace REPLACES the queue for as long as it is open.
@@ -512,11 +518,68 @@ function LoadedApp({
             </div>
           ) : (
           <>
-          <StatusFilters
-            statusCounts={dayWire?.statusCounts ?? []}
-            dayCount={dayCount}
-            active={filter}
-            onSelect={onFilter}
+          {/*
+            ONE COMPOSED ACTION BAR (doc 03 §Shell, D18). It was two bands: a
+            row of unrelated ghost buttons crammed right, above a bare status
+            strip that hung off no inset at all — so the pills started 8px from
+            the window edge while every other band in the shell started at
+            `--ds-shell-inset`. The toolbar owns the inset now, and the three
+            groups are the demo's: where you are + what you start · what you are
+            looking at · how you are looking at it.
+          */}
+          <QueueToolbar
+            sort={sort}
+            onSort={onSort}
+            selectMode={selectMode}
+            onSelectMode={(on) => {
+              onSelectMode(on);
+              if (!on) onBulkIds(new Set());
+            }}
+            selectedCount={bulkIds.size}
+            visibleIds={selectableIds}
+            onSelectAll={() => onBulkIds(new Set(selectableIds))}
+            onClearSelection={() => onBulkIds(new Set())}
+            leading={
+              <WorkflowPanelToggle
+                mode={panelMode.mode}
+                onMode={panelMode.setMode}
+                activeWorkflowLabel={workflowLabelOf(activeWorkflowId)}
+                dayCount={dayCount}
+              />
+            }
+            runStart={
+              <>
+                {/*
+                  THE INTAKE ROUTE LIVES IN THE TOOLBAR HERE, and that is a
+                  named deviation from the demo rather than a leftover. The
+                  demo reaches its intake from INSIDE the Run Modal — a
+                  spreadsheet source turns the dialog's primary into "Open the
+                  intake…" — and this repository's `RunStartSurfaces` serves no
+                  such handoff. Deleting the button to match the demo's toolbar
+                  would make the whole intake workspace unreachable. It sits in
+                  the left group because it is one of the two ways work ENTERS
+                  this queue, which is what that group is; it goes when the run
+                  modal grows the handoff.
+                */}
+                <Button
+                  size="toolbar"
+                  variant="outline"
+                  icon={<FileSpreadsheet aria-hidden className={dsIcon.sm} />}
+                  onClick={() => setRoute({ ...route, intake: INTAKE_NEW })}
+                >
+                  Import spreadsheet
+                </Button>
+                <RunStartButton onOpen={() => setStartOpen(true)} />
+              </>
+            }
+            filters={
+              <StatusFilters
+                statusCounts={dayWire?.statusCounts ?? []}
+                dayCount={dayCount}
+                active={filter}
+                onSelect={onFilter}
+              />
+            }
           />
 
           {/*
@@ -563,11 +626,18 @@ function LoadedApp({
                     else next.add(runId);
                     onWells(next);
                   },
+                  onToggleBulk: (runId) => {
+                    const next = new Set(bulkIds);
+                    if (next.has(runId)) next.delete(runId);
+                    else next.add(runId);
+                    onBulkIds(next);
+                  },
                 }}
                 actionsOf={() => SERVED_ACTIONS}
                 workflowLabelOf={workflowLabelOf}
                 panelLabel={workflowLabelOf(activeWorkflowId)}
                 dayLabel={day}
+                sort={sort}
                 {...(filter === "all" ? {} : { filterLabel: String(filter) })}
               />
 

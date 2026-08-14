@@ -10,48 +10,49 @@
   - heading "HR Automation" [level=1]
   - button "Back" [disabled]
   - button "Forward" [disabled]
+  - button "Dashboard"
+  - button "Archive"
+  - button "Explorer" [pressed]
+  - button "Activity"
+  - button "Search this day’s runs": Search this day… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "This is the newest day served" [disabled]
   - button "Notifications — 1 unread item": "1"
-  - button "Settings"
-  - button "Keyboard shortcuts"
   - button "Switch to Paper Ink"
-- main:
-  - button "Workflow Panel — Person Lookup, floating window. 14 rows on this day, across every workflow" [expanded]: "14"
-  - button "Archive"
-  - button "Activity"
-  - button "Explore graph"
   - button "UI catalog"
-  - button "Import spreadsheet"
-  - button "Start a run"
+  - button "Keyboard shortcuts"
+  - button "Settings"
+- main:
   - region "Workflow explorer":
-    - text: Workflow explorer Person Lookup — the as-built graph, read from the registered descriptor Read-only
+    - text: Workflow explorer Identity Check — the as-built graph, read from the registered descriptor Read-only
     - button "Close the explorer"
     - group "Registered workflows":
-      - button "person-lookup" [pressed]
+      - button "person-lookup"
       - button "kuali-timekeeper-annotation"
       - button "separations-kronos-timecard"
       - button "separations-kuali-read"
-      - button "separations-identity-check"
-    - text: code pl category search version 1 shape single enqueue reject-active subject derived from input system crm system ucpath edit data declared-fields review no run surface declared intake 2 bindable fields capture none descriptor src/workflows/person-lookup/descriptor.ts module src/workflows/person-lookup/module.ts contract 99fd17f6d99aresult c1db3f17036333 files fingerprinted7 scenarios
+      - button "separations-identity-check" [pressed]
+    - text: code si category separation version 1 shape single enqueue reject-active subject eid system ucpath edit data none review no run surface none intake none capture none descriptor src/workflows/separations-identity-check/descriptor.ts module src/workflows/separations-identity-check/module.ts contract d4040792777dresult 9800a5c657bb38 files fingerprinted15 scenarios
     - navigation "Graph structure":
-      - text: Graph · 4 nodes
+      - text: Graph · 5 nodes
       - list:
         - listitem:
-          - button "searching Task · 1 contract"
+          - button "job-summary Task · 1 contract"
         - listitem:
-          - button "cross-verify Task · 1 contract"
+          - button "name-search Task · 1 contract"
         - listitem:
-          - button "active-status Task · 1 contract"
+          - button "comparison Task · 1 contract"
         - listitem:
-          - button "crm-dates Task · 1 contract"
-      - text: Result active-status crm-dates
-    - heading "searching" [level=3]
-    - text: Task Searching Depends on Nothing — this node may start immediately. replay checkpoint condition always runs Detail projections Selection selection.status
-    - region "ucpath/search-person-org": runs ucpath/search-person-org Searching Implemented by store ucpath kind browser driver ucpath Subject binding the person search resolves identity rather than confirming it Errors search-unavailable unexpected-page-state Freshness default 4h Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios person-lookup/happy-by-eid person-lookup/ambiguous-name person-lookup/not-found person-lookup/ucpath-drill-subject-mismatch Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts input ee4776e0a94eoutput 6b08cc3af988impl ba1d139541de
-    - region "Scenarios": Scenarios person-lookup/ambiguous-name walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-failure-retry walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts person-lookup/happy-by-eid walks tests/scenario/person-lookup.scenario.test.ts person-lookup/happy-by-eid-with-dates walks tests/scenario/person-lookup.scenario.test.ts person-lookup/not-found walks tests/scenario/person-lookup.scenario.test.ts person-lookup/ucpath-drill-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts
+          - button "identity-approval Gate"
+        - listitem:
+          - button "approval Task · 1 contract"
+      - text: Result approval
+    - heading "job-summary" [level=3]
+    - text: Task Job Summary Depends on Nothing — this node may start immediately. replay checkpoint condition always runs Detail projections UCPath shows displayedName
+    - region "ucpath/read-job-summary": runs ucpath/read-job-summary Job Summary Implemented by store ucpath kind browser driver ucpath Subject binding kind person from input emplId identity eid observes ucpath.person-org.displayed-eid match normalized-exact-eid required at before-subject-read Errors employee-not-found subject-mismatch unexpected-page-state Freshness default 4h Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios separations-identity-check/single-active-job separations-identity-check/already-terminated-single-row separations-identity-check/already-terminated-multi-row separations-identity-check/concurrent-active-jobs separations-identity-check/unreadable-department separations-identity-check/job-summary-not-found Source contract src/domain/contracts/ucpath/read-job-summary.ts impl src/stores/ucpath/tasks/read-job-summary.ts input 5578ac7d2220output 52e6b39a1c20impl 2b736c372081
+    - region "Scenarios": Scenarios person-lookup/ambiguous-name walks tests/scenario/person-lookup.scenario.test.ts person-lookup/happy-by-eid walks tests/scenario/person-lookup.scenario.test.ts person-lookup/not-found walks tests/scenario/person-lookup.scenario.test.ts person-lookup/ucpath-drill-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts separations-identity-check/already-terminated-multi-row walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/already-terminated-single-row walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/concurrent-active-jobs walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/different-name-two-candidates walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/gate-approved walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/gate-evidence-moved walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/gate-rejected walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/job-summary-not-found walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/similar-name-never-auto-proceeds walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/single-active-job walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/unreadable-department walks tests/scenario/separations-identity-check.scenario.test.ts
 - region "Session Panel":
   - button "Sessions 1 working 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
-  - text: v0.1.0
+  - text: app 0.1.0
   - status: Live
