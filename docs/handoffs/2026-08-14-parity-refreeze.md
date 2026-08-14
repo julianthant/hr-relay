@@ -19,6 +19,23 @@ Do this ONLY when: the separations session's descriptor work is landed and quiet
 taxonomy/wire-gap sessions that change wire schemas or the registry have landed (each of
 those moves references again). Ask the operator if unsure whether the churn is done.
 
+**2026-08-14 update — the taxonomy session (D219) has LANDED** (commits `c7486f6`, `a631231`,
+`b42f46f`, `0d64441`): every workflow module declares a `role`, both wires serve it, and chunk
+harnesses render nested under their composition on rail/picker/explorer. Its expected reference
+drift was isolated by a two-worktree controlled re-freeze and is confined to **three fixtures × 6
+variants, a11y-deterministic**:
+
+- `explorer-graph`, `explorer-transaction` — the four `separations-*` harnesses move into a
+  `list "Proving harnesses of Separation"` under the composition's listitem; each button's
+  accessible name gains `a proving harness of Separation`; `Separation Timecard` stays top-level
+  under Timekeeping, marked (the cross-category rule — its own category is `timekeeping`).
+- `start-run` — the picker's rows gain real `list`/`listitem` semantics, and the "not startable"
+  list gains category headings (now matching the startable list above it).
+
+No other a11y reference moves from D219 (the parity corpus's bootstrap serves one standalone
+workflow, so the rail renders identically). Anything else that moves is one of the two
+pre-existing causes above — or a defect; do not attribute it to D219.
+
 ## How
 
 ```bash

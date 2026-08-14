@@ -5,9 +5,12 @@ Records about how workflows, compositions and chunk harnesses are modeled and pr
 
 ## Chunk workflows render as sibling workflows of the Separation composition
 
-**Recorded:** 2026-08-14 · **Status:** triaged — ratified as **D219** (doc 02 §1.2.1 owns the
-module `role`; doc 03 §Shell owns the presentation; implementation in flight) · **Owning docs:**
-doc 03 (rail/queue), doc 02 (workflow model), doc 07 (migration order), doc 12 (operator trust)
+**Recorded:** 2026-08-14 · **Status:** RESOLVED 2026-08-14 — ratified as **D219** (doc 02 §1.2.1
+owns the module `role`; doc 03 §Shell owns the presentation) and implemented the same day
+(`c7486f6` module roles + registry validation + guard arm, `a631231` bootstrap/explorer wires,
+`b42f46f`/`0d64441` rail/picker/explorer nesting). The parity re-freeze this forces is sequenced
+into `docs/handoffs/2026-08-14-parity-refreeze.md`, which now records D219's isolated expected
+diffs (three fixtures: `explorer-graph`, `explorer-transaction`, `start-run`).
 
 **The design's answers to the open questions below:** no doc-07 conflict (no §3.2 criterion names
 rail presence; chunks stay registered and start through the start-plan lane), and the composition's
