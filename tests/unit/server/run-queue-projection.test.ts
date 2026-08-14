@@ -13,6 +13,7 @@ import { afterEach, describe, it } from "vitest";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
+import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
 import { HASH_A, HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
@@ -164,6 +165,53 @@ describe("THE run/queue projection (D81)", () => {
       day.queueSurfaces.every(({ appVersion }) => appVersion.state === "absent"),
       true,
     );
+
+    /*
+     * Doc 13 §8.5 — this world registers NO descriptor (the same reason its
+     * pipeline shows only observed nodes), so no row may draw a control: the
+     * `WorkflowActionPolicy` is the workflow's own statement of what it offers,
+     * and a build that cannot read it must not guess a default set onto a run
+     * it cannot describe. The populated case is the next test.
+     */
+    assert.equal(day.queueSurfaces.every(({ actions }) => actions.length === 0), true);
+  });
+
+  /**
+   * The row's controls, joined from the run's OWN descriptor (doc 13 §8.5).
+   * `queue-row-actions.test.ts` owns the per-status table; what this projection
+   * owes is the join — the right policy, the right lifecycle facts, and the
+   * row's own revision as every descriptor's CAS target.
+   */
+  it("serves each row the controls its descriptor enables, bound to that row's revision", () => {
+    const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+    seedWorld(w);
+    const day = w.projection.buildDashboardDayWire(DAY);
+
+    const actionKeys = (seed: number): string[] =>
+      (day.queueSurfaces.find(({ runId }) => runId === uuidOf(seed))?.actions ?? []).map(({ key }) => key);
+    assert.deepEqual(actionKeys(1), ["bump", "cancel", "hide"], "the queued row");
+    assert.deepEqual(actionKeys(2), ["cancel", "hide"], "the running row");
+    assert.deepEqual(actionKeys(3), ["retry", "hide"], "the done row");
+    assert.deepEqual(actionKeys(4), ["retry", "hide"], "the failed row");
+    assert.deepEqual(actionKeys(9), ["cancel", "hide"], "the awaiting-approval row");
+    // A settled delegated member carries no re-run: the kernel refuses generic
+    // retry for a child ("child retries route through their delegation edge
+    // policy"), so a `↺` there would be a button that always refuses. The check
+    // reads AUTHORITY's `envelope.parent`, which is the same fact the kernel
+    // decides on — member 8 is the seeded member whose durable record carries it.
+    assert.deepEqual(actionKeys(8), ["hide"]);
+    // The operation's cancel is the TREE cancel, keyed so the footer titles it
+    // with its blast radius.
+    assert.equal(actionKeys(6).includes("cancel-tree"), true);
+
+    for (const surface of day.queueSurfaces) {
+      assert.ok(surface.actions.length > 0, `row ${surface.runId} was served no control at all`);
+      for (const action of surface.actions) {
+        assert.equal(action.kind, "command");
+        if (action.kind !== "command") continue;
+        assert.equal(action.expectedVersion, surface.rowRevision, `${surface.runId}/${action.key}`);
+      }
+    }
   });
 
   it("projects worker cards from worker/browser spans and links the in-flight run", () => {

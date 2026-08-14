@@ -48,6 +48,7 @@ function surface(input: Record<string, unknown>) {
     pipeline: [],
     panelKind: "run",
     availableSections: ["logs"],
+    actions: [],
     rowRevision: 1,
     surfaceKind: "single",
     ...input,

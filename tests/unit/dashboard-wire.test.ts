@@ -49,6 +49,29 @@ const QUEUE = {
   pipeline: [{ id: "search", label: "Search", state: "active" }],
   panelKind: "run",
   availableSections: ["logs", "receipt", "context-data"],
+  // The row's served controls, bound to `rowRevision` as their CAS target.
+  actions: [
+    {
+      key: "cancel", label: "Cancel run", intent: "destructive", icon: "cancel",
+      placement: ["footer", "menu"], kind: "command", command: "cancel", expectedVersion: 1,
+      confirm: {
+        title: "Cancel this run",
+        body: "This stops the run where it is and settles it cancelled.",
+        confirmLabel: "Cancel the run",
+        tone: "destructive",
+      },
+    },
+    {
+      key: "hide", label: "Hide", intent: "neutral", icon: "delete",
+      placement: ["menu"], kind: "command", command: "hide", expectedVersion: 1,
+      confirm: {
+        title: "Hide this row",
+        body: "Hiding changes nothing about the run.",
+        confirmLabel: "Hide",
+        tone: "neutral",
+      },
+    },
+  ],
   rowRevision: 1,
   surfaceKind: "single",
 };
@@ -187,6 +210,40 @@ describe("dashboard wire primitives", () => {
       assert.equal(DashboardDayWireSchema.safeParse({ ...DAY, snapshotCursor: cursor }).success, false, String(cursor));
     }
     assert.equal(RunDetailWireSchema.safeParse({ ...DETAIL, runId: RUN_2 }).success, false);
+  });
+
+  /**
+   * A served control's CAS target is the row it rides. The two arms below are
+   * the whole reason `actions[]` is refined rather than merely typed: a
+   * descriptor projected against another revision is a control that conflicts
+   * on click for a reason the operator cannot see, and two descriptors sharing
+   * a `key` collapse into one control in both surfaces that render them.
+   */
+  it("binds every served action to the row's own revision, once per key", () => {
+    const [cancel, hide] = QUEUE.actions;
+    assert.ok(cancel !== undefined && hide !== undefined);
+
+    assert.equal(
+      QueueSurfaceWireSchema.safeParse({
+        ...QUEUE,
+        actions: [{ ...cancel, expectedVersion: 2 }, hide],
+      }).success,
+      false,
+      "accepted an action whose expectedVersion is not the row's rowRevision",
+    );
+    assert.equal(
+      QueueSurfaceWireSchema.safeParse({ ...QUEUE, rowRevision: 2 }).success,
+      false,
+      "accepted a bumped rowRevision while every action still named the old one",
+    );
+    assert.equal(
+      QueueSurfaceWireSchema.safeParse({ ...QUEUE, actions: [cancel, { ...hide, key: "cancel" }] }).success,
+      false,
+      "accepted two served actions sharing one key",
+    );
+    // The empty list is a real answer, never a refusal: it says this row's
+    // workflow enables no command the kernel would accept in this lifecycle.
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, actions: [] }).success, true);
   });
 
   /**

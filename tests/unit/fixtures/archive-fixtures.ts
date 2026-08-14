@@ -105,6 +105,14 @@ const ARCHIVED_ROW = {
   pipeline: [{ id: "ucpath-person", label: "ucpath-person", state: "done" }],
   panelKind: "run",
   availableSections: ["logs"],
+  /*
+   * EMPTY, and that is the archive's own contract rather than a gap: the frozen
+   * row is the last row the operator saw, and D179's archived tables abort
+   * UPDATE and DELETE in SQL — there is no command a control here could send.
+   * An archived row that offered `retry` would be offering to run a descriptor
+   * this build may no longer hold.
+   */
+  actions: [],
   rowRevision: 4,
   surfaceKind: "single",
 };

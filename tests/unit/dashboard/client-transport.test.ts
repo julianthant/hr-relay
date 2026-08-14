@@ -47,6 +47,9 @@ function surfaceOf(rowRevision: number, status = "queued"): Record<string, unkno
     pipeline: [],
     panelKind: "run",
     availableSections: ["logs"],
+    // No served controls: this fixture exercises patch application, not the
+    // action projection, and an empty list is a real answer on the wire.
+    actions: [],
     rowRevision,
   };
 }

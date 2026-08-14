@@ -148,6 +148,8 @@ function snapshotSource(world: { database: AuthorityDatabase }) {
           pipeline: [],
           panelKind: "run",
           availableSections: ["logs"],
+          // An archived row is frozen: no command can target it.
+          actions: [],
           rowRevision: run.version,
           surfaceKind: "single",
         },

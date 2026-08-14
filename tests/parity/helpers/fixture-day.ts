@@ -12,6 +12,7 @@
  */
 import { z } from "zod";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import {
   FrontendBootstrapWireSchema,
@@ -189,6 +190,27 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
     availableSections: input.status === "failed"
       ? ["logs", "receipt", "context-data", "context-attempts", "failure"]
       : ["logs", "receipt", "context-data", "context-attempts"],
+    /**
+     * The row's served controls, built by the PRODUCTION projection helper over
+     * this workflow's real `WorkflowActionPolicy` — never a hand-listed corpus
+     * copy. A parity reference exists to photograph what an operator sees, and a
+     * fixture that authored its own action set would photograph the fixture's
+     * opinion of the contract instead of the contract.
+     *
+     * `parkedWrite` is `false` throughout: a `blocked` seed does not declare
+     * which lifecycle it is (parked-write or interrupted), and the flag changes
+     * only the confirm dialog's body sentence, which no reference captures.
+     */
+    actions: queueRowActions(personLookupDescriptor.actions, {
+      status: input.status,
+      rowRevision: input.seed,
+      dryRun: input.dryRun ?? false,
+      isChild: input.parentSeed !== undefined,
+      parkedWrite: false,
+      memberCount: kind === "operation" ? (input.memberSeeds ?? []).length : 0,
+      workflowLabel: personLookupDescriptor.label,
+      hasReviewPanel: personLookupDescriptor.capabilities?.review ?? false,
+    }),
     rowRevision: input.seed,
   };
   if (kind === "operation") {

@@ -69,6 +69,13 @@ const ARCHIVED_ROW = {
   ],
   panelKind: "run",
   availableSections: ["logs"],
+  /*
+   * EMPTY by the archive's own contract: the frozen row is the last row the
+   * operator saw and D179's archived tables abort UPDATE and DELETE in SQL, so
+   * there is no command a control here could send. Relaunch is served from the
+   * ARCHIVED detail, which is not a live run row.
+   */
+  actions: [],
   rowRevision: 6,
   surfaceKind: "single",
 };
