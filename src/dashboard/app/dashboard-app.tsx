@@ -721,8 +721,6 @@ function LoadedApp({
       <TopBar
         view={shellView}
         onView={onShellView}
-        catalogOpen={takeover === "catalog"}
-        onOpenCatalog={() => setRoute({ ...route, catalog: "" })}
         daySurfaces={dayWire?.queueSurfaces ?? []}
         workflowLabelOf={workflowLabelOf}
         onOpenRun={selectRun}

@@ -24,7 +24,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  FlaskConical,
   Inbox,
   Keyboard,
   ListChecks,
@@ -1133,8 +1132,6 @@ export function TopBar({
   nav,
   view,
   onView,
-  catalogOpen,
-  onOpenCatalog,
   daySurfaces,
   workflowLabelOf,
   onOpenRun,
@@ -1170,14 +1167,6 @@ export function TopBar({
   /** which product view owns the main region — the switcher's pressed segment */
   view: ShellView;
   onView: (view: ShellView) => void;
-  /**
-   * The UI catalog is REFERENCE scaffolding, and the demo puts exactly that
-   * kind of surface behind a quiet glyph in this cluster (`DemoSurfacesPopover`)
-   * rather than in the product switcher beside Archive and Activity. It keeps
-   * that treatment here: one quiet icon, pressed while it owns the region.
-   */
-  catalogOpen: boolean;
-  onOpenCatalog: () => void;
   /** the whole day's projection — what the search control finds over */
   daySurfaces: readonly QueueSurfaceWire[];
   workflowLabelOf: (workflowId: string) => string;
@@ -1250,18 +1239,9 @@ export function TopBar({
             )
           }
         />
-        {/* The quiet door to reference scaffolding, in the demo's own slot and
-            with its own glyph. The LABEL stays "UI catalog" — the surface
-            behind it IS the catalog (D177), not the demo's synthetic-data
-            switch — so the deviation is one word, on record. */}
-        <IconButton
-          size="sm"
-          label="UI catalog"
-          aria-pressed={catalogOpen}
-          onClick={onOpenCatalog}
-          icon={<FlaskConical aria-hidden className={dsIcon.md} />}
-          className={cn(catalogOpen && "bg-[var(--ds-surface-3)] text-[color:var(--ds-fg)]")}
-        />
+        {/* THE CATALOG GLYPH IS GONE from the bar by operator decision — the
+            UI catalog stays reachable through its URL route (`?catalog=`),
+            which is what the parity lane already drives. */}
         {/* The gear opens Settings. It sits last, as in the demo. */}
         <SettingsControl
           storage={storage}
