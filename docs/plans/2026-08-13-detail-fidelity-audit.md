@@ -48,8 +48,8 @@ serve and where it plugs in — see "Wire-hookup ledger" below.
 | R4 | Status pills band (band itself lives in `DemoShell.tsx:1183-1364` → `shell.tsx:602-795`; `demo-status.tsx` is the vocabulary adapter) | `demo-status.tsx` + `DemoShell.tsx` | `surfaces/status.tsx` + `shell.tsx:602-795` | [x] |
 | R5 | Run-detail header row (log panel header) | `DemoLogPanel.tsx` (header region) | `surfaces/log-panel.tsx` | [x] |
 | R6 | Context rail rows — observation clock, badges, row anatomy | `DemoContextRail.tsx` | `surfaces/context-rail.tsx` (+ rail mount in `log-panel.tsx`) | [x] |
-| R7 | Session footer | `DemoShell.tsx:1366-1958` + `demo-workers-wire.ts` | `surfaces/shell.tsx:797-1068` | [a] |
-| R8 | Dialogs — confirm-first dialogs, park/resolve, run-start, bulk bar (+ `DemoActions.tsx`, `DemoRunStartKit.tsx` — audit widened the oracle set) | `DemoParkResolve.tsx`, `DemoActions.tsx`, `DemoRunStart.tsx`, `DemoRunStartKit.tsx`, `DemoBulkBar.tsx` | `surfaces/park-resolve.tsx`, `actions.tsx`, `run-start.tsx`, `run-start-kit.tsx`, `queue-toolbar.tsx` | [a] |
+| R7 | Session footer | `DemoShell.tsx:1366-1958` + `demo-workers-wire.ts` | `surfaces/shell.tsx:797-1068` | [x] |
+| R8 | Dialogs — confirm-first dialogs, park/resolve, run-start, bulk bar (+ `DemoActions.tsx`, `DemoRunStartKit.tsx` — audit widened the oracle set) | `DemoParkResolve.tsx`, `DemoActions.tsx`, `DemoRunStart.tsx`, `DemoRunStartKit.tsx`, `DemoBulkBar.tsx` | `surfaces/park-resolve.tsx`, `actions.tsx`, `run-start.tsx`, `run-start-kit.tsx`, `queue-toolbar.tsx` | [x] |
 
 R1 and R2 first — the operator named them explicitly. Each region gets its own divergence log
 section appended to this file as the audit reaches it.
@@ -563,6 +563,31 @@ priority wire field (smallest change, restores a real control). The R7 fix commi
 pure-ports R7-9/10/11 + the `mt-auto` wrapper and reserved band shell of R7-7. Everything else
 rides the `WorkerCardWireSchema` batch → ledger. R7-2 stays last (two named blockers).
 
+**Pure-port slice FIXED + image-verified + committed 2026-08-14 (`d36b783`).** R7-9, R7-10, R7-11
+and R7-7's structure halves landed exactly as decided, all inside `shell.tsx:797+`. Notes worth
+keeping:
+
+- R7-10's `capacityChip` ships BOTH arms though only the loud one has a caller. Deleting the quiet
+  arm for lack of a caller is the drift the module-scope helper exists to prevent; its caller is
+  the browser-health summary in the R7-3 batch.
+- R7-10's chip `title` is a DEVIATION with a cause: the demo names each card's workflow and the
+  lease it waits on, and neither is served. It joins what is — worker id + state word — and grows
+  the demo's wording with the batch.
+- R7-7's band is drawn EMPTY, not omitted. Holding a baseline costs nothing and claims nothing, so
+  the batch lands without moving anything; drawing step dots from nothing would be the worst lie
+  available on a panel about what a worker is doing. The footer's step slot carries the run the
+  worker is on, stated at the slot rather than left silently wrong.
+- Image check at 1440×900, both sides read as images: the rebuild bar reads `0 running · 0 idle ·
+  2 stopped` (the R7-9 word landed) with `app 0.1.0` present; the demo's `+` and its
+  `4 browsers need attention` chip are correctly absent on the rebuild (R7-2 blockers, R7-3 wire).
+  Drawer open, both cards show the reserved band on one baseline. The demo's app-version tooltip
+  was read back out of its own accessibility tree and matches the ported sentence exactly.
+
+**STILL OPEN in R7, all on the `WorkerCardWireSchema` batch → ledger:** R7-2 (`+`/AddWorkersDialog,
+two named blockers), R7-3 (browser-health grid + menus + chip), R7-4 (`Stop`, needs the lease
+`version`), R7-5/6/7-data (workflow identity, lease-wait block, elapsed clock, step dots),
+R7-8 (crashed arm). Nothing further here is a pure port.
+
 ### R5 — Run-detail header (audited 2026-08-13; 37 elements: 16 match, 8 divergent, 11 missing, 2 extra; findings 1–17)
 
 Oracle: `DemoLogPanel.tsx` head block (+ `DemoActions.tsx` OutcomeActionButton — verified
@@ -827,3 +852,42 @@ in the not-startable disclosure (every `<dd>` would be empty); `RunStartDialog` 
 `workflow`. Screenshot comparison passed structurally; parity deferred to the wave-end re-freeze
 as planned. Still open in R8: findings 1–7, 13–16, and the queue-toolbar/bulk + dashboard-app
 (keydown, confirm mount) slices.
+
+**No-wire slice FIXED + verified + committed 2026-08-14 (`9847877`)** — findings 1, 2, 3, 13, 14,
+15, 16, 18 and the f.4b decision, all as decided. What is worth recording beyond the commit body:
+
+- **f.1's deferral comment was FALSE, and the audit was right about why.** Both resolutions have
+  been projected with their `detail` sentences since `run-detail.ts:516-551` existed; the surface
+  simply drew them as banner pills and dropped the sentence. The split is pinned as a PARTITION
+  over the `banner` placement (`tests/unit/dashboard/park-resolution-split.test.ts`, 5 cases) —
+  a resolution drawn twice offers one irreversible answer in two shapes, one drawn in neither is a
+  served exit with no control — and the filter reads the PLACEMENT as well as the command, so a
+  park verb at `menu` is not pulled into the cards.
+- **f.2's split is exact rather than approximate.** The demo's `hasRefusalCode` maps onto this
+  wire without a judgement call: `CommandResultSchema` gives `rejected` a required `code` and gives
+  `conflict` none (`src/domain/commands.ts:323-324`), so the two arms are the two result states. A
+  transport throw takes the uncoded arm, which is the honest reading — it is not a server refusal
+  and has no code of its own.
+- **f.14 needed a shape change, not just a class change.** `SubjectFacts` grew an `inline` arm: its
+  `ChipRow` is a grid, and a grid nested inside the demo's flex-wrap `Well` fights the wrap. The
+  labelled block in `InlineParkedWrite` keeps the grid.
+- **f.16 widened past the port.** The demo routes only the empty-note case to the Field; this now
+  routes BOTH note problems there (empty and over-500), because the over-long case had the same
+  defect in a quieter form. A refusal suppresses the field note — two verdicts on one answer.
+- **f.22 verified, no change** — R3's `b70ef3d` carries `CANCEL_TREE_TITLE`, bound by key exactly as
+  the audit anticipated.
+- **Verification limit, stated.** The rebuild's park dialog could NOT be screenshotted: the D128
+  Kuali parked write-intent is still in authority (`write_intents`, status `parked`, run
+  `15d9d7db`), but that run has no row in the current `runs_view` projection, so no parked run is
+  reachable from the queue on any served day. Verified instead by (a) reading the DEMO's
+  `ParkResolutions` cards as an image at 1440×900 — tinted green/red cards, icon + bold label, the
+  `detail` sentence in muted meta, two columns — which is what the port draws, and (b) the 5-case
+  partition test. The f.18 strings WERE verified live on the rebuild: `Sort the queue` on the sort
+  combobox, `Act on several rows at once` on the Select toggle, and `Select all 0 in view` reading
+  `disabled: false`. Re-verify the park dialog visually the next time a run parks.
+
+**STILL OPEN in R8 (two items, both already owned):** findings 5 + 6, the bulk command strip and
+the bulk result-vector band, which build to demo spec behind the booked optional `actions[]` /
+`expectedVersion` wire row; and findings 7 + 4, the global keydown listener and the
+`ConfirmCommandDialog` mount, which the orchestrator assigned to the LAST dashboard-app commit of
+the wave (keydown first, confirm mount with the action-projection wiring).
