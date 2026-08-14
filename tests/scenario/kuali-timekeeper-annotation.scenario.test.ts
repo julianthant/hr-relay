@@ -15,7 +15,10 @@
  */
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { workflowProjections } from "../../src/base/workflow.js";
+import { workflowProjections, workflowTerminalResultExecution } from "../../src/base/workflow.js";
+import { buildRunPreviewResult } from "../../src/core/run-result.js";
+import { RunDryRunPreviewResultSchema } from "../../src/domain/run/result.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { kualiTimekeeperAnnotationDescriptor } from "../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
 import {
   KUALI_EID,
@@ -79,6 +82,26 @@ describe("kuali-timekeeper-annotation scenarios", () => {
       false,
       "zero commit spans",
     );
+
+    /*
+     * D210 — and the preview is a terminal record, not a value that evaporates.
+     * The sealed factory turns it into the run's `RunResultRecord`, bound to the
+     * PREVIEW schema hash rather than this workflow's declared result, so a
+     * consumer demanding a committed transaction sees a hash it does not expect
+     * instead of reading a preview as a completed write.
+     */
+    const built = buildRunPreviewResult(kualiTimekeeperAnnotationDescriptor, run, preview, [], h.clock);
+    assert.equal(
+      built.record.resultSchemaHash,
+      deriveSchemaHash(RunDryRunPreviewResultSchema, "output"),
+    );
+    assert.notEqual(
+      built.record.resultSchemaHash,
+      workflowTerminalResultExecution(kualiTimekeeperAnnotationDescriptor).schemaHash,
+    );
+    const settled = RunDryRunPreviewResultSchema.parse(built.record.result.value);
+    assert.equal(settled.externalCommit, "none");
+    assert.equal(settled.stoppedAtNodeId, KUALI_NODE_ID);
 
     assert.deepEqual(claimFor("kuali-timekeeper-annotation/dry-run-preview"), [
       `transaction:${KUALI_NODE_ID}/dry-run`,

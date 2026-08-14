@@ -262,7 +262,10 @@ describe("durable worker directives (doc 03 §2.4), observed between items", () 
 
   it("refuses two competing write-sequencer seams", async () => {
     const harness = loopHarness();
-    const sequencer = { executeTransaction: () => Promise.resolve(undefined) };
+    const sequencer = {
+      executeTransaction: () => Promise.resolve(undefined),
+      executeDryRun: () => Promise.resolve(undefined),
+    };
     await assert.rejects(
       runWorkerLoop({ ...harness.deps, writeSequencer: sequencer, writeSequencerFor: () => sequencer }),
       /exactly one seam may own the sequencer/,
