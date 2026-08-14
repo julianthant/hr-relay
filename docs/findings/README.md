@@ -22,6 +22,6 @@ when no existing one fits), each stamped with a date and a `**Status:**` line
 | --- | --- | --- |
 | [dashboard-projection.md](dashboard-projection.md) | The BFF's span-fold/projection layer: anything where served surfaces disagree with the on-disk streams | 1 (diagnosed) |
 | [workflow-taxonomy.md](workflow-taxonomy.md) | How workflows/compositions/chunks are modeled and presented (rail, picker, counts) | 1 (recorded) |
-| [queue-rows.md](queue-rows.md) | Queue-row wire gaps: demo/doc-03 row elements the served wire cannot yet power | created by the queue-rows fidelity pass |
+| [queue-rows.md](queue-rows.md) | Queue-row wire gaps: demo/doc-03 row elements the served wire cannot yet power | 10 (recorded) |
 
 This folder is NOT plan SSOT. Nothing here is a ratified decision (doc 04 rules apply).
