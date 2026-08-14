@@ -102,6 +102,15 @@ describe("span wire leaf parity with the domain vocabulary", () => {
       { t: "gate.opened", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY, gate: "approval" },
       { t: "span.started", kind: "worker", ts: BASE.ts, workflow: BASE.workflow, workerId: "person-lookup-worker-1", spanPath: "worker/person-lookup/person-lookup-worker-1", name: "person-lookup" },
       { t: "span.ended", kind: "browser", ts: BASE.ts, workflow: BASE.workflow, workerId: "person-lookup-worker-1", spanPath: "worker/person-lookup/person-lookup-worker-1/browser:ucpath#" + RUN_ID, outcome: "failed", errorSummary: "browser session closed as poisoned" },
+      // `transaction.previewed` had NO case here, and that is how D215's fourth
+      // subject verdict reached the kernel's union without reaching this wire
+      // leaf: the first preview that ever settled live threw inside the JSONL
+      // writer. Every verdict the kernel can emit is walked, so the pair the
+      // file header promises cannot fork on this arm again.
+      ...(["match", "mismatch", "unscoped", "not-observed"] as const).map((subject) => ({
+        t: "transaction.previewed", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY,
+        node: "clear-pending", subject, externalCommit: "none",
+      })),
     ];
     for (const event of executorEvents) {
       ExecutorSpanEventSchema.parse(event);

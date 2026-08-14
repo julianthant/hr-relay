@@ -194,7 +194,17 @@ const TransactionPreviewedSchema = z.strictObject({
   ...BaseFields,
   ...RunSpanIdentityFields,
   node: SlugSchema,
-  subject: z.enum(["match", "mismatch", "unscoped"]),
+  /**
+   * D215 — `not-observed` is the fourth verdict, and it is the one an
+   * `already-present` preview reports: beat ①'s probe settled the node before
+   * anything was staged, so no page was prepared and no subject was read.
+   * It was ratified in doc 02 §2.1 and landed in the kernel's twin
+   * (`src/core/span-emitter.ts`) without reaching this wire leaf, so the FIRST
+   * preview that ever settled — chunk 6c's composed dry run on doc 4502,
+   * whose ordinary subject has no pending transaction — threw inside the JSONL
+   * writer and killed the worker one emit short of its terminal.
+   */
+  subject: z.enum(["match", "mismatch", "unscoped", "not-observed"]),
   externalCommit: z.literal("none"),
 });
 
