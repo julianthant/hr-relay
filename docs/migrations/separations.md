@@ -501,6 +501,26 @@ live-capture the complete Kuali dropdown option list so the map is exhaustive.**
 - **This is the first instance of §3.2's MAP-EVERYTHING directive**, not a one-off: the same chunk
   captures the department dropdown (**S55**) and every other option list it stands in front of.
 
+`ANSWER (operator), 2026-08-13 — the one open item this answer left, item (a): APPROVED.`
+**`Never Started Employment` → `{template: UC_INVOL_TERM, reasonCode: NSE}`.**
+
+Chunk 2's capture (§9.3) closed §4a with data except for one option: `Never Started Employment` had no
+reason code, because legacy classifies it involuntary, carries no map entry for it, and files the
+**voluntary** default under an involuntary template — and §4a forbids inventing the pairing legacy's
+own comment block claims. **Chunk 4's live UCPath capture supplied it** (§9.7): the real
+`UC_INVOL_TERM` reason list served by production on 2026-08-13 contains **`NSE` = "Never Started
+Employment"**, verbatim. So the pairing is now a **live-verified observation on the target control**,
+which is exactly the bar §4a set, and the operator approved it on that basis.
+
+- The map gains ONE line; nothing else about §4a moves. Exact-match only, no fuzzy tier, no default
+  arm, and the refusal vocabulary is unchanged.
+- §9.3's capture table row 7 changes from **REFUSES** to the mapped pair, and
+  `auditTerminationTypeMapCoverage` stays bidirectionally consistent — the entry moves from an
+  explicitly reasoned `unmapped` to a `mapped` one, so coverage neither gains nor loses a key.
+- **What this does NOT do:** it does not restore legacy's behavior. Legacy files `UC_INVOL_TERM` with
+  `Resign - No Reason Given`; the map files `UC_INVOL_TERM` with `NSE`. Legacy is wrong here and stays
+  wrong; this is the correction the capture made possible.
+
 ---
 
 ### 4b. Kronos unreachable, or the timecard read fails
@@ -1739,6 +1759,16 @@ The chunk-1 behaviour is deliberately **legacy-identical plus visible**: the two
 verbatim and every unmatched pay code is surfaced as `unclassifiedPayCodes` rather than dropped.
 Options are recorded in the return of the chunk-1 build; nothing is decided here.
 
+`ANSWER (operator), 2026-08-13` — **option A: KEEP LEGACY-IDENTICAL. The zero-hour "Observed"
+holiday codes do NOT count toward the separation date.** `Juneteenth Observed` and
+`Independence Day Observed` (both amount `0.00`) stay **unclassified and surfaced** in
+`unclassifiedPayCodes`; the `/holiday/i` classifier is **not** changed and no zero-amount rule is
+added. So `max(LDW, last sick, last holiday)` keeps computing exactly what legacy computes, and the
+07/03 row that falls after the last counted holiday does **not** move a real termination's effective
+date. The item is closed as **policy**, which is what it always was — chunk 6 composes the date logic
+against a decided rule rather than an open question, and the surfaced codes remain the operator's
+visibility into every day the rule declined to count.
+
 ---
 
 ### 9.2 Chunk 1 — the live proof: **MET at attempt 17** (2026-08-12/13)
@@ -1978,7 +2008,7 @@ document- and step-independent and the map can be exhaustive.
 | 4 | `Look for Another Job` | voluntary | `UC_VOL_TERM` | `Resign - Look For Another Job` |
 | 5 | `Military Service` | voluntary | `UC_VOL_TERM` | `Resign - Military Service` |
 | 6 | `Move out of Area` | voluntary | `UC_VOL_TERM` | `Resign - Moved out of Area` |
-| 7 | `Never Started Employment` | *(legacy: involuntary)* | — | **REFUSES** — `unmapped-termination-type`, see below |
+| 7 | `Never Started Employment` | involuntary | `UC_INVOL_TERM` | `NSE` — **operator-approved 2026-08-13** on chunk 4's live UCPath capture (§9.7); was `REFUSES` |
 | 8 | `No Reason Given` | voluntary | `UC_VOL_TERM` | `Resign - No Reason Given` |
 | 9 | `Personal Reasons` | voluntary | `UC_VOL_TERM` | `Resign - Personal Reasons` |
 | 10 | `Quit without Notice` | voluntary | `UC_VOL_TERM` | `Resign - Quit Without Notice` |
@@ -2008,6 +2038,11 @@ republished.
    list does carry a `Never Started Employment` reason code (per legacy's comment block), but that
    pairing has never been verified against the live UCPath control by this repository and §4a forbids
    inventing one. **This is an OPERATOR ITEM** — see the chunk-2 return.
+   **CLOSED 2026-08-13.** Chunk 4 captured the live `UC_INVOL_TERM` reason list off the real UCPath
+   control (§9.7) and it contains `NSE` = *"Never Started Employment"*. The pairing is therefore an
+   observation, not an invention, and the operator approved it the same day (§4a's 2026-08-13
+   addendum). Row 7 above is now `UC_INVOL_TERM` / `NSE`. Legacy's misfiling is unchanged and stays a
+   legacy defect: it files that same involuntary template with the **voluntary** default reason.
 3. **The fuzzy tier's damage on the LIVE option set is exactly one option.** Every other captured
    option has an exact map entry, so legacy's substring tier is only reachable for
    `Never Started Employment` today. That does not make it safe — it makes it a latent trap that
@@ -2305,5 +2340,127 @@ so a second run of the same document+EID is the same ITEM and replays the first 
 whose `observedAt` differs by construction. The first run's failure therefore could not be re-proved
 on the same subject; the fix was proved on a second real document instead. This is the same platform
 item §9.4 recorded (chunk 2, item 2), unchanged and still open.
+
+---
+
+### 9.7 Chunk 4 — the UCPath Smart HR termination surface, observed 2026-08-13
+
+**Provenance of this section.** Three consecutive agent dispatches on chunk 4 died with **zero
+commits** (two 600 s watchdog stalls and one API disconnect). Everything below was live-observed on
+**production** `ucphrprdpub.universityofcalifornia.edu` on **2026-08-13** and salvaged VERBATIM from
+the dead transcripts into `docs/handoffs/2026-08-13-separations-chunk4-restart.md`; this section is
+where it becomes durable. The stall itself is a recorded finding — see *Timings* below.
+
+#### The persistence crux — ANSWERED
+
+**There is ZERO durable footprint anywhere in the Smart HR wizard before an explicit Save click.**
+Verified live: EID `10001754`, template `UC_VOL_TERM`, effective date `06/11/2026` — filled Page A
+(template + date) → `Create Transaction` → Page B (EID / empl record / effdt / reason) → `Continue` →
+Page C (Job Data, Override Last Date Worked, both comment fields) → abandoned via a hard `goto`. The
+**Transactions in Progress** grid (baseline **5 rows**) was **byte-identical before and after at every
+stage**, including after Page C was fully staged. Persistence happens ONLY on Page C's two explicit
+save buttons (`Save for Later` / `Save and Submit`), and `Transaction ID` reads the literal string
+`"NEW"` until then.
+
+**What that settles, and it is the whole shape of the chunk:** `prepare` may stage the **entire**
+three-page wizard, and the **commit is the `Save and Submit` click ALONE**. That is what makes the
+doc 09 beat-⑤ fence meaningful here — everything before it is provably reversible by navigating away,
+and everything after it is not.
+
+#### Live-verified anchors (Smart HR wizard — 0 iframes on every page)
+
+Entry: `.../c/ADMINISTER_WORKFORCE_(GBL).HR_TBH_JOB.GBL`.
+
+| Page | Fact | Anchor |
+|---|---|---|
+| A | Template | `#HR_TBH_WRK_TBH_TMPL_ID` (+ `$prompt` lookup modal `#ptModFrame_0`, close `#ICCancel` **inside the frame**) |
+| A | Transaction date | `#UC_HR_TBH_WRK_TRANSACTION_DATE` (MM/DD/YYYY) |
+| A | Create Transaction | `#HR_TBH_WRK_TBH_ADD` (~7–8 s render) |
+| B | Empl ID | `#HR_TBH_WRK_EMPLID_PROMPT2` — **blur/Tab triggers the name + record lookup, ~4–6 s** |
+| B | Empl record | `#HR_TBH_WRK_EMPL_RCD_CHAR` |
+| B | Effective date | `#HR_TBH_WRK_JOB_EFFDT` |
+| B | Action reason | `#HR_TBH_WRK_ACTION_REASON` |
+| B | Continue | `#HR_TBH_WRK_TBH_NEXT` · Cancel `#HR_TBH_WRK_TBH_CANCEL` |
+| B | **Displayed person name** | `#PERSON_NAME_NAME_DISPLAY` — **the beat-③ subject anchor** |
+| C | **Save and Submit** | `#HR_TBH_WRK_TBH_SAVE` — the ONE control that commits |
+| C | Save for Later | `#HR_TBH_WRK_TBH_LATER` |
+| C | Override LDW checkbox / date | `#HR_TBH_SCR_WRK_TBH_CHK2$3` / `#HR_TBH_SCR_WRK_TBH_DATE$3` |
+| C | Initiator comments | `#HR_TBH_WRK_DESCRLONG_NOTES` |
+| C | Transaction comments | `#UC_SS_TRANSACT_COMMENTS` |
+| C | Transaction-id display | `#UC_SS_TRANSACT_UC_TRANSACT_ID` (`"NEW"` pre-save) |
+
+**Why the subject binding is on Page B, not Page C.** Page C's identity block is a set of unstyled
+`<span>`s inside `#myDIV` with **no stable ids** — there is nothing there a locator can bind that is
+not positional. `#PERSON_NAME_NAME_DISPLAY` on Page B is the page's own rendering of who UCPath
+resolved the typed EID to, which is exactly the fact beat ③ has to compare against the expected
+subject before anything is fenced.
+
+**Page A's template list, captured whole (§3.2) — 22 templates.** The two this migration files under
+are `UC_VOL_TERM` = *Voluntary Termination* and `UC_INVOL_TERM` = *Involuntary Termination*.
+
+#### The probe surface (S44) — and the page it is NOT
+
+The idempotency probe reads **`UC_EXTENSIONS.UC_SS_TBH.GBL`** ("SS Smart HR Transactions" search).
+It is **not** the "Smart HR Transaction Status" dashboard: that dashboard carries **no T# column at
+all** and returned **0 rows** for a subject with two known real transactions, so a probe built on it
+would have reported "no duplicate" about a person who has one — S46's silent-risk shape, manufactured
+by choosing the wrong page.
+
+| Fact | Anchor |
+|---|---|
+| Empl ID filter | `#UC_SS_TBH_DVW_EMPLID` |
+| Filter operator | `#UC_SS_TBH_DVW_EMPLID$op` (`2` = `=`) |
+| Search | `#PTS_CFG_CL_WRK_PTS_SRCH_BTN` |
+| Result rows | keyed by `T\d{6,}` |
+| Detail page | `?Action=U&UC_TRANSACT_ID=T…` |
+| Detail: transaction id | `#UC_SS_TRANSACT_UC_TRANSACT_ID` |
+| Detail: approval status | `#UC_SS_TRANSACT_APPR_STATUS` |
+| Detail: start date | `#UC_SS_TBH_VW_START_DT$0` |
+| Detail: action | `#UC_SS_TBH_VW_ACTION$0` |
+| Detail: name | `#NAME$0` |
+
+#### Reason codes captured live, both templates, whole (§3.2)
+
+- **`UC_VOL_TERM` — 18 codes:** `CAR` · `XFR` · `TR1` · `AAJ` · `SCH` · `DWJ` · `JAB` · `LAJ` ·
+  `MIL` · `MOA` · `NRG` ("No Reason Given") · `PER` · `QWN` · `SLF` · `FRL` · `TIL` · `VSP`.
+- **`UC_INVOL_TERM` — 25 codes:** `AIP` · `APR` · `ATA` · `ACE` · **`DEA` ("Death")** · `ATT` ·
+  `FLS` · `MIS` · `NLC` · `PRF` · `DNP` · `DNR` · `NSV` · `GCE` · `INV` · `LHC` · `RRR` · `SEV` ·
+  `RDS` · `MED` · **`NSE` ("Never Started Employment")** · `GRD` · `PDR` · `TR2` · `PRO` · `VIS`.
+
+**`NSE` exists live.** That is exactly the fact §4a's open item (a) was waiting on, and it is why the
+`Never Started Employment` map line could be approved by the operator on the same day rather than
+invented — see §9.3's row 7 and §4a's 2026-08-13 addendum.
+
+#### Live facts and timings
+
+- **EID `10001799` already carries a real *Pending* involuntary termination `T002209631`** (effdt
+  `06/11/2026`, filed `2026-08-11` by requester `10002079`) plus an **Approved** `T002197996`. That is
+  a ready-made real subject for exercising the `already-present` probe arm and the pending sweep's
+  **read** half with **no write of any kind**.
+- **Measured, per step:** fill template + date **172 ms** · `Create Transaction` **7.3 s** · fill EID
+  (including the blur lookup) **4.2 s** · reason **3.1 s** · `Continue` **9.2 s** · LDW override
+  **6.2 s** · comments **2.2 s** · probe search page open **4.6 s** · probe search run **7.4 s** ·
+  probe detail **4.9 s** typical.
+- **One probe-detail call spiked to ~972 s (≈16 minutes).** That is almost certainly what killed the
+  first dispatch, and it is recorded here as a **structural** finding, not an anecdote: **every live
+  step against this surface carries a hard bound**, and an honest NOT-RUN beats a stall. The same fact
+  is why `probeToFenceMaxMs` (§4f3) must be measured rather than assumed generous.
+- **S48 (UCPath rejects the Empl ID on Page B) is INCONCLUSIVE.** The arm was attempted and its result
+  was never read back before the dispatch died. Re-observe it; nothing is claimed about it here.
+
+#### The contract decomposition this surface forces
+
+| Contract | Kind | What it is |
+|---|---|---|
+| `ucpath/probe-termination` | read | S44 — the `UC_EXTENSIONS.UC_SS_TBH.GBL` read: EID-filtered search plus per-row detail, returning every transaction the page showed |
+| `ucpath/clear-pending-terminations` | **its own transaction** | doc 09 §5's **second** probe kind — the date-agnostic pending sweep (legacy `deletePendingTransaction` deletes ALL in-progress `Terminat*` rows for the EID). It is a mutation, so it is a transaction node of its own, composed BEFORE the termination |
+| `ucpath/prepare-termination` | prepare arm | stages all three wizard pages; zero durable footprint by the crux above |
+| `ucpath/create-termination` | commit arm | the `Save and Submit` click **alone** |
+| `ucpath/verify-termination` | read-back | re-probes for the `T#`; **unreadable or unknown PARKS** (S46/S51/S52), never success |
+
+Doc 09 §12's worked example names these `fill-termination` / `submit-termination`; same shape, and the
+repo's own naming rules win. Doc 09 §5 requires **both** probe kinds ported — the idempotency probe
+(EID + exact effdt + `"Terminatn"`) and the date-agnostic sweep — and they are genuinely different
+questions, which is why they are two contracts and not one with a flag.
 
 ---

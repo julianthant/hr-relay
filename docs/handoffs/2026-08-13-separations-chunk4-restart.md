@@ -6,6 +6,8 @@ FRESH dispatch after three agent failures (two 600s watchdog stalls + one API di
 landed **zero commits**. The dead agent's live findings were salvaged from its transcript and are
 recorded VERBATIM in §"Salvaged chunk-4 findings" below — **they exist nowhere else; making them
 durable in `docs/migrations/separations.md` §9 is the restart's FIRST commit.**
+**DONE 2026-08-13** — the salvage now lives in `docs/migrations/separations.md` **§9.7**, which is the
+authority for it; the section below is retained as the raw transcript record it was salvaged from.
 
 ## Task summary
 
@@ -149,11 +151,14 @@ Dispatch a FRESH Opus agent (never resume the dead transcript). **Build-first, l
 
 ## Open questions / operator items
 
-- **Q: `Never Started Employment` mapping** — live capture confirmed involuntary code `NSE` exists.
-  One map line resolves it; awaiting the operator's explicit go-ahead (§4a open item, option a).
-- **Q: zero-hour "Observed" holiday codes** (Juneteenth/Independence Day Observed) — count toward
-  the separation date or not? Policy, not parsing; shipped legacy-identical (option A) with every
-  unmatched code surfaced. Decide before chunk 6 composes the date logic.
+- ~~**Q: `Never Started Employment` mapping**~~ — **ANSWERED (operator), 2026-08-13: APPROVED.**
+  `Never Started Employment` → `{template: UC_INVOL_TERM, reasonCode: NSE}`, on the strength of chunk
+  4's live capture of the real `UC_INVOL_TERM` reason list. Ratified in `separations.md` §4a
+  (2026-08-13 addendum) and §9.3 row 7; wired in `src/domain/separations/termination-type.ts`.
+- ~~**Q: zero-hour "Observed" holiday codes**~~ — **ANSWERED (operator), 2026-08-13: option A, keep
+  legacy-identical.** `Juneteenth Observed` / `Independence Day Observed` (amount `0.00`) do NOT count
+  toward the separation date; no classifier change, and they stay surfaced in `unclassifiedPayCodes`.
+  Ratified at `separations.md` §9.1's open item.
 - **Q: live gate-REJECTION path** — accepted test-pinned for now; exercising it live means
   rejecting a real document's identity (operator act).
 - Standing directives in force: **no frontend work** (wire/endpoints only — recorded in the
