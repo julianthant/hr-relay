@@ -603,7 +603,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "dbd89dfcd18d48395c26d9883e6e580c4984916d2a9fb2e01f8f002789783db7",
+      "fingerprint": "b4fda93a2e8e30b2abdd2808524034ec6e56b8c432583c8dc7787cddeba91614",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -627,7 +627,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/separations/match-termination-type.ts",
-          "sha256": "9415d3a596e40da1b5922480eaf4fa77d2faa902776a4b1ae3c4afa3e145c575"
+          "sha256": "e7791dc398d44b3271adca0a15d5a973e36c5305c44423bff60255f5cbadad0e"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
@@ -655,7 +655,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/separations/termination-type.ts",
-          "sha256": "41a368757a4f27a8b3109a572a1047b2dfa5820c7613f89764bcff6349ab584f"
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
         },
         {
           "path": "src/domain/session.ts",
@@ -727,7 +727,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations-kuali-read/descriptor.ts",
-          "sha256": "304e9be64d16572db1832e39df78f6ea9686c3e7843ddc28ad2d8ab82bc7e568"
+          "sha256": "bfe85fa2fea8a4fe5265654bc06745aa4e146c906e13b4057b49a0d52480cbff"
         }
       ],
       "id": "separations-kuali-read"
@@ -3623,7 +3623,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-identity"
     },
     {
-      "fingerprint": "a6a958a9fe95ed85f9b464899f489ee231e293ad661931d81c2879de10d43746",
+      "fingerprint": "d42cc056801bbb9ac22295a0c15735a3b7e2675fa30bcfbef9c040a341386ef2",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3659,7 +3659,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/separations/match-termination-type.ts",
-          "sha256": "9415d3a596e40da1b5922480eaf4fa77d2faa902776a4b1ae3c4afa3e145c575"
+          "sha256": "e7791dc398d44b3271adca0a15d5a973e36c5305c44423bff60255f5cbadad0e"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
@@ -3695,7 +3695,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/separations/termination-type.ts",
-          "sha256": "41a368757a4f27a8b3109a572a1047b2dfa5820c7613f89764bcff6349ab584f"
+          "sha256": "3b0e12067c36f56834e67eaa3fdbdaffd9d0dd11ddc1ee4525514212f990dcc2"
         },
         {
           "path": "src/domain/session.ts",

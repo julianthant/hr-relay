@@ -44,12 +44,26 @@
  *    it.** It is in legacy's involuntary deny-list but NOT in its
  *    `REASON_CODE_MAP`, and no fuzzy tier matches it, so legacy files an
  *    **involuntary** template with the **voluntary** default reason
- *    `Resign - No Reason Given`. UCPath's own INVOL_TERM list does carry a
- *    `Never Started Employment` reason code (per legacy's own comment block),
- *    but nobody in this repository has verified that pairing against the live
- *    UCPath control, and inventing it here is precisely what §4a forbids. It is
- *    therefore an EXPLICIT unmapped entry with its reason, and a run on it
- *    refuses by name until the operator confirms the code.
+ *    `Resign - No Reason Given`. **CLOSED 2026-08-13:** chunk 4 captured the
+ *    live `UC_INVOL_TERM` Action Reason control on production UCPath and it
+ *    serves `NSE` = *"Never Started Employment"* (`separations.md` §9.7), so the
+ *    pairing became an OBSERVATION rather than the invention §4a forbids, and
+ *    the operator approved it the same day (§4a's 2026-08-13 addendum). Legacy's
+ *    behaviour is NOT restored: legacy is wrong here and stays wrong.
+ *
+ * ## The one heterogeneity in this table, stated rather than hidden
+ *
+ * The reason-code values have TWO provenances. The fifteen legacy-ported entries
+ * are the UCPath control's **display text** (`Resign - Accept Another Job`);
+ * `NSE` is the control's **option value**, because that is the form chunk 4's
+ * live capture of the control recorded (§9.7 lists 18 + 25 codes, and carries a
+ * description for only three of them). Both name the same option and neither is
+ * a guess. The driver therefore resolves a reason against the control's OBSERVED
+ * options by matching an option's **value or its label**, requiring **exactly
+ * one** match and refusing loudly with the whole observed list otherwise — a
+ * lookup that must resolve uniquely, never a fuzzy tier. Normalizing the table
+ * to codes needs descriptions for all 43 captured codes, which the capture does
+ * not carry; that is a recorded follow-up, not a silent debt.
  *
  * ## The operational cost, accepted explicitly (§4a)
  *
@@ -109,6 +123,16 @@ interface MappedTerminationType {
 }
 interface UnmappedTerminationType {
   readonly kind: "unmapped";
+  /**
+   * Which refusal this entry is. It lives on the ENTRY rather than being
+   * inferred from the option text, so "is `unmapped-termination-type`
+   * reachable?" is a question about the table's DATA and not about a branch in
+   * the resolver — the arm becomes live again the moment the capture gains an
+   * option the operator has not yet supplied a code for, which is exactly the
+   * lifecycle §4a's accepted operational cost describes. As of 2026-08-13 the
+   * only unmapped entry is Kuali's blank sentinel (`NSE` closed the other one).
+   */
+  readonly code: "blank-termination-type" | "unmapped-termination-type";
   /** Why this captured option has no reason code, in the refusal's own words. */
   readonly reason: string;
 }
@@ -136,6 +160,7 @@ function involuntary(reasonCode: string): TerminationTypeEntry {
 const TERMINATION_TYPE_MAP: Readonly<Record<string, TerminationTypeEntry>> = Object.freeze({
   [KUALI_TERMINATION_TYPE_BLANK_OPTION]: {
     kind: "unmapped",
+    code: "blank-termination-type",
     reason: "the document's Type of Termination is unset (Kuali's blank `- - -` option), so there is "
       + "nothing to map; the separation form has to be completed before a termination can be filed",
   },
@@ -145,13 +170,15 @@ const TERMINATION_TYPE_MAP: Readonly<Record<string, TerminationTypeEntry>> = Obj
   "Look for Another Job": voluntary("Resign - Look For Another Job"),
   "Military Service": voluntary("Resign - Military Service"),
   "Move out of Area": voluntary("Resign - Moved out of Area"),
-  "Never Started Employment": {
-    kind: "unmapped",
-    reason: "legacy classifies this INVOLUNTARY but has no reason-code entry for it, so it files the "
-      + "voluntary default `Resign - No Reason Given` under `UC_INVOL_TERM`. UCPath's involuntary "
-      + "reason list does carry a `Never Started Employment` code, but that pairing has never been "
-      + "verified against the live UCPath control by this repository and §4a forbids inventing one",
-  },
+  // Operator-approved 2026-08-13 (`separations.md` §4a addendum) on the strength
+  // of chunk 4's live capture: the real `UC_INVOL_TERM` Action Reason control on
+  // production UCPath serves `NSE` = "Never Started Employment" verbatim
+  // (§9.7's 25-code list). Until that capture this entry was an explicitly
+  // reasoned `unmapped` one, because legacy's own comment block claiming the
+  // code existed is not an observation of the control, and §4a forbids inventing
+  // a pairing. Legacy's actual behaviour is NOT restored: it files this
+  // involuntary template with the VOLUNTARY default `Resign - No Reason Given`.
+  "Never Started Employment": involuntary("NSE"),
   "No Reason Given": voluntary("Resign - No Reason Given"),
   "Personal Reasons": voluntary("Resign - Personal Reasons"),
   "Quit without Notice": voluntary("Resign - Quit Without Notice"),
@@ -211,9 +238,7 @@ export function resolveTerminationType(terminationType: string): TerminationType
   if (entry.kind === "unmapped") {
     return TerminationTypeResolutionSchema.parse({
       state: "refused",
-      code: terminationType === KUALI_TERMINATION_TYPE_BLANK_OPTION
-        ? "blank-termination-type"
-        : "unmapped-termination-type",
+      code: entry.code,
       terminationType,
       reason: `${JSON.stringify(terminationType)} carries no UCPath reason code in this map: ${entry.reason}.`,
     });

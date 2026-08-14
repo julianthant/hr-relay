@@ -215,7 +215,7 @@ export const separationsKualiReadDescriptor = defineWorkflowDescriptor({
     "separations-kuali-read/reads-a-real-separation-document",
     "separations-kuali-read/unprocessed-document-absent-arms",
     "separations-kuali-read/non-separation-document",
-    "separations-kuali-read/unmapped-termination-type",
+    "separations-kuali-read/unknown-termination-type",
     "separations-kuali-read/unparseable-separation-date",
   ],
   flow: separationsKualiReadFlow,

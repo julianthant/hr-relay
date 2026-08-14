@@ -39,23 +39,44 @@ describe("separations termination-type map (§4a)", () => {
     }
   });
 
-  it("the three involuntary types are the three legacy names, and nothing else", () => {
+  it("the three involuntary types are exactly legacy's three names", () => {
     const involuntary = KUALI_TERMINATION_TYPE_OPTIONS.filter((option) => {
       const resolution = resolveTerminationType(option);
       return resolution.state === "resolved" && resolution.classification === "involuntary";
     });
-    // `Never Started Employment` is legacy's third involuntary type and it
-    // REFUSES here rather than resolving, so it is deliberately absent.
-    assert.deepEqual(involuntary, ["Graduated/No longer a Student", "Appointment Expired"]);
+    assert.deepEqual(involuntary, [
+      "Never Started Employment",
+      "Graduated/No longer a Student",
+      "Appointment Expired",
+    ]);
   });
 
-  it("refuses `Never Started Employment` — legacy files it involuntary with a VOLUNTARY reason", () => {
+  it("`Never Started Employment` files INVOL_TERM / NSE — not legacy's voluntary default", () => {
+    // Operator-approved 2026-08-13 on chunk 4's live capture of the real
+    // `UC_INVOL_TERM` Action Reason control, which serves `NSE` = "Never Started
+    // Employment" (`separations.md` §9.7). Legacy files this same involuntary
+    // template with the VOLUNTARY default `Resign - No Reason Given`, which is
+    // the misfiling this entry corrects rather than reproduces.
     const resolution = resolveTerminationType("Never Started Employment");
-    assert.equal(resolution.state, "refused");
-    if (resolution.state !== "refused") return;
-    assert.equal(resolution.code, "unmapped-termination-type");
-    assert.match(resolution.reason, /Never Started Employment/);
-    assert.match(resolution.reason, /Resign - No Reason Given/);
+    assert.equal(resolution.state, "resolved");
+    if (resolution.state !== "resolved") return;
+    assert.equal(resolution.classification, "involuntary");
+    assert.equal(resolution.template, "UC_INVOL_TERM");
+    assert.equal(resolution.reasonCode, "NSE");
+    assert.notEqual(resolution.reasonCode, "Resign - No Reason Given");
+  });
+
+  it("`unmapped-termination-type` is a DATA state of the table, not a dead arm", () => {
+    // As of 2026-08-13 no captured option carries it: `NSE` closed the only one.
+    // The arm survives because it is what an option the operator has not yet
+    // supplied a code for resolves to — §4a's accepted operational cost — and
+    // it is selected by the map ENTRY, so making it live again is one table row
+    // rather than a code change.
+    const unmapped = KUALI_TERMINATION_TYPE_OPTIONS.filter((option) => {
+      const resolution = resolveTerminationType(option);
+      return resolution.state === "refused" && resolution.code === "unmapped-termination-type";
+    });
+    assert.deepEqual(unmapped, []);
   });
 
   it("refuses the blank sentinel rather than defaulting to a voluntary resignation", () => {

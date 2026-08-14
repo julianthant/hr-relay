@@ -76,7 +76,7 @@ export const SeparationsMatchTerminationType = defineTaskContract({
   provenance: { default: "derived" },
   scenarios: [
     "separations-kuali-read/reads-a-real-separation-document",
-    "separations-kuali-read/unmapped-termination-type",
+    "separations-kuali-read/unknown-termination-type",
   ],
   example: {
     terminationType: "Graduated/No longer a Student",

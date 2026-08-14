@@ -230,20 +230,23 @@ describe("separations-kuali-read scenarios", () => {
     );
   });
 
-  it("separations-kuali-read/unmapped-termination-type — §4a refuses, naming the verbatim value", async () => {
+  it("separations-kuali-read/unknown-termination-type — §4a refuses, naming the verbatim value", async () => {
     await assert.rejects(
       matchTerminationTypeTask.impl.run({
         input: {
-          // A real, selectable live option that legacy misfiles: it is in the
-          // involuntary deny-list but has NO reason-code entry, so legacy files
-          // `UC_INVOL_TERM` with the voluntary default `Resign - No Reason Given`.
-          terminationType: { state: "present", value: "Never Started Employment" },
+          // The shape §4a's accepted operational cost is about: Kuali publishes
+          // a new or renamed option and the run refuses by name rather than
+          // guessing a template and a reason code. `Death` is the worked
+          // example on purpose — legacy's fuzzy tier would file it as a
+          // VOLUNTARY `Resign - No Reason Given`, and it is not an option on
+          // this control at all (§9.3 finding 1).
+          terminationType: { state: "present", value: "Death" },
           observedOptions: [...KUALI_TERMINATION_TYPE_OPTIONS],
           documentNumber: DOCUMENT_NUMBER,
         },
         ctx: taskCtx,
       }),
-      /unmapped-termination-type: .*"Never Started Employment"/s,
+      /unknown-termination-type: .*"Death"/s,
     );
   });
 });

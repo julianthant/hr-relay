@@ -163,7 +163,7 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
     file: "tests/scenario/separations-kuali-read.scenario.test.ts",
   },
   {
-    scenarioId: "separations-kuali-read/unmapped-termination-type",
+    scenarioId: "separations-kuali-read/unknown-termination-type",
     file: "tests/scenario/separations-kuali-read.scenario.test.ts",
   },
   { scenarioId: "separations-identity-check/single-active-job", file: SEPARATIONS_IDENTITY_CHECK_FILE },
