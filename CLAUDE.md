@@ -310,6 +310,43 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-14: a GATE RESUME advances no counter, so a re-executed node is identical to its first
+  execution in every identity this platform has — and a DRY RUN that skips a probe rehearses a path
+  the real run would never take (separations 6b).** The composed workflow's first live pass reached
+  its ALWAYS-GATE twice, took a real approval through the real command endpoint twice, and died one
+  node past it both times, on two independent platform defects that only a gated composition could
+  expose. **(1)** A checkpoint's durable key is `(workflowId, itemId, nodeId, attempt)` and a gate
+  park-then-resume happens INSIDE one attempt, so an `always-rerun` node — a node marked that way
+  precisely because its product is browser state and its observation is fresh every time — re-runs,
+  produces byte-different output, and the immutable insert refuses by name. The run terminalizes
+  `failed` one node after the human approved it. The other run only survived because an unrelated
+  crash requeued it and the requeue bumped the attempt: *a crash is not a recovery path.* Both
+  executions also emitted the same span path, so the two are indistinguishable in the timeline as
+  well as in authority — which is the same absence seen twice and the reason to fix it at the
+  identity rather than at the store. **(2)** `executeDryRun` previews a transaction node's PREPARE
+  without its probe, so the pending-sweep staged against a grid holding no row for a subject who has
+  no pending transaction and refused — a state the real path never reaches, because the probe settles
+  `already-present` first. The refusal was *recorded* a chunk earlier as harmless on that argument,
+  and composing it is what showed the argument backwards: **a rehearsal that fails where the
+  performance succeeds is a false rehearsal**, and the ordinary subject is the common case, not the
+  corner. Generalize the pair: an invariant that holds "because nothing reaches that state" is one
+  composition away from being false, and the only counter a resume does not touch is the one every
+  durable identity is keyed on.
+- **2026-08-14: `.or()` is a UNION under strict mode, so waiting on one CLAIMS its arms are mutually
+  exclusive — and two live subjects were not enough to test the claim (D213).** UCPath's
+  `#PTS_CRITTEXT_DISP` was modelled as a "positive no results marker" and is the search-CRITERIA
+  banner, which renders on every result list stating the count. On the first subject whose name
+  matched FOUR people the banner and the grid were visible together, the three-arm `.or()` wait
+  resolved to two elements, and Playwright threw. Behind it the classifier would have refused the
+  same ordinary page as "ambiguous". It survived two chunks because both earlier live subjects
+  matched exactly ONE person, where UCPath auto-navigates to the detail page — **only one arm had
+  ever matched, so a mapping stayed internally consistent and externally wrong** (D205's shape, from
+  a different direction). Three rules fell out. A settle wait should ask "has ANY outcome rendered"
+  (`.first()`) and leave "which" to a pure function that can be tested; the verdict function's
+  load-bearing arm is the REFUSAL — a count banner with no grid beside it throws by name rather than
+  answering not-found, because reading a four-result page as "nobody matched" is a silent wrong
+  value about a person; and when a registry LABEL is found to assert something the live page
+  disproves, move the label, not the id — durable catalogs and selector provenance bind the id.
 - **2026-08-14: a gate DEPENDENCY is not a gate PACKET, and the difference is the digest an approval
   binds to (D211).** Chunks 4 and 5 each hung a resolved value off the ALWAYS-GATE — the
   `{template, reasonCode}` map, the Kuali department option — precisely so a refusal would land before

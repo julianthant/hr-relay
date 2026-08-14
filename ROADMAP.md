@@ -5,7 +5,7 @@
 > changelog is `docs/rebuild/04-reconciliation.md`. If this file ever disagrees with those, **they
 > win**. Sessions: regenerate the status sections of this file at every slice boundary.
 >
-> **Last updated:** 2026-08-14 · Phase 2 closed · decisions through **D211** · schema **v13**
+> **Last updated:** 2026-08-14 · Phase 2 closed · decisions through **D213** · schema **v13**
 
 ---
 
@@ -16,13 +16,13 @@
 | **Scope** | **Solo, local, never hosted** (D193) — one operator, one machine; "production" = the day this replaces legacy as your daily **local** tool. *Later, unplanned:* package it as a locally-run app ("web app → real app"); a cooperation/multi-user mode built **on top of** solo, if ever |
 | Runtime phase marker | `completedThrough: "2j"` · `active: "3-workflow-migration"` |
 | Phases complete | 0, 1 (a–e, f, g-spine, i-spine), 2 (proof + 2g + 2h + 2i + 2j) |
-| Active phase | **Phase 3 — per-workflow migration**; separations **chunks 1, 2 and 3 LANDED** (the `new-kronos` store + timecard-read sub-workflow, D196; the `kuali` separation-document read + the `separations` mini-store + §4a's live-captured exhaustive termination-type map, D197; the UCPath whole-employment-grid read + doc 09 §14's **ALWAYS-GATE identity approval**, D201/D202/D203 — live-proved to terminal `done` through a real operator gate command; and **chunk 4** — the UCPath termination WRITE, D206, two fenced transactions with the ALWAYS-GATE in front of both) and **chunk 5a/5b/5c** — the Kuali finalization write's contracts, driver, descriptor, graph and its live read-only + dry-run pass, D207, ONE transaction node behind the same ALWAYS-GATE) and **chunk 6a — THE COMPOSITION, D211**: eighteen nodes, one ALWAYS-GATE, three fenced transactions, built and test-proven with nothing live yet — next is 6b's live pipeline dry run, and the controlled real commits on your named canaries |
+| Active phase | **Phase 3 — per-workflow migration**; separations **chunks 1, 2 and 3 LANDED** (the `new-kronos` store + timecard-read sub-workflow, D196; the `kuali` separation-document read + the `separations` mini-store + §4a's live-captured exhaustive termination-type map, D197; the UCPath whole-employment-grid read + doc 09 §14's **ALWAYS-GATE identity approval**, D201/D202/D203 — live-proved to terminal `done` through a real operator gate command; and **chunk 4** — the UCPath termination WRITE, D206, two fenced transactions with the ALWAYS-GATE in front of both) and **chunk 5a/5b/5c** — the Kuali finalization write's contracts, driver, descriptor, graph and its live read-only + dry-run pass, D207, ONE transaction node behind the same ALWAYS-GATE) and **chunk 6a — THE COMPOSITION, D211**: eighteen nodes, one ALWAYS-GATE, three fenced transactions) and **chunk 6b — the COMPOSED LIVE PASS, D212/D213**: the whole read chain live on two real subjects in 82 s, parked at the ALWAYS-GATE, a real approval through the real command endpoint, resumed — with ZERO durable write rows proved from authority. Two live defects found and fixed; the preview terminal is blocked one node short by two named PLATFORM items (a dry run previews the pending-sweep prepare without its probe; an `always-rerun` node collides with its own checkpoint across a gate resume). The controlled real commits stay open on your named canaries |
 | After Phase 3 | The one all-at-once cutover (D89/D93), then rollback-window closure |
-| Decisions ratified | D1–D211 (D131 is a permanent gap — never reused) |
+| Decisions ratified | D1–D213 (D131 is a permanent gap — never reused) |
 | Authority schema | v13 (released migrations SHA-pinned, immutable) |
 | Guards | **61 active** / 8 retired / 2 planned (`one-time-import-offline`, `preflight-coverage`) |
-| Tests | one `test:coverage` run: **1888 across 201 files**, green · 451 architecture · **parity green at 147** after the composition's mechanical re-freeze |
-| Workflows registered | 8 — `person-lookup` (live-proven), `kuali-timekeeper-annotation` (controlled-commit-proven), and separations chunks 1–5: `separations-kronos-timecard`, `separations-kuali-read`, `separations-identity-check` (all three live-proven), `separations-ucpath-termination` (prepare arm live-proven; commit awaits the canary), `separations-kuali-finalization` (prepare arm live-proven on real doc 4524; commit awaits the canary), and **`separations` itself — the composition, built and test-proven, live pipeline dry run owed by 6b** |
+| Tests | one `test:coverage` run: **1894 across 201 files**, green · 451 architecture · **parity green at 147** after the composition's mechanical re-freeze |
+| Workflows registered | 8 — `person-lookup` (live-proven), `kuali-timekeeper-annotation` (controlled-commit-proven), and separations chunks 1–5: `separations-kronos-timecard`, `separations-kuali-read`, `separations-identity-check` (all three live-proven), `separations-ucpath-termination` (prepare arm live-proven; commit awaits the canary), `separations-kuali-finalization` (prepare arm live-proven on real doc 4524; commit awaits the canary), and **`separations` itself — the composition, live-proved through the real pipeline to its gate and back (6b); the transaction preview and the controlled commits stay open** |
 | Legacy capability register | 78 entries: **48 open · 20 replaced · 7 native · 3 retired** — cutover requires zero open |
 | Production writes proven | Kuali controlled commit on real doc 4489 (D135): fence → click → read-back → settle, idempotent re-run 2 ms |
 
@@ -163,6 +163,37 @@ operator input due is step 5's controlled-commit target naming (a UCPath termina
 finalization to approve), owed later in the build, not now.
 
 ### Decided
+
+- **Separations chunk 6b ran the composition LIVE — the whole read chain, a real gate approval, and
+  zero writes — and it is blocked one node short of the preview by two PLATFORM items** —
+  **D212/D213**, 2026-08-14 (`docs/migrations/separations.md` §9.14). Six runs over four real Kuali
+  documents, planned through the real start-plan endpoint, started through the real command endpoint,
+  claimed by a real worker. **Nothing was submitted, saved or finalized**, and that is proved from the
+  authority database rather than logs: zero write intents, zero write attempts, zero outbox rows, and
+  **zero checkpoints for any of the three transaction nodes, ever**. Five things worth your attention.
+  **(1) The chain works end to end on a real person.** Thirteen nodes — Kuali document → plan → UCPath
+  name search → subject → Job Summary → employment → department option → New Kronos search → timecard
+  → reconciled dates → identity packet → gate — in **82 seconds** cold across three browsers, twice,
+  on two different subjects.
+  **(2) The write plan you approve is real now.** On doc 4524 the gate served the template
+  `UC_INVOL_TERM`, reason code `No Longer Student`, department `000412 - Housing/Dining/Hospitality`,
+  and a separation date that genuinely **MOVED** — Kuali's `06/18/2026` reconciled forward to
+  `07/03/2026` on a holiday — plus two pay codes the classifier declined to count, named rather than
+  hidden. That is 6a's write-plan block doing exactly what it was built for, and it was inside the
+  digest your approval bound to.
+  **(3) Two live defects found and fixed**, each with its own gated commit: a Kronos read that kept a
+  stale grid because it trusted the period LABEL over the repainted body (D212), and a UCPath search
+  that could not survive a person whose name matched **four** people — the "no results" marker turned
+  out to be a result-COUNT banner, so a normal multi-result page crashed the wait (D213). Neither
+  could have been caught earlier: every previous live subject matched exactly one person.
+  **(4) Two things stop the preview, and neither is a write-safety problem.** A dry run previews the
+  pending-sweep's prepare WITHOUT its probe, so it reports a failure the real run would never produce
+  for the ordinary subject who has no pending transaction; and a node marked "always re-run" collides
+  with its own checkpoint when a gate resume brings it back inside the same attempt, which means the
+  composed workflow cannot pass its own gate on the normal path. Both are platform decisions with the
+  mechanism written down, and both need an owner.
+  **(5) Your controlled commits are untouched.** All three stay OPEN on the §4f2 canary you have not
+  named. Doc **4524** is now both the recorded Kuali candidate and the best-mapped subject.
 
 - **Separations chunk 6a landed — THE COMPOSITION, built and test-proven, nothing live yet** —
   **D211**, 2026-08-14 (`docs/migrations/separations.md` §9.13, doc 09 §14.10). One Kuali document

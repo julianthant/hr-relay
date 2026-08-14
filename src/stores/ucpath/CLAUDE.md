@@ -54,6 +54,29 @@ this family is `page` and legacy's `getContentFrame` funnel does not apply.
 
 ## Lessons learned
 
+- **2026-08-14: `.or()` is a UNION under strict mode, so waiting on one is a claim
+  that its arms are mutually exclusive — and this one's arms were not (D213).**
+  The Person Org settle wait was `noResults.or(displayedEid).or(resultsGrid)
+  .waitFor()`, and the first live search that returned more than one row threw a
+  strict-mode violation: `#PTS_CRITTEXT_DISP` is PeopleSoft's search-CRITERIA
+  banner, not a no-results marker, and it renders on EVERY list page stating the
+  count — live `4 results   -   Last Name "Ezeunala"   Name "Chim…"` directly
+  above a populated grid. Two arms visible, one union locator, throw. Behind it
+  `states.filter(Boolean).length !== 1` would have refused the ordinary
+  multi-result page as "ambiguous", so the mapping was wrong twice over. Nothing
+  caught it for two chunks because both live subjects matched exactly ONE person,
+  and UCPath auto-navigates to the detail page in that case — **only one arm had
+  ever matched, which is how a mapping stays internally consistent and externally
+  wrong** (D205, again). `.first()` makes the wait ask "has ANY outcome rendered"
+  and leaves the verdict to `classifyPersonOrgSearchOutcome`, which is pure,
+  exported and pinned by negative tests. The load-bearing arm is the refusal: a
+  count banner with NO grid beside it throws by name instead of returning
+  not-found, because reading a four-result page as "nobody matched" would report
+  an unknown person for a search that found four. Only detail-plus-grid is
+  genuinely contradictory — one page cannot be both. The element id keeps its
+  shipped `no-results-status` name because durable catalogs and selector
+  provenance bind it; the LABEL is what had to stop claiming a false fact.
+
 - **2026-08-14: a closed `errorCodes` union member with no producer is a lie the
   test suite can confirm, and `z.literal(true)` is how two of them got there.**
   Three of this family's typed refusals could not fire. `emplid-not-recognized`

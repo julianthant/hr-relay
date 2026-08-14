@@ -1636,13 +1636,13 @@ every selector, the packet composition, the freshness limits and the graph itsel
 Repeated here so the checklist is in one place; the master plan owns the normative text.
 
 - [x] **§5 questionnaire answered and recorded above, and every §4 decision answered** — §4a–§4g and all twelve §5 items landed 2026-08-12, including item 5's residuals 5A/5B (the freshness values and the date fields' override column) — `new-kronos/read-separation-timecard` can now be authored against a real `freshness` field
-- [ ] `typecheck` + `lint` + `test:coverage` green (D191); the descriptor passes `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing
-- [ ] Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id, and subject observation resolves; no raw Page/Locator/selector outside the system driver
-- [ ] **Live dry-run green** against Kuali, UCPath, and New Kronos (submit-free, zero durable write rows asserted) — and, per §4f3, the UCPath preparation interval measured on that run
-- [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim
-- [ ] `identity-gate-before-separation-commit` green — every commit is graph-reachable only through the gate node (doc 09 §14.6 guard #2; the structural half of §4d)
+- [x] `typecheck` + `lint` + `test:coverage` green (D191); the descriptor passes `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing — green at `1d019ee`
+- [x] Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id, and subject observation resolves; no raw Page/Locator/selector outside the system driver
+- [ ] **Live dry-run green** against Kuali, UCPath, and New Kronos (submit-free, zero durable write rows asserted) — and, per §4f3, the UCPath preparation interval measured on that run — **PARTLY MET (§9.14)**: the composed graph ran the whole read chain live on two real subjects, parked at the ALWAYS-GATE, took a real approval through the real command endpoint and resumed, with **zero durable write rows proved from authority**. The preview terminal is blocked by two PLATFORM items, neither a write-safety failure — `executeDryRun` previewing `clear-pending`'s prepare without its probe, and an `always-rerun` node colliding with its own checkpoint across a gate resume. §4f3's per-beat interval stays unmeasured because no transaction node emitted a span
+- [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **OPEN on all three commits**; the §4f2 canary is still unnamed
+- [x] `identity-gate-before-separation-commit` green — every commit is graph-reachable only through the gate node (doc 09 §14.6 guard #2; the structural half of §4d) — and §14.5's digest binding is now proved LIVE (§9.14): the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's
 - [ ] D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved
-- [ ] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated
+- [ ] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above owe a decision each**
 - [x] **§2.6 confirmed and ratified: D194 recorded in doc 01 §2.8, pointer in doc 04 round 48, `STORES.md` §1 updated** (2026-08-12) — every new read task this migration authors is authored under it
 
 ---
@@ -3475,3 +3475,250 @@ re-frozen with `npm run test:parity:update`.
 Also honestly NOT RUN: any real write of any kind, and any case where the document's EID is blank
 (every live document observed so far carries one), so `subject`'s `name-resolved` arm and its
 `type-the-eid` gate shape are test-pinned rather than live-verified.
+
+---
+
+### 9.14 Chunk 6b — the composed live pass, 2026-08-14: what ran, what it found, and what is genuinely blocked
+
+Read-only and dry-run against production, Duo cleared hands-off by Duo Autopilot. **Nothing was
+submitted, saved or finalized.** `Delete Selected Transactions`, `Save and Submit` and Kuali `Save`
+were never clicked; every run carried `dryRun: true` and D210's `stop-after-prepare`. Six runs over
+four real Kuali documents. **The durable footprint is `absent`, asserted against the authority
+database rather than logs: zero `write_intents`, zero `write_attempts`, zero `durable_outbox` rows
+since 2026-08-05, and ZERO checkpoints for `clear-pending`, `file-termination` or `finalize-kuali`
+across every run this database has ever held.** The only two `write_intents` rows in the file are
+2026-08-04's Phase-2 controlled commit, untouched.
+
+#### The honest status of doc 07 §3.1 step 4 for chunk 6: **PARTLY MET**
+
+| Asked for | Status |
+|---|---|
+| The composed graph driven start-plan → command endpoint → worker → interpreter, live | **MET** — three runs planned through the REAL `/api/v1/start-plans` and started through the REAL `/api/v1/commands`, no harness anywhere |
+| The whole read chain live on one real subject, end to end | **MET, twice, on two different subjects** — thirteen nodes from the Kuali document to the identity packet, once on doc 4502 / EID 10001754 and once on doc 4524 / EID 10630962 |
+| Park at the ALWAYS-GATE, take a REAL approval through the real command endpoint, resume | **MET, twice** — `parked-gate`, packet served, `resolve-gate` applied, run re-claimed and resumed |
+| The §14.2 packet's new fields visible on the live gate wire | **MET** — captured below, verbatim from the wire at the park |
+| Structural commit-freedom proved from durable state | **MET** — see the absence proof above |
+| Preview `clear-pending` (`transaction.previewed`) and reach an honest preview terminal | **NOT MET** — blocked twice, by two independent defects named below; **neither is a write-safety failure** |
+| `probeToFenceMaxMs` off the run's own per-beat spans | **NOT MET, unchanged** — no transaction node ever emitted a span, because none ever settled a preview. §9.12 item 6 and §4f3 stay open with a new reason |
+| A measured cost for the gate-resume re-run of `timecard-search` | **MET** — 30.4 s, measured twice |
+
+#### The two things that stop the preview, and neither of them is the writes
+
+**1. The dry run previews a path the real run would never take (§9.9's recorded state, now
+consequential).** Doc 4502's subject is Cramia, Dreitho — one active employment and **no pending
+transaction**. `executeDryRun` evaluates `clear-pending`'s PREPARE without its probe, so the sweep
+staged against a *Transactions in Progress* grid holding no row for the subject and refused, exactly
+and verbatim as §9.9 predicted: *"the Transactions in Progress grid renders no name beside Empl ID
+10001754; there is no subject on this page to bind a sweep to"*, `writeState: not-attempted`. §9.9
+called that state "unreachable on the real path", and that is TRUE — the probe settles
+`already-present` first — which is precisely what makes it a problem here: **the composed dry run
+reports a failure the real run would never produce.** A rehearsal that fails where the performance
+succeeds is a false rehearsal, and the ordinary separation subject has no pending transaction, so
+this is the COMMON case, not the corner. It is recorded rather than fixed because running the probe
+inside `executeDryRun` changes what D210's `stop-after-prepare` means and belongs to doc 09's owner,
+not to a live-proof slice.
+
+The two subjects mapped so far are jointly unsatisfiable on exactly what the preview needs: **10001799**
+(doc 4510) HAS the pending `T002209631` and is already terminated, so `match-active-employment`
+refuses `no-active-job` before the gate (§9.13 decision 3); **10001754** (doc 4502) has the active job
+and no pending row. A subject with BOTH has not been observed.
+
+**2. `always-rerun` collides with its own checkpoint across a gate resume — so the composed workflow
+cannot pass its own gate on the normal path.** A checkpoint's durable key is
+`(workflowId, itemId, nodeId, attempt)` (`checkpointLookupKey`), and a gate resume advances **no**
+attempt: the run parks and is re-claimed inside the same one. `timecard-search` is `always-rerun` by
+chunk 1's rule (a node whose product is BROWSER state may not be `replay: "checkpoint"`), so on
+resume it re-executes, produces a genuinely different observation, and `run_checkpoints.insert`
+refuses by name — `run checkpoint separations 2ebcfbf7… timecard-search 1 already exists with
+different content` — terminalizing the run `failed` one node after the approval. Doc 4524's run died
+there.
+
+Doc 4502's run got past it **by accident**: the earlier attempt's worker was killed mid-slice, D200's
+startup self-sweep requeued the row, and the requeue bumped the attempt to 2 — so its resume wrote
+`timecard-search` under a key nothing owned. A crash is not a recovery path, and without it the
+identical collision waits.
+
+The same absence has a second face worth naming: both executions emitted the span `…/timecard-search#1`,
+so the two are indistinguishable in the timeline as well as in authority. **A gate resume advances no
+execution counter, so a re-executed node is identical to its first execution in every identity this
+platform has.** That is a doc 02 replay-contract question with at least three candidate answers (an
+always-rerun node writes no checkpoint at all; the key carries an execution ordinal; the resume
+advances the attempt), each with consequences for evidence and for D110/D114 terminal dependencies.
+It is named here and left to its owner; inventing replay semantics inside a live-proof slice is not
+this slice's job.
+
+#### The composed read chain, live, on two real subjects
+
+Doc **4524** is the clean single-run measurement — cold sessions on all three systems, claim to gate:
+
+| Node | Wall | Notes |
+|---|---|---|
+| `document` | **6.06 s** | Kuali session + `ActionPage` open |
+| `plan` | 9 ms | pure fold |
+| `termination-type` | 2 ms | pure fold |
+| `name-search` | **33.48 s** | includes the cold UCPath SSO + Duo session |
+| `subject` | 2 ms | pure fold |
+| `job-summary` | **5.20 s** | |
+| `employment` | 3 ms | pure fold |
+| `department-option` | 3 ms | pure fold |
+| `timecard-search` | **30.18 s** | includes the cold New Kronos session (~27 s of it) |
+| `timecard` | **7.24 s** | |
+| `dates` | 2 ms | pure fold |
+| `comparison` | 13 ms | pure fold |
+| **claim → `gate.opened`** | **82.23 s** | thirteen nodes, three browsers, one real subject |
+
+Doc **4502**'s chain ran the same nodes across two runs (`document`/`plan`/`termination-type` at
+6.13 s / 5 ms / 1 ms; `name-search` 23.25 s warm; `job-summary` 4.01 s; `timecard-search` 11.26 s
+warm; `timecard` 7.63 s), reaching its gate in 65 s of node time.
+
+**The `always-rerun` cost on gate resume — the answer to §9.13 item 5: 30.4 s.** Measured twice
+independently and they agree: 30.385 s on doc 4502's resume, 30.481 s on doc 4524's. It is almost
+entirely a fresh New Kronos browser session — the session span opens ~27 s into the node and the
+search itself takes ~3 s — so the number is a login cost, not a search cost, and it is the price of
+chunk 1's rule rather than of anything this composition does.
+
+#### The §14.2 packet as the wire served it at the park (doc 4524, redacted)
+
+`GET /api/v1/runs/{runId}/identity-gate`, while the run sat `parked-gate`:
+
+```
+gateId            identity-approval          parkedAt   2026-08-14T15:08:29.586Z
+resumeAt          approval                   expectedVersion 46
+resultSchemaHash  2165f585c743…              evidenceDigest  61c1f7a5abcd…
+approvalShape     one-click                  approvableEids  [10630962]
+```
+
+The comparisons agreed on all four fields (`name` — `Ezeunala, Chimdaalu Kristine` against UCPath's
+`Chimdaalu Ezeunala`, tier `same`; `eid`; `employment` — `single-active-job — 1 active of 3
+employment rows`; `name-search` — the document's name resolving to the same person its EID does).
+`jobs` carried all three rows verbatim with one `unreadableCells` entry
+(`row 1 (empl record 2): Expected Job End Date`), which is **D201's `{state, reason}` arm live**: a
+descriptive cell the extraction could not read is DATA, and only the consumer that needs it refuses.
+
+**D211's write plan rode inside the packet, which is the thing 6a built and this is its first live
+sighting** — `plan.state: "planned"`, carrying every value the three writes will consume:
+
+| Field | Live value |
+|---|---|
+| `termination.terminationType` | `Graduated/No longer a Student` |
+| `termination.classification` / `template` | `involuntary` / **`UC_INVOL_TERM`** |
+| `termination.reasonCode` | **`No Longer Student`** |
+| `termination.emplRecord` | `3` |
+| `termination.effectiveDate` / `lastDateWorked` | `07/04/2026` / `06/18/2026` |
+| `document.department` | **`000412 - Housing/Dining/Hospitality`** (code `000412`) |
+| `document.payrollTitleCode` / `payrollTitle` | `004920` / `STDT 3` |
+| `dates.kualiSeparationDate` → `dates.separationDate` | `06/18/2026` → **`07/03/2026`**, `separationDateChanged: true` |
+| `dates.separationDeterminingLeave` | **`holiday`** |
+| `dates.unclassifiedPayCodes` | **`["Juneteenth Observed", "Memorial Day"]`** |
+| `dates.lastDayWorked` | `06/18/2026`, `lastDayWorkedChanged: false` |
+
+That is §9.13 item 2 met in full, and it is more than a shape check: this document's separation date
+genuinely MOVED — the Kuali-carried `06/18/2026` reconciled forward to `07/03/2026` on a holiday —
+and the operator saw the moved date, the template and the department **inside the digest their
+approval bound to**. Before D211 the approval covered the person and not the date. Two real pay codes
+came back unclassified and are named rather than folded away.
+
+#### Three defects the pass found
+
+1. **`new-kronos/read-separation-timecard` kept a stale grid (D212, commit `d00b66c`).** The first
+   composed run ever attempted died here. Fixed and gated before the second run; the period LABEL is
+   not the grid, and nothing is kept until the body repaints.
+2. **The UCPath Person Org settle wait could not survive a multi-result search (D213, commit
+   `1d019ee`).** Doc 4524's subject matched **four** people. `#PTS_CRITTEXT_DISP` was modelled as a
+   "positive no results marker" and is in fact PeopleSoft's search-CRITERIA banner, which renders on
+   every list page stating the count — live `4 results   -   Last Name "Ezeunala"   Name "Chim…"`
+   directly above a populated grid. So banner and grid are visible together, `noResults.or(detail)
+   .or(grid).waitFor()` runs one union locator under Playwright strict mode, and two matches is a
+   throw. Behind it the classification would have refused too (`states.filter(Boolean).length !== 1`
+   reads the ordinary multi-result page as ambiguous). Nothing caught it because chunks 3 and 4's two
+   live subjects each matched exactly ONE person, where UCPath navigates straight to the detail page:
+   only one arm had ever matched. `.first()` makes the wait ask "has any outcome rendered", and a
+   pure, tested `classifyPersonOrgSearchOutcome` decides which — refusing BY NAME on a count banner
+   with no grid rather than reporting not-found, because reading a four-result page as "nobody
+   matched" is the silent wrong value this program forbids.
+3. **§9.9's dry-run-without-probe refusal and the `always-rerun` checkpoint collision**, both above.
+   Both are platform decisions rather than driver bugs, and both are left to their owners with the
+   mechanism written down.
+
+#### Two operator-surface observations, both on the generic gate panel
+
+Neither blocks anything — 6a's dedicated `identity-gate` section was correct and complete throughout,
+and it is the surface an operator uses — but both are false statements on a trust surface.
+
+- While run `00419600` sat `parked-gate` with `identity-gate` serving the whole packet, run-detail's
+  generic `gate` section answered `{state: "absent", reason: "this run declares no operator gate"}`.
+  The panel's `status` read `awaiting-approval` off the authority lifecycle, so the two halves of one
+  response disagreed. The queue projection's `openGates` fold is where this lives; it is observed and
+  not yet explained.
+- After resolution the same section answered `gate identity-approval resolved with key resolved,
+  which is not an approve/reject verdict`. That one IS explained, and it is structural: the command
+  service emits `resolutionKey: "resolved"` for EVERY gate ("until gate descriptors declare display
+  keys (2h Review), the one honest key is the fact of resolution itself"), and run-detail deliberately
+  refuses to coerce a non-verdict key. So **the generic gate panel can never render a verdict for any
+  gate in this platform**, and the deferral that made that acceptable has shipped past the milestone
+  it named. The decision is available: D204's declared `gate-decisions.ts` mapping already turns the
+  stored payload into `approved`, which is what the receipt reads.
+
+#### What the receipt says, and D204 live for the second time
+
+`buildRunEvidenceReceipt` DERIVED for doc 4502's terminal run — 215 observations, 19 verifications,
+4 decisions — with the gate decision attributed in full:
+
+> an operator approved this identity, and the write plan it consumes, before any termination was
+> filed: gate `identity-approval` was resolved `approved` by `local-operator` at
+> `2026-08-14T14:05:18.250Z` through command `b6631e19…`, bound to the identity evidence it was
+> granted on (evidenceDigest `157a8311…`). The approver and the instant are authority's own fields on
+> the gate result record, written by the resolving command, not values the resolving payload claimed.
+
+The durable `gate_results` row carries `decision: approved`, `eid 10001754`, `resolvedBy
+local-operator`, and an `evidenceDigest` byte-identical to the `comparison` checkpoint's — **§14.5's
+digest binding, proved live**. `confidence` reads `unknown` and the one warning is the failure
+itself, which is the honest verdict for a run that ended before its writes. The **DRY_RUN_PREVIEW**
+warning is NOT-RUN: no preview ever settled, so nothing has yet asked the receipt to carry it.
+
+#### 9.14a The attempt record — six runs, verbatim (the §9.2a precedent)
+
+| # | Run / trace | Doc · subject | Outcome |
+|---|---|---|---|
+| 1 | `1fd7b3a4` · `sp-064821-1fd7` | 4502 · 10001754 | **failed** at `timecard` after nine nodes — the stale Kronos grid. **D212**, fixed in `d00b66c` |
+| 2 | `1c96fabc` · `sp-070056-1c96` | 4502 (re-read 1) | **failed** at `name-search` at **exactly 60.000 s** — D125's `timeouts.sessionAcquireMs` bound, firing as designed on a UCPath session that would not come up |
+| 3 | `6a6c6f44` · `sp-070306-6a6c` | 4502 · 10001754 | retry of #2. Whole chain **done**, `gate.opened` 14:04:19, **approved live** 14:05:18. The worker was then killed by the previous session's watchdog mid-resume |
+| 3′ | (same run, resumed by this pass) | | D200's startup self-sweep released the orphaned claim on the first poll and it resumed at attempt 2: `timecard-search` re-ran (30.4 s), `approval` passed in 2 ms, and `clear-pending` refused in prepare — §9.9's state. **terminal `failed`**, zero writes |
+| 4 | `49f5e1ee` · `sp-075614-49f5` | 4495 | **failed** at `plan` in 26 ms: `SEPARATION_DATE_IN_FUTURE` — *"carries a Last Day Worked of 09/02/2026, which is after 08/14/2026"*. **S7 refused live for the first time**, on a real document |
+| 5 | `77530d5f` · `sp-075712-7753` | 4524 · 10630962 | **failed** at `name-search` — the strict-mode violation. **D213**, fixed in `1d019ee` |
+| 6 | `00419600` · `sp-080639-0041` | 4524 (re-read 1) · 10630962 | whole chain **done** in 82.2 s on the fixed driver, `gate.opened` 15:08:29, packet served, **approved live** 15:09:21, resumed — and **failed** at `timecard-search` on the checkpoint collision |
+
+Runs 2 and 5 are why the re-read affordance exists, and both used it: `separations:4502#re-read-1`
+and `separations:4524#re-read-1`, each a NEW logical item with its own checkpoints and its own gate,
+each changing no permanent key, each carrying its operator reason into the canonical input where
+`explain run` can answer *why was this document read again* without archaeology. §9.13's re-read
+affordance is live-proved by use.
+
+#### The live document inventory, re-observed 2026-08-14
+
+All four action ids from §9.12 still resolve on the same steps. Subjects, now that the chain has read
+them: **4502** → Cramia, Dreitho (10001754), active, no pending transaction. **4510** → Clauckia,
+Drose (10001799), already terminated, holds the pending `T002209631`. **4495** → last day worked
+`09/02/2026`, in the future, so the chain refuses before any subject work. **4524** → Ezeunala,
+Chimdaalu Kristine (10630962), one active of three employment rows, and the only subject so far whose
+name search returns more than one row.
+
+#### What is honestly NOT RUN
+
+- **Every real write, of every kind.** No `Delete Selected Transactions`, no `Save and Submit`, no
+  Kuali `Save`. All three controlled commits stay OPEN on the operator's §4f2 canary, which is still
+  unnamed. Doc 4524 remains the natural Kuali candidate (§9.12) and is now also the best-mapped
+  subject.
+- **`transaction.previewed`, the preview terminal, and the receipt's `DRY_RUN_PREVIEW` warning** —
+  blocked by the two platform items above, not by anything in the composition.
+- **`probeToFenceMaxMs` off per-beat spans** — unchanged from §9.12 item 6 and §4f3. No transaction
+  node emitted a span in any of the six runs, because none settled a preview.
+- **The `already-present` arm live**, D207's provisional `stabilized` window, and the five unasserted
+  Kuali wire shapes — all four items chunk 5c handed forward, all still forward.
+- **A blank-EID document.** All four live documents carry one, so `subject`'s `name-resolved` arm and
+  its `type-the-eid` gate shape remain test-pinned. Doc 4524 came closest — a four-row name search —
+  but resolved through the document's own EID.
+- **The parity lane** was not re-run: another session held uncommitted dashboard edits in this shared
+  working tree, and the lane rebuilds the bundle from the tree, so a re-freeze would have baked in
+  someone else's work. The D213 label change was checked against the reference corpus directly and
+  photographs nothing in it.
