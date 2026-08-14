@@ -46,6 +46,31 @@ describe("the workflow explorer projection", () => {
     assert.equal(JSON.stringify(first), JSON.stringify(second));
   });
 
+  /**
+   * D219 — the explorer is one of the three workflow-listing surfaces, so it
+   * carries the same `role` fact the rail and the picker do, and refuses the
+   * same nesting no surface could draw.
+   */
+  it("serves each module's declared role and refuses a harness with no composition beside it", () => {
+    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const roles = new Map(wire.workflows.map((workflow) => [String(workflow.id), workflow.role]));
+    assert.deepEqual(roles.get("separations"), { kind: "composition" });
+    assert.deepEqual(roles.get("separations-kuali-read"), { kind: "chunk-harness", of: "separations" });
+    assert.deepEqual(roles.get("person-lookup"), { kind: "standalone" });
+
+    // Drop the composition and the harnesses point at nothing this document
+    // carries — the wire says so rather than serving an unnestable entry.
+    const orphaned = WorkflowExplorerWireSchema.safeParse({
+      ...wire,
+      workflows: wire.workflows.filter((workflow) => String(workflow.id) !== "separations"),
+    });
+    assert.equal(orphaned.success, false);
+    assert.match(
+      JSON.stringify(orphaned.error?.issues ?? []),
+      /is served as a chunk harness of separations/u,
+    );
+  });
+
   it("reports a scenario with no executable file as unresolved, naming the path it tried", () => {
     const deps = explorerQueryDeps(CLOCK, HASH);
     const wire = buildWorkflowExplorer({ ...deps, listScenarioSources: () => [] });

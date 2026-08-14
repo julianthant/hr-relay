@@ -7,6 +7,7 @@ import {
   LocalOperatorActorSchema,
   WorkflowIdSchema,
 } from "../ids.js";
+import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
 import {
   AppVersionSchema,
   DashboardWireVersionSchema,
@@ -67,6 +68,14 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
  * projection whose label was `id.replace(/-/g, " ")` and whose order was
  * first-seen, i.e. two display decisions the server invented and no operator
  * chose. Both moved to `dashboard/surfaces/workflow-category.ts`.
+ *
+ * `role` is the RAW membership fact the module declares (doc 02 §1.2.1, D219)
+ * — `standalone`, `composition`, or `chunk-harness` naming the composition this
+ * entry is a step of. It is required, and display stays the frontend's on the
+ * standing R2 D17/D18 split: the ONE grouping rule that nests a harness under
+ * its composition lives in `dashboard/surfaces/workflow-category.ts` beside the
+ * category rule, so no two workflow-listing surfaces can disagree about what is
+ * a step and what is a workflow.
  */
 export const WorkflowBootstrapPrimitiveSchema = z.strictObject({
   id: WorkflowIdSchema,
@@ -75,6 +84,7 @@ export const WorkflowBootstrapPrimitiveSchema = z.strictObject({
   categoryId: z.string().regex(/^[a-z][a-z0-9-]*$/),
   descriptorFingerprint: FingerprintSchema,
   availability: CapabilityAvailabilitySchema,
+  role: WorkflowModuleRoleSchema,
 });
 export const SystemInstancePrimitiveSchema = z.strictObject({
   system: BrowserSystemIdSchema,
@@ -161,6 +171,30 @@ export const FrontendBootstrapWireSchema = createFrontendBootstrapWireSchema({
     if (new Set(values).size !== values.length) {
       context.addIssue({ code: "custom", path: [path], message: `${path} identities must be unique` });
     }
+  }
+  /**
+   * A harness's `of` must name a composition IN THIS DOCUMENT (D219).
+   *
+   * The composition root already refuses a dangling or non-composition target
+   * at load, so this is not a second authority over the fact — it is the wire
+   * refusing to describe a nesting the receiving surface could not draw. A
+   * served entry pointing at a workflow this document does not carry would
+   * leave the frontend's ONE grouping rule with a parent it cannot find, and
+   * the only ways out of that are inventing a group or silently promoting the
+   * harness to a peer — which is the exact ruling D219 overturned.
+   */
+  const compositions = new Set(
+    workflows.filter(({ role }) => role.kind === "composition").map(({ id }) => String(id)),
+  );
+  for (const [index, workflow] of workflows.entries()) {
+    if (workflow.role.kind !== "chunk-harness") continue;
+    if (compositions.has(String(workflow.role.of))) continue;
+    context.addIssue({
+      code: "custom",
+      path: ["workflows", index, "role", "of"],
+      message: `${String(workflow.id)} is served as a chunk harness of ${String(workflow.role.of)}, `
+        + "which this document does not carry as a composition",
+    });
   }
 });
 

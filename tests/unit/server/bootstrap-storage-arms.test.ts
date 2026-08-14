@@ -22,6 +22,7 @@ import {
   FrontendBootstrapWireSchema,
   StorageHealthSummaryWireSchema,
 } from "../../../src/domain/dashboard/bootstrap.js";
+import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../../../src/server/dashboard/queries/bootstrap.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
@@ -43,7 +44,7 @@ function depsOf(
   return {
     appVersion: "0.1.0",
     clock: manualClock(AT),
-    descriptors: [fixtureDescriptor],
+    modules: [{ descriptor: fixtureDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }],
     descriptorSetHash: descriptorSetHash([fixtureDescriptor.contractFingerprint]),
     settingsSchemaHash: descriptorSetHash(["settings-schema"]),
     projection: world.projection,

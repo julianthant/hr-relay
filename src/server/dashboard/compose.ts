@@ -557,7 +557,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     bootstrap: {
       appVersion,
       clock,
-      descriptors: DESCRIPTORS,
+      // The MODULE tuple, not `DESCRIPTORS`: the served `role` (D219) is the
+      // module's declaration, so the bootstrap document is built from the same
+      // composition root the explorer reads.
+      modules: WORKFLOW_MODULES,
       descriptorSetHash: setHash,
       settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
       projection,

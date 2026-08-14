@@ -920,6 +920,9 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
     categoryId: personLookupDescriptor.category,
     descriptorFingerprint: CONTRACT_FINGERPRINT,
     availability: { state: "available" },
+    // D219 — the served taxonomy fact. The corpus carries one standalone
+    // workflow, so nothing here nests under anything.
+    role: { kind: "standalone" },
   }],
   systemInstances: [
     { system: "ucpath", prod: "available", test: { state: "available" } },

@@ -105,6 +105,17 @@ const ARTIFACT = {
   },
 };
 
+/** One served workflow entry, including D219's required `role` fact. */
+const WORKFLOW_PRIMITIVE = {
+  id: "onboarding",
+  code: "on",
+  label: "Onboarding",
+  categoryId: "onboarding",
+  descriptorFingerprint: HASH_A,
+  availability: { state: "available" },
+  role: { kind: "standalone" },
+};
+
 const BOOTSTRAP = {
   wireVersion: 1,
   appVersion: "1.0.0",
@@ -114,7 +125,7 @@ const BOOTSTRAP = {
   actor: { id: "local-operator", label: "Local operator" },
   serverClock: { now: NOW, zone: "America/Los_Angeles" },
   storage: { authority: "healthy", backup: "current", checkedAt: NOW },
-  workflows: [{ id: "onboarding", code: "on", label: "Onboarding", categoryId: "onboarding", descriptorFingerprint: HASH_A, availability: { state: "available" } }],
+  workflows: [WORKFLOW_PRIMITIVE],
   systemInstances: [{ system: "ucpath", prod: "available", test: { state: "unavailable", code: "not-configured", reason: "test URL not configured" } }],
   settingsSections: [{ id: "general", label: "General", revision: 1 }],
   featureAvailability: [{ feature: "ocr", availability: { state: "available" } }],
@@ -173,6 +184,63 @@ describe("dashboard wire primitives", () => {
       assert.equal(DashboardDayWireSchema.safeParse({ ...DAY, snapshotCursor: cursor }).success, false, String(cursor));
     }
     assert.equal(RunDetailWireSchema.safeParse({ ...DETAIL, runId: RUN_2 }).success, false);
+  });
+
+  /**
+   * D219 — a chunk harness is a step of its composition, and the wire refuses
+   * to describe a nesting the receiving surface could not draw.
+   */
+  it("refuses a served chunk harness whose composition is not in the same document", () => {
+    const composition = {
+      ...WORKFLOW_PRIMITIVE,
+      id: "separations",
+      code: "se",
+      label: "Separations",
+      role: { kind: "composition" },
+    };
+    const harness = {
+      ...WORKFLOW_PRIMITIVE,
+      id: "separations-kuali-read",
+      code: "sk",
+      label: "Separations — Kuali read",
+      role: { kind: "chunk-harness", of: "separations" },
+    };
+    // Both served: the harness's parent is right there, so it parses.
+    assert.equal(
+      FrontendBootstrapWireSchema.safeParse({ ...BOOTSTRAP, workflows: [composition, harness] }).success,
+      true,
+    );
+    // The parent is missing entirely — a dangling `of`.
+    const dangling = FrontendBootstrapWireSchema.safeParse({ ...BOOTSTRAP, workflows: [harness] });
+    assert.equal(dangling.success, false);
+    assert.match(
+      JSON.stringify(dangling.error?.issues ?? []),
+      /separations-kuali-read is served as a chunk harness of separations/,
+    );
+    // The parent is served, but is not a composition.
+    assert.equal(
+      FrontendBootstrapWireSchema.safeParse({
+        ...BOOTSTRAP,
+        workflows: [{ ...composition, role: { kind: "standalone" } }, harness],
+      }).success,
+      false,
+    );
+    // And the union itself is closed: no fourth kind, and `of` only on the arm
+    // that owns it.
+    assert.equal(
+      FrontendBootstrapWireSchema.safeParse({
+        ...BOOTSTRAP,
+        workflows: [{ ...WORKFLOW_PRIMITIVE, role: { kind: "sub-workflow" } }],
+      }).success,
+      false,
+    );
+    assert.equal(
+      FrontendBootstrapWireSchema.safeParse({
+        ...BOOTSTRAP,
+        workflows: [{ ...WORKFLOW_PRIMITIVE, role: { kind: "standalone", of: "separations" } }],
+      }).success,
+      false,
+    );
   });
 
   it("keeps queue surfaces flat and operation-only membership coherent", () => {

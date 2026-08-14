@@ -38,6 +38,7 @@ import {
 } from "../ids.js";
 import { SecretNameSchema } from "../secret-names.js";
 import { UiCatalogEntrySchema } from "../ui/contracts.js";
+import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 
 /**
@@ -348,6 +349,16 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
   code: z.string().min(1),
   icon: z.string().min(1),
   category: z.string().min(1),
+  /**
+   * The module's declared taxonomy (doc 02 §1.2.1, D219), served RAW beside the
+   * category exactly as the bootstrap wire serves it.
+   *
+   * The explorer is one of the three workflow-listing surfaces D219 names, so
+   * it must carry the same fact the rail and the picker do — a surface that had
+   * to infer membership from an id prefix would be the second answer that
+   * eventually disagrees with the first.
+   */
+  role: WorkflowModuleRoleSchema,
   version: z.number().int().positive(),
   contractFingerprint: FingerprintSchema,
   /**
@@ -432,7 +443,22 @@ export const WorkflowExplorerWireSchema = z.strictObject({
   if (new Set(ids).size !== ids.length) {
     context.addIssue({ code: "custom", path: ["workflows"], message: "workflow identities must be unique" });
   }
+  // The same refusal the bootstrap wire makes (D219): a harness whose `of` is
+  // not a composition in THIS document leaves the one grouping rule with a
+  // parent it cannot find. The composition root already refuses that shape at
+  // load; this is the wire declining to describe a nesting nothing could draw.
+  const compositions = new Set(
+    wire.workflows.filter(({ role }) => role.kind === "composition").map(({ id }) => String(id)),
+  );
   for (const [index, workflow] of wire.workflows.entries()) {
+    if (workflow.role.kind === "chunk-harness" && !compositions.has(String(workflow.role.of))) {
+      context.addIssue({
+        code: "custom",
+        path: ["workflows", index, "role", "of"],
+        message: `${String(workflow.id)} is served as a chunk harness of ${String(workflow.role.of)}, `
+          + "which this document does not carry as a composition",
+      });
+    }
     const nodeIds = new Set(workflow.nodes.map(({ id }) => String(id)));
     if (nodeIds.size !== workflow.nodes.length) {
       context.addIssue({

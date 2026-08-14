@@ -62,6 +62,7 @@ import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import type { UiCatalog } from "../../../domain/ui/contracts.js";
 import { GENERATED_BUILD_MANIFEST } from "../../../domain/workflow/generated-build-manifest.js";
 import type { RuntimeFlowNode } from "../../../domain/workflow/graph.js";
+import type { WorkflowModuleRole } from "../../../domain/workflow/module-role.js";
 import type { IntakeProjection } from "../../../domain/intake/projection.js";
 import type { CaptureIntakeBinding } from "../../../domain/capture-intake.js";
 import type { PendingImplBindings } from "../../../control/workflow-registry.js";
@@ -70,6 +71,8 @@ import type { PendingImplBindings } from "../../../control/workflow-registry.js"
 export interface ExplorerModuleView {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly stores: readonly RegisteredTaskStore[];
+  /** The module's declared taxonomy (doc 02 §1.2.1, D219) — required, like the module's own. */
+  readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
   readonly captureIntake?: CaptureIntakeBinding;
 }
@@ -584,6 +587,9 @@ function workflowWire(
     code: descriptor.code,
     icon: descriptor.icon,
     category: descriptor.category,
+    // The MODULE's fact, never the descriptor's: taxonomy is not part of a
+    // run's contract identity (doc 02 §1.2.1, D219).
+    role: module.role,
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
     surfaceShape: "shape" in descriptor.surface ? descriptor.surface.shape : "by-input",

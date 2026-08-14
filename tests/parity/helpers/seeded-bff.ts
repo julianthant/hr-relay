@@ -30,6 +30,7 @@ import {
   deriveWriteBindingProofDigest,
 } from "../../../src/domain/write-safety.js";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
+import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { RunTerminalOutboxRecordSchema } from "../../../src/domain/run/terminal-outbox.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
@@ -800,7 +801,10 @@ export async function startSeededServer(
     bootstrap: {
       appVersion: SEEDED_APP_VERSION,
       clock,
-      descriptors: [personLookupDescriptor],
+      // D219 — the bootstrap document is built from MODULE views now, because
+      // the served `role` is the module's declaration. This harness serves the
+      // one standalone workflow the parity corpus runs.
+      modules: [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }],
       descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
       settingsSchemaHash: descriptorSetHash(["settings-schema"]),
       projection,

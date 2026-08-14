@@ -16,6 +16,7 @@ import type { Hono } from "hono";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
+import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
@@ -170,7 +171,7 @@ function harness(): Harness {
     bootstrap: {
       appVersion: "0.1.0",
       clock,
-      descriptors: [fixtureDescriptor],
+      modules: [{ descriptor: fixtureDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }],
       descriptorSetHash: descriptorSetHash([fixtureDescriptor.contractFingerprint]),
       settingsSchemaHash: descriptorSetHash(["settings-schema"]),
       projection,

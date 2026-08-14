@@ -48,6 +48,7 @@ import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js
 import { ConfigSchema, type Config } from "../../../src/domain/config/schema.js";
 import { deriveItemId, deriveStableUuid } from "../../../src/domain/identifiers.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
+import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
@@ -302,7 +303,7 @@ function surface(options: SurfaceOptions = {}): Surface {
     bootstrap: {
       appVersion: "0.1.0",
       clock,
-      descriptors: [captureFixtureDescriptor],
+      modules: [{ descriptor: captureFixtureDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }],
       descriptorSetHash: descriptorSetHash([captureFixtureDescriptor.contractFingerprint]),
       settingsSchemaHash: descriptorSetHash(["settings-schema"]),
       projection,

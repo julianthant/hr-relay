@@ -14,12 +14,29 @@ import {
   type FrontendBootstrapWire,
 } from "../../../domain/dashboard/bootstrap.js";
 import { LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../domain/ids.js";
+import type { WorkflowModuleRole } from "../../../domain/workflow/module-role.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
+
+/**
+ * One registered workflow MODULE, as this query needs to see it (D219).
+ *
+ * The bootstrap wire used to take bare descriptors, and cannot any more: the
+ * `role` it serves is the module's declaration, not the descriptor's, precisely
+ * so taxonomy stays out of `contractFingerprint` (doc 02 §1.2.1). Deriving the
+ * role from an id prefix here would be a second answer beside the composition
+ * root's — the one thing D219's "no two surfaces disagree" rests on not
+ * existing.
+ */
+export interface BootstrapModuleView {
+  readonly descriptor: AnyWorkflowDescriptor;
+  readonly role: WorkflowModuleRole;
+}
 
 export interface BootstrapQueryDeps {
   readonly appVersion: string;
   readonly clock: Clock;
-  readonly descriptors: readonly AnyWorkflowDescriptor[];
+  /** The composition root's own tuple — never a re-listed copy of it. */
+  readonly modules: readonly BootstrapModuleView[];
   readonly descriptorSetHash: Fingerprint;
   readonly settingsSchemaHash: Fingerprint;
   readonly projection: RunQueueProjection;
@@ -61,7 +78,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     storageAuthority = "unavailable";
   }
   const systems = new Set<string>();
-  for (const descriptor of deps.descriptors) {
+  for (const { descriptor } of deps.modules) {
     for (const system of workflowProjections(descriptor).systems) systems.add(system);
   }
   return FrontendBootstrapWireSchema.parse({
@@ -79,14 +96,17 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     },
     // `code` is the descriptor's own, guarded 2-char code (doc 13 §3.1). The
     // category is served RAW: the heading text and the display order are the
-    // frontend's, so nothing here invents a label from an id.
-    workflows: deps.descriptors.map((descriptor) => ({
+    // frontend's, so nothing here invents a label from an id. `role` is served
+    // RAW for the same reason (D219) — it is the MODULE's declaration, and how
+    // a harness nests under its composition is the frontend's ONE rule.
+    workflows: deps.modules.map(({ descriptor, role }) => ({
       id: descriptor.id,
       code: descriptor.code,
       label: descriptor.label,
       categoryId: descriptor.category,
       descriptorFingerprint: descriptor.contractFingerprint,
       availability: { state: "available" },
+      role,
     })),
     systemInstances: [...systems.values()].sort().map((system) => ({
       system,
