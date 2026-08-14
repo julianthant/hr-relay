@@ -60,3 +60,21 @@ harness and declares `plan: not-composed`" — but that fact is not projected to
   chunk to be operator-startable from the product surface?
 - Should the composition's badge count include historical chunk-harness runs from the
   proving days, or only composition runs?
+
+## `kuali-timekeeper-annotation` sits in the rail as a main workflow, but is a proving workflow
+
+**Recorded:** 2026-08-14 · **Status:** recorded (disposition needed) · **Owning docs:**
+doc 02 §1.2.1 (D219 role model), doc 03 (rail presentation)
+
+The rail now lists main workflows only (compositions + standalones; chunk harnesses are
+dropped — operator call amending D219's first rail presentation, see `shell.tsx`
+`buildWorkflowRailGroups`). That leaves `kuali-timekeeper-annotation` visible under
+OPERATIONS, and the operator asked what it is for: it is the Phase-2 controlled-transaction
+proof workflow (D135) — a kernel-proving surface, not daily HR work — but its served role is
+`standalone`, which is what the rail keys on.
+
+D219's role model has no arm for "proving workflow WITHOUT a composition" (`chunk-harness`
+requires naming the composition it proves). Disposition needed: either a third role arm
+(e.g. `proving-standalone`) served on the wire and dropped by the rail alongside harnesses,
+or the operator keeps it visible deliberately. A rail-side hardcoded id list is not an
+option — that is exactly the workflow-specific customization the role model exists to avoid.
