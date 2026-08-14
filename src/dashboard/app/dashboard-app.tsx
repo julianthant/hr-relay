@@ -48,6 +48,7 @@ import {
   parseWorkflows,
   useWorkflowPanelMode,
   type StatusBucket,
+  type WorkflowBootstrapPrimitive,
 } from "../surfaces/shell.js";
 import { StorageBanner } from "../surfaces/settings.js";
 import { TopBar, serverLocalDay, type ShellView } from "../surfaces/top-bar.js";
@@ -70,6 +71,21 @@ const SERVED_ACTIONS: readonly ActionDescriptorWire[] = [];
 
 /** The closed tab vocabulary, so a `?section=` value is validated, not trusted. */
 const PANEL_TABS: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
+
+/**
+ * The short code the Run Modal's picker row draws beside a workflow's name.
+ *
+ * The bootstrap workflow projection does not serve one yet, so this reads it
+ * when it is there and answers `undefined` when it is not — the row then draws
+ * NOTHING in that slot. Deriving a two-letter code from the label here would
+ * put a value the server never issued next to the identity an operator selects
+ * a real HR workflow by.
+ */
+function workflowCode(workflow: WorkflowBootstrapPrimitive): string | undefined {
+  const served: Record<string, unknown> = { ...workflow };
+  const code = served["code"];
+  return typeof code === "string" && code.length > 0 ? code : undefined;
+}
 
 /** The route, kept in the URL so every screen is addressable. */
 function useRoute(): [AppRouteState, (next: AppRouteState) => void] {
@@ -298,22 +314,40 @@ function LoadedApp({
       : CapabilityAvailabilitySchema.parse(entry.availability);
   }, [boot.featureAvailability]);
 
-  const startWorkflow = useMemo((): RunStartWorkflow => {
-    const descriptor = WORKFLOW_DESCRIPTORS.find((d) => d.id === activeWorkflowId);
-    const declared = descriptor?.surfaces?.inputRun;
-    return {
-      workflowId: activeWorkflowId,
-      label: workflowLabelOf(activeWorkflowId),
-      inputRun:
-        declared === undefined
-          ? { state: "absent", reason: "this workflow declares no typed-input surface" }
-          : { state: "present", surface: InputRunSurfaceSchema.parse(declared) },
-      // The boot document composes this array from zod parts, so it infers as
-      // `unknown[]`; re-parsing is the same check bootstrap's own refinement
-      // makes, not a cast past one.
-      systemInstances: SystemInstancePrimitiveSchema.array().parse(boot.systemInstances),
-    };
-  }, [activeWorkflowId, workflowLabelOf, boot.systemInstances]);
+  /**
+   * The Run Modal's WHOLE catalogue, not just the panel's workflow: its picker
+   * is a served addition composed right here from the boot document's workflow
+   * list and each descriptor's declared input surface, so "any workflow, from
+   * anywhere" needs no new wire (R8 finding 12).
+   */
+  const startWorkflows = useMemo((): readonly RunStartWorkflow[] => {
+    // The boot document composes this array from zod parts, so it infers as
+    // `unknown[]`; re-parsing is the same check bootstrap's own refinement
+    // makes, not a cast past one. It is shared by every entry — one start's
+    // destination options do not vary by workflow.
+    const systemInstances = SystemInstancePrimitiveSchema.array().parse(boot.systemInstances);
+    return workflows.map((entry): RunStartWorkflow => {
+      const workflowId = String(entry.id);
+      const declared = WORKFLOW_DESCRIPTORS.find((d) => d.id === workflowId)?.surfaces?.inputRun;
+      const code = workflowCode(entry);
+      return {
+        workflowId,
+        label: entry.label,
+        categoryId: entry.categoryId,
+        ...(code === undefined ? {} : { code }),
+        inputRun:
+          declared === undefined
+            ? { state: "absent", reason: "this workflow declares no typed-input surface" }
+            : { state: "present", surface: InputRunSurfaceSchema.parse(declared) },
+        systemInstances,
+      };
+    });
+  }, [workflows, boot.systemInstances]);
+
+  const startWorkflow = useMemo(
+    () => startWorkflows.find((entry) => entry.workflowId === activeWorkflowId),
+    [startWorkflows, activeWorkflowId],
+  );
 
   const viewState: QueueViewState = {
     ...(route.run === undefined ? {} : { selectedRunId: route.run }),
@@ -460,7 +494,7 @@ function LoadedApp({
                 workflowLabel={workflowLabelOf(activeWorkflowId)}
                 actorId={boot.actor.id}
                 supportsDryRun={
-                  startWorkflow.inputRun.state === "present"
+                  startWorkflow?.inputRun.state === "present"
                   && startWorkflow.inputRun.surface.supportsDryRun === true
                 }
                 sessionId={route.intake === INTAKE_NEW ? undefined : route.intake}
@@ -706,7 +740,9 @@ function LoadedApp({
       <RunStartSurfaces
         open={startOpen}
         onOpenChange={setStartOpen}
-        workflow={startWorkflow}
+        workflows={startWorkflows}
+        categories={categories}
+        panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
       />
     </div>

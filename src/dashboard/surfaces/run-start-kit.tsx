@@ -134,7 +134,8 @@ export function InstanceSelector({
       </div>
       {test.length > 0 && (
         <Banner tone="info" title={`Targeting the TEST instance of ${test.map((system) => SYSTEM_LABEL[system]).join(", ")}`}>
-          Every row this start creates carries a <strong>test</strong> badge for its whole life.
+          Every row this start creates carries a <strong>test</strong> badge for its whole life, and its ledger entries are
+          filed under the test instance. Nothing reaches production {systems.length > test.length ? "on those systems" : ""}.
         </Banner>
       )}
     </div>
