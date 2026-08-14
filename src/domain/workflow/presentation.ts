@@ -156,6 +156,39 @@ export const DetailProjectionSpecRuntimeSchema = z.strictObject({
 });
 export type DetailProjectionSpecRuntime = z.infer<typeof DetailProjectionSpecRuntimeSchema>;
 
+/**
+ * WHERE this workflow's own run resolves the SUBJECT'S DISPLAY NAME (doc 03
+ * §1.2 — the queue row title).
+ *
+ * `inputSubject` above says what KIND of thing a run is about (an eid, a name,
+ * a document). This says the one node+leaf at which the run's own reads settle
+ * that thing's NAME, so the queue row can stop calling a person by the document
+ * number the operator started from. The two are independent: a workflow started
+ * from a document number has `inputSubject: "document"` and may still resolve a
+ * person's name three nodes in.
+ *
+ * It is a DECLARATION, never a sniff. Nothing anywhere may guess which leaf
+ * holds a subject's name from its field name, its shape, or its workflow id —
+ * a title is the one column an operator scans before acting on a real HR
+ * transaction, and a heuristic that is right for eight workflows and wrong for
+ * the ninth prints the wrong person's name in the place the eye trusts most.
+ *
+ * A descriptor that declares NOTHING here is a valid, complete state: its rows
+ * keep the title its `presentation.title` composed from the start input,
+ * forever. That is the honest answer for a workflow whose subject IS the
+ * document, and for one whose start input already carries the person's name.
+ *
+ * The path is validated `offers` rather than `owns`, because a resolved subject
+ * name routinely lives on ONE ARM of a present/absent union — which is exactly
+ * the "not resolved yet / not resolved at all" state the projection reads as
+ * *keep the current title*.
+ */
+export const SubjectProjectionSpecRuntimeSchema = z.strictObject({
+  nodeId: NodeIdSchema,
+  fieldPath: ContractFieldPathSchema,
+});
+export type SubjectProjectionSpecRuntime = z.infer<typeof SubjectProjectionSpecRuntimeSchema>;
+
 /** Sinks are a closed infrastructure registry, deliberately keyed by sink kind, never by workflow. */
 export const ArtifactSinkIdSchema = z.enum(["xlsx-retention"]);
 export type ArtifactSinkId = z.infer<typeof ArtifactSinkIdSchema>;

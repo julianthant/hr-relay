@@ -315,6 +315,14 @@ export const separationsIdentityCheckDescriptor = defineWorkflowDescriptor({
       display: "text",
     },
   ],
+  /**
+   * Doc 03 §1.2. The start input's `employeeName` is the KUALI FORM'S CLAIM —
+   * it is the thing this chunk exists to check, so a row that kept printing it
+   * would be titling itself with the unverified half of its own question. Once
+   * Job Summary has answered, the row states UCPath's record instead; before
+   * that, the claim stands, which is all the run knows.
+   */
+  subjectProjection: { nodeId: "job-summary", fieldPath: "displayedName" },
   identity: {
     matchKey: (input) => `separations-identity:${input.documentNumber}:${input.emplId}`,
   },

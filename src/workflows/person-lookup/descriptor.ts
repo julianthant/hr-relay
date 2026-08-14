@@ -229,6 +229,15 @@ export const personLookupDescriptor = defineWorkflowDescriptor({
       display: "badge",
     },
   ],
+  /**
+   * Doc 03 §1.2: an EID-started lookup titles itself `EID 10873698` until the
+   * Person Org search has RESOLVED somebody, and then says who. The path runs
+   * through the selection's discriminated union on purpose — `selected` is
+   * `null` on the not-found and ambiguous arms, so the resolver reads those as
+   * *no subject* and the row keeps the EID it was started from, which is
+   * precisely what an unresolved lookup should still be called.
+   */
+  subjectProjection: { nodeId: "searching", fieldPath: "selection.selected.name" },
   identity: {
     matchKey: (input) => ("emplId" in input ? `eid:${input.emplId}` : `name:${input.name}`),
   },

@@ -811,6 +811,19 @@ export const separationsDescriptor = defineWorkflowDescriptor({
       display: "text",
     },
   ],
+  /**
+   * Doc 03 §1.2: the queue row starts as `Separation 4502` — the only thing the
+   * start input knows — and becomes the PERSON the moment UCPath's Job Summary
+   * has answered. Three separations rows on one real day carried the same
+   * document number, so the column an operator scans distinguished nothing.
+   *
+   * `job-summary.displayedName` and not the Kuali document's own employee name:
+   * the whole point of the identity chunk is that the Kuali form's name is the
+   * CLAIM and UCPath's is the record, and the queue row must not print a name
+   * the gate has not yet compared. Before that node runs, the document number
+   * stands.
+   */
+  subjectProjection: { nodeId: JOB_SUMMARY_NODE, fieldPath: "displayedName" },
   identity: {
     /**
      * The ITEM is the DOCUMENT — one separation document is one separation — and

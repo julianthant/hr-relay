@@ -204,6 +204,14 @@ export const separationsKualiReadDescriptor = defineWorkflowDescriptor({
       display: "text",
     },
   ],
+  /**
+   * Doc 03 §1.2: `Document 4510` becomes the person the document is about, off
+   * the form's own employee-name control. It is a present/absent union arm —
+   * the control is routinely blank on an unprocessed document — and an absent
+   * arm keeps the document number, which is both honest and the only thing a
+   * blank control could mean.
+   */
+  subjectProjection: { nodeId: "document", fieldPath: "employee.name.value" },
   identity: {
     matchKey: (input) => `kuali-separation-document:${input.documentNumber}`,
   },

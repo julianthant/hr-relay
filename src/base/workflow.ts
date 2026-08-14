@@ -75,6 +75,7 @@ import {
   IconNameSchema,
   InputSubjectSchema,
   StepProjectionSchema,
+  SubjectProjectionSpecRuntimeSchema,
   SurfaceShapeSchema,
   VerdictDefinitionSchema,
   WorkflowActionPolicySchema,
@@ -114,6 +115,19 @@ export interface DetailProjectionSpec<S> {
   readonly label: string;
   readonly source: Readonly<{ nodeId: keyof S & string; fieldPath: string }>;
   readonly display: "text" | "eid" | "date" | "count" | "badge";
+}
+
+/**
+ * The one leaf at which THIS graph resolves its subject's display name — the
+ * declared seam behind doc 03 §1.2's queue-row title. `nodeId` is typed over
+ * `keyof S` exactly as a detail's is, so a renamed node is a compile error
+ * here; the factory additionally proves the path is OFFERED by that node's
+ * output schema (see `SubjectProjectionSpecRuntimeSchema` for why `offers` and
+ * not `owns`).
+ */
+export interface SubjectProjectionSpec<S> {
+  readonly nodeId: keyof S & string;
+  readonly fieldPath: string;
 }
 
 /**
@@ -219,6 +233,8 @@ export interface WorkflowDescriptor<
     : undefined;
   readonly capabilities?: WorkflowCapabilitiesSpec;
   readonly details: readonly DetailProjectionSpec<S>[];
+  /** Doc 03 §1.2: where the RUN resolves the subject's name, if it ever does. */
+  readonly subjectProjection?: SubjectProjectionSpec<S>;
   readonly enqueue: EnqueuePolicy;
   readonly actions: WorkflowActionPolicy;
   readonly presets?: readonly InputPreset<z.input<InputSchema>>[];
@@ -265,6 +281,13 @@ export interface AnyWorkflowDescriptor {
     source: Readonly<{ nodeId: string; fieldPath: string }>;
     display: string;
   }>[];
+  /**
+   * Plain data, so it rides the BROAD view (unlike `presentation`, whose title
+   * and subtitle are functions of the exact input type). The run/queue
+   * projection is the reader, and it holds descriptors as
+   * `AnyWorkflowDescriptor`.
+   */
+  readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
   readonly enqueue: EnqueuePolicy;
   readonly actions: WorkflowActionPolicy;
   readonly coordinator?: CoordinatorPolicy;
@@ -801,6 +824,24 @@ export function defineWorkflowDescriptor<
     assertNodeFieldPath(id, nodes, detail.source.nodeId, detail.source.fieldPath, `detail "${detail.key}"`);
   }
   assertUnique(id, "detail keys", spec.details.map((detail) => detail.key));
+
+  /**
+   * Doc 03 §1.2's subject seam. `offers` on purpose: a resolved subject name
+   * lives on one arm of a present/absent union far more often than not, and
+   * that absent arm IS the "the run has not resolved a subject" state the queue
+   * projection reads as *keep the title the start input composed*.
+   */
+  if (spec.subjectProjection !== undefined) {
+    SubjectProjectionSpecRuntimeSchema.parse(spec.subjectProjection);
+    assertNodeFieldPath(
+      id,
+      nodes,
+      spec.subjectProjection.nodeId,
+      spec.subjectProjection.fieldPath,
+      "subject projection",
+      "offers",
+    );
+  }
 
   const editData = spec.capabilities?.editData;
   if (typeof editData === "object") {

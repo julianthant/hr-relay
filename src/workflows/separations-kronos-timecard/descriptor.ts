@@ -329,6 +329,15 @@ export const separationsKronosTimecardDescriptor = defineWorkflowDescriptor({
       display: "text",
     },
   ],
+  /**
+   * Doc 03 §1.2: `EID 10620118` becomes the person, off the TIMECARD's own
+   * header — the page whose displayed subject is this workflow's S37
+   * wrong-person control — and never off the search panel's `matched` row. The
+   * results panel renders a candidate LIST, and its own contract says so: a
+   * title taken from there would name whoever the search offered rather than
+   * whoever the run went on to read.
+   */
+  subjectProjection: { nodeId: "timecard", fieldPath: "subject.observedDisplayName" },
   identity: {
     matchKey: (input) => `kronos-timecard:${input.emplId}:${input.rangeStart}:${input.rangeEnd}`,
   },
