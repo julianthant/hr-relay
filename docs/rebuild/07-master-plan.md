@@ -710,6 +710,25 @@ work at the point the migration reaches step 5, the same standing rule as Servic
 doc, and therefore the convention every later one follows (§0.1: migration docs are children of
 this plan; they answer §3.4 and record reuse/additions, and never re-order the program).
 
+> **Separations' §3.2 status, 2026-08-14 (`docs/migrations/separations.md` §6 owns the checklist;
+> §9.16 is the latest as-built).** Six of the ten criteria are MET. **Four are open, and they are two
+> facts:**
+>
+> 1. **One live re-run of the composed dry run**, to its preview terminal. Every platform blocker the
+>    live lane found is FIXED and gated (D212, D213, D214, D215), the composition is unchanged, and
+>    the subject is named (doc 4502). §9.16 §5 records why it did not run — a stale singleton
+>    dashboard BFF serving a pre-D217 descriptor fingerprint no current worker can claim under — and
+>    restarting that process is the entire remedy. §4f3's `probeToFenceMaxMs` measurement, the
+>    regression-record criterion and the D58 disposition sweep all ride on the same run.
+> 2. **The three controlled commits**, on a target the operator names (§4f2), and the three
+>    confirmation obligations that can only be discharged by them: **D207**'s provisional
+>    `stabilized` recovery-absence window, **D210/D215**'s preview arms observed against a real
+>    settlement, and **D217**'s two date write-backs' WIRE SHAPES — their `formKey`s are captured but
+>    a `Date` gadget's model value is epoch milliseconds, so only the real payload settles them.
+>
+> Nothing else is outstanding. This is a status line, not a waiver: an open criterion still blocks
+> rebuild-ready status exactly as §3.2 says.
+
 #### 3.2 Exit criteria (per workflow)
 
 - §b questionnaire answered + recorded in the workflow's migration doc.

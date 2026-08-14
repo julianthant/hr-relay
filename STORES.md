@@ -216,13 +216,17 @@ ten controls resolved to exactly one EDITABLE node on real docs 4502/4510/4495/4
 which **five** may be asserted on the wire, because `submitDocumentV2` sends the document MODEL and
 only a `Text`/`Textarea` gadget holds the staged string there.
 
-**§4e's 2026-08-14 amendment reopens exactly two of those obligations, for exactly two fields.** The
-staged set is now **twelve**: `Last Day Worked` and `Separation Date` join it, staged unconditionally
-from the `dates` node's reconciled values. Their `formKey`s were never captured (they are `null` and
-`kualiFinalizationFormKeysMissing()` names them), their controls carry `exactly-one-visible` and NOT
-`exactly-one-editable`, and the section that owns them has never been read — so both write paths are
-marked `live-verify: next-live-pass` and `docs/migrations/separations.md` §9.15 is the list. The
-landing proof is unaffected and always was the reload read-back, which now compares twelve fields.
+**§4e's 2026-08-14 amendment reopened exactly two of those obligations, for exactly two fields — and
+chunk 6b closed all three the same day (§9.16).** The staged set is **twelve**: `Last Day Worked` and
+`Separation Date` join it, staged unconditionally from the `dates` node's reconciled values. Their
+`formKey`s are `ER1WhBzjcm` and `oEcp1xtQkj`, both `Date` gadgets in section `eTURtLdMM`, which
+reports `edit` at BOTH live workflow steps — so §4e's section caveat is discharged for twelve fields,
+not ten, and ONE save still carries them all. Both controls carry `exactly-one-editable`, observed on
+two OPEN documents at both steps, so `kualiFinalizationFormKeysMissing()` is empty and both
+`live-verify` markers are discharged. **They stay UNASSERTED on the wire, and that is the point:** a
+`Date` gadget's model value is epoch milliseconds at UTC midnight, so knowing where a value lives
+never told anyone what it looks like there — only the controlled commit's real payload settles it.
+The landing proof is unaffected and always was the reload read-back, which compares twelve fields.
 
 ---
 

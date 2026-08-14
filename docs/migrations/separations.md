@@ -1704,18 +1704,18 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 - [x] **§5 questionnaire answered and recorded above, and every §4 decision answered** — §4a–§4g and all twelve §5 items landed 2026-08-12, including item 5's residuals 5A/5B (the freshness values and the date fields' override column) — `new-kronos/read-separation-timecard` can now be authored against a real `freshness` field
 - [x] `typecheck` + `lint` + `test:coverage` green (D191); the descriptor passes `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing — green at `1d019ee`
 - [x] Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id, and subject observation resolves; no raw Page/Locator/selector outside the system driver
-- [ ] **Live dry-run green** against Kuali, UCPath, and New Kronos (submit-free, zero durable write rows asserted) — and, per §4f3, the UCPath preparation interval measured on that run — **PARTLY MET (§9.14)**: the composed graph ran the whole read chain live on two real subjects, parked at the ALWAYS-GATE, took a real approval through the real command endpoint and resumed, with **zero durable write rows proved from authority**. The preview terminal was blocked by two PLATFORM items, neither a write-safety failure — `executeDryRun` previewing `clear-pending`'s prepare without its probe, and an `always-rerun` node colliding with its own checkpoint across a gate resume — and **both are FIXED (D215, D214; platform slice 2, 2026-08-14)**, so what remains for this criterion is a re-run of the live pass rather than a platform change. §4f3's per-beat interval stays unmeasured because no transaction node emitted a span
-- [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **OPEN on all three commits**; the §4f2 canary is still unnamed
+- [ ] **Live dry-run green** against Kuali, UCPath, and New Kronos (submit-free, zero durable write rows asserted) — and, per §4f3, the UCPath preparation interval measured on that run — **PARTLY MET (§9.14)**: the composed graph ran the whole read chain live on two real subjects, parked at the ALWAYS-GATE, took a real approval through the real command endpoint and resumed, with **zero durable write rows proved from authority**. The preview terminal was blocked by two PLATFORM items, neither a write-safety failure — `executeDryRun` previewing `clear-pending`'s prepare without its probe, and an `always-rerun` node colliding with its own checkpoint across a gate resume — and **both are FIXED (D215, D214; platform slice 2, 2026-08-14)**. **What remains is one re-run and nothing else** — §9.16 §5 found the re-run blocked operationally, on a stale singleton dashboard BFF serving a pre-D217 `separations` fingerprint that no current worker can claim a run under; restarting it is the whole remedy, and doc **4502** is the subject (active job, past LDW, no pending row — D215's `already-present` arm). §4f3's per-beat interval rides on that same run
+- [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **OPEN on all three commits**; the §4f2 canary is still unnamed. **Doc 4524's recommendation as the Kuali candidate is WITHDRAWN** (§9.16 §3): its action was completed 2026-08-14 and its form no longer renders. Doc **4510** is the best-mapped open document for a Kuali finalization commit, on the STANDALONE `separations-kuali-finalization` graph — the composed `separations` graph refuses it at `no-active-job` before the gate
 - [x] `identity-gate-before-separation-commit` green — every commit is graph-reachable only through the gate node (doc 09 §14.6 guard #2; the structural half of §4d) — and §14.5's digest binding is now proved LIVE (§9.14): the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's
 - [ ] D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved
-- [ ] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above owe a decision each**
+- [ ] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above became D214/D215 and both landed with theirs; the `already-present` receipt arm platform slice 2 named landed at `b73b546`.** What is still owed here is only whatever the blocked re-run finds
 - [x] **§2.6 confirmed and ratified: D194 recorded in doc 01 §2.8, pointer in doc 04 round 48, `STORES.md` §1 updated** (2026-08-12) — every new read task this migration authors is authored under it
 
 ---
 
 ## 7. Open items that are NOT for this questionnaire
 
-- **The controlled-commit target.** A UCPath termination and a Kuali finalization the operator approves. None is invented here; naming one is operator work at doc 07 §3.1 step 5 (the *shape* of that choice is §4f2).
+- **The controlled-commit target.** A UCPath termination and a Kuali finalization the operator approves. None is invented here; naming one is operator work at doc 07 §3.1 step 5 (the *shape* of that choice is §4f2). **Two facts narrow the choice as of 2026-08-14 (§9.16):** doc 4524 is out (its action completed and its form no longer renders), and `clear-pending`'s COMMITTED arm has no live subject at all — deleting `T002209631` removed the only mapped subject holding a pending row.
 - **Two UCPath facts that need one real submit** (doc 09 §13 item 6): whether the confirmation dialog renders the `T…` inline, and the propagation window between submit and searchability. Both are currently **ported legacy knowledge**, not rebuild-verified.
 - **`recoveryAbsence` for the UCPath termination.** Until a propagation window is measured, a post-fence absence is `operator-only`; inventing a `minSinceFenceMs` is the banned unverified constant (D128's standing rule).
 - **The re-run wall's item 2 — a way for an operator to say "read it again" — is BUILT** (2026-08-14,
@@ -3944,3 +3944,220 @@ that is stated here rather than discovered later.
 Everything else chunk 5c and 6b handed forward is unaffected: the controlled real commits, the five
 unasserted wire shapes, the `already-present` arm's live proof, and D207's provisional `stabilized`
 window.
+
+> **CLOSED 2026-08-14 — items 1, 2 and 3 all fell out of ONE document open (§9.16).** The section is
+> `eTURtLdMM` and it reports `edit` at both live steps; the keys are `ER1WhBzjcm` and `oEcp1xtQkj`;
+> and both controls carry `exactly-one-editable` on two OPEN documents. Item 4 is unchanged and
+> correct — the keys are captured and the SHAPES are still unasserted, which is the distinction the
+> item was written to preserve.
+
+---
+
+### 9.16 Chunk 6b (completion) — the live read-only pass, 2026-08-14: what closed, what the canary now is, and the one thing that could not run
+
+Read-only against production, Duo cleared hands-off by Duo Autopilot, in this pass's OWN
+playwright-cli session (`s6b`) on its own profile, which was deleted afterwards. **Nothing was
+submitted, saved or finalized.** `Delete Selected Transactions`, `Save and Submit` and Kuali `Save`
+were never clicked, `submitDocumentV2` was never issued, and the Smart HR wizard's `Continue` was
+never clicked either. Every Kuali finding below came from the same PASSIVE `ActionPage` response
+listener §9.12's instrument established — Kuali issues that query itself on every document route
+open; this pass read the answer and sent nothing extra.
+
+#### The honest status of doc 07 §3.1 step 4 for chunk 6, updated
+
+| Asked for | Status |
+|---|---|
+| §9.15's three passive captures — the owning section, the two `formKey`s, `exactly-one-editable` | **MET, all three** — one document open answered all of them |
+| Doc 4510 re-observed read-only on all four questions | **MET** — four verbatim answers below |
+| The `already-present`-arm receipt case (platform slice 2's named gap) | **MET** — `dry-run-preview-round-trip.test.ts`, commit `b73b546` |
+| The composed dry run to its preview terminal through the REAL pipeline | **NOT RUN** — blocked on a stale singleton BFF this slice was not permitted to restart; the blocker is operational, not a defect, and is stated in full below |
+| `probeToFenceMaxMs` off per-beat spans | **NOT MET, unchanged** — it rides on the preview terminal, which did not run |
+
+#### 1. §9.15's three captures, closed — and the section is `eTURtLdMM`
+
+The two date gadgets and the ten §9.12 mapped are **not** in one section: the dates live in
+`eTURtLdMM` (Kuali's *Employee Information* block, which also owns `Type of Termination`,
+`Location`, `Employee Type` and `Employee Last Name, First Name`), the other ten in `m9LaWN3zL` /
+`cF6IPyCVw` / `a_Alfq9a2` as §9.12 recorded.
+
+| Field | `formKey` | DOM id | Gadget | Section | `Task 1 - Jan` | `Task 1 - Kristina & TES` |
+|---|---|---|---|---|---|---|
+| `Last Day Worked` | **`ER1WhBzjcm`** | `ORt4nOmlp` | `Date` | `eTURtLdMM` | `edit` | `edit` |
+| `Separation Date (Last day actively employed)` | **`oEcp1xtQkj`** | `bKTJvewkM` | `Date` | `eTURtLdMM` | `edit` | `edit` |
+
+**So §4e's section caveat is discharged for all TWELVE fields, not ten. ONE save, ONE reload
+read-back, one fence, one permanent key — unchanged.** Both live steps served the identical
+`sectionSettings` map, exactly as §9.12 found for the other three sections.
+
+**`exactly-one-editable`, on two OPEN documents.** Each control resolved to exactly one node that was
+visible, editable and enabled, holding the document's own date: doc **4510** at `Task 1 - Jan`
+(`06/10/2026` in both) and doc **4495** at `Task 1 - Kristina & TES` (`09/02/2026` in both). Both
+assertions are now in `evidence/ui/kuali/separation-document.live.json` at the date they were
+observed, `externalWriteAttempted` still `false`. Both `// live-verify: next-live-pass` markers are
+discharged, and D208's caveat — *a selector mapped on a read-only record is not a verified selector
+for the editable page* — is answered rather than carried.
+
+**The extraction validated itself, twice.** §9.12's validation was `timekeeperName` coming back
+byte-identical to the 2026-08-04 capture. This one has its own: each date gadget's DOM id in the form
+TEMPLATE (`ORt4nOmlp`, `bKTJvewkM`) is the id the independent editability probe read back off the
+RENDERED control. The two halves of the mapping were observed by different instruments and agree.
+
+**Two corrections to the record.** §9.12 and §9.15 both describe the `sectionSettings` map as
+*twelve entries, two of them `hide`*. The live map has **ten** entries, two of them `hide`
+(`4WIES6A7P`, `VhuKxRTrN`) — the count was wrong, the substance was not. And the epoch reading is
+confirmed on a third document: doc 4495's `09/02/2026` is `1788307200000`, UTC midnight, the same
+rule 4510 and 4524 already showed.
+
+#### 2. Doc 4510 re-observed — the four questions, verbatim
+
+**(a) SS Smart HR search, EID 10001799, operator `=`.** Three transactions, and **`T002209631` is
+gone**:
+
+| Transaction | Name | EID | Action | Status | BU |
+|---|---|---|---|---|---|
+| `T002197996` | Drose Clauckia | 10001799 | **TER** | **Approved** | SDCMP |
+| `T001816218` | Drose Clauckia | 10001799 | *(blank)* | Approved | SDCMP |
+| `T001781115` | Drose Clauckia | 10001799 | HIR | Approved | SDCMP |
+
+The operator's deletion did what it was for: the pending `T002209631` §9.14 recorded no longer
+exists, the already-`Approved` `T002197996` remains, and **no row for this EID is `Pending`**. The
+*Transactions in Progress* grid on the wizard's own page agrees — **zero** rows for 10001799, and
+zero for 10001754 as well.
+
+**(b) Person Org / job summary, EID 10001799.** **ONE** employment row, and it is still `Inactive`:
+
+```
+empl record 0 · eff 07/01/2026 · HR status Inactive · SDCMP · position 40767680
+dept 000412 HOUSING/DINING/HOSPITALITY · job 004921 STDT 2 · expected job end 09/20/2026
+FTE 0.440000 · Student: Casual/Restricted
+```
+
+**(c) Page-B stageability — UCPath WILL stage a termination for this EID.** Fresh wizard, template
+`UC_INVOL_TERM`, transaction date `06/11/2026`, EID typed on Page B and blurred: the name rendered in
+**836 ms** as `Drose Clauckia`, with empl record `0 (STDT 2)` and derived job effective date
+`06/11/2026`. Abandoned by hard `goto` back to the wizard URL — the proven-safe pattern — with
+`Continue` never clicked and nothing saved.
+
+**This is the load-bearing answer, and it disagrees with (b) in exactly the way that matters:** the
+subject being `Inactive` in Person Org does **not** stop UCPath from staging a termination for it.
+The refusal that stops this run is **ours**, not UCPath's — §9.13 decision 3's `no-active-job` at
+`match-active-employment`, which fires before the gate. That is still the right refusal (a grid this
+composition cannot reduce to one active row is a run that cannot compute what it is about to write),
+but the record should not read as though UCPath would have refused too.
+
+**(d) Kuali doc 4510.** Still **open**, `completed: false`, at step `Task 1 - Jan`, action id
+unchanged. **Eleven of the twelve staged fields hold values**; only `timekeeperComments`
+(`J_upFRq074`) is absent from the document model entirely:
+
+| Field | Live model value |
+|---|---|
+| `department` | `{"id":"GfKti1EX5VL","label":"000412 - Housing/Dining/Hospitality"}` |
+| `payrollTitleCode` / `payrollTitle` | `"004921"` / `"STDT 2"` |
+| `requestAcknowledged` | `[{"id":"5ZaHvv-OLS","label":"Request Acknowledged - In Progress"}]` |
+| `timekeeperName` | `"Julian Zaw"` |
+| `lastDayWorked` / `separationDate` | `1781049600000` / `1781049600000` — both `06/10/2026` |
+| `terminationEffectiveDate` | `1781136000000` — `06/11/2026` |
+| `submittedTerminationTemplate` | `[{"id":"y_VXzkty8","label":"Submitted Termination Template"}]` |
+| `transactionNumber` | **`"T002209631"`** |
+| `finalPay` | `{"id":"s9ziHeMcl","label":"Does not need Final Pay (student employee)"}` |
+| `timekeeperComments` | **absent from the model** |
+
+`Type of Termination` reads `Graduated/No longer a Student` (the same value doc 4524 carried, which
+§9.14 mapped to `involuntary` / `UC_INVOL_TERM` / `No Longer Student`).
+
+**One consequence worth naming.** Doc 4510's `transactionNumber` still holds `T002209631` — a UCPath
+transaction that **no longer exists**. Nothing reads it back today (§4e's fold writes the field from
+the run's own filed transaction, never from the document), so it is not a defect; it is a stale value
+a finalization would overwrite, and it is exactly the shape §4e's unconditional staging was chosen to
+handle.
+
+#### 3. The live document inventory moved, and the recorded Kuali canary is gone
+
+**Doc 4524's action was COMPLETED at `2026-08-14T15:45:02.458Z`** — after §9.14's run 6 read it at
+15:08 and before this pass opened it at 17:10. `ActionPage` now answers `document: null` for it and
+the form no longer renders (both date controls resolve to **zero** nodes), so:
+
+- **doc 4524 can no longer be read by `kuali/read-separation-document`**, and therefore cannot be the
+  subject of a composed run; and
+- **doc 4524 is no longer the natural Kuali controlled-commit candidate** it has been named as since
+  §9.12. That recommendation is withdrawn on the facts, not on a judgement.
+
+| Doc | Action id | Step | State today |
+|---|---|---|---|
+| 4502 | `6a766ae6f0549046f7f0dc06` | `Task 1 - Jan` | **open** · Cramia, Dreitho · `Appointment Expired` · LDW/sep `1774915200000` = `03/31/2026` · `terminationEffectiveDate`, `transactionNumber`, `timekeeperName`, `department` all null |
+| 4510 | `6a7a33b2ac106d428b3217e0` | `Task 1 - Jan` | **open** · Clauckia, Drose · eleven of twelve populated |
+| 4495 | `6a73abda824c9a5388e0ceaa` | `Task 1 - Kristina & TES` | **open** · LDW/sep `09/02/2026`, still in the future, so S7 still refuses at `plan` |
+| 4524 | `6a7e45bcbac487bbc6a2ceae` | `Task 1 - Kristina & TES` | **COMPLETED 2026-08-14** · form gone |
+
+Doc **4502** is the only currently-open document whose subject the composed graph can carry to its
+gate: an active job, a past last-day-worked, and no pending transaction — which under D215 is exactly
+the subject whose `clear-pending` preview settles `already-present` at beat ①.
+
+#### 4. What the controlled-commit session may legally do on doc 4510 — per the composition's own rules
+
+- **The composed `separations` workflow cannot reach any of its three writes on 4510.**
+  `match-active-employment` refuses `no-active-job` before the gate, because Person Org returns one
+  employment row and it is `Inactive` (§9.13 decision 3). Nothing about the operator's deletion
+  changed that, and the deletion was never going to: it cleared a UCPath transaction, not an
+  employment status.
+- **`clear-pending`'s COMMITTED arm now has no live subject at all.** 10001799 was the only mapped
+  subject holding a pending row; deleting it removed the one case where the sweep would have anything
+  to delete. Its `already-present` / nothing-to-sweep arm is now the arm every mapped subject takes.
+- **The standalone `separations-kuali-finalization` descriptor is a different graph and 4510 is a
+  legal target for it.** It has no `match-active-employment` node — `job-summary` and `name-search`
+  feed the identity packet only, and `transactionNumber` is INGRESS — so the `no-active-job` refusal
+  does not exist on that graph. Its ALWAYS-GATE still dominates the write. That is the honest reading
+  of where a Kuali controlled commit can run today, and doc **4510** is the best-mapped open document
+  for it: its section settings, both date `formKey`s and all twelve controls' editability were read
+  on it this morning.
+- **A UCPath termination controlled commit still has no named target.** §4f2's canary remains
+  unnamed, and none is invented here.
+
+#### 5. The one deliverable that could not run, and exactly why
+
+The composed dry run to its preview terminal was **NOT RUN**. It was not blocked by anything in the
+composition, by write safety, or by D214/D215 — those landed and the platform lane proves both arms.
+It was blocked operationally:
+
+- the run must be planned and started through the REAL `/api/v1/start-plans` and `/api/v1/commands`,
+  which live only in the dashboard BFF;
+- the BFF is a **singleton** by construction — port `3938` is pinned by `config/runtime-isolation.json`
+  and D181's `server`-role process lock admits one holder;
+- the BFF holding it (pid `5670`) booted at `2026-08-14T15:36:12Z`, before D216, D217 and 6a's own
+  registration edits, and **serves `separations` with `contractFingerprint` `4c780f84…` while the
+  working tree's is `9790eaf8…`**;
+- `run-executor.ts`'s entry check refuses a run whose `envelope.contractFingerprint` is not the
+  descriptor's, and the envelope is stamped from the PLAN — so every run that BFF can plan is
+  structurally unclaimable by a worker built from the current tree.
+
+**The remedy is the whole fix: restart the BFF, then re-run the pass on doc 4502.** This slice did not
+stop a process it did not start, which is a standing rule of its dispatch and also the more
+conservative reading of D181 — a lock exists to make a stale holder explicit, not to license a
+different session to end it. The identical situation was met and recorded once before (§9.9's
+operational note), and it is recorded again here rather than worked around.
+
+#### 6. The one test gap platform slice 2 named, closed
+
+`buildRunEvidenceReceipt`'s `DRY_RUN_PREVIEW` summary BRANCHES on the preview outcome — a
+`would-prepare` preview quotes its staged page and subject verdict, an `already-present` one has
+neither and must name its probe — and only the first branch had ever been executed. The
+`already-present` arm now has its own case over the REAL kuali sequencer, asserting the warning names
+the probe, does **not** claim a subject, leaves the verdict unchanged (`unknown` / `partial` / no
+output), and writes neither the observed-present intent nor the checkpoint a real already-present
+settlement would (commit `b73b546`).
+
+#### What is honestly NOT RUN
+
+- **The composed dry run's preview terminal, the `transaction.previewed` span, the preview-bound
+  terminal record and the receipt's live `DRY_RUN_PREVIEW` warning** — §5 above. One BFF restart away.
+- **`probeToFenceMaxMs` off per-beat spans** — unchanged from §9.12 item 6 and §4f3; it rides on the
+  preview terminal.
+- **Every real write, of every kind**, and all three controlled commits.
+- **The two dates' WIRE shapes.** Their keys are captured; a `Date` gadget's model value is epoch
+  milliseconds and the staged value is `MM/DD/YYYY`, so both stay in the recorded-not-asserted set
+  until the controlled commit observes the real payload.
+- **D207's provisional `stabilized` window**, the five other unasserted wire shapes, and the
+  `already-present` arm's LIVE proof — unchanged, all reachable only from a real finalization.
+- **A blank-EID document**, unchanged from §9.14.
+- **The parity lane**, deliberately: another session held uncommitted dashboard edits in this shared
+  working tree throughout, and the lane rebuilds the bundle from the tree.

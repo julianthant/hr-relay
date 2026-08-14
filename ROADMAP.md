@@ -5,7 +5,7 @@
 > changelog is `docs/rebuild/04-reconciliation.md`. If this file ever disagrees with those, **they
 > win**. Sessions: regenerate the status sections of this file at every slice boundary.
 >
-> **Last updated:** 2026-08-14 · Phase 2 closed · decisions through **D213** · schema **v13**
+> **Last updated:** 2026-08-14 · Phase 2 closed · decisions through **D217** · schema **v14**
 
 ---
 
@@ -164,6 +164,36 @@ finalization to approve), owed later in the build, not now.
 
 ### Decided
 
+- **Separations 6b completion — §4e's last three unknowns closed, doc 4510 re-observed, and the
+  canary you were pointed at is GONE** — 2026-08-14 (`docs/migrations/separations.md` §9.16). A
+  read-only pass, nothing submitted or saved anywhere. Five things worth your attention.
+  **(1) The two Kuali date write-backs are fully mapped now.** One passive read of Kuali's own
+  `ActionPage` query — the one the app issues itself when a document opens — answered all three
+  things §9.15 said the next pass owed: the section that owns `Last Day Worked` and `Separation
+  Date` is `eTURtLdMM` and it reports `edit` at BOTH live workflow steps, so **one save still
+  carries all twelve fields**; both `formKey`s are captured; and both controls are live-verified as
+  exactly one EDITABLE node on two open documents. §4e's section caveat is now discharged for twelve
+  fields rather than ten.
+  **(2) Doc 4524 is no longer available.** Its Kuali action was **completed at 15:45 today** — after
+  yesterday's live run read it — and Kuali now serves no form for it at all. So the Kuali
+  controlled-commit candidate this program has recorded since chunk 5c is withdrawn on the facts.
+  Doc **4510** is the best-mapped open document for a Kuali finalization commit today.
+  **(3) Your deletion worked, and it moved a target.** `T002209631` is gone from UCPath for EID
+  10001799 — three transactions remain and all three are `Approved`, and the in-progress grid holds
+  no row. That clears the canary path as intended. It also means the pending-sweep's *committed* arm
+  now has **no live subject at all**: 10001799 was the only mapped subject that had anything to
+  sweep.
+  **(4) The composed workflow still refuses doc 4510 — and the refusal is OURS, not UCPath's.**
+  Person Org shows one employment row and it is `Inactive`, so `match-active-employment` refuses
+  before the gate. But UCPath itself would happily stage a termination for that EID: typed on the
+  wizard's Page B it resolved the name in **836 ms**. The standalone Kuali-finalization graph has no
+  such refusal, which is why 4510 is legal for *that* commit.
+  **(5) One deliverable did not run, and it is operational, not a defect.** The composed dry run to
+  its preview terminal needs the dashboard to plan and start it, the dashboard is a singleton by
+  design, and the one running has been up since before this morning's changes — so it hands out runs
+  no current worker will accept. **Restarting it is the entire remedy**, and doc 4502 is the subject
+  when it happens.
+
 - **Separations chunk 6b ran the composition LIVE — the whole read chain, a real gate approval, and
   zero writes — and it is blocked one node short of the preview by two PLATFORM items** —
   **D212/D213**, 2026-08-14 (`docs/migrations/separations.md` §9.14). Six runs over four real Kuali
@@ -193,7 +223,8 @@ finalization to approve), owed later in the build, not now.
   composed workflow cannot pass its own gate on the normal path. Both are platform decisions with the
   mechanism written down, and both need an owner.
   **(5) Your controlled commits are untouched.** All three stay OPEN on the §4f2 canary you have not
-  named. Doc **4524** is now both the recorded Kuali candidate and the best-mapped subject.
+  named. _(Both platform items in (4) were fixed the same day — **D215** and **D214**. The doc-4524
+  recommendation here is superseded: see the 6b-completion entry above.)_
 
 - **Separations chunk 6a landed — THE COMPOSITION, built and test-proven, nothing live yet** —
   **D211**, 2026-08-14 (`docs/migrations/separations.md` §9.13, doc 09 §14.10). One Kuali document
