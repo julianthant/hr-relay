@@ -30,7 +30,7 @@
     - group "Search the UI catalog":
       - searchbox "Search the UI catalog by id, label, system or search term": kuali
       - button "Clear search"
-      - text: 25 of 89 entries
+      - text: 25 of 112 entries
     - region "kuali":
       - text: kuali · 25 entries
       - list:
