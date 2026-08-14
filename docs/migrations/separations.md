@@ -3648,8 +3648,13 @@ and it is the surface an operator uses — but both are false statements on a tr
 - While run `00419600` sat `parked-gate` with `identity-gate` serving the whole packet, run-detail's
   generic `gate` section answered `{state: "absent", reason: "this run declares no operator gate"}`.
   The panel's `status` read `awaiting-approval` off the authority lifecycle, so the two halves of one
-  response disagreed. The queue projection's `openGates` fold is where this lives; it is observed and
-  not yet explained.
+  response disagreed. **Explained, and not by this workflow:** `docs/findings/dashboard-projection.md`
+  (diagnosed the same day, in parallel) shows the BFF's queue projection folds only spans emitted by
+  its OWN process, so `gate.opened` — emitted by the WORKER — is never seen, while `gate.resolved`
+  from its own command endpoint is. `openGates` therefore stays empty for every run enqueued after the
+  dashboard booted. This pass's runs are that finding's decisive evidence, and the composed descriptor
+  is not implicated. It is also why the timelines quoted above are trustworthy: doc 4502's spans were
+  on disk before the BFF booted.
 - After resolution the same section answered `gate identity-approval resolved with key resolved,
   which is not an approve/reject verdict`. That one IS explained, and it is structural: the command
   service emits `resolutionKey: "resolved"` for EVERY gate ("until gate descriptors declare display
