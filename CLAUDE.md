@@ -310,6 +310,32 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-14: every component of an ITEM-scoped key must itself be item-scoped, and the counter you
+  need is usually the one the code already reads that way (D221).** D214 taught the checkpoint key the
+  claim generation and closed the collision one ATTEMPT could hold; the same collision one level up —
+  across RUNS of one item — stayed open, because `run`/`retry` minted a new run for the same logical
+  item at **attempt 1**, so the retry's `always-rerun` node re-executed under the retried run's own
+  key and the immutable insert refused it by name. **A separations run that failed at or after
+  `timecard-search` could not be retried at all**, and the only way forward was the re-read
+  affordance, which mints a different logical item — a different operator intent wearing a retry's
+  clothes. Nothing had to be invented: `(workflow, item_id)` is the logical item the table is keyed
+  by, doc 02 §5.6 #1 has said *"retry = new attempt"* since Phase 1e, the DDL annotates `run_id` as
+  audit, and doc 09 §5's write sequencer already reads `envelope.attempt > 1` as *"this item has been
+  attempted before, so probe before you fence"* — a sentence that is only TRUE of an item-scoped
+  counter, so a retry was presenting itself to the sequencer as a first attempt at the item (the
+  `durable !== undefined` arm is what kept that safe, not the attempt). So the enqueue takes the item's next unspent attempt from
+  authority inside its own transaction, a requeue advances the same counter instead of its own `+ 1`
+  (a sibling run may hold that), and `runs.enqueue` REFUSES an attempt the item has already spent —
+  loud at the insert rather than a checkpoint collision three nodes later. Two things generalize.
+  **A rejected alternative is rejected for its REASONS, not its name**: D214 refused "advance the
+  attempt" because a gate resume would rewrite an in-flight envelope and re-label a park as a retry,
+  and neither reason survives when a fresh envelope is minted for something that IS a retry — read
+  the reasons, then check whether they reach you. And **the tempting fix was the expensive one**:
+  folding the `runId` into the key would have changed every stored `record_key` (no read-forward
+  shape available, since every historical row HAS a run id), turned `latest`'s ordering into a tie
+  broken by insertion order, and — if scoped further — silently disabled the cross-run replay that is
+  the entire reason checkpoints are item-scoped. Fixing the field's MEANING instead moved nothing on
+  disk: no migration, no schema version, every key byte-identical.
 - **2026-08-14: an in-process hook feeding a projection is a single-process assumption wearing a
   cross-process contract — and the surfaces BESIDE the broken one are what hid it (D218).** The
   BFF's run/queue projection ingested spans two ways: a one-shot boot replay and a post-append

@@ -1708,7 +1708,7 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 - [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **OPEN on all three commits**; the §4f2 canary is still unnamed. **Doc 4524's recommendation as the Kuali candidate is WITHDRAWN** (§9.16 §3): its action was completed 2026-08-14 and its form no longer renders. Doc **4510** is the best-mapped open document for a Kuali finalization commit, on the STANDALONE `separations-kuali-finalization` graph — the composed `separations` graph refuses it before the gate, **live-proved 2026-08-14 (§9.17 item 2)**: run `ee9824f7`, not dry, refused `NO_ACTIVE_EMPLOYMENT` at `employment` in 17.6 s with no gate opened and zero writes, because UCPath still shows one `Inactive` employment for EID 10001799
 - [x] `identity-gate-before-separation-commit` green — every commit is graph-reachable only through the gate node (doc 09 §14.6 guard #2; the structural half of §4d) — and §14.5's digest binding is now proved LIVE (§9.14): the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's
 - [x] D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved — **MET 2026-08-14 (§9.17 item 6)**: three entries touched (`legacy-workflow-separations`, `legacy-tool-debug-kronos`, `legacy-tool-ops-sanity-check-record`), all correctly `open` at the runtime's own milestone, nothing stale under D188's arm, no legacy path deleted. One finding for the operator: **D192's deferral condition on `legacy-tool-ops-sanity-check-record` is now materially satisfied** — the §14.2 packet's `comparisons` array is exactly the prose-observations-beside-the-gate shape D192 asked for — and it is flagged rather than re-dispositioned, because closing an inventory entry is an operator decision
-- [ ] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above became D214/D215 and both landed with theirs; the `already-present` receipt arm platform slice 2 named landed at `b73b546`.** **PARTLY MET after §9.17**: the re-run's own defect — D215's `not-observed` subject verdict missing from the span WIRE leaf, which killed the worker on the first preview that ever settled — landed with its regression case at `e1ba81b`. **Two findings are NOT pinned and are named instead**: the retry checkpoint re-collision (§9.17 item 8, handed to doc 02 §5.7's owner — a `run`/`retry` mints a new run at attempt 1 / generation 1, so an `always-rerun` node re-collides with the original run's key and **a separations run that fails at or after `timecard-search` cannot be retried at all**), and the browser-profile wedge (§9.17 item 5 — three consecutive 60 s `sessionAcquireMs` failures on one worker profile while a fresh profile logged in in 17.9 s; recorded as a shape, not diagnosed to root cause)
+- [ ] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above became D214/D215 and both landed with theirs; the `already-present` receipt arm platform slice 2 named landed at `b73b546`.** **PARTLY MET after §9.17**: the re-run's own defect — D215's `not-observed` subject verdict missing from the span WIRE leaf, which killed the worker on the first preview that ever settled — landed with its regression case at `e1ba81b`. **Of the two findings the pass named rather than pinned, one is now closed**: the retry checkpoint re-collision (§9.17 item 8) landed as **D221** with `tests/unit/retry-item-attempt.test.ts` — the attempt in an item-scoped checkpoint key is the ITEM's attempt, so a retry takes the item's next one and its `always-rerun` executions can no longer land on the retried run's key. **Still open**: the browser-profile wedge (§9.17 item 5 — three consecutive 60 s `sessionAcquireMs` failures on one worker profile while a fresh profile logged in in 17.9 s; recorded as a shape, not diagnosed to root cause)
 - [x] **§2.6 confirmed and ratified: D194 recorded in doc 01 §2.8, pointer in doc 04 round 48, `STORES.md` §1 updated** (2026-08-12) — every new read task this migration authors is authored under it
 
 ---
@@ -4428,6 +4428,19 @@ about.
 
 #### 8. The platform defect this pass found and did NOT fix: a RETRY re-collides on the same node
 
+> **FIXED as D221 (2026-08-14), by doc 02 §5.7's owner.** The answer is none of the three candidates
+> below and needed no new component: **the checkpoint key is ITEM-scoped, so the `attempt` in it is
+> the ITEM's attempt, not the run's** — which is what §5.6 #1 has always said a retry is (*"failure
+> at node k ⇒ retry = new attempt"*), what the DDL's own `run_id … (audit)` annotation implies, and
+> what doc 09 §5's write sequencer already assumes when it reads `envelope.attempt > 1` as "this item
+> has been attempted before, so probe before you fence". Every enqueue now takes the item's next
+> unspent attempt from authority inside its own transaction, a requeue advances the same counter, and
+> `runs.enqueue` refuses an attempt the item already spent. Nothing stored moved — the key shape is
+> unchanged, so there is no migration and no schema version — and cross-run replay, which is what
+> made the retry cheap in the first place, is untouched. The walk is
+> `tests/unit/retry-item-attempt.test.ts`, which reproduces the verbatim message below when the fix is
+> reverted; the composition's half rides in `separations/re-read-is-a-new-item`.
+
 D214 keys a checkpoint by `(workflow, itemId, nodeId, attempt, claimGeneration)` and that closed the
 gate-park/resume collision. A **retry** re-opens it from the other side. `run` / `retry` mints a NEW
 run for the SAME logical item, born at attempt 1 and claim generation 1 — so an `always-rerun` node
@@ -4474,4 +4487,7 @@ D115 provenance that belong to the doc that owns them.
   reachable only from a real finalization.
 - **A blank-EID document**, unchanged from §9.14.
 - **The parity lane**, unchanged from §9.16: no dashboard bytes moved in this pass.
-- **The retry path**, item 8 — known-broken for this graph and not exercised further.
+- **The retry path**, item 8 — known-broken for this graph during the pass and not exercised further
+  in it. **FIXED afterwards as D221** and pinned by a fixture walk over the real interpreter and the
+  real retry command; it has still never been exercised LIVE on this graph, which is the honest
+  remaining statement.
