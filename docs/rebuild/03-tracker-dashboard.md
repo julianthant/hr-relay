@@ -363,6 +363,52 @@ said what the row should say.
   this doc's sparse count arrays — and the absent `reason` keeps three states apart that a silent
   zero would collapse: not settled, no receipt derived, receipt with no warning.
 
+### The per-row action descriptors (2026-08-14)
+
+The fifth row fact with a consumer and no producer, and the only one where BOTH halves were
+missing: `QueueBaseFields` carried no `actions` field and no projector built one, so
+`FooterActions`, `RowContextMenu` and the confirm-first dialog were handed an empty list and every
+queue row drew no command controls in any state. Nothing here is a new decision either — §2.4 owns
+the command protocol and doc 13 §3.2 already lists *server-authored action descriptors with
+placement and version/audit tokens* in the approved queue contract; doc 13 §8.5 is the rule the gap
+violated (*interactive run controls require an `ActionDescriptorWire`; status-key-to-command
+branches fail*).
+
+`QueueBaseFields.actions: ActionDescriptorWire[]` is now served on every row, built by
+`src/server/dashboard/projectors/queue-row-actions.ts` from the descriptor's declared
+`WorkflowActionPolicy` **intersected with the kernel's own preconditions**, and every descriptor's
+`expectedVersion` is bound to the row's `rowRevision` by a schema refinement. The served set:
+
+| Queue status | Served keys | Command | Footer |
+|---|---|---|---|
+| `queued` | `bump`, `cancel`, `hide` | `bump` / `cancel` / `hide` | `bump`, `cancel` |
+| `running`, `blocked`, `awaiting-approval` | `cancel`, `hide` | `cancel` / `hide` | `cancel` |
+| `done`, `failed`, `cancelled`, `partial` | `retry`, `hide` | `retry` / `hide` | both |
+
+Plus two row-shape refinements: a delegated child drops `retry` (`executeRetry` refuses one by
+name), and an operation row's cancel is keyed `cancel-tree` so the footer titles it with its blast
+radius and its confirm body counts the members. Everything served is also at the `menu` placement,
+which is what makes the right-click the row's FULL set and the footer a frequent subset of the same
+list rather than a second vocabulary. A run whose workflow has no registered descriptor in this
+build serves an EMPTY list — the policy is the workflow's own statement of what it offers, and a
+build that cannot read it must not guess a default set onto a run it cannot describe.
+
+**Three kernel-accepted verbs are deliberately not served from a row**, each with an owner rather
+than an omission. `unhide` — a hidden run is excluded from the queue projection, so no row exists
+to hang it off; the trigger that ends this is a surface that lists hidden runs. `rename` — the
+display-name edit is an inline field on the row, which is the disposition the wire-connectivity
+guard's `KERNEL_ONLY_COMMANDS` already records. `resolve-gate` / `resolve-write-present` /
+`resolve-write-absent` — each is answered from its own run-detail SECTION, which carries the packet
+or the evidence note its payload requires; a row control could not compose either, and offering one
+irreversible answer by two roads is what `command-dispatch.ts` already refuses by name.
+
+**What a descriptor is NOT is a second authority.** The admission checks are the STABLE facts about
+a row (its lifecycle class, its lineage, what its descriptor enables), never the racy ones —
+`executeRetry`'s `reject-active` check is deliberately left to the kernel's transaction, so a run
+that goes active between the projection and the click is refused there, with the server's own
+sentence, rather than pre-filtered into invisibility. That is D179's *Apply stays clickable* rule at
+row scale.
+
 **One conflict this work surfaced and did not resolve.** D12's queue-row half is now fully served
 and is still not DRAWN. `StatusPill` (`src/dashboard/ds/primitives-status.tsx`) suppresses the age
 for the `waiting` status on a recorded operator direction — *"Was `Waiting on you · age` in solid
