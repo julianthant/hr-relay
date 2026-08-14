@@ -2371,23 +2371,41 @@ and everything after it is not.
 
 Entry: `.../c/ADMINISTER_WORKFORCE_(GBL).HR_TBH_JOB.GBL`.
 
-| Page | Fact | Anchor |
-|---|---|---|
-| A | Template | `#HR_TBH_WRK_TBH_TMPL_ID` (+ `$prompt` lookup modal `#ptModFrame_0`, close `#ICCancel` **inside the frame**) |
-| A | Transaction date | `#UC_HR_TBH_WRK_TRANSACTION_DATE` (MM/DD/YYYY) |
-| A | Create Transaction | `#HR_TBH_WRK_TBH_ADD` (~7–8 s render) |
-| B | Empl ID | `#HR_TBH_WRK_EMPLID_PROMPT2` — **blur/Tab triggers the name + record lookup, ~4–6 s** |
-| B | Empl record | `#HR_TBH_WRK_EMPL_RCD_CHAR` |
-| B | Effective date | `#HR_TBH_WRK_JOB_EFFDT` |
-| B | Action reason | `#HR_TBH_WRK_ACTION_REASON` |
-| B | Continue | `#HR_TBH_WRK_TBH_NEXT` · Cancel `#HR_TBH_WRK_TBH_CANCEL` |
-| B | **Displayed person name** | `#PERSON_NAME_NAME_DISPLAY` — **the beat-③ subject anchor** |
-| C | **Save and Submit** | `#HR_TBH_WRK_TBH_SAVE` — the ONE control that commits |
-| C | Save for Later | `#HR_TBH_WRK_TBH_LATER` |
-| C | Override LDW checkbox / date | `#HR_TBH_SCR_WRK_TBH_CHK2$3` / `#HR_TBH_SCR_WRK_TBH_DATE$3` |
-| C | Initiator comments | `#HR_TBH_WRK_DESCRLONG_NOTES` |
-| C | Transaction comments | `#UC_SS_TRANSACT_COMMENTS` |
-| C | Transaction-id display | `#UC_SS_TRANSACT_UC_TRANSACT_ID` (`"NEW"` pre-save) |
+**How to read the `Bound` column.** `registry` means the anchor is a published
+`ucpath` UI-registry element with a ported legacy port-map row and dual
+evidence. `driver` means it is declared in
+`src/stores/ucpath/driver/smart-hr-operation.ts`'s `DRIVER_ANCHOR` table with a
+stated reason — legacy has no selector key for it, and
+`ElementDefinitionSchema` requires a ported legacy provenance, so publishing a
+registry row for it would be a fabricated one. **`captured` means nothing in
+`src/` or `config/` binds it**: it was observed live and written down, and the
+operations this migration performs never touch that affordance. A `captured`
+row is a fact about the page, not a claim about the code — recording it that
+way is what keeps this appendix and the registry from silently disagreeing. The
+trigger that would move one to `driver`/`registry` is a contract that needs the
+affordance: a template LOOKUP (rather than a typed template id) for the two
+modal rows, and an abandon/park path that leaves the wizard cleanly for
+`Cancel` / `Save for Later`.
+
+| Page | Fact | Anchor | Bound |
+|---|---|---|---|
+| A | Template | `#HR_TBH_WRK_TBH_TMPL_ID` | `registry` |
+| A | Template `$prompt` lookup modal | `#ptModFrame_0`, close `#ICCancel` **inside the frame** | `captured` |
+| A | Transaction date | `#UC_HR_TBH_WRK_TRANSACTION_DATE` (MM/DD/YYYY) | `registry` |
+| A | Create Transaction | `#HR_TBH_WRK_TBH_ADD` (~7–8 s render) | `registry` |
+| B | Empl ID | `#HR_TBH_WRK_EMPLID_PROMPT2` — **blur/Tab triggers the name + record lookup, ~4–6 s** | `registry` |
+| B | Empl record | `#HR_TBH_WRK_EMPL_RCD_CHAR` | `driver` |
+| B | Effective date | `#HR_TBH_WRK_JOB_EFFDT` — **display-only**, read and checked | `driver` |
+| B | Action reason | `#HR_TBH_WRK_ACTION_REASON` | `registry` |
+| B | Continue | `#HR_TBH_WRK_TBH_NEXT` | `registry` |
+| B | Cancel | `#HR_TBH_WRK_TBH_CANCEL` | `captured` |
+| B | **Displayed person name** | `#PERSON_NAME_NAME_DISPLAY` — **the beat-③ subject anchor** | `driver` |
+| C | **Save and Submit** | `#HR_TBH_WRK_TBH_SAVE` — the ONE control that commits | `registry` |
+| C | Save for Later | `#HR_TBH_WRK_TBH_LATER` | `captured` |
+| C | Override LDW checkbox / date | `#HR_TBH_SCR_WRK_TBH_CHK2$3` / `#HR_TBH_SCR_WRK_TBH_DATE$3` | `registry` |
+| C | Initiator comments | `#HR_TBH_WRK_DESCRLONG_NOTES` | `registry` |
+| C | Transaction comments | `#UC_SS_TRANSACT_COMMENTS` | `registry` |
+| C | Transaction-id display | `#UC_SS_TRANSACT_UC_TRANSACT_ID` (`"NEW"` pre-save) | `driver` |
 
 **Why the subject binding is on Page B, not Page C.** Page C's identity block is a set of unstyled
 `<span>`s inside `#myDIV` with **no stable ids** — there is nothing there a locator can bind that is
@@ -2406,18 +2424,18 @@ all** and returned **0 rows** for a subject with two known real transactions, so
 would have reported "no duplicate" about a person who has one — S46's silent-risk shape, manufactured
 by choosing the wrong page.
 
-| Fact | Anchor |
-|---|---|
-| Empl ID filter | `#UC_SS_TBH_DVW_EMPLID` |
-| Filter operator | `#UC_SS_TBH_DVW_EMPLID$op` (`2` = `=`) |
-| Search | `#PTS_CFG_CL_WRK_PTS_SRCH_BTN` |
-| Result rows | keyed by `T\d{6,}` |
-| Detail page | `?Action=U&UC_TRANSACT_ID=T…` |
-| Detail: transaction id | `#UC_SS_TRANSACT_UC_TRANSACT_ID` |
-| Detail: approval status | `#UC_SS_TRANSACT_APPR_STATUS` |
-| Detail: start date | `#UC_SS_TBH_VW_START_DT$0` |
-| Detail: action | `#UC_SS_TBH_VW_ACTION$0` |
-| Detail: name | `#NAME$0` |
+| Fact | Anchor | Bound |
+|---|---|---|
+| Empl ID filter | `#UC_SS_TBH_DVW_EMPLID` | `registry` |
+| Filter operator | `#UC_SS_TBH_DVW_EMPLID$op` (`2` = `=`) | `driver` |
+| Search | `#PTS_CFG_CL_WRK_PTS_SRCH_BTN` | `registry` |
+| Result rows | keyed by `T\d{6,}`; row wait on `tr[id^=trPTS_CFG_CL_STD_RSL]` | `driver` |
+| Detail page | `?Action=U&UC_TRANSACT_ID=T…` | — |
+| Detail: transaction id | `#UC_SS_TRANSACT_UC_TRANSACT_ID` | `registry` |
+| Detail: approval status | `#UC_SS_TRANSACT_APPR_STATUS` | `registry` |
+| Detail: start date | `#UC_SS_TBH_VW_START_DT$0` | `driver` |
+| Detail: action | `#UC_SS_TBH_VW_ACTION$0` | `driver` |
+| Detail: name | `#NAME$0` | `driver` |
 
 #### Reason codes captured live, both templates, whole (§3.2)
 

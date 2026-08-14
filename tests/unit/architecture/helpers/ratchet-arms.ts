@@ -57,6 +57,29 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
       expected: /waitForTimeout/,
     },
   },
+  /*
+   * SCOPE DECISION (2026-08-14, doc 10 §"the driver half of inline-selectors"):
+   * this arm stays scoped to `/tasks/` and is NOT widened to a store's `driver`
+   * directory. Doc 10's fate table wants "driver selector literals must belong
+   * to the canonical UI registry entry they implement", and the survey that
+   * question demands answers it in the other direction: a driver's registry
+   * INTERPRETER is built out of `page.locator(recipe.selector)` —
+   * `crm/driver/interpreter.ts`, `kuali/driver/interpreter.ts`,
+   * `new-kronos/driver/interpreter.ts` and `ucpath/driver/registry-locators.ts`
+   * all resolve recipes exactly that way — so a widened arm would fire on the
+   * mechanism it exists to enforce, plus every legitimate structural bind
+   * (`:scope > td`, `row.locator("tr")`, `page.locator("body")`).
+   *
+   * The invariant it would have carried is not abandoned, it is relocated: a
+   * store driver binds through the registry wherever a registry element covers
+   * the anchor, and every remaining anchor is declared ONCE in a named table
+   * with the reason it cannot be a registry element (the ucpath termination
+   * family's `DRIVER_ANCHOR` is the worked example — legacy has no key for
+   * those controls, and `ElementDefinitionSchema` requires a ported legacy
+   * provenance). What went wrong before was not the missing ratchet, it was a
+   * module header CLAIMING registry purity while binding eight anchors inline;
+   * a table cannot make that claim without also showing the exceptions.
+   */
   "inline-selectors-workflows": {
     roots: ["src/stores"],
     select: (path) => path.includes("/tasks/"),

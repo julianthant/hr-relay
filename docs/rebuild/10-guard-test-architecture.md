@@ -414,7 +414,36 @@ therefore rebuild-repo-relative, and the old absent-tree activation semantics re
 | `instance-labels-coverage` + `INSTANCE_LABELS` | **STAYS IN THE LEGACY REPO; rebuild uses descriptor** | Guard/list remain in the legacy repo; rebuild label = `descriptor.sessionLabel ?? label`. |
 | `queue-row-kind-coverage` + `SUBJECT_TO_KIND` | **STAYS IN THE LEGACY REPO; rebuild uses descriptor** | Guard/list remain in the legacy repo; rebuild kind derives from `descriptor.inputSubject`. |
 | `gate-coverage` (meta) | **PORT + RE-DERIVE (was KEEP + EXTEND)** | becomes the rebuild repo's guard-of-guards manifest (§5) over its plain script family: also asserts `test:architecture` still globs the rebuild `src/`, each activated arm resolves ≥1 file, ESLint's command *and actual config* cover `src/` and `tests/`, and every named guard file exists + is registered. |
+| `inline-selectors-workflows` — the DRIVER half | **SCOPE DECISION, 2026-08-14** | see the note below the table: the arm stays `/tasks/`-scoped, and the driver-side invariant is relocated to a declared anchor table rather than widened into a ratchet that would fire on the registry interpreters. |
 | — | **NEW** | `descriptor-coverage`, `strict-boundary-schemas`, `semantic-ui-registry`, `task-driver-boundary`, `subject-before-fence`, `scenario-coverage`, `control-command-single-path`, `authority-target-no-fallback`, `delegation-manifest`, `storage-recovery`, `notification-durability`, `evidence-receipt`, `knowledge-fix-integrity`, `workflow-editor-compile-integrity`, `legacy-capability-disposition`, `capture-durability-and-scope`, `ai-advisory-no-authority`, `preflight-coverage`, `dry-run-composition-submit-free`, `transaction-pairing`, `write-safety-contract`, `commit-routes-through-mutation`, `no-positional-identity`, atomic-outbox/ledger guards, `clock-single-source`. |
+
+#### The driver half of `inline-selectors` — a scope decision, not an oversight
+
+**Decided 2026-08-14.** The row above wants "driver selector literals must belong to the canonical UI
+registry entry they implement", and the obvious way to get it is to widen the arm's `select` from
+`/tasks/` to a store's `driver` directory. **The survey that question demands says no.** A driver's
+registry INTERPRETER is built out of `page.locator(recipe.selector)` — that is how a recipe becomes a
+locator, and `crm/driver/interpreter.ts`, `kuali/driver/interpreter.ts`,
+`new-kronos/driver/interpreter.ts` and `ucpath/driver/registry-locators.ts` all do exactly it — so a
+widened arm would fire on the mechanism it exists to enforce, alongside every legitimate structural
+bind (`:scope > td`, `row.locator("tr")`, `page.locator("body")`). Widening it and then allowlisting
+those files back is strictly worse than not widening it: the allowlist would be the real rule, and it
+would be a per-file count nobody reads.
+
+**Where the invariant went instead.** A store driver resolves through the registry wherever a
+registry element covers the anchor, and every remaining anchor is declared **once**, in a named
+table, with the reason it cannot be a registry element. That reason is structural rather than
+discretionary: `ElementDefinitionSchema` requires `provenance: LegacySelectorProvenanceSchema`, so a
+control **legacy has no key for** cannot become a registry element without a fabricated provenance —
+the exact thing `semantic-ui-registry` exists to refuse. `src/stores/ucpath/driver/smart-hr-operation.ts`'s
+`DRIVER_ANCHOR` is the worked example.
+
+**What actually failed here was a claim, not a missing ratchet.** That module's header asserted every
+anchor was registry-pinned with dual evidence while binding eight of them as bare strings at the call
+site, and nothing could see the contradiction because the arm does not reach the file. A declared
+table cannot make that claim without also showing its exceptions, which is the property being bought.
+The trigger that would revisit this: an arm that can distinguish a recipe-driven `locator(...)` from
+an authored literal — at which point the driver directory becomes enforceable without an allowlist.
 
 ---
 
