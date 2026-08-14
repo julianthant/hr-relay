@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { NotificationRecordSchema } from "../notifications.js";
+import { ActionDescriptorWireSchema } from "./actions.js";
 import {
   ActorIdSchema,
   BrowserSystemIdSchema,
@@ -149,6 +150,27 @@ const QueueBaseFields = {
   pipeline: z.array(PipelineStepWireSchema),
   panelKind: PanelKindSchema,
   availableSections: z.array(RunDetailSectionSchema),
+  /**
+   * The row's OWN command controls (doc 03 §2.4, doc 13 §3.2/§8.5).
+   *
+   * Doc 13 §8.5 is the rule this field exists to satisfy: *interactive run
+   * controls require an `ActionDescriptorWire`; status-key-to-command branches
+   * fail.* Until this landed, `QueueBaseFields` carried no such field and no
+   * projector built one, so `FooterActions`/`RowContextMenu` were handed an
+   * empty list and every queue row drew nothing — the controls were not hidden,
+   * they were unreachable.
+   *
+   * An EMPTY array is a real answer, not a stub: it says the projector found no
+   * command this row's workflow enables that the kernel would accept in this
+   * lifecycle. The surfaces already render exactly what they are handed, so an
+   * empty list draws no controls with no client branch.
+   *
+   * Every descriptor's `expectedVersion` is bound to `rowRevision` by the
+   * refinement below — the row the operator is holding IS the CAS target, and a
+   * descriptor carrying any other version would be a control that either races
+   * silently or refuses for a reason nobody could see.
+   */
+  actions: z.array(ActionDescriptorWireSchema),
   rowRevision: RowRevisionSchema,
 } as const;
 
@@ -203,12 +225,52 @@ function refineGateOpenedAt(
   }
 }
 
+/**
+ * A served control must name THIS row's revision, and must name itself once.
+ *
+ * The CAS half is the load-bearing one. `FooterActions`, `RowContextMenu` and
+ * the confirm dialog all send `action.expectedVersion` as the command's target
+ * version, so a descriptor projected against anything but the row's own
+ * `rowRevision` would be a control that conflicts on click for a reason the
+ * operator cannot see — or, worse for the arms where the kernel does not CAS,
+ * one that applies against a version nobody looked at. Binding the two here
+ * means a projector cannot get it wrong silently.
+ *
+ * The key half is what makes a row's controls addressable at all: `key` is the
+ * React key in both surfaces and the identifier `FooterActions` special-cases,
+ * so two descriptors sharing one would collapse into a single control.
+ */
+function refineActions(
+  surface: {
+    actions: readonly { key: string; kind: string; expectedVersion?: number }[];
+    rowRevision: number;
+  },
+  context: z.RefinementCtx,
+): void {
+  const keys = surface.actions.map(({ key }) => key);
+  if (new Set(keys).size !== keys.length) {
+    context.addIssue({ code: "custom", path: ["actions"], message: "queue row action keys must be unique" });
+  }
+  for (const [index, action] of surface.actions.entries()) {
+    if (action.kind !== "command") continue;
+    if (action.expectedVersion !== surface.rowRevision) {
+      context.addIssue({
+        code: "custom",
+        path: ["actions", index, "expectedVersion"],
+        message: `action "${action.key}" targets version ${String(action.expectedVersion)}, but this row is `
+          + `at revision ${String(surface.rowRevision)}; a served control's CAS target is the row it rides`,
+      });
+    }
+  }
+}
+
 const RegularQueueSurfaceWireSchema = z.strictObject({
   ...QueueBaseFields,
   surfaceKind: z.enum(["single", "preview"]),
 }).superRefine((surface, context) => {
   refineEndedAt(surface, context);
   refineGateOpenedAt(surface, context);
+  refineActions(surface, context);
 });
 const MemberQueueSurfaceWireSchema = z.strictObject({
   ...QueueBaseFields,
@@ -216,6 +278,7 @@ const MemberQueueSurfaceWireSchema = z.strictObject({
 }).superRefine((surface, context) => {
   refineEndedAt(surface, context);
   refineGateOpenedAt(surface, context);
+  refineActions(surface, context);
   if (surface.lineage.state !== "child") {
     context.addIssue({ code: "custom", path: ["lineage"], message: "member surfaces require a parent run" });
   }
@@ -232,6 +295,7 @@ const OperationQueueSurfaceWireSchema = z.strictObject({
 }).superRefine((surface, context) => {
   refineEndedAt(surface, context);
   refineGateOpenedAt(surface, context);
+  refineActions(surface, context);
   if (new Set(surface.memberRunIds).size !== surface.memberRunIds.length) {
     context.addIssue({ code: "custom", path: ["memberRunIds"], message: "operation member ids must be unique" });
   }

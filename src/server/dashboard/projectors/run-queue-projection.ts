@@ -70,6 +70,7 @@ import type { FailureRecord } from "../../../domain/trust/failure.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { sha256Hex } from "../../../domain/sha256.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../events/types.js";
+import { queueRowActions } from "./queue-row-actions.js";
 import type { ProjectionRepositories } from "../../../infra/sqlite/authority-database.js";
 import { readEventStreamLinesFrom, type EventStreamFileCursor, type EventStreamLine } from "../../../infra/events/jsonl-streams.js";
 
@@ -878,6 +879,7 @@ export class RunQueueProjection {
     const { queued } = row;
     const shape = queued.shape;
     const status = this.#status(row, authority);
+    const descriptor = this.#deps.descriptors.resolve(queued.workflow);
     const failedTerminalMembers = row.memberRunIds.filter((memberId) => {
       const member = this.#rows.get(memberId);
       return member?.ended?.outcome === "failed";
@@ -933,6 +935,25 @@ export class RunQueueProjection {
         "context-attempts",
         ...(authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "failed" ? ["failure"] : []),
       ],
+      /**
+       * The row's own command controls (doc 13 §8.5). Derived from the
+       * descriptor's declared `WorkflowActionPolicy` intersected with the
+       * kernel's own preconditions — never from the status key, which is the
+       * branch doc 13 §8.5 fails a build for.
+       */
+      actions: queueRowActions(descriptor?.actions, {
+        status,
+        rowRevision: authority.version,
+        dryRun: authority.envelope.dryRun,
+        isChild: authority.envelope.parent !== undefined,
+        parkedWrite: authority.lifecycle.state === "parked-write",
+        memberCount: shape === "operation" ? row.memberRunIds.length : 0,
+        // The workflow id is the honest stand-in when this build cannot resolve
+        // the descriptor — but `queueRowActions` serves nothing in that case, so
+        // it is never the text on a control the operator reads.
+        workflowLabel: descriptor?.label ?? queued.workflow,
+        hasReviewPanel: descriptor?.capabilities?.review ?? false,
+      }),
       rowRevision: authority.version,
     };
     if (shape === "operation") {
