@@ -191,6 +191,7 @@ describe("Phase 1f Person Lookup task implementations", () => {
         // The `separations` pure workflow mini-store: §4a's termination-type
         // refusal, plus chunk 3's identity comparison and post-gate check — all
         // sessionless and browser-free.
+        "workflow:separations/match-department-option",
         "workflow:separations/match-identity",
         "workflow:separations/match-termination-type",
         "workflow:separations/verify-identity-approval",

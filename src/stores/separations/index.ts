@@ -1,4 +1,5 @@
 import { defineWorkflowStore } from "../../base/store.js";
+import { matchDepartmentOptionTask } from "./tasks/match-department-option.js";
 import { matchIdentityTask } from "./tasks/match-identity.js";
 import { matchTerminationTypeTask } from "./tasks/match-termination-type.js";
 import { verifyIdentityApprovalTask } from "./tasks/verify-identity-approval.js";
@@ -15,4 +16,5 @@ export const separationsStore = defineWorkflowStore("separations", {
   resolveTerminationType: matchTerminationTypeTask,
   matchIdentity: matchIdentityTask,
   verifyIdentityApproval: verifyIdentityApprovalTask,
+  matchDepartmentOption: matchDepartmentOptionTask,
 });

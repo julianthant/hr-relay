@@ -42,6 +42,7 @@ import {
   createKualiFakeWorld,
 } from "../../src/stores/kuali/driver/fake.js";
 import type { KualiFakeWorld } from "../../src/stores/kuali/driver/fake.js";
+import { matchDepartmentOptionTask } from "../../src/stores/separations/tasks/match-department-option.js";
 import { matchSeparationFinalizationTask } from "../../src/stores/kuali/tasks/match-separation-finalization.js";
 import { saveSeparationFinalizationTask } from "../../src/stores/kuali/tasks/save-separation-finalization.js";
 import { stageSeparationFinalizationTask } from "../../src/stores/kuali/tasks/stage-separation-finalization.js";
@@ -80,6 +81,16 @@ const TARGET: KualiFinalizationTarget = Object.freeze({
   emplId: EID,
   variables: VARIABLES,
 });
+
+/** §9.3's complete `Department*` capture, verbatim — `000719`'s double space included. */
+const LIVE_DEPARTMENT_OPTIONS: readonly string[] = Object.freeze([
+  "- - -",
+  "000141 - Early Childhood Education Center",
+  "000412 - Housing/Dining/Hospitality",
+  "000414 - Bookstore",
+  "000422 - Triton Print & Digital Media",
+  "000719 -  Supply Chain Services",
+]);
 
 const CLOCK = manualClock(new Date("2026-08-14T20:29:08.000Z"));
 
@@ -262,6 +273,54 @@ describe("separations-kuali-finalization scenarios", () => {
       })),
       "save-refused",
     );
+  });
+
+  it("separations-kuali-finalization/department-option-refusals — S55's UPSTREAM half, one code at a time", async () => {
+    // The department reaches the write as a VARIABLE (§4e), so the decision is
+    // made here — before the human is asked at all — and the driver's own S55
+    // refusal covers only the case where the LIVE control has since moved.
+    const resolved = await matchDepartmentOptionTask.impl.run({
+      input: {
+        deptId: { state: "present", value: "000412" },
+        department: { state: "present", value: "HOUSING/DINING/HOSPITALITY" },
+        observedOptions: [...LIVE_DEPARTMENT_OPTIONS],
+        documentNumber: DOCUMENT_NUMBER,
+      },
+      ctx: taskCtx,
+    });
+    assert.equal(resolved.option, VARIABLES.department);
+    assert.equal(resolved.departmentCode, "000412");
+
+    // Each refusal reaches its OWN durable code, which is what an operator
+    // queries on months later.
+    const arms: readonly (readonly [string, Record<string, unknown>])[] = [
+      ["department-code-unreadable", {
+        deptId: { state: "absent", reason: "the grid rendered this cell empty" },
+      }],
+      ["department-code-not-offered", { deptId: { state: "present", value: "000999" } }],
+      ["department-option-ambiguous", {
+        observedOptions: [
+          "000412 - Housing/Dining/Hospitality",
+          "000412 - Housing Dining Hospitality (legacy)",
+        ],
+      }],
+      ["department-option-unusable", { observedOptions: ["000412 -"] }],
+    ];
+    for (const [code, overrides] of arms) {
+      assert.equal(
+        await refusalCode(() => matchDepartmentOptionTask.impl.run({
+          input: {
+            deptId: { state: "present", value: "000412" },
+            department: { state: "present", value: "HOUSING/DINING/HOSPITALITY" },
+            observedOptions: [...LIVE_DEPARTMENT_OPTIONS],
+            documentNumber: DOCUMENT_NUMBER,
+            ...overrides,
+          },
+          ctx: taskCtx,
+        })),
+        code,
+      );
+    }
   });
 });
 

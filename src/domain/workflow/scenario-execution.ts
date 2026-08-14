@@ -228,6 +228,10 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
     scenarioId: "separations-kuali-finalization/save-verify-read-back",
     file: SEPARATIONS_KUALI_FINALIZATION_FILE,
   },
+  {
+    scenarioId: "separations-kuali-finalization/department-option-refusals",
+    file: SEPARATIONS_KUALI_FINALIZATION_FILE,
+  },
 ]));
 
 export const EXECUTABLE_SCENARIO_IDS: readonly ScenarioId[] = Object.freeze(
