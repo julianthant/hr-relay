@@ -99,7 +99,7 @@ Running list (grown during the audit; initial entries from the known-open items)
 | active-run policy control | run-start group 01 (R8 f.8) | `DemoRunStart.tsx` ENQUEUE_POLICY | to declare (already noted `run-start.tsx:28-29`) |
 | per-workflow unstartable reasons | picker disclosure `<dl>` (R8 f.12) | `DemoRunStart.tsx:152-253` | to declare (picker body itself needs NO wire) |
 | park fence window / settling / present-proof schema | park dialog blocks (R8 f.20) | `DemoParkResolve.tsx` fence+settling | refused-by-name in code (`park-resolve.tsx:20-34`) — declare for backend visibility |
-| queue/run action descriptors (`SERVED_ACTIONS`) | confirm-first flow mount (R8 f.4) + `LogPanel onAction` (R5 f.8) | `DemoActions.tsx:430-447` | VERIFIED 2026-08-14 (R5 `57728e0`) — NEITHER half exists: no `actions[]` field on `QueueBaseFields` / `RunDetailWireSchema` and no projector builds one. The two run-detail SECTION payloads that carry decisions DO project real descriptors (`parked-write` at `queries/run-detail.ts:509/752`, `identity-gate` at `:651/636`), so this row is the GENERIC arm only. Side finding: `identity-gate` is served and never fetched — `use-panel-sections.ts:30` omits it from the wanted set and `merge()` would throw on it — an undeclared orphan needing its own `served-unconsumed` entry. |
+| queue/run action descriptors (`SERVED_ACTIONS`) | confirm-first flow mount (R8 f.4) + `LogPanel onAction` (R5 f.8) | `DemoActions.tsx:430-447` | CONSUMER READY 2026-08-14 (`ebe2bac`) — the dialog is mounted, `onAction` is passed on both panels and routes into `composeCommandRequest`, and the `identity-gate` orphan below is CLOSED (fetched + its served controls drawn). Only the generic field is still unserved: NEITHER half exists: no `actions[]` field on `QueueBaseFields` / `RunDetailWireSchema` and no projector builds one. The two run-detail SECTION payloads that carry decisions DO project real descriptors (`parked-write` at `queries/run-detail.ts:509/752`, `identity-gate` at `:651/636`), so this row is the GENERIC arm only. Side finding: `identity-gate` is served and never fetched — `use-panel-sections.ts:30` omits it from the wanted set and `merge()` would throw on it — an undeclared orphan needing its own `served-unconsumed` entry. |
 | `OutcomeWireSchema` `text` + `tone` (the served "so what" sentence) | outcome bar (R5 f.4) | `demo-data.ts:440` + fixture sentences | to declare — `tone` may not be needed: R5 (`57728e0`) tints the bar off the `DsStatus` the bar's own `StatusDot` already renders, so the dot and the band cannot disagree. Only `text` is genuinely unserved. |
 | `ContextDataSectionSchema` entries batch: `step`, `staged`/`unconfirmed`/policy `tag`, freshness (`capturedAt`/`maxAgeMin`/consumer), `feedsInto`, `dir`+`system` | context-rail ledger levels, badges, stale line + override dialog, FeedsIntoLine, DirectionMark/SystemChip (R6 f.1/7/9/11/12) | `DemoContextRail.tsx` DemoDataPoint | to declare (ONE batched wire change) |
 | command-result `conflict` arm (server-current values per patched field) | CAS re-offer surface (R6 f.6) | `DemoContextRail.tsx:699-749` | to declare |
@@ -110,6 +110,127 @@ Running list (grown during the audit; initial entries from the known-open items)
 | `context-evidence` re-home | Receipt tab (leaves the rail per demo order, R6 f.19) | demo Receipt section | REMOVED FROM THE RAIL 2026-08-14 (R6 `05c3b33`); `LogPanel` no longer hands it down. Still `declared-unserved` (D184), so nothing regressed — it lands on Receipt when the evidence service does. |
 | `QueueBaseFields` batch: `dryRun`, `warnings`, `containment`, `displayName`, `runNumber`, `gateOpenedAt`, `memberPreview`+`groupNoun`, member `eid`+outcome vocabulary, `pipeline[].durationSec`, `rejectedCount`, `facts[]`/`extractedCount`/`linkedRunIds`/`reviewRunId` | queue row chips, aria age, member well heads, fact band (R3 f.6/10-12/14/15/17/18/20/25) | `DemoRow` in `demo-data.ts` + `DemoQueue.tsx` | to declare (ONE batched change with `run-queue-projection.ts`) |
 | served roster/People section + `records[]` stream | drill-in surface + record-stream well (R3 f.23/24) | `DemoQueue.tsx:1369-1820`, `DemoRecord` | deferred — named trigger in queue.tsx:110-115 |
+
+## WAVE STATUS — COMPLETE (2026-08-14)
+
+**Phase A (audit) · Phase B (fix waves) · Phase C (corpus + gates) are all closed.** Every region
+landed as its own commit, the ONE deliberate re-freeze happened at the wave end, and the full gate
+family is green.
+
+| Phase | Outcome |
+|---|---|
+| A — audit sweep | R1–R8 divergence logs, all in this file |
+| B — fix waves | `4901a7d` R1 · `5fe2893` R2 · `b7f79b0` R4 · `b70ef3d` R3 · `57728e0` R5 · `05c3b33` R6 · `d36b783` R7 · `c07424c` + `9847877` R8 · `ebe2bac` the consolidated wiring commit |
+| C — corpus + gates | `efab4e1` the three defects the gate found · `82caea2` the re-freeze (400 files) |
+
+**Final gates:** `typecheck` clean · `lint` clean (`--max-warnings 0` over `src tests scripts`) ·
+`test:coverage` 196 files / 1823 tests, all passing · `test:parity` **147/147 green in ASSERT mode**.
+
+### `ebe2bac` — the consolidated wiring commit (R2 D13/D14, R3 f.8, R5 f.7/f.8, R8 f.4/f.7)
+
+*The keyboard exists now.* `src/dashboard/app/global-keys.ts` is the ONE window `keydown` listener,
+ported from `RebuildDemo.tsx:441-534` — guards first (typing target, modifier, `useDsModalOpen()`),
+then the keys. Per key: **`r`** bound (the run dialog is workflow-global since `c07424c`) · **`w`**
+bound (`cycleMode` had zero consumers) · **top-level `Escape`** bound (floating → icon; already-icon
+falls through rather than swallowing the key) · **`j`/`k`** bound over `visibleRunIds`, whose doc
+comment had named this consumer since it was written · **`n`** bound over a new `attentionRunIds`,
+which filters `visibleRunIds` by the SAME `bandOf` the NEEDS YOU band header draws from, so the key
+and the band cannot disagree · **`m`** bound through the ds helper `openContextMenuFor` (also
+caller-less until now); it opens nothing today because no row action is served, which is the same
+honest absence every other action control has · **`1`–`4`** bound over the tabs the OPEN run
+advertises, so `3` on a two-tab run does nothing rather than forcing an unrenderable section.
+
+*Two registry corrections instead of two no-op bindings,* per this plan's own rule that two
+operator-facing surfaces asserting a binding which does not exist IS the defect. **`Enter` was
+removed** from `surfaces/shortcuts.tsx`: the demo opens a group's drill-in with it, this build has no
+drill-in (R3 f.23/24, deferred with a named trigger), and here selecting a row already opens it.
+**`Esc` was re-worded** from "back out of a group" (the same drill-in) to "minimise the Workflow
+Panel", and moved to the `Anywhere` scope, which is what it now does.
+
+*The identity gate was served and never fetched.* `use-panel-sections.ts:30` omitted `identity-gate`
+from the wanted set and `merge()` would have thrown on it, so a run held at a gate drew a decision
+card with no way to answer it while the server had projected the packet, the options, the approval
+shape and both `resolve-gate` descriptors all along. It is fetched now on the parked write's exact
+terms (whenever the run advertises it, never behind a tab), and `InlineDecision` reads its controls
+off `sections["identity-gate"]` rather than off the generic `actions` prop — which is fed
+`SERVED_ACTIONS = []` and could never have carried them.
+
+*The confirm-first flow is mounted.* `ConfirmCommandDialog` sits at the app root per
+`DemoActions.tsx:430-447`; `runAction` routes any descriptor carrying the server-authored `confirm`
+through it and posts the rest straight away (D16 keeps group cancel out BY CONSTRUCTION — no
+`confirm` block). `onAction` is passed on BOTH panels, so the day the generic action projection
+lands, every row and panel control is live with no further change.
+`src/dashboard/app/command-dispatch.ts` composes the envelope and **refuses by name** anything whose
+payload cannot be built from served facts: a gate APPROVAL composes only when the server itself set
+`approvalShape: "one-click"` over a single candidate (and then every leaf — EID, `chosenFrom`,
+evidence digest, result schema hash — is a value the server served); a REJECTION needs the operator's
+own reason and a choice-shaped approval needs the operator's own choice (§14.6 risk 1 — a surface
+free to pick a candidate turns a risky approval into one click), so both refuse with a sentence
+naming the surface that closes them; and the two park resolutions refuse because they have their own
+wired dialog, which carries the evidence note this route cannot.
+
+*Live verification (1440×900, served day `2026-08-12`, 28 rows).* `r` opened the run dialog (read as
+an image); `w` cycled floating → icon → sidebar → floating in the stored preference; Escape closed
+the dialog while the panel stayed put — the modal guard — and then minimised the panel at the top
+level; `j j j k` walked and opened four runs in the drawn order; `2`/`1` switched tabs while `3`
+correctly did nothing on a run advertising two; `m` opened no menu because nothing is served; `jjkr`
+typed into the log filter moved nothing. **LIMITS, stated:** no served day carries a waiting or
+parked row, so `n` is pinned by unit test only; and no run in authority is `parked-gate`, so the gate
+fetch and its dispatch could not be exercised on live data — the day's two identity-check runs failed
+BEFORE the gate could park. `tests/unit/dashboard/global-keys.test.ts` (20 cases) pins the traversal
+arithmetic, the attention wrap, `attentionRunIds` against the band, and every composer arm including
+the approval parsed back through `CommandRequestSchema` + `IdentityApprovalResultSchema`.
+
+### `efab4e1` — what the wave-end gate found, because that is what a gate is for
+
+The Phase-C assert run went red on **127 references plus 7 hard failures**, and every one of the 127
+was a11y drift thrown BEFORE the pixel compare — so no screenshot had been compared at all. The 7
+were not drift and no re-freeze could absorb them. Three real defects came out:
+
+1. **The rail's live lock was an `alert` about a standing state.** R6 lifted the two danger lines out
+   of the old `editing` gate so the reason is on screen before the operator reaches for a field —
+   right for `problem` (`null` until a save is refused), wrong for `liveLock`, which is a fact about
+   the RUN and true from the moment the panel opens. It announced itself assertively on page load for
+   every terminal or claimed run with recorded data. `dual-adapter.spec.ts` caught it as a role the
+   fixture adapter rendered and the seeded one did not. The sentence stays with `aria-live="polite"`
+   — the lock CAN arrive mid-session when the day stream moves the row under an open panel, which is
+   what D19 exists to warn about — but it no longer interrupts.
+2. **The run-detail panel read its own clock.** R5 f.5's `decisionAge` landed as one
+   `systemClock.now()` per render: one read, but the WRONG one, since the queue beside it dates its
+   rows from `boot.serverClock.now`. The same gate could report two different ages depending on which
+   surface you looked at — D124's defect with the clocks swapped — and it surfaced the way a
+   non-deterministic value always does, as a reference nothing could settle (`258h 22m` → `258h 31m`
+   between two runs of the lane; both re-freezes drifted again). `LogPanel` takes `servedNow` now,
+   and the frozen gate age is `16m 0s`, measured from the fixture's own pinned clock.
+3. **The park locator went stale with the port it was written for.** R8's `ParkResolutions` made the
+   two resolutions the demo's tinted CARDS carrying the server's `detail` sentence after the label;
+   the parity spec still clicked them by `{ name, exact: true }`, so BOTH park-dialog captures had
+   been timing out. The locator is anchored rather than exact — the served label must still be the
+   first thing the control says — and the `lg` dialog with its flex-wrap fence row enters the corpus
+   for the first time, which closes the verification limit R8's own as-built recorded.
+
+*Generalisable, and worth a lesson if one is written:* **an assert lane that throws on the semantic
+half never reaches the pixel half**, so a corpus can be "reviewed" for a whole wave without a single
+image being compared. The review that actually happened here was old-reference-image vs
+new-reference-image, one per region, read as images.
+
+### What remains open (nothing in it is a wave regression)
+
+- **The wire-hookup ledger above** — every row still marked `to declare` / `booked` is backend work,
+  with its consuming UI already built to the demo's spec behind an optional field.
+- **R8 findings 5 + 6** — the bulk command strip and the bulk result-vector band, which build to demo
+  spec once `QueueBaseFields` grows the optional `actions[]` + per-row `expectedVersion`.
+- **R7's `WorkerCardWireSchema` batch** — R7-2 (`+`/AddWorkersDialog, two named blockers), R7-3
+  (browser-health grid + menus + chip), R7-4 (`Stop`, needs the lease `version`), R7-5/6/7-data,
+  R7-8 (crashed arm). Nothing further in R7 is a pure port.
+- **The identity-approval surface** — the gate's decision card can now be RENDERED from its served
+  section and a one-click approval can be SENT, but the choose-a-candidate / type-the-EID ceremonies
+  and the rejection reason need their own surface; `command-dispatch.ts` refuses each by name until
+  it exists.
+- **A gated fixture** — no parity fixture authors an `identity-gate` section, so `run-open-gate`
+  photographs the decision card with no answer buttons. That is the correct rendering of what the
+  fixture serves; a fixture that authors the section is what would put the two `resolve-gate`
+  controls into the corpus.
 
 ## Execution structure
 
@@ -124,7 +245,12 @@ Running list (grown during the audit; initial entries from the known-open items)
 - **Phase C — corpus + gates.** ONE deliberate `npm run test:parity:update` for the whole wave,
   after an assert run shows zero geometry failures; then
   `npm run typecheck && npm run lint && npm run test:coverage` (D191). Wire-ledger entries ride the
-  region commits that need them.
+  region commits that need them. **DONE — see "WAVE STATUS" above.** One correction to this plan's
+  own method, learned by executing it: "an assert run shows zero geometry failures" is not something
+  the lane can report while any a11y reference has drifted, because the a11y half is asserted FIRST
+  and throws before the screenshot is compared. Geometry review is therefore
+  old-reference-image vs new-reference-image, read as images, one per region — which is what
+  happened.
 
 ## Rules in force (bit us before)
 
