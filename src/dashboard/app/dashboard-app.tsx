@@ -825,11 +825,19 @@ function LoadedApp({
             </div>
           ) : takeover === "activity" ? (
             <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
+              {/*
+                No `onClose`: the report carries no back button (the demo's own
+                rule — the product switcher above it holds the Activity entry
+                that got you here, so a second door would be a duplicate). It
+                does carry the actor and the app version, because a report
+                leaves the operator's screen and its footer says who made it.
+              */}
               <ActivityReport
                 range={route.activity ?? ""}
                 today={today}
+                actorId={boot.actor.id}
+                appVersion={boot.appVersion}
                 onRange={(next) => setRoute({ ...route, activity: next })}
-                onClose={() => setRoute({ ...route, activity: undefined })}
               />
             </div>
           ) : takeover === "explore" ? (
