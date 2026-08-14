@@ -60,6 +60,7 @@ import {
 } from "../fixtures/receipt-run-fixtures.js";
 import {
   GATE_DECISIONS,
+  findGateDecision,
   gateDecisionFor,
 } from "../../../src/domain/trust/gate-decisions.js";
 
@@ -345,6 +346,61 @@ describe("evidence receipt — strictness", () => {
         result: { ...payload, value: { ...payload.value, decision: "deferred" } },
       }],
     }), /no declared arm matches it|refusing to describe a human decision/);
+  });
+
+  /**
+   * D204's OTHER refusal, which had no negative control at all.
+   *
+   * The unlisted-ARM arm above is pinned; the undeclared `(workflow, gate)` PAIR
+   * was not, and it is the one that guards the whole table's reason for
+   * existing. `gateDecisionFor` is the only route from a stored row to a
+   * `DecisionEvidence.outcome` — the positive test below walks every registered
+   * gate node through it — so if this refusal ever softened into a default, a
+   * gate somebody forgot to declare would land on an operator-facing receipt as
+   * whatever the default said a human decided.
+   *
+   * It cannot be reached through `buildRunEvidenceReceipt` against a registered
+   * descriptor, and that is the point rather than a gap: every registered gate
+   * node IS declared (the positive test proves it in one direction and the
+   * orphan test in the other), and `evidence-graph` refuses a row whose node
+   * left the graph before any declaration is looked up. The undeclared pair is
+   * reachable by asking directly — which is exactly what a NEW gate node's first
+   * derivation does.
+   */
+  it("refuses an undeclared (workflow, gate) pair by name, with no default arm", () => {
+    const declaredWorkflow = String(separationsIdentityCheckDescriptor.id);
+
+    // A gate id nobody declared, under a workflow that DOES declare one — the
+    // shape a second gate added to an existing graph would have.
+    assert.equal(findGateDecision(declaredWorkflow, "second-approval"), undefined);
+    assert.throws(
+      () => gateDecisionFor(declaredWorkflow, "second-approval"),
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        assert.match(message, /no declared gate decision for /u, message);
+        assert.match(message, /second-approval/u, message);
+        // The refusal names where to fix it. A declaration is a reviewed entry,
+        // so an error that only said "unknown gate" would send the next author
+        // looking for a bug instead of writing one.
+        assert.match(message, /src\/domain\/trust\/gate-decisions\.ts/u, message);
+        return true;
+      },
+    );
+
+    // And a whole workflow nobody declared, which is what a brand-new gated
+    // descriptor looks like on its first receipt.
+    assert.equal(findGateDecision("no-such-workflow", "identity-approval"), undefined);
+    assert.throws(
+      () => gateDecisionFor("no-such-workflow", "identity-approval"),
+      /no declared gate decision for no-such-workflow\/identity-approval/,
+    );
+
+    // The declared pair still resolves, so the two refusals above are about the
+    // lookup being SPECIFIC rather than about it being broken.
+    assert.equal(
+      gateDecisionFor(declaredWorkflow, "identity-approval").gateId,
+      "identity-approval",
+    );
   });
 
   /**
