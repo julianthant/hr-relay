@@ -57,7 +57,7 @@ import {
   RowContextMenu,
   type DashboardActionHandler,
 } from "./actions.js";
-import { dayLabel, fmtClock, plural, runTiming } from "./format.js";
+import { dayLabel, elapsedSecondsBetween, fmtClock, fmtElapsed, plural, runTiming } from "./format.js";
 import {
   PROPOSED_STATUS,
   StatusBadge,
@@ -311,8 +311,27 @@ function testSystemsOf(surface: QueueSurfaceWire): string[] {
   return surface.resolvedInstances.filter(({ instance }) => instance === "test").map(({ system }) => system);
 }
 
-function HeaderChips({ surface, status }: { surface: QueueSurfaceWire; status: ProposedStatus }) {
+function HeaderChips({
+  surface,
+  status,
+  nowIso,
+}: {
+  surface: QueueSurfaceWire;
+  status: ProposedStatus;
+  /** the bootstrap-calibrated instant every elapsed on this panel measures against */
+  nowIso: string;
+}) {
   const testSystems = testSystemsOf(surface);
+  /**
+   * D12 — `Waiting on you · 10m`. The SERVED gate instant against the same
+   * calibrated `nowIso` the row's elapsed uses, so the two clocks on one card
+   * cannot disagree. Display-only arithmetic: the server dates the gate from
+   * the gate's own record and never from `updatedAt`, which is what keeps an
+   * aging gate from rendering young.
+   */
+  const gateAge = surface.gateOpenedAt.state === "present"
+    ? fmtElapsed(elapsedSecondsBetween(surface.gateOpenedAt.value, nowIso))
+    : undefined;
   return (
     <>
       {/* A run against a TEST instance can never be mistaken for a real filing,
@@ -334,29 +353,32 @@ function HeaderChips({ surface, status }: { surface: QueueSurfaceWire; status: P
         word `Done`, and the triangle is the non-colour half of telling them
         apart.
 
-        ONE of the demo's three arms is derivable from what this wire serves:
-        a row the server settled as `partial` (→ `doneWarnings`) finished with
-        at least one warning, so the chip says `1` and titles itself from the
-        run's own served sentence. The demo's other two arms — an authored
-        `warnings` count, and a group's rolled-up member warnings — need a
-        counted field this wire does not carry, and a count invented here would
-        be a number about a real HR run that nothing produced (R3 finding 10;
-        `QueueBaseFields.warnings` is on the wire-hookup ledger).
+        The count is SERVED (`QueueBaseFields.warnings`) — the run's evidence
+        receipt's own warning set, titled with the first warning's sentence.
+
+        The absent arm keeps the older "at least one" reading, and only for a
+        row the server settled as `partial` (→ `doneWarnings`): that row
+        finished with warnings by definition, so `1` is the smallest true
+        statement about it, and dropping the triangle would take D126's
+        argument from three visible channels to two on exactly the rows the
+        argument is about. Every other status draws nothing when the count is
+        absent — an unsettled run has no warning set, and a triangle on one
+        would be a number about a real HR run that nothing produced.
       */}
-      {status === "doneWarnings" && (
+      {(surface.warnings.state === "present" || status === "doneWarnings") && (
         <span
-          title={surface.liveMessage.state === "present" ? surface.liveMessage.value : "Finished with warnings"}
+          title={surface.warnings.state === "present" ? surface.warnings.first : "Finished with warnings"}
           className={rowChip("warning")}
         >
           <AlertTriangle aria-hidden className={dsIcon.sm} />
-          1
+          {surface.warnings.state === "present" ? surface.warnings.count : 1}
         </span>
       )}
       {/* Progress dots then the status pill — both on the TITLE row's right
           edge. The dots sit in the same `--ds-h-xs` box as the badge so they
           centre on the name rather than hugging the top of the chip line. */}
       {status === "running" && surface.surfaceKind !== "operation" && <MicroSteps pipeline={surface.pipeline} />}
-      <StatusBadge status={status} hideIcon />
+      <StatusBadge status={status} hideIcon {...(gateAge === undefined ? {} : { age: gateAge })} />
     </>
   );
 }
@@ -1242,7 +1264,7 @@ export function QueueRow({
               <div className="ml-auto flex shrink-0 flex-nowrap items-center justify-end gap-[var(--ds-space-snug)]">
                 {/* Status ALWAYS sits on the title row's right — never on the
                     subline. */}
-                <HeaderChips surface={surface} status={status} />
+                <HeaderChips surface={surface} status={status} nowIso={state.nowIso} />
               </div>
             </div>
 
