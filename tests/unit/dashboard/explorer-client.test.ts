@@ -4,14 +4,23 @@
  * with (D176/D177).
  *
  * The surfaces themselves are proved by the parity corpus; what is pinned here
- * is the logic a screenshot cannot check: that the rail draws every node
- * exactly once whatever the control structure, that a search narrows rather
- * than widens, and that three takeover keys on one link resolve to ONE answer.
+ * is the logic a screenshot cannot check: that the graph panel's dry-run
+ * posture, boundary and edge conditions are derived from the descriptor rather
+ * than assumed, that a search narrows rather than widens, and that three
+ * takeover keys on one link resolve to ONE answer.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
-import { railRows } from "../../../src/dashboard/surfaces/explorer.js";
+import {
+  conditionalEdgesFrom,
+  dependsOnEdgeExists,
+  dryRunBoundaryNodeId,
+  dryRunPosture,
+  explorerGraphTotals,
+  nodeBindings,
+  writeSystems,
+} from "../../../src/dashboard/surfaces/explorer.js";
 import {
   activeTakeover,
   parseRoute,
@@ -94,7 +103,7 @@ describe("the explorer and catalog queries", () => {
   });
 });
 
-/* ── the structure rail ──────────────────────────────────────────────────── */
+/* ── the graph panel ─────────────────────────────────────────────────────── */
 
 function workflowWithNodes(nodes: ExplorerWorkflowWire["nodes"]): ExplorerWorkflowWire {
   const base = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH)).workflows[0];
@@ -117,61 +126,130 @@ function taskNode(id: string, dependsOn: string[] = []): ExplorerWorkflowWire["n
   };
 }
 
-describe("the graph structure rail", () => {
-  it("draws every node of the real person-lookup graph exactly once, in declaration order", () => {
+function transactionNode(
+  id: string,
+  dryRun: "stop-after-prepare" | "unsupported",
+): ExplorerWorkflowWire["nodes"][number] {
+  return {
+    ...taskNode(id),
+    shape: {
+      kind: "transaction",
+      dryRun,
+      probePolicy: "always",
+      probeToFenceMaxMs: 120000,
+      leaseScope: "transaction",
+      retryBeforeFence: false,
+    },
+  };
+}
+
+describe("the graph panel's derivations", () => {
+  it("draws the real person-lookup graph in declaration order and counts its ARMS", () => {
     const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
     const workflow = wire.workflows.find((one) => String(one.id) === "person-lookup");
     assert.ok(workflow !== undefined);
-    const rows = railRows(workflow);
-    assert.deepEqual(
-      rows.map((row) => String(row.node.id)),
-      workflow.nodes.map((node) => String(node.id)),
+    const totals = explorerGraphTotals(workflow);
+    assert.equal(totals.nodes, workflow.nodes.length);
+    assert.equal(
+      totals.reads,
+      workflow.nodes.flatMap((node) => node.tasks).filter((task) => task.effect === "read").length,
     );
-    for (const row of rows) assert.equal(row.depth, 0, "a linear graph has no nesting");
+    // A read-only workflow has no write arm at all, which is what makes the
+    // `no system of record` posture below a FACT rather than a missing line.
+    assert.equal(totals.writes, 0);
   });
 
-  it("indents a branch's cases under their controller and names the case", () => {
-    const controller = taskNode("mode-branch");
-    const workflow = workflowWithNodes([
-      { ...controller, shape: { kind: "branch", cases: [
-        { name: "write", nodes: ["submit"] as never },
-        { name: "read-only", nodes: ["peek"] as never },
-      ] } },
-      taskNode("submit"),
-      taskNode("peek"),
-    ]);
-    const rows = railRows(workflow);
-    assert.deepEqual(rows.map((row) => [String(row.node.id), row.depth, row.under?.label]), [
-      ["mode-branch", 0, undefined],
-      ["submit", 1, "write"],
-      ["peek", 1, "read-only"],
-    ]);
+  it("reports a graph with no transaction node as changing no system of record", () => {
+    const workflow = workflowWithNodes([taskNode("one"), taskNode("two")]);
+    assert.equal(dryRunPosture(workflow), "no-system-write");
+    assert.equal(dryRunBoundaryNodeId(workflow), undefined);
+    assert.deepEqual(writeSystems(workflow), []);
   });
 
-  it("indents a parallel's branches and never draws a shared node twice", () => {
-    const controller = taskNode("fan");
+  it("puts the boundary on the FIRST transaction node, never on the last", () => {
     const workflow = workflowWithNodes([
-      { ...controller, shape: { kind: "parallel", join: "all", branches: [
-        { id: "left", nodes: ["shared"] as never },
-        { id: "right", nodes: ["shared"] as never },
-      ] } },
-      taskNode("shared"),
+      taskNode("read-first"),
+      transactionNode("clear-pending", "stop-after-prepare"),
+      transactionNode("file-termination", "stop-after-prepare"),
     ]);
-    const rows = railRows(workflow);
-    assert.deepEqual(rows.map((row) => String(row.node.id)), ["fan", "shared"]);
-    assert.equal(rows.filter((row) => String(row.node.id) === "shared").length, 1);
+    assert.equal(dryRunPosture(workflow), "boundary");
+    assert.equal(dryRunBoundaryNodeId(workflow), "clear-pending");
   });
 
-  it("still draws a node whose controller is declared AFTER it", () => {
-    // A node claimed by a later controller must not vanish: a node missing from
-    // the rail is a graph the surface failed to show, which is worse than one
-    // drawn flat.
-    const controller = taskNode("late");
+  it("draws NO boundary when a transaction honours no dry run — there is no rehearsal to bound", () => {
     const workflow = workflowWithNodes([
-      taskNode("early"),
-      { ...controller, shape: { kind: "branch", cases: [{ name: "only", nodes: ["early"] as never }] } },
+      taskNode("read-first"),
+      transactionNode("stop-here", "stop-after-prepare"),
+      transactionNode("no-rehearsal", "unsupported"),
     ]);
-    assert.deepEqual(railRows(workflow).map((row) => String(row.node.id)).sort(), ["early", "late"]);
+    assert.equal(dryRunPosture(workflow), "no-rehearsal");
+    assert.equal(
+      dryRunBoundaryNodeId(workflow),
+      undefined,
+      "a line here would claim a safety boundary this graph does not have",
+    );
+  });
+
+  it("names a control edge by its case and leaves a plain dependency to read `always`", () => {
+    const workflow = {
+      ...workflowWithNodes([taskNode("mode"), taskNode("submit"), taskNode("peek")]),
+      edges: [
+        { from: "mode" as never, to: "submit" as never, kind: "branch-case" as const, label: "write" },
+        { from: "mode" as never, to: "peek" as never, kind: "branch-case" as const, label: "read-only" },
+        { from: "submit" as never, to: "peek" as never, kind: "depends-on" as const },
+      ],
+    };
+    assert.deepEqual(conditionalEdgesFrom(workflow, "mode"), [
+      { to: "submit", condition: "case write" },
+      { to: "peek", condition: "case read-only" },
+    ]);
+    assert.deepEqual(
+      conditionalEdgesFrom(workflow, "submit"),
+      [],
+      "a depends-on edge is the unconditional one, and the connector prints `always` for it",
+    );
+  });
+
+  it("never prints `always` between two nodes the descriptor did not connect", () => {
+    // Three of the real `separations` graph's consecutive pairs have no edge:
+    // they are declaration neighbours, not dependencies, and a connector that
+    // said `always` there would be the surface inventing an edge.
+    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const workflow = wire.workflows.find((one) => String(one.id) === "person-lookup");
+    assert.ok(workflow !== undefined);
+    const [first, second] = workflow.nodes;
+    assert.ok(first !== undefined && second !== undefined);
+    assert.equal(
+      dependsOnEdgeExists(workflow, String(first.id), String(second.id)),
+      workflow.edges.some(
+        (edge) =>
+          edge.kind === "depends-on"
+          && String(edge.from) === String(first.id)
+          && String(edge.to) === String(second.id),
+      ),
+    );
+    assert.equal(
+      dependsOnEdgeExists(workflow, String(first.id), "no-such-node"),
+      false,
+      "an edge to a node that is not there is not an edge",
+    );
+  });
+
+  it("reads a node's system off its own bindings, and never calls a mini-store a system", () => {
+    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const workflow = wire.workflows.find((one) => String(one.id) === "person-lookup");
+    assert.ok(workflow !== undefined);
+    for (const node of workflow.nodes) {
+      const bindings = nodeBindings(node);
+      assert.equal(bindings.length, node.tasks.length === 0 ? 0 : 1);
+      for (const binding of bindings) {
+        // A browser driver's system is one the workflow declares; a headless
+        // mini-store is labelled `store`, precisely so it is never read as one.
+        if (binding.label === "system") assert.ok(workflow.systems.includes(binding.value));
+        else assert.equal(binding.value.startsWith("workflow:"), true);
+      }
+    }
+    assert.deepEqual(nodeBindings(taskNode("bare")), [], "a node binding no contract names no system");
   });
 });
 
