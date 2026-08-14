@@ -10,18 +10,29 @@
  * render — a command that must not be offered is structurally unreachable
  * rather than merely hidden.
  *
- * 1i port scope: the run-action renderers (footer, banner, outcome, context
- * menu) and the server-authored confirm dialog, typed against the rebuild's
- * `ActionDescriptorWire`. Deferred with their surfaces (2g): `ParkResolutions`
- * and the park command split (no park commands exist in the Phase-1 action
- * vocabulary), `CommandResultFeed` + `toastAppliedCommandResult` (the command
- * result surfaces land with the app's real `CommandResult` wiring).
+ * Port scope: the run-action renderers (footer, banner, park resolutions,
+ * outcome, context menu) and the server-authored confirm dialog, typed against
+ * the rebuild's `ActionDescriptorWire`. Still deferred with its surface:
+ * `CommandResultFeed` + `toastAppliedCommandResult` (the applied-result feed
+ * lands with the app's real `CommandResult` wiring; the REFUSAL half is already
+ * live and raises its own persistent toast from `park-resolve.tsx`).
+ *
+ * `ParkResolutions` and the park command split were deferred here on the claim
+ * that "no park commands exist in the Phase-1 action vocabulary". That claim is
+ * FALSE and was corrected by the R8 audit
+ * (`docs/plans/2026-08-13-detail-fidelity-audit.md`, finding 1): the
+ * `parked-write` section projects both resolutions with their `detail`
+ * sentences (`src/server/dashboard/queries/run-detail.ts:516-551`) and they
+ * reach the wire at `src/domain/dashboard/actions.ts`. They had simply been
+ * rendering as bare banner pills, dropping the served `detail` on the floor.
  */
 import { Fragment, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
+  CheckCircle2,
   ChevronsUp,
+  CircleSlash,
   ClipboardList,
   PauseCircle,
   Pencil,
@@ -40,7 +51,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
   Dialog,
-  DialogBody,
   DialogContent,
   DialogFooter,
   dsBorder,
@@ -219,6 +229,31 @@ export function FooterActions({
 // Banner — the decision the row is sitting on
 // ---------------------------------------------------------------------------
 
+/**
+ * Ported verbatim from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+ * `DemoActions.tsx:193-201`.
+ *
+ * The two write resolutions ride the `banner` placement like every other
+ * decision pill, and they must NOT be drawn as one. They are the two exits from
+ * `Write parked` — each is the operator reporting what they SAW in a system of
+ * record — so they get the tinted cards below, with the server's `detail`
+ * sentence, and the banner row never draws them. One placement, two renderers,
+ * split by the command the server named.
+ */
+const PARK_COMMANDS: ReadonlySet<string> = new Set(["resolve-write-present", "resolve-write-absent"]);
+
+function isParkCommand(action: ActionDescriptorWire): boolean {
+  return action.kind === "command" && PARK_COMMANDS.has(action.command);
+}
+
+export function bannerPills(actions: readonly ActionDescriptorWire[]): readonly ActionDescriptorWire[] {
+  return actionsAt(actions, "banner").filter((a) => !isParkCommand(a));
+}
+
+export function parkResolutions(actions: readonly ActionDescriptorWire[]): readonly ActionDescriptorWire[] {
+  return actionsAt(actions, "banner").filter(isParkCommand);
+}
+
 export function BannerActions({
   actions,
   target,
@@ -228,7 +263,7 @@ export function BannerActions({
   target: ActionTarget;
   onAction?: DashboardActionHandler;
 }) {
-  const pills = actionsAt(actions, "banner");
+  const pills = bannerPills(actions);
   if (pills.length === 0) return null;
   return (
     <div className="mt-[var(--ds-space-base)] flex flex-wrap gap-[var(--ds-space-snug)]">
@@ -245,6 +280,81 @@ export function BannerActions({
           {a.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Ported verbatim from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+ * `DemoActions.tsx:225-280`.
+ *
+ * The only two exits from Write parked. Both are the operator reporting what
+ * they SAW in the system of record — neither one re-submits anything. There is
+ * no Resume here because the contract never sends one: resuming an unknown
+ * write is how you terminate somebody twice.
+ *
+ * The `detail` sentence is SERVED (`run-detail.ts:516-551`) and is the whole
+ * reason these are cards rather than pills: a pill can carry a verb, and the
+ * thing that separates these two verbs is a sentence about what each one
+ * unlocks.
+ */
+export function ParkResolutions({
+  actions,
+  target,
+  onAction = NOOP_ACTION,
+}: {
+  actions: readonly ActionDescriptorWire[];
+  target: ActionTarget;
+  onAction?: DashboardActionHandler;
+}) {
+  const options = parkResolutions(actions);
+  if (options.length === 0) return null;
+  return (
+    // A CONTAINER query: these render inside the gate banner and inside the log
+    // stream, both of which live in the detail region's CENTRE column — whose
+    // width is a function of the context rail's state as well as the window's.
+    // Keyed to the window, two resolutions were being forced side-by-side into
+    // a 414px column at a 1280px viewport.
+    <div className="mt-[var(--ds-space-base)] grid gap-[var(--ds-space-snug)] @min-[35rem]:grid-cols-2">
+      {options.map((a) => {
+        const present = a.kind === "command" && a.command === "resolve-write-present";
+        const Icon = present ? CheckCircle2 : CircleSlash;
+        return (
+          <button
+            key={a.key}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction(a, target);
+            }}
+            className={cn(
+              "flex cursor-pointer flex-col items-start border text-left",
+              "gap-[var(--ds-space-hair)] px-[var(--ds-space-base)] py-[var(--ds-space-snug)]",
+              dsRadius.md,
+              dsFocus,
+              dsMotion.fast,
+              "hover:brightness-125",
+              present
+                ? "border-[color:var(--ds-success-border)] bg-[var(--ds-success-bg)]"
+                : "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]",
+            )}
+          >
+            <span
+              className={cn(
+                dsText.body,
+                "inline-flex items-center gap-[var(--ds-space-snug)] font-semibold",
+                present ? "text-[color:var(--ds-success-fg)]" : "text-[color:var(--ds-danger)]",
+              )}
+            >
+              <Icon aria-hidden className={dsIcon.sm} />
+              {a.label}
+            </span>
+            {a.detail !== undefined && (
+              <span className={cn(dsText.meta, "leading-snug text-[color:var(--ds-fg-muted)]")}>{a.detail}</span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -426,7 +536,11 @@ export function ConfirmCommandDialog({
         <DialogContent
           size="sm"
           title={
-            <span className={cn(dsText.title, "flex items-center gap-[var(--ds-space-base)]")}>
+            // The layout only — NO second type class. `DialogPrimitive.Title`
+            // already carries `dsText.section`, and nesting `dsText.title`
+            // inside it made this the one dialog in the product whose title was
+            // a different size from every other dialog's (R8 finding 15).
+            <span className="flex items-center gap-[var(--ds-space-base)]">
               <AlertTriangle
                 aria-hidden
                 className={cn(
@@ -442,9 +556,27 @@ export function ConfirmCommandDialog({
           }
           description={confirm.body}
         >
-          <DialogBody className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
-            {pending.workflowLabel} · {pending.traceId} · row rev {pending.action.expectedVersion}
-          </DialogBody>
+          {/*
+            THE SUBJECT LINE, in the demo's own placement
+            (`DemoActions.tsx:487-489`): a bare div, NOT `DialogBody`. Two
+            reasons it matters. `DialogBody` is the scrolling pane with the
+            dialog's full inset — this is one quiet line of identity under a
+            served body, and giving it the pane's padding made it read as the
+            dialog's content rather than its footnote (R8 finding 15).
+
+            And it now renders `subject` — the row's OWN name, which this
+            component has documented on `PendingCommand` since it was written
+            and has never once drawn (R8 finding 4b). The confirm body is
+            server-authored and says what the command will DO; without the
+            subject the operator is asked to confirm a blast radius without
+            being shown the thing it lands on.
+          */}
+          <div className={cn(dsText.meta, "px-[var(--ds-space-loose)] pt-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>
+            <span className="font-medium text-[color:var(--ds-fg-secondary)]">{pending.subject}</span>
+            <span className={cn(dsText.nums, "ml-[var(--ds-space-snug)]")}>
+              {pending.workflowLabel} · {pending.traceId} · row rev {pending.action.expectedVersion}
+            </span>
+          </div>
           <DialogFooter>
             {/* The safe exit is `secondary` and it comes FIRST; the surface's one
                 committing action is last, so the eye ends on the verb. */}

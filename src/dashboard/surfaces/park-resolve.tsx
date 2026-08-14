@@ -34,11 +34,12 @@
  *  - **The proof entry for `resolve-write-present`.** See `ProofUnserved`.
  */
 import { useEffect, useState } from "react";
-import { CircleSlash, PauseCircle } from "lucide-react";
+import { CheckCircle2, CircleSlash, PauseCircle } from "lucide-react";
 import type { z } from "zod";
 import { systemClock } from "../../domain/clock.js";
 import { cn } from "../lib/utils.js";
 import {
+  Banner,
   Button,
   Chip,
   ChipRow,
@@ -58,11 +59,12 @@ import {
   dsRadius,
   dsText,
   useDsEnterTransition,
+  useToasts,
 } from "../ds/ui.js";
 import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import { useDashboardClient } from "../state/client-context.js";
-import { BannerActions, type DashboardActionHandler } from "./actions.js";
+import { BannerActions, ParkResolutions, type DashboardActionHandler } from "./actions.js";
 import { fmtClock } from "./format.js";
 
 type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;
@@ -103,33 +105,38 @@ function shortDigest(digest: string): string {
  * display-safe by construction — a bounded suffix, a branded artifact id, or a
  * closed catalog key beside a digest — so this renders the served members and
  * re-shapes none of them (doc 13 §3.4).
+ *
+ * `inline` emits the chips with NO row of their own, for the dialog's fence
+ * `Well`, which is one flex-wrap row of content-width chips (R8 finding 14). A
+ * `ChipRow` nested in that row would be a grid box inside a flex line — its
+ * equal-width columns fighting the wrap — so the caller that wants one row asks
+ * for the chips, and the caller that wants a labelled block gets the grid.
  */
-function SubjectFacts({ subject }: { subject: ParkedWritePayload["subject"] }) {
-  if (subject.state === "unscoped") {
-    return (
-      <ChipRow>
-        <Chip label="subject">unscoped</Chip>
-        <Chip label="reviewed">{subject.reviewedReasonId}</Chip>
-        <Chip label="proof">{subject.proofId}</Chip>
-        <Chip label="observed">{fmtClock(subject.observedAt)}</Chip>
-      </ChipRow>
-    );
-  }
-  const { evidence } = subject;
-  return (
-    <ChipRow>
-      {evidence.kind === "person" && (
-        <Chip label={evidence.identifierKind}>{evidence.displaySuffix}</Chip>
-      )}
-      {evidence.kind === "artifact" && <Chip label="artifact">{evidence.artifactId}</Chip>}
-      {evidence.kind === "catalog" && <Chip label="catalog">{evidence.catalogKey}</Chip>}
-      <Chip label="binding" title={evidence.bindingDigest}>
-        {shortDigest(evidence.bindingDigest)}
-      </Chip>
-      <Chip label="proof">{subject.proofId}</Chip>
-      <Chip label="observed">{fmtClock(subject.observedAt)}</Chip>
-    </ChipRow>
-  );
+function SubjectFacts({ subject, inline }: { subject: ParkedWritePayload["subject"]; inline?: boolean }) {
+  const chips = subject.state === "unscoped"
+    ? (
+        <>
+          <Chip label="subject">unscoped</Chip>
+          <Chip label="reviewed">{subject.reviewedReasonId}</Chip>
+          <Chip label="proof">{subject.proofId}</Chip>
+          <Chip label="observed">{fmtClock(subject.observedAt)}</Chip>
+        </>
+      )
+    : (
+        <>
+          {subject.evidence.kind === "person" && (
+            <Chip label={subject.evidence.identifierKind}>{subject.evidence.displaySuffix}</Chip>
+          )}
+          {subject.evidence.kind === "artifact" && <Chip label="artifact">{subject.evidence.artifactId}</Chip>}
+          {subject.evidence.kind === "catalog" && <Chip label="catalog">{subject.evidence.catalogKey}</Chip>}
+          <Chip label="binding" title={subject.evidence.bindingDigest}>
+            {shortDigest(subject.evidence.bindingDigest)}
+          </Chip>
+          <Chip label="proof">{subject.proofId}</Chip>
+          <Chip label="observed">{fmtClock(subject.observedAt)}</Chip>
+        </>
+      );
+  return inline === true ? chips : <ChipRow>{chips}</ChipRow>;
 }
 
 /**
@@ -207,8 +214,19 @@ export function InlineParkedWrite({
           the same `banner` placement filter every other surface uses. A third
           exit does not exist in doc 09 and cannot be invented here, because
           there is no descriptor to render it from.
+
+          `ParkResolutions` draws the two write resolutions as the demo's tinted
+          cards, with the server's `detail` sentence on each (R8 finding 1);
+          `BannerActions` draws whatever else the section banner carries and now
+          filters the park pair out, so the same descriptor can never be drawn
+          twice. Both take the same descriptor list and the same target.
         */}
         <BannerActions
+          actions={parked.actions}
+          target={{ runId: parked.runId, expectedVersion: parkedExpectedVersion(parked) }}
+          onAction={onResolve}
+        />
+        <ParkResolutions
           actions={parked.actions}
           target={{ runId: parked.runId, expectedVersion: parkedExpectedVersion(parked) }}
           onAction={onResolve}
@@ -284,30 +302,61 @@ function ProofUnserved() {
  * The refusal is the LAST element in the dialog body, so nothing below it
  * moves; the standing `min-h` above keeps the block's own presence stable
  * rather than letting the body jump by a line.
+ *
+ * TWO ARMS, split on whether the server named a CODE — the demo's
+ * `hasRefusalCode` branch (`DemoParkResolve.tsx:170-184`), and the split is
+ * exact here rather than approximate: `CommandResultSchema` gives `rejected` a
+ * required `code` and gives `conflict` none (`src/domain/commands.ts:323-324`).
+ * The code is what an operator quotes into a bug report, so a coded refusal
+ * prints the SERVED one — this surface used to print a hardcoded
+ * `command-refused` for every refusal, which is a constant wearing a served
+ * field's clothes (R8 finding 2) — and an uncoded one says in as many words
+ * that there is nothing to quote, rather than inventing a code to fill the slot.
  */
-function RefusedNotice({ message }: { message: string }) {
+function RefusedNotice({ refusal }: { refusal: Refused }) {
   const entering = useDsEnterTransition();
+  const enterClass = cn(
+    dsMotion.enter,
+    "data-[demo-enter=from]:translate-y-[var(--ds-travel-md)] data-[demo-enter=from]:opacity-0",
+  );
+  if (refusal.code === undefined) {
+    return (
+      <Banner tone="danger" title="Nothing was recorded" className={enterClass} {...entering}>
+        <span role="alert">
+          {refusal.message} Nothing was recorded and your answer below is untouched — but the server sent no
+          refusal code, so there is nothing here to quote in a bug report.
+        </span>
+      </Banner>
+    );
+  }
   return (
     <Refusal
       title="Nothing was recorded"
-      code="command-refused"
+      code={refusal.code}
       outcome="the write is still parked · your answer below is untouched"
-      className={cn(
-        dsMotion.enter,
-        "data-[demo-enter=from]:translate-y-[var(--ds-travel-md)] data-[demo-enter=from]:opacity-0",
-      )}
+      className={enterClass}
       {...entering}
     >
-      <span role="alert">{message}</span>
+      <span role="alert">{refusal.message}</span>
     </Refusal>
   );
+}
+
+/**
+ * A refusal as this surface holds it: the server's sentence, and its code when
+ * the server sent one. `conflict` never carries a code and `rejected` always
+ * does, so the optional field is the wire's own shape, not a guess.
+ */
+interface Refused {
+  readonly message: string;
+  readonly code?: string;
 }
 
 /** What the operator's answer produced. `idle` reserves the space it will need. */
 type Outcome =
   | { state: "idle" }
   | { state: "sending" }
-  | { state: "refused"; message: string };
+  | { state: "refused"; refusal: Refused };
 
 export interface ParkResolveTarget {
   readonly parked: ParkedWritePayload;
@@ -338,6 +387,7 @@ export function ParkResolveDialog({
   onResolved: () => void;
 }) {
   const client = useDashboardClient();
+  const { toast } = useToasts();
   const [evidenceNote, setEvidenceNote] = useState("");
   const [outcome, setOutcome] = useState<Outcome>({ state: "idle" });
 
@@ -374,6 +424,23 @@ export function ParkResolveDialog({
     : noteProblem;
 
   const { writeTarget } = action;
+  /**
+   * A refusal lands in TWO places, and the demo's reason for the second one is
+   * that a dialog can be scrolled (`DemoParkResolve.tsx:141-145`). The inline
+   * `Refusal` is the record beside the answer it refused; the toast is
+   * `danger`, which in this product means it never auto-dismisses — "nothing
+   * was recorded" is not allowed to time out.
+   */
+  const refuse = (refusal: Refused): void => {
+    setOutcome({ state: "refused", refusal });
+    toast({
+      tone: "danger",
+      title: "Nothing was recorded",
+      description: refusal.code === undefined
+        ? refusal.message
+        : `${refusal.message} (code ${refusal.code})`,
+    });
+  };
   const submit = (): void => {
     if (arm !== "absent" || blocked !== undefined) return;
     setOutcome({ state: "sending" });
@@ -397,16 +464,19 @@ export function ParkResolveDialog({
       // the state a second tab produces, and the server is the only party that
       // can say which generation is live now.
       if (result.state === "conflict" || result.state === "rejected") {
-        setOutcome({ state: "refused", message: result.message });
+        refuse(
+          result.state === "rejected"
+            ? { message: result.message, code: result.code }
+            : { message: result.message },
+        );
         return;
       }
       onResolved();
       onClose();
     }, (caught: unknown) => {
-      setOutcome({
-        state: "refused",
-        message: caught instanceof Error ? caught.message : String(caught),
-      });
+      // A transport failure is not a server refusal and has no code of its own
+      // to quote — the uncoded arm says exactly that.
+      refuse({ message: caught instanceof Error ? caught.message : String(caught) });
     });
   };
 
@@ -414,19 +484,28 @@ export function ParkResolveDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent size="md" title={confirm.title} description={confirm.body}>
+      {/* `lg`, the demo's size (R8 finding 13). This dialog carries the fence
+          facts, the subject facts, a multi-line evidence field and a reserved
+          answer slot; at `md` the fence row wrapped to three lines. */}
+      <DialogContent size="lg" title={confirm.title} description={confirm.body}>
         <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
-          {/* The fence facts the resolution BINDS to — shown, never assumed. */}
-          <Well className="flex flex-col gap-[var(--ds-space-snug)]">
-            <ChipRow>
-              <Chip label="system">{parked.system}</Chip>
-              <Chip label="fenced">{fmtClock(parked.fencedAt)}</Chip>
-              <Chip label="generation">{String(parked.generation)}</Chip>
-              <Chip label="key" title={parked.idempotencyKeyDigest}>
-                {shortDigest(parked.idempotencyKeyDigest)}
-              </Chip>
-            </ChipRow>
-            <SubjectFacts subject={parked.subject} />
+          {/*
+            The fence facts the resolution BINDS to — shown, never assumed.
+
+            A flex-wrap row of CONTENT-WIDTH chips, which is the demo's
+            `FenceFacts` (`DemoParkResolve.tsx:333-340`) and R8 finding 14. The
+            `ChipRow` grid this used to be gave every chip the same column
+            width, so `system` and a 12-character digest were the same size and
+            the row read as a table of equal facts rather than as a sentence.
+          */}
+          <Well className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
+            <Chip label="system">{parked.system}</Chip>
+            <Chip label="fenced">{fmtClock(parked.fencedAt)}</Chip>
+            <Chip label="generation">{String(parked.generation)}</Chip>
+            <Chip label="key" title={parked.idempotencyKeyDigest}>
+              {shortDigest(parked.idempotencyKeyDigest)}
+            </Chip>
+            <SubjectFacts subject={parked.subject} inline />
           </Well>
 
           {arm === "present" ? (
@@ -435,7 +514,21 @@ export function ParkResolveDialog({
             <Field
               label="What did you check, and what did you see?"
               description="The only record of why a retry was permitted to submit for real."
-              error={outcome.state === "refused" ? null : (note.length > 500 ? noteProblem ?? null : null)}
+              /*
+                BOTH note problems land here — the empty note as well as the
+                over-long one (R8 finding 16). The empty-note sentence used to
+                exist only as the disabled verb's `title`, which is a tooltip on
+                a control the operator cannot focus and a screen reader is never
+                given: the Field's `error` is the accessible channel, and it
+                says the thing beside the box the operator has to fix. The
+                sentence itself is already the demo's
+                (`DemoParkResolve.tsx:255`).
+
+                A refusal suppresses it: the server has just answered, and a
+                client-side field note above the server's own refusal would be
+                two verdicts on one answer.
+              */
+              error={outcome.state === "refused" ? null : noteProblem ?? null}
               required
             >
               <Textarea
@@ -454,7 +547,7 @@ export function ParkResolveDialog({
             is already travelling toward it.
           */}
           <div className="min-h-[var(--ds-h-lg)]">
-            {outcome.state === "refused" && <RefusedNotice message={outcome.message} />}
+            {outcome.state === "refused" && <RefusedNotice refusal={outcome.refusal} />}
           </div>
         </DialogBody>
 
@@ -466,13 +559,27 @@ export function ParkResolveDialog({
           </Button>
           {/* `loading` rather than a swapped label: the primitive keeps the
               LABEL put and puts the spinner in the icon's slot, so the button
-              never changes width under a pointer mid-click. */}
+              never changes width under a pointer mid-click.
+
+              THE ARM PICKS THE VARIANT AND THE GLYPH (R8 finding 3). Recording
+              a write as PRESENT is the outcome where nothing further happens —
+              the transaction landed, the run settles on it — so it is `primary`
+              with a check. ABSENT is the one that unlocks a real second submit
+              against a live HR system, which is why it keeps `danger` and the
+              slashed circle. Both arms drew the ABSENT pair unconditionally, so
+              the safe answer was wearing the dangerous answer's face.
+
+              The LABEL stays the server's `confirmLabel` — doc 13 §8.5, on
+              record as a deliberate deviation from the demo's client-authored
+              strings (R8 finding 19). */}
           <Button
-            variant="danger"
+            variant={arm === "present" ? "primary" : "danger"}
             disabled={blocked !== undefined}
             loading={sending}
             title={blocked}
-            icon={<CircleSlash aria-hidden className={dsIcon.md} />}
+            icon={arm === "present"
+              ? <CheckCircle2 aria-hidden className={dsIcon.md} />
+              : <CircleSlash aria-hidden className={dsIcon.md} />}
             onClick={submit}
           >
             {confirm.confirmLabel}

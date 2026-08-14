@@ -93,7 +93,7 @@ export function QueueToolbar({
             flex wrapper is where that is fixed once for every consumer. */}
         <Select
           variant="toolbar"
-          aria-label="Order the queue"
+          aria-label="Sort the queue"
           value={sort}
           onChange={(event) => onSort(event.target.value as QueueSortKey)}
           title={QUEUE_SORTS.find((entry) => entry.key === sort)?.note}
@@ -109,7 +109,7 @@ export function QueueToolbar({
         <button
           type="button"
           aria-pressed={selectMode}
-          title="Pick several rows at once"
+          title="Act on several rows at once"
           onClick={() => onSelectMode(!selectMode)}
           className={cn(
             toolbarControl(),
@@ -151,12 +151,16 @@ export function QueueToolbar({
             "gap-[var(--ds-space-snug)] px-[var(--ds-shell-inset)]",
           )}
         >
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={visibleIds.length === 0}
-            onClick={allSelected ? onClearSelection : onSelectAll}
-          >
+          {/* NOT disabled at zero, which is the demo's own call
+              (`DemoBulkBar.tsx:236`) and R8 finding 22: the uncited
+              `disabled={visibleIds.length === 0}` this used to carry was a
+              rebuild addition with no argument behind it. `Select all 0 in
+              view` is a control that reads its own count out loud and does
+              nothing when pressed, and that is strictly more legible than a
+              greyed button giving no reason — the band is only mounted in
+              select mode anyway, so the zero case is a day with no rows, not a
+              malfunction. */}
+          <Button size="sm" variant="secondary" onClick={allSelected ? onClearSelection : onSelectAll}>
             {allSelected ? "Clear" : `Select all ${visibleIds.length} in view`}
           </Button>
           <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
