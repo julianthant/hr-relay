@@ -44,32 +44,40 @@ function at(system: string, date: string, sequence: number): LedgerLinePointer {
   return LedgerLinePointerSchema.parse({ system, date, sequence });
 }
 
+/**
+ * The base facts, `as const` so the closed-enum leaves (`completionKind`,
+ * `proofSource`, `instance`, the two absent arms) keep their literal types
+ * through the spread. Without it every one of them widens to `string` and the
+ * fixture stops satisfying `LedgerEntryFacts` — a fixture that cannot be
+ * passed to the function it exercises.
+ */
+const ENTRY_PAYLOAD_BASE = {
+  workflowId: "kuali-timekeeper-annotation",
+  itemId: UUID_4,
+  system: "kuali",
+  idempotencyKey: KEY,
+  idempotencyKeyDigest: deriveIdempotencyKeyDigest("kuali", KEY),
+  writeIntentId: "aa11bb22-0001-4000-8000-aa11bb220001",
+  intentGeneration: 1,
+  proof: { schemaHash: HASH_A, value: { readBack: "TK-2026" } },
+  completionKind: "save-verify",
+  proofSource: "normal-output",
+  bindingProofDigest: HASH_B,
+  subject: { state: "absent" },
+  runId: "aa11bb22-0002-4000-8000-aa11bb220002",
+  traceId: "kt-090400-aa11",
+  attempt: 1,
+  operator: "local-operator",
+  instance: "prod",
+  configFingerprint: HASH_B,
+  dryRun: false,
+  fencedAt: "2026-08-04T17:00:00.000Z",
+  confirmedAt: "2026-08-04T17:00:16.000Z",
+  externalOccurredAt: { state: "absent" },
+} as const;
+
 function entryPayload(overrides: Record<string, unknown> = {}) {
-  return {
-    workflowId: "kuali-timekeeper-annotation",
-    itemId: UUID_4,
-    system: "kuali",
-    idempotencyKey: KEY,
-    idempotencyKeyDigest: deriveIdempotencyKeyDigest("kuali", KEY),
-    writeIntentId: "aa11bb22-0001-4000-8000-aa11bb220001",
-    intentGeneration: 1,
-    proof: { schemaHash: HASH_A, value: { readBack: "TK-2026" } },
-    completionKind: "save-verify",
-    proofSource: "normal-output",
-    bindingProofDigest: HASH_B,
-    subject: { state: "absent" },
-    runId: "aa11bb22-0002-4000-8000-aa11bb220002",
-    traceId: "kt-090400-aa11",
-    attempt: 1,
-    operator: "local-operator",
-    instance: "prod",
-    configFingerprint: HASH_B,
-    dryRun: false,
-    fencedAt: "2026-08-04T17:00:00.000Z",
-    confirmedAt: "2026-08-04T17:00:16.000Z",
-    externalOccurredAt: { state: "absent" },
-    ...overrides,
-  };
+  return { ...ENTRY_PAYLOAD_BASE, ...overrides };
 }
 
 function writePartition(root: string, system: string, date: string, lines: readonly unknown[]): void {
