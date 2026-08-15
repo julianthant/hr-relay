@@ -225,6 +225,10 @@ export const FIXTURE_ARCHIVED_RUN: ArchivedRunDetailWire = ArchivedRunDetailWire
     writeIntentIds: [],
     ledgerPartitions: [],
   },
+  // The pointers above, resolved. This run filed nothing, so there is nothing
+  // to resolve — an empty list here is the same fact as an empty pointer list,
+  // never a resolution that silently dropped a row.
+  ledger: [],
   // Computed by the SAME domain function the server calls, off this fixture's
   // own row — a hand-authored retention block would let the reference drift
   // from the policy it is meant to photograph.

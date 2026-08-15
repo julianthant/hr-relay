@@ -544,6 +544,7 @@ type NotificationRepository = Readonly<{
 type LedgerProjectionRepository = Readonly<{
   listPendingOutbox(): readonly z.infer<typeof AtomicOutboxRecordSchema>[];
   getOutbox(outboxId: string): z.infer<typeof AtomicOutboxRecordSchema> | undefined;
+  listLedgerOutboxByWriteIntent(writeIntentId: string): readonly z.infer<typeof AtomicOutboxRecordSchema>[];
   acquireLease(input: unknown): LedgerLeaseOutcome;
   releaseLease(input: unknown): LedgerPartitionRecord;
   getPartition(system: string, date: string): LedgerPartitionRecord | undefined;
@@ -2462,6 +2463,28 @@ export class AuthorityDatabase implements Disposable {
         OutboxIdSchema.parse(outboxId),
         AtomicOutboxRecordSchema,
       ),
+      /**
+       * Every LEDGER outbox row one write intent produced, oldest first.
+       *
+       * This is what lets the archive name the ledger LINES a run filed
+       * without copying them: the sweep walks the run's intents, this walks
+       * each intent's outbox rows, and `getProjection` turns each into a
+       * `(system, date, seq)` pointer. `durable_outbox_intent_id_idx` is the
+       * index it rides. `kind` is filtered here rather than by the caller
+       * because a `write-committed-span` row is not a ledger line and a
+       * pointer to one would name a partition that does not exist.
+       */
+      listLedgerOutboxByWriteIntent: (writeIntentId: string) => {
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM durable_outbox
+          WHERE write_intent_id = ? AND kind = 'ledger-entry'
+          ORDER BY created_at, record_key
+        `).all(WriteIntentIdSchema.parse(writeIntentId));
+        return Object.freeze(rows.map((row) => parseJsonRecord(
+          AtomicOutboxRecordSchema,
+          JsonRowSchema.parse(row).record_json,
+        )));
+      },
       acquireLease: (input: unknown): LedgerLeaseOutcome => {
         const request = LedgerLeaseRequestSchema.parse(input);
         return this.#authorityWrite("ledger_partitions", () => {

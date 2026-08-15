@@ -41,6 +41,7 @@ import {
   FingerprintSchema,
   IsoInstantSchema,
   NodeIdSchema,
+  NonNegativeIntSchema,
   PositiveIntSchema,
   RunIdSchema,
   TraceIdSchema,
@@ -197,11 +198,18 @@ export const ArchivedEvidencePointersSchema = z.strictObject({
   artifactIds: z.array(ArtifactIdSchema),
   checkpointNodeIds: z.array(NodeIdSchema),
   writeIntentIds: z.array(WriteIntentIdSchema),
-  /** The ledger is NEVER archived; these name lines that stay in place. */
+  /**
+   * The ledger is NEVER archived; these name lines that stay in place.
+   *
+   * `sequence` is the ledger's own `seq`, which is ZERO-based per partition —
+   * the first line a system files on a day is sequence 0. It was declared
+   * positive while nothing populated the field, so no stored record carries a
+   * pointer under the old bound; a first line would simply have been refused.
+   */
   ledgerPartitions: z.array(z.strictObject({
     system: z.string().min(1),
     date: z.iso.date(),
-    sequence: PositiveIntSchema,
+    sequence: NonNegativeIntSchema,
   })),
 });
 export type ArchivedEvidencePointers = z.infer<typeof ArchivedEvidencePointersSchema>;

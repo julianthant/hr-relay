@@ -25,6 +25,7 @@ import {
   WorkflowVersionIdentitySchema,
 } from "../archive/model.js";
 import { ArchiveRetentionWireSchema } from "../archive/retention.js";
+import { ResolvedLedgerLineWireSchema } from "../archive/ledger-resolution.js";
 import { SemverSchema, VersionScopeSchema } from "../commands.js";
 import {
   ActorIdSchema,
@@ -173,6 +174,15 @@ export const ArchivedRunDetailWireSchema = z.strictObject({
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
   evidence: ArchivedEvidencePointersSchema,
+  /**
+   * The evidence pointers' ledger half, RESOLVED against the live ledger at
+   * read time. The pointers above stay pointers — the ledger is never archived
+   * — and this is what lets the Write-ledger card name what was filed instead
+   * of listing three ids. A pointer that resolves to nothing appears here as a
+   * named refusal rather than being dropped: the list of what a run filed is
+   * the one list an operator must never see silently short.
+   */
+  ledger: z.array(ResolvedLedgerLineWireSchema),
   /**
    * When each class of this run's data is purged, COMPUTED per record (doc 03
    * §10.4). It is not a restatement of the policy: a surface handed the rules

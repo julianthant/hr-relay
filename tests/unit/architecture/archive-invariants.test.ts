@@ -131,7 +131,23 @@ describe("archive invariants", () => {
     );
   });
 
-  it("never names the ledger from any archive module", () => {
+  it("never names a ledger PATH, and imports the ledger only to READ it back", () => {
+    /*
+     * The invariant is narrower than "the word never appears", and D179's own
+     * sentence is why: archiving is a display lifecycle and the ledger is an
+     * audit one, so no archive module may WRITE, prune, renumber or name a
+     * ledger FILE. Resolving a stored pointer back to the line it names is the
+     * opposite act — it is what keeps the pointer honest, and it is why an
+     * archived record can carry ids instead of a copy of the audit record.
+     *
+     * So: a `ledger/` path literal stays banned outright in all three, and
+     * exactly ONE import is allowed, in exactly one file — the read-through
+     * the archived-detail query calls. Every other ledger import is a
+     * violation, including in the two modules that write archived records.
+     */
+    const readOnly = new Map<string, readonly string[]>([
+      ["src/server/dashboard/queries/archive.ts", ["../../../infra/ledger/ledger-read-through.js"]],
+    ]);
     const files = [
       "src/domain/archive/model.ts",
       "src/services/archive/archive-service.ts",
@@ -140,17 +156,42 @@ describe("archive invariants", () => {
     for (const file of files) {
       // Comments are stripped first: the word MUST appear in the prose — the
       // whole point of these modules is that the ledger is never archived —
-      // and it must never appear in the code.
+      // and it must never appear in the code except as the allowed import.
       const code = readFileSync(join(REPO_ROOT, file), "utf8")
         .replaceAll(/\/\*[\s\S]*?\*\//gu, "")
         .replaceAll(/^\s*\/\/.*$/gmu, "");
-      // A `ledger/` PATH or an import of a ledger module. A schema FIELD named
-      // `ledgerPartitions` is the opposite of a violation: it is how an
-      // archived run points AT lines it must never move.
+      // Import specifiers are removed before the PATH test: a module
+      // SPECIFIER contains a slash by construction, and the two are checked
+      // separately below on their own terms.
+      const withoutImports = code.replaceAll(/from\s+["'][^"']*["']/gu, "");
       assert.equal(
-        /["'`][^"'`]*ledger\//u.test(code) || /from\s+["'][^"']*ledger[^"']*["']/u.test(code),
+        /["'`][^"'`]*ledger\//u.test(withoutImports),
         false,
-        `${file} names a ledger path or module; archiving is a display lifecycle and the ledger is an audit one`,
+        `${file} names a ledger PATH; the archive may never move, prune or renumber a ledger file`,
+      );
+      const allowed = readOnly.get(file) ?? [];
+      const imports = [...code.matchAll(/from\s+["']([^"']*ledger[^"']*)["']/gu)].map((match) => match[1]);
+      assert.deepEqual(
+        imports.filter((specifier) => !allowed.includes(specifier)),
+        [],
+        `${file} imports a ledger module that is not the allowed read-only resolution`,
+      );
+    }
+
+    /*
+     * And the read-through itself is read-only: it may open a partition and
+     * parse a line, and it may never write one. A "repair" here would rewrite
+     * the record of what was really filed against a live HR system, which is
+     * the one thing doc 09 §6 forbids projecting past.
+     */
+    const reader = readFileSync(join(REPO_ROOT, "src/infra/ledger/ledger-read-through.ts"), "utf8")
+      .replaceAll(/\/\*[\s\S]*?\*\//gu, "")
+      .replaceAll(/^\s*\/\/.*$/gmu, "");
+    for (const primitive of ["writeFileSync", "appendFileSync", "writeSync", "unlinkSync", "rmSync", "renameSync", "openSync"]) {
+      assert.equal(
+        reader.includes(primitive),
+        false,
+        `the archive's ledger read-through names ${primitive}; it may read a line and never write one`,
       );
     }
   });

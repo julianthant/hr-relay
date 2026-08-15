@@ -34,6 +34,7 @@ import { VersionScopeSchema } from "../../../domain/commands.js";
 import type { WorkflowVersionIdentity } from "../../../domain/archive/model.js";
 import { versionBumpPlanFingerprint } from "../../../domain/archive/model.js";
 import { archiveRetention } from "../../../domain/archive/retention.js";
+import type { LedgerReadThrough } from "../../../infra/ledger/ledger-read-through.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import {
   assessVersionBump,
@@ -60,6 +61,14 @@ export interface ArchiveQueryDeps {
   readonly descriptors: {
     list(): readonly Readonly<{ id: string; label: string; version: number; contractFingerprint: string }>[];
   };
+  /**
+   * Resolves an archived run's ledger pointers against the LIVE ledger. It is
+   * a required dependency rather than an optional one on purpose: a reader
+   * composed without it would serve an empty Write-ledger card on a run that
+   * filed real HR transactions, which is the most dangerous empty state this
+   * surface has.
+   */
+  readonly ledger: LedgerReadThrough;
 }
 
 export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
@@ -185,6 +194,15 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
       receipt: record.receipt,
       failure: record.failure,
       evidence: record.evidence,
+      /*
+       * The read-through. The archived record keeps naming the lines and
+       * copies none of them, so this is the one place the two meet — and it
+       * happens on READ, per request, against whatever the live ledger holds
+       * now. It is not a descriptor read and it resolves no old-version code:
+       * the ledger is a flat append-only file whose entry schema is the same
+       * one every reader in this tree uses.
+       */
+      ledger: deps.ledger.resolve(record.evidence.ledgerPartitions),
       /*
        * Computed from the record's OWN fields, the D86 policy constants and
        * `now` — no store read, no descriptor. Reading the artifact bytes back

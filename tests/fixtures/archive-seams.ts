@@ -5,7 +5,10 @@
  * answers about what "the archive" is, and the whole point of D80 is that there
  * is exactly one.
  */
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Clock } from "../../src/domain/clock.js";
+import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
 import type { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import {
   createArchiveSnapshotSource,
@@ -25,12 +28,20 @@ export function archiveQueryDeps(input: Readonly<{
   clock: Clock;
   appVersion: string;
   descriptors: readonly ArchiveSeamDescriptor[];
+  /**
+   * The state root the ledger read-through opens. A test that omits it gets
+   * the PRODUCTION reader over a directory that does not exist, so every
+   * pointer resolves to a named `partition-missing` — which is the honest
+   * answer for a world with no ledger, and never a silently empty card.
+   */
+  stateRoot?: string;
 }>): ArchiveQueryDeps {
   return {
     clock: input.clock,
     appVersion: input.appVersion,
     authority: { withAuthorityTransaction: (work) => input.database.withAuthorityTransaction(work) },
     descriptors: { list: () => input.descriptors },
+    ledger: createLedgerReadThrough(input.stateRoot ?? join(tmpdir(), "hrauto-no-ledger")),
   };
 }
 

@@ -252,9 +252,28 @@ export function deriveArchivedRunRecord(input: ArchivedRunDerivationInput): Arch
       artifactIds,
       checkpointNodeIds,
       writeIntentIds: [...intents.map((intent) => intent.writeIntentId)].sort(),
-      // The ledger is NEVER archived. These name lines that stay exactly where
-      // they are, so an archived receipt can still be walked to what was filed.
-      ledgerPartitions: [],
+      /*
+       * The ledger is NEVER archived. These name lines that stay exactly where
+       * they are, so an archived receipt can still be walked to what was
+       * filed. The pointer is derived, never copied: the run's write intents
+       * name their ledger outbox rows, and each projected row already carries
+       * the `(system, date, seq)` the projector assigned it. An outbox row
+       * with NO projection row has no sequence at all — the projector has not
+       * reached it — so there is nothing to point AT and it is left out. An
+       * `assigned`-but-not-yet-appended row is the opposite case and IS
+       * pointed at: its sequence is durable and its exact line is
+       * reconstructible from the outbox payload, so dropping it would leave
+       * the archive permanently silent about a line the projector is about to
+       * write. Until that append lands the read-through answers
+       * `sequence-missing`, which is the true statement in that window.
+       */
+      ledgerPartitions: intents
+        .flatMap((intent) => repositories.ledgerProjection
+          .listLedgerOutboxByWriteIntent(intent.writeIntentId)
+          .map((outbox) => repositories.ledgerProjection.getProjection(outbox.outboxId)))
+        .filter((projection) => projection !== undefined)
+        .map((projection) => ({ system: projection.system, date: projection.date, sequence: projection.seq }))
+        .sort((a, b) => a.system.localeCompare(b.system) || a.date.localeCompare(b.date) || a.sequence - b.sequence),
     },
     input: run.input,
   });

@@ -69,6 +69,7 @@ import {
 } from "../../infra/sqlite/index.js";
 import { acquireRuntimeProcessLock } from "../../infra/sqlite/runtime-process-locks.js";
 import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
+import { createLedgerReadThrough } from "../../infra/ledger/ledger-read-through.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
@@ -418,6 +419,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     appVersion,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     descriptors: { list: () => DESCRIPTORS },
+    // The archive's ledger read-through, over the SAME state root the
+    // projector appends to — the pointers stay pointers and this is what
+    // turns them back into what was filed.
+    ledger: createLedgerReadThrough(stateRoot),
   };
 
   const kernel = createCommandKernel({

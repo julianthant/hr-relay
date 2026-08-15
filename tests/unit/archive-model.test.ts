@@ -32,6 +32,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentatio
 import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { buildArchiveIndex, buildArchivedRunDetail } from "../../src/server/dashboard/queries/archive.js";
+import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
 import type { ArchiveRunSnapshot } from "../../src/services/archive/archive-service.js";
 import { planStart } from "../../src/services/start/plan.js";
 import { HASH_A, HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
@@ -373,6 +374,9 @@ describe("the D80 archive model", () => {
       appVersion: "0.1.0",
       authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
       descriptors: { list: () => [] },
+      // The read-through over the SAME state root the world writes to, so a
+      // pointer this test archived resolves the way production would.
+      ledger: createLedgerReadThrough(world.stateRoot),
     } as unknown as Parameters<typeof buildArchivedRunDetail>[0];
 
     const detail = buildArchivedRunDetail(deps, archived);
@@ -405,6 +409,9 @@ describe("the D80 archive model", () => {
       appVersion: "0.1.0",
       authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
       descriptors: { list: () => [] },
+      // The read-through over the SAME state root the world writes to, so a
+      // pointer this test archived resolves the way production would.
+      ledger: createLedgerReadThrough(world.stateRoot),
     } as unknown as Parameters<typeof buildArchiveIndex>[0];
 
     const entry = buildArchiveIndex(deps).entries[0];
@@ -431,6 +438,9 @@ describe("the D80 archive model", () => {
       appVersion: "0.1.0",
       authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
       descriptors: { list: () => [] },
+      // The read-through over the SAME state root the world writes to, so a
+      // pointer this test archived resolves the way production would.
+      ledger: createLedgerReadThrough(world.stateRoot),
     } as unknown as Parameters<typeof buildArchiveIndex>[0];
 
     const entry = buildArchiveIndex(deps).entries.find((candidate) => candidate.runId === archived);

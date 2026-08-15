@@ -141,6 +141,7 @@ import type {
 } from "../../domain/dashboard/archive.js";
 import { EVENT_STREAM_RETENTION_DAYS, type ArchiveRetentionWire } from "../../domain/archive/retention.js";
 import { timelineEventDuration } from "../../domain/dashboard/run-detail.js";
+import type { ResolvedLedgerLineWire } from "../../domain/archive/ledger-resolution.js";
 import type { CommandResult } from "../../domain/commands.js";
 import { DashboardClientError } from "../client/errors.js";
 import { useDashboardClient } from "../state/client-context.js";
@@ -926,6 +927,60 @@ function RetentionLines({ retention }: { retention: ArchiveRetentionWire }) {
   );
 }
 
+/* ── the write ledger, resolved ──────────────────────────────────────────── */
+
+/**
+ * ONE ledger line as the Write-ledger card renders it.
+ *
+ * A pointer that resolved to nothing is still a ROW — struck through, naming
+ * which of the four failures it is. Dropping it would shorten the list of what
+ * a run filed, and that list is the one an operator reads before deciding
+ * whether a relaunch would file the same thing twice.
+ *
+ * `Action` and `Confirmation` come back as reasoned absences today: a ledger
+ * entry declares neither, and no commit contract has declared how to read them
+ * out of its own proof. The dash carries the server's reason on hover rather
+ * than a plausible label — an invented action on the record of what we did to
+ * a real person's employment is the failure mode this program exists to stop.
+ */
+function LedgerLineRow({ line }: { line: ResolvedLedgerLineWire }) {
+  if (line.state === "unresolved") {
+    return (
+      <TR>
+        <TD className="text-[color:var(--ds-fg-muted)] line-through">{line.pointer.system}</TD>
+        <TD colSpan={3} className="text-[color:var(--ds-status-failed-fg)]" title={line.reason}>
+          {`${line.pointer.date} line ${String(line.pointer.sequence)} — ${line.failure.replace(/-/gu, " ")}`}
+        </TD>
+      </TR>
+    );
+  }
+  return (
+    <TR>
+      <TD title={`${line.pointer.date} line ${String(line.pointer.sequence)} · ${line.idempotencyKey}`}>
+        {line.system}
+      </TD>
+      <TD
+        className={line.action.state === "present" ? undefined : "text-[color:var(--ds-fg-faint)]"}
+        title={line.action.state === "absent" ? line.action.reason : undefined}
+      >
+        {line.action.state === "present" ? line.action.value : "—"}
+      </TD>
+      <TD
+        numeric
+        className={line.confirmation.state === "present" ? undefined : "text-[color:var(--ds-fg-faint)]"}
+        title={line.confirmation.state === "absent" ? line.confirmation.reason : undefined}
+      >
+        {line.confirmation.state === "present" ? line.confirmation.value : "—"}
+      </TD>
+      <TD align="right">
+        {line.instance === "test"
+          ? <Badge tone="warning">test</Badge>
+          : <span className="text-[color:var(--ds-fg-muted)]">prod</span>}
+      </TD>
+    </TR>
+  );
+}
+
 /* ── one archived run ────────────────────────────────────────────────────── */
 
 /**
@@ -1211,7 +1266,7 @@ function ArchivedRunDetail({
           <Card>
             <CardBody className="flex flex-col gap-[var(--ds-space-snug)]">
               <SectionLabel>Write ledger — never archived</SectionLabel>
-              {detail.evidence.ledgerPartitions.length === 0 ? (
+              {detail.ledger.length === 0 ? (
                 <Well>
                   <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>
                     This run filed nothing, so it has no ledger line. An absent line is itself the answer to “did this
@@ -1219,21 +1274,25 @@ function ArchivedRunDetail({
                   </span>
                 </Well>
               ) : (
+                /*
+                  The pointers, RESOLVED against the live ledger at read time.
+                  The archived record still copies nothing — it names
+                  `(system, date, sequence)` and the server opens the line — so
+                  the card can say what was filed without the archive ever
+                  holding a copy of the audit record.
+                */
                 <Table label="Ledger lines this run filed">
                   <THead>
                     <TR>
                       <TH>System</TH>
-                      <TH>Partition</TH>
-                      <TH align="right">Line</TH>
+                      <TH>Action</TH>
+                      <TH>Confirmation</TH>
+                      <TH align="right">Instance</TH>
                     </TR>
                   </THead>
                   <TBody>
-                    {detail.evidence.ledgerPartitions.map((line) => (
-                      <TR key={`${line.system}-${line.date}-${String(line.sequence)}`}>
-                        <TD>{line.system}</TD>
-                        <TD numeric>{line.date}</TD>
-                        <TD align="right" numeric>{line.sequence}</TD>
-                      </TR>
+                    {detail.ledger.map((line) => (
+                      <LedgerLineRow key={`${line.pointer.system}-${line.pointer.date}-${String(line.pointer.sequence)}`} line={line} />
                     ))}
                   </TBody>
                 </Table>
@@ -1380,10 +1439,10 @@ function RelaunchConfirmDialog({
           description={`A fresh ${detail.workflowLabel} run from the archived input — never a resume of ${detail.detail.header.traceId}.`}
         >
           <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
-            {(detail.evidence.writeIntentIds.length > 0 || detail.evidence.ledgerPartitions.length > 0) && (
+            {(detail.evidence.writeIntentIds.length > 0 || detail.ledger.length > 0) && (
               <Banner
                 tone="danger"
-                title={`This run already filed ${plural(Math.max(detail.evidence.writeIntentIds.length, detail.evidence.ledgerPartitions.length), "record")} in a real system`}
+                title={`This run already filed ${plural(Math.max(detail.evidence.writeIntentIds.length, detail.ledger.length), "record")} in a real system`}
                 icon={<TriangleAlert aria-hidden className={dsIcon.lg} />}
               >
                 <span className="flex flex-col gap-[var(--ds-space-snug)]">
@@ -1392,19 +1451,31 @@ function RelaunchConfirmDialog({
                   </span>
                   <Well>
                     <ul className="flex flex-col gap-[var(--ds-space-hair)]">
-                      {detail.evidence.ledgerPartitions.map((line) => (
+                      {/*
+                        The SAME resolved rows the Write-ledger card renders, so
+                        the danger banner and the evidence tab can never name
+                        different transactions. A pointer that did not resolve
+                        still appears: "we cannot read what this filed" is a
+                        stronger reason to hesitate than a short list.
+                      */}
+                      {detail.ledger.map((line) => (
                         <li
-                          key={`${line.system}-${line.date}-${String(line.sequence)}`}
+                          key={`${line.pointer.system}-${line.pointer.date}-${String(line.pointer.sequence)}`}
                           className={cn(dsText.body, "flex min-w-0 items-baseline gap-[var(--ds-space-snug)]")}
                         >
                           <span className={cn(dsText.caps, "w-[80px] shrink-0 text-[color:var(--ds-fg-muted)]")}>
-                            {line.system}
+                            {line.pointer.system}
                           </span>
-                          <span className="min-w-0 flex-1 truncate text-[color:var(--ds-fg)]">
-                            ledger {line.date}
+                          <span
+                            className="min-w-0 flex-1 truncate text-[color:var(--ds-fg)]"
+                            title={line.state === "unresolved" ? line.reason : line.idempotencyKey}
+                          >
+                            {line.state === "resolved"
+                              ? line.idempotencyKey
+                              : `ledger ${line.pointer.date} — ${line.failure.replace(/-/gu, " ")}`}
                           </span>
                           <span className={cn(dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
-                            line {line.sequence}
+                            line {line.pointer.sequence}
                           </span>
                         </li>
                       ))}

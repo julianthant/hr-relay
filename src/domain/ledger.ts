@@ -13,6 +13,7 @@ import {
   WorkflowIdSchema,
   WriteIntentIdSchema,
 } from "./ids.js";
+import { LedgerCompletionKindSchema, LedgerProofSourceSchema } from "./ledger-primitives.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import {
   IdempotencyKeySchema,
@@ -40,8 +41,8 @@ export const LedgerEntryPayloadSchema = z.strictObject({
   writeIntentId: WriteIntentIdSchema,
   intentGeneration: PositiveIntSchema,
   proof: SchemaBoundCanonicalValueSchema,
-  completionKind: z.enum(["receipt", "save-verify", "upload-verify"]),
-  proofSource: z.enum(["normal-output", "recovery-probe", "operator-attestation"]),
+  completionKind: LedgerCompletionKindSchema,
+  proofSource: LedgerProofSourceSchema,
   bindingProofDigest: FingerprintSchema,
   subject: OptionalSubjectEvidenceSchema,
   runId: RunIdSchema,
