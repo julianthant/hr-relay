@@ -34,26 +34,21 @@ the linked-run wire fields — that half rides the "No linked-run chip" record b
 
 ---
 
-## The title is a document number, not a subject
+## Rename has a kernel command and no operator control
 
-**Recorded:** 2026-08-14 · **Status:** recorded · **Owning doc:** doc 03 §1.2, §9 D15
+**Recorded:** 2026-08-14 · **Status:** recorded · **Owning doc:** doc 03 §1.2, §2.4
 
-**Symptom.** Every rebuild row reads `Separation 4502` / `Separation 4524`. Every demo row
-reads a person — `Priya Anand`, `Marcus Boone`, `Lena Hoffmann` — or the file the run is about
-(`Oath_Packet_Summer.pdf`). Three of today's six rows are the SAME document number, so the
-column the operator scans distinguishes nothing.
+**Symptom.** `RunRecord.displayName` is durable, `rename` has been a kernel command since Phase
+1c (`command-kernel.ts:1569`), the row serves and draws `displayName ?? title` with the demo's
+"Named by you — subject is <subject>" tooltip — and no build gives the operator a way to SET it.
+`KERNEL_ONLY_COMMANDS` records the display-name edit as an inline row field; only a CLI/API
+caller can rename a run today.
 
-**Demo element.** The row title (`row.displayName ?? row.title`), plus its
-`title="Named by you — subject is <subject>"` tooltip when the operator has renamed the run.
-
-**Missing wire.** A subject-derived `title`, and `QueueBaseFields.displayName` (the operator's
-own name for a run — it rides the row AND the receipt in the demo).
-
-**Where it would come from.** The projector already reads the run's identity; the subject's name
-is resolved by the identity chunk mid-run, so the honest shape is a title that starts as the
-document number and is REPLACED once the subject node has a checkpoint — never a blank and
-never a guess. `displayName` is a separate operator-authored durable field with no producer at
-all.
+**What a fix involves.** The inline rename field (demo `DemoRunIdentity.tsx`'s dialog) wired to
+the existing `rename` command — a UI session's work, no wire or kernel change. *(Replaces the
+"title is a document number" record, whose wire halves — subject-derived `title` via the
+descriptor's declared `subjectProjection`, and served `displayName` — both landed 2026-08-14;
+that record's claim that `displayName` had "no producer at all" was wrong.)*
 
 ---
 
