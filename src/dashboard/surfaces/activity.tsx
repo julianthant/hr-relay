@@ -24,7 +24,7 @@
  * renders the payload verbatim — including the range's own day list, which is
  * why a day with no runs is simply absent rather than being invented as a zero.
  *
- * ## Durations report their misses
+ * ## Durations, and warnings, report their misses
  *
  * D124's lesson was that a surface must never substitute `now` for a terminal
  * instant nobody recorded. An aggregate has the same duty at scale, so the
@@ -32,16 +32,26 @@
  * side. A median over a denominator that quietly dropped its unknowns is the
  * kind of number that gets quoted in a meeting.
  *
+ * The per-workflow table applies the same rule to warnings, which is why it has
+ * an `Unread` column the demo does not: a finished run with no derived evidence
+ * receipt has a warning set nobody has read, and adding it to `Read back` would
+ * put "came back clean" on a supervisor's copy over a run nobody checked.
+ *
  * ## What the demo has that this does not, and why nothing here approximates it
  *
  * The demo's report reads a fixture corpus of whole rows; this one reads an
- * aggregate wire. Five demo elements need facts `ActivityReportWire` does not
+ * aggregate wire. Four demo elements need facts `ActivityReportWire` does not
  * carry — distinct people, the operator's per-workflow minutes (hours saved),
- * the per-workflow status breakdown, the identities behind each outstanding
- * bucket, and the write ledger — plus an Export command the BFF does not serve.
- * Each is RECORDED in `docs/findings/activity.md`, not fabricated here: a
- * supervisor-facing artifact is the last place a plausible-but-wrong number
- * belongs.
+ * the two-letter workflow code, and the write ledger — plus an Export command
+ * the BFF does not serve. Each is RECORDED in `docs/findings/activity.md`, not
+ * fabricated here: a supervisor-facing artifact is the last place a
+ * plausible-but-wrong number belongs.
+ *
+ * The Who column is served, and served NARROW: the wire carries run ids and no
+ * names, because a name is subject data on an artifact built to be exported.
+ * The names are resolved here against the queue rows the shell already holds,
+ * and a sampled run those rows do not cover announces itself by id rather than
+ * by a name this surface would have to invent.
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChartNoAxesColumn, Info, TriangleAlert } from "lucide-react";
@@ -293,6 +303,45 @@ function Tile({
  * the report cannot bin a workflow under a heading the product does not use,
  * and a block cannot disagree with the payload it was built from.
  */
+/**
+ * One workflow's cells beyond `Runs` / `Share`, straight off the wire.
+ *
+ * A subtotal row carries the same shape, summed by the SERVER's own category
+ * total for `runs`; the status columns are added here from the rows that make
+ * the block up, which is a re-presentation of numbers the payload already
+ * agreed on rather than a second count of anything — the wire's own refinement
+ * has already refused a payload whose rows and totals disagree.
+ */
+interface WorkflowCells {
+  readBack: number;
+  warnings: number;
+  warningsUnknown: number;
+  failed: number;
+  open: number;
+}
+
+const EMPTY_CELLS: WorkflowCells = { readBack: 0, warnings: 0, warningsUnknown: 0, failed: 0, open: 0 };
+
+function cellsOf(workflow: ActivityReportWire["workflows"][number]): WorkflowCells {
+  return {
+    readBack: workflow.completion.readBack,
+    warnings: workflow.completion.warnings,
+    warningsUnknown: workflow.completion.warningsUnknown,
+    failed: workflow.failed,
+    open: workflow.open,
+  };
+}
+
+function sumCells(rows: readonly WorkflowCells[]): WorkflowCells {
+  return rows.reduce<WorkflowCells>((total, row) => ({
+    readBack: total.readBack + row.readBack,
+    warnings: total.warnings + row.warnings,
+    warningsUnknown: total.warningsUnknown + row.warningsUnknown,
+    failed: total.failed + row.failed,
+    open: total.open + row.open,
+  }), EMPTY_CELLS);
+}
+
 function CategoryBody({
   label,
   reason,
@@ -309,14 +358,14 @@ function CategoryBody({
    * moment the report has something unusual to say.
    */
   reason?: string;
-  workflows: readonly { workflowId: string; label: ReactNode; runs: number }[];
+  workflows: readonly { workflowId: string; label: ReactNode; runs: number; cells: WorkflowCells }[];
   subtotalRuns: number;
   total: number;
 }) {
   return (
     <TBody>
       <TR className="h-auto">
-        <TD colSpan={3} className="bg-[var(--ds-surface-2)] py-[var(--ds-space-tight)]">
+        <TD colSpan={8} className="bg-[var(--ds-surface-2)] py-[var(--ds-space-tight)]">
           <span className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
             <SectionLabel className="shrink-0">{label}</SectionLabel>
             <span className={cn(dsText.micro, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
@@ -329,9 +378,21 @@ function CategoryBody({
         </TD>
       </TR>
       {workflows.map((workflow) => (
-        <WorkflowRow key={workflow.workflowId} label={workflow.label} runs={workflow.runs} total={total} />
+        <WorkflowRow
+          key={workflow.workflowId}
+          label={workflow.label}
+          runs={workflow.runs}
+          cells={workflow.cells}
+          total={total}
+        />
       ))}
-      <WorkflowRow label={`${label} — subtotal`} runs={subtotalRuns} total={total} subtotal />
+      <WorkflowRow
+        label={`${label} — subtotal`}
+        runs={subtotalRuns}
+        cells={sumCells(workflows.map((workflow) => workflow.cells))}
+        total={total}
+        subtotal
+      />
     </TBody>
   );
 }
@@ -339,11 +400,13 @@ function CategoryBody({
 function WorkflowRow({
   label,
   runs,
+  cells,
   total,
   subtotal,
 }: {
   label: ReactNode;
   runs: number;
+  cells: WorkflowCells;
   total: number;
   subtotal?: boolean;
 }) {
@@ -362,6 +425,38 @@ function WorkflowRow({
       <TD align="right" numeric className={cn(cell, "text-[color:var(--ds-fg-muted)]")}>
         {share}%
       </TD>
+      <TD align="right" numeric className={cell}>
+        {cells.readBack}
+      </TD>
+      <TD align="right" numeric className={cell}>
+        {cells.warnings}
+      </TD>
+      {/*
+        THE UNREAD COLUMN IS THE HONEST ONE, and it is why this table has eight
+        columns without the demo's `Est. min saved`. A `done` run with no
+        derived evidence receipt has a warning set nobody has read; adding it to
+        `Read back` would put "came back clean" on a supervisor's copy over a
+        run nobody checked. It is muted rather than tinted — it is an absence,
+        not a problem, and amber is already spoken for by open work below.
+      */}
+      <TD
+        align="right"
+        numeric
+        className={cn(cell, "text-[color:var(--ds-fg-muted)]")}
+        title={
+          cells.warningsUnknown > 0
+            ? `${String(cells.warningsUnknown)} finished ${cells.warningsUnknown === 1 ? "run has" : "runs have"} no derived evidence receipt, so ${cells.warningsUnknown === 1 ? "its" : "their"} warning set is unread`
+            : undefined
+        }
+      >
+        {cells.warningsUnknown}
+      </TD>
+      <TD align="right" numeric className={cn(cell, cells.failed > 0 && "text-[color:var(--ds-status-failed-fg)]")}>
+        {cells.failed}
+      </TD>
+      <TD align="right" numeric className={cn(cell, cells.open > 0 && "text-[color:var(--ds-status-waiting-fg)]")}>
+        {cells.open}
+      </TD>
     </TR>
   );
 }
@@ -369,12 +464,21 @@ function WorkflowRow({
 /**
  * The per-workflow table, grouped by the served category axis.
  *
- * DEVIATION from the demo, recorded in `docs/findings/activity.md`: the demo's
- * table carries five more columns — Read back, Warnings, Failed, Open and
- * Est. min saved — and a two-letter workflow code. `ActivityWorkflowTotal`
- * serves `{workflowId, registration, runs}` and nothing else, so those columns
- * have no denominator here. Printing them as zeros would be the exact
- * plausible-but-wrong number a supervisor quotes.
+ * Eight columns, like the demo's, but not the same eight. `Read back`,
+ * `Warnings`, `Failed` and `Open` are the served cross-tab, rendered verbatim.
+ * `Unread` is NEW and has no demo counterpart: the demo's corpus knows every
+ * run's warnings because it is a fixture, and this one reads a derived receipt
+ * that a real run may not have yet — so the runs whose warning set is unread
+ * get a column instead of being folded into the clean one.
+ *
+ * TWO demo elements are still absent, recorded in `docs/findings/activity.md`
+ * rather than approximated. `Est. min saved` multiplies an operator-entered
+ * minutes-per-workflow constant that has no durable home, no owner and no edit
+ * path — the one number in the demo's whole report that is not measured, and
+ * the last thing to fabricate on the page a supervisor reads. The two-letter
+ * workflow `code` is a descriptor presentation attribute awaiting the taxonomy
+ * question; deriving one from the id here would be this surface inventing a
+ * name the product does not use.
  */
 function WorkflowsByCategory({ report }: { report: ActivityReportWire }) {
   const blocks = report.categories.map((entry) => {
@@ -400,6 +504,7 @@ function WorkflowsByCategory({ report }: { report: ActivityReportWire }) {
             ? workflow.registration.label
             : <span className="text-[color:var(--ds-status-waiting-fg)]">{workflow.workflowId}</span>,
         runs: workflow.runs,
+        cells: cellsOf(workflow),
       }))
       .sort((a, b) => b.runs - a.runs);
     return {
@@ -421,6 +526,11 @@ function WorkflowsByCategory({ report }: { report: ActivityReportWire }) {
               <TH>Workflow</TH>
               <TH align="right">Runs</TH>
               <TH align="right">Share</TH>
+              <TH align="right">Read back</TH>
+              <TH align="right">Warnings</TH>
+              <TH align="right">Unread</TH>
+              <TH align="right">Failed</TH>
+              <TH align="right">Open</TH>
             </TR>
           </THead>
           {blocks.map((block) => (
@@ -448,10 +558,184 @@ function WorkflowsByCategory({ report }: { report: ActivityReportWire }) {
  * list in a popover. The aggregate wire carries counts only — no run
  * identities — so the column is absent rather than empty.
  */
-function OutstandingTable({ report }: { report: ActivityReportWire }) {
-  const buckets = OUTSTANDING_ORDER.map((status) => ({ status, runs: statusRuns(report, status) })).filter(
-    (bucket) => bucket.runs > 0,
+/**
+ * One sampled run, resolved against the queue rows the shell already holds.
+ *
+ * The report wire carries run IDS and no names. That is deliberate — a name is
+ * subject data and this artifact is built to be exported, so the redaction
+ * posture for names on it is unsettled (`docs/findings/activity.md`) — and it
+ * means the resolution happens HERE, against rows the client already loaded
+ * for the day it is looking at.
+ *
+ * The report spans a RANGE and those rows are one DAY, so a sampled run is
+ * routinely not among them. That is not a failure and it is not a gap to fill:
+ * the run announces itself by id, which is a fact, rather than by a name this
+ * surface would have to guess at from a workflow and a date.
+ */
+interface ResolvedWho {
+  runId: string;
+  /** the subject or the operator's rename — the queue row's own choice */
+  name: { state: "present"; value: string } | { state: "absent"; reason: string };
+  workflowLabel: string | undefined;
+  traceId: string | undefined;
+}
+
+function resolveWho(
+  runId: string,
+  rows: readonly QueueRowIdentity[],
+  report: ActivityReportWire,
+): ResolvedWho {
+  const row = rows.find((candidate) => candidate.runId === runId);
+  if (row === undefined) {
+    return {
+      runId,
+      name: {
+        state: "absent",
+        reason: "this run is not among the queue rows loaded for the day on screen, so its name is not known here",
+      },
+      workflowLabel: undefined,
+      traceId: undefined,
+    };
+  }
+  const registration = report.workflows.find((entry) => entry.workflowId === row.workflowId)?.registration;
+  return {
+    runId,
+    name: { state: "present", value: row.displayName.state === "present" ? row.displayName.value : row.title },
+    workflowLabel: registration?.state === "registered" ? registration.label : row.workflowId,
+    traceId: row.traceId,
+  };
+}
+
+/** What the Who column needs off a queue row, and nothing else. */
+export interface QueueRowIdentity {
+  runId: string;
+  workflowId: string;
+  traceId: string;
+  title: string;
+  displayName: { state: "present"; value: string } | { state: "absent"; reason: string };
+}
+
+/**
+ * One outstanding STATE, its count, and WHO is behind it.
+ *
+ * The state is the question ("how many are waiting on me"), the count is the
+ * answer, and the names stay reachable one press away — a popover rather than
+ * a spray, because they are a list you consult, not a list you scan.
+ *
+ * The sample is BOUNDED by the server at five, so the popover's heading says
+ * how many of the bucket it is showing. A list captioned with the bucket's
+ * full count while holding five entries would be the surface quietly claiming
+ * the sample is the whole.
+ */
+function OutstandingRow({
+  status,
+  runs,
+  sample,
+  rows,
+  report,
+}: {
+  status: QueueStatus;
+  runs: number;
+  sample: readonly string[];
+  rows: readonly QueueRowIdentity[];
+  report: ActivityReportWire;
+}) {
+  const who = sample.map((runId) => resolveWho(runId, rows, report));
+  const first = who[0];
+  const beyondSample = runs - sample.length;
+  return (
+    <TR>
+      <TD>
+        <StatusPill status={dsStatusOf(status)} size="sm" />
+      </TD>
+      <TD align="right" numeric>
+        {runs}
+      </TD>
+      <TD>
+        <span className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
+          <span className={cn(dsText.meta, "min-w-0 truncate text-[color:var(--ds-fg-secondary)]")}>
+            {first === undefined ? "—" : <WhoName who={first} />}
+            {runs > 1 && ` +${String(runs - 1)}`}
+          </span>
+          {runs > 1 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="ghost" className="ml-auto shrink-0">
+                  All {runs}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                title={dsStatusOf(status)}
+                description={
+                  beyondSample > 0
+                    ? `${plural(sample.length, "run")} of ${String(runs)} — the report samples the first ${String(sample.length)}`
+                    : plural(runs, "run")
+                }
+                width="lg"
+                align="end"
+              >
+                <ul className="flex flex-col gap-[var(--ds-space-tight)]">
+                  {who.map((entry) => (
+                    <li key={entry.runId} className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
+                      <span className={cn(dsText.body, "min-w-0 flex-1 truncate text-[color:var(--ds-fg)]")}>
+                        <WhoName who={entry} />
+                      </span>
+                      {entry.workflowLabel !== undefined && (
+                        <span className={cn(dsText.meta, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
+                          {entry.workflowLabel}
+                        </span>
+                      )}
+                      <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-faint)]")}>
+                        {entry.traceId ?? entry.runId}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {/*
+                  The sample is the server's, not a slice taken here, so the
+                  remainder is stated rather than silently dropped: a list that
+                  stops at five under a heading reading "12 runs" is a list the
+                  operator would read as complete.
+                */}
+                {beyondSample > 0 && (
+                  <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
+                    {plural(beyondSample, "further run")} in this state {beyondSample === 1 ? "is" : "are"} not sampled
+                    on this report. The queue for each day holds them all.
+                  </p>
+                )}
+              </PopoverContent>
+            </Popover>
+          )}
+        </span>
+      </TD>
+    </TR>
   );
+}
+
+/**
+ * A name if the client holds the row, the run id if it does not — never a
+ * label composed out of a workflow and a date, which would read exactly like
+ * a real name and be one for nobody.
+ */
+function WhoName({ who }: { who: ResolvedWho }) {
+  if (who.name.state === "present") return <>{who.name.value}</>;
+  return (
+    <span className={cn(dsText.nums, "text-[color:var(--ds-fg-muted)]")} title={who.name.reason}>
+      {who.runId}
+    </span>
+  );
+}
+
+function OutstandingTable({
+  report,
+  rows,
+}: {
+  report: ActivityReportWire;
+  rows: readonly QueueRowIdentity[];
+}) {
+  const buckets = OUTSTANDING_ORDER
+    .map((status) => report.statuses.find((entry) => entry.status === status))
+    .filter((entry): entry is ActivityReportWire["statuses"][number] => entry !== undefined && entry.runs > 0);
   if (buckets.length === 0) return null;
   return (
     <div className="min-w-0">
@@ -462,18 +746,19 @@ function OutstandingTable({ report }: { report: ActivityReportWire }) {
             <TR>
               <TH>State</TH>
               <TH align="right">Runs</TH>
+              <TH>Who</TH>
             </TR>
           </THead>
           <TBody>
             {buckets.map((bucket) => (
-              <TR key={bucket.status}>
-                <TD>
-                  <StatusPill status={dsStatusOf(bucket.status)} size="sm" />
-                </TD>
-                <TD align="right" numeric>
-                  {bucket.runs}
-                </TD>
-              </TR>
+              <OutstandingRow
+                key={bucket.status}
+                status={bucket.status}
+                runs={bucket.runs}
+                sample={bucket.sample}
+                rows={rows}
+                report={report}
+              />
             ))}
           </TBody>
         </Table>
@@ -482,9 +767,14 @@ function OutstandingTable({ report }: { report: ActivityReportWire }) {
   );
 }
 
-function ActivityBody({ report }: { report: ActivityReportWire }) {
-  const readBack = statusRuns(report, "done");
-  const withWarnings = statusRuns(report, "partial");
+function ActivityBody({
+  report,
+  rows,
+}: {
+  report: ActivityReportWire;
+  rows: readonly QueueRowIdentity[];
+}) {
+  const { readBack, warnings: withWarnings, warningsUnknown } = report.completion;
   const failedRuns = statusRuns(report, "failed");
   const errorRatePct =
     report.terminalRuns === 0 ? 0 : Math.round((failedRuns / report.terminalRuns) * 1000) / 10;
@@ -501,18 +791,37 @@ function ActivityBody({ report }: { report: ActivityReportWire }) {
           note={`${plural(report.days.length, "day")} with runs in this span`}
         />
         {/*
-          FINISHED IS THE WORK THAT SUCCEEDED, not everything that stopped —
-          the demo's `verified + warnings`, which here is the `done` and
-          `partial` statuses through the ONE wire→ds map (`done` → verifiedDone,
-          `partial` → doneWarnings). Using `terminalRuns` would put a span whose
-          runs mostly FAILED under a headline reading "34 finished", with a note
-          underneath summing to nine. The tile and its own note now describe the
-          same set, and the failures are one tile to the right.
+          FINISHED IS THE WORK THAT SUCCEEDED, not everything that stopped.
+          Using `terminalRuns` would put a span whose runs mostly FAILED under a
+          headline reading "34 finished", with a note underneath summing to
+          nine; the failures are one tile to the right instead.
+
+          The tile and the table below it read the SAME served split — the
+          server's `completion`, whose three arms the wire refuses unless they
+          cover the `done` status exactly. This tile used to read the `partial`
+          status for "with warnings", which this projection's outcome map never
+          produces: the number was structurally zero, and the table below would
+          have contradicted it the first time a receipt recorded a warning.
         */}
         <Tile
           label="Finished"
-          value={String(readBack + withWarnings)}
-          note={`${String(readBack)} read back · ${String(withWarnings)} with warnings`}
+          value={String(readBack + withWarnings + warningsUnknown)}
+          note={
+            warningsUnknown === 0
+              ? `${String(readBack)} read back · ${String(withWarnings)} with warnings`
+              : `${String(readBack)} read back · ${String(withWarnings)} with warnings · ${String(warningsUnknown)} unread`
+          }
+          {...(warningsUnknown === 0 ? {} : {
+            info: (
+              <BulletList
+                items={[
+                  `${plural(warningsUnknown, "finished run")} ${warningsUnknown === 1 ? "has" : "have"} no derived evidence receipt, so ${warningsUnknown === 1 ? "its" : "their"} warning set is unread.`,
+                  "An unread warning set is counted on its own rather than added to the read-back total, which would report a run nobody checked as one that came back clean.",
+                  "It is the same distinction the queue row's warning chip draws, read through the same derivation.",
+                ]}
+              />
+            ),
+          })}
         />
         {/* The amber paragraph the demo replaced is GONE here too. What it was
             carrying is a NUMBER — how much is still open — and a reason, which
@@ -545,7 +854,7 @@ function ActivityBody({ report }: { report: ActivityReportWire }) {
       </div>
 
       {/* ---- what is still open, and what it is waiting ON ---- */}
-      <OutstandingTable report={report} />
+      <OutstandingTable report={report} rows={rows} />
 
       {/* ---- per workflow, grouped by the served category axis ---- */}
       <WorkflowsByCategory report={report} />
@@ -646,6 +955,8 @@ function caveatsFor(report: ActivityReportWire): string[] {
     "Error rate counts only runs that reached a terminal state. Anything queued, running, waiting on you or blocked is excluded and reported separately as still open, so a busy span cannot read as a finished one.",
     `${plural(report.inFlightRuns, "run")} ${report.inFlightRuns === 1 ? "is" : "are"} still open in this span, and that work is represented in no total on this page except its own.`,
     "Every total here is a rendering of the one run/queue projection the Queue Panel reads. Hidden and archived runs are excluded once, inside it, so this report and the day it summarises cannot disagree.",
+    "A finished run's warnings come from its evidence receipt. A run with no derived receipt is counted as UNREAD in its own column rather than as read back — the report says how many it could not check instead of reporting them as clean.",
+    "The Who column samples up to five runs per open state and names them only where the day on screen holds the row; every other run in a state is named by its id. The count beside it is the whole bucket, never the sample.",
   ];
 }
 
@@ -654,11 +965,21 @@ export function ActivityReport({
   today,
   actorId,
   appVersion,
+  queueRows,
   onRange,
 }: {
   /** the `from..to` value carried by the URL */
   range: string;
   today: string;
+  /**
+   * The queue rows the shell already holds for the day on screen — the ONE
+   * place the Who column resolves a sampled run id to a name. The report is
+   * not given a second fetch for them: a report that loaded its own copy of
+   * the queue could name a run differently than the queue does, which is the
+   * divergence D81 deletes one axis over. Rows for other days in the range are
+   * simply not here, and a run they do not cover says so by id.
+   */
+  queueRows: readonly QueueRowIdentity[];
   /** who is reading it — a report leaves the screen, so it says who made it */
   actorId: string;
   appVersion: string;
@@ -772,7 +1093,7 @@ export function ActivityReport({
                 </p>
               </Well>
             ) : (
-              <ActivityBody report={resource.value} />
+              <ActivityBody report={resource.value} rows={queueRows} />
             )}
           </PanelBody>
           {/* PROVENANCE, not a defence of the design. The caveats are one press

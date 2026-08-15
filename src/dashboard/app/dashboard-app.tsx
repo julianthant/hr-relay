@@ -832,6 +832,14 @@ function LoadedApp({
                 today={today}
                 actorId={boot.actor.id}
                 appVersion={boot.appVersion}
+                /*
+                  The report's Who column resolves a sampled run id against the
+                  rows the shell ALREADY holds — no second fetch, so the report
+                  and the queue cannot name the same run two ways. These are
+                  the day's rows and the report spans a range, so a sampled run
+                  from another day is simply not here and names itself by id.
+                */
+                queueRows={dayWire?.queueSurfaces ?? []}
                 onRange={(next) => setRoute({ ...route, activity: next })}
               />
             </div>
