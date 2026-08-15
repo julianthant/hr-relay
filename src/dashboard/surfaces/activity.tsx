@@ -93,7 +93,7 @@ import type { ActivityReportWire } from "../../domain/dashboard/activity.js";
 import { DashboardClientError } from "../client/errors.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
-import { dsStatusOf, type QueueStatus } from "./status.js";
+import { dsStatusOf, statusText, type QueueStatus } from "./status.js";
 import { dayLabel, fmtClock, plural } from "./format.js";
 
 /** `from..to`, the one shape the URL carries. */
@@ -665,7 +665,7 @@ function OutstandingRow({
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                title={dsStatusOf(status)}
+                title={statusText(dsStatusOf(status))}
                 description={
                   beyondSample > 0
                     ? `${plural(sample.length, "run")} of ${String(runs)} — the report samples the first ${String(sample.length)}`
