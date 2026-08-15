@@ -667,7 +667,7 @@ second summation path could disagree with the day it summarises. Hidden rows, ar
 member containment are therefore already applied — the report inherits them rather than re-deciding
 them.
 
-**Three places the wire is honest rather than tidy, each enforced by the schema:**
+**Four places the wire is honest rather than tidy, each enforced by the schema:**
 
 1. **Durations report their misses.** `measuredRuns` and `unmeasuredRuns` PARTITION the terminal
    runs, and the median and longest are present-or-absent with a reason. D124's lesson at scale: a
@@ -678,6 +678,34 @@ them.
 3. **The status totals must sum to the reported total**, and terminal plus in-flight must partition
    it. A report whose own parts disagree is the bug class D81 exists to make unrepresentable, so it
    is refused at the boundary rather than rendered.
+4. **A warning count nobody derived is UNKNOWN, never zero.** `ActivityCompletion` splits the
+   `done` status three ways — `readBack`, `warnings`, `warningsUnknown` — because the warning set
+   lives on a derived evidence receipt and a run may not have one. It is the duration rule one axis
+   over: folding the unread runs into `readBack` would state "came back clean" about a run nobody
+   checked, on the artifact built to be exported.
+
+**The workflow axis is CROSSED with the status axis (2026-08-14).** `ActivityWorkflowTotal` carries
+`{completion, failed, cancelled, partial, open}` beside `runs`, computed in the same summation pass:
+an aggregate wire fixes its axes at build time, so a cross-tab that was not built cannot be
+recovered by the client. The bucket set is total over the closed `QueueStatus` vocabulary — `partial`
+is present although this projector's outcome map cannot produce it, because a set enumerating only
+today's statuses would absorb a new one into the wrong column instead of failing the partition. The
+completion split reads `#warningVerdict`, the SAME classifier behind the queue row's `△ N` chip, so
+the row and the report cannot disagree about a run.
+
+D81's agreement rule extends with the axis and every arm is schema-refused: each row partitions its
+own `runs`, the rows sum to `totalRuns`, and each column equals the whole-report total that owns it
+(`failed`/`cancelled`/`partial` against `statuses[]`, `open` against the non-terminal statuses, the
+completion arms against the report's own `completion`, which must cover the `done` status exactly).
+
+**Open buckets carry a bounded Who sample (2026-08-14).** `ActivityStatusTotal` gains
+`sample: RunId[]`, the failure breakdown's own precedent under one shared `ACTIVITY_SAMPLE_LIMIT`
+of five. It carries ids and NO display names — a name is subject data and this report is explicitly
+built to be exported, so the redaction posture for names on it is unsettled; the surface resolves
+them against the queue rows the shell already holds, and a sampled run those rows do not cover
+names itself by id rather than by a label composed from a workflow and a date. The sample rides
+non-terminal buckets only, exactly `min(runs, 5)` of them, and the schema refuses both mistakes: an
+empty sample beside a positive open count would render a Who column that silently says nobody.
 
 The surface opens with a headline tile row under a counterweight-first rule — finished work is
 never read without the work that is not, so the still-open count and the error rate's own
