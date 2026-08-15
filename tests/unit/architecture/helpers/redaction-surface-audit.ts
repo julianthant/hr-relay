@@ -610,6 +610,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
   { surface: "wire/run-detail", path: "gate.label", origin: "repository-authored" },
+  { surface: "wire/run-detail", path: "timeline.events[].durationMs.reason", origin: "repository-authored" },
   { surface: "wire/run-detail", path: "gate.reason", origin: "repository-authored" },
   { surface: "wire/run-detail", path: "header.title", origin: "captured-hr-value" },
   { surface: "wire/run-detail", path: "outcome.reason", origin: "repository-authored" },
@@ -798,6 +799,8 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/dashboard-day", path: "workerCards[].currentRun.reason", origin: "repository-authored" },
 
   { surface: "wire/stream-envelope", path: "payload.gate.label", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.timeline.events[].durationMs.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.replacement.timeline.events[].durationMs.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.gate.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.header.title", origin: "captured-hr-value" },
   { surface: "wire/stream-envelope", path: "payload.members[].label", origin: "captured-hr-value" },
@@ -981,6 +984,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/archive-index", path: "versionState[].workflowLabel", origin: "repository-authored" },
 
   { surface: "wire/archived-run-detail", path: "appVersion.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "detail.timeline.events[].durationMs.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "retention.row.basis", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "retention.row.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "retention.eventStreams.basis", origin: "repository-authored" },

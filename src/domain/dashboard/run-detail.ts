@@ -62,6 +62,46 @@ export const RunIdentityWireSchema = z.strictObject({
  */
 export const TimelineNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected"]);
 
+/**
+ * How long ONE step took, or why that is not a number.
+ *
+ * It is the executor's own span measurement — `span.ended` minus `span.started`
+ * for the SAME `(attempt, spanPath)` identity (doc 03 §1.1) — and never the
+ * gap between two consecutive timeline events, which measures the space
+ * between steps and would attribute a worker's idle time to whichever node
+ * happened to follow it.
+ *
+ * The absence arms are the interesting half, and each names a genuinely
+ * different fact: a step still running has no end yet; a step whose
+ * `span.started` never reached the fold has no start to subtract from; a gate
+ * is not a task span at all; and an end that precedes its start is a clock
+ * anomaly that must surface as an anomaly rather than as a clamped zero.
+ */
+export const TimelineDurationSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), ms: z.number().int().nonnegative() }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+export type TimelineDuration = z.infer<typeof TimelineDurationSchema>;
+
+/**
+ * Read a timeline event's duration FORWARD (D133).
+ *
+ * `durationMs` is optional on the wire for exactly one reason: an archived run
+ * freezes a whole `RunDetailWire` into an immutable record, and a record
+ * written before this leaf existed must still parse. Nothing may back-fill it
+ * — a duration nobody measured is not zero — so a record that predates the
+ * measurement reports that, by name. The live query always emits the leaf, and
+ * `run-detail-timeline` pins that it does.
+ */
+export function timelineEventDuration(
+  event: Readonly<{ durationMs?: TimelineDuration }>,
+): TimelineDuration {
+  return event.durationMs ?? {
+    state: "absent",
+    reason: "this record was frozen before per-step durations were served; no measurement was stored",
+  };
+}
+
 export const TimelineEventWireSchema = z.strictObject({
   noteId: NoteIdSchema,
   sequence: z.number().int().nonnegative(),
@@ -84,6 +124,13 @@ export const TimelineEventWireSchema = z.strictObject({
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
     z.strictObject({ state: z.literal("present"), reason: TimelineNotRunReasonSchema }),
   ]),
+  /**
+   * This step's OWN measured duration. Optional on the wire only so a
+   * `RunDetailWire` frozen into an archived record before the leaf existed
+   * still parses (D133); read it through `timelineEventDuration`, never
+   * directly, so the read-forward absence stays a reasoned one.
+   */
+  durationMs: TimelineDurationSchema.optional(),
 }).superRefine((event, context) => {
   if (event.state !== "skipped" && event.notRun.state === "present") {
     context.addIssue({

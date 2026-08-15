@@ -89,6 +89,7 @@ import type {
   RunDetailSectionResponseSchema,
   RunDetailWireSchema,
 } from "../../domain/dashboard/run-detail.js";
+import { timelineEventDuration } from "../../domain/dashboard/run-detail.js";
 import type { RunDetailSectionSchema } from "../../domain/dashboard/primitives.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import { BannerActions, OutcomeActionButton, type DashboardActionHandler } from "./actions.js";
@@ -285,8 +286,9 @@ const NOT_RUN_PHRASE: Record<"condition-false" | "branch-not-selected", string> 
   "branch-not-selected": "its branch was not selected",
 };
 
-function timelineEventLabel(event: TimelineEvent, spanSec: number | undefined): string {
-  const duration = spanSec === undefined ? "" : `, ${fmtElapsed(spanSec)}`;
+function timelineEventLabel(event: TimelineEvent): string {
+  const measured = timelineEventDuration(event);
+  const duration = measured.state === "present" ? `, took ${fmtElapsed(Math.round(measured.ms / 1000))}` : "";
   if (event.state !== "skipped") return `${event.label} — ${event.state}${duration}`;
   // A skipped step reports WHY it did not run, or says plainly that the reason
   // was not recorded. It never borrows a plausible one.
@@ -305,9 +307,14 @@ function timelineEventLabel(event: TimelineEvent, spanSec: number | undefined): 
  * rule across the panel — so the surface that exists to say what a run WILL do
  * said nothing until it started.
  *
- * Durations are the gaps between the server's OWN instants (doc 13 §4: elapsed
- * time between server timestamps is display-only). The panel never invents a
- * duration for an event with nothing after it.
+ * Each step's duration is the executor's OWN span measurement, served per
+ * event — `span.ended` minus `span.started` for the same `(attempt, spanPath)`
+ * identity. It used to be the gap to the NEXT event, which is a real number
+ * about the wrong thing: it measures the space BETWEEN steps, so a worker that
+ * sat idle after a 2-second read reported the read as slow, and the last event
+ * had no duration at all because nothing followed it. A step the server could
+ * not measure prints its own clock instant instead and says why on hover; the
+ * panel still never invents one.
  */
 function Timeline({ detail }: { detail: RunDetailWire }) {
   const events = detail.timeline.events;
@@ -321,10 +328,9 @@ function Timeline({ detail }: { detail: RunDetailWire }) {
   return (
     <div className="px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]">
       <div className="flex items-stretch gap-[var(--ds-space-hair)]">
-        {ordered.map((event, index) => {
+        {ordered.map((event) => {
           const tone = EVENT_TONE[event.state];
-          const next = ordered[index + 1];
-          const spanSec = next === undefined ? undefined : elapsedSecondsBetween(event.at, next.at);
+          const measured = timelineEventDuration(event);
           const blocked = event.state === "blocked";
           const skipped = event.state === "skipped";
           return (
@@ -343,7 +349,7 @@ function Timeline({ detail }: { detail: RunDetailWire }) {
                 </span>
               </div>
               <span
-                aria-label={timelineEventLabel(event, spanSec)}
+                aria-label={timelineEventLabel(event)}
                 className={cn(
                   "mt-[var(--ds-space-tight)] block w-full",
                   "h-[var(--ds-h-timeline-bar)]",
@@ -354,8 +360,11 @@ function Timeline({ detail }: { detail: RunDetailWire }) {
                 )}
               />
               <div className="mt-[var(--ds-space-hair)] flex min-w-0 items-baseline gap-[var(--ds-space-tight)]">
-                <span className={cn(dsClip.text, dsText.micro, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
-                  {spanSec === undefined ? fmtClock(event.at) : fmtElapsed(spanSec)}
+                <span
+                  className={cn(dsClip.text, dsText.micro, dsText.nums, "text-[color:var(--ds-fg-muted)]")}
+                  title={measured.state === "absent" ? measured.reason : undefined}
+                >
+                  {measured.state === "present" ? fmtElapsed(Math.round(measured.ms / 1000)) : fmtClock(event.at)}
                 </span>
               </div>
             </div>

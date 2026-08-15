@@ -140,6 +140,7 @@ import type {
   WorkflowVersionStateWire,
 } from "../../domain/dashboard/archive.js";
 import { EVENT_STREAM_RETENTION_DAYS, type ArchiveRetentionWire } from "../../domain/archive/retention.js";
+import { timelineEventDuration } from "../../domain/dashboard/run-detail.js";
 import type { CommandResult } from "../../domain/commands.js";
 import { DashboardClientError } from "../client/errors.js";
 import { useDashboardClient } from "../state/client-context.js";
@@ -1001,14 +1002,25 @@ function ArchivedRunDetail({
    * state from a descriptor, which is what makes the whole page renderable
    * with the workflow registry emptied.
    */
-  const steps: DsStep[] = detail.detail.timeline.events.map((event) => ({
-    label: event.label,
-    state: event.state === "active"
-      ? "current"
-      : event.state === "done" || event.state === "failed" || event.state === "skipped"
-        ? event.state
-        : "pending",
-  }));
+  const steps: DsStep[] = detail.detail.timeline.events.map((event) => {
+    /*
+     * The step's OWN measured duration, read FORWARD: a record frozen before
+     * the leaf existed says so rather than rendering a zero, and every other
+     * absence carries the server's own reason (still running, no folded start,
+     * a gate, disagreeing instants). Nothing here differences two events.
+     */
+    const measured = timelineEventDuration(event);
+    return {
+      label: event.label,
+      state: event.state === "active"
+        ? "current"
+        : event.state === "done" || event.state === "failed" || event.state === "skipped"
+          ? event.state
+          : "pending",
+      trailing: measured.state === "present" ? fmtElapsed(Math.round(measured.ms / 1000)) : "—",
+      trailingTitle: measured.state === "absent" ? measured.reason : undefined,
+    } satisfies DsStep;
+  });
 
   return (
     <Panel className="min-h-0" aria-label={`Archived run ${detail.detail.header.title}`}>

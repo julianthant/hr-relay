@@ -37,6 +37,7 @@ import {
   RunDetailWireSchema,
   type RunDetailSectionResponse,
   type RunDetailWire,
+  type TimelineDuration,
 } from "../../../domain/dashboard/run-detail.js";
 import type { WriteBindingProof, WriteIntentRecord } from "../../../domain/write-safety.js";
 import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
@@ -210,6 +211,39 @@ export function availableSections(
   ];
 }
 
+/**
+ * ONE task span's own duration, from the executor's own two instants.
+ *
+ * `startedAt` and `endedAt` are the `span.started` / `span.ended` emissions of
+ * the SAME `(attempt, spanPath)` identity, so this is the step's measurement
+ * and not the gap between whatever two events happen to be adjacent in the
+ * sorted timeline. Every way it can fail to be a number is named:
+ *
+ * - a span still in flight has no end;
+ * - a span whose `span.started` never reached the fold (a projection tail
+ *   seeded mid-run) has no start to subtract from — the run's queue instant
+ *   would be a plausible substitute and a wrong one;
+ * - an end that precedes its start is a clock anomaly, and clamping it to zero
+ *   would report a real disagreement as a real measurement of nothing.
+ */
+function spanDuration(span: Readonly<{ startedAt?: string; endedAt?: string }>): TimelineDuration {
+  if (span.endedAt === undefined) {
+    return { state: "absent", reason: "this step has not ended; its span carries no end instant yet" };
+  }
+  if (span.startedAt === undefined) {
+    return { state: "absent", reason: "no span.started was folded for this step, so it has no start instant to measure from" };
+  }
+  const started = Date.parse(span.startedAt);
+  const ended = Date.parse(span.endedAt);
+  if (!Number.isFinite(started) || !Number.isFinite(ended)) {
+    return { state: "absent", reason: `this step's span instants are not both readable (${span.startedAt} → ${span.endedAt})` };
+  }
+  if (ended < started) {
+    return { state: "absent", reason: `this step's span ended before it started (${span.startedAt} → ${span.endedAt}); the instants disagree` };
+  }
+  return { state: "present", ms: ended - started };
+}
+
 export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDetailWire {
   const { row, authority } = requireRun(deps, runId);
   const status = statusOf(row, authority);
@@ -219,8 +253,19 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
     label: string;
     state: "pending" | "active" | "done" | "failed" | "blocked" | "cancelled" | "skipped";
     notRun: { state: "absent"; reason: string } | { state: "present"; reason: "condition-false" | "branch-not-selected" };
+    durationMs: TimelineDuration;
     seed: string;
   }[] = [];
+  /**
+   * A gate's timeline events are not task spans, so the executor measures no
+   * duration for them. The wait a park represents is a real fact and it is a
+   * different one — it belongs to the gate, not to a step — and reporting it
+   * in the step column would put a human's thinking time under a node's name.
+   */
+  const gateDuration = {
+    state: "absent",
+    reason: "a gate is not a task span; the executor measures no duration for it",
+  } as const;
   for (const span of row.taskSpans) {
     const state = span.outcome === undefined
       ? "active"
@@ -236,14 +281,21 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
     // repeats verbatim across RUN attempts, so a node re-run after a recovered
     // failure yields two genuinely distinct folded spans that share a path — both
     // are real history and both must render, so the attempt has to reach the id.
-    timelineEvents.push({ at: span.startedAt ?? span.endedAt ?? row.queued.ts, label: span.name, state, notRun, seed: `task:${String(span.attempt)}:${span.spanPath}` });
+    timelineEvents.push({
+      at: span.startedAt ?? span.endedAt ?? row.queued.ts,
+      label: span.name,
+      state,
+      notRun,
+      durationMs: spanDuration(span),
+      seed: `task:${String(span.attempt)}:${span.spanPath}`,
+    });
   }
   const gateNotRun = { state: "absent", reason: "a gate is not a workflow step" } as const;
   for (const gate of row.openGates) {
-    timelineEvents.push({ at: gate.openedAt, label: `gate:${gate.gate}`, state: "blocked", notRun: gateNotRun, seed: `gate-open:${gate.gate}:${gate.openedAt}` });
+    timelineEvents.push({ at: gate.openedAt, label: `gate:${gate.gate}`, state: "blocked", notRun: gateNotRun, durationMs: gateDuration, seed: `gate-open:${gate.gate}:${gate.openedAt}` });
   }
   for (const gate of row.resolvedGates) {
-    timelineEvents.push({ at: gate.resolvedAt, label: `gate:${gate.gate}`, state: "done", notRun: gateNotRun, seed: `gate-resolved:${gate.gate}:${gate.resolvedAt}` });
+    timelineEvents.push({ at: gate.resolvedAt, label: `gate:${gate.gate}`, state: "done", notRun: gateNotRun, durationMs: gateDuration, seed: `gate-resolved:${gate.gate}:${gate.resolvedAt}` });
   }
   timelineEvents.sort((a, b) => a.at.localeCompare(b.at) || a.seed.localeCompare(b.seed));
 
@@ -322,6 +374,7 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
         label: event.label,
         state: event.state,
         notRun: event.notRun,
+        durationMs: event.durationMs,
       })),
     },
     gate,

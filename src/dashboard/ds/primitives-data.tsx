@@ -272,6 +272,16 @@ export interface DsStep {
   state: DsStepState;
   /** a duration or a note shown under the label in the `full` variant */
   detail?: string;
+  /**
+   * A right-aligned value on the step's own row in the `full` variant — the
+   * step's measured duration, in practice. It is a COLUMN rather than a second
+   * line under the label because a list of durations an operator wants to
+   * compare has to share an edge; stacked under variable-length labels they
+   * are a ragged set of numbers nobody can scan.
+   */
+  trailing?: string;
+  /** Why `trailing` reads the way it does — carried on the row's `title`. */
+  trailingTitle?: string;
 }
 
 const STEP_DOT: Record<DsStepState, string> = {
@@ -362,11 +372,21 @@ export function TimelineSteps({
               />
             )}
           </span>
-          <span className="flex min-w-0 flex-col pb-[var(--ds-space-base)]">
-            <span className={cn(dsText.ui, STEP_TEXT[step.state])}>{step.label}</span>
-            {step.detail && (
-              <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-faint)]")}>
-                {step.detail}
+          <span className="flex min-w-0 flex-1 items-baseline gap-[var(--ds-space-base)] pb-[var(--ds-space-base)]">
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className={cn(dsText.ui, STEP_TEXT[step.state])}>{step.label}</span>
+              {step.detail && (
+                <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-faint)]")}>
+                  {step.detail}
+                </span>
+              )}
+            </span>
+            {step.trailing !== undefined && (
+              <span
+                title={step.trailingTitle}
+                className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-faint)]")}
+              >
+                {step.trailing}
               </span>
             )}
           </span>
