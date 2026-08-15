@@ -37,10 +37,10 @@ Owning docs for triage: `docs/rebuild/03-tracker-dashboard.md` §10.2 (D80/D179)
 ## Dry-run, priority and preset on an archived run
 
 **Recorded:** 2026-08-14 · **Status:** triaged 2026-08-14 — blocked on the queue row: the archived
-row is a frozen copy of `QueueSurfaceWire`, so these land there first (`dryRun` is landing on
-`QueueBaseFields` via the 2026-08-14 queue-rows session; rows archived AFTER that carry it
-forward automatically — D133 read-forward, never back-filled). `priority`/`preset` remain queue
-gaps with no record yet; add them to `queue-rows.md` when worked.
+row is a frozen copy of `QueueSurfaceWire`, so these land there first (`dryRun` LANDED on
+`QueueBaseFields` 2026-08-14 — commit 446e7d7; rows archived from now on carry it forward
+automatically, D133 read-forward, never back-filled). `priority`/`preset` remain queue gaps with
+no record yet; add them to `queue-rows.md` when worked.
 
 - **Symptom:** an archived rehearsal is indistinguishable from an archived filing on the identity
   chip row. The ported ChipRow shows version / app / trace / by / attempt and stops.
@@ -54,21 +54,6 @@ gaps with no record yet; add them to `queue-rows.md` when worked.
   chose. Both would have to reach `QueueSurfaceWire` first, since the archived row is a frozen copy
   of it — which means this is a QUEUE-row gap that the archive inherits (see
   `docs/findings/queue-rows.md`).
-
-## Test-instance hazard on a LIST row, and the instance filter
-
-**Recorded:** 2026-08-14 · **Status:** recorded
-
-- **Symptom:** the toolbar has three controls where the demo has four; there is no way to ask
-  "which archived runs touched a test instance?", and a list row cannot warn that one did. The
-  DETAIL can — `row.resolvedInstances` is on the frozen queue row — so the fact exists and is
-  simply not on the index.
-- **Demo element:** the `Any instance / Production only / Touched a test instance` `<Select>`, and
-  `archivedRunTouchedTest(run)`'s ⚠ on the name cell.
-- **Missing wire field:** `ArchiveEntryWire` has no `resolvedInstances`.
-- **Where it would come from:** copy the frozen row's `resolvedInstances` (or a boolean derived
-  from it) onto the index entry when the archive index projects. No new authority data is needed —
-  the value is already inside `archived_runs`.
 
 ## Logs, Data and People tabs
 
@@ -124,51 +109,23 @@ archived record — not a projection edit. Awaiting that ratification.
   so the attempt history is derivable at archive time. It would be a new frozen array on the
   archived record, and it is the same value the LIVE run detail does not serve either.
 
-## Write-ledger action and confirmation number
+## Write-ledger Action/Confirmation await a declared presentation reading
 
-**Recorded:** 2026-08-14 · **Status:** recorded
+**Recorded:** 2026-08-14 · **Status:** recorded · (narrowed 2026-08-15 — the read-through LANDED)
 
-- **Symptom:** the "Write ledger — never archived" card lists `system / partition date / line
-  sequence`. It cannot name the ACTION filed or the confirmation number returned — which is exactly
-  what the relaunch confirmation needs in order to say "this run already filed X".
-- **Demo element:** the ledger `<Table>` with `System / Action / Confirmation / Instance`, and
-  `deriveRelaunchPlan(run).alreadyFiled` reusing the same rows inside the relaunch dialog's danger
-  banner.
-- **Missing wire field:** `ArchivedEvidencePointers.ledgerPartitions` is
-  `{ system, date, sequence }`.
-- **Where it would come from:** the ledger line itself holds the action and the confirmation
-  (`src/infra/ledger/`); the pointer intentionally names the LINE rather than copying it, because
-  the ledger is never archived. A read-through — "resolve these pointers against the live ledger" —
-  would keep that property and still fill the card.
-
-## Per-step durations in the archived timeline
-
-**Recorded:** 2026-08-14 · **Status:** recorded
-
-- **Symptom:** the step timeline shows label + state and no elapsed time per step.
-- **Demo element:** the `Step timeline` card's right-hand `step.durationLabel` column.
-- **Missing wire field:** `TimelineEventWireSchema` carries `at` (the instant the event was
-  recorded), not a duration. Differencing consecutive events would measure the gap BETWEEN events,
-  which is not the step's own duration, so nothing was computed.
-- **Where it would come from:** the executor's `span.ended` already measures each task span (D124
-  made the run-level `endedAt` explicit for exactly this reason); a per-event `durationMs` union
-  (present / reasoned absence) on the timeline wire would serve the live run detail too.
-
-## Retention dates for the row and its evidence
-
-**Recorded:** 2026-08-14 · **Status:** recorded
-
-- **Symptom:** the Retention popover states the three rules D179 actually guarantees and prints no
-  DATE. The demo names when the row is purged and when the images are.
-- **Demo element:** `run.retention.rowPurgeAt`, `run.retention.evidencePurgeAt` and the
-  `N of M still retained` count in the "Snapshot provenance & retention" card, plus the popover's
-  "90 days from the run's end" sentence.
-- **Missing wire field:** neither the archive index nor the archived detail carries a retention
-  block.
-- **Where it would come from:** doc 03 §10.4 fixes the retention policy (notes 30d, spans 30d,
-  ledger forever, artifacts + checkpoints until purge) and the sweep in `src/core/` computes the
-  purge instants. Serving the computed dates per record — rather than restating a policy the
-  surface would then be free to get wrong — is the shape that matches D179.
+- **What landed (6317366):** `ledgerPartitions` pointers are now populated at archive time (they
+  were a `[]` stub — the card was structurally empty) and resolved at READ time against the live
+  ledger via `createLedgerReadThrough`; the card fills System / Instance / key / confirmed-at, and
+  every unresolvable pointer is a visible named-absence row (`partition-missing` /
+  `sequence-missing` / `line-malformed` / `sequence-mismatch`), never dropped.
+- **What remains:** the demo's `Action` and `Confirmation` columns render reasoned absences. A
+  ledger entry declares neither leaf and its `proof` is schema-bound per commit contract, so
+  reading a field name out of it is the guess D204 bans. `LEDGER_PRESENTATION_DECLARATIONS`
+  (`src/domain/archive/ledger-resolution.ts`) is the declared per-contract mapping table, empty
+  until each commit contract declares which of its proof/output leaves IS the action label and the
+  confirmation number. One entry per contract closes this for that contract's lines.
+- **Also open:** no end-to-end test archives a run that actually filed a ledger line — needs a
+  world with real write intents.
 
 ## Workflow short code
 
