@@ -16,6 +16,13 @@ on purpose.
 
 ---
 
+**Landed 2026-08-15 — the two open wire gaps are deleted per the ledger rule.** The
+per-workflow cross-tab (eight columns, one summation pass, D81 reconciliation refusals, the
+three-arm warnings-unknown honesty) and the Who sample (bounded run-id samples on non-terminal
+status totals, names resolved client-side only) are served and drawn; doc 13 §6.7's D180
+as-built owns the contract. `Est. min saved` stays under the hours-saved decide-first record;
+the two-letter `code` stays with the taxonomy question.
+
 ## Distinct people touched is not served
 
 **Date:** 2026-08-14 · **Status:** triaged 2026-08-14 — blocked on a person axis existing in the
@@ -74,59 +81,6 @@ per-descriptor metadata, or a dedicated store), WHO may change them and whether 
 versioned (a report re-run after an edit would otherwise silently restate history), and the wire
 shape — the estimate should ride as `{ minutesPerRun, source }` per workflow so the surface can keep
 rendering the provenance beside the number rather than asserting a total on its own.
-
----
-
-## The per-workflow table serves runs only — five demo columns have no source
-
-**Date:** 2026-08-14 · **Status:** recorded
-
-**Symptom.** The demo's `By workflow` table has eight columns: Workflow, Runs, Share, Read back,
-Warnings, Failed, Open, Est. min saved — with `failed > 0` tinted red and `open > 0` tinted amber
-per row, and a two-letter workflow `code` set before each label. The ported table has three:
-Workflow, Runs, Share.
-
-**Evidence.** `ActivityWorkflowTotalSchema` is exactly `{ workflowId, registration, runs }`. The
-status and outcome breakdowns are served only as WHOLE-REPORT totals (`statuses[]`, `outcomes[]`),
-never crossed with the workflow axis.
-
-**Mechanism.** The report is grouped one axis at a time. The demo folds rows, so every cross-tab is
-free; the aggregate wire fixes the axes at build time and a cross-tab that was not built cannot be
-recovered by the client.
-
-**What a fix involves.** Widening `ActivityWorkflowTotal` with the per-workflow status counts —
-`{ readBack, warnings, failed, cancelled, open }` — computed in the same projection pass. This is
-the single highest-value gap of the set: the grouped table is the demo report's centrepiece and
-three columns is a thin version of it. The `code` is separate and cheaper: it is a presentation
-attribute of the descriptor (demo `DEMO_WORKFLOWS[id].code`), so it belongs on
-`registration.registered` beside `label` and `categoryId`, not computed from the id.
-
----
-
-## Outstanding buckets carry no identities, so the "Who" column is absent
-
-**Date:** 2026-08-14 · **Status:** recorded
-
-**Symptom.** The demo's `Still open — by what it is waiting on` table has three columns: State,
-Runs, and Who — the latter showing the first subject's display name with a `+N`, and an `All N`
-button opening a popover listing every run's name, workflow label and trace id. The ported table has
-two columns and no popover.
-
-**Evidence.** `ActivityStatusTotalSchema` is `{ status, runs }`. No run ids, no subjects, no traces.
-Contrast `ActivityFailureTotalSchema`, which DOES carry `sample: RunId[]` — so the precedent for
-attaching exemplar run ids to an aggregate row already exists in this same wire.
-
-**Mechanism.** The demo reaches `outstandingRows(span)` — the actual row objects — and reads
-`displayName` off each. The aggregate has counts only.
-
-**What a fix involves.** The narrow version is the failure row's own pattern: a bounded
-`sample: RunId[]` on the non-terminal status totals, which the surface resolves against the queue
-projection it already holds. The full version needs display names, and those are subject data — so
-the redaction posture (`redaction-surface-scan`) has to be settled before names land on a report
-that is explicitly built to be exported.
-
-**Note.** "Who is waiting on me" is the operator question this table exists to answer, so the
-two-column version answers half of it. Worth ranking above the ledger.
 
 ---
 
