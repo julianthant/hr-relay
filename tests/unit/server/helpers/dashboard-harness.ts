@@ -446,6 +446,21 @@ export function receiptWithWarningsOf(input: Readonly<{
   });
 }
 
+/**
+ * A receipt that was DERIVED and records no warning — the third arm of the
+ * warning verdict, and the one an aggregate must keep apart from "no receipt
+ * exists". They read the same on a row (both are absences) and mean opposite
+ * things in a total: one run came back clean, the other was never checked.
+ */
+export function cleanReceiptOf(input: Readonly<{ seed: number; workflow?: string }>): RunEvidenceReceipt {
+  return RunEvidenceReceiptSchema.parse({
+    ...receiptWithWarningsOf({ ...input, summaries: ["placeholder"] }),
+    warnings: [],
+    confidence: "verified",
+    result: "verified-done",
+  });
+}
+
 /** A durable inbox row, at the one instant the wire orders and dedupes on. */
 export function notificationRecordOf(input: Readonly<{
   seed: number;

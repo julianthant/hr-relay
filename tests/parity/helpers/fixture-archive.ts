@@ -26,7 +26,7 @@ import {
   type ArchivedRunDetailWire,
 } from "../../../src/domain/dashboard/archive.js";
 import { archiveRetention } from "../../../src/domain/archive/retention.js";
-import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./fixture-day.js";
+import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH, uuidOf } from "./fixture-day.js";
 
 const PRIOR_HASH = "b".repeat(64);
 const PLAN_FINGERPRINT = "c".repeat(64);
@@ -259,14 +259,22 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
     { day: "2026-07-30", runs: 4 },
     { day: FIXTURE_DAY, runs: 5 },
   ],
+  // The whole-report completion split the headline tile reads, equal by
+  // construction to the two rows' columns below — the schema refuses the
+  // fixture outright if they ever part company.
+  completion: { readBack: 5, warnings: 1, warningsUnknown: 1 },
   workflows: [
     {
       workflowId: "person-lookup",
       registration: { state: "registered", label: "Person Lookup", categoryId: "people" },
       runs: 9,
+      completion: { readBack: 5, warnings: 1, warningsUnknown: 0 },
+      failed: 1, cancelled: 0, partial: 0, open: 2,
     },
     // The honest half: a workflow whose descriptor was retired still ran, and
-    // the report names it rather than inventing a label from its id.
+    // the report names it rather than inventing a label from its id. Its one
+    // `done` run has no derived receipt, so it lands in the unread column —
+    // the reference photographs an amber cell rather than a clean-looking 1.
     {
       workflowId: "retired-workflow",
       registration: {
@@ -274,6 +282,8 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
         reason: "workflow retired-workflow is no longer registered; its label and category are unavailable",
       },
       runs: 3,
+      completion: { readBack: 0, warnings: 0, warningsUnknown: 1 },
+      failed: 1, cancelled: 1, partial: 0, open: 0,
     },
   ],
   categories: [
@@ -284,10 +294,14 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
     },
   ],
   statuses: [
-    { status: "done", runs: 7 },
-    { status: "failed", runs: 2 },
-    { status: "running", runs: 2 },
-    { status: "cancelled", runs: 1 },
+    { status: "done", runs: 7, sample: [] },
+    { status: "failed", runs: 2, sample: [] },
+    // The Who sample: two RUNNING runs, one of which the day payload holds a
+    // row for and one of which it does not — so the reference photographs the
+    // resolved name AND the honest fallback beside it, which is the pair a
+    // screenshot of only-resolvable ids would never catch.
+    { status: "running", runs: 2, sample: [uuidOf(20), ARCHIVED_RUN_ID] },
+    { status: "cancelled", runs: 1, sample: [] },
   ],
   outcomes: [
     { outcome: "done", runs: 7 },

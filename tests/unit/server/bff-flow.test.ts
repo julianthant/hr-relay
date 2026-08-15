@@ -555,6 +555,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       workflowId: "fixture-graph",
       registration: { state: "registered", label: "Fixture Graph", categoryId: "operations" },
       runs: 1,
+      completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
+      failed: 0, cancelled: 0, partial: 0, open: 1,
     }]);
     assert.equal(report.terminalRuns, 0);
     assert.equal(report.durations.medianMs.state, "absent");

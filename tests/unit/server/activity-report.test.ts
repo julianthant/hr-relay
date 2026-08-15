@@ -14,18 +14,20 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
-import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
+import { ActivityReportWireSchema, type ActivityReportWire } from "../../../src/domain/dashboard/activity.js";
 import { kualiTimekeeperAnnotationDescriptor } from "../../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
 import {
   atDayOffset,
   claimEventOf,
+  cleanReceiptOf,
   dayOffsetOf,
   failureRecordOf,
   instantOffsetOf,
   makeWorld,
   queuedEventOf,
+  receiptWithWarningsOf,
   runEndedEventOf,
   runRecordOf,
   uuidOf,
@@ -186,21 +188,35 @@ describe("the Activity report (D180)", () => {
       { day: D2, runs: 3 },
     ]);
 
+    // The workflow axis CROSSED with the status axis, in the one pass. The
+    // schema's own refinements have already asserted that each row's buckets
+    // partition its own `runs` and that the four rows reconcile column by
+    // column with the whole-report totals below.
+    const clean = { readBack: 0, warnings: 0, warningsUnknown: 0 };
     assert.deepEqual(report.workflows, [
       {
         workflowId: fixtureDescriptor.id,
         registration: { state: "registered", label: "Fixture Graph", categoryId: "operations" },
         runs: 1,
+        completion: clean,
+        failed: 0, cancelled: 0, partial: 0, open: 1,
       },
       {
         workflowId: "kuali-timekeeper-annotation",
         registration: { state: "registered", label: "Kuali Timekeeper Annotation", categoryId: "operations" },
         runs: 2,
+        completion: clean,
+        failed: 2, cancelled: 0, partial: 0, open: 0,
       },
       {
         workflowId: "person-lookup",
         registration: { state: "registered", label: "Person Lookup", categoryId: "search" },
         runs: 3,
+        // The one `done` run has no derived receipt, so its warning set is
+        // UNREAD — never folded into `readBack`, which would report a run
+        // nobody checked as one that came back clean.
+        completion: { readBack: 0, warnings: 0, warningsUnknown: 1 },
+        failed: 1, cancelled: 0, partial: 0, open: 1,
       },
       {
         workflowId: "retired-flow",
@@ -209,8 +225,15 @@ describe("the Activity report (D180)", () => {
           reason: "workflow retired-flow is no longer registered; its label and category are unavailable",
         },
         runs: 1,
+        completion: clean,
+        // Terminal by LIFECYCLE, `blocked` by STATUS: an interrupted run may
+        // still be requeued, so the column that asks "what is still open"
+        // counts it and the one that asks "what has settled" does too. The
+        // two axes are different questions and the report keeps them apart.
+        failed: 0, cancelled: 0, partial: 0, open: 1,
       },
     ]);
+    assert.deepEqual(report.completion, { readBack: 0, warnings: 0, warningsUnknown: 1 });
 
     // The two `operations` workflows fold into ONE category row, and the
     // retired workflow's run lands in the explicitly-unregistered bucket
@@ -227,12 +250,14 @@ describe("the Activity report (D180)", () => {
       },
     ]);
 
+    // The Who sample rides the OPEN buckets only — a terminal bucket carries
+    // none, and the schema refuses either mistake.
     assert.deepEqual(report.statuses, [
-      { status: "blocked", runs: 1 },
-      { status: "done", runs: 1 },
-      { status: "failed", runs: 3 },
-      { status: "queued", runs: 1 },
-      { status: "running", runs: 1 },
+      { status: "blocked", runs: 1, sample: [uuidOf(7)] },
+      { status: "done", runs: 1, sample: [] },
+      { status: "failed", runs: 3, sample: [] },
+      { status: "queued", runs: 1, sample: [uuidOf(9)] },
+      { status: "running", runs: 1, sample: [uuidOf(8)] },
     ]);
     // Outcomes are AUTHORITY's settled verdicts, so only the five terminal
     // rows appear — the running and queued rows have reached none.
@@ -318,6 +343,81 @@ describe("the Activity report (D180)", () => {
       },
       totalMs: 0,
     });
+  });
+
+  it("splits the done runs three ways and never reports an unread one as clean", () => {
+    const w = world({ descriptors: REGISTRY });
+    atDayOffset(w, 0);
+    // Three runs settled `done` on the same workflow, one per arm of the
+    // completion split: a receipt with warnings, a receipt with none, and a
+    // run for which no receipt has been derived at all.
+    for (const seed of [31, 32, 33]) {
+      queuedEventOf(w, { seed });
+      runEndedEventOf(w, seed, "done");
+      w.authority.put(runRecordOf({
+        seed,
+        lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 1_000) },
+        version: 3,
+      }));
+    }
+    w.authority.receipts.set(uuidOf(31), receiptWithWarningsOf({
+      seed: 31,
+      summaries: ["CRM dates were replayed past their freshness limit", "a second warning"],
+    }));
+    w.authority.receipts.set(uuidOf(32), cleanReceiptOf({ seed: 32 }));
+
+    const report = ActivityReportWireSchema.parse(w.projection.buildActivityReportWire(D0, D0));
+
+    // ONE warned run, not two: the column counts RUNS, and run 31 carries two
+    // warnings. And run 33 sits in its own column — folding it into `readBack`
+    // would put "3 came back clean" on a supervisor's copy over a run whose
+    // warning set nobody has read.
+    assert.deepEqual(report.completion, { readBack: 1, warnings: 1, warningsUnknown: 1 });
+    assert.deepEqual(report.workflows[0].completion, { readBack: 1, warnings: 1, warningsUnknown: 1 });
+    assert.deepEqual(report.statuses, [{ status: "done", runs: 3, sample: [] }]);
+
+    // The row chip and the report column are the SAME derivation, so the two
+    // cannot disagree about a run: the queue says warned, the report counts it
+    // in the warned column, and neither counts the receipt-less run as clean.
+    const dayRows = w.projection.buildDashboardDayWire(D0).queueSurfaces;
+    const armOf = (seed: number): string => {
+      const row = dayRows.find((surface) => surface.runId === uuidOf(seed));
+      if (row === undefined) throw new Error(`no queue row for seed ${String(seed)}`);
+      return row.warnings.state === "present" ? "present" : row.warnings.reason;
+    };
+    assert.equal(armOf(31), "present");
+    assert.equal(armOf(32), "this run's evidence receipt records no warning");
+    assert.equal(armOf(33), "no evidence receipt has been derived for this run, so its warning set is unknown");
+  });
+
+  it("refuses a per-workflow cross-tab that disagrees with the totals it is part of (D81)", () => {
+    const w = world({ descriptors: REGISTRY });
+    seedActivityWorld(w);
+    const report = w.projection.buildActivityReportWire(D0, D2);
+
+    // Every arm below is a payload the schema must REFUSE. A report whose rows
+    // and totals disagree is the count/badge divergence D81 exists to make
+    // unrepresentable, so it never reaches a surface that would have to pick.
+    const refusals: [string, ActivityReportWire, RegExp][] = [
+      [
+        "a row that does not partition its own runs",
+        { ...report, workflows: report.workflows.map((row, index) => (index === 0 ? { ...row, open: 0 } : row)) },
+        /splits into 0 runs but counts 1/,
+      ],
+      [
+        "a row column that outruns its whole-report total",
+        { ...report, workflows: report.workflows.map((row, index) => (index === 0 ? { ...row, open: 2, runs: 2 } : row)) },
+        /workflow rows sum to 4 open but the non-terminal status totals says 3/,
+      ],
+      [
+        "a completion split that does not cover the done runs",
+        { ...report, completion: { readBack: 1, warnings: 0, warningsUnknown: 1 } },
+        /completion split covers 2 runs but 1 settled done/,
+      ],
+    ];
+    for (const [what, payload, message] of refusals) {
+      assert.throws(() => ActivityReportWireSchema.parse(payload), message, what);
+    }
   });
 
   it("caps a failure sample at five runs while the tally keeps counting", () => {

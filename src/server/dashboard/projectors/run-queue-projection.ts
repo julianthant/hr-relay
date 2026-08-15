@@ -53,8 +53,10 @@ import {
   type QueueSurfaceWire,
 } from "../../../domain/dashboard/projection.js";
 import {
+  ACTIVITY_SAMPLE_LIMIT,
   ActivityReportWireSchema,
   type ActivityReportWire,
+  type ActivityWorkflowTotal,
 } from "../../../domain/dashboard/activity.js";
 import { DashboardDayPatchSchema } from "../../../domain/dashboard/subscription.js";
 import {
@@ -233,6 +235,50 @@ const RUN_OUTCOME_STATUS = {
   superseded: "cancelled",
   interrupted: "blocked",
 } as const;
+
+/**
+ * What the run's evidence receipt says about its warnings, before either
+ * consumer renders it (D22/D126). `unread` is a run with NO derived receipt —
+ * distinct from `none`, which is a receipt that recorded nothing, and the
+ * distinction is the whole reason this is a tagged verdict rather than a
+ * count: an aggregate that folded `unread` into `none` would report a run
+ * nobody checked as a run that came back clean.
+ */
+type WarningVerdict =
+  | { kind: "not-terminal"; status: QueueSurfaceWire["status"] }
+  | { kind: "unread" }
+  | { kind: "none" }
+  | { kind: "present"; count: number; first: string };
+
+/**
+ * The Activity report's per-workflow bucket for one surface — TOTAL over the
+ * closed `QueueStatus` vocabulary, so a status this projector does not produce
+ * today still lands somewhere rather than being dropped out of a row's own
+ * partition. `done` splits three ways on the warning verdict above.
+ */
+const ACTIVITY_STATUS_BUCKET = {
+  done: "completion",
+  failed: "failed",
+  cancelled: "cancelled",
+  partial: "partial",
+  queued: "open",
+  running: "open",
+  blocked: "open",
+  "awaiting-approval": "open",
+} as const satisfies Record<QueueSurfaceWire["status"], string>;
+
+type ActivityWorkflowCounts = Omit<ActivityWorkflowTotal, "workflowId" | "registration">;
+
+function emptyActivityWorkflowCounts(): ActivityWorkflowCounts {
+  return {
+    runs: 0,
+    completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
+    failed: 0,
+    cancelled: 0,
+    partial: 0,
+    open: 0,
+  };
+}
 
 const TASK_OUTCOME_PIPELINE = {
   done: "done",
@@ -838,26 +884,41 @@ export class RunQueueProjection {
    *
    * Three distinct absences, never collapsed into a zero: the run has not
    * settled, no receipt has been derived, or the receipt records no warning.
+   *
+   * The verdict is derived ONCE, here, and rendered twice — as this row's chip
+   * arm and as the Activity report's completion split — so the `△ N` an
+   * operator reads on a row and the `Warnings` column a supervisor reads in the
+   * report cannot come to two different conclusions about the same run. The
+   * report needs the three absences KEPT APART, and reason-string matching
+   * would be a second classifier wearing a comparison.
    */
+  #warningVerdict(runId: string, status: QueueSurfaceWire["status"]): WarningVerdict {
+    if (!TERMINAL_QUEUE_STATUSES.has(status)) return { kind: "not-terminal", status };
+    const receipt = this.#deps.authority.getReceipt(runId);
+    if (receipt === undefined) return { kind: "unread" };
+    const first = receipt.warnings[0];
+    if (first === undefined) return { kind: "none" };
+    return { kind: "present", count: receipt.warnings.length, first: first.summary };
+  }
+
   #warnings(
     runId: string,
     status: QueueSurfaceWire["status"],
   ): { state: "present"; count: number; first: string } | { state: "absent"; reason: string } {
-    if (!TERMINAL_QUEUE_STATUSES.has(status)) {
-      return { state: "absent", reason: `run is ${status} and has not produced a terminal result` };
+    const verdict = this.#warningVerdict(runId, status);
+    switch (verdict.kind) {
+      case "not-terminal":
+        return { state: "absent", reason: `run is ${verdict.status} and has not produced a terminal result` };
+      case "unread":
+        return {
+          state: "absent",
+          reason: "no evidence receipt has been derived for this run, so its warning set is unknown",
+        };
+      case "none":
+        return { state: "absent", reason: "this run's evidence receipt records no warning" };
+      case "present":
+        return { state: "present", count: verdict.count, first: verdict.first };
     }
-    const receipt = this.#deps.authority.getReceipt(runId);
-    if (receipt === undefined) {
-      return {
-        state: "absent",
-        reason: "no evidence receipt has been derived for this run, so its warning set is unknown",
-      };
-    }
-    const first = receipt.warnings[0];
-    if (first === undefined) {
-      return { state: "absent", reason: "this run's evidence receipt records no warning" };
-    }
-    return { state: "present", count: receipt.warnings.length, first: first.summary };
   }
 
   /**
@@ -1157,18 +1218,52 @@ export class RunQueueProjection {
     }
 
     const days = new Map<string, number>();
-    const workflows = new Map<string, number>();
-    const statuses = new Map<string, number>();
+    const workflows = new Map<string, ActivityWorkflowCounts>();
+    const statuses = new Map<string, { runs: number; sample: string[] }>();
     const outcomes = new Map<string, number>();
     const failures = new Map<string, { runs: number; transient: number; sample: string[] }>();
     const measured: { runId: string; ms: number }[] = [];
+    /**
+     * The whole-report completion split, incremented in THIS loop beside the
+     * per-workflow one it must equal. Two folds over one array would be the
+     * second counting path D81 exists to delete, and the schema refuses the
+     * payload if they ever part company.
+     */
+    const completion = { readBack: 0, warnings: 0, warningsUnknown: 0 };
     let unmeasured = 0;
     let terminalRuns = 0;
 
     for (const { day, surface, authority } of inRange) {
       days.set(day, (days.get(day) ?? 0) + 1);
-      workflows.set(surface.workflowId, (workflows.get(surface.workflowId) ?? 0) + 1);
-      statuses.set(surface.status, (statuses.get(surface.status) ?? 0) + 1);
+      const counts = workflows.get(surface.workflowId) ?? emptyActivityWorkflowCounts();
+      counts.runs += 1;
+      workflows.set(surface.workflowId, counts);
+
+      const statusBucket = statuses.get(surface.status) ?? { runs: 0, sample: [] };
+      statusBucket.runs += 1;
+      // The Who sample is for work the operator can still act on; a terminal
+      // bucket carries none, which the wire's own refinement then enforces.
+      if (
+        !TERMINAL_QUEUE_STATUSES.has(surface.status)
+        && statusBucket.sample.length < ACTIVITY_SAMPLE_LIMIT
+      ) {
+        statusBucket.sample.push(surface.runId);
+      }
+      statuses.set(surface.status, statusBucket);
+
+      const axis = ACTIVITY_STATUS_BUCKET[surface.status];
+      if (axis !== "completion") {
+        counts[axis] += 1;
+      } else {
+        // D22/D126 read through the SAME verdict the queue row's chip renders.
+        // A run whose receipt was never derived is counted as unread, never as
+        // read-back: this is the report's `unmeasuredRuns`, one axis over.
+        const verdict = this.#warningVerdict(surface.runId, surface.status);
+        const arm = verdict.kind === "present" ? "warnings" : verdict.kind === "none" ? "readBack" : "warningsUnknown";
+        counts.completion[arm] += 1;
+        completion[arm] += 1;
+      }
+
       if (authority.lifecycle.state !== "terminal") continue;
       terminalRuns += 1;
       outcomes.set(authority.lifecycle.outcome, (outcomes.get(authority.lifecycle.outcome) ?? 0) + 1);
@@ -1195,30 +1290,30 @@ export class RunQueueProjection {
       const bucket = failures.get(failure.code) ?? { runs: 0, transient: 0, sample: [] };
       bucket.runs += 1;
       if (failure.transient) bucket.transient += 1;
-      if (bucket.sample.length < 5) bucket.sample.push(surface.runId);
+      if (bucket.sample.length < ACTIVITY_SAMPLE_LIMIT) bucket.sample.push(surface.runId);
       failures.set(failure.code, bucket);
     }
 
     const categories = new Map<string, number>();
     let unregisteredCategoryRuns = 0;
-    const workflowTotals = [...workflows.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([workflowId, runs]) => {
+    const workflowTotals = [...workflows.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([workflowId, counts]) => {
       const descriptor = this.#deps.descriptors.resolve(workflowId);
       if (descriptor === undefined) {
-        unregisteredCategoryRuns += runs;
+        unregisteredCategoryRuns += counts.runs;
         return {
+          ...counts,
           workflowId,
           registration: {
             state: "unregistered",
             reason: `workflow ${workflowId} is no longer registered; its label and category are unavailable`,
           },
-          runs,
         };
       }
-      categories.set(descriptor.category, (categories.get(descriptor.category) ?? 0) + runs);
+      categories.set(descriptor.category, (categories.get(descriptor.category) ?? 0) + counts.runs);
       return {
+        ...counts,
         workflowId,
         registration: { state: "registered", label: descriptor.label, categoryId: descriptor.category },
-        runs,
       };
     });
 
@@ -1234,6 +1329,7 @@ export class RunQueueProjection {
       totalRuns: inRange.length,
       terminalRuns,
       inFlightRuns: inRange.length - terminalRuns,
+      completion,
       days: [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, runs]) => ({ day, runs })),
       workflows: workflowTotals,
       categories: [
@@ -1244,7 +1340,8 @@ export class RunQueueProjection {
           runs: unregisteredCategoryRuns,
         }]),
       ],
-      statuses: [...statuses.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([status, runs]) => ({ status, runs })),
+      statuses: [...statuses.entries()].sort(([a], [b]) => a.localeCompare(b))
+        .map(([status, bucket]) => ({ status, runs: bucket.runs, sample: bucket.sample })),
       outcomes: [...outcomes.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([outcome, runs]) => ({ outcome, runs })),
       failures: [...failures.entries()].sort(([a], [b]) => a.localeCompare(b))
         .map(([code, bucket]) => ({ code, runs: bucket.runs, transient: bucket.transient, sample: bucket.sample })),
