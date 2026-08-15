@@ -104,6 +104,21 @@ export function dayLabel(day: string): string {
   });
 }
 
+/**
+ * An INSTANT as the operator's local calendar day — `Thu, Aug 13`.
+ *
+ * `fmtClock` is the wrong instrument for a date weeks out (it prints a time of
+ * day and nothing else), and `dayLabel` reads a `YYYY-MM-DD` partition in UTC.
+ * A retention purge instant is neither: it is a real instant whose meaning is
+ * "the day this becomes eligible", and the sweep that acts on it partitions by
+ * LOCAL date, so this reads it locally to match.
+ */
+export function fmtInstantDay(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) throw new Error(`fmtInstantDay: not an ISO instant: ${iso}`);
+  return new Date(ms).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
 /** `Thu, Aug 13` → `Thu, Aug 13 · today` on the live partition. */
 export function dayLabelWithToday(day: string, today: string): string {
   return day === today ? `${dayLabel(day)} · today` : dayLabel(day);

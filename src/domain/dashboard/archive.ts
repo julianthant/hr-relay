@@ -24,6 +24,7 @@ import {
   VersionDriftReasonSchema,
   WorkflowVersionIdentitySchema,
 } from "../archive/model.js";
+import { ArchiveRetentionWireSchema } from "../archive/retention.js";
 import { SemverSchema, VersionScopeSchema } from "../commands.js";
 import {
   ActorIdSchema,
@@ -172,6 +173,14 @@ export const ArchivedRunDetailWireSchema = z.strictObject({
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
   evidence: ArchivedEvidencePointersSchema,
+  /**
+   * When each class of this run's data is purged, COMPUTED per record (doc 03
+   * §10.4). It is not a restatement of the policy: a surface handed the rules
+   * is a surface free to apply them wrong, and the two halves that have no
+   * instant say which kind of "no instant" they are — nothing purges the
+   * archived row, while an operator act can take the capture bytes.
+   */
+  retention: ArchiveRetentionWireSchema,
   /** Every fresh run this archived one was relaunched into, newest first. */
   relaunches: z.array(z.strictObject({
     runId: RunIdSchema,

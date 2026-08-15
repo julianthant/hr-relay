@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import { localDatePart } from "../../domain/clock.js";
+import { EVENT_STREAM_RETENTION_DAYS } from "../../domain/archive/retention.js";
 
 export const EVENT_STREAMS = ["spans", "notes"] as const;
 export type EventStream = (typeof EVENT_STREAMS)[number];
@@ -197,7 +198,10 @@ export function pruneEventStreams(input: Readonly<{
   clock: Clock;
   retentionDays?: number;
 }>): PruneReport {
-  const retentionDays = z.number().int().positive().parse(input.retentionDays ?? 30);
+  // ONE constant: the Archive's retention block computes its purge instants
+  // from the same number, so the date a surface shows and the date this sweep
+  // acts on cannot drift apart.
+  const retentionDays = z.number().int().positive().parse(input.retentionDays ?? EVENT_STREAM_RETENTION_DAYS);
   const cutoff = new Date(input.clock.now().getTime() - retentionDays * 24 * 60 * 60 * 1000);
   const cutoffDate = localDatePart(cutoff);
   const removed: string[] = [];

@@ -33,6 +33,7 @@ import type { Clock } from "../../../domain/clock.js";
 import { VersionScopeSchema } from "../../../domain/commands.js";
 import type { WorkflowVersionIdentity } from "../../../domain/archive/model.js";
 import { versionBumpPlanFingerprint } from "../../../domain/archive/model.js";
+import { archiveRetention } from "../../../domain/archive/retention.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import {
   assessVersionBump,
@@ -184,6 +185,24 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
       receipt: record.receipt,
       failure: record.failure,
       evidence: record.evidence,
+      /*
+       * Computed from the record's OWN fields, the D86 policy constants and
+       * `now` — no store read, no descriptor. Reading the artifact bytes back
+       * to confirm a retention state would break the property this whole path
+       * exists to have (doc 03 §10.2: an archived run resolves nothing), so
+       * the pointer count states its derivation rather than claiming an
+       * observation.
+       */
+      retention: archiveRetention({
+        now: deps.clock.now().toISOString(),
+        endedAt: record.row.endedAt,
+        pointerCounts: {
+          artifacts: record.evidence.artifactIds.length,
+          checkpoints: record.evidence.checkpointNodeIds.length,
+          writeIntents: record.evidence.writeIntentIds.length,
+          ledgerLines: record.evidence.ledgerPartitions.length,
+        },
+      }),
       relaunches: repositories.archiveRelaunches.listByArchivedRun(record.runId).map((relaunch) => ({
         runId: relaunch.runId,
         relaunchedIdentity: relaunch.relaunchedIdentity,

@@ -25,6 +25,7 @@ import {
   type ArchiveIndexWire,
   type ArchivedRunDetailWire,
 } from "../../../src/domain/dashboard/archive.js";
+import { archiveRetention } from "../../../src/domain/archive/retention.js";
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./fixture-day.js";
 
 const PRIOR_HASH = "b".repeat(64);
@@ -224,6 +225,14 @@ export const FIXTURE_ARCHIVED_RUN: ArchivedRunDetailWire = ArchivedRunDetailWire
     writeIntentIds: [],
     ledgerPartitions: [],
   },
+  // Computed by the SAME domain function the server calls, off this fixture's
+  // own row — a hand-authored retention block would let the reference drift
+  // from the policy it is meant to photograph.
+  retention: archiveRetention({
+    now: at(120),
+    endedAt: { state: "present", value: at(21) },
+    pointerCounts: { artifacts: 0, checkpoints: 2, writeIntents: 0, ledgerLines: 0 },
+  }),
   relaunches: [],
   relaunch: {
     state: "available",

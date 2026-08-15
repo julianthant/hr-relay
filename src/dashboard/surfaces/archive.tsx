@@ -57,7 +57,7 @@
  * sentence is what this surface shows. A button disabled by a client-side
  * count would be the client claiming to know what only that transaction can.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { z } from "zod";
 import {
   Archive as ArchiveIcon,
@@ -139,11 +139,12 @@ import type {
   VersionBumpPlanWire,
   WorkflowVersionStateWire,
 } from "../../domain/dashboard/archive.js";
+import { EVENT_STREAM_RETENTION_DAYS, type ArchiveRetentionWire } from "../../domain/archive/retention.js";
 import type { CommandResult } from "../../domain/commands.js";
 import { DashboardClientError } from "../client/errors.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
-import { elapsedSecondsBetween, fmtClock, fmtElapsed, plural } from "./format.js";
+import { elapsedSecondsBetween, fmtClock, fmtElapsed, fmtInstantDay, plural } from "./format.js";
 import { dsStatusOf } from "./status.js";
 import { FailureDetailBody, ReceiptEvidenceBody } from "./trust.js";
 
@@ -755,15 +756,17 @@ function ArchiveListPanel({
             {/*
               Retention is a rule of the product, not a caption under one list,
               so it lives here rather than as a paragraph pinned under the rows
-              it is true of on every run and every day. The three sentences are
-              what D179 actually guarantees — no purge DATE is served, so none
-              is printed (see `docs/findings/archive.md`).
+              it is true of on every run and every day. These are the POLICY —
+              the per-run DATES are computed server-side and rendered on each
+              archived run's own provenance card, because a surface handed the
+              rules is a surface free to apply them wrong.
             */}
             <PopoverContent title="Retention" width="lg" align="end">
               <BulletList
                 items={[
                   "An archived row is the audit copy: schema v13 aborts UPDATE and DELETE on it in SQL, not by convention.",
-                  "Evidence is POINTERS — the captured bytes, the checkpoints and the ledger lines all stay exactly where they are, under their own retention.",
+                  `A run's log lines and timeline live in notes/ and spans/, which prune at ${String(EVENT_STREAM_RETENTION_DAYS)} days by file date — open a run to see the date its own partition becomes eligible.`,
+                  "Evidence is POINTERS — the captured bytes and the checkpoints stay where they are and are kept until an explicit purge, which is a command and not a schedule.",
                   "The write ledger is never archived and never pruned, which is why a run here still lists what it filed.",
                 ]}
               />
@@ -868,6 +871,57 @@ function ArchiveListPanel({
         />
       )}
     </Panel>
+  );
+}
+
+/* ── retention ───────────────────────────────────────────────────────────── */
+
+/**
+ * ONE retention outlook as a sentence. The four arms read differently on
+ * purpose: `permanent` and `on-request` both have no date and are not the same
+ * fact, and rendering them alike would let this card tell an operator their
+ * screenshots are safe forever when one command removes them. `basis` is the
+ * server's own derivation and rides the `title`, so the number is checkable
+ * without the surface restating a policy it could get wrong.
+ */
+function retentionSentence(outlook: ArchiveRetentionWire["row"]): { text: string; title: string } {
+  switch (outlook.state) {
+    case "scheduled":
+      return { text: `purged ${fmtInstantDay(outlook.purgeAt)}`, title: outlook.basis };
+    case "permanent":
+      return { text: "never purged", title: outlook.basis };
+    case "on-request":
+      return { text: "kept until an explicit purge", title: outlook.basis };
+    case "unknown":
+      return { text: "purge date unknown", title: outlook.reason };
+  }
+}
+
+function RetentionLines({ retention }: { retention: ArchiveRetentionWire }) {
+  const rows: readonly [string, ArchiveRetentionWire["row"]][] = [
+    ["this archived row", retention.row],
+    ["its log lines and timeline", retention.eventStreams],
+    ["its captures and checkpoints", retention.evidence],
+    ["what it filed", retention.ledger],
+  ];
+  return (
+    <dl className={cn(dsText.meta, "grid grid-cols-[auto_1fr] gap-x-[var(--ds-space-cozy)] gap-y-[var(--ds-space-tight)]")}>
+      {rows.map(([label, outlook]) => {
+        const sentence = retentionSentence(outlook);
+        return (
+          <Fragment key={label}>
+            <dt className="text-[color:var(--ds-fg-faint)]">{label}</dt>
+            <dd className="text-[color:var(--ds-fg-muted)]" title={sentence.title}>{sentence.text}</dd>
+          </Fragment>
+        );
+      })}
+      <dt className="text-[color:var(--ds-fg-faint)]">evidence pointers</dt>
+      <dd className="text-[color:var(--ds-fg-muted)]" title={retention.pointers.basis}>
+        {retention.pointers.total === 0
+          ? "none named"
+          : `${String(retention.pointers.retained)} of ${String(retention.pointers.total)} still retained`}
+      </dd>
+    </dl>
   );
 }
 
@@ -1178,7 +1232,7 @@ function ArchivedRunDetail({
           {/* The page's whole claim rests on trusting this row. */}
           <Card>
             <CardBody className="flex flex-col gap-[var(--ds-space-snug)]">
-              <SectionLabel>Snapshot provenance</SectionLabel>
+              <SectionLabel>Snapshot provenance &amp; retention</SectionLabel>
               <MetaLine
                 items={[
                   `archived by ${detail.archivedBy}`,
@@ -1193,6 +1247,7 @@ function ArchivedRunDetail({
                   "The archived record is insert-only in SQL: it cannot be edited or deleted, which is what makes it the audit copy.",
                 ]}
               />
+              <RetentionLines retention={detail.retention} />
             </CardBody>
           </Card>
 
