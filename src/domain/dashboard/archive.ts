@@ -36,7 +36,7 @@ import {
   WorkflowIdSchema,
 } from "../ids.js";
 import { AppVersionSchema, DashboardWireVersionSchema } from "./primitives.js";
-import { QueueStatusSchema, QueueSurfaceWireSchema } from "./projection.js";
+import { QueueStatusSchema, QueueSurfaceWireSchema, ResolvedInstanceSchema } from "./projection.js";
 import { FailureDetailWireSchema, RunDetailWireSchema } from "./run-detail.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
 
@@ -58,6 +58,15 @@ export const ArchiveEntryWireSchema = z.strictObject({
   ]),
   archivedAt: IsoInstantSchema,
   applicationId: VersionBumpApplicationIdSchema,
+  /**
+   * The systems this run resolved and which INSTANCE of each it touched,
+   * copied verbatim off the frozen queue row when the index projects. It is
+   * not new authority data — `archived_runs` already holds it inside `row` —
+   * and it is on the index because a hazard an operator can only see after
+   * opening a run is a hazard the list is free to hide. The detail reads the
+   * same fact off `row.resolvedInstances`, so the two can never disagree.
+   */
+  resolvedInstances: z.array(ResolvedInstanceSchema),
   /** doc 13 §5's "integrity" — what a relaunch must cite back. */
   archiveFingerprint: FingerprintSchema,
 });

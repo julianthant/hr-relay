@@ -114,6 +114,9 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
         endedAt: record.row.endedAt,
         archivedAt: record.archivedAt,
         applicationId: record.applicationId,
+        // Copied off the FROZEN row, never re-derived: the index and the
+        // detail must name the same instances, and the detail reads `row`.
+        resolvedInstances: record.row.resolvedInstances,
         archiveFingerprint: record.contentDigest,
       })),
       sweeps: repositories.versionBumpApplications.list().map((application) => ({

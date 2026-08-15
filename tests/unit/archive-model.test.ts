@@ -105,6 +105,12 @@ interface World {
   /** Flipped by `bumpRegistry` — the kernel resolves through this box. */
   registry: AnyWorkflowDescriptor;
   readonly ids: { uuid: () => string };
+  /**
+   * What the frozen row will claim this run resolved. Mutable so one test can
+   * archive a run that touched a TEST instance and read the fact back off the
+   * INDEX entry, which is the only place it was previously unavailable.
+   */
+  resolvedInstances: readonly { system: string; instance: "prod" | "test" }[];
 }
 
 /**
@@ -113,7 +119,10 @@ interface World {
  * projection; this suite is about the archive's durable semantics, and wiring
  * a whole JSONL projection here would test the projection instead.
  */
-function snapshotSource(world: { database: AuthorityDatabase }) {
+function snapshotSource(world: {
+  database: AuthorityDatabase;
+  resolvedInstances?: readonly { system: string; instance: "prod" | "test" }[];
+}) {
   return {
     snapshot(runId: string): ArchiveRunSnapshot {
       const run = world.database.authority.runs.get(runId);
@@ -134,7 +143,7 @@ function snapshotSource(world: { database: AuthorityDatabase }) {
           descriptorVersion: run.envelope.descriptorVersion,
           descriptorHash: run.envelope.contractFingerprint,
           configFingerprint: run.envelope.configFingerprint,
-          resolvedInstances: [],
+          resolvedInstances: world.resolvedInstances ?? [],
           dryRun: run.envelope.dryRun,
           startedAt: NOW,
           updatedAt: NOW,
@@ -196,6 +205,7 @@ function createWorld(): World {
     stateRoot,
     registry: V1,
     ids,
+    resolvedInstances: [],
     kernel: undefined as unknown as CommandKernel,
   };
   world.kernel = createCommandKernel({
@@ -217,7 +227,7 @@ function createWorld(): World {
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,
-    archiveSnapshots: snapshotSource({ database }),
+    archiveSnapshots: snapshotSource(world),
   });
   return world;
 }
@@ -378,6 +388,55 @@ describe("the D80 archive model", () => {
     const index = buildArchiveIndex(deps);
     assert.equal(index.entries.length, 1);
     assert.equal(index.versionState.length, 0);
+  });
+
+  it("carries the frozen row's resolved instances onto the INDEX entry", () => {
+    const world = createWorld();
+    world.resolvedInstances = [
+      { system: "ucpath", instance: "prod" },
+      { system: "kuali", instance: "test" },
+    ];
+    const archived = startRun(world, "10873698", true);
+    world.registry = V2;
+    assert.equal(apply(world, plan(world)).state, "applied");
+
+    const deps = {
+      clock: manualClock(new Date(NOW)),
+      appVersion: "0.1.0",
+      authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
+      descriptors: { list: () => [] },
+    } as unknown as Parameters<typeof buildArchiveIndex>[0];
+
+    const entry = buildArchiveIndex(deps).entries[0];
+    // The index and the detail must name the SAME instances — the entry is a
+    // copy of the frozen row's own field, not a second derivation of it.
+    assert.deepEqual([...entry.resolvedInstances], [
+      { system: "ucpath", instance: "prod" },
+      { system: "kuali", instance: "test" },
+    ]);
+    assert.deepEqual(
+      [...buildArchivedRunDetail(deps, archived).row.resolvedInstances],
+      [...entry.resolvedInstances],
+    );
+  });
+
+  it("serves an EMPTY instance list for a run that resolved no system", () => {
+    const world = createWorld();
+    const archived = startRun(world, "10873698", true);
+    world.registry = V2;
+    assert.equal(apply(world, plan(world)).state, "applied");
+
+    const deps = {
+      clock: manualClock(new Date(NOW)),
+      appVersion: "0.1.0",
+      authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
+      descriptors: { list: () => [] },
+    } as unknown as Parameters<typeof buildArchiveIndex>[0];
+
+    const entry = buildArchiveIndex(deps).entries.find((candidate) => candidate.runId === archived);
+    // An empty list is the honest value, and the surface reads it as
+    // production: "touched a test instance" is a claim nothing here supports.
+    assert.deepEqual([...(entry?.resolvedInstances ?? [{ system: "x", instance: "test" }])], []);
   });
 
   it("leaves the ledger byte-identical across the bump", () => {

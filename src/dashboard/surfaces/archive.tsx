@@ -58,6 +58,7 @@
  * count would be the client claiming to know what only that transaction can.
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { z } from "zod";
 import {
   Archive as ArchiveIcon,
   ArrowLeft,
@@ -192,10 +193,20 @@ const ARCHIVE_SORT_LABEL: Record<ArchiveSortKey, string> = {
   duration: "Ran for",
 };
 
+/**
+ * `all` asks nothing; `prod` keeps the runs that touched NO test instance;
+ * `test` keeps the runs that touched at least one. A run that resolved no
+ * system at all is production by this reading, which is the fail-closed one:
+ * "touched a test instance" is a claim, and an empty list does not support it.
+ */
+const ArchiveInstanceFilterSchema = z.enum(["all", "prod", "test"]);
+type ArchiveInstanceFilter = z.infer<typeof ArchiveInstanceFilterSchema>;
+
 interface ArchiveQuery {
   readonly text: string;
   readonly workflowId: string;
   readonly status: string;
+  readonly instance: ArchiveInstanceFilter;
   readonly sort: ArchiveSortKey;
   readonly dir: ArchiveSortDir;
 }
@@ -204,12 +215,32 @@ const EMPTY_ARCHIVE_QUERY: ArchiveQuery = {
   text: "",
   workflowId: "all",
   status: "all",
+  instance: "all",
   sort: "when",
   dir: "desc",
 };
 
 function queryIsFiltered(query: ArchiveQuery): boolean {
-  return query.text.trim() !== "" || query.workflowId !== "all" || query.status !== "all";
+  return query.text.trim() !== ""
+    || query.workflowId !== "all"
+    || query.status !== "all"
+    || query.instance !== "all";
+}
+
+/**
+ * Whether this archived run touched a TEST instance of any system. The fact is
+ * the frozen row's own `resolvedInstances`, copied onto the index entry when
+ * the archive projects — never inferred from a workflow id or a title.
+ */
+export function archivedRunTouchedTest(entry: ArchiveEntryWire): boolean {
+  return entry.resolvedInstances.some((resolved) => resolved.instance === "test");
+}
+
+/** The systems whose TEST instance this run resolved, for the hazard's title. */
+function testInstanceSystems(entry: ArchiveEntryWire): readonly string[] {
+  return entry.resolvedInstances
+    .filter((resolved) => resolved.instance === "test")
+    .map((resolved) => resolved.system);
 }
 
 /**
@@ -258,6 +289,7 @@ function queryArchive(entries: readonly ArchiveEntryWire[], query: ArchiveQuery)
   const matched = entries.filter((entry) => {
     if (query.workflowId !== "all" && entry.workflowId !== query.workflowId) return false;
     if (query.status !== "all" && entry.status !== query.status) return false;
+    if (query.instance !== "all" && archivedRunTouchedTest(entry) !== (query.instance === "test")) return false;
     if (text !== "" && !haystack(entry).includes(text)) return false;
     return true;
   });
@@ -389,6 +421,20 @@ function ArchiveRow({
           {entry.appVersion.state !== "present" && (
             <TriangleAlert
               aria-label="app build unrecorded"
+              className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-status-waiting-fg)]")}
+            />
+          )}
+          {/*
+            The second hazard a LIST row can now name: this run resolved a TEST
+            instance of at least one system, so whatever it reports it did, it
+            did somewhere that is not production. The detail has always been
+            able to say so off the frozen row; the index carries the same field
+            now, because a hazard you must open a run to see is one the list is
+            free to hide.
+          */}
+          {archivedRunTouchedTest(entry) && (
+            <TriangleAlert
+              aria-label={`touched a test instance of ${testInstanceSystems(entry).join(", ")}`}
               className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-status-waiting-fg)]")}
             />
           )}
@@ -760,6 +806,26 @@ function ArchiveListPanel({
           {statuses.map((status) => (
             <option key={status} value={status}>{status}</option>
           ))}
+        </Select>
+        {/*
+          The instance filter. Its three arms are fixed rather than derived
+          from what the corpus happens to contain: "which archived runs touched
+          a test instance?" is a question worth being able to ASK of an archive
+          that answers none, and a control that disappears when the answer is
+          empty reads as "this cannot be asked".
+        */}
+        <Select
+          aria-label="Instance"
+          value={query.instance}
+          onChange={(event) => onQuery({
+            ...query,
+            instance: ArchiveInstanceFilterSchema.parse(event.target.value),
+          })}
+          className="w-auto shrink-0"
+        >
+          <option value="all">Any instance</option>
+          <option value="prod">Production only</option>
+          <option value="test">Touched a test instance</option>
         </Select>
         {filtered && (
           <Button size="sm" variant="ghost" className="shrink-0" onClick={() => onQuery(EMPTY_ARCHIVE_QUERY)}>

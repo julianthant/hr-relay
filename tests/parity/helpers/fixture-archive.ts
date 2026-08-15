@@ -139,6 +139,9 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
     endedAt: { state: "present", value: at(21) },
     archivedAt: at(60),
     applicationId: SWEEP_ID,
+    // The SAME value the frozen row carries — the index copies it, never
+    // re-derives it, so the two surfaces cannot name different instances.
+    resolvedInstances: [{ system: "ucpath", instance: "prod" }],
     archiveFingerprint: ARCHIVE_DIGEST,
   }],
   sweeps: [{

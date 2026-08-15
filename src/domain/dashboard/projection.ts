@@ -29,7 +29,7 @@ const ParentRunSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("child"), parentRunId: RunIdSchema }),
 ]);
 
-const ResolvedInstanceSchema = z.strictObject({
+export const ResolvedInstanceSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   instance: z.enum(["prod", "test"]),
 });
