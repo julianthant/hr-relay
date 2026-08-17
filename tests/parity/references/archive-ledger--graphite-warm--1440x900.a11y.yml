@@ -1,7 +1,7 @@
 # archive-ledger--graphite-warm--1440x900
 # adapter: fixture
 # fixture: archive-ledger
-# descriptorHash: 7295c22a830aaf14d4616e9db2e42e61c1ab757cdd2518abcd83724b7dafb5c2
+# descriptorHash: 964e299f88af95492bc7a545ad23257fbe29ce01c2ca6a272ac1d57611a9273d
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -38,6 +38,10 @@
       - combobox "Final status":
         - option "Any outcome" [selected]
         - option "done"
+      - combobox "Instance":
+        - option "Any instance" [selected]
+        - option "Production only"
+        - option "Touched a test instance"
     - table "Archived runs, grouped by the version bump that swept them":
       - rowgroup:
         - row "Outcome Name Trace When Ran for":

@@ -1,7 +1,7 @@
 # run-group--graphite-warm--1280x720
 # adapter: fixture
 # fixture: run-group
-# descriptorHash: 7295c22a830aaf14d4616e9db2e42e61c1ab757cdd2518abcd83724b7dafb5c2
+# descriptorHash: 964e299f88af95492bc7a545ad23257fbe29ce01c2ca6a272ac1d57611a9273d
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -49,7 +49,9 @@
     - button "Blirea, Glaundi — review":
       - text: Blirea, Glaundi
       - button "What is this row? — Run Panel"
-      - text: Review Waiting on identity review 9:47 AM pl-090505-0005 person lookup 18m 0s Right-click or press m for every command on Blirea, Glaundi
+      - text: Review Waiting on identity review 9:47 AM pl-090505-0005 person lookup 18m 0s
+      - button "Cancel run"
+      - text: Right-click or press m for every command on Blirea, Glaundi
     - button "Rehire eligibility sweep — review":
       - text: Rehire eligibility sweep
       - button "What is this row? — Group Panel"
@@ -58,22 +60,30 @@
       - button "Blirea, Glaundi person lookup"
       - button "EID 10120933 person lookup"
       - button "EID 10577410 person lookup"
-      - text: 9:20 AM pl-094040-0040 person lookup 45m 0s Right-click or press m for every command on Rehire eligibility sweep
+      - text: 9:20 AM pl-094040-0040 person lookup 45m 0s
+      - button "Cancel group"
+      - text: Right-click or press m for every command on Rehire eligibility sweep
     - button "EID 10777012 — write parked":
       - text: EID 10777012
       - button "What is this row? — Run Panel"
-      - text: Write parked A write to UCPath is parked pending proof 9:44 AM pl-090606-0006 21m 0s Right-click or press m for every command on EID 10777012
+      - text: Write parked A write to UCPath is parked pending proof 9:44 AM pl-090606-0006 21m 0s
+      - button "Cancel run"
+      - text: Right-click or press m for every command on EID 10777012
     - text: Active 3
     - button "Battistessa, Johnnie — running":
       - text: Battistessa, Johnnie
       - button "What is this row? — Run Panel"
-      - text: Running Searching UCPath for Battistessa, Johnnie 9:52 AM pl-090202-0002 person lookup 13m 0s Right-click or press m for every command on Battistessa, Johnnie
+      - text: Running Searching UCPath for Battistessa, Johnnie 9:52 AM pl-090202-0002 person lookup 13m 0s
+      - button "Cancel run"
+      - text: Right-click or press m for every command on Battistessa, Johnnie
     - button "Weekly HDH roster check (1) — running":
       - text: Weekly HDH roster check (1)
       - button "What is this row? — Group Panel"
       - text: Running 0/1 0 Name Detail
       - button "EID 10611004 person lookup"
-      - text: 9:30 AM pl-092020-0020 person lookup 35m 0s Right-click or press m for every command on Weekly HDH roster check (1)
+      - text: 9:30 AM pl-092020-0020 person lookup 35m 0s
+      - button "Cancel group"
+      - text: Right-click or press m for every command on Weekly HDH roster check (1)
     - button "New-hire lookups — batch 3 — running":
       - text: New-hire lookups — batch 3
       - button "What is this row? — Group Panel"
@@ -81,29 +91,43 @@
       - button "EID 10480021 person lookup"
       - button "Okafor, Chinedu person lookup"
       - button "Alvarez, Maria person lookup"
-      - text: 9:28 AM pl-093030-0030 person lookup 37m 0s Right-click or press m for every command on New-hire lookups — batch 3
+      - text: 9:28 AM pl-093030-0030 person lookup 37m 0s
+      - button "Cancel group"
+      - text: Right-click or press m for every command on New-hire lookups — batch 3
     - text: Queued 2
     - button "EID 10873698 — queued":
       - text: EID 10873698
       - button "What is this row? — Run Panel"
-      - text: Queued 9:57 AM pl-090909-0009 preview Right-click or press m for every command on EID 10873698
+      - text: Queued 9:57 AM pl-090909-0009 preview
+      - button "Run next"
+      - button "Cancel run"
+      - text: Right-click or press m for every command on EID 10873698
     - button "EID 10873698 — queued":
       - text: EID 10873698
       - button "What is this row? — Run Panel"
-      - text: Queued 9:55 AM pl-090101-0001 person lookup Right-click or press m for every command on EID 10873698
+      - text: Queued 9:55 AM pl-090101-0001 person lookup
+      - button "Run next"
+      - button "Cancel run"
+      - text: Right-click or press m for every command on EID 10873698
     - text: "Finished today 6 Today: 2 verified 2 with warnings 1 failed 1 cancelled"
     - button "EID 10555001 — failed":
       - text: EID 10555001
       - button "What is this row? — Run Panel"
-      - text: Failed 9:33 AM pl-090404-0004 person lookup took 6m 0s Right-click or press m for every command on EID 10555001
+      - text: Failed 9:33 AM pl-090404-0004 person lookup took 6m 0s
+      - button "Run again"
+      - button "Hide"
+      - text: Right-click or press m for every command on EID 10555001
     - button "EID 10333015 — done with warnings":
       - text: EID 10333015
       - button "What is this row? — Run Panel"
-      - text: 1 Done 9:24 AM pl-090808-0008 with CRM dates took 5m 0s Right-click or press m for every command on EID 10333015
+      - text: 3 Done 9:24 AM pl-090808-0008 with CRM dates took 5m 0s
+      - button "Run again"
+      - button "Hide"
+      - text: Right-click or press m for every command on EID 10333015
     - button "Separation audit — August — done with warnings" [pressed]:
       - text: Separation audit — August
       - button "What is this row? — Group Panel"
-      - text: 1 Done 12/13 2 Name Detail
+      - text: 2 Done 12/13 2 Name Detail
       - button "Castillo, Ren person lookup"
       - button "EID 10990031 person lookup"
       - button "Haddad, Lina person lookup"
@@ -118,11 +142,17 @@
       - button "EID 10410207 person lookup"
       - button "EID 10410208 person lookup"
       - button "Expand"
-      - text: 9:10 AM pl-091010-0070 person lookup took 2m 0s Right-click or press m for every command on Separation audit — August
+      - text: 9:10 AM pl-091010-0070 person lookup took 2m 0s
+      - button "Run again"
+      - button "Hide"
+      - text: Right-click or press m for every command on Separation audit — August
     - button "EID 10001573 — done":
       - text: EID 10001573
       - button "What is this row? — Run Panel"
-      - text: Done 9:35 AM pl-090303-0003 with CRM dates took 5m 0s Right-click or press m for every command on EID 10001573
+      - text: Done 9:35 AM pl-090303-0003 with CRM dates took 5m 0s
+      - button "Run again"
+      - button "Hide"
+      - text: Right-click or press m for every command on EID 10001573
     - button "Onboarding cohort — July stragglers — done":
       - text: Onboarding cohort — July stragglers
       - button "What is this row? — Group Panel"
@@ -140,12 +170,18 @@
       - button "EID 10300110 person lookup"
       - button "EID 10300111 person lookup"
       - button "Expand"
-      - text: 9:05 AM pl-095050-0050 person lookup took 2m 0s Right-click or press m for every command on Onboarding cohort — July stragglers
+      - text: 9:05 AM pl-095050-0050 person lookup took 2m 0s
+      - button "Run again"
+      - button "Hide"
+      - text: Right-click or press m for every command on Onboarding cohort — July stragglers
     - button "EID 10222009 — cancelled":
       - text: EID 10222009
       - button "What is this row? — Run Panel"
-      - text: Cancelled 9:26 AM pl-090707-0007 person lookup took 4m 0s Right-click or press m for every command on EID 10222009
-  - region "Run shape": fan-out 4m 0s members 9:14 AM 9:10 AM 4m 0s elapsed
+      - text: Cancelled 9:26 AM pl-090707-0007 person lookup took 4m 0s
+      - button "Run again"
+      - button "Hide"
+      - text: Right-click or press m for every command on EID 10222009
+  - region "Run shape": fan-out 9:10 AM members 9:14 AM 9:10 AM 4m 0s elapsed
   - region "Run detail":
     - text: Separation audit — August
     - button "What kind of panel this is — Group Panel"
@@ -157,7 +193,7 @@
       - tab "Receipt"
     - text: 9:10 AM Fan-out planned 13 member lookups 9:13 AM 2 members failed cross-verification
     - searchbox "Search logs"
-    - text: wf 7295c22a
+    - text: wf 964e299f
     - button "Run provenance"
   - complementary "Run data":
     - text: Run data
