@@ -1,6 +1,6 @@
 # Plan — dashboard detail-fidelity audit (region by region)
 
-**Date:** 2026-08-13 · **Owner:** frontend session · **Resumes:** `docs/handoffs/2026-08-13-frontend-detail-fidelity.md`
+**Date:** 2026-08-13 · **Owner:** frontend session · **Resumes:** `docs/handoffs/2026-08-13-frontend-detail-fidelity.md` _(handoffs removed 2026-08-18; in git history)_
 **Status legend:** `[ ]` not started · `[a]` audited (divergence log written) · `[f]` fixed + image-verified · `[x]` committed
 
 ## Goal

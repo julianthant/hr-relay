@@ -9,8 +9,9 @@ Records about how workflows, compositions and chunk harnesses are modeled and pr
 owns the module `role`; doc 03 §Shell owns the presentation) and implemented the same day
 (`c7486f6` module roles + registry validation + guard arm, `a631231` bootstrap/explorer wires,
 `b42f46f`/`0d64441` rail/picker/explorer nesting). The parity re-freeze this forces is sequenced
-into `docs/handoffs/2026-08-14-parity-refreeze.md`, which now records D219's isolated expected
-diffs (three fixtures: `explorer-graph`, `explorer-transaction`, `start-run`).
+into `docs/handoffs/2026-08-14-parity-refreeze.md`, which recorded D219's isolated expected
+diffs (three fixtures: `explorer-graph`, `explorer-transaction`, `start-run`). _(That re-freeze
+landed as `bd1d4b6`; the handoff briefs were removed 2026-08-18 and live in git history.)_
 
 **The design's answers to the open questions below:** no doc-07 conflict (no §3.2 criterion names
 rail presence; chunks stay registered and start through the start-plan lane), and the composition's

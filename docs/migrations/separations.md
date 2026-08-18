@@ -2427,8 +2427,8 @@ item §9.4 recorded (chunk 2, item 2), unchanged and still open.
 **Provenance of this section.** Three consecutive agent dispatches on chunk 4 died with **zero
 commits** (two 600 s watchdog stalls and one API disconnect). Everything below was live-observed on
 **production** `ucphrprdpub.universityofcalifornia.edu` on **2026-08-13** and salvaged VERBATIM from
-the dead transcripts into `docs/handoffs/2026-08-13-separations-chunk4-restart.md`; this section is
-where it becomes durable. The stall itself is a recorded finding — see *Timings* below.
+the dead transcripts into `docs/handoffs/2026-08-13-separations-chunk4-restart.md` (handoffs
+removed 2026-08-18; in git history); this section is where it becomes durable. The stall itself is a recorded finding — see *Timings* below.
 
 #### The persistence crux — ANSWERED
 
