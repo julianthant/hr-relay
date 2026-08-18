@@ -76,35 +76,6 @@ greps. When `runNumber` lands, the two are siblings, not substitutes.
 
 ---
 
-## The gate age is served and the pill refuses to draw it (D12)
-
-**Recorded:** 2026-08-14 · **Updated:** 2026-08-14 · **Status:** diagnosed — the WIRE half landed,
-the render half is an operator call · **Owning doc:** doc 03 §9 **D12**, and doc 03's
-*Queue-row projection as-built delta*
-
-**What landed.** `QueueBaseFields.gateOpenedAt` is now served: present only on an
-`awaiting-approval` row (a schema refinement refuses it anywhere else), sourced from the gate's own
-`gate.opened` span — the same record the run-detail decision notice reads — with authority's
-`lifecycle.parkedAt` as a documented fallback and `updatedAt` explicitly excluded. `HeaderChips`
-computes the age against the bootstrap-calibrated `nowIso` and passes it to `StatusBadge`.
-
-**What still does not render, and why it is not a bug to fix here.** `StatusPill`
-(`src/dashboard/ds/primitives-status.tsx`) suppresses `age` for the `waiting` status, on a recorded
-operator direction: *"Was `Waiting on you · age` in solid amber. Operator: drop the timer, and every
-waiting tag becomes the blue `Review` pill — the word names the work, not the wait."*
-`awaiting-approval` maps to exactly that status, so the row hands a real age to a pill that draws
-none.
-
-**The open question is an OPERATOR call, not an implementation one.** D12 is ratified and unamended
-(*"an aging gate is the most actionable fact in the queue"*); the DS suppression is a later operator
-direction recorded only in a code comment. One of the two has to give, and D126's rule — the
-visible design is settled and is not to be relitigated by a session — means a backend session may
-not decide it. Either D12 gets an amendment naming the direction that superseded its queue-row
-half, or the `waiting` arm comes out of `StatusPill`'s age filter. The wire is ready for the second
-either way.
-
----
-
 ## The `dry run` chip has its field and no tone to draw in
 
 **Recorded:** 2026-08-14 · **Updated:** 2026-08-14 · **Status:** diagnosed — the WIRE half landed,

@@ -355,6 +355,15 @@ said what the row should say.
   session close takes and preferring it would shave that off every gate's age. `updatedAt` is never
   a source — it moves on every patch, and reporting a gate as *younger* than it is remains the one
   direction this fact may not err in.
+  **Amended by operator ruling, 2026-08-18 — where the age RENDERS.** D12's queue-row half ("an
+  aging gate is the most actionable fact in the queue") is superseded by the demo's own layout,
+  which the operator confirmed against the reference screenshot: the status pill carries NO age
+  (`StatusPill`'s `waiting`-arm suppression stands — *"the word names the work, not the wait"*);
+  the wait age renders in the row's FOOTER meta and, at full strength, in the log panel — the
+  run-detail header's right-aligned age and the timeline's hatched waiting segment with the true
+  wait printed beneath it. `gateOpenedAt` stays served exactly as specified above; only the pill
+  half of D12 is amended. This closes the findings ledger's "gate age is served and the pill
+  refuses to draw it" record.
 - **`warnings` (D22/D126).** The `△ N` chip's count is the run's evidence-receipt warning set, with
   the first warning's own summary as the chip's title. The read is a plain lookup of an
   ALREADY-DERIVED receipt: D141 makes derivation an on-demand act that persists a row, and a read
