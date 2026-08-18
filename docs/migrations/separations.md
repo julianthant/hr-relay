@@ -4490,3 +4490,29 @@ D115 provenance that belong to the doc that owns them.
   in it. **FIXED afterwards as D221** and pinned by a fixture walk over the real interpreter and the
   real retry command; it has still never been exercised LIVE on this graph, which is the honest
   remaining statement.
+
+### 9.18 Operator inputs, 2026-08-18 — the dry-run practice set, and four rulings
+
+Recorded from the operator's own message and screenshots; nothing here was run live yet.
+
+**The dry-run practice set is named: Kuali docs 4537, 4502, 4495** (from the operator's Kuali
+action list: 4537 Marc Angelo Olitoquit `Task 1 - Kristina & TES` created Aug 17 · 4502 Emily
+Zimmerman `Task 1 - Jan` · 4495 Alaric Bermudez `Task 1 - Kristina & TES`). The operator notes
+their separation dates are in the future and offers them for dry-run practice. The standing S7
+constraint applies and was stated back: a future-dated document refuses at `plan` on the composed
+graph (proved live on 4495, §9.17a run 4), so **4502 is the full-chain composed dry-run subject**
+(already proved to the preview terminal, §9.17), **4537 owes a read-only mapping pass** before
+anything else cites it, and **4495 becomes a fresh full-chain subject when its date passes
+(09/02/2026)** — until then both serve the standalone read workflows and the S7 refusal path.
+**These are PRACTICE subjects, not §4f2 canaries** — the controlled-commit canary remains unnamed.
+
+**Four rulings landed the same day, recorded where they own:** the run-detail timeline is
+CATEGORICAL — the operator approved the six-category grouping (Kuali extraction · Identity check ·
+Job summary · Kronos timecard · UCPath transaction · Kuali finalization) over the 18 raw nodes,
+legacy's step vocabulary kept (D222, doc 03) · the gate-age pill carries no age; the age lives in
+the row meta and the log panel, per the demo (D12 amended, doc 03) · no AI sanity check — the
+§14.2 packet's deterministic comparisons ARE the check (`legacy-tool-ops-sanity-check-record`
+retired, doc 12 §4.4) · the archived detail follows the demo — five tabs, Export (D223, doc 03
+§10.2). The operator also ratified the separations-completion plan's ordering
+(`docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` §7 Decision 5:
+Track B now, Track A on the canary).
