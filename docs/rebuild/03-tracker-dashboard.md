@@ -1413,6 +1413,25 @@ and subject mismatch → `failed`; open operator gate → `gate-waiting`; unknow
 `write-parked`; repeat threshold → `repeating`; storage degradation, stalled lease/outbox, and
 failed backup → `storage`; verified-done receipt → `verified-done`.
 
+**As-built (2026-08-18, D222) — the first wired producer is the backup-health watch, and the
+stale/missing backup moves OFF the every-view banner it had been riding.** 2g built the durable
+inbox and 2i-B built the bell, but no production caller ever published a trigger — so the backup
+hazard this section has always named a `storage` notification was being carried by the every-view
+`StorageBanner` instead, which is what the operator called out. The dashboard composition — the
+backup cadence's owner (2i-D) — now observes the SAME cheap `readBackupSummary` the bootstrap
+serves, on the same 15-minute tick, and publishes `storage-degraded`/`backup` through the real
+inbox (`src/services/notifications/storage-health.ts`). Three rules bound it: a **transition**
+into or between `stale`/`missing` publishes and a standing state does not (the D134 fold marks a
+row unread again, so a per-tick publish would make the row unreadable-forever — the spam this
+section forbids); a **failed publish forgets nothing**, so the next tick retries the transition,
+and the failure is RETAINED on the doctor wire's `service` arm rather than swallowed; and
+**recovery publishes nothing** — the trigger union has no "recovered" arm, and adding one is a new
+decision. The banner narrows to the one state that stops work, for a structural reason and not a
+volume preference: the inbox is an authority table, so an authority that cannot be written cannot
+record a notification about its own death — the banner is the only surface that can still say it,
+and it still appends the backup sentence when both are true. The gear's attention dot is
+unchanged; Settings remains the page that explains either state.
+
 ---
 
 ## 3. Descriptor fields this layer consumes (shape owned by doc 02)

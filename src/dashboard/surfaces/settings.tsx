@@ -58,10 +58,20 @@ export function storageNeedsAttention(storage: StorageHealthSummary): boolean {
 }
 
 /**
- * A degraded dashboard says so on EVERY view, not only on the page that
- * explains it — so this is mounted above the takeover switch, and the queue,
- * the intake workspace, the archive, the explorer, the catalog and the
+ * A dashboard that CANNOT WORK says so on EVERY view, not only on the page
+ * that explains it — so this is mounted above the takeover switch, and the
+ * queue, the intake workspace, the archive, the explorer, the catalog and the
  * activity report all carry it.
+ *
+ * D222 narrowed what earns the band to exactly that one state. A stale or
+ * missing backup does not stop the work, and doc 03 §2.6 has always named it
+ * a `storage` NOTIFICATION — so it now reaches the operator as a durable
+ * inbox row (published by the composition's backup-health watch) plus the
+ * gear's attention dot, never as a band over every view. The unreachable
+ * authority stays here for a structural reason, not a volume preference: the
+ * inbox is an authority table, so an authority that cannot be written cannot
+ * record a notification about its own death — the banner is the one surface
+ * that can still say it.
  *
  * Ported in SHAPE from legacy
  * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
@@ -69,19 +79,13 @@ export function storageNeedsAttention(storage: StorageHealthSummary): boolean {
  * The COPY is not ported. The demo's banner disclosed two lists — what still
  * works and what is blocked — authored against a demo's `StorageMode`, and
  * every line of them would have been a claim about a system nobody had asked.
- * What this one says is derived from the three facts the bootstrap actually
- * serves (`authority`, `backup`, `checkedAt`) and nothing else.
+ * What this one says is derived from the facts the bootstrap actually serves
+ * (`authority`, `backup`, `checkedAt`) and nothing else.
  *
  * It is a HAZARD, which is one of D24's two exemptions from "a professional
  * dashboard does not explain itself": it names the state, the one consequence
  * that changes what the operator should do next, and the route to the doctor.
  * There is no third sentence, no disclosure, and no defence of the design.
- *
- * The two hazards are deliberately not the same volume. An unreachable
- * authority stops the work; a stale or missing backup does not, and saying so
- * in the same breath is the whole point — an operator who cannot tell them
- * apart either stops when they did not need to or keeps filing real HR
- * transactions when they should not.
  */
 const AUTHORITY_HAZARD = "Nothing durable can be read or recorded.";
 const BACKUP_HAZARD: Record<Exclude<StorageHealthSummary["backup"], "current">, string> = {
@@ -99,20 +103,13 @@ export function StorageBanner({
   /** the shell's own edge — the band does not know where it is mounted */
   className?: string;
 }) {
-  if (!storageNeedsAttention(storage)) return null;
-  const stopped = storage.authority !== "healthy";
+  if (storage.authority === "healthy") return null;
   const backupHazard = storage.backup === "current" ? undefined : BACKUP_HAZARD[storage.backup];
   return (
     <Banner
       className={cn("shrink-0", className)}
-      tone={stopped ? "danger" : "warning"}
-      title={
-        stopped
-          ? "Authority storage is unavailable"
-          : storage.backup === "stale"
-            ? "The newest backup is stale"
-            : "Storage has no restore point"
-      }
+      tone="danger"
+      title="Authority storage is unavailable"
       action={
         <Button size="sm" variant="secondary" onClick={onOpenSettings}>
           Storage health
@@ -121,10 +118,10 @@ export function StorageBanner({
     >
       <span className="flex flex-col gap-[var(--ds-space-tight)]">
         <span>
-          {stopped ? AUTHORITY_HAZARD : backupHazard}
+          {AUTHORITY_HAZARD}
           {/* Both facts, when both are true. The authority sentence leads
               because it is the one that changes what happens next. */}
-          {stopped && backupHazard !== undefined ? ` ${backupHazard}` : ""}
+          {backupHazard !== undefined ? ` ${backupHazard}` : ""}
         </span>
         <MetaLine items={[`checked ${fmtClock(storage.checkedAt)}`]} />
       </span>

@@ -310,6 +310,21 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-18: an alert lane that lives inside the thing it reports on cannot report that thing's
+  death — and machinery with zero producers is a surface doing another surface's job (D222).** The
+  durable notification inbox, its dedupe fold and the bell existed since 2g/2i-B with NO production
+  publisher wired, so the every-view `StorageBanner` had been carrying the backup hazard that doc 03
+  §2.6 always named a `storage` notification — every gate green, because nothing checks that a fact
+  reaches the RIGHT surface. Moving it (operator decision) made the split structural: backup
+  stale/missing publishes `storage-degraded` on state TRANSITIONS only — the D134 fold marks a row
+  unread again on every publish, so publishing a standing state each 15-minute tick would make the
+  row unreadable-forever, which is §2.6's spam by another route — while authority-unavailable KEEPS
+  the banner, because the inbox is an authority table and an authority that cannot be written cannot
+  record a notification about its own death. Two shape rules travel: the notifier advances its
+  last-reported memory only AFTER the durable publish commits (a throw leaves the transition
+  pending, so the next tick retries instead of losing the alert), and the watch reads the SAME
+  extracted `readBackupSummary` the bootstrap serves, so the bell can never announce a state
+  Settings would not show.
 - **2026-08-14: every component of an ITEM-scoped key must itself be item-scoped, and the counter you
   need is usually the one the code already reads that way (D221).** D214 taught the checkpoint key the
   claim generation and closed the collision one ATTEMPT could hold; the same collision one level up —

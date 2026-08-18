@@ -758,7 +758,7 @@ function LoadedApp({
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           {/*
-            A DEGRADED DASHBOARD SAYS SO ON EVERY VIEW.
+            A DASHBOARD THAT CANNOT WORK SAYS SO ON EVERY VIEW.
 
             Mounted here — above the takeover switch, inside `main` so it hangs
             off the one `--ds-shell-inset` edge — rather than inside Settings,
@@ -767,10 +767,13 @@ function LoadedApp({
             (intake, archive, explorer, catalog, activity) replaces the queue
             and inherits this band unchanged.
 
-            It renders nothing at all when storage is healthy, which is why it
-            costs the shell no fixed height: an empty band held open for a
-            state that is almost never true is the decoration this product
-            spends its density on avoiding.
+            D222: only the unreachable AUTHORITY earns this band — a stale or
+            missing backup is a `storage` notification in the bell (doc 03
+            §2.6) plus the gear's attention dot, because it does not stop the
+            work. It renders nothing at all otherwise, which is why it costs
+            the shell no fixed height: an empty band held open for a state
+            that is almost never true is the decoration this product spends
+            its density on avoiding.
           */}
           <StorageBanner
             storage={boot.storage}

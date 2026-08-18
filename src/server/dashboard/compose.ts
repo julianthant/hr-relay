@@ -73,6 +73,8 @@ import { createLedgerReadThrough } from "../../infra/ledger/ledger-read-through.
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
+import { createNotificationInbox } from "../../services/notifications/inbox.js";
+import { createBackupHealthNotifier } from "../../services/notifications/storage-health.js";
 import { createIntakeParser } from "../intake/intake-parser.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
 import { createIntakeService } from "./commands/intake-service.js";
@@ -277,7 +279,59 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       });
     }
   };
-  void requestBackup("interval");
+  /**
+   * The ONE cheap backup reading (doc 03 §2.5) — shared verbatim by the
+   * bootstrap summary and the notification watch below, so the bell can never
+   * announce a state the Settings indicator would not show.
+   */
+  const readBackupSummary = (): "current" | "stale" | "missing" => {
+    let liveGeneration: { state: "known"; value: number } | { state: "unavailable" };
+    try {
+      liveGeneration = { state: "known", value: database.getMeta().authorityGeneration };
+    } catch {
+      // A DISTINGUISHABLE unknown, not a default: authority unavailability is
+      // already the summary's own `authority` arm, and the backup indicator
+      // then judges by manifest age alone — the degraded contract
+      // `summarizeBackupHealth` documents.
+      liveGeneration = { state: "unavailable" };
+    }
+    return summarizeBackupHealth(
+      { backupDirectory, maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS },
+      liveGeneration.state === "known" ? liveGeneration.value : undefined,
+      clock,
+    );
+  };
+
+  /**
+   * D222: a stale/missing backup is doc 03 §2.6's `storage` notification, not
+   * an every-view banner — the durable inbox row is the alert, produced here
+   * because this process owns the backup cadence and therefore the reading.
+   * Transition-only publishing (and the restart fold) live in the notifier.
+   */
+  const inbox = createNotificationInbox({
+    authority: database,
+    clock,
+    ids,
+    actorId: LOCAL_OPERATOR_ACTOR_ID,
+  });
+  const backupNotifier = createBackupHealthNotifier({ inbox });
+  const publishBackupHealth = async (): Promise<void> => {
+    try {
+      await backupNotifier.observed(readBackupSummary());
+    } catch (error) {
+      // Retained, never swallowed: a failed publish means the durable alert
+      // row could not be written (the inbox is an authority table), and this
+      // process's one served storage-lane failure surface is the doctor
+      // wire's `service` arm. The notifier forgets nothing on a throw, so the
+      // next tick retries the same transition.
+      backupServiceState = BackupServiceStateWireSchema.parse({
+        state: "failed",
+        failedAt: clock.now().toISOString(),
+        message: `storage-health notification failed: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  };
+  void requestBackup("interval").then(publishBackupHealth);
   const backupTimer = setInterval(() => {
     let authorityGeneration: number;
     try {
@@ -290,7 +344,13 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       });
       return;
     }
-    if (authorityGeneration > lastBackedUpGeneration) void requestBackup("interval");
+    // The health watch runs on EVERY tick — age-based staleness advances with
+    // no generation movement, so a clean store must still be observed.
+    if (authorityGeneration > lastBackedUpGeneration) {
+      void requestBackup("interval").then(publishBackupHealth);
+    } else {
+      void publishBackupHealth();
+    }
   }, AUTHORITY_BACKUP_INTERVAL_MS);
   backupTimer.unref();
 
@@ -582,23 +642,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
           reason: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process",
         }
         : { state: "available" }),
-      backupSummary: () => {
-        let liveGeneration: { state: "known"; value: number } | { state: "unavailable" };
-        try {
-          liveGeneration = { state: "known", value: database.getMeta().authorityGeneration };
-        } catch {
-          // A DISTINGUISHABLE unknown, not a default: authority
-          // unavailability is already the summary's own `authority` arm, and
-          // the backup indicator then judges by manifest age alone — the
-          // degraded contract `summarizeBackupHealth` documents.
-          liveGeneration = { state: "unavailable" };
-        }
-        return summarizeBackupHealth(
-          { backupDirectory, maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS },
-          liveGeneration.state === "known" ? liveGeneration.value : undefined,
-          clock,
-        );
-      },
+      backupSummary: readBackupSummary,
     },
     projection,
     runDetail: runDetailDeps,
