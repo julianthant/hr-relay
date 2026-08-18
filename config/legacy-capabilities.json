@@ -1264,16 +1264,21 @@
         "tool:src/scripts/ops/sanity-check-record.ts"
       ],
       "disposition": {
-        "kind": "open",
+        "kind": "retired",
         "milestone": "phase-3-workflow-migration",
-        "reason": "D192 (operator, 2026-08-12): stays open, deferred to the order-8 separations migration (doc 07 §3.3) rather than a build-or-retire call. Its value arrives with separations/onboarding — the wrong-person/duplicate-person incidents record sanity check exists to catch — where it renders as prose observations beside the doc 09 §14 ALWAYS-GATE identity approval, never a pass/fail verdict chip that could be mistaken for authority. AdvisorySurfaceIdSchema stays closed at its D178 two-value shape until that migration adds the surface arm."
+        "evidence": [
+          "legacy-source-present:src/scripts/ops/sanity-check-record.ts",
+          "src/domain/separations/identity-approval.ts",
+          "src/domain/trust/advisory.ts"
+        ],
+        "reason": "Operator ruling 2026-08-18 (doc 12 §4.4): no AI feature — D192's deferral condition ('renders beside the order-8 ALWAYS-GATE identity approval') was met DETERMINISTICALLY by the doc 09 §14.2 gate packet's server-computed comparisons array, which puts the disconfirming Kuali-beside-UCPath evidence in exactly the slot the AI prose was reserved for. The deterministic comparison IS the sanity check. AdvisorySurfaceIdSchema stays closed at its D178 two-value shape; no surface arm is ever added. Reopening requires a fresh decision, not a build."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/sanity-check-record.ts",
         "src/domain/trust/advisory.ts"
       ],
-      "status": "open"
+      "status": "retired"
     },
     {
       "id": "legacy-tool-ops-selector-suggest",

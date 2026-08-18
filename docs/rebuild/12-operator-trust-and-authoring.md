@@ -1112,15 +1112,20 @@ dispositions.**
   pattern root `CLAUDE.md` bans outright. The deterministic catalog half (`npm run selector:search`)
   stays primary and is unaffected; selector discovery/repair remains the dev-time live-verification
   loop the charter already pre-authorizes.
-- **Record sanity check → STAYS OPEN, deferred to the order-8 separations migration** (doc 07 §3.3).
-  Its value arrives with separations/onboarding — the wrong-person/duplicate-person incidents it
-  exists to catch — where it will render as prose observations beside the doc 09 §14 ALWAYS-GATE
-  identity approval, never a pass/fail verdict chip that could be mistaken for authority.
+- **Record sanity check → RETIRED (operator ruling, 2026-08-18), its deferral condition having
+  been MET deterministically.** D192 deferred it to the order-8 separations migration, where it was
+  to render as prose beside the doc 09 §14 ALWAYS-GATE identity approval. Separations arrived, and
+  the gate packet's own server-computed `comparisons` array (§14.2 — the deterministic side-by-side
+  of disconfirming evidence, Kuali beside UCPath, leading the packet) now occupies exactly that
+  slot; §9.17's live pass flagged the condition as materially satisfied and left the closure to the
+  operator, who ruled: **no AI feature — the deterministic comparison IS the sanity check.**
+  `AdvisorySurfaceIdSchema` stays closed at its D178 two-value shape; no surface arm is ever added
+  for it. Reopening requires a fresh decision, not a build.
 
-`config/legacy-capabilities.json` carries all three dispositions (`legacy-tool-ops-summarize-run` and
-`legacy-tool-ops-selector-suggest` now `retired`; `legacy-tool-ops-sanity-check-record` still `open`
-with the updated reason), and the `legacy-capability-disposition` guard (D184) re-validated green
-against the new shapes.
+`config/legacy-capabilities.json` carries all three dispositions (all three AI advisory tools now
+`retired`: `legacy-tool-ops-summarize-run`, `legacy-tool-ops-selector-suggest`, and — as of
+2026-08-18 — `legacy-tool-ops-sanity-check-record`), and the `legacy-capability-disposition` guard
+(D184) validates the shapes.
 
 ---
 
