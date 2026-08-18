@@ -1,17 +1,16 @@
 # Migration plan — `separations` (order 8, the Phase-3 entry)
 
-> **STATUS: READY TO BUILD — the §5 questionnaire is fully answered.** §5 item 5's freshness VALUES
-> (5A the four `maxAge`s, 5B the override column on the date fields) were the one remaining residual
-> and were answered by the operator on **2026-08-12**, alongside everything else the questionnaire
-> asks: §2.6 (ratified as **D194**), §4a, §4b, §4c, §4d, §4e, §4f1–§4f4, §4g, and the §3
-> build-strategy directive. Every §5 item now carries a **verdict line** of ANSWERED — none remain in
-> the STILL NEEDS OPERATOR class.
+> **STATUS (2026-08-18): BUILT AND LIVE-PROVEN THROUGH THE PREVIEW TERMINAL — the controlled
+> commits are the remaining work.** All build chunks (1, 2, 3, 4, 5a/5b/5c, 6a, 6b, 6c) are LANDED;
+> the composed workflow ran live end-to-end to a real preview terminal on doc 4502 (§9.17). The §6
+> exit checklist stands at **7 of 9**: open are the three §4f2 controlled commits (blocked on the
+> operator naming a canary — doc 4524, the recorded candidate, completed on 2026-08-14 and is gone)
+> and the browser-profile-wedge regression record (§9.17 item 5). Current work and ordering:
+> `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md`.
 >
-> Doc 07 §3.1 step 1 is explicit: the operator questionnaire is asked and answered **BEFORE**
-> building. With 5A/5B answered, a read contract's `freshness` (doc 01 §2.1.1 / D8) is now a
-> satisfiable field, so `new-kronos/read-separation-timecard` can be authored. **Chunk 1 — the
-> `new-kronos` store plus the `separations-kronos-timecard` timecard-read sub-workflow, authored rich
-> under D194 — starts now.**
+> *(Historical header, true 2026-08-12→08-14: the §5 questionnaire was fully answered 2026-08-12 —
+> 5A/5B freshness values, §2.6/D194, §4a–§4g, the §3 build-strategy directive — flipping this doc
+> from BLOCKED to READY TO BUILD, and chunk 1 started the same day.)*
 
 **What this doc is.** The first Phase-3 migration doc, and therefore the convention every later one
 follows (doc 07 §0.1: migration docs are **children** of the master plan — they answer §3.4 and

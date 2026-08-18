@@ -20,8 +20,8 @@ when no existing one fits), each stamped with a date and a `**Status:**` line
 
 | Category file | Scope | Records |
 | --- | --- | --- |
-| [dashboard-projection.md](dashboard-projection.md) | The BFF's span-fold/projection layer: anything where served surfaces disagree with the on-disk streams | 2 (diagnosed; `span.patched` has no production emitter — the detail channel is dead) |
-| [workflow-taxonomy.md](workflow-taxonomy.md) | How workflows/compositions/chunks are modeled and presented (rail, picker, counts) | 1 (recorded) |
+| [dashboard-projection.md](dashboard-projection.md) | The BFF's span-fold/projection layer: anything where served surfaces disagree with the on-disk streams | 1 (diagnosed; `span.patched` has no production emitter — the detail channel is dead) |
+| [workflow-taxonomy.md](workflow-taxonomy.md) | How workflows/compositions/chunks are modeled and presented (rail, picker, counts) | 0 open (both records resolved by D219/D220) |
 | [queue-rows.md](queue-rows.md) | Queue-row wire gaps: demo/doc-03 row elements the served wire cannot yet power | 7 (4 recorded wire gaps, 2 diagnosed served-but-undrawn, 1 UI-only rename control; liveMessage + warnings + actions[] + subject title/displayName landed 2026-08-14 and deleted) |
 | [archive.md](archive.md) | Archive-surface wire gaps: demo archive/version-bump elements the `/api/v1/archive` wire cannot yet power | 8 (4 recorded, 4 triaged; instance filter + retention + durations landed 2026-08-14/15 and deleted, ledger read-through landed and narrowed) |
 | [explorer.md](explorer.md) | Workflow-Explorer wire gaps: demo explorer elements the `/api/v1/explorer` projection cannot yet power (field-level contracts, authored prose) | 3 (recorded; 5 dispositioned into doc 12 §5.7's exclusions/as-built and deleted) |

@@ -730,10 +730,12 @@ this plan; they answer §3.4 and record reuse/additions, and never re-order the 
 > `not-observed` subject verdict had never reached the span WIRE leaf, so the first preview that ever
 > settled killed the worker one emit short of its terminal — fixed with its test in `e1ba81b`, and
 > the run itself was correct throughout (zero intent, zero fence, D200's self-sweep released the
-> orphaned claim). One live-lane finding is NOT pinned as a regression and is handed to doc 02 §5.7's
-> owner: a `run`/`retry` mints a new run at attempt 1 / generation 1, so an `always-rerun` node
-> re-collides with the ORIGINAL run's checkpoint — **a separations run that fails at or after
-> `timecard-search` cannot be retried at all.** The composed **REAL** run on canary doc 4510 (`ee9824f7`, not dry) refused
+> orphaned claim). One live-lane finding — a `run`/`retry` minted a new run at attempt 1, so an
+> `always-rerun` node re-collided with the ORIGINAL run's checkpoint and **a separations run that
+> failed at or after `timecard-search` could not be retried at all** — was closed the SAME DAY as
+> **D221** (doc 02 §5.7: the checkpoint key's attempt is the ITEM's attempt) with its regression
+> pinned in `tests/unit/retry-item-attempt.test.ts`; the fix has not yet been exercised on a live
+> retry, which stays owed. The composed **REAL** run on canary doc 4510 (`ee9824f7`, not dry) refused
 > `NO_ACTIVE_EMPLOYMENT` **before the gate** — a valid result: UCPath shows one `Inactive` employment
 > for EID 10001799, so there is no employment for the separation to end, and 4510 cannot proceed on
 > the composed graph until the operator makes an active terminable employment exist. Zero durable
