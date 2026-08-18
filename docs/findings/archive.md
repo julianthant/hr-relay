@@ -57,10 +57,11 @@ no record yet; add them to `queue-rows.md` when worked.
 
 ## Logs, Data and People tabs
 
-**Recorded:** 2026-08-14 · **Status:** triaged 2026-08-14 — decide-first. This is an archive-MODEL
-decision (freeze section payloads beside the row, or state that an archived run keeps counts and
-not rows), i.e. a doc 03 §10.2 ratification plus a schema-version question on the immutable
-archived record — not a projection edit. Awaiting that ratification.
+**Recorded:** 2026-08-14 · **Status:** DECIDED 2026-08-18 — **D223** (operator: "follow how the
+demo looks"). The archive snapshot freezes the section PAYLOADS beside the row; the five demo tabs
+render with the descriptor list empty; schema-version bump on the archive tables, read-forward per
+D133. Normative text in doc 03 §10.2. Now a BUILD item (separations-completion plan Track B5);
+this record stays until the build lands, then is deleted.
 
 - **Symptom:** the archived detail renders two tabs (Summary, Evidence) where the demo renders five.
   The archived run's log lines, data points and member rows are not readable at all.
@@ -149,10 +150,11 @@ it should be decided once there, then frozen into archived records like the labe
 
 ## Export an archived run
 
-**Recorded:** 2026-08-14 · **Status:** triaged 2026-08-14 — decide-first, per the standing rule a
-frontend feature the plans do not list is not built. Needs an operator decision landing a line in
-doc 03 §10.2 (with the redaction posture stated: the export carries exactly the display-redacted
-detail wire and nothing more) before anyone builds it.
+**Recorded:** 2026-08-14 · **Status:** DECIDED 2026-08-18 — **D223** (operator: "follow how the
+demo looks"). The Export control exists, writing `archive-<traceId>.json` composed of exactly the
+display-redacted `ArchivedRunDetailWire` — the redaction posture is inherited, nothing more is
+carried. Normative text in doc 03 §10.2. Now a BUILD item (Track B5); this record stays until the
+build lands, then is deleted.
 
 - **Symptom:** the archived detail's panel header has no Export control; the demo's does.
 - **Demo element:** `<Button icon={<Download/>}>Export</Button>` in `ArchivedRunDetail`'s

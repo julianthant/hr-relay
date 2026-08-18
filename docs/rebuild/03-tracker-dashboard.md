@@ -2794,6 +2794,23 @@ Relaunch, and the archived-detail query resolves the registry for exactly one th
 current version exists to relaunch ONTO. `archive-invariants` proves the rest by reading a stored
 record back with the descriptor list empty.
 
+**D223 (operator ruling, 2026-08-18) — the archived detail is the DEMO's detail: five tabs and an
+Export control.** The operator ruled "for the archive stuff just follow how the demo looks",
+settling the two decide-first records the findings ledger had parked here. **(1) Tabs.** An
+archived run renders Summary · Logs · Data · People (where the run has members) · Evidence, like
+the demo's `ArchivedRunDetail` — which means the archive snapshot FREEZES the section payloads
+(log lines, data points with their provenance, member outcome rows) beside the projected row at
+archive time, in the same seam that already freezes the row, detail, receipt and failure. Counts
+alone are ratified insufficient: an archived run whose logs are unreadable is not "self-contained
+data". This extends the archived record (a schema-version bump on the archive tables, read-forward
+per D133: a pre-D223 record reports its tabs absent with the reason, never fabricates them), and
+`archive-invariants`' bar is unchanged — every tab renders with the descriptor list EMPTY.
+**(2) Export.** The archived detail's panel header carries the demo's Export control, writing
+`archive-<traceId>.json` composed of EXACTLY the display-redacted `ArchivedRunDetailWire` the
+surface already holds — the export inherits the display redaction and carries nothing more, so no
+new redaction surface exists. Both halves are build items owned by the separations-completion
+plan's Track B5; this ruling is the ratification the records were waiting for.
+
 ### 10.3 Operator-assigned run display names (D83)
 
 Any run can be renamed by the operator. The label rides the **row and the receipt**; the trace id is
