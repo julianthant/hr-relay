@@ -414,11 +414,13 @@ function RefusedNotice({ refusal }: { refusal: Refused }) {
   );
   if (refusal.code === undefined) {
     return (
+      // NO nested `role="alert"` inside the body: a `danger` Banner already
+      // carries one, and an alert inside an alert announces the same sentence
+      // twice to a screen reader while making every `getByRole("alert")` on
+      // this surface ambiguous.
       <Banner tone="danger" title="Nothing was recorded" className={enterClass} {...entering}>
-        <span role="alert">
-          {refusal.message} The gate is still open and your answer below is untouched — but the
-          server sent no refusal code, so there is nothing here to quote in a bug report.
-        </span>
+        {refusal.message} The gate is still open and your answer below is untouched — but the
+        server sent no refusal code, so there is nothing here to quote in a bug report.
       </Banner>
     );
   }
@@ -430,7 +432,7 @@ function RefusedNotice({ refusal }: { refusal: Refused }) {
       className={enterClass}
       {...entering}
     >
-      <span role="alert">{refusal.message}</span>
+      {refusal.message}
     </Refusal>
   );
 }

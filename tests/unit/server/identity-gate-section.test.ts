@@ -41,6 +41,11 @@ import {
   type DashboardWorld,
 } from "./helpers/dashboard-harness.js";
 import { noSeparationWritePlan } from "../../../src/domain/separations/write-plan.js";
+import {
+  FIXTURE_IDENTITY_GATE,
+  FIXTURE_IDENTITY_GATE_TYPED_EID,
+} from "../../parity/helpers/fixture-day.js";
+import { fixtureIdentityGateActions } from "../../parity/helpers/fixture-gate.js";
 
 const worlds: DashboardWorld[] = [];
 function world(): DashboardWorld {
@@ -264,6 +269,37 @@ describe("the identity-gate run-detail section (doc 09 §14.4)", () => {
     );
     const approve = payload.value.actions[0];
     assert.equal(approve?.kind === "command" ? approve.confirm?.tone : undefined, "destructive");
+  });
+
+  /**
+   * The parity corpus's adapter #1 AUTHORS this section — it holds no authority
+   * rows to derive one from — so its option mapping and its two `resolve-gate`
+   * descriptors are a COPY of the ones this query builds. A copy nobody
+   * compares is a reference that documents last month's copy.
+   *
+   * The comparison is EXACT rather than normalized, because it can be: the
+   * server is seeded with the fixture's own packet, so every interpolated name,
+   * document number and disagreement list is the same on both sides. Only the
+   * run version differs, and the fixture's copy is asked for the one the query
+   * served rather than pinned to a seed.
+   */
+  it("pins the parity fixture's gate descriptors and option labels to this query's", () => {
+    for (const fixture of [FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_TYPED_EID]) {
+      const w = world();
+      seed(w);
+      w.authority.putCheckpoint(checkpointOf(fixture.packet) as never);
+      const payload = gateSection(w);
+      if (payload.state !== "available") throw new Error("unreachable");
+
+      assert.deepEqual(payload.value.options, fixture.options);
+      assert.equal(payload.value.approvalShape, fixture.approvalShape);
+      assert.deepEqual(
+        JSON.parse(JSON.stringify(payload.value.actions)) as unknown,
+        JSON.parse(JSON.stringify(
+          fixtureIdentityGateActions(fixture.packet, payload.value.expectedVersion),
+        )) as unknown,
+      );
+    }
   });
 
   it("answers `missing` with a reason rather than a half panel", () => {

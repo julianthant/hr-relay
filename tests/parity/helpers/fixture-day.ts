@@ -35,6 +35,7 @@ import {
   StartPlanResponseSchema,
   type StartPlanResponse,
 } from "../../../src/dashboard/client/commands.js";
+import { buildFixtureIdentityGate } from "./fixture-gate.js";
 
 /* ── identity helpers (aligned with tests/unit/server/helpers/dashboard-harness.ts) ── */
 
@@ -435,6 +436,15 @@ export const FIXTURE_IDS = Object.freeze({
   doneRun: uuidOf(3),
   failedRun: uuidOf(4),
   openGateRun: uuidOf(5),
+  /**
+   * The SECOND gated run (D226) — a delegated member of the rehire sweep,
+   * already in the day wire since the corpus was written and until now with no
+   * detail behind it. It carries the OTHER approval ceremony, and reusing an
+   * existing row is what keeps the queue references byte-identical: a new
+   * top-level row would move every count, every band and every queue capture
+   * to photograph a dialog.
+   */
+  gateTypedEidRun: uuidOf(44),
   parkedRun: uuidOf(6),
   cancelledRun: uuidOf(7),
   partialRun: uuidOf(8),
@@ -518,6 +528,15 @@ function detailOf(input: DetailSeed): RunDetailWire {
   });
 }
 
+/**
+ * The gate NODE's id — what the `identity-gate` SECTION is keyed by, and what a
+ * `resolve-gate` command targets. It is deliberately not the same value as the
+ * run detail's `gate.gateId`, which the server derives as a deterministic uuid
+ * per `(run, gate)` for the timeline; the fixture carries both, exactly as the
+ * two wires do.
+ */
+const GATE_NODE_ID = "identity-approval";
+
 const NO_GATE = absent("this run reached no gate");
 const STILL_RUNNING = absent("run is still executing");
 
@@ -552,14 +571,39 @@ export const FIXTURE_RUN_DETAILS: Readonly<Record<string, RunDetailWire>> = Obje
       { seed: 4, minute: 35, label: "cross-verify", state: "failed" },
     ],
   }),
+  /*
+    THE GATED RUN (doc 09 §14.4, D226). The corpus has photographed this run's
+    open-gate CARD since it was written and never served the section behind it,
+    so the decision card drew no way to answer it and the three ceremonies
+    §14.6 risk 1 exists to enforce were unphotographed. It advertises
+    `identity-gate` now, and the section carries a packet built by the
+    production fold — see `fixture-gate.ts` for why the shape is derived rather
+    than authored.
+  */
   [FIXTURE_IDS.openGateRun]: detailOf({
     seed: 5, panelKind: "run", title: "Blirea, Glaundi", status: "awaiting-approval",
-    gate: { state: "open", gateId: uuidOf(105), label: "identity-review", openedAt: at(49), revision: 1 },
+    gate: { state: "open", gateId: uuidOf(105), label: "identity-review", openedAt: at(49), revision: 5 },
     outcome: STILL_RUNNING,
     timeline: [
       { seed: 5, minute: 47, label: "searching", state: "done" },
       { seed: 5, minute: 49, label: "gate:identity-review", state: "blocked" },
     ],
+    sections: ["logs", "receipt", "context-data", "context-attempts", "identity-gate"],
+  }),
+  /*
+    The SECOND ceremony, on a delegated member. The names on this one do not
+    match at all — `T002173685`'s own shape — so `deriveApprovalShape` returns
+    `type-the-eid` and the operator must state the EID rather than recognise it.
+  */
+  [FIXTURE_IDS.gateTypedEidRun]: detailOf({
+    seed: 44, panelKind: "member", title: "Blirea, Glaundi", status: "awaiting-approval",
+    gate: { state: "open", gateId: uuidOf(144), label: "identity-review", openedAt: at(24), revision: 44 },
+    outcome: STILL_RUNNING,
+    timeline: [
+      { seed: 44, minute: 22, label: "searching", state: "done" },
+      { seed: 44, minute: 24, label: "gate:identity-review", state: "blocked" },
+    ],
+    sections: ["logs", "receipt", "context-data", "context-attempts", "identity-gate"],
   }),
   /*
     THE PARKED WRITE (doc 09 §4.1, W2). The one lifecycle whose ordinary
@@ -795,6 +839,7 @@ function sectionsOf(
   failureId?: string,
   editing?: Record<string, unknown>,
   parkedWrite?: unknown,
+  identityGate?: unknown,
 ): Readonly<Record<string, RunDetailSectionResponse>> {
   const runId = uuidOf(seed);
   const sections: Record<string, unknown> = {
@@ -837,10 +882,56 @@ function sectionsOf(
   if (parkedWrite !== undefined) {
     sections["parked-write"] = { section: "parked-write", payload: parkedWrite };
   }
+  if (identityGate !== undefined) {
+    // Wrapped in the wire's own resource envelope: the section is
+    // `wireResourceSchema(IdentityGateDetailWireSchema)`, so the corpus serves
+    // an `available` arm and the panel's `missing`/`error` arms stay reachable
+    // for a build that cannot describe a gate.
+    sections["identity-gate"] = {
+      section: "identity-gate",
+      payload: { state: "available", value: identityGate },
+    };
+  }
   return Object.freeze(Object.fromEntries(
     Object.entries(sections).map(([name, value]) => [name, RunDetailSectionResponseSchema.parse(value)]),
   ));
 }
+
+/**
+ * THE TWO GATED PACKETS (doc 09 §14.4/§14.6, D226).
+ *
+ * Their ceremonies are DERIVED — `buildFixtureIdentityGate` feeds real inputs
+ * to the production fold and `deriveApprovalShape` decides. The only thing that
+ * differs between them is the document's own spelling of the name, which is the
+ * honest lever: §14.6 makes the shape a server decision precisely so nobody
+ * downstream may choose a cheaper control, and a fixture that asserted the
+ * shape would photograph its own opinion of that policy.
+ */
+export const FIXTURE_IDENTITY_GATE = buildFixtureIdentityGate({
+  runId: FIXTURE_IDS.openGateRun,
+  gateId: GATE_NODE_ID,
+  label: "Identity Approval",
+  parkedAt: at(49),
+  resumeAt: "approval",
+  expectedVersion: 5,
+  observedAt: at(48),
+  // The names agree; a search on the document's name resolves a DIFFERENT
+  // person, so the gate asks WHICH — `choose-a-candidate`.
+  documentName: "Blirea, Glaundi",
+});
+
+export const FIXTURE_IDENTITY_GATE_TYPED_EID = buildFixtureIdentityGate({
+  runId: FIXTURE_IDS.gateTypedEidRun,
+  gateId: GATE_NODE_ID,
+  label: "Identity Approval",
+  parkedAt: at(24),
+  resumeAt: "approval",
+  expectedVersion: 44,
+  observedAt: at(23),
+  // The names do not match at all — `T002173685`'s shape — so the riskiest
+  // ceremony applies and the EID is typed rather than recognised.
+  documentName: "Okonkwo, Adaeze",
+});
 
 export const FIXTURE_SECTIONS: Readonly<Record<string, Readonly<Record<string, RunDetailSectionResponse>>>> = Object.freeze({
   // The 2i-C showcase: a RETRY-queued run — resumable, unclaimed, with the
@@ -927,7 +1018,19 @@ export const FIXTURE_SECTIONS: Readonly<Record<string, Readonly<Record<string, R
     state: "locked",
     reason: "the run is claimed by a worker — the resume consumes corrections and wins races; "
       + "editing reopens when it parks or finishes",
-  }),
+  }, undefined, FIXTURE_IDENTITY_GATE),
+  [FIXTURE_IDS.gateTypedEidRun]: sectionsOf(44, [
+    { level: "info", minute: 22, message: "Searching UCPath directory for Blirea, Glaundi" },
+    { level: "warning", minute: 23, message: "The UCPath detail displays a different name for this EID" },
+    { level: "info", minute: 24, message: "identity-review gate opened; the EID must be typed" },
+  ], [
+    { label: "Selection", valueRedacted: "name mismatch" },
+    { label: "Active status", valueRedacted: "pending" },
+  ], undefined, {
+    state: "locked",
+    reason: "the run is claimed by a worker — the resume consumes corrections and wins races; "
+      + "editing reopens when it parks or finishes",
+  }, undefined, FIXTURE_IDENTITY_GATE_TYPED_EID),
   [FIXTURE_IDS.parkedRun]: sectionsOf(6, [
     { level: "info", minute: 44, message: "Searching UCPath directory for EID 10777012" },
     { level: "info", minute: 44, message: "Subject bound: the termination page names the expected EID" },
