@@ -27,6 +27,8 @@ import { createStartPlanService } from "../../../src/server/dashboard/commands/s
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
+import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
@@ -581,6 +583,46 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     // An inverted range never returns an empty report that reads as "no work".
     const inverted = await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=2026-08-01`);
+    assert.equal(inverted.ok, false);
+    assert.match(String((await json(inverted)).message), /ends before it starts/);
+  });
+  /**
+   * D240 — the SAME report as a file. The route is tested for the two things
+   * that make an export honest: it refuses a half-named window exactly as the
+   * JSON route does (an export travels further than a page, so a silently
+   * defaulted window would too), and the artifact carries the rules beside the
+   * numbers.
+   */
+  it("serves the Activity report as a CSV that carries its own caveats (D240)", async () => {
+    const h = harness();
+    const report = h.projection.buildActivityReportWire(DAY, DAY);
+
+    const response = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=${DAY}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
+    assert.equal(
+      response.headers.get("content-disposition"),
+      `attachment; filename="activity-${DAY}_${DAY}.csv"`,
+    );
+    const csv = await response.text();
+    // The bytes are the builder's, so the route cannot serve a second rendering.
+    assert.equal(csv, activityReportCsv(report));
+    // Every rule the panel shows behind its ⓘ is IN the file, verbatim.
+    for (const caveat of activityReportCaveats(report)) {
+      assert.ok(csv.includes(caveat.includes(",") ? `"${caveat}"` : caveat), `the export carries: ${caveat}`);
+    }
+    assert.ok(csv.includes(`Window from,${DAY}`));
+    assert.ok(csv.includes("Write ledger — what was actually filed"));
+
+    const halfRange = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}`);
+    assert.equal(halfRange.ok, false);
+    assert.match(String((await json(halfRange)).message), /requires both from= and to=/);
+
+    const noRange = await h.app.request("/api/v1/reports/activity.csv");
+    assert.equal(noRange.ok, false);
+    assert.match(String((await json(noRange)).message), /requires both from= and to=/);
+
+    const inverted = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=2026-08-01`);
     assert.equal(inverted.ok, false);
     assert.match(String((await json(inverted)).message), /ends before it starts/);
   });

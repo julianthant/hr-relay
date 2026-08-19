@@ -37,6 +37,10 @@ import {
   FIXTURE_ARCHIVED_RUN_ID,
 } from "./fixture-archive.js";
 import {
+  activityReportCsv,
+  activityReportCsvFileName,
+} from "../../../src/server/dashboard/queries/activity-export.js";
+import {
   CAPTURE_TOKEN_HEADER,
   CAPTURE_UNKNOWN_SESSION_MESSAGE,
   CaptureSessionWireSchema,
@@ -153,6 +157,28 @@ export function createFixtureBff(): { app: Hono } {
       return c.json(wireError("ACTIVITY_RANGE_REQUIRED", "an activity report requires from= and to="), 400);
     }
     return c.json(FIXTURE_ACTIVITY_REPORT as unknown);
+  });
+  /**
+   * D240's export, over the SAME fixture payload. The parity lane never clicks
+   * it, and it is here anyway: a fixture server that answered the report and
+   * 404'd its export would make the Export button dead in the one environment
+   * the surface is photographed in, which is a surface state nobody would
+   * notice until an operator pressed it.
+   */
+  app.get("/api/v1/reports/activity.csv", (c) => {
+    const from = c.req.query("from");
+    const to = c.req.query("to");
+    if (from === undefined || to === undefined) {
+      return c.json(wireError("ACTIVITY_RANGE_REQUIRED", "an activity report requires from= and to="), 400);
+    }
+    return new Response(activityReportCsv(FIXTURE_ACTIVITY_REPORT), {
+      status: 200,
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition":
+          `attachment; filename="${activityReportCsvFileName(FIXTURE_ACTIVITY_REPORT)}"`,
+      },
+    });
   });
 
   /**

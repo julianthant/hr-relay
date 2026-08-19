@@ -29,6 +29,7 @@ import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catal
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
 import { buildRunAdvisory, type AdvisoryQueryDeps } from "../queries/advisory.js";
 import { buildArchiveIndex, buildArchivedRunDetail, type ArchiveQueryDeps } from "../queries/archive.js";
+import { activityReportCsv, activityReportCsvFileName } from "../queries/activity-export.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { errorText } from "../support.js";
@@ -180,6 +181,29 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
       throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
     }
     return c.json(deps.projection.buildActivityReportWire(from, to));
+  });
+
+  /**
+   * The same report as a file (D240). It refuses a missing bound in the SAME
+   * words as the JSON route above — an export is the one copy that gets mailed
+   * on, so a window it defaulted silently would travel further than a page that
+   * did. The artifact carries its own caveats; see `activity-export.ts`.
+   */
+  app.get("/api/v1/reports/activity.csv", (c) => {
+    const from = c.req.query("from");
+    const to = c.req.query("to");
+    if (from === undefined || to === undefined) {
+      throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
+    }
+    const report = deps.projection.buildActivityReportWire(from, to);
+    return new Response(activityReportCsv(report), {
+      status: 200,
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": `attachment; filename="${activityReportCsvFileName(report)}"`,
+        "cache-control": "no-store",
+      },
+    });
   });
   app.get("/api/v1/ui-catalog", (c) => c.json(buildUiCatalogWire(deps.uiCatalog)));
 

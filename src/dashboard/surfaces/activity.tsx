@@ -46,12 +46,15 @@
  * ## What the demo has that this does not, and why nothing here approximates it
  *
  * The demo's report reads a fixture corpus of whole rows; this one reads an
- * aggregate wire. Four demo elements need facts `ActivityReportWire` does not
- * carry — distinct people, the operator's per-workflow minutes (hours saved),
- * the two-letter workflow code, and the write ledger — plus an Export command
- * the BFF does not serve. Each is RECORDED in `docs/findings/activity.md`, not
- * fabricated here: a supervisor-facing artifact is the last place a
- * plausible-but-wrong number belongs.
+ * aggregate wire. TWO demo elements need facts `ActivityReportWire` does not
+ * carry and are still absent: distinct people (no row or member carries a
+ * subject identity yet) and the two-letter workflow code (a taxonomy question).
+ * A THIRD is absent by ruling rather than by gap — the hours-saved tile, whose
+ * only input would be an operator-entered minutes constant with no durable
+ * home, is DROPPED (D239): a fabricated minutes figure on the one artifact that
+ * leaves the operator's screen is the highest-consequence invented number in
+ * the product. All three are RECORDED in `docs/findings/activity.md` rather
+ * than approximated here. The write ledger (D236) and Export (D240) are served.
  *
  * The Who column is served, and served NARROW: the wire carries run ids and no
  * names, because a name is subject data on an artifact built to be exported.
@@ -59,8 +62,8 @@
  * and a sampled run those rows do not cover announces itself by id rather than
  * by a name this surface would have to invent.
  */
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ChartNoAxesColumn, Info, TriangleAlert } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { ChartNoAxesColumn, Download, Info, TriangleAlert } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
   BulletList,
@@ -1066,6 +1069,33 @@ export function ActivityReport({
   const spanLabel = activityRangeLabel(resolved.from, resolved.to);
   const report = resource.state === "loaded" ? resource.value : undefined;
 
+  /**
+   * The demo's Export, wired to the SERVED CSV (D240).
+   *
+   * The bytes are the server's, not this component's: the artifact must carry
+   * the caveats and the named window, and a client that assembled its own copy
+   * would be a second rendering of the report that could disagree with the
+   * page it was taken from. The anchor points at the route; the response's
+   * `Content-Disposition` names the file.
+   *
+   * Mounted before the click and removed after, for the same reason
+   * `archive.tsx` does it — a detached anchor does not fire in every browser.
+   * There is deliberately NO success toast: the download settles after this
+   * function returns and nothing here can observe whether it arrived, so a
+   * success message would be a claim about an act this code never saw. The
+   * browser's own download UI reports both outcomes, and the button only
+   * exists once the same report has already been built successfully.
+   */
+  const exportReport = useCallback(() => {
+    const anchor = document.createElement("a");
+    anchor.href = client.activityExportUrl(resolved.from, resolved.to);
+    anchor.download = `activity-${resolved.from}_${resolved.to}.csv`;
+    anchor.rel = "noopener";
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+  }, [client, resolved.from, resolved.to]);
+
   return (
     <Panel
       {...enter}
@@ -1119,16 +1149,30 @@ export function ActivityReport({
             meta={report === undefined ? undefined : plural(report.totalRuns, "run")}
             actions={
               report === undefined ? undefined : (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button size="sm" variant="ghost" icon={<Info aria-hidden className={dsIcon.md} />}>
-                      How it is counted
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent title="How this report is counted" width="lg" align="end">
-                    <BulletList items={[...activityReportCaveats(report)]} />
-                  </PopoverContent>
-                </Popover>
+                <span className="flex items-center gap-[var(--ds-space-tight)]">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button size="sm" variant="ghost" icon={<Info aria-hidden className={dsIcon.md} />}>
+                        How it is counted
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent title="How this report is counted" width="lg" align="end">
+                      <BulletList items={[...activityReportCaveats(report)]} />
+                    </PopoverContent>
+                  </Popover>
+                  {/* The demo's Export, beside the ⓘ exactly as it draws it.
+                      It renders only once the report is loaded — a button that
+                      exported a window nothing had answered for would hand a
+                      supervisor a file about a report the operator never saw. */}
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={<Download aria-hidden className={dsIcon.md} />}
+                    onClick={exportReport}
+                  >
+                    Export
+                  </Button>
+                </span>
               )
             }
           />

@@ -40,6 +40,18 @@ export interface DashboardTransport {
    * instead of re-deriving it from the payload.
    */
   requestJsonResponse(path: string, init?: RequestInit): Promise<JsonResponse>;
+  /**
+   * The absolute URL this transport would request `path` at.
+   *
+   * It exists for the ONE thing a typed client cannot do for a surface: hand
+   * the browser a link it downloads itself (D240's CSV export). The alternative
+   * — fetch the bytes here and mint an object URL in a component — would put a
+   * blob lifecycle and a synthetic click into a render tree to reproduce what
+   * `Content-Disposition` already does, and it would still need this base to
+   * build the request. Nothing outside `src/dashboard/client/**` composes an
+   * API path; a caller asks for one and gets it resolved.
+   */
+  resolveUrl(path: string): string;
   openStream(
     path: string,
     options: Readonly<{ lastEventId?: string; onMessage: (message: SseMessage) => void }>,
@@ -79,6 +91,8 @@ export function createDashboardTransport(input: Readonly<{
     },
 
     requestJsonResponse: send,
+
+    resolveUrl: (path: string): string => `${baseUrl}${path}`,
 
     openStream(
       path: string,
