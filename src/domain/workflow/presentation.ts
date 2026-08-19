@@ -220,6 +220,22 @@ export const TimelineCategoryProjectionSchema = z.strictObject({
 });
 export type TimelineCategoryProjection = z.infer<typeof TimelineCategoryProjectionSchema>;
 
+/**
+ * D228 — the descriptor's own prose about one node.
+ *
+ * The explorer's ⓘ opens with the descriptor's sentence about the workflow and
+ * about each node. That sentence is DATA the descriptor authors, not code the
+ * surface decompiles (doc 12 §5.9) — which is why it lives here beside the
+ * timeline rather than being inferred from a label, a contract title, or a node
+ * id. A one-sentence purpose says why the step exists; the label says what it
+ * is called, and the two are not the same fact.
+ */
+export const NodePurposeSpecSchema = z.strictObject({
+  nodeId: NodeIdSchema,
+  purpose: z.string().min(1),
+});
+export type NodePurposeSpec = z.infer<typeof NodePurposeSpecSchema>;
+
 /** Sinks are a closed infrastructure registry, deliberately keyed by sink kind, never by workflow. */
 export const ArtifactSinkIdSchema = z.enum(["xlsx-retention"]);
 export type ArtifactSinkId = z.infer<typeof ArtifactSinkIdSchema>;

@@ -50,6 +50,7 @@ import {
   type ExplorerFreshnessWire,
   type ExplorerNodeShapeWire,
   type ExplorerNodeWire,
+  type ExplorerProseWire,
   type ExplorerProvenanceWire,
   type ExplorerScenarioWire,
   type ExplorerSubjectWire,
@@ -672,6 +673,24 @@ function scenarioWires(
   });
 }
 
+/**
+ * The descriptor's prose, or the gap named (D228).
+ *
+ * The reason text says WHERE to author the missing sentence, because the reader
+ * of this surface is exactly the person — or the AI — who would author it. It
+ * never composes one from the label: a sentence assembled from a two-word label
+ * would read as the descriptor's own words and be nobody's.
+ */
+function proseWire(
+  text: string | undefined,
+  subject: string,
+  source: string,
+): ExplorerProseWire {
+  return text === undefined || text.length === 0
+    ? { state: "absent", reason: `${subject} declares no prose; author it in ${source}` }
+    : { state: "authored", text };
+}
+
 function workflowWire(
   module: ExplorerModuleView,
   deps: ExplorerQueryDeps,
@@ -701,9 +720,14 @@ function workflowWire(
   const descriptorPath = `src/workflows/${workflowId}/descriptor.ts`;
   const modulePath = `src/workflows/${workflowId}/module.ts`;
 
+  const purposeByNode = new Map(
+    descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose]),
+  );
+
   return {
     id: descriptor.id,
     label: descriptor.label,
+    summary: proseWire(descriptor.summary, `${workflowId}`, `${descriptorPath}'s \`summary\``),
     code: descriptor.code,
     icon: descriptor.icon,
     category: descriptor.category,
@@ -764,6 +788,11 @@ function workflowWire(
     nodes: nodes.map((node): ExplorerNodeWire => ({
       id: node.id,
       label: nodeLabel(node),
+      purpose: proseWire(
+        purposeByNode.get(String(node.id)),
+        `${workflowId} node ${String(node.id)}`,
+        `${descriptorPath}'s \`nodePurposes\``,
+      ),
       dependsOn: [...node.dependsOn],
       shape: nodeShape(node),
       tasks: nodeTasks(node, context),

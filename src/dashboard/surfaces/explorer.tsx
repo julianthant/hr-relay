@@ -60,6 +60,7 @@ import {
 import type {
   ExplorerContractFieldWire,
   ExplorerNodeWire,
+  ExplorerProseWire,
   ExplorerTaskWire,
   ExplorerWorkflowWire,
   SourceLinkWire,
@@ -1446,6 +1447,27 @@ function NodeShapeFacts({ node }: { node: ExplorerNodeWire }) {
  * The ⓘs — where everything this page has to TEACH lives
  * ====================================================================== */
 
+/**
+ * The descriptor's own words, or the gap named (D228).
+ *
+ * An absent sentence is drawn faint and italic and says which file owes one —
+ * the reader of this surface is the person who would author it. Nothing here
+ * composes prose from a label: a sentence assembled from two words would read
+ * as the descriptor's own and be nobody's.
+ */
+function Prose({ prose }: { prose: ExplorerProseWire }) {
+  if (prose.state === "absent") {
+    return (
+      <p className={cn(dsText.body, "italic leading-relaxed text-[color:var(--ds-fg-faint)]")}>
+        {prose.reason}
+      </p>
+    );
+  }
+  return (
+    <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg)]")}>{prose.text}</p>
+  );
+}
+
 const POSTURE_NOTE: Record<DryRunPosture, string> = {
   boundary:
     "A dry run executes every node above the dashed line and stops after the transaction's prepare arm — the commit never runs. That line, not gated access, is the whole safety boundary of a rehearsal.",
@@ -1476,7 +1498,14 @@ function GraphInfo({
       </PopoverTrigger>
       <PopoverContent title={workflow.label} side="bottom" align="end" width="lg">
         <div className="flex flex-col gap-[var(--ds-space-base)]">
-          <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg)]")}>
+          {/*
+            The descriptor's OWN sentence leads, because that is what the reader
+            came for; the derivation note below it is how to trust the sentence.
+            An undeclared summary names the file that owes one rather than
+            composing something from the two-word label (D228).
+          */}
+          <Prose prose={workflow.summary} />
+          <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
             This graph is the as-built descriptor, read from the one composition root at
             {" "}
             {workflow.sources.descriptor.state === "resolved"
@@ -1532,7 +1561,8 @@ function NodeInfo({ workflow, node }: { workflow: ExplorerWorkflowWire; node: Ex
       </PopoverTrigger>
       <PopoverContent title={String(node.id)} side="bottom" align="end" width="lg">
         <div className="flex flex-col gap-[var(--ds-space-base)]">
-          <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg)]")}>
+          <Prose prose={node.purpose} />
+          <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
             {`${node.label} — a ${kind.word.toLowerCase()} node of ${workflow.label}.`}
           </p>
           {node.shape.kind === "child-run" && (

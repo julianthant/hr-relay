@@ -260,6 +260,10 @@ export const separationsIdentityCheckDescriptor = defineWorkflowDescriptor({
   ),
   code: "si",
   label: "Identity Check",
+  summary:
+    "Chunk 3 of the separations migration: the UCPath identity passage, read-only, carrying doc 09 "
+    + "§14's ALWAYS-GATE. Every run reads the job summary, searches the document's name, builds the "
+    + "evidence packet, and parks for a human — no run mode changes that.",
   icon: "ShieldCheck",
   category: "separation",
   canonicalInput: SeparationsIdentityCheckCanonicalInput,
@@ -330,6 +334,35 @@ export const separationsIdentityCheckDescriptor = defineWorkflowDescriptor({
     title: (input) => `${input.employeeName} (${input.emplId})`,
     subtitle: (input) => `Separation document ${input.documentNumber}`,
   },
+  /** D228 — the descriptor's own words about each node, projected by the explorer. */
+  nodePurposes: [
+    {
+      nodeId: "job-summary",
+      purpose: "Reads the subject's whole UCPath job summary grid verbatim — every row, every status — and "
+        + "classifies nothing; the disposition is a separate, pure fold.",
+    },
+    {
+      nodeId: "name-search",
+      purpose: "Searches UCPath Person Org by the document's employee name, unconditionally, so the operator "
+        + "sees every person that name matches rather than only the ones a similarity threshold selected.",
+    },
+    {
+      nodeId: "comparison",
+      purpose: "Builds the identity evidence packet the gate shows — DISCONFIRMING evidence first — and the "
+        + "digest an approval binds to. Pure: it reaches no browser.",
+    },
+    {
+      nodeId: "identity-approval",
+      purpose: "The ALWAYS-GATE. A human confirms this is the right person before anything downstream may "
+        + "consume the identity, and only the typed resolve-gate command can settle it.",
+    },
+    {
+      nodeId: "approval",
+      purpose: "Re-derives the evidence and checks the stored approval against it, so an approval of a packet "
+        + "that has since moved cannot stand. It re-runs on every attempt rather than replaying its own "
+        + "previous answer.",
+    },
+  ],
   scenarios: [
     "separations-identity-check/single-active-job",
     "separations-identity-check/similar-name-never-auto-proceeds",

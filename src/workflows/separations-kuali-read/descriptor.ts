@@ -145,6 +145,10 @@ export const separationsKualiReadDescriptor = defineWorkflowDescriptor({
   ),
   code: "sd",
   label: "Separation Document",
+  summary:
+    "Chunk 2 of the separations migration: the Kuali passage on its own. Reads the whole RRSS "
+    + "separation request form in one page visit, then resolves the document's termination type against "
+    + "the mapped set. Strictly read-only.",
   icon: "FileText",
   category: "separation",
   canonicalInput: SeparationsKualiReadCanonicalInput,
@@ -219,6 +223,19 @@ export const separationsKualiReadDescriptor = defineWorkflowDescriptor({
     title: (input) => `Document ${input.documentNumber}`,
     subtitle: (input) => `Kuali action ${input.actionId.slice(0, 8)}…`,
   },
+  /** D228 — the descriptor's own words about each node, projected by the explorer. */
+  nodePurposes: [
+    {
+      nodeId: "document",
+      purpose: "Reads the entire Kuali RRSS separation request form in ONE page visit: the employee, the "
+        + "separation dates, the comments, and every control's own option list as this run observed it.",
+    },
+    {
+      nodeId: "termination-type",
+      purpose: "Resolves the document's termination type to the UCPath template and reason code it files under, "
+        + "refusing a type nobody has mapped. Pure: it reaches no browser.",
+    },
+  ],
   scenarios: [
     "separations-kuali-read/reads-a-real-separation-document",
     "separations-kuali-read/unprocessed-document-absent-arms",

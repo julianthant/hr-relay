@@ -1394,6 +1394,26 @@ with the rule. §5.7's "a closure is reported as its presence" is unchanged for 
 `shape.conditional: boolean` is replaced by `shape.condition`, and a condition the closed vocabulary
 cannot express is a compile error in the descriptor rather than a plausible sentence here.
 
+**The descriptor's own words (D228).** §5.7 recorded that the ⓘs open with the DERIVATION ("this
+graph is the as-built descriptor, read from …") where the demo opens with the descriptor's own
+sentence, and named authored prose as the fix. A descriptor now carries `summary` — one sentence
+about the workflow — and `nodePurposes`, one sentence per node, both plain data on the broad
+descriptor view beside `subjectProjection` and `timeline`. A declared node-purpose list is
+**exhaustive**, checked by the factory for D225's reason: a node quietly missing its sentence is a
+node the surface stops explaining while every gate stays green. The derivation note has not gone —
+it moved one paragraph down, because the descriptor's sentence is what the reader came for and the
+derivation is how they know to trust it.
+
+The wire carries `{state:"authored"} | {state:"absent", reason}` rather than throwing, and the
+choice is deliberate: the explorer serves every registered workflow in ONE document, so refusing the
+whole surface over a missing sentence would take the operator's index of the system down for a piece
+of prose. The `absent` reason names the file that owes one, because the reader of this surface is
+exactly the person — or the AI — who would author it, and nothing composes a sentence from a
+two-word label. **`explorer-prose-declared` is what makes the arm unreachable in the product**: a
+registered workflow with no summary, or a node with no purpose, fails the build. A fixture
+descriptor is out of scope by design — it is not in the composition root, and prose about a graph
+nobody runs is prose nobody reads.
+
 **The header counts fields now.** A read is one field a read arm observes FROM a system — an output
 leaf; a write is one field a commit arm writes TO a system — an input leaf. A prepare arm stages the
 values its commit then writes, so its inputs are deliberately not counted, or every write would be

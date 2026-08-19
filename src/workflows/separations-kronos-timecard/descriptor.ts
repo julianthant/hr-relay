@@ -279,6 +279,10 @@ export const separationsKronosTimecardDescriptor = defineWorkflowDescriptor({
   ),
   code: "sk",
   label: "Separation Timecard",
+  summary:
+    "Chunk 1 of the separations migration: the New Kronos passage on its own. Finds the employee in "
+    + "the WFD panel and reads the separation timecard for the plan's window — read-only, and "
+    + "hard-failing on anything it cannot read.",
   icon: "CalendarClock",
   category: "timekeeping",
   canonicalInput: SeparationsKronosTimecardCanonicalInput,
@@ -345,6 +349,21 @@ export const separationsKronosTimecardDescriptor = defineWorkflowDescriptor({
     title: (input) => `EID ${input.emplId}`,
     subtitle: (input) => `${input.rangeStart} – ${input.rangeEnd}`,
   },
+  /** D228 — the descriptor's own words about each node, projected by the explorer. */
+  nodePurposes: [
+    {
+      nodeId: "search",
+      purpose: "Searches the New Kronos WFD panel for the employee and leaves them SELECTED — the selection is "
+        + "what enables Go To, so this node's real product is browser state and it re-runs on every "
+        + "attempt.",
+    },
+    {
+      nodeId: "timecard",
+      purpose: "Opens the selected employee's timecard and reads the whole separation window — last punch, sick "
+        + "and holiday days, and any pay code nobody has classified — refusing a range it cannot prove the "
+        + "grid was showing.",
+    },
+  ],
   scenarios: [
     "separations-kronos-timecard/reads-a-real-timecard",
     "separations-kronos-timecard/timecard-without-punches",

@@ -719,6 +719,11 @@ export const separationsDescriptor = defineWorkflowDescriptor({
   ),
   code: "sp",
   label: "Separation",
+  summary:
+    "The composition: ONE Kuali RRSS separation document becomes ONE terminated employee across three "
+    + "systems. It reads Kuali, UCPath and Kronos, reconciles the dates against what the timecard "
+    + "actually shows, parks for a human to confirm the person, then clears any pending termination, "
+    + "files the termination, verifies the receipt, and finalizes the Kuali document.",
   icon: "ShieldCheck",
   category: "separation",
   canonicalInput: SeparationsCanonicalInput,
@@ -861,6 +866,103 @@ export const separationsDescriptor = defineWorkflowDescriptor({
       ? `Kuali action ${input.actionId.slice(0, 8)}…`
       : `re-read ${String(input.reRead.ordinal)} — ${input.reRead.reason}`),
   },
+  /** D228 — the descriptor's own words about each node, projected by the explorer. */
+  nodePurposes: [
+    {
+      nodeId: "document",
+      purpose: "Reads the entire Kuali RRSS separation request form in ONE page visit: the employee, the "
+        + "separation dates, the comments, and every control's own option list as this run observed it.",
+    },
+    {
+      nodeId: "termination-type",
+      purpose: "Resolves the document's termination type to the UCPath template and reason code it files under, "
+        + "refusing a type nobody has mapped. Pure: it reaches no browser.",
+    },
+    {
+      nodeId: "name-search",
+      purpose: "Searches UCPath Person Org by the document's employee name, unconditionally, so the operator "
+        + "sees every person that name matches rather than only the ones a similarity threshold selected.",
+    },
+    {
+      nodeId: "job-summary",
+      purpose: "Reads the subject's whole UCPath job summary grid verbatim — every row, every status — and "
+        + "classifies nothing; the disposition is a separate, pure fold.",
+    },
+    {
+      nodeId: "department-option",
+      purpose: "Resolves the subject's UCPath department to the exact option this document's OWN control offers, "
+        + "refusing one the control does not carry. Pure: it reaches no browser.",
+    },
+    {
+      nodeId: "comparison",
+      purpose: "Builds the identity evidence packet the gate shows — DISCONFIRMING evidence first — and the "
+        + "digest an approval binds to. Pure: it reaches no browser.",
+    },
+    {
+      nodeId: "identity-approval",
+      purpose: "The ALWAYS-GATE. A human confirms this is the right person before anything downstream may "
+        + "consume the identity, and only the typed resolve-gate command can settle it.",
+    },
+    {
+      nodeId: "approval",
+      purpose: "Re-derives the evidence and checks the stored approval against it, so an approval of a packet "
+        + "that has since moved cannot stand. It re-runs on every attempt rather than replaying its own "
+        + "previous answer.",
+    },
+    {
+      nodeId: "clear-pending",
+      purpose: "Sweeps any pending termination already sitting on the subject's record, so the filing below is "
+        + "not the second one. It probes before it fences, and a dry run stops after staging.",
+    },
+    {
+      nodeId: "file-termination",
+      purpose: "Files the termination through the UCPath Smart HR wizard — the real write. It probes for a "
+        + "filing that already exists, fences before the click, and a dry run stops after staging.",
+    },
+    {
+      nodeId: "finalize-kuali",
+      purpose: "Stages every finalization field in ONE pass from the reconciled variables, saves once, and "
+        + "proves the save by reloading and comparing each written field against exactly what was staged.",
+    },
+    {
+      nodeId: "plan",
+      purpose: "Derives the separation plan from the document — the employee's name, the dates to reconcile, and "
+        + "the timecard window to read — as of the instant this run READ the document, never a clock.",
+    },
+    {
+      nodeId: "subject",
+      purpose: "Reduces the name-search candidates to the ONE person this separation is about, using the "
+        + "document's own EID. A grid it cannot reduce to one row is a run that cannot compute what it is "
+        + "about to write, so it refuses before the gate opens.",
+    },
+    {
+      nodeId: "employment",
+      purpose: "Folds the job summary into the employment facts the filing needs — empl record, department, "
+        + "payroll title — and refuses a subject with no active job.",
+    },
+    {
+      nodeId: "timecard-search",
+      purpose: "Searches the New Kronos WFD panel for the employee and leaves them SELECTED — the selection is "
+        + "what enables Go To, so this node's real product is browser state and it re-runs on every "
+        + "attempt.",
+    },
+    {
+      nodeId: "timecard",
+      purpose: "Opens the selected employee's timecard and reads the whole separation window — last punch, sick "
+        + "and holiday days, and any pay code nobody has classified — refusing a range it cannot prove the "
+        + "grid was showing.",
+    },
+    {
+      nodeId: "dates",
+      purpose: "Reconciles the Kuali dates against what the timecard actually shows: the last day worked, the "
+        + "separation date, the termination effective date, and the comments that explain any move.",
+    },
+    {
+      nodeId: "receipt",
+      purpose: "Checks the receipt the filing produced against the approved subject and the effective date. It "
+        + "re-runs on every attempt rather than replaying its own previous answer.",
+    },
+  ],
   scenarios: [
     "separations/plan-refusals",
     "separations/subject-resolution",

@@ -149,6 +149,11 @@ export const kualiTimekeeperAnnotationDescriptor = defineWorkflowDescriptor({
   ),
   code: "kt",
   label: "Kuali Timekeeper Annotation",
+  summary:
+    "Phase 2's controlled write proof: fills and saves the Timekeeper Name annotation on ONE Kuali "
+    + "RRSS separation document, then proves the value landed by reloading the page and reading it "
+    + "back. It touches no workflow button — Send Back and Mark Complete are not addressable through "
+    + "this graph.",
   icon: "ShieldCheck",
   category: "operations",
   canonicalInput: KualiTimekeeperAnnotationCanonicalInput,
@@ -183,6 +188,15 @@ export const kualiTimekeeperAnnotationDescriptor = defineWorkflowDescriptor({
     title: (input) => `Kuali ${input.documentNumber} timekeeper`,
     subtitle: (input) => `EID ${input.emplId}`,
   },
+  /** D228 — the descriptor's own words about each node, projected by the explorer. */
+  nodePurposes: [
+    {
+      nodeId: "annotate-timekeeper",
+      purpose: "Stages the timekeeper annotation on the document's own form, fences, saves, and proves the write "
+        + "landed by reloading and reading the field back — Kuali's save is UI-silent, so a rendered "
+        + "confirmation is not evidence.",
+    },
+  ],
   scenarios: [
     "kuali-timekeeper-annotation/dry-run-preview",
     "kuali-timekeeper-annotation/subject-mismatch",

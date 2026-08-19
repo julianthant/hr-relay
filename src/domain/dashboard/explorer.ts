@@ -349,9 +349,27 @@ export const ExplorerNodeShapeWireSchema = z.discriminatedUnion("kind", [
 ]);
 export type ExplorerNodeShapeWire = z.infer<typeof ExplorerNodeShapeWireSchema>;
 
+/**
+ * The descriptor's own words about a workflow or a node (D228).
+ *
+ * `absent` is an arm rather than a throw on purpose. The explorer serves every
+ * registered workflow in ONE document, so refusing the whole surface over a
+ * missing sentence would take the operator's index of the system down for a
+ * piece of prose. Saying *which* descriptor owes a sentence is the honest and
+ * strictly more useful answer, and `explorer-prose-declared` makes the arm
+ * unreachable for a registered workflow by failing the build instead.
+ */
+export const ExplorerProseWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("authored"), text: z.string().min(1) }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+export type ExplorerProseWire = z.infer<typeof ExplorerProseWireSchema>;
+
 export const ExplorerNodeWireSchema = z.strictObject({
   id: NodeIdSchema,
   label: z.string().min(1),
+  /** D228 — the descriptor's own sentence about why this node exists. */
+  purpose: ExplorerProseWireSchema,
   dependsOn: z.array(NodeIdSchema),
   shape: ExplorerNodeShapeWireSchema,
   tasks: z.array(ExplorerTaskWireSchema),
@@ -410,6 +428,8 @@ export type ExplorerScenarioWire = z.infer<typeof ExplorerScenarioWireSchema>;
 export const ExplorerWorkflowWireSchema = z.strictObject({
   id: WorkflowIdSchema,
   label: z.string().min(1),
+  /** D228 — the descriptor's own sentence about what this workflow does. */
+  summary: ExplorerProseWireSchema,
   code: z.string().min(1),
   icon: z.string().min(1),
   category: z.string().min(1),
