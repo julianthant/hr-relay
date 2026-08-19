@@ -16,7 +16,7 @@
  * place every span exists; an in-process emit hook covered only this
  * process's half and served an empty timeline for every run enqueued after
  * boot. The fold is joined per-run against SQLite AUTHORITY facts (lifecycle
- * for parked/terminal/hidden, `version` as the row's CAS revision). The
+ * for parked/terminal, `version` as the row's CAS revision). The
  * folded rows are persisted to the rebuildable `runs_view` projection table;
  * deleting that table loses nothing — `rebuildFromJsonl` is the
  * `rebuild-from-native-jsonl` recovery class.
@@ -154,9 +154,11 @@ export interface RunQueueProjectionDeps {
     /**
      * D179/D80: whether a version bump has archived this run. Doc 03 §10.1 is
      * explicit that archived rows are excluded ONCE, inside the projection,
-     * alongside hidden rows and member containment — so an archived run leaves
-     * the queue, the workflow badge, the status pill, the month calendar and
-     * the Activity report at the same instant, by construction.
+     * alongside member containment — so an archived run leaves the queue, the
+     * workflow badge, the status pill, the month calendar and the Activity
+     * report at the same instant, by construction. Since D234 it is the ONLY
+     * exclusion of a whole run: there are runs and archived runs, and nothing
+     * else takes a row off the queue.
      */
     isArchived(runId: string): boolean;
     /** D180: the failure breakdown the Activity report aggregates. */
@@ -474,7 +476,7 @@ export class RunQueueProjection {
 
   /**
    * Re-read one run's AUTHORITY facts after a command that emits no span
-   * (hide/unhide/rename/bump/cancel). The surface is rebuilt from the same
+   * (rename/bump/cancel). The surface is rebuilt from the same
    * fold + authority join every other path uses — this is a refresh trigger,
    * not a second projection.
    */
@@ -707,7 +709,7 @@ export class RunQueueProjection {
    * is a PATCH only when it is provably count-neutral — a member surface
    * (contained in its parent's rollup, never counted), or a top-level surface
    * whose status did not move. Everything count-bearing (a new run, a status
-   * transition, a hide) becomes a fresh SNAPSHOT, which is why the client's
+   * transition, an archive) becomes a fresh SNAPSHOT, which is why the client's
    * "snapshot + any valid patch sequence equals a fresh snapshot" invariant
    * holds exactly instead of approximately.
    */
@@ -720,10 +722,10 @@ export class RunQueueProjection {
       const day = localDatePart(new Date(row.queued.ts));
       const authority = this.#authorityRun(runId);
       const previousStatus = this.#notifiedStatus.get(runId);
-      // Archiving is count-bearing exactly like hiding: the row leaves the
-      // payload, so the client is handed a fresh snapshot rather than a patch
-      // that could only describe a row that is no longer there.
-      if (authority.hidden || this.#deps.authority.isArchived(runId)) {
+      // Archiving is count-bearing: the row leaves the payload, so the client
+      // is handed a fresh snapshot rather than a patch that could only describe
+      // a row that is no longer there.
+      if (this.#deps.authority.isArchived(runId)) {
         if (previousStatus !== undefined) {
           this.#notifiedStatus.delete(runId);
           snapshotNeeded = true;
@@ -1344,7 +1346,6 @@ export class RunQueueProjection {
     for (const row of this.#rows.values()) {
       const rowDay = localDatePart(new Date(row.queued.ts));
       const authority = this.#authorityRun(row.queued.runId);
-      if (authority.hidden) continue;
       // D80: a prior-version run has left every active surface. It is excluded
       // here — before the month count, before the day filter, before the row
       // is pushed — so no count can disagree about whether it is still live.
@@ -1436,8 +1437,8 @@ export class RunQueueProjection {
    * in a query module, because doc 13 §8 guard #4 names Activity aggregates
    * explicitly: a report that summed rows a second way could disagree with the
    * day it summarises, which is the exact count/badge divergence D81 exists to
-   * make unrepresentable. Hidden rows, archived rows and member containment
-   * are already applied here, once, for every surface.
+   * make unrepresentable. Archived rows and member containment are already
+   * applied here, once, for every surface.
    */
   buildActivityReportWire(from: string, to: string): ActivityReportWire {
     if (this.#health.state === "degraded") {
@@ -1454,7 +1455,6 @@ export class RunQueueProjection {
       const day = localDatePart(new Date(row.queued.ts));
       if (day < start || day > end) continue;
       const authority = this.#authorityRun(row.queued.runId);
-      if (authority.hidden) continue;
       if (this.#deps.authority.isArchived(row.queued.runId)) continue;
       // Member containment, applied once: a member counted inside its
       // operation's rollup is not counted again at top level.

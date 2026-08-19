@@ -29,9 +29,6 @@
  * The kernel-accepted run verbs this projection deliberately never serves, each
  * for a reason rather than an omission:
  *
- *  - `unhide` — a hidden run is EXCLUDED from the queue projection, so no row
- *    exists to hang it off. Serving it would need a surface that lists hidden
- *    runs, and this build has none.
  *  - `resolve-gate` / `resolve-write-present` / `resolve-write-absent` — these
  *    are answered from their own run-detail SECTIONS, which carry the packet
  *    and the evidence note their payloads require. A row control could not
@@ -96,15 +93,15 @@ export interface QueueRowActionFacts {
 }
 
 /** The verbs this projection may serve, each a member of `ActionCommandKeySchema`. */
-type ServedCommand = "retry" | "cancel" | "bump" | "rename" | "hide";
+type ServedCommand = "retry" | "cancel" | "bump" | "rename";
 
 /**
  * The kernel's own preconditions, restated as row-level admission.
  *
  * Each arm cites the kernel function that would reject the command, so a
  * precondition that moves has exactly one place here to move with it. Nothing
- * below guesses: a verb whose kernel arm has no state precondition (`hide`) is
- * admitted everywhere, because that IS what the kernel accepts.
+ * below guesses: a verb whose kernel arm has no state precondition (`rename`)
+ * is admitted in every state, because that IS what the kernel accepts.
  */
 const KERNEL_ADMITS: Readonly<Record<ServedCommand, (facts: QueueRowActionFacts) => boolean>> = {
   /*
@@ -142,13 +139,6 @@ const KERNEL_ADMITS: Readonly<Record<ServedCommand, (facts: QueueRowActionFacts)
    * `demo-wire.ts:2564`, `spec.rowType !== "member"`.)
    */
   rename: (facts) => !facts.isMember,
-  /*
-   * `executePresentation`: no state precondition at all — Hide is a reversible
-   * presentation tombstone (doc 03 §2.4) that changes no outcome, task,
-   * checkpoint, intent or evidence, so the kernel accepts it in every state and
-   * so does this projection.
-   */
-  hide: () => true,
 };
 
 /** Doc 03 §2.4's closed condition rules, evaluated over projected row state. */
@@ -182,18 +172,18 @@ function policyEnables(
 /**
  * The demo's own footer set, restated as a placement decision (doc 13 §1 — the
  * demo is the visual oracle). A queued row's frequent commands are `≫` and `×`;
- * a finished row's are `↺` and `🗑`. Everything served is ALSO at `menu`, which
- * is what makes the right-click the row's full set and the footer a subset of
- * the same list rather than a second vocabulary.
+ * a finished row's is `↺`. Everything served is ALSO at `menu`, which is what
+ * makes the right-click the row's full set and the footer a subset of the same
+ * list rather than a second vocabulary. Since D234 retired `hide` — whose `🗑`
+ * was the one footer slot that depended on the row being terminal — placement
+ * no longer varies with status at all.
  */
-function placementOf(command: ServedCommand, facts: QueueRowActionFacts): ActionDescriptorWire["placement"] {
-  const terminal = TERMINAL_QUEUE_STATUSES.has(facts.status);
+function placementOf(command: ServedCommand): ActionDescriptorWire["placement"] {
   // `rename` is menu-only in the demo and here, for the reason the footer set
   // exists: the footer is the FREQUENT subset. Naming a run is a thing an
   // operator does once, to one run, on purpose.
   if (command === "rename") return ["menu"];
-  const inFooter = command === "hide" ? terminal : true;
-  return inFooter ? ["footer", "menu"] : ["menu"];
+  return ["footer", "menu"];
 }
 
 function cancelBody(facts: QueueRowActionFacts): string {
@@ -221,7 +211,7 @@ function retryBody(facts: QueueRowActionFacts): string {
  * radius, and the member count in `cancelBody` is the live example.
  */
 function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
-  const placement = placementOf(command, facts);
+  const placement = placementOf(command);
   const base = { command, expectedVersion: facts.rowRevision, kind: "command", placement } as const;
   switch (command) {
     case "retry":
@@ -281,27 +271,11 @@ function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
         intent: "neutral",
         icon: "rename",
       };
-    case "hide":
-      return {
-        ...base,
-        key: "hide",
-        label: "Hide",
-        intent: "neutral",
-        icon: "delete",
-        confirm: {
-          title: "Hide this row",
-          body: "Hiding changes nothing about the run — no outcome, no evidence, no transaction. It only "
-            + "takes the row off the queue, and this build serves no surface that lists hidden runs, so "
-            + "the row cannot be brought back from here.",
-          confirmLabel: "Hide",
-          tone: "neutral",
-        },
-      };
   }
 }
 
 /** The served command order, which is also the footer's left-to-right order. */
-const SERVED_ORDER: readonly ServedCommand[] = ["retry", "bump", "cancel", "rename", "hide"];
+const SERVED_ORDER: readonly ServedCommand[] = ["retry", "bump", "cancel", "rename"];
 
 /**
  * Every control this row may draw.

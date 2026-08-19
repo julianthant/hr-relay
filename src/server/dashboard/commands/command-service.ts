@@ -13,7 +13,7 @@
  *    what was enqueued, so the queue rows and the manifest cannot disagree.
  * 2. `gate.resolved` span emission for an applied `resolve-gate`.
  * 3. A projection refresh for applied run-family commands that emit no span
- *    (hide/unhide/rename/bump/cancel change authority presentation/lifecycle
+ *    (rename/bump/cancel change authority presentation/lifecycle
  *    only). The run-span END for a cancelled RUNNING run stays executor-owned
  *    — a second emitter here would double-close the span identity.
  * 4. After emitting, each arm ticks `projection.ingestFromDisk()` (D218) so
@@ -69,7 +69,7 @@ export interface DashboardCommandService {
  * the operator resolves the write and the queue keeps saying `blocked`.
  */
 const SPANLESS_RUN_TYPES = new Set([
-  "hide", "unhide", "rename", "bump", "cancel",
+  "rename", "bump", "cancel",
   "resolve-write-present", "resolve-write-absent",
 ]);
 
