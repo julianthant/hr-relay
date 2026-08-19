@@ -306,17 +306,19 @@ describe("composeCommandRequest — the identity gate (doc 09 §14.4)", () => {
     assert.equal(result.evidenceDigest, section.value.evidenceDigest);
   });
 
-  it("REFUSES a rejection — the reason is operator-authored and has no field yet", () => {
+  it("REFUSES a rejection nobody authored — the reason is the operator's own (D226)", () => {
+    // The ceremony dialog supplies it; a dispatcher that minted an empty reason
+    // would put a sentence nobody wrote on a terminal failure record.
     const composed = composeCommandRequest(
       REJECT,
       { runId: runId(1), expectedVersion: 3 },
       { ...CONTEXT, gate: gateSection() },
     );
     assert.equal(composed.state, "refused");
-    assert.match(composed.state === "refused" ? composed.reason : "", /reason/);
+    assert.match(composed.state === "refused" ? composed.reason : "", /no operator answer/);
   });
 
-  it("REFUSES when the server asked for a choice — §14.6 risk 1", () => {
+  it("REFUSES an approval nobody authored when the server asked for a choice — §14.6 risk 1", () => {
     // A surface free to pick the first candidate would turn a risky approval
     // into one click, which is rubber-stamping manufactured by accident.
     const composed = composeCommandRequest(

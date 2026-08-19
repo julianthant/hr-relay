@@ -168,6 +168,11 @@ own reason and a choice-shaped approval needs the operator's own choice (§14.6 
 free to pick a candidate turns a risky approval into one click), so both refuse with a sentence
 naming the surface that closes them; and the two park resolutions refuse because they have their own
 wired dialog, which carries the evidence note this route cannot.
+**Amended 2026-08-19 (D226):** the surface those two sentences named now exists, so the composer
+TAKES the operator's answer as context instead of refusing for want of one. What still refuses is
+what nobody authored: an approval or rejection with no answer supplied, an EID the packet never
+showed, an answer that disagrees with the control pressed, and an `approvalShape` this build has no
+ceremony for. The park resolutions are unchanged.
 
 *Live verification (1440×900, served day `2026-08-12`, 28 rows).* `r` opened the run dialog (read as
 an image); `w` cycled floating → icon → sidebar → floating in the stored preference; Escape closed
@@ -223,14 +228,18 @@ new-reference-image, one per region, read as images.
 - **R7's `WorkerCardWireSchema` batch** — R7-2 (`+`/AddWorkersDialog, two named blockers), R7-3
   (browser-health grid + menus + chip), R7-4 (`Stop`, needs the lease `version`), R7-5/6/7-data,
   R7-8 (crashed arm). Nothing further in R7 is a pure port.
-- **The identity-approval surface** — the gate's decision card can now be RENDERED from its served
-  section and a one-click approval can be SENT, but the choose-a-candidate / type-the-EID ceremonies
-  and the rejection reason need their own surface; `command-dispatch.ts` refuses each by name until
-  it exists.
-- **A gated fixture** — no parity fixture authors an `identity-gate` section, so `run-open-gate`
-  photographs the decision card with no answer buttons. That is the correct rendering of what the
-  fixture serves; a fixture that authors the section is what would put the two `resolve-gate`
-  controls into the corpus.
+- ~~**The identity-approval surface**~~ — **BUILT 2026-08-19 (D226).** All three ceremonies exist
+  against the SERVER-computed `approvalShape`: `surfaces/identity-approve.tsx` renders the packet
+  (disagreements first, the candidates, D211's write plan) with exactly the one control the server
+  asked for, and `app/identity-ceremony.ts` is the pure fold both it and `command-dispatch.ts` read.
+  An unrecognised shape draws a NAMED refusal and blocks the send — it never falls back to the
+  approve button. Doc 09 §14.11 owns the ceremony table; doc 13 §3.4 generalises the rule.
+- ~~**A gated fixture**~~ — **BUILT 2026-08-19 (D226).** Two fixture runs serve an `identity-gate`
+  section, their shapes DERIVED by `deriveApprovalShape` from real inputs rather than authored
+  (`tests/parity/helpers/fixture-gate.ts`), and four new dialog references photograph the choose,
+  type-the-EID, reject and refused states. **Owed at the wave-end re-freeze:** four new pairs plus
+  six drifted `run-open-gate` defaults — the decision card now draws the two served controls it
+  never had.
 
 ## Execution structure
 
