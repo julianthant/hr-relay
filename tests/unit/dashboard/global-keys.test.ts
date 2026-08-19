@@ -172,7 +172,7 @@ function commandAction(input: Record<string, unknown>): CommandAction {
 const CONTEXT = { actorId: "local-operator", source: "run-detail" } as const;
 
 describe("composeCommandRequest — the run family", () => {
-  for (const verb of ["retry", "cancel", "bump", "hide", "unhide"] as const) {
+  for (const verb of ["retry", "cancel", "bump"] as const) {
     it(`composes a legal envelope for ${verb}`, () => {
       const composed = composeCommandRequest(
         commandAction({ command: verb }),

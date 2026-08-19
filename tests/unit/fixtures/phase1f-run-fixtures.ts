@@ -70,7 +70,6 @@ export const QUEUED_RUN = {
   input: RUN_INPUT,
   lifecycle: { state: "queued" },
   claimGeneration: 0,
-  hidden: false,
   version: 1,
   createdAt: NOW,
   updatedAt: NOW,

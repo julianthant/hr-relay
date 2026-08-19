@@ -1,6 +1,6 @@
 /**
  * THE run/queue projection (doc 03 §2.2-2.3, D81 §10.1): the emit → JSONL →
- * fold → DashboardDayWire round-trip over a seeded world with hidden,
+ * fold → DashboardDayWire round-trip over a seeded world with
  * delegated, gated, failed, and terminal rows; count equality by
  * construction; runs_view persistence; apply-failure degradation with the
  * guarded rebuild-from-native-jsonl recovery; and loud refusal while
@@ -57,7 +57,7 @@ const CLAIM = {
   heartbeatAt: "2026-08-03T17:00:05.000Z",
 } as const;
 
-/** Seeds: queued(1), running(2), done(3), failed(4), hidden(5), operation(6)+members(7,8), gated(9). */
+/** Seeds: queued(1), running(2), done(3), failed(4), queued(5), operation(6)+members(7,8), gated(9). */
 function seedWorld(w: DashboardWorld): void {
   queuedEventOf(w, { seed: 1 });
 
@@ -93,7 +93,7 @@ function seedWorld(w: DashboardWorld): void {
     version: 3,
   }));
 
-  queuedEventOf(w, { seed: 5, hidden: true });
+  queuedEventOf(w, { seed: 5 });
 
   queuedEventOf(w, { seed: 6, shape: "operation", title: "I-9 batch" });
   queuedEventOf(w, { seed: 7, shape: "operation-member", parentSeed: 6 });
@@ -123,20 +123,21 @@ describe("THE run/queue projection (D81)", () => {
     const day = w.projection.buildDashboardDayWire(DAY);
     DashboardDayWireSchema.parse(day);
 
-    // Hidden run 5 is nowhere; members 7/8 ride flat for layout but are
-    // contained in the operation's rollup, not in any count.
+    // D234: EVERY run is rendered — there are runs and archived runs, and no
+    // third class. Members 7/8 ride flat for layout but are contained in the
+    // operation's rollup, not in any count.
     const runIds: readonly string[] = day.queueSurfaces.map(({ runId }) => runId);
-    assert.equal(runIds.includes(uuidOf(5)), false);
+    assert.equal(runIds.includes(uuidOf(5)), true, "run 5 used to be seeded hidden; D234 retired hiding");
     assert.equal(runIds.includes(uuidOf(7)), true);
-    assert.equal(day.queueSurfaces.length, 8);
+    assert.equal(day.queueSurfaces.length, 9);
 
     const topLevel = day.queueSurfaces.filter(({ surfaceKind }) => surfaceKind !== "member");
     const workflowTotal = day.workflowCounts.reduce((sum, { count }) => sum + count, 0);
     const statusTotal = day.statusCounts.reduce((sum, { count }) => sum + count, 0);
     assert.equal(workflowTotal, topLevel.length);
     assert.equal(statusTotal, topLevel.length);
-    assert.equal(workflowTotal, 6);
-    assert.deepEqual(day.monthCounts, [{ day: DAY, count: 6 }]);
+    assert.equal(workflowTotal, 7);
+    assert.deepEqual(day.monthCounts, [{ day: DAY, count: 7 }]);
 
     const statusOf = (seed: number): string | undefined =>
       day.queueSurfaces.find(({ runId }) => runId === uuidOf(seed))?.status;
@@ -191,11 +192,11 @@ describe("THE run/queue projection (D81)", () => {
 
     const actionKeys = (seed: number): string[] =>
       (day.queueSurfaces.find(({ runId }) => runId === uuidOf(seed))?.actions ?? []).map(({ key }) => key);
-    assert.deepEqual(actionKeys(1), ["bump", "cancel", "rename", "hide"], "the queued row");
-    assert.deepEqual(actionKeys(2), ["cancel", "rename", "hide"], "the running row");
-    assert.deepEqual(actionKeys(3), ["retry", "rename", "hide"], "the done row");
-    assert.deepEqual(actionKeys(4), ["retry", "rename", "hide"], "the failed row");
-    assert.deepEqual(actionKeys(9), ["cancel", "rename", "hide"], "the awaiting-approval row");
+    assert.deepEqual(actionKeys(1), ["bump", "cancel", "rename"], "the queued row");
+    assert.deepEqual(actionKeys(2), ["cancel", "rename"], "the running row");
+    assert.deepEqual(actionKeys(3), ["retry", "rename"], "the done row");
+    assert.deepEqual(actionKeys(4), ["retry", "rename"], "the failed row");
+    assert.deepEqual(actionKeys(9), ["cancel", "rename"], "the awaiting-approval row");
     // A settled delegated member carries no re-run: the kernel refuses generic
     // retry for a child ("child retries route through their delegation edge
     // policy"), so a `↺` there would be a button that always refuses. The check
@@ -208,12 +209,17 @@ describe("THE run/queue projection (D81)", () => {
     // prints the person that item is about. This row is the projector's own
     // proof of it — `isMember` is read from the same `operation-member` shape
     // the surface kind comes from.
-    assert.deepEqual(actionKeys(8), ["hide"]);
+    // With D234's retirement of `hide`, a settled member is the one row this
+    // projection serves NO control for at all — and that is the honest answer,
+    // not a gap: every verb it could draw is one the kernel or the row shape
+    // refuses.
+    assert.deepEqual(actionKeys(8), []);
     // The operation's cancel is the TREE cancel, keyed so the footer titles it
     // with its blast radius.
     assert.equal(actionKeys(6).includes("cancel-tree"), true);
 
     for (const surface of day.queueSurfaces) {
+      if (surface.runId === uuidOf(8)) continue; // the settled member, above
       assert.ok(surface.actions.length > 0, `row ${surface.runId} was served no control at all`);
       for (const action of surface.actions) {
         assert.equal(action.kind, "command");
@@ -288,7 +294,7 @@ describe("THE run/queue projection (D81)", () => {
   it("persists every folded row to the rebuildable runs_view table", () => {
     const w = world();
     seedWorld(w);
-    assert.equal(w.store.rows.size, 9); // all nine runs, hidden included — hiding is presentation
+    assert.equal(w.store.rows.size, 9); // all nine runs
   });
 
   it("rebuilds the identical day payload from nothing but the span JSONL", () => {
@@ -759,18 +765,19 @@ describe("the fold arms a moving run reaches (doc 03 §2.2)", () => {
     assert.match(w.projection.health().lastError ?? "", /skipped is a task-span outcome/);
   });
 
-  it("hands the client a fresh snapshot when a hidden or archived row leaves the payload", () => {
+  it("hands the client a fresh snapshot when an archived row leaves the payload", () => {
     const w = world();
     queuedEventOf(w, { seed: 1 });
     queuedEventOf(w, { seed: 2 });
     taskEventsOf(w, 1, "searching");
     const before = w.changes.length;
 
-    // Hiding and archiving emit NO span, so the refresh trigger re-reads the
-    // same authority join every other path uses. Both are count-bearing: the
-    // row leaves the payload, and a patch could only describe a row that is no
-    // longer there.
-    w.authority.put(runRecordOf({ seed: 1, hidden: true, version: 2 }));
+    // Archiving emits NO span, so the refresh trigger re-reads the same
+    // authority join every other path uses. It is count-bearing: the row leaves
+    // the payload, and a patch could only describe a row that is no longer
+    // there. Since D234 it is the ONLY way a run leaves the payload — the
+    // hidden-run arm this case used to walk beside it is retired.
+    w.authority.archived.add(uuidOf(1));
     w.projection.refreshRun(uuidOf(1));
     w.authority.archived.add(uuidOf(2));
     w.projection.refreshRun(uuidOf(2));

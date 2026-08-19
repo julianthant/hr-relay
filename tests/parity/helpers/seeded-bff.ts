@@ -150,7 +150,6 @@ function enqueueRun(world: SeedWorld, spec: SeedSpec): RunRecord {
     },
     lifecycle: { state: "queued" },
     claimGeneration: 0,
-    hidden: false,
     // D230: taken from the REAL counter, inside the same store production
     // reads it from, so the seeded corpus photographs the ordinals a live day
     // would carry rather than a hand-numbered fixture's opinion of them.

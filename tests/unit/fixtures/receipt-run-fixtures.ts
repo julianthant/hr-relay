@@ -181,7 +181,6 @@ export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExit
     },
     lifecycle: { state: "queued" },
     claimGeneration: 0,
-    hidden: false,
     version: 1,
     // The real run's record was created when it was ENQUEUED; attempt 2 came
     // later, through a requeue this seed compresses away. (D221 anchors the
@@ -435,7 +434,6 @@ export function kualiReceiptEvidence(): KualiReceiptEvidence {
     },
     lifecycle: { state: "terminal", outcome: "done", endedAt: KUALI_CONFIRMED_AT },
     claimGeneration: 1,
-    hidden: false,
     version: 5,
     createdAt: KUALI_FENCED_AT,
     updatedAt: KUALI_CONFIRMED_AT,
@@ -633,7 +631,6 @@ export function identityGateReceiptEvidence(): IdentityGateReceiptEvidence {
     },
     lifecycle: { state: "terminal", outcome: "done", endedAt: GATE_TERMINAL_AT },
     claimGeneration: 1,
-    hidden: false,
     version: 18,
     createdAt: GATE_RESOLVED_AT,
     updatedAt: GATE_TERMINAL_AT,

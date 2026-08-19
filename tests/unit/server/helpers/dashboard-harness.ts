@@ -251,7 +251,6 @@ export interface SeedRunInput {
   readonly shape?: "single" | "preview" | "operation" | "operation-member";
   readonly parentSeed?: number;
   readonly title?: string;
-  readonly hidden?: boolean;
   /** Plain-object lifecycle input; `RunRecordSchema.parse` proves it legal. */
   readonly lifecycle?: unknown;
   readonly version?: number;
@@ -306,7 +305,6 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
     claimGeneration: input.claimGeneration ?? 0,
     ...(input.displayName === undefined ? {} : { displayName: input.displayName }),
     ...(input.runNumber === undefined ? {} : { runNumber: input.runNumber }),
-    hidden: input.hidden ?? false,
     version: input.version ?? 1,
     createdAt: enqueuedAt,
     updatedAt: enqueuedAt,

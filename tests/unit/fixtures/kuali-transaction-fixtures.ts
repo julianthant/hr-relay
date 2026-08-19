@@ -117,7 +117,6 @@ export function kualiQueuedRun(options: Readonly<{ dryRun?: boolean }> = {}): Re
     },
     lifecycle: { state: "queued" },
     claimGeneration: 0,
-    hidden: false,
     version: 1,
     createdAt: KUALI_NOW,
     updatedAt: KUALI_NOW,

@@ -16,13 +16,14 @@
  *    for the badge", a client-side re-derivation — and fails here by file
  *    name. The client may only parse and pass them through.
  *
- * 2. FIXTURE — a seeded world containing hidden, delegated (operation +
- *    members), rejected/failed, gated, and terminal rows proves Workflow
- *    Panel total == Status Bar sum == rendered Queue Panel row count BY
- *    CONSTRUCTION, folded and served from the one payload. An ARCHIVED row joins them at D179: it is
- *    excluded once, in the same place hidden rows and member containment are,
- *    so a prior-version run leaves the queue, the workflow badge, the status
- *    pill and the month calendar at the same instant.
+ * 2. FIXTURE — a seeded world containing delegated (operation + members),
+ *    rejected/failed, gated, and terminal rows proves Workflow Panel total ==
+ *    Status Bar sum == rendered Queue Panel row count BY CONSTRUCTION, folded
+ *    and served from the one payload. An ARCHIVED row is the ONE whole-run
+ *    exclusion (D179, and since D234 the only one): it is dropped once, in the
+ *    same pass member containment is applied, so a prior-version run leaves the
+ *    queue, the workflow badge, the status pill and the month calendar at the
+ *    same instant.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -116,7 +117,7 @@ describe("one-projection-counts (D81)", () => {
       claimGeneration: 1,
       version: 2,
     }));
-    queuedEventOf(world, { seed: 3, hidden: true }); // hidden — in no rendering
+    queuedEventOf(world, { seed: 3 }); // D234: every run is rendered
     queuedEventOf(world, { seed: 4, shape: "operation" }); // delegated group
     queuedEventOf(world, { seed: 5, shape: "operation-member", parentSeed: 4 });
     queuedEventOf(world, { seed: 6, shape: "operation-member", parentSeed: 4 });
@@ -131,9 +132,9 @@ describe("one-projection-counts (D81)", () => {
       lifecycle: { state: "terminal", outcome: "failed", endedAt: "2026-08-03T17:20:00.000Z", failureId: uuidOf(9007) },
       version: 3,
     }));
-    // D179/D80: a prior-version run a bump has archived. It is excluded by the
-    // SAME pass that drops a hidden row, which is why adding it here moves no
-    // count on its own — that agreement is the whole property.
+    // D179/D80: a prior-version run a bump has archived. It is dropped in the
+    // SAME pass member containment is applied, which is why adding it here
+    // moves no count on its own — that agreement is the whole property.
     queuedEventOf(world, { seed: 9 });
     world.authority.archived.add(uuidOf(9));
     queuedEventOf(world, { seed: 8 }); // parked on an operator gate
@@ -152,16 +153,17 @@ describe("one-projection-counts (D81)", () => {
 
     assert.equal(workflowPanelTotal, statusBarSum);
     assert.equal(statusBarSum, renderedQueueRows);
-    assert.equal(renderedQueueRows, 5); // 1,2,4,7,8 — hidden gone, members contained
+    assert.equal(renderedQueueRows, 6); // 1,2,3,4,7,8 — archived gone, members contained
 
     // Containment applied once, inside the projection: the members ride flat
     // for layout, counted only in their operation's rollup.
     const operation = payload.queueSurfaces.find(({ runId }) => runId === uuidOf(4));
     if (operation?.surfaceKind !== "operation") assert.fail("the delegated group must project as an operation");
     assert.equal(operation.memberRollup.total, 2);
-    assert.equal(payload.queueSurfaces.some(({ runId }) => runId === uuidOf(3)), false);
+    // The archived row is the one whole run absent from every rendering.
+    assert.equal(payload.queueSurfaces.some(({ runId }) => runId === uuidOf(9)), false);
 
     // And the month calendar rendering descends from the same fold.
-    assert.deepEqual(payload.monthCounts, [{ day: DAY, count: 5 }]);
+    assert.deepEqual(payload.monthCounts, [{ day: DAY, count: 6 }]);
   });
 });

@@ -245,7 +245,7 @@ describe("run claim store", () => {
     assert.equal(database.authority.runs.enqueue(QUEUED_RUN).state, "inserted");
     assert.equal(database.authority.runs.enqueue(QUEUED_RUN).state, "existing");
     assert.throws(
-      () => database.authority.runs.enqueue({ ...QUEUED_RUN, hidden: true }),
+      () => database.authority.runs.enqueue({ ...QUEUED_RUN, displayName: "A different content" }),
       /already exists with different content/,
     );
   });
@@ -511,7 +511,7 @@ describe("run claim store", () => {
     assert.equal(resumed.run.lifecycle.state, "queued");
   });
 
-  it("renames and hides through the same version gate", () => {
+  it("renames through the version gate, and refuses a stale one", () => {
     const database = openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     const renamed = database.authority.runs.updatePresentation({
@@ -522,9 +522,21 @@ describe("run claim store", () => {
     });
     if (renamed.state !== "applied") throw new Error("rename should apply");
     assert.equal(renamed.run.displayName, "Battistessa, Johnnie");
+    // The rename advanced the version, so the SAME expected version is stale.
     assert.equal(
-      database.authority.runs.updatePresentation({ runId: RUN_ID, expectedVersion: 1, hidden: true, now: LATER }).state,
+      database.authority.runs.updatePresentation({
+        runId: RUN_ID,
+        expectedVersion: 1,
+        displayName: "Renamed from a stale tab",
+        now: LATER,
+      }).state,
       "conflict",
+    );
+    // D234 retired `hidden`; presentation is the display name and nothing else,
+    // so an update that names no name is refused by the schema itself.
+    assert.throws(
+      () => database.authority.runs.updatePresentation({ runId: RUN_ID, expectedVersion: 2, now: LATER }),
+      /displayName/,
     );
   });
 

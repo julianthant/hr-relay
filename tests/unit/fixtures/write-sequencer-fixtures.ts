@@ -587,7 +587,6 @@ export function writeFixtureQueuedRun(options: Readonly<{
     },
     lifecycle: { state: "queued" },
     claimGeneration: 0,
-    hidden: false,
     version: 1,
     createdAt: WRITE_FIXTURE_NOW,
     updatedAt: WRITE_FIXTURE_NOW,
