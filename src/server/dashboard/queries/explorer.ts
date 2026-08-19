@@ -542,7 +542,11 @@ function taskWire(
 function nodeShape(node: RuntimeFlowNode): ExplorerNodeShapeWire {
   switch (node.kind) {
     case "task":
-      return { kind: "task", replay: node.replay, conditional: node.when !== undefined };
+      return {
+        kind: "task",
+        replay: node.replay,
+        ...(node.when === undefined ? {} : { condition: node.when }),
+      };
     case "transaction":
       return {
         kind: "transaction",

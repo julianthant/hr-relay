@@ -97,6 +97,7 @@ import {
   DelegationManifestRefSchema,
 } from "../domain/workflow/graph.js";
 import type { RuntimeFlowNode, RuntimeScope } from "../domain/workflow/graph.js";
+import { evaluateNodeCondition } from "../domain/workflow/node-condition.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { RunClaimTokenSchema, type RunClaimToken } from "../infra/sqlite/run-store-contracts.js";
@@ -702,11 +703,11 @@ export async function executeClaimedRun(
           if (dependencyEntry === undefined || dependencyEntry.mode === "execute") conditionKnown = false;
         }
         if (node.when !== undefined && conditionKnown) {
-          const condition = node.when(scopeFor(node.dependsOn));
-          if (typeof condition !== "boolean") {
-            problems.push(`node "${node.id}" when() returned a non-boolean; refusing to guess whether it runs`);
-            continue;
-          }
+          // D227 — ONE evaluator for the declared condition. The old closure
+          // could return a non-boolean and had to be checked for it; a declared
+          // condition cannot, and every way it can fail to resolve throws by
+          // name inside `evaluateNodeCondition` rather than guessing.
+          const condition = evaluateNodeCondition(node.when, scopeFor(node.dependsOn));
           if (!condition) {
             plan.set(String(node.id), { mode: "skipped-condition" });
             continue;
@@ -1303,10 +1304,7 @@ export async function executeClaimedRun(
           transitionTo(runningLifecycle(node.id));
           const scope = scopeFor(node.dependsOn);
           if (node.when !== undefined) {
-            const condition = node.when(scope);
-            if (typeof condition !== "boolean") {
-              return await failNode(node, node.uses.id, new Error(`node "${node.id}" when() returned a non-boolean`));
-            }
+            const condition = evaluateNodeCondition(node.when, scope);
             if (!condition) {
               skippedReasons.set(String(node.id), "condition-false");
               const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);

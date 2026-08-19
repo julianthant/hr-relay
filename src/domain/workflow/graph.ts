@@ -33,6 +33,7 @@ import {
 import type { DelegationEdgeId, FailureId, ItemId, NodeId, RunId, WorkflowId } from "../ids.js";
 import type { RetryPolicy } from "../session.js";
 import type { DelegationPolicy } from "./delegation-policy.js";
+import type { NodeCondition } from "./node-condition.js";
 
 /** The proof type a commit contract's completion arm produces. */
 export type ProofOf<C extends AnyCommitTaskContract> =
@@ -89,7 +90,12 @@ export interface TaskStepNode<Scope, C extends AnyReadTaskContract> extends Grap
   readonly uses: C;
   /** Pure: workflow input + declared upstream outputs → `z.input<C["input"]>`. */
   readonly bind: (scope: Scope) => z.input<C["input"]>;
-  readonly when?: (scope: Scope) => boolean;
+  /**
+   * D227 — a DECLARED condition, evaluated by `evaluateNodeCondition` and
+   * rendered by `describeNodeCondition`. One declaration, so the sentence the
+   * explorer prints cannot disagree with the rule the executor applies.
+   */
+  readonly when?: NodeCondition;
   /** Resume policy — REQUIRED, no default (doc 02 §5.3). */
   readonly replay: "checkpoint" | "always-rerun";
 }

@@ -106,6 +106,7 @@ import {
   type WorkflowGroupEntry,
   type WorkflowGroupingFacts,
 } from "./workflow-category.js";
+import { describeNodeCondition } from "../../domain/workflow/node-condition.js";
 import { plural } from "./format.js";
 
 /* ── the node vocabulary ─────────────────────────────────────────────────── */
@@ -728,9 +729,9 @@ function GraphNodeRow({
             <Chip tone="danger">a dry run does not stop this</Chip>
           )}
         </span>
-        {node.shape.kind === "task" && node.shape.conditional && (
+        {node.shape.kind === "task" && node.shape.condition !== undefined && (
           <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
-            runs when the descriptor&apos;s own when() predicate holds
+            {describeNodeCondition(node.shape.condition)}
           </span>
         )}
         <span className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
@@ -1233,8 +1234,8 @@ function NodeDetail({
           )}
         </div>
 
-        {node.shape.kind === "task" && node.shape.conditional && (
-          <MetaLine items={["runs when the descriptor's own when() predicate holds"]} />
+        {node.shape.kind === "task" && node.shape.condition !== undefined && (
+          <MetaLine items={[describeNodeCondition(node.shape.condition)]} />
         )}
 
         {node.tasks.length === 0 ? (
@@ -1364,8 +1365,12 @@ function NodeShapeFacts({ node }: { node: ExplorerNodeWire }) {
         <FactRow label="Replay">
           <FactChips>
             <Chip label="checkpoint">{shape.replay}</Chip>
-            <Chip label="condition" tone={shape.conditional ? "info" : "neutral"}>
-              {shape.conditional ? "declares when()" : "always runs"}
+            <Chip
+              label="condition"
+              tone={shape.condition === undefined ? "neutral" : "info"}
+              title={shape.condition === undefined ? undefined : describeNodeCondition(shape.condition)}
+            >
+              {shape.condition === undefined ? "always runs" : shape.condition.kind}
             </Chip>
           </FactChips>
         </FactRow>

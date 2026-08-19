@@ -890,6 +890,40 @@ export function defineWorkflowDescriptor<
   for (const verdict of spec.verdicts ?? []) VerdictDefinitionSchema.parse(verdict);
   assertUnique(id, "verdict keys", (spec.verdicts ?? []).map((verdict) => verdict.key));
 
+  /**
+   * D227 — a declared `when` names a real field of a real schema, checked here
+   * the same way a detail's path is. The closure form could only fail at run
+   * time, on the one run whose input finally reached the node; a declaration is
+   * refused at `defineWorkflowDescriptor`, which is module load and therefore
+   * every test.
+   *
+   * `owns` for the arms that read a VALUE (a condition reading a field only one
+   * union arm carries would throw mid-run on the other arm) and `offers` for
+   * `is-present` / `is-absent`, whose entire question is whether the field is
+   * there.
+   */
+  for (const node of nodes) {
+    if (node.kind !== "task" || node.when === undefined) continue;
+    const condition = node.when;
+    const rule = condition.kind === "is-present" || condition.kind === "is-absent"
+      ? "offers" as const
+      : "owns" as const;
+    const owner = `node "${String(node.id)}" when`;
+    if (condition.of.from === "input") {
+      if (rule === "offers") assertSchemaOffersPath(spec.flow.input, String(condition.of.path), `${id}: ${owner}`);
+      else assertSchemaOwnsPath(spec.flow.input, String(condition.of.path), `${id}: ${owner}`);
+      continue;
+    }
+    const upstream = String(condition.of.nodeId);
+    if (!node.dependsOn.map(String).includes(upstream)) {
+      throw new Error(
+        `${id}: ${owner} reads node ${upstream}, which it does not depend on — `
+        + "the condition would be evaluated before that node had an answer",
+      );
+    }
+    assertNodeFieldPath(id, nodes, upstream, String(condition.of.path), owner, rule);
+  }
+
   for (const detail of spec.details) {
     DetailProjectionSpecRuntimeSchema.parse(detail);
     assertNodeFieldPath(id, nodes, detail.source.nodeId, detail.source.fieldPath, `detail "${detail.key}"`);

@@ -214,7 +214,7 @@ export const typeProofGraph = flow(WORKFLOW_INPUT)
   .step("list-documents", listDocuments, {
     dependsOn: ["search-person"],
     bind: ({ outputs }) => ({ eid: outputs["search-person"].eid }),
-    when: ({ input }) => input.mode === "terminate",
+    when: { kind: "equals", of: { from: "input", path: "mode" }, value: "terminate" },
     replay: "always-rerun",
   })
   // 4 — a pure workflow mini-store step joining two upstream outputs
@@ -470,7 +470,7 @@ const negatives = flow(WORKFLOW_INPUT)
   .step("list-documents", listDocuments, {
     dependsOn: ["search-person"],
     bind: ({ outputs }) => ({ eid: outputs["search-person"].eid }),
-    when: ({ input }) => input.mode === "terminate",
+    when: { kind: "equals", of: { from: "input", path: "mode" }, value: "terminate" },
     replay: "always-rerun",
   })
   .childRun("verify-one", verifyChild, {

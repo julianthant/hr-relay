@@ -1385,6 +1385,15 @@ outputs undeclared, and the column then says so by name rather than printing the
 happen to declare. Substituting the common answer for the missing one is the plausible-but-wrong
 value the charter forbids.
 
+**A node's `when`, in words.** §5.7 recorded the conditional line as "runs when the descriptor's own
+when() predicate holds" and named an authored `whenLabel` as the fix. The fix taken instead is
+**D227** (doc 02 §3.3): the condition is DECLARED data, the executor evaluates it and the surface
+renders it through `describeNodeCondition` — one value, two readers, so the sentence cannot disagree
+with the rule. §5.7's "a closure is reported as its presence" is unchanged for `bind`, `choose`,
+`derive` and the write-safety key; `when` simply stopped being a closure. The wire's
+`shape.conditional: boolean` is replaced by `shape.condition`, and a condition the closed vocabulary
+cannot express is a compile error in the descriptor rather than a plausible sentence here.
+
 **The header counts fields now.** A read is one field a read arm observes FROM a system — an output
 leaf; a write is one field a commit arm writes TO a system — an input leaf. A prepare arm stages the
 values its commit then writes, so its inputs are deliberately not counted, or every write would be

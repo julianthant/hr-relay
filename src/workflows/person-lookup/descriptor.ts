@@ -142,7 +142,7 @@ const personLookupFlow = flow(PersonLookupInput)
   .step("crm-dates", CrmReadOnboardingDates, {
     label: "CRM Dates",
     dependsOn: ["searching"],
-    when: ({ input }) => input.includeCrmDates,
+    when: { kind: "is-true", of: { from: "input", path: "includeCrmDates" } },
     replay: "checkpoint",
     bind: ({ outputs }) => ({
       eid: requireFact(outputs.searching.selection.selected, "searching", "selection.selected").emplId,

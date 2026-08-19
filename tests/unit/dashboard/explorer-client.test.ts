@@ -122,7 +122,7 @@ function taskNode(id: string, dependsOn: string[] = []): ExplorerWorkflowWire["n
     details: [],
     editableFields: [],
     coveragePoints: [],
-    shape: { kind: "task", replay: "checkpoint", conditional: false },
+    shape: { kind: "task", replay: "checkpoint" },
   };
 }
 

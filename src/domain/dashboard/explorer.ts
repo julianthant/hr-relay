@@ -39,6 +39,7 @@ import {
 } from "../ids.js";
 import { SecretNameSchema } from "../secret-names.js";
 import { UiCatalogEntrySchema } from "../ui/contracts.js";
+import { NodeConditionSchema } from "../workflow/node-condition.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 
@@ -296,8 +297,14 @@ export const ExplorerNodeShapeWireSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("task"),
     replay: z.enum(["checkpoint", "always-rerun"]),
-    /** The node declares a `when` predicate; the closure itself is source-only. */
-    conditional: z.boolean(),
+    /**
+     * D227 — the node's `when`, served as the DECLARATION the executor
+     * evaluates. It replaced a `conditional: boolean` beside an opaque closure,
+     * which is why the surface can now say what the condition is: the client
+     * renders it through `describeNodeCondition`, the one projection of the one
+     * declaration, so the sentence cannot disagree with the rule.
+     */
+    condition: NodeConditionSchema.optional(),
   }),
   z.strictObject({
     kind: z.literal("transaction"),
