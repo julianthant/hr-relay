@@ -120,11 +120,11 @@ unit in this handoff** — it is the one surface a real separations run needs a 
 | **B1** ⛓ | **Identity-approval ceremonies.** Today only one-click approve exists; `src/dashboard/app/command-dispatch.ts` refuses *choose-among-candidates*, *type-the-EID*, and *rejection-reason* **by name**. Build all three against the SERVER-computed `approvalShape` (doc 09 §14 — server-computed precisely so a frontend cannot quietly downgrade every gate to one click). Add the missing **gated parity fixture** (no fixture authors an `identity-gate` section today) | ⛓ (owns the gate surface) | The three ceremonies drive the real command endpoint; a parity fixture photographs a gated run; doc 09 §14 / doc 13 get the normative sentences |
 | **B2** ⚡ | **The two recorded honesty gaps** (§9.17 item 7): (a) a settled gated run's panel cannot say its gate was approved, by whom, when — D204 already serves the approver, so this is a pure read; (b) a preview (dry-run) run's outcome chip reads `verified-done`, the label reserved for independently-verified real completions | ⚡ | Both surfaces state the truth; tests pin both; the §9.17 records are struck |
 | **B3** ⚡ | **Run modal (run-start) batch** — typed-input `examples[]`/`parserLabel`, `capability.note` + method tabs, active-run policy control, per-workflow unstartable reasons. All four are wire-ledger rows with demo shape oracles named | ⚡ | Four ledger rows leave `to declare`; `pending-wire-bindings.json` and doc 13 updated in the same commits |
-| **B4** ⚡ | **Queue rows finish** — the remaining `QueueBaseFields` batch (`runNumber`, `linkedRunIds`, `facts[]`/`extractedCount`, `memberPreview`+`groupNoun`, member `eid`+outcomes, `pipeline[].durationSec`, `rejectedCount`, `containment`), the **rename control** (kernel command exists, no UI), and the **bulk** command strip + result-vector band | ⚡ (ONE batched wire change with the projector, per the ledger's own note) | `docs/findings/queue-rows.md` reaches zero; doc 03's queue-row delta extended |
-| **B5** ⛓ | **Archive finish, per D223** — freeze section payloads into the archive snapshot (schema bump, read-forward), render the five tabs, add Export; plus evidence-tile fields, per-attempt history, and `LEDGER_PRESENTATION_DECLARATIONS` (empty today — **separations' three commit contracts are its first three entries**) and an e2e test archiving a run that filed a ledger line | ⛓ (schema work) | `archive-invariants` still proves every tab renders with the descriptor list EMPTY; `docs/findings/archive.md` reaches zero |
+| **B4** ⚡ | **Queue rows finish** — the remaining `QueueBaseFields` batch (`runNumber`, `linkedRunIds`, `facts[]`/`extractedCount`, `memberPreview`+`groupNoun`, member `eid`+outcomes, `pipeline[].durationSec`, `rejectedCount`, `containment`), the **rename control** (kernel command exists, no UI), and the **bulk** command strip + result-vector band — bulk cancel/retry/hide CONFIRMED by the operator 2026-08-18 (§3.2); every bulk action is many real CAS-bound transitions, so it warns before firing and reports per-run outcomes, never one aggregate | ⚡ (ONE batched wire change with the projector, per the ledger's own note) | `docs/findings/queue-rows.md` reaches zero; doc 03's queue-row delta extended |
+| **B5** ⛓ | **Archive finish, per D223** — freeze section payloads into the archive snapshot (schema bump, read-forward; storage growth accepted by the operator 2026-08-18, §3.2 — record the measured per-run delta once a real archive exists), render the five tabs, add Export; plus evidence-tile fields, per-attempt history, and `LEDGER_PRESENTATION_DECLARATIONS` (empty today — **separations' three commit contracts are its first three entries**) and an e2e test archiving a run that filed a ledger line | ⛓ (schema work) | `archive-invariants` still proves every tab renders with the descriptor list EMPTY; `docs/findings/archive.md` reaches zero |
 | **B6** ⚡ | **Explorer finish** — field-level contract rows (Field · System · Recorded), the descriptor's prose (graph summary + per-node purpose), a node's `when` condition in words. (D186's EDIT half stays deferred — do not build it) | ⚡ | `docs/findings/explorer.md` reaches zero |
 | **B7** ⚡ | **Worker-card / session-footer wire batch** + **context-rail batch** + the remaining ledger rows (preflight/doctor popover, cross-day search corpus, command-result `conflict` arm, delegation links, member roster/conveyor, `GateDecisionWire.kind`, `OutcomeWire.text`) | ⚡ (two batched changes) | Wire ledger reaches **zero `to declare`** |
-| **B8** ⛓ | **Findings sweep to zero-or-decided** + decide `span.patched` (declared vocabulary, zero production emitters — build the emitter or retire the arm by decision) | ⛓ last | `docs/findings/` is empty or every remainder carries a dated decision |
+| **B8** ⛓ | **Findings sweep to zero-or-decided** + **retire `span.patched`** — operator ruling 2026-08-18 (§3.2): the declared vocabulary arm has zero production emitters, so remove it with a dated reason and a doc 04 pointer. Do NOT build the emitter | ⛓ last | `docs/findings/` is empty or every remainder carries a dated decision |
 
 ### 2.3 Track C — the connection proof (after B1–B5, before claiming "properly connected")
 
@@ -134,7 +134,8 @@ approve through B1's ceremony → resume → preview terminal → archive it —
 reads that one run correctly (queue row, run modal, timeline, receipt, activity, archive card,
 explorer), **each UI assertion paired with an independent authority-database check** so the UI
 cannot mark its own homework. Close with the **ONE deliberate parity re-freeze** for the whole wave
-(`npm run test:parity:update`), reviewed, not repeated per-unit.
+(`npm run test:parity:update`), reviewed as one batch, not repeated per-unit — the operator confirmed this
+timing on 2026-08-18 (§3.2).
 
 When the operator names a canary, the same pass re-runs over the real commits as A8's evidence.
 
@@ -142,9 +143,11 @@ When the operator names a canary, the same pass re-runs over the real commits as
 
 ## 3 · Questions to put to the operator BEFORE dispatching
 
-Ask these first, in one batch, and wait. Explain each the way the planning doc does — the operator
-has said plainly that unexplained shorthand (`§4f2`, D-numbers) is not actionable, so **spell out
-what you are asking and what each answer causes**.
+**Only §3.1 is still open.** The four scope questions were put to the operator on 2026-08-18 and
+three were answered; §3.2 now records those rulings rather than asking them again. Ask §3.1 first,
+before dispatching Track A, and wait. Explain it the way the planning doc does — the operator has
+said plainly that unexplained shorthand (`§4f2`, D-numbers) is not actionable, so **spell out what
+you are asking and what each answer causes**.
 
 ### 3.1 The canary (blocks all of Track A)
 
@@ -168,17 +171,22 @@ what you are asking and what each answer causes**.
 > commit on 4510 now and the other two later; **(d)** defer all three and let Track B proceed.
 > The previous session recommended **(c) now + (a)/(b) when convenient**.
 
-### 3.2 Scope confirmations worth getting in writing
+### 3.2 Scope rulings — SETTLED 2026-08-18, do not re-ask
 
-- **B5's archive schema bump** freezes log/data/people payloads into every future archived record,
-  which grows the database per archived run. Confirm that is wanted (D223 says yes; confirm the
-  size implication is understood).
-- **B4's bulk command strip** operates on many runs at once. Confirm the operator wants bulk
-  cancel/retry/hide available, given every command is real and CAS-bound.
-- **The `span.patched` decision (B8)**: build the emitter that was always intended, or retire the
-  vocabulary arm? A declared event type nothing emits misleads every reader of the schema.
-- **Track C's parity re-freeze** regenerates reference screenshots. Confirm the operator wants it at
-  wave end (the standing convention) rather than reviewing each change's references individually.
+The operator answered these directly. They are decisions now, not questions:
+
+- **`span.patched` — RETIRE the arm.** Do not build the emitter. Remove the declared vocabulary arm
+  in B8 with a dated reason recorded where the vocabulary is owned, plus a doc 04 pointer. A
+  declared event type nothing emits misleads every reader of the schema; retiring is reversible and
+  honest, building it was work nobody asked for.
+- **Bulk commands — BUILD them.** B4's bulk strip ships with cancel, retry and hide. Every bulk
+  action is many REAL CAS-bound transitions, so the surface must say so before it fires and must
+  report per-run outcomes (the result-vector band), never a single aggregate "done".
+- **Archive schema bump — CONFIRMED (D223).** B5 freezes log/data/people section payloads into the
+  archived record, read-forward per D133. The storage growth per archived run is accepted; state the
+  measured per-run delta in the as-built once a real archive exists.
+- **Parity re-freeze — ONCE, at wave end.** Track C's single deliberate `npm run test:parity:update`
+  for the whole wave, reviewed as one batch. Do NOT re-freeze per unit.
 
 ### 3.3 A question the orchestrator should answer for itself, not ask
 
