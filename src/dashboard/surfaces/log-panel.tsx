@@ -92,6 +92,12 @@ import type {
 import { timelineEventDuration } from "../../domain/dashboard/run-detail.js";
 import type { RunDetailSectionSchema } from "../../domain/dashboard/primitives.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import type { IdentityGatePayload } from "../app/identity-ceremony.js";
+import {
+  IdentityApproveDialog,
+  identityGateArm,
+  type IdentityApproveTarget,
+} from "./identity-approve.js";
 import { BannerActions, OutcomeActionButton, type DashboardActionHandler } from "./actions.js";
 import {
   InlineParkedWrite,
@@ -122,7 +128,15 @@ type RunDetailSection = z.infer<typeof RunDetailSectionSchema>;
 type TimelineEvent = RunDetailWire["timeline"]["events"][number];
 type NotePage = Extract<RunDetailSectionResponse, { section: "logs" }>["payload"];
 type FailurePayload = Extract<RunDetailSectionResponse, { section: "failure" }>["payload"];
-export type IdentityGatePayload = Extract<RunDetailSectionResponse, { section: "identity-gate" }>["payload"];
+/**
+ * The gate section's type is DEFINED one layer up, in
+ * `app/identity-ceremony.ts`, and re-exported here for the surfaces that read
+ * it. Defining it here instead made `app/command-dispatch.ts` import this
+ * module for a type while this module imports the ceremony dialog which imports
+ * the composer — a real `app -> surfaces -> app` cycle the `import-cycles`
+ * ratchet counts (it walks every import declaration, type-only included).
+ */
+export type { IdentityGatePayload };
 
 /**
  * THE DETAIL REGION'S TWO BREAKPOINTS, IN COLUMN PIXELS (doc 03 §Shell).
@@ -933,7 +947,7 @@ function LogsTab({
   failure,
   parked,
   gateActions,
-  onAction,
+  onResolveGate,
   onResolvePark,
   decisionRef,
   failureRef,
@@ -949,7 +963,13 @@ function LogsTab({
   failure: FailurePayload | undefined;
   parked: ParkedWritePayload | undefined;
   gateActions: readonly ActionDescriptorWire[];
-  onAction: DashboardActionHandler;
+  /**
+   * The gate's own resolutions open the ceremony dialog (D226). They do NOT
+   * ride the panel's generic action handler: two of the four ceremonies need a
+   * value no served fact carries, and a generic dispatch could only compose the
+   * one that does not — which is the one-click downgrade §14.6 risk 1 names.
+   */
+  onResolveGate: DashboardActionHandler;
   onResolvePark: DashboardActionHandler;
   decisionRef: (node: HTMLElement | null) => void;
   failureRef: (node: HTMLElement | null) => void;
@@ -989,7 +1009,7 @@ function LogsTab({
         gate={gate}
         actions={gateActions}
         runId={detail.runId}
-        onAction={onAction}
+        onAction={onResolveGate}
         anchorRef={decisionRef}
       />
     ) : null;
@@ -1370,6 +1390,14 @@ export function LogPanel({
    */
   const [parkTarget, setParkTarget] = useState<ParkResolveTarget | null>(null);
   useEffect(() => setParkTarget(null), [detail.runId]);
+  /**
+   * The gate resolution the operator opened, held BY THE PANEL for the same
+   * reason the park one is: the inline record unmounts on a tab change and on
+   * every section refetch, and a dialog that unmounts mid-answer discards the
+   * candidate the operator picked or the reason they typed.
+   */
+  const [gateTarget, setGateTarget] = useState<IdentityApproveTarget | null>(null);
+  useEffect(() => setGateTarget(null), [detail.runId]);
 
   useEffect(() => setNoticeDismissed(false), [detail.runId, effectiveTab]);
 
@@ -1408,6 +1436,38 @@ export function LogPanel({
    * from the inline record. Both resolutions settle a real HR write, so both
    * carry a `confirm` block, and the dialog is where that block is READ.
    */
+  /**
+   * A served `resolve-gate` descriptor opens the CEREMONY, and is never
+   * dispatched from the inline record (D226).
+   *
+   * The generic dispatcher composes a payload from served facts alone, and two
+   * of the four ceremonies need something no served fact carries: which
+   * candidate the operator chose, and why they rejected. Routing the gate
+   * through the confirm-only path would have offered a risky approval as one
+   * click, which is doc 09 §14.6 risk 1 manufactured by accident — so the
+   * descriptor opens the dialog that can carry the answer, and nothing else.
+   */
+  const handleGateResolution = useCallback<DashboardActionHandler>(
+    (action) => {
+      if (gateSection?.state !== "available") {
+        // The wire serves the controls on the SAME section as the packet, so a
+        // section that is not `available` served no controls to press. Reaching
+        // here means the section changed state under a surface mid-flight.
+        throw new Error(
+          `action ${action.key} was pressed while the identity-gate section is `
+          + `${gateSection?.state ?? "absent"}; there is no packet to answer`,
+        );
+      }
+      if (identityGateArm(action) === undefined || action.kind !== "command") {
+        throw new Error(
+          `the identity-gate section served ${action.key}, which names no doc 09 §14.4 resolution`,
+        );
+      }
+      setGateTarget({ gate: gateSection, action });
+    },
+    [gateSection],
+  );
+
   const handleParkResolution = useCallback<DashboardActionHandler>(
     (action) => {
       if (parked === undefined) return;
@@ -1804,7 +1864,7 @@ export function LogPanel({
               failure={sections.failure}
               parked={parked}
               gateActions={gateActions}
-              onAction={handleAction}
+              onResolveGate={handleGateResolution}
               onResolvePark={handleParkResolution}
               decisionRef={setDecisionNode}
               failureRef={setFailureNode}
@@ -1897,6 +1957,12 @@ export function LogPanel({
         cleared whenever the open run changes, so a stale answer can never sit
         over a different write claiming to be about it.
       */}
+      <IdentityApproveDialog
+        target={gateTarget}
+        actorId={actorId}
+        onClose={() => setGateTarget(null)}
+        onResolved={onDetailEdited}
+      />
       <ParkResolveDialog
         target={parkTarget}
         actorId={actorId}

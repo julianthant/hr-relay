@@ -12,15 +12,30 @@
  * from SERVED facts is refused BY NAME and never sent. The identity gate is the
  * live example — the kernel's `resolve-gate` payload is a schema-bound
  * `IdentityApprovalResult`, and two of its arms need something no served fact
- * carries (the operator's chosen candidate when the server asked for a choice,
- * and the operator's rejection reason). Filling either with a plausible constant
+ * carries: the operator's chosen candidate when the server asked for a choice,
+ * and the operator's rejection reason. Filling either with a plausible constant
  * would put a value nobody authored onto a real HR identity decision, which is
  * the exact substitution the charter's fail-loud rule forbids.
+ *
+ * **D226 supplies those two values rather than inventing them.** The ceremony
+ * dialog (`surfaces/identity-approve.tsx`) collects the operator's ANSWER and
+ * hands it to this composer as `context.gateAnswer`; everything else on the
+ * payload — the evidence digest, the result schema hash, the `chosenFrom` label
+ * — is still read straight off the served section. So the three refusals this
+ * file used to end at are now three composed arms, and the refusals that remain
+ * are the honest ones: a shape this build has no ceremony for, an EID the
+ * packet never showed, an answer that was never authored.
  */
 import { systemClock } from "../../domain/clock.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import type { ActionTarget } from "../surfaces/actions.js";
-import type { IdentityGatePayload } from "../surfaces/log-panel.js";
+import {
+  identityCeremonyFor,
+  identityDraftProblem,
+  optionFor,
+  type IdentityGateAnswer,
+  type IdentityGatePayload,
+} from "./identity-ceremony.js";
 
 export type CommandAction = Extract<ActionDescriptorWire, { kind: "command" }>;
 
@@ -48,31 +63,46 @@ export interface CommandContext {
   readonly source: "queue" | "run-detail";
   /** the gate section the run advertised, when one is open */
   readonly gate?: IdentityGatePayload | undefined;
+  /**
+   * What the operator answered in the ceremony dialog (D226). It is OPTIONAL
+   * because exactly one ceremony needs no answer — a `one-click` packet naming
+   * one candidate, where the served option IS the answer. Every other shape
+   * refuses without one rather than choosing on the operator's behalf.
+   */
+  readonly gateAnswer?: IdentityGateAnswer | undefined;
 }
 
 /**
- * The identity gate's answer, composed from what the SERVER served and nothing
- * else.
+ * The identity gate's answer: the operator's decision, wearing the server's
+ * facts.
  *
  * `evidenceDigest` and `resultSchemaHash` are on the section precisely so a
  * client never derives them (doc 13's own note: a client computing that hash
- * would be a second implementation of the descriptor's identity). The EID and
- * its `chosenFrom` label come from the served `options`, which the wire refines
- * against the packet the operator was shown.
+ * would be a second implementation of the descriptor's identity). The
+ * `chosenFrom` label comes from the served `options`, which the wire refines
+ * against the packet the operator was shown — the post-gate node re-derives
+ * where the EID actually came from and refuses a label the packet contradicts
+ * (`identity-approval-choice-mismatch`), so a label invented here would put a
+ * false statement on the receipt.
  *
- * TWO ARMS REFUSE, and both refusals name the surface that closes them:
+ * WHAT STILL REFUSES, and why each refusal is the honest answer:
  *
- *  - an `approvalShape` other than `one-click` is the SERVER stating that this
- *    decision costs a choice (§14.6 risk 1 — a surface that quietly turns a
- *    risky approval into one click is rubber-stamping manufactured by
- *    accident). Picking the first option on the operator's behalf is exactly
- *    that, so it refuses;
- *  - `rejected` requires `reason: z.string().min(1)`, which is operator-authored
- *    text with no field on this surface to type it into.
+ *  - **an unrecognised `approvalShape`** — `identityCeremonyFor` returns
+ *    `unsupported`, and this composer sends nothing. Approving under a ceremony
+ *    nobody implemented is §14.6 risk 1 with the server's own guard removed;
+ *  - **a shape that needs an answer, with none supplied** — a `choose`, a
+ *    `type-the-eid` or a rejection reached without the dialog. Picking the first
+ *    option, or minting an empty reason, would be this surface authoring the
+ *    human's decision;
+ *  - **an EID the packet never showed** — the post-gate check refuses it as
+ *    `identity-approval-eid-not-shown`, and refusing at composition means the
+ *    run never has to. The same sentence is stated at the field the operator
+ *    types into, so this arm is a backstop rather than the first they hear of it.
  */
 function composeGateResult(
   action: CommandAction,
   gate: IdentityGatePayload | undefined,
+  answer: IdentityGateAnswer | undefined,
   envelope: CommandEnvelopeFields,
 ): ComposedCommand {
   if (gate === undefined || gate.state !== "available") {
@@ -84,34 +114,71 @@ function composeGateResult(
     };
   }
   const served = gate.value;
-  if (action.resolution === "rejected") {
-    return {
-      state: "refused",
-      reason: "a rejection records the operator's own reason, and this build has no field to type "
-        + "one into; the identity-approval surface owns that control",
-    };
-  }
-  if (action.resolution !== "approved") {
+  const { resolution } = action;
+  if (resolution === undefined) {
     return {
       state: "refused",
       reason: `the served gate action ${action.key} names no typed resolution`,
     };
   }
-  if (served.approvalShape !== "one-click") {
+  const ceremony = identityCeremonyFor(served, resolution);
+  if (ceremony.kind === "unsupported") return { state: "refused", reason: ceremony.reason };
+
+  // The ONE ceremony whose answer is a served fact: the server said one click,
+  // and named exactly one candidate. Everything else waits for a human.
+  const decided: IdentityGateAnswer | undefined = answer
+    ?? (ceremony.kind === "confirm" ? { decision: "approved", eid: ceremony.option.eid } : undefined);
+  if (decided === undefined) {
     return {
       state: "refused",
-      reason: `the server set this decision's ceremony to "${served.approvalShape}", so the EID must be `
-        + "chosen rather than assumed; the identity-approval surface owns that choice",
+      reason: `this gate's ceremony is "${served.approvalShape}" and no operator answer was supplied; `
+        + "the identity-approval dialog owns that answer and nothing here may author it",
     };
   }
-  const [only, ...rest] = served.options;
-  if (only === undefined || rest.length > 0) {
+  if (decided.decision !== resolution) {
     return {
       state: "refused",
-      reason: `a one-click approval names exactly one candidate and this packet shows `
-        + `${String(served.options.length)}`,
+      reason: `the operator answered "${decided.decision}" and the control pressed was `
+        + `"${resolution}"; nothing is sent while the two disagree`,
     };
   }
+
+  const problem = identityDraftProblem(ceremony, {
+    eid: decided.decision === "approved" ? decided.eid : "",
+    reason: decided.decision === "rejected" ? decided.reason : "",
+  });
+  if (problem !== undefined) return { state: "refused", reason: problem };
+
+  const value = ((): Record<string, unknown> | undefined => {
+    if (decided.decision === "rejected") {
+      return {
+        decision: "rejected",
+        reason: decided.reason.trim(),
+        evidenceDigest: served.evidenceDigest,
+      };
+    }
+    const option = optionFor(served.options, decided.eid);
+    // `identityDraftProblem` already refused an unshown EID on every approval
+    // ceremony, so this is unreachable — and it refuses rather than asserting,
+    // because the alternative is a `chosenFrom` label nobody served.
+    if (option === undefined) {
+      return undefined;
+    }
+    return {
+      decision: "approved",
+      eid: option.eid,
+      chosenFrom: option.chosenFrom,
+      evidenceDigest: served.evidenceDigest,
+    };
+  })();
+  if (value === undefined) {
+    return {
+      state: "refused",
+      reason: `EID ${decided.decision === "approved" ? decided.eid : ""} is not among the candidates `
+        + "this packet served, so there is no `chosenFrom` label to record it under",
+    };
+  }
+
   return {
     state: "ready",
     request: {
@@ -123,17 +190,7 @@ function composeGateResult(
         gateId: served.gateId,
         expectedVersion: action.expectedVersion,
       },
-      payload: {
-        result: {
-          schemaHash: served.resultSchemaHash,
-          value: {
-            decision: "approved",
-            eid: only.eid,
-            chosenFrom: only.chosenFrom,
-            evidenceDigest: served.evidenceDigest,
-          },
-        },
-      },
+      payload: { result: { schemaHash: served.resultSchemaHash, value } },
     },
   };
 }
@@ -171,7 +228,7 @@ export function composeCommandRequest(
         },
       };
     case "resolve-gate":
-      return composeGateResult(action, context.gate, envelope);
+      return composeGateResult(action, context.gate, context.gateAnswer, envelope);
     case "resolve-write-present":
     case "resolve-write-absent":
       // The park resolutions have their OWN wired path: `park-resolve.tsx`
