@@ -47,6 +47,7 @@ import {
   descriptorSetHash,
 } from "../dashboard/compose.js";
 import { createRunQueueProjection } from "../dashboard/projectors/run-queue-projection.js";
+import { createLedgerReadThrough } from "../../infra/ledger/ledger-read-through.js";
 
 export interface StorageCommandOutcome {
   readonly output: string;
@@ -181,6 +182,7 @@ function rebuildStagedProjections(
         clock,
         appVersion,
         descriptorSetHash: setHash,
+        ledger: createLedgerReadThrough(stateRoot),
         authority: {
           getRun: (runId) => staged.authority.runs.get(runId),
           listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),

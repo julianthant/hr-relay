@@ -55,6 +55,7 @@ import {
 import {
   ACTIVITY_SAMPLE_LIMIT,
   ActivityReportWireSchema,
+  type ActivityLedgerBlock,
   type ActivityReportWire,
   type ActivityWorkflowTotal,
 } from "../../../domain/dashboard/activity.js";
@@ -146,6 +147,21 @@ export interface RunQueueProjectionDeps {
   readonly appVersion: string;
   /** One fingerprint over the registered descriptor set — doc 02's skew tripwire. */
   readonly descriptorSetHash: Fingerprint;
+  /**
+   * D236 — the ONE second authority this projection reports beside its own
+   * totals: the write ledger's fold over the Activity range.
+   *
+   * It is a PORT, not a count this class computes, and that is the whole shape
+   * of the carve-out. Every other number `buildActivityReportWire` serves is
+   * folded from `#rows` in the loop below; this block arrives already folded
+   * from `src/infra/ledger/`, an append-only audit corpus whose entries outlive
+   * the runs that filed them (doc 03 §10.1/§10.2 rule 1). Nothing here
+   * reconciles the two — a cross-check would assert they cover the same rows,
+   * and they do not.
+   */
+  readonly ledger: {
+    foldActivityRange(from: string, to: string): ActivityLedgerBlock;
+  };
   /** Narrow authority read view; the projection never mutates authority. */
   readonly authority: {
     getRun(runId: string): RunRecord | undefined;
@@ -1444,6 +1460,11 @@ export class RunQueueProjection {
    * day it summarises, which is the exact count/badge divergence D81 exists to
    * make unrepresentable. Archived rows and member containment are already
    * applied here, once, for every surface.
+   *
+   * ONE field on the payload is not this fold's (D236): `ledger`. It comes from
+   * the write ledger through `deps.ledger`, a different authority whose entries
+   * outlive the runs that filed them, and it is reported beside these totals
+   * rather than reconciled against them. See `ActivityLedgerBlockSchema`.
    */
   buildActivityReportWire(from: string, to: string): ActivityReportWire {
     if (this.#health.state === "degraded") {
@@ -1606,6 +1627,12 @@ export class RunQueueProjection {
           : { state: "present", value: longest.ms, runId: longest.runId },
         totalMs: measured.reduce((total, entry) => total + entry.ms, 0),
       },
+      /**
+       * D236 — passed through, never folded here. The block is read from the
+       * write ledger over the SAME window, and it is the one number on this
+       * payload that does not descend from the loop above.
+       */
+      ledger: this.#deps.ledger.foldActivityRange(start, end),
     });
   }
 }

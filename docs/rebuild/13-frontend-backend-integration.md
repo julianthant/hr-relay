@@ -561,7 +561,7 @@ its row has an implementation and a test.
 | Settings + doctor/storage | schema-driven sections, effective/default/override provenance, revision, health/backups | config/storage/preflight patches | atomic settings update; recovery actions when explicitly served | doc 11 config/preflight + doc 03 authority recovery |
 | Archive + version bump | paged archive index, self-contained archived detail, integrity, version plan | version/archive job progress | plan/apply bump, relaunch as new run | doc 03 archive snapshots + descriptor/version service |
 | Explorer | descriptor graph projection; optional run overlay | selected run overlay patches | navigation only in Phase A; safe edit commands later | docs 02/12 exact descriptor + spans/checkpoints |
-| Activity | server aggregate by range/category/workflow/status/outcome | explicit refresh or range invalidation; no per-row stream required | export if later served | aggregation query over the same run projection/receipts |
+| Activity | server aggregate by range/category/workflow/status/outcome, plus the write-ledger block (D236) | explicit refresh or range invalidation; no per-row stream required | CSV export, SERVED (D240) — `GET /api/v1/reports/activity.csv`, caveats inside the artifact | aggregation query over the same run projection/receipts, beside the one ledger read-through |
 
 ### 5.1 Critical user flows
 
@@ -760,6 +760,79 @@ this port replaced. That half carried no reason; the half that did — no chart 
 is unchanged and still enforced. The operator's demo argues the tile row's case explicitly and the
 ported surface ships it; this restatement is what ratifies the port per doc 04's rule that a
 decision lands in its owning doc.)*
+
+#### D236 — the write-ledger block is SERVED, as a second authority (2026-08-19)
+
+`ActivityReportWire` gains `ledger: { systems: [{ system, entries, prod, test }] }`, the demo's last
+Activity block. **It is the one field on this payload that does not come out of
+`run-queue-projection.ts`'s fold**, and doc 03 §10.1 owns the carve-out that permits it — read it
+there; the normative text is not restated here. What this doc owns is the wire shape and the route:
+
+- The block rides the SAME `GET /api/v1/reports/activity?from=&to=` response, over the same window.
+  A second endpoint would make the two halves of one report separately refreshable, and a supervisor
+  reading a page whose blocks were fetched at different instants is reading two reports.
+- The projection takes the fold as a narrow **port** (`deps.ledger.foldActivityRange`) and passes the
+  result through. It is a port rather than a private read so the second authority is visible in the
+  type; the projection never opens the ledger itself.
+- `superRefine` asserts **nothing** between `ledger` and any run total, on purpose — see the
+  carve-out. The one refinement is per row: `entries === prod + test`.
+- Rows are ordered by `entries` descending, ties broken by system id, so the order is total and a
+  re-run over the same corpus cannot reshuffle its own rows.
+- The surface renders the block on the **zero-run branch too**, because a range with no runs can
+  still hold entries.
+
+#### D239 — the hours-saved tile is DROPPED (2026-08-19, operator ruling)
+
+**A decision, not a deferral, and there is no code to point at because the tile was never rendered.**
+The demo's fifth headline tile reads `HOURS SAVED ≈ 3.5` with an `estimate` badge; its whole input is
+`MANUAL_MINUTES`, a hand-kept minutes-per-workflow constant compiled into the demo's own wire module.
+`docs/findings/activity.md` recorded it as decide-first with three questions attached — where the
+minutes live, who may change them and whether changes are versioned, and the wire shape. **The
+operator's answer is that none of those get answered: no operator-entered minutes store is built and
+the report keeps its measured tiles.**
+
+The reason is the one the record already named and is worth stating as normative rather than as a
+finding. Every other number on this report is MEASURED. A minutes-per-run figure would be the only
+one that is not, and it would sit on **the one artifact in the product that leaves the operator's
+screen** — now literally, since D240 exports it — where a plausible total is quoted in a meeting and
+never traced back to the constant it came from. `ActivityWorkflowTotal` therefore has no
+`minutesPerRun`, `ActivityReportWire` has no `hoursSaved`, and the `Tile` primitive keeps no
+`estimate` tone or badge, because nothing else wears them.
+
+**What would re-open it:** a REAL minutes source — a measured baseline of the manual process, or a
+durable operator-owned store with an owner, an edit path and versioning so a re-run of an old range
+cannot silently restate history. Until one of those exists there is nothing true to multiply, and the
+tile stays out. The record in `docs/findings/activity.md` closes with this decision rather than being
+deleted, so the argument survives the next person who notices the demo has five tiles and the product
+has four.
+
+#### D240 — the report is EXPORTABLE, and the rules travel with the numbers (2026-08-19)
+
+`GET /api/v1/reports/activity.csv?from=&to=` serves the same `ActivityReportWire` the panel renders,
+as a file, and the panel header carries the demo's `Export` button beside the ⓘ.
+
+- **It refuses a missing bound in the same words as the JSON route.** D180's argument gets *stronger*
+  for an export, not weaker: an aggregate over a window the caller never named is a number nobody
+  asked for, and this copy is the one that gets mailed on.
+- **The caveats are a BLOCK of the artifact**, ahead of every total they qualify. The panel can put
+  them one press away because the ⓘ is on the same screen as the numbers; a CSV has no ⓘ, and an
+  exported report with the numbers and without the rules is exactly the lying artifact doc 13 §5's
+  `export if later served` was waiting on a decision about.
+- **One set of sentences, one rounding.** `activityReportCaveats` and `activityErrorRatePercent` live
+  in the browser-safe contract (`src/domain/dashboard/activity.ts`) and BOTH consumers read them, so
+  an exported rate cannot round differently than the tile it was taken from and a rule that moves
+  moves in both places. Two copies would be the same lie with a delay on it.
+- **Absences export their reasons.** An absent median or longest duration writes the reason string,
+  never a zero — D124's rule survives the format change, because a spreadsheet will average a zero
+  and cannot average a sentence. An unregistered workflow exports its reason, never an id dressed as
+  a label.
+- **Cells are quoted, never rewritten.** A leading `=` is left exactly as the payload spells it:
+  prefixing a cell to defuse a spreadsheet's formula parser would put a different string in the file
+  than the one on screen, and the export's entire value is that the two agree.
+- **What is deliberately absent:** the panel footer's operator id and app build. They are client
+  props that never crossed this wire, and a server composing them would assert provenance about a
+  reader it cannot see. The window, the generation instant and the wire version are on the payload
+  and are what the header block carries.
 
 ### 6.8 Phase 3+ workflow migrations
 

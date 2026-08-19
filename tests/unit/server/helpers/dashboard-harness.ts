@@ -21,6 +21,7 @@ import type { RunCheckpointRecord } from "../../../../src/domain/workflow/checkp
 import type { WriteIntentRecord } from "../../../../src/domain/write-safety.js";
 import type { RunQueuedWire } from "../../../../src/events/types.js";
 import { createSpanJsonlWriter, type SpanJsonlWriter } from "../../../../src/infra/events/span-jsonl-writer.js";
+import { createLedgerReadThrough } from "../../../../src/infra/ledger/ledger-read-through.js";
 import type { ProjectionRepositories } from "../../../../src/infra/sqlite/authority-database.js";
 import {
   createRunQueueProjection,
@@ -206,6 +207,11 @@ export function makeWorld(input?: Readonly<{
     clock,
     appVersion: APP_VERSION,
     descriptorSetHash: DESCRIPTOR_SET_HASH,
+    // D236: the report's one second authority, read through the SAME
+    // production read-through over this world's own state root. A stub here
+    // would make the seam untested by construction (separations 6c's lesson),
+    // and an empty `ledger/` directory is exactly the honest empty block.
+    ledger: createLedgerReadThrough(stateRoot),
     authority,
     descriptors: input?.descriptors ?? { resolve: () => undefined },
     projectionStore: store,

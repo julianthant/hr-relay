@@ -464,6 +464,18 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
     longestMs: { state: "present", value: 1_632_000, runId: ARCHIVED_RUN_ID },
     totalMs: 8_431_000,
   },
+  /**
+   * D236's second authority. Two systems, and the load-bearing half is the
+   * amber one: `kuali` filed a TEST-instance entry, which the reference
+   * photographs tinted, and a corpus where every entry was production would
+   * never catch a surface that dropped the tint.
+   */
+  ledger: {
+    systems: [
+      { system: "ucpath", entries: 6, prod: 6, test: 0 },
+      { system: "kuali", entries: 3, prod: 2, test: 1 },
+    ],
+  },
 });
 
 export const FIXTURE_ARCHIVED_RUN_ID = ARCHIVED_RUN_ID;

@@ -86,6 +86,7 @@ import {
   UNWIRED_INTAKE_PARSER,
   UNWIRED_INTAKE_SERVICE,
 } from "../../fixtures/intake-kernel-seams.js";
+import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 
 /* ── the fixed values this suite pins ────────────────────────────────────── */
 
@@ -203,6 +204,7 @@ function surface(options: SurfaceOptions = {}): Surface {
     clock,
     appVersion: "0.1.0",
     descriptorSetHash: descriptorSetHash([captureFixtureDescriptor.contractFingerprint]),
+    ledger: createLedgerReadThrough(stateRoot),
     authority: {
       getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: () => [],

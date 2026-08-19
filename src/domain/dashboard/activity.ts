@@ -24,9 +24,20 @@
  * is the `unmeasuredRuns` of the completion axis, and folding it into
  * `readBack` would report an unread run as a clean one on the artifact that
  * leaves the operator's screen.
+ *
+ * **One block on this wire is NOT the projection's, and says so (D236).** The
+ * write `ledger` is a second authority reported BESIDE the totals, never
+ * derived from them — see `ActivityLedgerBlockSchema` for the whole carve-out
+ * and doc 03 §10.1 for its ratification.
  */
 import { z } from "zod";
-import { ErrorCodeSchema, IsoInstantSchema, RunIdSchema, WorkflowIdSchema } from "../ids.js";
+import {
+  BrowserSystemIdSchema,
+  ErrorCodeSchema,
+  IsoInstantSchema,
+  RunIdSchema,
+  WorkflowIdSchema,
+} from "../ids.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 import { QueueStatusSchema, TERMINAL_QUEUE_STATUSES } from "./projection.js";
 
@@ -191,6 +202,68 @@ export const ActivityDurationsSchema = z.strictObject({
   totalMs: z.number().int().nonnegative(),
 });
 
+/**
+ * ONE system's row of the write-ledger block — what was actually FILED.
+ *
+ * `entries` partitions into `prod` + `test` and the refinement refuses any
+ * other reading: an entry the wire could not attribute to an instance would
+ * make "how many of these touched production" unanswerable on the one artifact
+ * a supervisor reads, and a row that quietly dropped it would answer it wrong.
+ */
+export const ActivityLedgerSystemTotalSchema = z.strictObject({
+  system: BrowserSystemIdSchema,
+  entries: z.number().int().positive(),
+  prod: z.number().int().nonnegative(),
+  test: z.number().int().nonnegative(),
+}).superRefine((row, context) => {
+  if (row.prod + row.test !== row.entries) {
+    context.addIssue({
+      code: "custom",
+      path: ["entries"],
+      message: `ledger system ${row.system} counts ${String(row.entries)} entries but splits into `
+        + `${String(row.prod)} production and ${String(row.test)} test`,
+    });
+  }
+});
+export type ActivityLedgerSystemTotal = z.infer<typeof ActivityLedgerSystemTotalSchema>;
+
+/**
+ * **The D81 CARVE-OUT (D236).** Every other total on this wire descends from
+ * the ONE run/queue projection. This block does not, and it is here anyway.
+ *
+ * The write ledger is a DIFFERENT authority: doc 03 §10.2 rule 1 has said since
+ * Phase 0 that *"the write ledger is never archived — archiving is a display
+ * lifecycle; the ledger is an audit one"*, and `src/infra/ledger/` is
+ * append-only, never pruned, and partitioned by each entry's own `confirmedAt`.
+ * So its entries can OUTLIVE the runs that filed them: a range whose runs have
+ * all been archived can still hold ledger lines, and folding those lines out of
+ * the run projection would report "nothing was filed" about real HR
+ * transactions that were.
+ *
+ * The carve-out is therefore narrow and it is structural: this block is
+ * reported BESIDE the projection's totals and is never reconciled against them.
+ * The wire's own refinements deliberately assert NO relationship between
+ * `ledger` and `totalRuns`, `terminalRuns` or any status bucket — a cross-check
+ * would be a claim that the two corpora cover the same rows, which is the exact
+ * claim that is false. What IS checked is each row's internal partition, one
+ * level down, where both numbers come from the same authority.
+ *
+ * The seam is stated ON the surface, not only here: `activityReportCaveats`
+ * carries the sentence into the panel's ⓘ and into the CSV export, because a
+ * second authority the reader cannot see is a second authority the reader will
+ * assume is the first one.
+ *
+ * An EMPTY `systems` list is an honest fact now that the axis is served —
+ * "nothing in this report's reach filed anything into a real HR system" — and
+ * was not before, which is why the ported surface omitted the block entirely
+ * rather than rendering its empty state over an unserved axis.
+ */
+export const ActivityLedgerBlockSchema = z.strictObject({
+  /** highest entry count first; ties by system id, so the order is total */
+  systems: z.array(ActivityLedgerSystemTotalSchema),
+});
+export type ActivityLedgerBlock = z.infer<typeof ActivityLedgerBlockSchema>;
+
 export const ActivityReportWireSchema = z.strictObject({
   wireVersion: DashboardWireVersionSchema,
   from: z.iso.date(),
@@ -220,6 +293,12 @@ export const ActivityReportWireSchema = z.strictObject({
   outcomes: z.array(ActivityOutcomeTotalSchema),
   failures: z.array(ActivityFailureTotalSchema),
   durations: ActivityDurationsSchema,
+  /**
+   * D236 — the one block that is NOT this projection's. See
+   * `ActivityLedgerBlockSchema`; nothing below reconciles it against a run
+   * total, on purpose.
+   */
+  ledger: ActivityLedgerBlockSchema,
 }).superRefine((report, context) => {
   if (report.from > report.to) {
     context.addIssue({ code: "custom", path: ["from"], message: "an activity range starts on or before it ends" });
@@ -338,3 +417,69 @@ export const ActivityReportWireSchema = z.strictObject({
   }
 });
 export type ActivityReportWire = z.infer<typeof ActivityReportWireSchema>;
+
+/** One status bucket's count off the served payload; an absent bucket is zero. */
+export function activityStatusRuns(
+  report: ActivityReportWire,
+  status: z.infer<typeof QueueStatusSchema>,
+): number {
+  return report.statuses.find((entry) => entry.status === status)?.runs ?? 0;
+}
+
+/**
+ * The error rate, to one decimal, over the TERMINAL denominator the tile and
+ * the caveat both name.
+ *
+ * It lives beside the caveats for the same reason they do: the panel renders it
+ * and the CSV export carries it, and two roundings of one ratio is a report
+ * whose exported copy disagrees with the screen it was taken from. An empty
+ * terminal set is `0` rather than a division — the tile prints the denominator
+ * beside the number, so a `0%` over zero terminal runs cannot be misread.
+ */
+export function activityErrorRatePercent(report: ActivityReportWire): number {
+  if (report.terminalRuns === 0) return 0;
+  return Math.round((activityStatusRuns(report, "failed") / report.terminalRuns) * 1000) / 10;
+}
+
+/**
+ * The rules this report was counted by, as sentences, derived from the payload
+ * itself.
+ *
+ * It lives HERE, in the browser-safe contract, because two consumers must read
+ * the identical words: the panel's ⓘ popover and the served CSV export (D240).
+ * An export carrying the numbers without the rules is precisely the lying
+ * artifact this surface is built to prevent — and two copies of the rules, one
+ * per consumer, is the same lie with a delay on it, because only one of them
+ * would be updated when a rule moves.
+ *
+ * Every sentence names something the payload actually carries. A caveat about a
+ * number that is not on the page is noise, which is why the demo's hours-saved
+ * and distinct-people bullets are absent rather than restated (D239, and
+ * `docs/findings/activity.md`).
+ */
+export function activityReportCaveats(report: ActivityReportWire): readonly string[] {
+  const openRuns = report.inFlightRuns;
+  const runWord = openRuns === 1 ? "1 run is" : `${String(openRuns)} runs are`;
+  return Object.freeze([
+    `This report covers runs that started between ${report.from} and ${report.to} inclusive. `
+    + "Both bounds were named by whoever asked for it; nothing here defaults a window.",
+    "Error rate counts only runs that reached a terminal state. Anything queued, running, waiting on "
+    + "you or blocked is excluded and reported separately as still open, so a busy span cannot read "
+    + "as a finished one.",
+    `${runWord} still open in this span, and that work is represented in no total on this page except its own.`,
+    "Every total here is a rendering of the one run/queue projection the Queue Panel reads. Archived "
+    + "runs are excluded once, inside it, so this report and the day it summarises cannot disagree.",
+    "A finished run's warnings come from its evidence receipt. A run with no derived receipt is "
+    + "counted as UNREAD in its own column rather than as read back — the report says how many it "
+    + "could not check instead of reporting them as clean.",
+    "The Who column samples up to five runs per open state and names them only where the day on "
+    + "screen holds the row; every other run in a state is named by its id. The count beside it is "
+    + "the whole bucket, never the sample.",
+    // D236's seam, stated where the reader is: the ledger block is the one
+    // total on this artifact that does not come from the run projection.
+    "The write-ledger block is a SECOND authority, reported beside these totals and never derived "
+    + "from them. Ledger entries are what was actually filed in a real HR system; they are never "
+    + "pruned and never archived, which is why they can outlive the runs that filed them — a system "
+    + "can show entries here over a span whose runs have all left the live surfaces.",
+  ]);
+}

@@ -52,6 +52,7 @@ import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER,
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
+import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 
@@ -705,6 +706,7 @@ export async function startSeededServer(
     clock,
     appVersion: SEEDED_APP_VERSION,
     descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
+    ledger: createLedgerReadThrough(stateRoot),
     authority: {
       getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),

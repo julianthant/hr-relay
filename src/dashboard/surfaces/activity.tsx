@@ -16,13 +16,19 @@
  * one press away from the header — because a caveat that only exists in a
  * footnote on a page nobody scrolls is a caveat nobody read.
  *
- * ## Every total descends from the ONE projection
+ * ## Every total descends from the ONE projection — except one, which says so
  *
  * Nothing on this page counts anything. D81 and doc 13 §8 guard #4 name
  * Activity aggregates explicitly, so the server builds them inside the same
  * `run-queue-projection` that renders the Queue Panel and this component
  * renders the payload verbatim — including the range's own day list, which is
  * why a day with no runs is simply absent rather than being invented as a zero.
+ *
+ * The write-ledger block is the ONE exception, ratified as such (D236, doc 03
+ * §10.1): it is a different authority, folded from the append-only ledger over
+ * the same window and reported BESIDE these totals rather than derived from
+ * them. It carries the seam in its own subtitle and in the ⓘ, because a second
+ * authority the reader cannot see is one the reader assumes is the first.
  *
  * ## Durations, and warnings, report their misses
  *
@@ -40,12 +46,15 @@
  * ## What the demo has that this does not, and why nothing here approximates it
  *
  * The demo's report reads a fixture corpus of whole rows; this one reads an
- * aggregate wire. Four demo elements need facts `ActivityReportWire` does not
- * carry — distinct people, the operator's per-workflow minutes (hours saved),
- * the two-letter workflow code, and the write ledger — plus an Export command
- * the BFF does not serve. Each is RECORDED in `docs/findings/activity.md`, not
- * fabricated here: a supervisor-facing artifact is the last place a
- * plausible-but-wrong number belongs.
+ * aggregate wire. TWO demo elements need facts `ActivityReportWire` does not
+ * carry and are still absent: distinct people (no row or member carries a
+ * subject identity yet) and the two-letter workflow code (a taxonomy question).
+ * A THIRD is absent by ruling rather than by gap — the hours-saved tile, whose
+ * only input would be an operator-entered minutes constant with no durable
+ * home, is DROPPED (D239): a fabricated minutes figure on the one artifact that
+ * leaves the operator's screen is the highest-consequence invented number in
+ * the product. All three are RECORDED in `docs/findings/activity.md` rather
+ * than approximated here. The write ledger (D236) and Export (D240) are served.
  *
  * The Who column is served, and served NARROW: the wire carries run ids and no
  * names, because a name is subject data on an artifact built to be exported.
@@ -53,8 +62,8 @@
  * and a sampled run those rows do not cover announces itself by id rather than
  * by a name this surface would have to invent.
  */
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ChartNoAxesColumn, Info, TriangleAlert } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { ChartNoAxesColumn, Download, Info, TriangleAlert } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
   BulletList,
@@ -89,7 +98,12 @@ import {
   dsText,
   useDsEnterTransition,
 } from "../ds/ui.js";
-import type { ActivityReportWire } from "../../domain/dashboard/activity.js";
+import {
+  activityErrorRatePercent,
+  activityReportCaveats,
+  activityStatusRuns,
+  type ActivityReportWire,
+} from "../../domain/dashboard/activity.js";
 import { DashboardClientError } from "../client/errors.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
@@ -138,7 +152,7 @@ function ms(value: number): string {
 const OUTSTANDING_ORDER: readonly QueueStatus[] = ["awaiting-approval", "blocked", "running", "queued"];
 
 function statusRuns(report: ActivityReportWire, status: QueueStatus): number {
-  return report.statuses.find((entry) => entry.status === status)?.runs ?? 0;
+  return activityStatusRuns(report, status);
 }
 
 /**
@@ -776,8 +790,9 @@ function ActivityBody({
 }) {
   const { readBack, warnings: withWarnings, warningsUnknown } = report.completion;
   const failedRuns = statusRuns(report, "failed");
-  const errorRatePct =
-    report.terminalRuns === 0 ? 0 : Math.round((failedRuns / report.terminalRuns) * 1000) / 10;
+  // ONE derivation, shared with the CSV export (D240): an exported rate that
+  // rounded differently than the tile would be the same number twice, wrong.
+  const errorRatePct = activityErrorRatePercent(report);
 
   return (
     <div className="flex flex-col gap-[var(--ds-space-cozy)]">
@@ -938,26 +953,73 @@ function ActivityBody({
           </div>
         )}
       </div>
+
+      {/* ---- what was actually FILED — a different authority, D236 ---- */}
+      <WriteLedgerBlock ledger={report.ledger} />
     </div>
   );
 }
 
 /**
- * The caveats behind the ⓘ in the panel header.
+ * The write ledger — what was actually FILED (D236).
  *
- * This is the artifact that leaves the operator's screen, so the rules it was
- * counted by have to be reachable FROM it. The demo's five bullets are three
- * here: the two it drops (hours saved, distinct people) name figures this wire
- * does not carry, and a caveat about a number that is not on the page is noise.
+ * The ONE block on this page whose numbers are not the run/queue projection's,
+ * and it says so in its own subtitle rather than only in the ⓘ: a second
+ * authority the reader cannot see is a second authority the reader assumes is
+ * the first one. The empty state is served now that the axis is — before D236
+ * it was omitted entirely, because "nothing was filed" over an unserved axis is
+ * an assertion, not an absence.
+ *
+ * The test-instance count is tinted whenever it is positive, which is the
+ * demo's own rule and the honest one: a rehearsal that reached a real system's
+ * test instance is not a production filing and must never read as one.
  */
-function caveatsFor(report: ActivityReportWire): string[] {
-  return [
-    "Error rate counts only runs that reached a terminal state. Anything queued, running, waiting on you or blocked is excluded and reported separately as still open, so a busy span cannot read as a finished one.",
-    `${plural(report.inFlightRuns, "run")} ${report.inFlightRuns === 1 ? "is" : "are"} still open in this span, and that work is represented in no total on this page except its own.`,
-    "Every total here is a rendering of the one run/queue projection the Queue Panel reads. Hidden and archived runs are excluded once, inside it, so this report and the day it summarises cannot disagree.",
-    "A finished run's warnings come from its evidence receipt. A run with no derived receipt is counted as UNREAD in its own column rather than as read back — the report says how many it could not check instead of reporting them as clean.",
-    "The Who column samples up to five runs per open state and names them only where the day on screen holds the row; every other run in a state is named by its id. The count beside it is the whole bucket, never the sample.",
-  ];
+function WriteLedgerBlock({ ledger }: { ledger: ActivityReportWire["ledger"] }): ReactNode {
+  return (
+    <div className="min-w-0">
+      <SectionLabel className="mb-[var(--ds-space-snug)]">Write ledger — what was actually filed</SectionLabel>
+      <p className={cn(dsText.meta, "mb-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
+        A separate authority from every total above. Ledger entries are never pruned and never archived, so they
+        can outlive the runs that filed them.
+      </p>
+      {ledger.systems.length === 0 ? (
+        <Well>
+          <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>
+            No ledger entries. Nothing in this report&apos;s reach filed anything into a real HR system.
+          </span>
+        </Well>
+      ) : (
+        <div className="overflow-x-auto">
+          <Table label="Write ledger by system">
+            <THead>
+              <TR>
+                <TH>System</TH>
+                <TH align="right">Entries</TH>
+                <TH align="right">Production</TH>
+                <TH align="right">Test instance</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {ledger.systems.map((line) => (
+                <TR key={line.system}>
+                  <TD>{line.system}</TD>
+                  <TD align="right" numeric>{line.entries}</TD>
+                  <TD align="right" numeric>{line.prod}</TD>
+                  <TD
+                    align="right"
+                    numeric
+                    className={line.test > 0 ? "text-[color:var(--ds-status-waiting-fg)]" : undefined}
+                  >
+                    {line.test}
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ActivityReport({
@@ -1006,6 +1068,33 @@ export function ActivityReport({
 
   const spanLabel = activityRangeLabel(resolved.from, resolved.to);
   const report = resource.state === "loaded" ? resource.value : undefined;
+
+  /**
+   * The demo's Export, wired to the SERVED CSV (D240).
+   *
+   * The bytes are the server's, not this component's: the artifact must carry
+   * the caveats and the named window, and a client that assembled its own copy
+   * would be a second rendering of the report that could disagree with the
+   * page it was taken from. The anchor points at the route; the response's
+   * `Content-Disposition` names the file.
+   *
+   * Mounted before the click and removed after, for the same reason
+   * `archive.tsx` does it — a detached anchor does not fire in every browser.
+   * There is deliberately NO success toast: the download settles after this
+   * function returns and nothing here can observe whether it arrived, so a
+   * success message would be a claim about an act this code never saw. The
+   * browser's own download UI reports both outcomes, and the button only
+   * exists once the same report has already been built successfully.
+   */
+  const exportReport = useCallback(() => {
+    const anchor = document.createElement("a");
+    anchor.href = client.activityExportUrl(resolved.from, resolved.to);
+    anchor.download = `activity-${resolved.from}_${resolved.to}.csv`;
+    anchor.rel = "noopener";
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+  }, [client, resolved.from, resolved.to]);
 
   return (
     <Panel
@@ -1060,16 +1149,30 @@ export function ActivityReport({
             meta={report === undefined ? undefined : plural(report.totalRuns, "run")}
             actions={
               report === undefined ? undefined : (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button size="sm" variant="ghost" icon={<Info aria-hidden className={dsIcon.md} />}>
-                      How it is counted
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent title="How this report is counted" width="lg" align="end">
-                    <BulletList items={caveatsFor(report)} />
-                  </PopoverContent>
-                </Popover>
+                <span className="flex items-center gap-[var(--ds-space-tight)]">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button size="sm" variant="ghost" icon={<Info aria-hidden className={dsIcon.md} />}>
+                        How it is counted
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent title="How this report is counted" width="lg" align="end">
+                      <BulletList items={[...activityReportCaveats(report)]} />
+                    </PopoverContent>
+                  </Popover>
+                  {/* The demo's Export, beside the ⓘ exactly as it draws it.
+                      It renders only once the report is loaded — a button that
+                      exported a window nothing had answered for would hand a
+                      supervisor a file about a report the operator never saw. */}
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={<Download aria-hidden className={dsIcon.md} />}
+                    onClick={exportReport}
+                  >
+                    Export
+                  </Button>
+                </span>
               )
             }
           />
@@ -1085,13 +1188,21 @@ export function ActivityReport({
                 <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{resource.error.message}</p>
               </Refusal>
             ) : resource.value.totalRuns === 0 ? (
-              <Well>
-                <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
-                  No run started between {resource.value.from} and {resource.value.to}. Archived runs are deliberately
-                  not counted here — they left the live surfaces when their version bumped, and the Archive is where
-                  they are read.
-                </p>
-              </Well>
+              /* D236: a range with no RUNS can still hold ledger entries —
+                 they are never archived and outlive the runs that filed them —
+                 so the write-ledger block renders here too. Hiding it would
+                 report "nothing happened" over a window in which something was
+                 filed into a real HR system. */
+              <>
+                <Well>
+                  <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+                    No run started between {resource.value.from} and {resource.value.to}. Archived runs are deliberately
+                    not counted here — they left the live surfaces when their version bumped, and the Archive is where
+                    they are read.
+                  </p>
+                </Well>
+                <WriteLedgerBlock ledger={resource.value.ledger} />
+              </>
             ) : (
               <ActivityBody report={resource.value} rows={queueRows} />
             )}

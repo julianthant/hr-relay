@@ -15,6 +15,13 @@
  * renumbering would be citing different transactions than it was written to
  * cite. When the line found at the index carries a different sequence, that is
  * reported as a mismatch rather than being resolved from the neighbourhood.
+ *
+ * The SAME reader answers the Activity report's write-ledger block (D236). It
+ * is a second question over one corpus — "resolve these exact pointers" and
+ * "fold everything confirmed in this window" — and it is deliberately not a
+ * second module: two readers of an append-only audit file would be two parse
+ * disciplines, and the one that was wrong would be wrong about what was filed
+ * into a real HR system.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
@@ -24,12 +31,30 @@ import {
   type LedgerLinePointer,
   type ResolvedLedgerLineWire,
 } from "../../domain/archive/ledger-resolution.js";
+import { localDatePart } from "../../domain/clock.js";
+import {
+  ActivityLedgerBlockSchema,
+  type ActivityLedgerBlock,
+} from "../../domain/dashboard/activity.js";
 import { LedgerEntrySchema } from "../../domain/ledger.js";
-import { ledgerFilePath } from "./ledger-projector.js";
+import { ledgerFilePath, listLedgerFiles } from "./ledger-projector.js";
 
 export interface LedgerReadThrough {
   /** Resolve every pointer, in the order given. Never reorders, never drops. */
   resolve(pointers: readonly LedgerLinePointer[]): readonly ResolvedLedgerLineWire[];
+  /**
+   * The Activity report's write-ledger block over `[from, to]` inclusive
+   * (D236) — what was actually filed, folded by `(system, instance)`.
+   *
+   * The window closes on the entry's own `confirmedAt`, read through the SAME
+   * `localDatePart` the report's day axis uses. A partition FILE name is a UTC
+   * date, so it decides only which files are opened — widened by one day at
+   * each end, which covers every real offset — and never the verdict: a write
+   * confirmed at 17:00 local on the window's last day can sit in the next day's
+   * partition, and letting the file name decide would drop a real HR
+   * transaction out of the report because of a timezone.
+   */
+  foldActivityRange(from: string, to: string): ActivityLedgerBlock;
 }
 
 function resolveOne(stateRoot: string, pointer: LedgerLinePointer): ResolvedLedgerLineWire {
@@ -87,6 +112,79 @@ function resolveOne(stateRoot: string, pointer: LedgerLinePointer): ResolvedLedg
   return resolveLedgerLine(pointer, parsed.data.payload);
 }
 
+/** `date` plus `days`, on the UTC calendar the partition file names use. */
+function shiftPartitionDate(date: string, days: number): string {
+  const at = new Date(`${date}T00:00:00.000Z`);
+  at.setUTCDate(at.getUTCDate() + days);
+  return at.toISOString().slice(0, 10);
+}
+
+/**
+ * Fold every ledger line whose confirmation falls in `[from, to]`.
+ *
+ * A line this fold cannot READ throws, naming the file and the line. The
+ * pointer path above answers an unreadable line with a reason because it is
+ * resolving ONE citation and the surface can say "this one could not be read";
+ * a fold has no such column. Skipping the line would silently subtract a real
+ * HR transaction from the count of what was filed, which is the same defect
+ * `listLedgerFiles` already refuses one level up when it meets a file it cannot
+ * name.
+ */
+function foldActivity(stateRoot: string, fromInput: string, toInput: string): ActivityLedgerBlock {
+  const from = z.iso.date().parse(fromInput);
+  const to = z.iso.date().parse(toInput);
+  if (from > to) {
+    throw new Error(`a write-ledger fold over ${from}..${to} ends before it starts`);
+  }
+  const earliestFile = shiftPartitionDate(from, -1);
+  const latestFile = shiftPartitionDate(to, 1);
+  const totals = new Map<string, { system: string; entries: number; prod: number; test: number }>();
+  for (const partition of listLedgerFiles(stateRoot)) {
+    if (partition.date < earliestFile || partition.date > latestFile) continue;
+    const text = readFileSync(partition.path, "utf8");
+    const lines = text === "" ? [] : text.replace(/\n$/u, "").split("\n");
+    for (const [index, line] of lines.entries()) {
+      let json: unknown;
+      try {
+        json = JSON.parse(line);
+      } catch (error) {
+        throw new Error(
+          `ledger/${partition.system}-${partition.date}.jsonl line ${String(index + 1)} is not JSON: `
+          + (error instanceof Error ? error.message : String(error))
+          + "; refusing to fold a write ledger with a line it cannot read",
+          { cause: error },
+        );
+      }
+      const parsed = LedgerEntrySchema.safeParse(json);
+      if (!parsed.success) {
+        throw new Error(
+          `ledger/${partition.system}-${partition.date}.jsonl line ${String(index + 1)} is not a ledger `
+          + `entry: ${parsed.error.message}; refusing to fold a write ledger with a line it cannot read`,
+        );
+      }
+      const { payload } = parsed.data;
+      if (payload.system !== partition.system) {
+        throw new Error(
+          `ledger/${partition.system}-${partition.date}.jsonl line ${String(index + 1)} carries system `
+          + `${payload.system}; a partition holding another system's entry is not folded around`,
+        );
+      }
+      const day = localDatePart(new Date(payload.confirmedAt));
+      if (day < from || day > to) continue;
+      const row = totals.get(payload.system) ?? { system: payload.system, entries: 0, prod: 0, test: 0 };
+      row.entries += 1;
+      if (payload.instance === "prod") row.prod += 1;
+      else row.test += 1;
+      totals.set(payload.system, row);
+    }
+  }
+  return ActivityLedgerBlockSchema.parse({
+    systems: [...totals.values()].sort((left, right) => (
+      right.entries - left.entries || left.system.localeCompare(right.system)
+    )),
+  });
+}
+
 /**
  * The archive's ledger read-through, over a state root.
  *
@@ -99,6 +197,9 @@ export function createLedgerReadThrough(stateRootInput: unknown): LedgerReadThro
   return Object.freeze({
     resolve(pointers: readonly LedgerLinePointer[]): readonly ResolvedLedgerLineWire[] {
       return Object.freeze(pointers.map((pointer) => resolveOne(stateRoot, pointer)));
+    },
+    foldActivityRange(from: string, to: string): ActivityLedgerBlock {
+      return foldActivity(stateRoot, from, to);
     },
   });
 }

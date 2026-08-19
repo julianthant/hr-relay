@@ -359,11 +359,21 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   };
   const setHash = descriptorSetHash(DESCRIPTORS.map((descriptor) => descriptor.contractFingerprint));
 
+  /**
+   * ONE read-through over the append-only write ledger, shared by the two
+   * surfaces that read it: the archive resolves an archived run's pointers
+   * (D179) and the Activity report folds the range's entries (D236). A second
+   * instance would be a second parse discipline over the record of what was
+   * filed into a real HR system.
+   */
+  const ledger = createLedgerReadThrough(stateRoot);
+
   const projection = createRunQueueProjection({
     stateRoot,
     clock,
     appVersion,
     descriptorSetHash: setHash,
+    ledger,
     authority: {
       getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
@@ -482,7 +492,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     // The archive's ledger read-through, over the SAME state root the
     // projector appends to — the pointers stay pointers and this is what
     // turns them back into what was filed.
-    ledger: createLedgerReadThrough(stateRoot),
+    ledger,
   };
 
   const kernel = createCommandKernel({
