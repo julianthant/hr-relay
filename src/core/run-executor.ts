@@ -703,7 +703,7 @@ export async function executeClaimedRun(
           if (dependencyEntry === undefined || dependencyEntry.mode === "execute") conditionKnown = false;
         }
         if (node.when !== undefined && conditionKnown) {
-          // D227 — ONE evaluator for the declared condition. The old closure
+          // D228 — ONE evaluator for the declared condition. The old closure
           // could return a non-boolean and had to be checked for it; a declared
           // condition cannot, and every way it can fail to resolve throws by
           // name inside `evaluateNodeCondition` rather than guessing.

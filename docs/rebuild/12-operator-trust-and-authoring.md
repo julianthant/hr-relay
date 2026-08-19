@@ -1287,7 +1287,7 @@ answer that could disagree with the one `semantic-ui-registry` pins.
 
 **A closure is reported as its presence, never as decompiled prose.** `bind`, `choose`,
 `derive`, and the write-safety key function are shown as the shape they sit in plus their source
-file. (`when` was in that list until D227 removed it from the list of closures entirely — see §5.9.) `inputSubject` states whether it is a declared constant or a function of the input rather than
+file. (`when` was in that list until D228 removed it from the list of closures entirely — see §5.9.) `inputSubject` states whether it is a declared constant or a function of the input rather than
 being evaluated against a fabricated input to print a specimen answer. A freshness bound of
 `Infinity` crosses the wire as the word `unbounded`: as a raw number `JSON.stringify` turns it into
 `null`, which reads as a MISSING bound rather than a deliberate one.
@@ -1318,7 +1318,7 @@ the toolbar slot the demo's run picker occupies carries the workflow identity ba
 stays excluded per the first exclusion above — the demo's per-node run state, recorded values,
 provenance lines and delegation child rows are ALL that one exclusion, seen from four angles); the
 node panel's contract table listed TASK ARMS, not contract fields, with its header counting arms and
-the ⓘ saying so in as many words — **superseded by §5.9 (D226), which serves a derived field census
+the ⓘ saying so in as many words — **superseded by §5.9 (D227), which serves a derived field census
 and counts fields**; the graph header omits the demo's file-count segment (a per-run
 fact, not a registry one); no lane dividers exist because no lane fact exists on the descriptor
 (a descriptor-authored phase would sit inside §5.3's closed editable set once Phase B exists); and
@@ -1326,9 +1326,9 @@ the demo's `Version registry` header action is absent because no version-registr
 this tree. The conditional-node line printed "runs when the descriptor's own when() predicate
 holds" — honest, and less than the demo's authored sentence — and the recorded fix named an authored
 `whenLabel` / node `purpose` / workflow `summary`. **Two thirds of that landed and one third was
-refused**: `purpose` and `summary` are authored data (§5.9, D228), while `whenLabel` is refused
+refused**: `purpose` and `summary` are authored data (§5.9, D229), while `whenLabel` is refused
 because a sentence beside a predicate is a second description of one rule — the `when` itself became
-a DECLARED condition instead (doc 02 §3.3, D227). Read-only per D186
+a DECLARED condition instead (doc 02 §3.3, D228). Read-only per D186
 throughout: no edit affordances anywhere.
 
 ### 5.8 The generated UI catalog gets a surface, and it serves the COMMITTED artifact (2026-08-09, D177)
@@ -1349,7 +1349,7 @@ acting on it would be acting on fiction.
 stale live verification current, so every row carries its `verifiedAt` and both evidence refs at the
 same weight as its id — never folded into a disclosure a hurried reader skips.
 
-### 5.9 The node panel is a FIELD table, and its census is derived (2026-08-19, D226)
+### 5.9 The node panel is a FIELD table, and its census is derived (2026-08-19, D227)
 
 §5.7's presentation delta recorded that the ported node panel listed TASK ARMS where the operator's
 demo lists contract FIELDS, and that the header counted arms with the ⓘ saying so. That gap is
@@ -1390,14 +1390,14 @@ value the charter forbids.
 
 **A node's `when`, in words.** §5.7 recorded the conditional line as "runs when the descriptor's own
 when() predicate holds" and named an authored `whenLabel` as the fix. The fix taken instead is
-**D227** (doc 02 §3.3): the condition is DECLARED data, the executor evaluates it and the surface
+**D228** (doc 02 §3.3): the condition is DECLARED data, the executor evaluates it and the surface
 renders it through `describeNodeCondition` — one value, two readers, so the sentence cannot disagree
 with the rule. §5.7's "a closure is reported as its presence" is unchanged for `bind`, `choose`,
 `derive` and the write-safety key; `when` simply stopped being a closure. The wire's
 `shape.conditional: boolean` is replaced by `shape.condition`, and a condition the closed vocabulary
 cannot express is a compile error in the descriptor rather than a plausible sentence here.
 
-**The descriptor's own words (D228).** §5.7 recorded that the ⓘs open with the DERIVATION ("this
+**The descriptor's own words (D229).** §5.7 recorded that the ⓘs open with the DERIVATION ("this
 graph is the as-built descriptor, read from …") where the demo opens with the descriptor's own
 sentence, and named authored prose as the fix. A descriptor now carries `summary` — one sentence
 about the workflow — and `nodePurposes`, one sentence per node, both plain data on the broad

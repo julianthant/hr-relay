@@ -150,7 +150,7 @@ describe("the graph panel's derivations", () => {
     assert.ok(workflow !== undefined);
     const totals = explorerGraphTotals(workflow);
     assert.equal(totals.nodes, workflow.nodes.length);
-    // D226 — a read is one OUTPUT field of a read arm, never an arm. The count
+    // D227 — a read is one OUTPUT field of a read arm, never an arm. The count
     // is strictly larger than the arm count it replaced, which is the whole
     // point: an arm is a contract, and an operator asks about a field.
     const armCount = workflow.nodes

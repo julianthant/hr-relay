@@ -334,7 +334,7 @@ export const separationsIdentityCheckDescriptor = defineWorkflowDescriptor({
     title: (input) => `${input.employeeName} (${input.emplId})`,
     subtitle: (input) => `Separation document ${input.documentNumber}`,
   },
-  /** D228 — the descriptor's own words about each node, projected by the explorer. */
+  /** D229 — the descriptor's own words about each node, projected by the explorer. */
   nodePurposes: [
     {
       nodeId: "job-summary",

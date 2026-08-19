@@ -674,7 +674,7 @@ function scenarioWires(
 }
 
 /**
- * The descriptor's prose, or the gap named (D228).
+ * The descriptor's prose, or the gap named (D229).
  *
  * The reason text says WHERE to author the missing sentence, because the reader
  * of this surface is exactly the person — or the AI — who would author it. It

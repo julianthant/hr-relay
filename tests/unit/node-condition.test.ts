@@ -1,5 +1,5 @@
 /**
- * A task node's declared `when` (D227).
+ * A task node's declared `when` (D228).
  *
  * The point of the declaration is that ONE value is both the rule the executor
  * applies and the sentence the explorer prints, so these cases pin the two
@@ -149,7 +149,7 @@ describe("a declared node condition", () => {
   });
 });
 
-/* ── the factory refuses a condition that names nothing (D227) ───────────── */
+/* ── the factory refuses a condition that names nothing (D228) ───────────── */
 
 describe("defineWorkflowDescriptor over a declared condition", () => {
   const Input = z.strictObject({

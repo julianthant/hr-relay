@@ -247,7 +247,7 @@ export interface WorkflowDescriptor<
    */
   readonly timeline: readonly TimelineCategoryProjection[];
   /**
-   * D228 — the descriptor's own sentence about what this workflow does, and one
+   * D229 — the descriptor's own sentence about what this workflow does, and one
    * about each node. Plain data, DERIVED by the factory into an exhaustive,
    * frozen list: a partial declaration would leave some nodes silently
    * prose-less on the one surface whose job is to explain them.
@@ -312,7 +312,7 @@ export interface AnyWorkflowDescriptor {
     label: string;
     nodes: readonly Readonly<{ id: string; label: string }>[];
   }>[];
-  /** D228 — the descriptor's own prose; plain data, so it rides the broad view. */
+  /** D229 — the descriptor's own prose; plain data, so it rides the broad view. */
   readonly summary?: string;
   readonly nodePurposes: readonly Readonly<{ nodeId: string; purpose: string }>[];
   readonly enqueue: EnqueuePolicy;
@@ -354,7 +354,7 @@ export interface WorkflowDescriptorSpec<
    */
   readonly timeline?: readonly Readonly<{ label: string; nodes: readonly string[] }>[];
   /**
-   * D228 — the authored form: one sentence per node, keyed by node id. Plain
+   * D229 — the authored form: one sentence per node, keyed by node id. Plain
    * strings, parsed by the factory into branded ids exactly as `timeline` is.
    * Optional so a fixture graph need not carry prose, and EXHAUSTIVE when
    * declared: a partial list would leave some nodes silently prose-less.
@@ -767,7 +767,7 @@ function deriveTimeline(
 }
 
 /**
- * D228 — normalize the descriptor's per-node prose.
+ * D229 — normalize the descriptor's per-node prose.
  *
  * A declared list is EXHAUSTIVE for the same reason D225's timeline is: the
  * explorer's whole job is to explain a graph, and a node quietly missing its
@@ -797,7 +797,7 @@ function deriveNodePurposes(
   const missing = nodes.map((node) => String(node.id)).filter((nodeId) => !seen.has(nodeId));
   if (missing.length > 0) {
     throw new Error(
-      `${id}: a declared node-purpose list is exhaustive (D228) and this one does not cover: ${missing.join(", ")}`,
+      `${id}: a declared node-purpose list is exhaustive (D229) and this one does not cover: ${missing.join(", ")}`,
     );
   }
   return Object.freeze(purposes);
@@ -949,7 +949,7 @@ export function defineWorkflowDescriptor<
   assertUnique(id, "verdict keys", (spec.verdicts ?? []).map((verdict) => verdict.key));
 
   /**
-   * D227 — a declared `when` names a real field of a real schema, checked here
+   * D228 — a declared `when` names a real field of a real schema, checked here
    * the same way a detail's path is. The closure form could only fail at run
    * time, on the one run whose input finally reached the node; a declaration is
    * refused at `defineWorkflowDescriptor`, which is module load and therefore

@@ -37,7 +37,7 @@ function allTasks() {
     .workflows.flatMap((workflow) => workflow.nodes.flatMap((node) => node.tasks));
 }
 
-describe("the contract field census (D226)", () => {
+describe("the contract field census (D227)", () => {
   it("gives every arm a field for every leaf of both its schemas", () => {
     for (const task of allTasks()) {
       assert.ok(

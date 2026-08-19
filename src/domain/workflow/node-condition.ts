@@ -1,5 +1,5 @@
 /**
- * A task node's `when` — a DECLARED condition, not an opaque closure (D227).
+ * A task node's `when` — a DECLARED condition, not an opaque closure (D228).
  *
  * ## Why this is data
  *

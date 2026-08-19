@@ -1,5 +1,5 @@
 /**
- * The contract field census (D226) — `contractSchemaLeaves`.
+ * The contract field census (D227) — `contractSchemaLeaves`.
  *
  * The explorer's node panel renders one row per FIELD, and every row is derived
  * from the contract's own zod shape rather than from an authored list. These

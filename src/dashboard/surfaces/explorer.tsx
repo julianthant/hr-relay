@@ -31,7 +31,7 @@
  * it is absent here rather than approximated, and the toolbar band it occupied
  * carries the workflow's identity instead. The demo's node panel is a
  * FIELD-level contract table (`Wage · ucpath · $18.50/hr`); this one is too
- * (D226), over a census derived from each contract's own zod shape — with the
+ * (D227), over a census derived from each contract's own zod shape — with the
  * third column carrying how the field is RECORDED rather than what one run
  * recorded, because no run is laid over this graph.
  *
@@ -164,7 +164,7 @@ export function fmtFreshness(limit: number | "unbounded"): string {
 }
 
 /**
- * The demo's `contractTotals`, now a real FIELD census (D226).
+ * The demo's `contractTotals`, now a real FIELD census (D227).
  *
  * A read is one field a read arm observes FROM a system — its output leaves. A
  * write is one field a commit arm writes TO a system — its input leaves. The
@@ -1448,7 +1448,7 @@ function NodeShapeFacts({ node }: { node: ExplorerNodeWire }) {
  * ====================================================================== */
 
 /**
- * The descriptor's own words, or the gap named (D228).
+ * The descriptor's own words, or the gap named (D229).
  *
  * An absent sentence is drawn faint and italic and says which file owes one —
  * the reader of this surface is the person who would author it. Nothing here
@@ -1502,7 +1502,7 @@ function GraphInfo({
             The descriptor's OWN sentence leads, because that is what the reader
             came for; the derivation note below it is how to trust the sentence.
             An undeclared summary names the file that owes one rather than
-            composing something from the two-word label (D228).
+            composing something from the two-word label (D229).
           */}
           <Prose prose={workflow.summary} />
           <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
@@ -1518,7 +1518,7 @@ function GraphInfo({
             {POSTURE_NOTE[posture]}
           </p>
           <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
-            {`${plural(totals.reads, "read")} and ${plural(totals.writes, "write")} count FIELDS, derived from each contract's own zod shape (D226): a read is a field a read arm observes from a system, a write is a field a commit arm writes to one. A prepare arm stages the values its commit then writes, so its inputs are not counted twice.`}
+            {`${plural(totals.reads, "read")} and ${plural(totals.writes, "write")} count FIELDS, derived from each contract's own zod shape (D227): a read is a field a read arm observes from a system, a write is a field a commit arm writes to one. A prepare arm stages the values its commit then writes, so its inputs are not counted twice.`}
           </p>
           <p
             className={cn(

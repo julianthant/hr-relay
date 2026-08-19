@@ -20,8 +20,8 @@ The remaining three landed 2026-08-19 and are deleted per the same rule:
 
 | Record | Landed as | Owning doc |
 | --- | --- | --- |
-| **Field-level contract rows** — `Field · System · Recorded` | **D226** — `contractSchemaLeaves` walks each contract boundary schema into its dotted leaf paths, the panel is a field table, and `Recorded` carries the field's declared PROVENANCE (never a run's value) with a reachable `unknown` arm | doc 12 §5.9 |
-| **A node's `when` condition, in words** | **D227** — the `when` is a DECLARED condition, not a closure. `evaluateNodeCondition` applies it and `describeNodeCondition` renders it, so the sentence IS the rule. The authored `whenLabel` this record proposed is refused precisely because it would be a second description | doc 02 §3.3 |
-| **The descriptor's prose** — a graph summary and a node purpose | **D228** — `summary` and `nodePurposes` on the descriptor, exhaustive when declared, projected into both ⓘs, with `explorer-prose-declared` making the wire's `absent` arm unreachable for a registered workflow | doc 12 §5.9 |
+| **Field-level contract rows** — `Field · System · Recorded` | **D227** — `contractSchemaLeaves` walks each contract boundary schema into its dotted leaf paths, the panel is a field table, and `Recorded` carries the field's declared PROVENANCE (never a run's value) with a reachable `unknown` arm | doc 12 §5.9 |
+| **A node's `when` condition, in words** | **D228** — the `when` is a DECLARED condition, not a closure. `evaluateNodeCondition` applies it and `describeNodeCondition` renders it, so the sentence IS the rule. The authored `whenLabel` this record proposed is refused precisely because it would be a second description | doc 02 §3.3 |
+| **The descriptor's prose** — a graph summary and a node purpose | **D229** — `summary` and `nodePurposes` on the descriptor, exhaustive when declared, projected into both ⓘs, with `explorer-prose-declared` making the wire's `absent` arm unreachable for a registered workflow | doc 12 §5.9 |
 
 D186's EDIT half (doc 12 §5.3) remains DEFERRED by explicit disposition and is not a record here.

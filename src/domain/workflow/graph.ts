@@ -91,7 +91,7 @@ export interface TaskStepNode<Scope, C extends AnyReadTaskContract> extends Grap
   /** Pure: workflow input + declared upstream outputs → `z.input<C["input"]>`. */
   readonly bind: (scope: Scope) => z.input<C["input"]>;
   /**
-   * D227 — a DECLARED condition, evaluated by `evaluateNodeCondition` and
+   * D228 — a DECLARED condition, evaluated by `evaluateNodeCondition` and
    * rendered by `describeNodeCondition`. One declaration, so the sentence the
    * explorer prints cannot disagree with the rule the executor applies.
    */

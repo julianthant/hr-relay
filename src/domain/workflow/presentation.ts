@@ -221,7 +221,7 @@ export const TimelineCategoryProjectionSchema = z.strictObject({
 export type TimelineCategoryProjection = z.infer<typeof TimelineCategoryProjectionSchema>;
 
 /**
- * D228 — the descriptor's own prose about one node.
+ * D229 — the descriptor's own prose about one node.
  *
  * The explorer's ⓘ opens with the descriptor's sentence about the workflow and
  * about each node. That sentence is DATA the descriptor authors, not code the

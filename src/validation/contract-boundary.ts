@@ -171,7 +171,7 @@ export function sealDeclarativeMetadata<Value>(
   return Object.freeze(copy) as Value;
 }
 
-/* ── the field census a contract's schema owns (D226) ─────────────────────── */
+/* ── the field census a contract's schema owns (D227) ─────────────────────── */
 
 /**
  * What one census leaf holds, as a closed vocabulary.

@@ -188,7 +188,7 @@ export const kualiTimekeeperAnnotationDescriptor = defineWorkflowDescriptor({
     title: (input) => `Kuali ${input.documentNumber} timekeeper`,
     subtitle: (input) => `EID ${input.emplId}`,
   },
-  /** D228 — the descriptor's own words about each node, projected by the explorer. */
+  /** D229 — the descriptor's own words about each node, projected by the explorer. */
   nodePurposes: [
     {
       nodeId: "annotate-timekeeper",

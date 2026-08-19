@@ -1398,7 +1398,7 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/preflight.ts:BuildPreflightReportInput",
   "src/domain/preflight.ts:PreflightRunner",
   "src/domain/preflight.ts:PreflightRunnerContext",
-  // D227 — the AUTHORED faces of `NodeConditionSchema`, exactly as
+  // D228 — the AUTHORED faces of `NodeConditionSchema`, exactly as
   // `WorkflowCapabilitiesSpec` is the authored face of its runtime schema. They
   // exist so a descriptor literal need not spell a brand; `parseNodeCondition`
   // runs the schema before anything durable, wire-bound, or executable sees the

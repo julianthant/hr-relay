@@ -113,7 +113,7 @@ export interface StepOpts<
   readonly label?: string;
   readonly dependsOn: D;
   readonly bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<C["input"]>;
-  /** D227 — a DECLARED condition; the closure form is gone on purpose. */
+  /** D228 — a DECLARED condition; the closure form is gone on purpose. */
   readonly when?: NodeConditionSpec;
   /** REQUIRED — no default (doc 02 §5.3). */
   readonly replay: "checkpoint" | "always-rerun";

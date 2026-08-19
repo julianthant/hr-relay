@@ -866,7 +866,7 @@ export const separationsDescriptor = defineWorkflowDescriptor({
       ? `Kuali action ${input.actionId.slice(0, 8)}…`
       : `re-read ${String(input.reRead.ordinal)} — ${input.reRead.reason}`),
   },
-  /** D228 — the descriptor's own words about each node, projected by the explorer. */
+  /** D229 — the descriptor's own words about each node, projected by the explorer. */
   nodePurposes: [
     {
       nodeId: "document",

@@ -349,7 +349,7 @@ export const separationsKronosTimecardDescriptor = defineWorkflowDescriptor({
     title: (input) => `EID ${input.emplId}`,
     subtitle: (input) => `${input.rangeStart} – ${input.rangeEnd}`,
   },
-  /** D228 — the descriptor's own words about each node, projected by the explorer. */
+  /** D229 — the descriptor's own words about each node, projected by the explorer. */
   nodePurposes: [
     {
       nodeId: "search",

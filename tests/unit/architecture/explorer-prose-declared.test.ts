@@ -1,6 +1,6 @@
 /**
  * `explorer-prose-declared` — every REGISTERED workflow and node carries the
- * descriptor's own words (doc 12 §5.9, D228).
+ * descriptor's own words (doc 12 §5.9, D229).
  *
  * The explorer's ⓘ opens with the descriptor's sentence about the workflow and
  * about the selected node. That sentence is DATA the descriptor authors, and
@@ -136,7 +136,7 @@ describe("the declaration itself is exhaustive or absent, never partial", () => 
   it("REFUSES a node-purpose list that does not cover every node", () => {
     assert.throws(
       fixtureWith([{ nodeId: "first", purpose: "reads the receipt" }]),
-      /a declared node-purpose list is exhaustive \(D228\) and this one does not cover: second/u,
+      /a declared node-purpose list is exhaustive \(D229\) and this one does not cover: second/u,
     );
   });
 

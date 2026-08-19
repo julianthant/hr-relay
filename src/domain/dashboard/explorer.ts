@@ -298,7 +298,7 @@ export const ExplorerNodeShapeWireSchema = z.discriminatedUnion("kind", [
     kind: z.literal("task"),
     replay: z.enum(["checkpoint", "always-rerun"]),
     /**
-     * D227 — the node's `when`, served as the DECLARATION the executor
+     * D228 — the node's `when`, served as the DECLARATION the executor
      * evaluates. It replaced a `conditional: boolean` beside an opaque closure,
      * which is why the surface can now say what the condition is: the client
      * renders it through `describeNodeCondition`, the one projection of the one
@@ -350,7 +350,7 @@ export const ExplorerNodeShapeWireSchema = z.discriminatedUnion("kind", [
 export type ExplorerNodeShapeWire = z.infer<typeof ExplorerNodeShapeWireSchema>;
 
 /**
- * The descriptor's own words about a workflow or a node (D228).
+ * The descriptor's own words about a workflow or a node (D229).
  *
  * `absent` is an arm rather than a throw on purpose. The explorer serves every
  * registered workflow in ONE document, so refusing the whole surface over a
@@ -368,7 +368,7 @@ export type ExplorerProseWire = z.infer<typeof ExplorerProseWireSchema>;
 export const ExplorerNodeWireSchema = z.strictObject({
   id: NodeIdSchema,
   label: z.string().min(1),
-  /** D228 — the descriptor's own sentence about why this node exists. */
+  /** D229 — the descriptor's own sentence about why this node exists. */
   purpose: ExplorerProseWireSchema,
   dependsOn: z.array(NodeIdSchema),
   shape: ExplorerNodeShapeWireSchema,
@@ -428,7 +428,7 @@ export type ExplorerScenarioWire = z.infer<typeof ExplorerScenarioWireSchema>;
 export const ExplorerWorkflowWireSchema = z.strictObject({
   id: WorkflowIdSchema,
   label: z.string().min(1),
-  /** D228 — the descriptor's own sentence about what this workflow does. */
+  /** D229 — the descriptor's own sentence about what this workflow does. */
   summary: ExplorerProseWireSchema,
   code: z.string().min(1),
   icon: z.string().min(1),

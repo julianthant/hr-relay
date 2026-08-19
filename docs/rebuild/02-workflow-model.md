@@ -353,7 +353,7 @@ export interface TaskStepNode<TCtx, C extends AnyReadContract> {
   bind: (ctx: TCtx) => z.input<C["input"]>;
   /** Declared graph dependencies; freshness and scheduling use these static edges. */
   dependsOn: readonly string[];
-  /** Optional condition — a DECLARED value, not a closure (D227, §3.3). */
+  /** Optional condition — a DECLARED value, not a closure (D228, §3.3). */
   when?: NodeCondition;
   /** Resume policy — REQUIRED, no default (§5.3). */
   replay: "checkpoint" | "always-rerun";
@@ -980,7 +980,7 @@ interface StepOpts<
   label?: string;                                        // defaults to contract.title (§1.5)
   dependsOn: D;
   bind: (scope: FlowScope<InputSchema, Pick<S, D[number]>>) => z.input<C["input"]>;
-  when?: NodeConditionSpec;                              // D227 — declared, see §3.3
+  when?: NodeConditionSpec;                              // D228 — declared, see §3.3
   replay: "checkpoint" | "always-rerun";                 // REQUIRED
 }
 
@@ -1196,7 +1196,7 @@ partial failure, cancellation, retry/resume, duplicate replay, and multiple inde
 
 ---
 
-### 3.3 A node's `when` is a DECLARED condition, not a closure (2026-08-19, D227)
+### 3.3 A node's `when` is a DECLARED condition, not a closure (2026-08-19, D228)
 
 `when` was `(scope) => boolean`. That is the right type for a rule nothing but the executor ever
 reads, and the wrong one the moment a surface has to say *what* the rule is: doc 12 §5.7 correctly

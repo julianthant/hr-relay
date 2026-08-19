@@ -435,7 +435,7 @@ export const separationsKualiFinalizationDescriptor = defineWorkflowDescriptor({
     title: (input) => `Kuali ${input.documentNumber} finalization`,
     subtitle: (input) => `${input.employeeName} — ${input.transactionNumber}`,
   },
-  /** D228 — the descriptor's own words about each node, projected by the explorer. */
+  /** D229 — the descriptor's own words about each node, projected by the explorer. */
   nodePurposes: [
     {
       nodeId: "job-summary",

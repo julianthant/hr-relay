@@ -249,7 +249,7 @@ export const personLookupDescriptor = defineWorkflowDescriptor({
     title: (input) => ("emplId" in input ? `EID ${input.emplId}` : input.name),
     subtitle: (input) => (input.includeCrmDates ? "with CRM dates" : "person lookup"),
   },
-  /** D228 — the descriptor's own words about each node, projected by the explorer. */
+  /** D229 — the descriptor's own words about each node, projected by the explorer. */
   nodePurposes: [
     {
       nodeId: "searching",
