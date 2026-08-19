@@ -264,6 +264,52 @@ export function workflowRoleRegistry(
 export const WORKFLOW_ROLES = workflowRoleRegistry(WORKFLOW_MODULES);
 
 /**
+ * Every registered workflow's SHORT CODE names exactly one workflow
+ * (doc 02 §1.1, D242).
+ *
+ * The descriptor factory already refuses a malformed code, and a code cannot
+ * check its own uniqueness — one descriptor never sees its siblings. Here is
+ * the only place the whole registry is in scope, and uniqueness is not a nice
+ * property: the code is the trace id's leading segment, so two workflows
+ * sharing `sd` would make `sd-141203-9a1c` name two different things at once,
+ * and it is the archive index's leading token, so an operator scanning 800
+ * rows would read one code as two workflows' work. Both are silent — nothing
+ * throws, the rows just mean something other than what they say.
+ */
+export function auditWorkflowCodes(
+  descriptors: readonly AnyWorkflowDescriptor[],
+): readonly string[] {
+  const byCode = new Map<string, string[]>();
+  for (const descriptor of descriptors) {
+    const owners = byCode.get(descriptor.code) ?? [];
+    owners.push(String(descriptor.id));
+    byCode.set(descriptor.code, owners);
+  }
+  return [...byCode.entries()]
+    .filter(([, owners]) => owners.length > 1)
+    .map(([code, owners]) =>
+      `workflow code ${code} is declared by ${owners.join(" and ")}; a short code names exactly one workflow`);
+}
+
+/**
+ * The code → workflow projection, validated at LOAD, exactly as
+ * `workflowRoleRegistry` validates roles: a process that cannot say which
+ * workflow a code names must not serve a surface that prints codes, and must
+ * not mint a trace id whose prefix is ambiguous.
+ */
+export function workflowCodeRegistry(
+  descriptors: readonly AnyWorkflowDescriptor[],
+): Readonly<Record<string, string>> {
+  const violations = auditWorkflowCodes(descriptors);
+  if (violations.length > 0) throw new Error(violations.join("; "));
+  return Object.freeze(Object.fromEntries(
+    descriptors.map((descriptor) => [descriptor.code, String(descriptor.id)]),
+  ));
+}
+
+export const WORKFLOW_IDS_BY_CODE = workflowCodeRegistry(DESCRIPTORS);
+
+/**
  * A globally bound task is not enough: the workflow module itself is the
  * server composition boundary. Every contract must resolve through one of that
  * module's own stores, and every listed store must serve at least one contract
@@ -311,6 +357,7 @@ export function auditImplBindings(bindings: PendingImplBindings): readonly strin
   const violations: string[] = [
     ...auditWorkflowModuleBindings(WORKFLOW_MODULES),
     ...auditWorkflowModuleRoles(WORKFLOW_MODULES),
+    ...auditWorkflowCodes(DESCRIPTORS),
   ];
   const bound = new Set(boundTaskIds());
   const pending = new Map(bindings.tasks.map((entry) => [String(entry.taskId), entry]));

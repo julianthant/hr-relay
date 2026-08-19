@@ -84,6 +84,7 @@ import {
   WorkflowActionPolicySchema,
   WorkflowCapabilitiesSchema,
   WorkflowCategorySchema,
+  WorkflowCodeSchema,
 } from "../domain/workflow/presentation.js";
 import type {
   ArtifactSinkId,
@@ -904,8 +905,10 @@ export function defineWorkflowDescriptor<
 ): WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D> {
   const id = WorkflowIdSchema.parse(spec.id);
   const contractFingerprint = FingerprintSchema.parse(spec.contractFingerprint);
-  if (!/^[a-z0-9]{2}$/.test(spec.code)) {
-    throw new Error(`${id}: code must be exactly two lowercase alphanumeric characters`);
+  // The ONE code declaration site (D242). Uniqueness across the registry is
+  // the composition root's — a descriptor cannot see its siblings.
+  if (!WorkflowCodeSchema.safeParse(spec.code).success) {
+    throw new Error(`${id}: code must be two to four lowercase letters (doc 02 §1.1, D242)`);
   }
   if (spec.label.trim().length === 0) throw new Error(`${id}: label is required`);
   if (!Number.isInteger(spec.version) || spec.version < 1) {

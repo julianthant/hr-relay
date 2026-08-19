@@ -146,8 +146,22 @@ export const DelegationEdgeIdSchema = slugText<"DelegationEdgeId">("delegation e
 /** The identity that holds a ledger partition's projection lease (doc 09 §6). */
 export const LedgerProjectorIdSchema = slugText<"LedgerProjectorId">("ledger projector id must be kebab-case");
 
+/**
+ * `<code>-<HHMMSS>-<runId4>` — the workflow's short code, the minute of the
+ * day it was planned, and four bytes of its run id.
+ *
+ * The code segment is DELIBERATELY wider than what a descriptor may declare
+ * today (`WorkflowCodeSchema`: two to four lowercase LETTERS, D242). This
+ * schema parses durable stored ids — every run row, span, note line and ledger
+ * entry this program has written carries one — so it is a READER, and a reader
+ * that narrowed to the writer's current rule would refuse history the moment
+ * the rule moved. Two-character alphanumeric codes were the rule until D242,
+ * so `[a-z0-9]{2,4}` is exactly "every code that was ever legal"; the writer
+ * stays strict at its own declaration site, which is where a new code is
+ * chosen and where a wrong one can still be refused.
+ */
 export const TraceIdSchema = brandedText<"TraceId">(
-  /^[a-z0-9]{2}-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/,
+  /^[a-z0-9]{2,4}-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/,
   "trace id must be <code>-<HHMMSS>-<runId4>",
 );
 export const FingerprintSchema = brandedText<"Fingerprint">(/^[0-9a-f]{64}$/, "fingerprint must be SHA-256 hex");
