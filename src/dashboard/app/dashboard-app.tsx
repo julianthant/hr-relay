@@ -502,6 +502,18 @@ function LoadedApp({
    */
   const dispatchCommand = useCallback(
     (action: CommandAction, target: ActionTarget): void => {
+      /*
+        The gate section is still handed to the composer even though the gate's
+        own controls no longer route here (D226 sends them to the ceremony
+        dialog, which is the only surface that can carry the operator's answer).
+        It stays because a `resolve-gate` descriptor arriving on THIS path is a
+        control that reached the generic dispatcher without a ceremony, and the
+        composer's refusal is far more useful with the section in hand: it names
+        the shape the server asked for instead of reporting that no gate is open.
+        No `gateAnswer` is supplied here on purpose — nothing on this path
+        authored one, and a dispatcher that minted one would be answering for
+        the human (doc 09 §14.6 risk 1).
+      */
       const composed = composeCommandRequest(action, target, {
         actorId: boot.actor.id,
         source: "run-detail",
