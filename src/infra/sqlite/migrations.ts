@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 14;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 15;
 
 /** The run lifecycle states in which exactly one worker owns the row (doc 02 §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -1013,6 +1013,37 @@ export const SQLITE_MIGRATIONS = deepFreeze([
       "ALTER TABLE run_checkpoints_d214 RENAME TO run_checkpoints",
       "CREATE INDEX run_checkpoints_item_node_idx ON "
         + "run_checkpoints(workflow, item_id, node_id, attempt DESC, claim_generation DESC)",
+    ],
+  },
+  {
+    /*
+     * D230 — a run's ORDINAL within its workflow, the queue footer's `#N`.
+     *
+     * `run_number` is a MIRRORED column, not a JSON leaf read at query time,
+     * because the two things this ordinal must guarantee are both SQL
+     * properties: `max(run_number)` over one workflow is the counter the next
+     * enqueue reads inside its own transaction, and `UNIQUE (workflow,
+     * run_number)` is what makes "no two runs of one workflow hold the same
+     * number" a fact the database enforces rather than a claim two call sites
+     * make. The integrity audit pins the column to the record's own value, as
+     * it does for every other mirrored column.
+     *
+     * NULLABLE, and every pre-D230 row keeps NULL: an ordinal computed for
+     * those rows now — by `created_at` order, say — would mint a number that
+     * was never true of them and would then have to be reconciled with the
+     * live counter, which is exactly the back-fill D133 forbids. SQLite treats
+     * NULLs as distinct under UNIQUE, so the historical rows do not collide
+     * with each other; the constraint binds only rows that name a number, and
+     * `runs.enqueue` refuses a record whose number the workflow has spent, so
+     * the loud refusal lands before the index has to.
+     *
+     * `ALTER TABLE ADD COLUMN` rather than the v14 table copy: nothing about
+     * the existing UNIQUE constraint moves, so there is nothing to widen.
+     */
+    version: 15,
+    statements: [
+      "ALTER TABLE tasks ADD COLUMN run_number INTEGER",
+      "CREATE UNIQUE INDEX tasks_run_number_idx ON tasks(workflow, run_number)",
     ],
   },
 ] as const);

@@ -214,6 +214,8 @@ describe("start planning", () => {
       dryRun: false,
       // D221 — the item's first attempt; nothing has run for it yet.
       attempt: database.authority.runs.nextItemAttempt({ workflow: "person-lookup", itemId }),
+      // D230 — the workflow's first ordinal, read the same way.
+      runNumber: database.authority.runs.nextWorkflowRunNumber("person-lookup"),
       now: NOW,
     }));
 

@@ -40,6 +40,14 @@ export interface QueuedRunSpec {
    * see, and a wrong one collides with a stored checkpoint rather than failing.
    */
   readonly attempt: number;
+  /**
+   * D230 — the WORKFLOW's next unspent ordinal, read from authority inside the
+   * transaction that inserts this run. Required for `attempt`'s reason one
+   * scope up: a default would be a claim about the workflow's history this
+   * function cannot see, and a wrong one is refused by `enqueue` rather than
+   * silently naming a run somebody else already named.
+   */
+  readonly runNumber: number;
   /** The running app build, stamped at enqueue and never rewritten (D179). */
   readonly appVersion: string;
   readonly now: string;
@@ -77,6 +85,7 @@ export function buildQueuedRun(spec: QueuedRunSpec): RunRecord {
     claimGeneration: 0,
     hidden: false,
     appVersion: spec.appVersion,
+    runNumber: spec.runNumber,
     version: 1,
     createdAt: enqueuedAt,
     updatedAt: enqueuedAt,

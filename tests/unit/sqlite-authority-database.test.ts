@@ -1135,3 +1135,96 @@ describe("authority persistence invariants", () => {
     assert.equal(database.getMeta().authorityGeneration, 0);
   });
 });
+
+/**
+ * D230 — the run ORDINAL a queue footer prints as `#N`.
+ *
+ * The counter has exactly the shape D221's item attempt has one scope up, and
+ * these cases pin the three properties that make it usable as a name: it is
+ * per-WORKFLOW, it is reserved inside the inserting transaction, and a number
+ * a workflow has spent can never be handed out twice. The read-forward arm is
+ * the fourth: a record carrying no ordinal is accepted, stored as SQL NULL, and
+ * does not move the counter — because back-filling one would mint a number that
+ * was never true of that run.
+ */
+describe("D230 run ordinals", () => {
+  const RUN_ID_2 = "aaaaaaaa-0002-4000-8000-000200000000";
+  const RUN_ID_3 = "aaaaaaaa-0003-4000-8000-000300000000";
+
+  function queuedRunAt(
+    runId: string,
+    overrides: Readonly<{ workflow?: string; itemId?: string; traceId?: string; runNumber?: number }>,
+  ): Record<string, unknown> {
+    const { runNumber, ...envelopeOverrides } = overrides;
+    return {
+      ...QUEUED_RUN,
+      envelope: { ...QUEUED_RUN.envelope, runId, ...envelopeOverrides },
+      ...(runNumber === undefined ? {} : { runNumber }),
+    };
+  }
+
+  it("hands out consecutive ordinals per workflow and refuses a spent one", () => {
+    const database = openDatabase();
+    assert.equal(database.authority.runs.nextWorkflowRunNumber(WORKFLOW_ID), 1);
+    database.authority.runs.enqueue(queuedRunAt(RUN_ID, { runNumber: 1 }));
+    assert.equal(database.authority.runs.nextWorkflowRunNumber(WORKFLOW_ID), 2);
+    database.authority.runs.enqueue(queuedRunAt(RUN_ID_2, {
+      itemId: UUID_6, traceId: "pl-170002-0002", runNumber: 2,
+    }));
+    assert.equal(database.authority.runs.get(RUN_ID)?.runNumber, 1);
+    assert.equal(database.authority.runs.get(RUN_ID_2)?.runNumber, 2);
+
+    // A stale reader that re-uses #2 is refused by NAME, not by an index error.
+    assert.throws(
+      () => database.authority.runs.enqueue(queuedRunAt(RUN_ID_3, {
+        itemId: UUID_8, traceId: "pl-170003-0003", runNumber: 2,
+      })),
+      /already spent \(its next unspent number is #3\)/,
+    );
+    // …and nothing landed, so the counter did not move either.
+    assert.equal(database.authority.runs.get(RUN_ID_3), undefined);
+    assert.equal(database.authority.runs.nextWorkflowRunNumber(WORKFLOW_ID), 3);
+  });
+
+  it("counts each workflow separately and tolerates a gap", () => {
+    const database = openDatabase();
+    database.authority.runs.enqueue(queuedRunAt(RUN_ID, { runNumber: 1 }));
+    // A different workflow starts at 1 again — the ordinal names a run WITHIN
+    // one workflow's history, and a global sequence would make `#1` unreadable.
+    assert.equal(database.authority.runs.nextWorkflowRunNumber("separations"), 1);
+    // A gap is legal: a refused fan-out entry leaves nothing behind, and the
+    // numbers around the gap still name the runs they always named.
+    database.authority.runs.enqueue(queuedRunAt(RUN_ID_2, {
+      itemId: UUID_6, traceId: "pl-170002-0002", runNumber: 7,
+    }));
+    assert.equal(database.authority.runs.nextWorkflowRunNumber(WORKFLOW_ID), 8);
+  });
+
+  it("reads an unstamped pre-v15 row forward without back-filling it", () => {
+    const path = databasePath();
+    const database = openDatabase(path);
+    // QUEUED_RUN carries no ordinal — the exact shape of every row enqueued
+    // before schema v15.
+    database.authority.runs.enqueue(QUEUED_RUN);
+    assert.equal(database.authority.runs.get(RUN_ID)?.runNumber, undefined);
+    // The absent ordinal is SQL NULL, so it neither collides with another
+    // unstamped row nor advances the counter a stamped run will read.
+    assert.equal(database.authority.runs.nextWorkflowRunNumber(WORKFLOW_ID), 1);
+    database.authority.runs.enqueue(queuedRunAt(RUN_ID_2, {
+      itemId: UUID_6, traceId: "pl-170002-0002",
+    }));
+    assert.equal(database.authority.runs.get(RUN_ID_2)?.runNumber, undefined);
+    assert.equal(database.authority.runs.nextWorkflowRunNumber(WORKFLOW_ID), 1);
+    // A later stamped run takes #1 and the column/record agreement still holds.
+    database.authority.runs.enqueue(queuedRunAt(RUN_ID_3, {
+      itemId: UUID_8, traceId: "pl-170003-0003", runNumber: 1,
+    }));
+    assert.equal(database.authority.runs.get(RUN_ID_3)?.runNumber, 1);
+    // Re-opening runs the whole invariant sweep, which now includes the
+    // null-safe `run_number IS NOT json_extract(record_json, '$.runNumber')`
+    // comparison — so a stamped row, an unstamped row and the column mirror
+    // are proven to agree rather than assumed to.
+    database.close();
+    openDatabase(path);
+  });
+});

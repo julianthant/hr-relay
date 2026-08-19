@@ -414,6 +414,18 @@ type RunRepository = Readonly<{
    * the defect itself.
    */
   nextItemAttempt(input: unknown): number;
+  /**
+   * D230 — the ORDINAL a run enqueued for this workflow must take: one past the
+   * highest number any run of that workflow has ever held, or 1 for a workflow
+   * whose every row predates schema v15.
+   *
+   * The same reservation discipline as `nextItemAttempt` one scope up — read
+   * inside the transaction that inserts the run, refused by `enqueue` if the
+   * number has been spent, with `UNIQUE (workflow, run_number)` underneath. A
+   * gap is legal: a fan-out refused on its fifth entry leaves nothing behind,
+   * and the numbers around the gap still name the runs they always named.
+   */
+  nextWorkflowRunNumber(workflow: string): number;
   listByWorker(workerId: string): readonly RunRecord[];
   listChildren(parentRunId: string): readonly RunRecord[];
   /**
@@ -788,6 +800,7 @@ const TableNameRowSchema = z.strictObject({ name: z.string() });
 const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
 /** D221 — `max()` over no rows is SQL NULL, which is "this item has never run". */
 const MaxAttemptRowSchema = z.strictObject({ attempt: z.number().int().positive().nullable() });
+const MaxRunNumberRowSchema = z.strictObject({ run_number: z.number().int().positive().nullable() });
 const PageCountRowSchema = z.strictObject({ page_count: z.number().int().positive() });
 const QuickCheckRowSchema = z.strictObject({ quick_check: z.literal("ok") });
 const AuthorityRecordFingerprintRowSchema = z.strictObject({ record_key: z.string(), record_json: z.string() });
@@ -865,7 +878,7 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
 const INVARIANT_QUERIES = Object.freeze([
   {
     name: "run-columns-match-record",
-    sql: "SELECT count(*) AS count FROM tasks WHERE workflow <> json_extract(record_json, '$.envelope.workflow') OR item_id <> json_extract(record_json, '$.envelope.itemId') OR state <> json_extract(record_json, '$.lifecycle.state') OR priority <> json_extract(record_json, '$.envelope.priority') OR attempt <> json_extract(record_json, '$.envelope.attempt') OR version <> json_extract(record_json, '$.version') OR claim_generation <> json_extract(record_json, '$.claimGeneration')",
+    sql: "SELECT count(*) AS count FROM tasks WHERE workflow <> json_extract(record_json, '$.envelope.workflow') OR item_id <> json_extract(record_json, '$.envelope.itemId') OR state <> json_extract(record_json, '$.lifecycle.state') OR priority <> json_extract(record_json, '$.envelope.priority') OR attempt <> json_extract(record_json, '$.envelope.attempt') OR version <> json_extract(record_json, '$.version') OR claim_generation <> json_extract(record_json, '$.claimGeneration') OR run_number IS NOT json_extract(record_json, '$.runNumber')",
   },
   {
     name: "run-claim-owner-matches-record",
@@ -3763,6 +3776,30 @@ export class AuthorityDatabase implements Disposable {
     return highest + 1;
   }
 
+  /**
+   * D230: the next unspent ORDINAL for one workflow — the queue footer's `#N`.
+   *
+   * Same shape as `#nextItemAttempt` one scope up, and for the same reason: the
+   * column is the record's own value (the integrity audit pins them together),
+   * runs are never deleted, so the maximum over the workflow is the whole
+   * history of numbers that workflow has spent, and one past it is the only
+   * number no run of that workflow can already own.
+   *
+   * A workflow whose every row predates v15 answers `null` and therefore starts
+   * at 1. That is the honest start rather than a defect: those rows name no
+   * ordinal at all (they are NULL, not 0), so nothing can collide with 1, and
+   * back-filling them by `created_at` order to "make room" would mint numbers
+   * that were never true of them.
+   */
+  #nextWorkflowRunNumber(workflow: string): number {
+    const row = MaxRunNumberRowSchema.parse(this.#database.prepare(`
+      SELECT max(run_number) AS run_number FROM tasks WHERE workflow = ?
+    `).get(WorkflowIdSchema.parse(workflow)));
+    const highest = row.run_number;
+    if (highest === null) return 1;
+    return highest + 1;
+  }
+
   #writeRunRow(record: RunRecord, mode: "insert" | "update"): void {
     const claim = runClaim(record);
     const json = canonicalJsonStringify(record);
@@ -3772,15 +3809,15 @@ export class AuthorityDatabase implements Disposable {
         ? this.#database.prepare(`
           INSERT INTO tasks (
             record_key, workflow, item_id, state, priority, attempt, not_before,
-            owner_worker_id, claim_generation, heartbeat_at, parent_run_id, version,
+            owner_worker_id, claim_generation, heartbeat_at, parent_run_id, run_number, version,
             record_json, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         : this.#database.prepare(`
           UPDATE tasks SET
             workflow = ?, item_id = ?, state = ?, priority = ?, attempt = ?, not_before = ?,
             owner_worker_id = ?, claim_generation = ?, heartbeat_at = ?, parent_run_id = ?,
-            version = ?, record_json = ?
+            run_number = ?, version = ?, record_json = ?
           WHERE record_key = ? AND version = ?
         `);
       const shared = [
@@ -3794,6 +3831,10 @@ export class AuthorityDatabase implements Disposable {
         record.claimGeneration,
         claim?.heartbeatAt ?? null,
         record.envelope.parent?.runId ?? null,
+        // D230: NULL for every run enqueued before schema v15, carried through
+        // every later UPDATE unchanged. A row that names no ordinal keeps
+        // naming none — an update is not the moment to invent one.
+        record.runNumber ?? null,
         record.version,
       ] as const;
       const result = mode === "insert"
@@ -3889,6 +3930,28 @@ export class AuthorityDatabase implements Disposable {
               + "the run's, and no two runs of one item may hold the same one",
             );
           }
+          /*
+           * D230 — the same rule one scope up, for the workflow ORDINAL.
+           *
+           * `UNIQUE (workflow, run_number)` would refuse a repeat anyway, but a
+           * constraint violation names an index rather than the mistake, and a
+           * caller that read the counter before another transaction spent it
+           * deserves the sentence that says so. A record carrying NO number is
+           * accepted unconditionally: that is the read-forward shape (a replayed
+           * historical row, a fixture built before v15), and a writer that
+           * minted one here would be back-filling.
+           */
+          if (record.runNumber !== undefined) {
+            const nextNumber = this.#nextWorkflowRunNumber(record.envelope.workflow);
+            if (record.runNumber < nextNumber) {
+              throw new Error(
+                `run ${record.envelope.runId} is enqueued for ${record.envelope.workflow} at run number `
+                + `#${String(record.runNumber)}, which that workflow has already spent (its next unspent `
+                + `number is #${String(nextNumber)}); an ordinal names one run of a workflow forever, so no `
+                + "two runs of one workflow may hold the same one",
+              );
+            }
+          }
           this.#writeRunRow(record, "insert");
           return Object.freeze({ state: "inserted" as const, record });
         });
@@ -3930,6 +3993,7 @@ export class AuthorityDatabase implements Disposable {
         const query = RunItemQuerySchema.parse(input);
         return this.#nextItemAttempt(query.workflow, query.itemId);
       },
+      nextWorkflowRunNumber: (workflow: string) => this.#nextWorkflowRunNumber(workflow),
       listByWorker: (workerId: string) => {
         const rows = this.#database.prepare(`
           SELECT record_json FROM tasks WHERE owner_worker_id = ? ORDER BY created_at, record_key

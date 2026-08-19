@@ -162,6 +162,16 @@ export function fanOutQueuedRuns(
       claimGeneration: 0,
       hidden: false,
       appVersion: envelope.appVersion,
+      /*
+       * D230 — this run's ordinal within its workflow, the queue footer's `#N`.
+       *
+       * Read per entry, inside this transaction, exactly as the attempt above
+       * is: each `enqueue` below writes its row before the next entry reads the
+       * counter, so a fan-out of forty takes forty consecutive numbers rather
+       * than forty copies of one. Reading it once outside the loop is the
+       * defect this comment exists to prevent.
+       */
+      runNumber: repositories.runs.nextWorkflowRunNumber(envelope.workflow),
       version: 1,
       createdAt: now,
       updatedAt: now,
