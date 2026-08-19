@@ -24,6 +24,12 @@
  *    digest from its own content must reproduce it, and a tampered record must
  *    not — otherwise `archiveFingerprint`, which a relaunch cites, would be
  *    decoration.
+ * 5. **D223's frozen sections are bound to the record's own generation, both
+ *    ways.** A reader admits a generation-1 record and a writer may not
+ *    produce one, so "this record predates frozen sections" can never be how a
+ *    build records its own failure to freeze them — and a generation-1 row's
+ *    canonical bytes are proved unchanged, which is why the bump needed no
+ *    migration.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -44,6 +50,7 @@ import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import {
   ARCHIVED_RUN,
+  ARCHIVED_RUN_WITH_SECTIONS,
   ARCHIVE_RELAUNCH,
   VERSION_BUMP_APPLICATION,
   VERSION_PLAN_ROW,
@@ -267,5 +274,53 @@ describe("archive invariants", () => {
     const roundTripped = ArchivedRunRecordSchema.parse(JSON.parse(canonicalJsonStringify(ARCHIVED_RUN)));
     assert.equal(roundTripped.contentDigest, ARCHIVED_RUN.contentDigest);
     assert.equal(ARCHIVE_RELAUNCH.archivedRunId, ARCHIVED_RUN.runId);
+  });
+
+  it("binds D223's frozen sections to the record's own generation, in BOTH directions", () => {
+    /*
+     * The read-forward rule (D133) with the half an optional field cannot
+     * carry. A READER must admit a generation-1 record — those bytes are on
+     * disk and nothing may back-fill them. A WRITER may not produce one: a new
+     * record naming no sections would be indistinguishable from a historical
+     * one, so "this build could not freeze the logs" would be recorded as
+     * "this record predates logs", which is a silent downgrade on the record
+     * whose whole job is to be complete.
+     */
+    const { contentDigest: _current, ...sectioned } = ARCHIVED_RUN_WITH_SECTIONS;
+    assert.equal(ARCHIVED_RUN.sections, undefined, "the generation-1 fixture must stay the read-forward witness");
+    assert.equal(ARCHIVED_RUN_WITH_SECTIONS.archiveSchemaGeneration, 2);
+
+    // Generation 2 without the block: refused, by name.
+    const { sections: _dropped, ...withoutSections } = sectioned;
+    assert.throws(
+      () => ArchivedRunContentSchema.parse(withoutSections),
+      /must carry its frozen sections/u,
+      "a generation-2 record with no frozen sections was accepted",
+    );
+
+    // Generation 1 WITH the block: refused too — a record cannot describe
+    // bytes it does not hold.
+    assert.throws(
+      () => ArchivedRunContentSchema.parse({ ...sectioned, archiveSchemaGeneration: 1 }),
+      /predates D223's frozen sections/u,
+      "a generation-1 record carrying frozen sections was accepted",
+    );
+
+    /*
+     * And the generation-1 record's identity did not move when generation 2
+     * was added: canonical JSON omits an absent key, so every archived_runs row
+     * already on disk still hashes to the digest it was written with. This is
+     * the whole reason the bump needed no migration.
+     */
+    const { contentDigest: _stored, ...priorContent } = ARCHIVED_RUN;
+    assert.equal(
+      archivedRunContentDigest(ArchivedRunContentSchema.parse(priorContent)),
+      ARCHIVED_RUN.contentDigest,
+    );
+    assert.equal(
+      canonicalJsonStringify(ArchivedRunContentSchema.parse(priorContent)).includes("\"sections\""),
+      false,
+      "a generation-1 record's canonical bytes must not gain a sections key",
+    );
   });
 });
