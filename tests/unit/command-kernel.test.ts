@@ -680,20 +680,67 @@ describe("D113 run arms", () => {
     if (busy.state === "rejected") assert.equal(busy.code, "invalid-state");
   });
 
-  it("rename, hide, and unhide are presentation-only and never CAS-reject", () => {
+  it("rename, hide, and unhide are presentation-only and change no lifecycle", () => {
     const harness = createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
-    const renamed = harness.kernel.execute(runCommand("rename", runId, 999, { payload: { displayName: "Kernel case" } }));
+    const version = () => {
+      const run = harness.database.authority.runs.get(runId);
+      assert.notEqual(run, undefined);
+      return run?.version ?? 0;
+    };
+
+    const renamed = harness.kernel.execute(
+      runCommand("rename", runId, version(), { payload: { displayName: "Kernel case" } }),
+    );
     assert.equal(renamed.state, "applied");
-    const hidden = harness.kernel.execute(runCommand("hide", runId, 999));
+    const hidden = harness.kernel.execute(runCommand("hide", runId, version()));
     assert.equal(hidden.state, "applied");
     let run = harness.database.authority.runs.get(runId);
     assert.equal(run?.displayName, "Kernel case");
     assert.equal(run?.hidden, true);
+    // The whole claim of "presentation-only": three commands, and the run is
+    // exactly where it was — same state, same claim, same everything else.
     assert.equal(run?.lifecycle.state, "queued");
-    const unhidden = harness.kernel.execute(runCommand("unhide", runId, 999));
+    const unhidden = harness.kernel.execute(runCommand("unhide", runId, version()));
     assert.equal(unhidden.state, "applied");
     run = harness.database.authority.runs.get(runId);
+    assert.equal(run?.hidden, false);
+  });
+
+  /*
+   * D233. This case previously asserted the OPPOSITE — it passed version `999`
+   * to all three verbs and pinned `applied`, under the heading "never
+   * CAS-reject". The premise was that presentation changes no outcome, so a
+   * stale one is harmless. Rename is the counterexample: a name is a value the
+   * operator authored, and applying yesterday's name over today's silently
+   * discards an edit and answers "Recorded."
+   */
+  it("refuses a stale rename, hide, or unhide with the live version (D233)", () => {
+    const harness = createHarness();
+    const runId = startOne(harness, rejectActiveDescriptor, "10800001");
+    const live = harness.database.authority.runs.get(runId)?.version ?? 0;
+    assert.ok(live > 0);
+    const stale = live + 998;
+
+    for (const [type, payload] of [
+      ["rename", { payload: { displayName: "Yesterday's name" } }],
+      ["hide", {}],
+      ["unhide", {}],
+    ] as const) {
+      const result = harness.kernel.execute(runCommand(type, runId, stale, payload));
+      assert.equal(result.state, "conflict", `${type} applied over a stale version`);
+      if (result.state === "conflict") {
+        // The server's own sentence names the version that IS live, because it
+        // is the only party that knows it.
+        assert.equal(result.currentVersion, live);
+        assert.match(result.message, new RegExp(`not ${String(stale)}`));
+      }
+    }
+
+    // Nothing was written by any of the three.
+    const run = harness.database.authority.runs.get(runId);
+    assert.equal(run?.version, live);
+    assert.equal(run?.displayName, undefined);
     assert.equal(run?.hidden, false);
   });
 });
