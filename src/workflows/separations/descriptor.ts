@@ -824,6 +824,24 @@ export const separationsDescriptor = defineWorkflowDescriptor({
    * stands.
    */
   subjectProjection: { nodeId: JOB_SUMMARY_NODE, fieldPath: "displayedName" },
+  /**
+   * D225 — the operator-approved categorical timeline (2026-08-18, separations
+   * §9.18): six categories over the eighteen nodes, legacy's step vocabulary
+   * kept where it fits. Legacy's `transaction-check` folds into *UCPath
+   * transaction*, because here the pending check is the sweep transaction plus
+   * the in-write probes, not a standalone step. The gate is a MEMBER of
+   * *Identity check* — a wait is a state of a step, not a step of its own —
+   * and the always-rerun re-executions around a gate resume fold into their
+   * category's `×N` marker instead of drawing duplicate segments.
+   */
+  timeline: [
+    { label: "Kuali extraction", nodes: [DOCUMENT_NODE, PLAN_NODE, TERMINATION_TYPE_NODE] },
+    { label: "Identity check", nodes: [NAME_SEARCH_NODE, SUBJECT_NODE, COMPARISON_NODE, GATE_NODE, APPROVAL_NODE] },
+    { label: "Job summary", nodes: [JOB_SUMMARY_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE] },
+    { label: "Kronos timecard", nodes: [TIMECARD_SEARCH_NODE, TIMECARD_NODE, DATES_NODE] },
+    { label: "UCPath transaction", nodes: [SWEEP_NODE, TERMINATION_NODE, RECEIPT_NODE] },
+    { label: "Kuali finalization", nodes: [FINALIZE_NODE] },
+  ],
   identity: {
     /**
      * The ITEM is the DOCUMENT — one separation document is one separation — and

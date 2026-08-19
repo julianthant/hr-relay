@@ -1,0 +1,326 @@
+/**
+ * D225 — the run-detail timeline is CATEGORICAL (doc 03; separations §9.18).
+ *
+ * The composed separations graph has eighteen nodes and drew eighteen
+ * truncated stubs, two of them duplicates of each other because a gate resume
+ * re-runs an `always-rerun` node inside one attempt. The operator ruled the
+ * strip is grouped: a descriptor DECLARES the categories, every node folds
+ * into exactly one, and a re-execution becomes a `×N` marker on its category
+ * rather than a second segment.
+ *
+ * Two halves are pinned here, and the FACTORY half carries the weight: a
+ * declared timeline is exhaustive by rule, because a node quietly missing from
+ * the declaration would vanish from the one surface whose whole job is to say
+ * what a run does — and it would vanish silently, which is the failure mode
+ * this program refuses everywhere else.
+ */
+import assert from "node:assert/strict";
+import { afterEach, describe, it } from "vitest";
+import { z } from "zod";
+import { defineWorkflowDescriptor } from "../../../src/base/workflow.js";
+import { flow } from "../../../src/base/flow.js";
+import { defineTaskContract } from "../../../src/domain/contracts/base.js";
+import { ScenarioIdSchema, taskId } from "../../../src/domain/ids.js";
+import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
+import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
+import type { RunDetailDescriptorView } from "../../../src/server/dashboard/queries/run-detail.js";
+import { HASH_A } from "../fixtures/phase1c-contract-fixtures.js";
+import {
+  claimEventOf,
+  makeWorld,
+  queuedEventOf,
+  traceOf,
+  uuidOf,
+  type DashboardWorld,
+} from "./helpers/dashboard-harness.js";
+
+const worlds: DashboardWorld[] = [];
+
+function world(): DashboardWorld {
+  const created = makeWorld();
+  worlds.push(created);
+  return created;
+}
+
+afterEach(() => {
+  for (const w of worlds.splice(0)) w.dispose();
+});
+
+/* ── 1. the factory derives and REFUSES ──────────────────────────────────── */
+
+const FixtureInput = z.strictObject({ name: z.string().min(1) });
+const FixtureCanonicalInput = defineCanonicalInput(
+  FixtureInput,
+  z.strictObject({ name: z.string().min(1) }),
+  [{ name: "Battistessa, Johnnie" }],
+);
+const SCENARIO = ScenarioIdSchema.parse("ocr/capability-wiring-happy");
+
+function fixtureContract(id: string, title: string) {
+  return defineTaskContract({
+    id: taskId(`ucpath/${id}`),
+    title,
+    effect: "read",
+    input: z.strictObject({ name: z.string().min(1) }),
+    output: z.strictObject({ value: z.string().min(1) }),
+    errorCodes: ["provider-unavailable"] as const,
+    subject: { kind: "none", reason: "timeline category fixture" },
+    scenarios: [SCENARIO],
+    freshness: { defaultMaxAgeMs: Number.POSITIVE_INFINITY, defaultOverride: "forbidden" },
+    provenance: { default: "live" },
+    example: { value: "v" },
+  });
+}
+
+const READ_ONE = fixtureContract("read-timeline-one", "Read one");
+const READ_TWO = fixtureContract("read-timeline-two", "Read two");
+
+/** A two-node graph, so a declared timeline has something to be wrong about. */
+function descriptorWith(timeline?: readonly Readonly<{ label: string; nodes: readonly string[] }>[]) {
+  const fixtureFlow = flow(FixtureInput)
+    .step("first", READ_ONE, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ name: input.name }) })
+    .step("second", READ_TWO, { dependsOn: ["first"], replay: "checkpoint", bind: ({ input }) => ({ name: input.name }) })
+    .build({
+      schema: z.strictObject({ done: z.boolean() }),
+      dependsOn: ["second"],
+      derive: () => ({ done: true }),
+    });
+  return defineWorkflowDescriptor({
+    id: "timeline-fixture",
+    version: 1,
+    contractFingerprint: HASH_A,
+    code: "tf",
+    label: "Timeline fixture",
+    icon: "Search",
+    category: "operations",
+    canonicalInput: FixtureCanonicalInput,
+    inputSubject: "name",
+    surface: { shape: "single" },
+    enqueue: "reject-active",
+    actions: STANDARD_WORKFLOW_ACTIONS,
+    surfaces: {},
+    details: [],
+    identity: { matchKey: (input: z.output<typeof FixtureInput>) => `name:${input.name}` },
+    presentation: { title: (input: z.output<typeof FixtureInput>) => input.name },
+    scenarios: ["wiring-projection/happy"],
+    ...(timeline === undefined ? {} : { timeline }),
+    flow: fixtureFlow,
+  });
+}
+
+describe("D225 — the descriptor's declared timeline", () => {
+  it("derives ONE category per node when a descriptor declares nothing", () => {
+    // The honest default for a graph small enough to read node by node: the
+    // categorical strip and the old per-node strip are the same picture, so
+    // nothing regresses for person-lookup-shaped workflows.
+    assert.deepEqual(descriptorWith().timeline, [
+      { label: "Read one", nodes: [{ id: "first", label: "Read one" }] },
+      { label: "Read two", nodes: [{ id: "second", label: "Read two" }] },
+    ]);
+  });
+
+  it("normalizes a declared category and carries each member's own label", () => {
+    const declared = descriptorWith([{ label: "Everything", nodes: ["first", "second"] }]).timeline;
+    assert.deepEqual(declared, [{
+      label: "Everything",
+      nodes: [{ id: "first", label: "Read one" }, { id: "second", label: "Read two" }],
+    }]);
+  });
+
+  it("REFUSES a declaration that leaves a node out, naming the node", () => {
+    // The load-bearing arm. A node missing from the declaration renders
+    // nowhere, and nothing else in the system would ever notice.
+    assert.throws(
+      () => descriptorWith([{ label: "Only the first", nodes: ["first"] }]),
+      /does not cover: second/,
+    );
+  });
+
+  it("REFUSES a node claimed by two categories", () => {
+    assert.throws(
+      () => descriptorWith([
+        { label: "A", nodes: ["first", "second"] },
+        { label: "B", nodes: ["second"] },
+      ]),
+      /name node second twice/,
+    );
+  });
+
+  it("REFUSES a category naming a node the graph does not declare", () => {
+    assert.throws(
+      () => descriptorWith([
+        { label: "A", nodes: ["first", "second"] },
+        { label: "B", nodes: ["ghost"] },
+      ]),
+      /names undeclared node ghost/,
+    );
+  });
+
+  it("REFUSES two categories sharing one label, because the strip keys on it", () => {
+    assert.throws(
+      () => descriptorWith([
+        { label: "Same", nodes: ["first"] },
+        { label: "Same", nodes: ["second"] },
+      ]),
+      /timeline category labels must be unique/,
+    );
+  });
+});
+
+/* ── 2. the served fold ──────────────────────────────────────────────────── */
+
+const CATEGORIES: NonNullable<RunDetailDescriptorView["timeline"]> = [
+  { label: "Kuali extraction", nodes: [{ id: "document", label: "Separation Document" }, { id: "plan", label: "Separation Plan" }] },
+  { label: "Identity check", nodes: [{ id: "comparison", label: "Identity Comparison" }, { id: "identity-approval", label: "Identity Approval" }] },
+  { label: "Kronos timecard", nodes: [{ id: "timecard", label: "Timecard" }] },
+];
+
+function detailOf(w: DashboardWorld, timeline?: NonNullable<RunDetailDescriptorView["timeline"]>, seed = 1) {
+  return buildRunDetail(
+    {
+      stateRoot: w.stateRoot,
+      projection: w.projection,
+      authority: w.authority,
+      descriptors: { resolve: () => (timeline === undefined ? { details: [] } : { details: [], timeline }) },
+    },
+    uuidOf(seed),
+  );
+}
+
+function spanBase(seed: number, node: string, attempt = 1) {
+  return {
+    workflow: "person-lookup" as const,
+    runId: uuidOf(seed),
+    traceId: traceOf(seed),
+    spanPath: `${traceOf(seed)}/${node}#${String(attempt)}`,
+    parentSpanPath: traceOf(seed),
+    attempt: 1,
+    kind: "task" as const,
+  };
+}
+
+/** One task span, started and ended, taking `ms` of the world's clock. */
+function ranFor(w: DashboardWorld, node: string, ms: number, outcome: "done" | "failed" = "done", attempt = 1): void {
+  w.writer.emit({ ...spanBase(1, node, attempt), t: "span.started", ts: w.clock.now().toISOString(), name: node });
+  w.clock.advanceWall(ms);
+  w.writer.emit({ ...spanBase(1, node, attempt), t: "span.ended", ts: w.clock.now().toISOString(), outcome });
+}
+
+function seedRun(w: DashboardWorld): void {
+  queuedEventOf(w, { seed: 1 });
+  claimEventOf(w, 1);
+}
+
+describe("D225 — the served categorical steps", () => {
+  it("serves ONE step per category, not one per node", () => {
+    const w = world();
+    seedRun(w);
+    ranFor(w, "document", 6_000);
+    ranFor(w, "plan", 2_000);
+
+    const steps = detailOf(w, CATEGORIES).timeline.steps;
+    assert.equal(steps?.length, 3);
+    assert.deepEqual(steps?.map((step) => step.label), ["Kuali extraction", "Identity check", "Kronos timecard"]);
+    // The five raw events are still served beside them — the categorical strip
+    // is a presentation of the timeline, never a replacement for its history.
+    assert.equal(detailOf(w, CATEGORIES).timeline.events.length, 2);
+  });
+
+  it("sums the measured member durations into the category's own number", () => {
+    const w = world();
+    seedRun(w);
+    ranFor(w, "document", 6_000);
+    ranFor(w, "plan", 2_000);
+
+    const extraction = detailOf(w, CATEGORIES).timeline.steps?.[0];
+    assert.equal(extraction?.durationSec, 8);
+    assert.equal(extraction?.state, "done");
+    assert.deepEqual(extraction?.members, [
+      { label: "Separation Document", state: "done", durationSec: 6 },
+      { label: "Separation Plan", state: "done", durationSec: 2 },
+    ]);
+  });
+
+  it("folds a re-execution into ×N rather than drawing a second segment", () => {
+    // THE defect this decision exists for: a gate park and its resume are two
+    // executions inside ONE attempt, so an always-rerun node emits the same
+    // span path twice. Before D225 that drew two identical `Timecard` stubs.
+    const w = world();
+    seedRun(w);
+    ranFor(w, "timecard", 5_000, "done", 1);
+    ranFor(w, "timecard", 9_000, "done", 2);
+
+    const steps = detailOf(w, CATEGORIES).timeline.steps;
+    const kronos = steps?.find((step) => step.label === "Kronos timecard");
+    assert.equal(steps?.filter((step) => step.label === "Kronos timecard").length, 1);
+    assert.equal(kronos?.executions, 2);
+    // Both executions are real work and both count toward the category's time.
+    assert.equal(kronos?.durationSec, 14);
+  });
+
+  it("carries no ×N marker when every member ran exactly once", () => {
+    const w = world();
+    seedRun(w);
+    ranFor(w, "timecard", 5_000);
+    assert.equal(detailOf(w, CATEGORIES).timeline.steps?.find((step) => step.label === "Kronos timecard")?.executions, undefined);
+  });
+
+  it("renders an open gate as its CATEGORY's state — a wait is a state of a step", () => {
+    const w = world();
+    seedRun(w);
+    ranFor(w, "comparison", 3_000);
+    w.writer.emit({
+      t: "gate.opened", ts: w.clock.now().toISOString(), workflow: "person-lookup",
+      runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1), gate: "identity-approval",
+    });
+
+    const identity = detailOf(w, CATEGORIES).timeline.steps?.find((step) => step.label === "Identity check");
+    assert.equal(identity?.state, "blocked");
+    // The gate is a MEMBER, so it takes no segment of its own; the category it
+    // belongs to is what goes hatched.
+    assert.deepEqual(identity?.members.map((member) => [member.label, member.state]), [
+      ["Identity Comparison", "done"],
+      ["Identity Approval", "blocked"],
+    ]);
+    // And a gate still owns no duration: the wait is a fact about a human.
+    assert.equal(identity?.members.at(-1)?.durationSec, undefined);
+  });
+
+  it("lets a FAILURE anywhere in a category be the category's fact", () => {
+    const w = world();
+    seedRun(w);
+    ranFor(w, "document", 1_000, "done");
+    ranFor(w, "plan", 1_000, "failed");
+
+    const extraction = detailOf(w, CATEGORIES).timeline.steps?.[0];
+    assert.equal(extraction?.state, "failed");
+    // The member breakdown still shows which half succeeded — the fold states
+    // the loudest fact, the disclosure keeps the whole one.
+    assert.deepEqual(extraction?.members.map((member) => member.state), ["done", "failed"]);
+  });
+
+  it("reports a category nothing has reached as pending, with no invented duration", () => {
+    const w = world();
+    seedRun(w);
+    ranFor(w, "document", 1_000);
+    ranFor(w, "plan", 1_000);
+
+    const kronos = detailOf(w, CATEGORIES).timeline.steps?.find((step) => step.label === "Kronos timecard");
+    assert.equal(kronos?.state, "pending");
+    assert.equal(kronos?.durationSec, undefined);
+  });
+
+  it("serves NO steps when no registered descriptor can say what the graph's shape is", () => {
+    // A replayed historical workflow has no descriptor to group by, and an
+    // invented grouping would be worse than none: the client falls back to the
+    // per-event strip, exactly as it does for a pre-D225 archived record.
+    const w = world();
+    seedRun(w);
+    ranFor(w, "document", 1_000);
+
+    const detail = detailOf(w);
+    assert.equal(detail.timeline.steps, undefined);
+    assert.equal(detail.timeline.events.length, 1);
+  });
+});

@@ -499,6 +499,68 @@ rather than a descriptor-driven control, and no build has one. So `displayName` 
 tooltipped, and today only a CLI/API caller can set it. That is a UI gap with an owner, not a wire
 gap.
 
+### D225 — the run-detail timeline is CATEGORICAL (2026-08-18)
+
+**Operator ruling.** The composed `separations` run drew **eighteen** segments across a panel column
+— *"Separati… Separati… Terminat… Name Se…"* — plus a nineteenth for the gate and duplicate
+`Timecar…`/`Approval…` pairs from the resume. Every label was truncated to illegibility, so the
+surface that exists to say what a run is doing said nothing. The operator's direction: *"we are not
+trying to name everything… group all the tasks from task stores in a category,"* keeping legacy's own
+step vocabulary. The rendering itself is unchanged and is not re-litigated — §1.1's strip, its three
+shapes, and its rule that **a wait is a state of a step, not a step of its own** all stand. What
+changes is WHAT a segment is.
+
+**A segment is a declared CATEGORY, and a node is a member of exactly one.** A descriptor carries an
+optional `timeline: [{ label, nodes }]` beside its `details` and `subjectProjection` declarations,
+and the factory derives the frozen `WorkflowDescriptor.timeline` from it — resolving each member's
+own display label through the same `labelOf` the step projection uses, so no consumer re-derives a
+label. A descriptor that declares nothing gets **one category per node**, which is the honest and
+unchanged shape for a graph small enough to read node by node (`person-lookup` and every chunk
+harness). This is the `subjectProjection` seam's rule again: a DECLARATION, never a sniff — nothing
+infers a grouping from node-id prefixes, store namespaces or contract ids, because a grouping that is
+right for eight workflows and wrong for the ninth mis-describes a real HR transaction in the one
+place an operator watches it happen.
+
+**A declared timeline is EXHAUSTIVE, and the factory refuses one that is not.** Every node in the
+graph must appear in exactly one category; a node left out, named twice, named but undeclared, or a
+duplicate category label each throws at `build()` naming the offender. The reason is the failure mode
+rather than tidiness: a node missing from the declaration would vanish from the timeline **silently**
+— no error, no gap, just a step nobody can see — which is the same class of defect as D187's
+two-pixel panel. The check is at the factory because that is where the graph and the declaration are
+both in hand.
+
+**The fold is served, not computed by the client** (`TimelineWireSchema.steps`). A category's state
+folds its members' states loudest-first — `failed` ▸ `blocked` ▸ `active` ▸ `cancelled`, then
+all-pending ▸ `pending`, all-done/skipped ▸ `done`/`skipped` — and the mixed remainder reads `active`
+on a live run and `pending` on a terminal one, because a terminal run's unreached members genuinely
+never ran. A member's state is its LATEST execution's; its duration is the SUM of every measured
+execution, through the same `spanDuration` §1.1 already owns. **A re-execution folds into `×N`, never
+into a second segment** — a gate park and its resume are two executions inside one attempt (D214), so
+an `always-rerun` node upstream of a gate emits its span path twice, and drawing two identical
+segments is D123's "same absence seen twice" one level up. A gate node owns no task span, so it takes
+its state from the run's own gate records and never a duration: **the wait belongs to the gate, and
+the gate belongs to its category.** Every segment discloses its members — label, state, duration — on
+hover and focus, so grouping hides nothing it folded.
+
+`steps` is optional on the wire for exactly one reason (D133 read-forward): a `RunDetailWire` frozen
+into an archived record before this leaf existed must still parse, and a replayed historical workflow
+has no registered descriptor to group by. Both serve no `steps` and the client renders the per-event
+strip, which is the same picture it drew before this decision. The `events` array is **unchanged and
+still served in full** — the categorical strip is a presentation of that history, never a replacement
+for it, and §1.1's span identity remains the record.
+
+**Separations' six categories, as approved** (`docs/migrations/separations.md` §9.18): Kuali
+extraction · Identity check · Job summary · Kronos timecard · UCPath transaction · Kuali
+finalization. Legacy's seventh step, `transaction-check`, folds into *UCPath transaction* rather than
+standing alone, because in this tree the pending check IS the sweep transaction plus the write
+sequencer's own probes — it is not a separate visit. The gate is a member of *Identity check*.
+
+**What this does not land.** The parity corpus does not photograph the categorical strip: the
+run-detail parity fixture composes its `RunDetailWire` directly and serves no `steps`, so every
+reference records the per-event fallback. That is a corpus gap with an owner (D187's lesson —
+a reference nobody takes is a defect nobody catches), and it closes with Track B's fixture work and
+its one deliberate re-freeze, not with a second re-freeze here.
+
 ---
 
 ## 0. What exists today (and what specifically hurts)

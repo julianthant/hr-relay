@@ -22,3 +22,24 @@ export function deterministicUuid(seed: string): string {
 export function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+/**
+ * The NODE ID inside a task span's path (doc 03 §1.1: `<trace>/<node>#<attempt>`).
+ *
+ * It lives here rather than beside either of its two callers — the queue
+ * projector and the run-detail query — because the ARCHIVE read path reaches
+ * the query, and D179's whole claim is that an archived run renders with the
+ * originating descriptor absent. Importing the projector's copy made the read
+ * path value-reach `src/base/workflow.ts` through the projector's own
+ * descriptor helpers, which `archive-invariants` correctly refused. One pure
+ * string function, one home, no layer inversion.
+ *
+ * Returns `undefined` for a path that carries no `#attempt` marker — a span
+ * whose path is not a node path is not a node, and guessing one from the last
+ * segment would attribute work to a node that never ran.
+ */
+export function nodeIdOfTaskSpanPath(spanPath: string): string | undefined {
+  const segment = spanPath.split("/").at(-1);
+  if (segment === undefined || !segment.includes("#")) return undefined;
+  return segment.slice(0, segment.lastIndexOf("#"));
+}

@@ -77,6 +77,7 @@ import { queueRowActions } from "./queue-row-actions.js";
 import { resolveSubjectTitle } from "./run-subject-title.js";
 import type { ProjectionRepositories } from "../../../infra/sqlite/authority-database.js";
 import { readEventStreamLinesFrom, type EventStreamFileCursor, type EventStreamLine } from "../../../infra/events/jsonl-streams.js";
+import { nodeIdOfTaskSpanPath } from "../support.js";
 
 /* ── the persisted fold shape (internal, versioned by its own schema hash) ─ */
 
@@ -289,12 +290,6 @@ const TASK_OUTCOME_PIPELINE = {
   interrupted: "blocked",
   superseded: "blocked",
 } as const;
-
-function nodeIdOfTaskSpanPath(spanPath: string): string | undefined {
-  const segment = spanPath.split("/").at(-1);
-  if (segment === undefined || !segment.includes("#")) return undefined;
-  return segment.slice(0, segment.lastIndexOf("#"));
-}
 
 /* ── the projection ──────────────────────────────────────────────────────── */
 

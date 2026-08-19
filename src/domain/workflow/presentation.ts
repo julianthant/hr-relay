@@ -189,6 +189,37 @@ export const SubjectProjectionSpecRuntimeSchema = z.strictObject({
 });
 export type SubjectProjectionSpecRuntime = z.infer<typeof SubjectProjectionSpecRuntimeSchema>;
 
+/* ── timeline categories (doc 03, D225) ──────────────────────────────────── */
+
+/**
+ * D225 (operator ruling, 2026-08-18): the run-detail timeline is CATEGORICAL.
+ * A workflow with a large graph does not print one segment per node — the
+ * composed separations graph drew eighteen truncated stubs — it declares the
+ * categories an operator actually thinks in ("Kuali extraction", "Identity
+ * check", …), and every node folds into exactly one of them.
+ *
+ * The declaration is EXHAUSTIVE by rule: if a descriptor declares categories at
+ * all, every node in its graph must appear in exactly one — a node left out
+ * would silently vanish from the one surface that says what a run does. A
+ * descriptor that declares nothing gets the derived default of one category
+ * per node, which is the honest shape for a small graph.
+ */
+export const TimelineCategorySpecSchema = z.strictObject({
+  label: z.string().min(1),
+  nodes: z.array(NodeIdSchema).min(1),
+});
+export type TimelineCategorySpec = z.infer<typeof TimelineCategorySpecSchema>;
+
+/**
+ * The factory-derived, frozen form every consumer reads: member node ids carry
+ * their display labels so a projection never re-derives `labelOf`.
+ */
+export const TimelineCategoryProjectionSchema = z.strictObject({
+  label: z.string().min(1),
+  nodes: z.array(z.strictObject({ id: NodeIdSchema, label: z.string().min(1) })).min(1),
+});
+export type TimelineCategoryProjection = z.infer<typeof TimelineCategoryProjectionSchema>;
+
 /** Sinks are a closed infrastructure registry, deliberately keyed by sink kind, never by workflow. */
 export const ArtifactSinkIdSchema = z.enum(["xlsx-retention"]);
 export type ArtifactSinkId = z.infer<typeof ArtifactSinkIdSchema>;

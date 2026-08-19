@@ -316,14 +316,146 @@ function timelineEventLabel(event: TimelineEvent): string {
  * not measure prints its own clock instant instead and says why on hover; the
  * panel still never invents one.
  */
+type TimelineStep = NonNullable<RunDetailWire["timeline"]["steps"]>[number];
+
+function stepAriaLabel(step: TimelineStep, openedAt?: string): string {
+  if (step.state === "blocked" && openedAt !== undefined) {
+    return `${step.label} — waiting on you since ${fmtClock(openedAt)}`;
+  }
+  const duration = step.durationSec === undefined ? "" : `, took ${fmtElapsed(step.durationSec)}`;
+  const executions = step.executions === undefined ? "" : `, a step in it ran ${String(step.executions)} times`;
+  return `${step.label} — ${step.state}${duration}${executions}`;
+}
+
+/**
+ * D225 — the CATEGORICAL strip. One segment per descriptor-declared category,
+ * never one per raw execution: the composed separations run drew eighteen
+ * truncated stubs before this, and a gate resume's re-executions drew twice.
+ * The category holding the open gate renders HATCHED with "since <clock>"
+ * beneath it — a wait is a state of a step, not a step of its own — and a
+ * category whose member re-ran carries the ×N marker instead of a duplicate
+ * segment. Hovering (or focusing) a segment discloses the member nodes with
+ * their own states and durations, so the grouping hides nothing.
+ */
+function StepStrip({ steps, gate }: { steps: readonly TimelineStep[]; gate: RunDetailWire["gate"] }) {
+  const openedAt = gate.state === "open" ? gate.openedAt : undefined;
+  return (
+    <div className="flex items-stretch gap-[var(--ds-space-hair)]">
+      {steps.map((step, index) => {
+        const tone = EVENT_TONE[step.state];
+        const blocked = step.state === "blocked";
+        const skipped = step.state === "skipped";
+        const anchorRight = steps.length > 2 && index >= steps.length - 2;
+        return (
+          <div key={step.label} className="group relative min-w-0 flex-1 basis-0">
+            <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+              <span
+                aria-hidden
+                className={cn(
+                  "size-1.5 shrink-0 rounded-full",
+                  tone.dot,
+                  (step.state === "active" || blocked) && "animate-pulse motion-reduce:animate-none",
+                )}
+              />
+              <span className={cn(dsClip.text, dsText.micro, tone.text, skipped && "line-through decoration-1")}>
+                {step.label}
+              </span>
+            </div>
+            <span
+              aria-label={stepAriaLabel(step, openedAt)}
+              className={cn(
+                "mt-[var(--ds-space-tight)] block w-full",
+                "h-[var(--ds-h-timeline-bar)]",
+                dsRadius.xs,
+                blocked
+                  ? "bg-[repeating-linear-gradient(45deg,var(--ds-status-waiting-mark)_0_4px,transparent_4px_8px)] opacity-70"
+                  : tone.bar,
+              )}
+            />
+            <div className="mt-[var(--ds-space-hair)] flex min-w-0 items-baseline gap-[var(--ds-space-tight)]">
+              <span
+                className={cn(
+                  dsClip.text,
+                  dsText.micro,
+                  dsText.nums,
+                  blocked ? "text-[color:var(--ds-status-waiting-fg)]" : "text-[color:var(--ds-fg-muted)]",
+                )}
+              >
+                {blocked && openedAt !== undefined
+                  ? `since ${fmtClock(openedAt)}`
+                  : step.durationSec !== undefined
+                    ? fmtElapsed(step.durationSec)
+                    : ""}
+              </span>
+              {step.executions !== undefined && (
+                <span className={cn(dsText.micro, dsText.nums, "shrink-0 font-bold text-[color:var(--ds-status-waiting-fg)]")}>
+                  ×{step.executions}
+                </span>
+              )}
+            </div>
+            {/* member disclosure — the grouping must hide nothing */}
+            <div
+              className={cn(
+                "absolute top-full z-50 mt-1 hidden w-60 border p-2.5 text-left shadow-lg group-hover:block group-focus-within:block",
+                dsRadius.lg,
+                dsBorder.subtle,
+                "bg-[var(--ds-bg-raised)]",
+                anchorRight ? "right-0" : "left-0",
+              )}
+            >
+              <span className={cn(dsText.micro, "font-semibold text-[color:var(--ds-fg)]")}>{step.label}</span>
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {step.members.map((member) => (
+                  <li key={member.label} className={cn(dsText.micro, "flex items-baseline justify-between gap-2 text-[color:var(--ds-fg-muted)]")}>
+                    <span className={cn(dsClip.text)}>{member.label}</span>
+                    <span className={cn(dsText.nums, "shrink-0", EVENT_TONE[member.state].text)}>
+                      {member.state}
+                      {member.durationSec !== undefined ? ` · ${fmtElapsed(member.durationSec)}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Timeline({ detail }: { detail: RunDetailWire }) {
   const events = detail.timeline.events;
-  if (events.length === 0) return null;
+  const steps = detail.timeline.steps;
+  const categorical = steps !== undefined && steps.length > 0;
+  if (!categorical && events.length === 0) return null;
 
   const ordered = [...events].sort((a, b) => a.sequence - b.sequence);
   const first = ordered[0];
   const last = ordered[ordered.length - 1];
-  const totalSec = elapsedSecondsBetween(first.at, last.at);
+  const totalSec = first !== undefined && last !== undefined ? elapsedSecondsBetween(first.at, last.at) : undefined;
+
+  if (categorical) {
+    return (
+      <div className="px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]">
+        <StepStrip steps={steps} gate={detail.gate} />
+        {first !== undefined && totalSec !== undefined && (
+          <div
+            className={cn(
+              "mt-[var(--ds-space-snug)] flex items-baseline gap-[var(--ds-space-base)] border-t pt-[var(--ds-space-tight)]",
+              dsBorder.subtle,
+              dsText.micro,
+              dsText.nums,
+              "text-[color:var(--ds-fg-muted)]",
+            )}
+          >
+            <span>{fmtClock(first.at)}</span>
+            <span aria-hidden className="h-px flex-1 bg-[var(--ds-border)]" />
+            <span>{fmtElapsed(totalSec)} elapsed</span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]">
@@ -373,19 +505,21 @@ function Timeline({ detail }: { detail: RunDetailWire }) {
       </div>
 
       {/* axis — when it started, and how long the run's own events span. */}
-      <div
-        className={cn(
-          "mt-[var(--ds-space-snug)] flex items-baseline gap-[var(--ds-space-base)] border-t pt-[var(--ds-space-tight)]",
-          dsBorder.subtle,
-          dsText.micro,
-          dsText.nums,
-          "text-[color:var(--ds-fg-muted)]",
-        )}
-      >
-        <span>{fmtClock(first.at)}</span>
-        <span aria-hidden className="h-px flex-1 bg-[var(--ds-border)]" />
-        <span>{fmtElapsed(totalSec)} elapsed</span>
-      </div>
+      {first !== undefined && totalSec !== undefined && (
+        <div
+          className={cn(
+            "mt-[var(--ds-space-snug)] flex items-baseline gap-[var(--ds-space-base)] border-t pt-[var(--ds-space-tight)]",
+            dsBorder.subtle,
+            dsText.micro,
+            dsText.nums,
+            "text-[color:var(--ds-fg-muted)]",
+          )}
+        >
+          <span>{fmtClock(first.at)}</span>
+          <span aria-hidden className="h-px flex-1 bg-[var(--ds-border)]" />
+          <span>{fmtElapsed(totalSec)} elapsed</span>
+        </div>
+      )}
     </div>
   );
 }

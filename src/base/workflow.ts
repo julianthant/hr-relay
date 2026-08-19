@@ -77,6 +77,8 @@ import {
   StepProjectionSchema,
   SubjectProjectionSpecRuntimeSchema,
   SurfaceShapeSchema,
+  TimelineCategoryProjectionSchema,
+  TimelineCategorySpecSchema,
   VerdictDefinitionSchema,
   WorkflowActionPolicySchema,
   WorkflowCapabilitiesSchema,
@@ -90,6 +92,7 @@ import type {
   InputSubject,
   StepProjection,
   SurfaceShape,
+  TimelineCategoryProjection,
   VerdictDefinition,
   WorkflowActionPolicy,
   WorkflowCategory,
@@ -235,6 +238,12 @@ export interface WorkflowDescriptor<
   readonly details: readonly DetailProjectionSpec<S>[];
   /** Doc 03 §1.2: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: SubjectProjectionSpec<S>;
+  /**
+   * D225 — the run-detail timeline's categorical shape, DERIVED by the factory:
+   * the spec's declared categories normalized with member labels, or the
+   * one-category-per-node default. Always present, always exhaustive.
+   */
+  readonly timeline: readonly TimelineCategoryProjection[];
   readonly enqueue: EnqueuePolicy;
   readonly actions: WorkflowActionPolicy;
   readonly presets?: readonly InputPreset<z.input<InputSchema>>[];
@@ -288,6 +297,11 @@ export interface AnyWorkflowDescriptor {
    * `AnyWorkflowDescriptor`.
    */
   readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
+  /** D225 — plain data like `subjectProjection`, so it rides the broad view. */
+  readonly timeline: readonly Readonly<{
+    label: string;
+    nodes: readonly Readonly<{ id: string; label: string }>[];
+  }>[];
   readonly enqueue: EnqueuePolicy;
   readonly actions: WorkflowActionPolicy;
   readonly coordinator?: CoordinatorPolicy;
@@ -311,12 +325,20 @@ export interface WorkflowDescriptorSpec<
   D extends readonly (keyof S & string)[],
 > extends Omit<
   WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D>,
-  "id" | "contractFingerprint" | "input" | "result" | "nodes" | "scenarios"
+  "id" | "contractFingerprint" | "input" | "result" | "nodes" | "scenarios" | "timeline"
 > {
   readonly id: string;
   readonly contractFingerprint: string;
   /** Parsed into branded `ScenarioId`s by the factory, the way contracts do. */
   readonly scenarios: readonly [string, ...string[]];
+  /**
+   * D225 — the authored form: category labels over node-id lists. Optional; a
+   * graph small enough to read per-node declares nothing and gets the default.
+   * If declared, the factory demands it name every node exactly once. Plain
+   * strings here — the factory parses them into branded node ids the same way
+   * it parses scenario ids.
+   */
+  readonly timeline?: readonly Readonly<{ label: string; nodes: readonly string[] }>[];
   /** The built graph — its exact node tuple, result spec, and accumulators. */
   readonly flow: BuiltFlow<InputSchema, ResultSchema, Nodes, S, D>;
 }
@@ -674,6 +696,55 @@ function deriveSteps(nodes: readonly RuntimeFlowNode[]): readonly StepProjection
   return Object.freeze(steps);
 }
 
+/**
+ * D225 — normalize the declared timeline categories, or derive the per-node
+ * default. A declared timeline is EXHAUSTIVE: every node appears in exactly one
+ * category, checked here so a node cannot silently vanish from the surface
+ * whose whole job is to say what a run does. Gate and transaction nodes are
+ * ordinary members — a gate folds into its category as the waiting state
+ * rather than taking a segment of its own (the demo's "a wait is a state of a
+ * step, not a step of its own").
+ */
+function deriveTimeline(
+  id: string,
+  nodes: readonly RuntimeFlowNode[],
+  declared: readonly Readonly<{ label: string; nodes: readonly string[] }>[] | undefined,
+): readonly TimelineCategoryProjection[] {
+  if (declared === undefined) {
+    return Object.freeze(nodes.map((node) => TimelineCategoryProjectionSchema.parse({
+      label: labelOf(node),
+      nodes: [{ id: node.id, label: labelOf(node) }],
+    })));
+  }
+  const labelByNode = new Map(nodes.map((node) => [String(node.id), labelOf(node)]));
+  const seen = new Set<string>();
+  const categories = declared.map((category) => {
+    const parsed = TimelineCategorySpecSchema.parse(category);
+    return TimelineCategoryProjectionSchema.parse({
+      label: parsed.label,
+      nodes: parsed.nodes.map((nodeId) => {
+        const label = labelByNode.get(String(nodeId));
+        if (label === undefined) {
+          throw new Error(`${id}: timeline category "${parsed.label}" names undeclared node ${String(nodeId)}`);
+        }
+        if (seen.has(String(nodeId))) {
+          throw new Error(`${id}: timeline categories name node ${String(nodeId)} twice`);
+        }
+        seen.add(String(nodeId));
+        return { id: nodeId, label };
+      }),
+    });
+  });
+  const missing = nodes.map((node) => String(node.id)).filter((nodeId) => !seen.has(nodeId));
+  if (missing.length > 0) {
+    throw new Error(
+      `${id}: a declared timeline is exhaustive (D225) and this one does not cover: ${missing.join(", ")}`,
+    );
+  }
+  assertUnique(id, "timeline category labels", categories.map((category) => category.label));
+  return Object.freeze(categories);
+}
+
 function deriveGates(nodes: readonly RuntimeFlowNode[]): readonly GateProjectionDefinition[] {
   return Object.freeze(nodes.filter((node) => node.kind === "gate").map((node) =>
     GateProjectionDefinitionSchema.parse({
@@ -975,6 +1046,7 @@ export function defineWorkflowDescriptor<
     result: spec.flow.result,
     nodes: spec.flow.nodes,
     scenarios: declaredScenarios,
+    timeline: deriveTimeline(id, nodes, spec.timeline),
   });
   PROJECTIONS.set(descriptor, Object.freeze({
     steps,

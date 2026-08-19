@@ -4509,7 +4509,7 @@ anything else cites it, and **4495 becomes a fresh full-chain subject when its d
 **Four rulings landed the same day, recorded where they own:** the run-detail timeline is
 CATEGORICAL — the operator approved the six-category grouping (Kuali extraction · Identity check ·
 Job summary · Kronos timecard · UCPath transaction · Kuali finalization) over the 18 raw nodes,
-legacy's step vocabulary kept (D222, doc 03) · the gate-age pill carries no age; the age lives in
+legacy's step vocabulary kept (D225, doc 03) · the gate-age pill carries no age; the age lives in
 the row meta and the log panel, per the demo (D12 amended, doc 03) · no AI sanity check — the
 §14.2 packet's deterministic comparisons ARE the check (`legacy-tool-ops-sanity-check-record`
 retired, doc 12 §4.4) · the archived detail follows the demo — five tabs, Export (D223, doc 03

@@ -140,12 +140,60 @@ export const TimelineEventWireSchema = z.strictObject({
     });
   }
 });
-export const TimelineWireSchema = z.strictObject({ events: z.array(TimelineEventWireSchema) })
+const TimelineStepStateSchema = z.enum(["pending", "active", "done", "failed", "blocked", "cancelled", "skipped"]);
+
+/**
+ * ONE member node's contribution to a categorical step (D225) — served so the
+ * step's hover/accessible detail can name what folded into it without the
+ * client re-deriving the graph.
+ */
+export const TimelineStepMemberWireSchema = z.strictObject({
+  label: z.string().min(1),
+  state: TimelineStepStateSchema,
+  /** Sum of this node's measured execution durations; absent when none measured. */
+  durationSec: z.number().int().nonnegative().optional(),
+});
+
+/**
+ * D225 — the CATEGORICAL timeline step. The run-detail strip renders these,
+ * one segment per descriptor-declared category (or per node for a workflow
+ * that declares nothing), never one per raw execution: the composed
+ * separations graph drew eighteen truncated stubs before this. State is a fold
+ * over the member nodes' own states; `executions` carries the demo's `×N`
+ * marker when any member ran more than once (a gate park/resume re-running an
+ * `always-rerun` node is the ordinary cause), so a re-execution folds into its
+ * category instead of drawing a duplicate segment.
+ */
+export const TimelineStepWireSchema = z.strictObject({
+  label: z.string().min(1),
+  state: TimelineStepStateSchema,
+  /** Sum of measured member durations; absent when nothing was measured. */
+  durationSec: z.number().int().nonnegative().optional(),
+  /** Max executions of any one member node; present only when ≥ 2. */
+  executions: z.number().int().min(2).optional(),
+  members: z.array(TimelineStepMemberWireSchema).min(1),
+});
+export type TimelineStepWire = z.infer<typeof TimelineStepWireSchema>;
+
+export const TimelineWireSchema = z.strictObject({
+  events: z.array(TimelineEventWireSchema),
+  /**
+   * D225's categorical steps. Optional on the wire ONLY so a `RunDetailWire`
+   * frozen into an archived record before the field existed still parses
+   * (D133) — the client falls back to the per-event strip for exactly those
+   * records, and a live serve always carries it.
+   */
+  steps: z.array(TimelineStepWireSchema).optional(),
+})
   .superRefine((timeline, context) => {
     const ids = timeline.events.map(({ noteId }) => noteId);
     const sequences = timeline.events.map(({ sequence }) => sequence);
     if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", path: ["events"], message: "timeline note ids must be unique" });
     if (new Set(sequences).size !== sequences.length) context.addIssue({ code: "custom", path: ["events"], message: "timeline sequences must be unique" });
+    // Step labels are DISPLAY values and may legitimately repeat: the derived
+    // per-node default labels a node by its contract title, and two nodes may
+    // share one. Declared category labels are author-controlled and the
+    // factory demands THOSE unique; the wire does not re-litigate it.
   });
 
 export const GateDecisionWireSchema = z.discriminatedUnion("state", [

@@ -38,6 +38,7 @@ import {
   type RunDetailSectionResponse,
   type RunDetailWire,
   type TimelineDuration,
+  type TimelineStepWire,
 } from "../../../domain/dashboard/run-detail.js";
 import type { WriteBindingProof, WriteIntentRecord } from "../../../domain/write-safety.js";
 import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
@@ -51,7 +52,7 @@ import {
 import { NoteWireSchema as NoteAtRestSchema } from "../../../events/types.js";
 import type { RunFoldRecord, RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { resolveSubjectTitle } from "../projectors/run-subject-title.js";
-import { deterministicUuid } from "../support.js";
+import { deterministicUuid, nodeIdOfTaskSpanPath } from "../support.js";
 
 /**
  * The trust reads the receipt and failure sections need (D140/D142). They are
@@ -99,6 +100,16 @@ export interface RunDetailDescriptorView {
   }>[];
   /** Doc 03 §1.2: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
+  /**
+   * D225 — the descriptor's factory-derived categorical timeline (declared
+   * categories, or the one-per-node default). Optional in the VIEW only
+   * because a fixture may omit it; the registry's descriptors always carry it,
+   * and an absent value serves no `steps` (the client then renders events).
+   */
+  readonly timeline?: readonly Readonly<{
+    label: string;
+    nodes: readonly Readonly<{ id: string; label: string }>[];
+  }>[];
   /** Absent for a descriptor with no gate node; empty is the same answer. */
   readonly gateNodes?: readonly RunDetailGateNodeView[];
   readonly capabilities?: Readonly<{
@@ -244,9 +255,115 @@ function spanDuration(span: Readonly<{ startedAt?: string; endedAt?: string }>):
   return { state: "present", ms: ended - started };
 }
 
+/* ── D225: the categorical timeline fold ─────────────────────────────────── */
+
+type TimelineStepState = TimelineStepWire["state"];
+
+/** Same closed mapping the per-event fold uses; one vocabulary, two shapes. */
+const TASK_OUTCOME_STEP = {
+  done: "done", failed: "failed", cancelled: "cancelled", discarded: "cancelled",
+  skipped: "skipped", interrupted: "blocked", superseded: "cancelled",
+} as const;
+
+/**
+ * Fold the member node states into ONE category state. Precedence tells the
+ * truth loudest-first: a failure anywhere in the category is the category's
+ * fact; a gate waiting beats everything but a failure; live work beats a
+ * cancellation record. The last arm is the only judgement call: a category
+ * with some members executed and the rest never started is IN PROGRESS on a
+ * live run (the executor is between two of its nodes) and is rendered
+ * `pending` on a terminal one — the run stopped elsewhere and the members that
+ * never ran never ran; the member list carries the exact breakdown either way.
+ */
+function foldCategoryState(states: readonly TimelineStepState[], runTerminal: boolean): TimelineStepState {
+  if (states.includes("failed")) return "failed";
+  if (states.includes("blocked")) return "blocked";
+  if (states.includes("active")) return "active";
+  if (states.includes("cancelled")) return "cancelled";
+  if (states.every((state) => state === "pending")) return "pending";
+  if (states.every((state) => state === "done" || state === "skipped")) {
+    return states.includes("done") ? "done" : "skipped";
+  }
+  return runTerminal ? "pending" : "active";
+}
+
+/**
+ * D225 — one wire step per descriptor-declared timeline category. A node's
+ * state is its LATEST execution's state (a re-execution across a gate resume
+ * is real history — it folds into the count, never into a duplicate segment);
+ * its duration is the sum of every measured execution. A gate member with no
+ * task spans reads its state off the run's own gate records.
+ */
+function buildTimelineSteps(
+  timeline: NonNullable<RunDetailDescriptorView["timeline"]>,
+  row: RunFoldRecord,
+  runTerminal: boolean,
+): TimelineStepWire[] {
+  type SpanFold = RunFoldRecord["taskSpans"][number];
+  const spansByNode = new Map<string, SpanFold[]>();
+  for (const span of row.taskSpans) {
+    const nodeId = nodeIdOfTaskSpanPath(span.spanPath);
+    if (nodeId === undefined) continue;
+    const bucket = spansByNode.get(nodeId);
+    if (bucket === undefined) spansByNode.set(nodeId, [span]);
+    else bucket.push(span);
+  }
+
+  const memberOf = (node: Readonly<{ id: string; label: string }>): {
+    label: string; state: TimelineStepState; durationMs?: number; executions: number;
+  } => {
+    const executions = spansByNode.get(node.id) ?? [];
+    if (executions.length === 0) {
+      // A gate owns no task span; its category presence IS its state.
+      if (row.openGates.some((gate) => gate.gate === node.id)) {
+        return { label: node.label, state: "blocked", executions: 0 };
+      }
+      if (row.resolvedGates.some((gate) => gate.gate === node.id)) {
+        return { label: node.label, state: "done", executions: 0 };
+      }
+      return { label: node.label, state: "pending", executions: 0 };
+    }
+    const ordered = [...executions].sort((a, b) =>
+      (a.startedAt ?? a.endedAt ?? "").localeCompare(b.startedAt ?? b.endedAt ?? ""));
+    const latest = ordered[ordered.length - 1];
+    const state: TimelineStepState = latest?.outcome === undefined
+      ? "active"
+      : TASK_OUTCOME_STEP[latest.outcome];
+    let ms = 0;
+    let measured = false;
+    for (const span of executions) {
+      const duration = spanDuration(span);
+      if (duration.state === "present") {
+        ms += duration.ms;
+        measured = true;
+      }
+    }
+    return { label: node.label, state, ...(measured ? { durationMs: ms } : {}), executions: executions.length };
+  };
+
+  return timeline.map((category) => {
+    const members = category.nodes.map(memberOf);
+    const measured = members.filter((member) => member.durationMs !== undefined);
+    const totalMs = measured.reduce((sum, member) => sum + (member.durationMs ?? 0), 0);
+    const maxExecutions = Math.max(...members.map((member) => member.executions));
+    return {
+      label: category.label,
+      state: foldCategoryState(members.map((member) => member.state), runTerminal),
+      ...(measured.length > 0 ? { durationSec: Math.round(totalMs / 1000) } : {}),
+      ...(maxExecutions >= 2 ? { executions: maxExecutions } : {}),
+      members: members.map((member) => ({
+        label: member.label,
+        state: member.state,
+        ...(member.durationMs === undefined ? {} : { durationSec: Math.round(member.durationMs / 1000) }),
+      })),
+    };
+  });
+}
+
 export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDetailWire {
   const { row, authority } = requireRun(deps, runId);
   const status = statusOf(row, authority);
+  const descriptorView = deps.descriptors.resolve(row.queued.workflow);
 
   const timelineEvents: {
     at: string;
@@ -358,7 +475,7 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
        */
       title: authority.displayName
         ?? resolveSubjectTitle(
-          deps.descriptors.resolve(row.queued.workflow)?.subjectProjection,
+          descriptorView?.subjectProjection,
           { workflowId: row.queued.workflow, itemId: authority.envelope.itemId },
           deps.authority,
         )
@@ -376,6 +493,12 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
         notRun: event.notRun,
         durationMs: event.durationMs,
       })),
+      // D225: absent only when no registered descriptor can say what the
+      // graph's shape is (a replayed historical workflow) — the client then
+      // keeps the per-event strip, exactly as it does for pre-D225 archives.
+      ...(descriptorView?.timeline === undefined
+        ? {}
+        : { steps: buildTimelineSteps(descriptorView.timeline, row, authority.lifecycle.state === "terminal") }),
     },
     gate,
     outcome,
