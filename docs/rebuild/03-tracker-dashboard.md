@@ -752,6 +752,43 @@ and that is load-bearing: `unhide` appeared in the projector ONLY inside the pro
 is never served, so a scan that counted prose would have called the dead key healthy for the whole
 phase it was dead.
 
+### D235 — a bulk command is N children and one vector (2026-08-19)
+
+**Operator ruling, dated 2026-08-18:** bulk commands are BUILT, and the two batch verbs are
+`cancel` and `retry` (`bump` is schema-admitted and deliberately not offered — a claim-order change
+applied to a selection is a re-ordering nobody asked for). Every bulk action is many REAL CAS-bound
+transitions, so the surface says so BEFORE it fires and reports PER-RUN outcomes, never one
+aggregate "Done". This section is the normative text.
+
+**The server half.** `POST /api/v1/commands/bulk` is a SECOND door, not a mode of the single-command
+door: one command answers one `CommandResult`, N commands answer N of them, and folding a vector
+into the single-result union would give the collapse-into-"Done" defect a place to hide. The
+executor is the SAME command-service path a single press reaches, run once per target — never one
+transaction spanning the batch — so the refusal vocabulary cannot fork. Each child's command id is
+DERIVED (`deriveStableUuid` over `bulkCommandId` + the run id), so re-delivering one bulk envelope
+replays exactly the same N children (`replayed: true`) instead of filing N more — D174's
+idempotency lesson, one family over. The vector's arms are `applied` / `conflict` (carrying the
+server's `currentVersion`, the only number that tells an operator to refresh) / `refused` (the SAME
+`CommandRejectionCode` a single press would get) / `errored` (an untyped throw is reported verbatim
+and STOPS the pass — issuing further writes into a system that just failed to answer is the
+opposite of fail-loud, and `requestedCount` is served precisely so the untried remainder is
+legible). Whole-request refusals reach NO target and are named: an empty target set, a run named
+twice (its second child would replay the first and report a transition it never made), and the
+`all-or-none` mode — schema-recognized, unexecuted, refused by name rather than run best-effort
+under an atomicity label this kernel does not have.
+
+**The client half** (`bulk-dispatch.ts`, the strip in `queue-toolbar.tsx`). OFFERED and ELIGIBLE
+are different rules and the strip says both out loud: a verb is offered when at least one selected
+row's own served `actions[]` admits it, and its frozen target set is the INTERSECTION of the
+selection with those rows — a row outside it is SKIPPED with its count and reason stated, never
+silently dropped and never sent. Versions are frozen at composition from each row's own descriptor
+(*"targets and versions are frozen at confirmation"*), the confirm copy states the per-run
+transition and the skip count, and a plan with nothing eligible REFUSES to become an envelope so
+"nothing happened" can never be mistaken for "it worked". The result band renders the vector run by
+run — subjects frozen from the plan that was sent, because a band that printed uuids is a report
+nobody can read and re-deriving titles from the current day goes blank the moment a batch outlives
+its page.
+
 ---
 
 ## 0. What exists today (and what specifically hurts)
