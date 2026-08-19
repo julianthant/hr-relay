@@ -250,7 +250,7 @@
       "file": "tests/unit/architecture/control-command-single-path.test.ts",
       "status": "active",
       "owner": "docs/rebuild/03-tracker-dashboard.md; docs/rebuild/10-guard-test-architecture.md",
-      "invariant": "D113: exactly one command kernel executes doc 03's D95 command protocol — the journal, audit, and start-plan consumption are statically confined to it; every family/action dispatches to a typed result with Phase-1f active arms executing and every later arm rejected capability-unavailable with zero authority-generation advance; command ids replay byte-exactly; CAS conflicts are scoped to the real race families; hide stays a reversible presentation tombstone; typed gate results parse the descriptor's exact schema before storage; notification stays read/unread/snooze; capture targets cannot spell a run id; and an injected active-run lookup failure enqueues zero runs.",
+      "invariant": "D113: exactly one command kernel executes doc 03's D95 command protocol — the journal, audit, and start-plan consumption are statically confined to it; every family/action dispatches to a typed result with Phase-1f active arms executing and every later arm rejected capability-unavailable with zero authority-generation advance; command ids replay byte-exactly; every run verb CASes the CALLER's expected version, presentation included (D233 — a stale rename may not overwrite a current name); hide stays a reversible presentation tombstone; typed gate results parse the descriptor's exact schema before storage; notification stays read/unread/snooze; capture targets cannot spell a run id; and an injected active-run lookup failure enqueues zero runs.",
       "replacementRequired": true
     },
     {

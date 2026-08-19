@@ -23,7 +23,8 @@ the `warnings` count (D22/D126) are SERVED and DRAWN; their records are deleted,
 `dryRun` (D6) are SERVED and still not drawn — each for a reason that is a design decision rather
 than a wire gap — so both records stay below, rewritten to state exactly what is left and who owns
 it. **The opening claim above no longer holds for those two:** the frontend is not 1:1 on them, and
-neither gap closes by serving another field.
+neither gap closes by serving another field. *(`dryRun` is now DRAWN — see the fourth pass below;
+`gateOpenedAt` was drawn with D12's `Waiting on you · 10m` age.)*
 
 **Landed 2026-08-19, third pass — the ordinal, the class, the links and the outcome.** `runNumber`
 (D230, durable on `RunRecord` behind schema v15), `priority`, `containment`, `linkedRuns[]`,
@@ -40,82 +41,32 @@ it; doc 03's as-built delta owns the contract. The one remainder is NOT a regres
 record: no `outcome`-placement descriptor is served because those are navigation-shaped and need
 the linked-run wire fields — that half rides the "No linked-run chip" record below.
 
----
+**Landed 2026-08-19, fourth pass — the ROW DRAWS IT, and three records are deleted.** The third
+pass above served seven fields and drew none of them; this pass is the consumption half, and doc 03's
+*"Drawing the second batch"* as-built delta owns where each one renders. Deleted:
 
-## Rename has a kernel command and no operator control
+- **"Rename has a kernel command and no operator control"** — closed by **D233**. It is not the
+  inline row field the record and `KERNEL_ONLY_COMMANDS` both predicted: `rename` joined the served
+  action vocabulary and is a `menu` descriptor the surface intercepts to collect its one value, which
+  is the shape `resolve-gate` already uses. A member row is the one row that does not carry it.
+- **"No run-number `#N` chip in the footer"** — closed. The chip is the footer's second segment and
+  a SIBLING of the trace chip, never a substitute; a pre-v15 row draws no chip at all, and its reason
+  rides the row's ⓘ.
+- **"The `dry run` chip has its field and no tone to draw in"** — closed by **D232**, which is the
+  DS decision the record asked for: a fifth semantic hue with a real light/dark pair, named for its
+  MEANING rather than its colour, and drawn on the provenance bar too.
 
-**Recorded:** 2026-08-14 · **Status:** recorded · **Owning doc:** doc 03 §1.2, §2.4
-
-**Symptom.** `RunRecord.displayName` is durable, `rename` has been a kernel command since Phase
-1c (`command-kernel.ts:1569`), the row serves and draws `displayName ?? title` with the demo's
-"Named by you — subject is <subject>" tooltip — and no build gives the operator a way to SET it.
-`KERNEL_ONLY_COMMANDS` records the display-name edit as an inline row field; only a CLI/API
-caller can rename a run today.
-
-**What a fix involves.** The inline rename field (demo `DemoRunIdentity.tsx`'s dialog) wired to
-the existing `rename` command — a UI session's work, no wire or kernel change. *(Replaces the
-"title is a document number" record, whose wire halves — subject-derived `title` via the
-descriptor's declared `subjectProjection`, and served `displayName` — both landed 2026-08-14;
-that record's claim that `displayName` had "no producer at all" was wrong.)*
-
----
-
-## No run-number `#N` chip in the footer — WIRE HALF LANDED 2026-08-19 (D230)
-
-**Recorded:** 2026-08-14 · **Updated:** 2026-08-19 · **Status:** the wire half is SERVED; the chip
-is a UI session's line · **Owning doc:** doc 03 §1.2, §"The second batch"
-
-**Symptom.** The demo footer reads `2:18 PM · #1 · 10620118`; the second segment is the run's
-ordinal for that workflow (`DemoQueue.tsx:709`, `#{row.run}`; the same value is printed on the
-rename dialog's meta line beside subject/trace/elapsed, `DemoRunIdentity.tsx:433`).
-
-**Demo element.** The bordered `#N` chip, second segment of the footer provenance line.
-
-**Missing wire.** `QueueBaseFields.runNumber`.
-
-**What landed (D230).** Exactly that: `RunRecord.runNumber`, a per-workflow monotonic ordinal
-assigned at enqueue from `nextWorkflowRunNumber` inside the inserting transaction, promoted to a
-mirrored `tasks.run_number` column with `UNIQUE (workflow, run_number)` by schema v15, and served as
-`QueueBaseFields.runNumber` with a D133 read-forward absent arm for every run enqueued before v15.
-`queue.tsx` does not draw it yet — that is the remaining half, and it is a UI line, not a wire gap.
-
-**Deviation kept in the meantime.** `queue.tsx` draws the **trace id** in that chip slot
-instead. That is deliberate and stays: the trace id is the run's name in every log, receipt and
-support conversation, the demo's own comment says it is the last thing that may be cut, and a
-chip that would otherwise be empty is worse than one carrying the id an operator actually
-greps. Now that `runNumber` is served the two are siblings, not substitutes — and the trace id is
-also what the footer keeps drawing for a pre-v15 run, whose ordinal is honestly absent.
+**What the fourth pass did NOT close, and why each is still below.** `reviewRunId`, `extractedCount`,
+`preset`, `memberEid`, `groupNoun` and `rejectedCount` all still have no producer at any layer —
+drawing is not what they were waiting for. The `subtitle` record is a semantic mismatch in what an
+existing field is FILLED with, which no amount of rendering settles.
 
 ---
 
-## The `dry run` chip has its field and no tone to draw in
+## `reviewRunId` has no model to serve from (the linked-run CHIP is done)
 
-**Recorded:** 2026-08-14 · **Updated:** 2026-08-14 · **Status:** diagnosed — the WIRE half landed,
-the chip needs a DS decision · **Owning doc:** doc 03 §1.2, doc 09 (dry run)
-
-**What landed.** `QueueBaseFields.dryRun` is served on every row, read from the run envelope (D6's
-one home for the flag, and the same bit `executeDryRun`/`executeTransaction` turns on). There is no
-absent arm by design.
-
-**What still does not render.** Nothing draws it. The demo's chip is VIOLET
-(`DemoQueue.tsx:437`, titled *"this rehearsal reads the systems and writes nothing"*) and
-`ROW_CHIP_TONE` in `queue.tsx` has exactly three tones — `neutral`, `info`, `warning`. There is no
-violet in `tokens.css`, and the one token that carried the name was deliberately re-derived to
-amber (`--log-violet: #f79009; /* unconfirmed / parked — warning, not a category */`). Drawing the
-chip in `info` would put it in the same tone as the `test` chip it sits beside, which is the one
-pair a glance has to separate.
-
-**What a fix involves.** A DS decision — either a fourth row-chip tone with its own light/dark
-token pair, or a ratified reason the rehearsal chip shares a tone with `test`. That is a UI
-session's call, not a backend one; the field is served and the chip is one line the moment the tone
-exists.
-
----
-
-## No linked-run chip — the LINK half landed 2026-08-19 (D231); `reviewRunId` did not
-
-**Recorded:** 2026-08-14 · **Updated:** 2026-08-19 · **Status:** `linkedRuns[]` is SERVED;
-`reviewRunId` has no model to serve from · **Owning doc:** doc 03 §9 D6, D10, D13
+**Recorded:** 2026-08-14 · **Updated:** 2026-08-19 · **Status:** `linkedRuns[]` is SERVED **and
+DRAWN**; only `reviewRunId` is left, and it has no producer · **Owning doc:** doc 03 §9 D6, D10, D13
 
 **Symptom.** Nearly every demo row carries a full-width chip under the title routing to a
 related run — `Oath Upload · running ↗`, `OCR Review · done ↗` — which is how a linked child
@@ -125,14 +76,16 @@ are `root`, so the band never appears.
 
 **Demo element.** `PanelRedirectChip` (:1099) and `LinkedReviewChip` (:1159).
 
-**What landed (D231).** `QueueBaseFields.linkedRuns[]`, named for what it carries rather than for
+**What landed and DRAWS (D231).** `QueueBaseFields.linkedRuns[]`, named for what it carries rather than for
 ids it does not: each entry is `{ runId, workflowId, label, panelKind, status }`, resolved through
 the same status function every row's own status comes from, so the chip can print `Name · status`
 without the client re-deriving a status from the day payload. `containment` (`root | member |
 linked`) is served beside it, and the member and linked partitions are disjoint by construction.
 The list is EMPTY for every registered workflow today — no descriptor declares a `child-run` node
 that fans out to a separately-panelled run — which is an honest zero the projector fills the moment
-such a child appears in the fold.
+such a child appears in the fold. The chip is drawn: `PanelRedirectChip` is now ONE component
+serving both directions — the route back to the run that delegated this one and the route forward to
+a run this one delegated — so neither direction can drift into a different shape.
 
 **What did NOT land: `reviewRunId`.** There is no model to serve it from. `reviewRunId` is a
 demo-FIXTURE concept that was never ratified into the run model: nothing in `src/` writes a
@@ -148,10 +101,11 @@ unrelated rows.
 
 ---
 
-## No fact chips and no extracted-people count — FACTS landed 2026-08-19; the COUNT did not
+## No extracted-people count (the FACT CHIPS are done)
 
-**Recorded:** 2026-08-14 · **Updated:** 2026-08-19 · **Status:** `facts[]` is SERVED;
-`extractedCount` has no producer · **Owning doc:** doc 03 §9 D7
+**Recorded:** 2026-08-14 · **Updated:** 2026-08-19 · **Status:** `facts[]` is SERVED **and DRAWN**
+in the demo's `FactChipView` shape; only `extractedCount` is left, and it has no producer ·
+**Owning doc:** doc 03 §9 D7
 
 **Symptom.** A demo row's chip band carries the run's own so-what — `signed 2:24 PM` on a
 finished oath, `6 people` on a packet still at OCR review (which is D7, ratified: *"a packet
@@ -160,7 +114,7 @@ row states its status and nothing about its outcome.
 
 **Demo element.** `FactChipView` (:168) and the `Users` + count chip (:1030).
 
-**What landed.** `QueueBaseFields.facts[]`, in the demo's `FactChipView` shape (`label` + `value`),
+**What landed and DRAWS.** `QueueBaseFields.facts[]`, in the demo's `FactChipView` shape (`label` + `value`),
 read from the run's ALREADY-DERIVED evidence receipt's `output` facts — which is literally *"the
 same values the receipt prints"*, and reading them rather than re-flattening the terminal result is
 what keeps the chip and the Receipt tab from being two derivations of one answer. A leaf becomes a
@@ -209,9 +163,13 @@ queue footer at all is the backend question this record holds open.
 **Recorded:** 2026-08-19 · **Status:** recorded · moved here from
 [archive.md](archive.md) when that file was cleared to zero (Track B5).
 
-**Updated 2026-08-19 — the PRIORITY half landed; `preset` has no producer at any layer.**
-`QueueBaseFields.priority` is served from the run envelope (D95's `bump` target) with no absent arm,
-and the archive inherits it. `preset` was NOT added: it does not exist as run data anywhere — no
+**Updated 2026-08-19 — the PRIORITY half is landed AND DRAWN; `preset` has no producer at any
+layer.** `QueueBaseFields.priority` is served from the run envelope (D95's `bump` target) with no
+absent arm, and the archive inherits it. It renders in the provenance bar's ⓘ rather than as a chip,
+which is the demo's own disposition for it (*"the same two words on every row an operator starts on
+their own machine, so they cost a chip each to say nothing"*), with the bullet stating why the value
+matters. So the demo element below is half satisfied by design: `Chip label="priority"` is
+deliberately NOT a chip here, and only `preset` is outstanding. `preset` was NOT added: it does not exist as run data anywhere — no
 descriptor in `src/workflows/` declares `presets`, `StartPlanRecordSchema` has no field for the
 choice, `RunEnvelopeSchema` never carries one, and `run.queued` does not stamp one. Serving it would
 mean a wire arm that can only ever be absent. **What closes it:** the preset has to be recorded

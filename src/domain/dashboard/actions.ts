@@ -27,9 +27,18 @@ export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "delete", 
  * exist in a real HR system has no "try again" — only "I looked, and it is
  * there" or "I looked, and it is not". Serving them is what makes that pair
  * reachable at all.
+ *
+ * `rename` joined the vocabulary with D233. It was recorded as kernel-internal
+ * on the reasoning that *"the display-name edit is an inline field on the row,
+ * not a descriptor-driven control"* — and no build ever grew that field, so the
+ * one kernel command an operator would reach for daily was reachable only from
+ * a CLI that does not exist. It is a descriptor-driven control like every other
+ * run verb, and the demo (`RebuildDemo.tsx:240`) serves it exactly that way: a
+ * `menu` descriptor the surface INTERCEPTS to collect its one value, the same
+ * shape `resolve-gate` already uses for the ceremony dialog's answer.
  */
 export const ActionCommandKeySchema = z.enum([
-  "retry", "cancel", "bump", "hide", "unhide", "resolve-gate",
+  "retry", "cancel", "bump", "rename", "hide", "unhide", "resolve-gate",
   "resolve-write-present", "resolve-write-absent",
 ]);
 

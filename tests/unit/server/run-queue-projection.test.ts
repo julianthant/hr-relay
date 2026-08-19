@@ -191,16 +191,23 @@ describe("THE run/queue projection (D81)", () => {
 
     const actionKeys = (seed: number): string[] =>
       (day.queueSurfaces.find(({ runId }) => runId === uuidOf(seed))?.actions ?? []).map(({ key }) => key);
-    assert.deepEqual(actionKeys(1), ["bump", "cancel", "hide"], "the queued row");
-    assert.deepEqual(actionKeys(2), ["cancel", "hide"], "the running row");
-    assert.deepEqual(actionKeys(3), ["retry", "hide"], "the done row");
-    assert.deepEqual(actionKeys(4), ["retry", "hide"], "the failed row");
-    assert.deepEqual(actionKeys(9), ["cancel", "hide"], "the awaiting-approval row");
+    assert.deepEqual(actionKeys(1), ["bump", "cancel", "rename", "hide"], "the queued row");
+    assert.deepEqual(actionKeys(2), ["cancel", "rename", "hide"], "the running row");
+    assert.deepEqual(actionKeys(3), ["retry", "rename", "hide"], "the done row");
+    assert.deepEqual(actionKeys(4), ["retry", "rename", "hide"], "the failed row");
+    assert.deepEqual(actionKeys(9), ["cancel", "rename", "hide"], "the awaiting-approval row");
     // A settled delegated member carries no re-run: the kernel refuses generic
     // retry for a child ("child retries route through their delegation edge
     // policy"), so a `↺` there would be a button that always refuses. The check
     // reads AUTHORITY's `envelope.parent`, which is the same fact the kernel
     // decides on — member 8 is the seeded member whose durable record carries it.
+    //
+    // It carries no RENAME either, and that half is a row-shape decision rather
+    // than a kernel one (D233): `displayName` replaces the title on the row it
+    // rides, so naming a member would put free text where the group's list
+    // prints the person that item is about. This row is the projector's own
+    // proof of it — `isMember` is read from the same `operation-member` shape
+    // the surface kind comes from.
     assert.deepEqual(actionKeys(8), ["hide"]);
     // The operation's cancel is the TREE cancel, keyed so the footer titles it
     // with its blast radius.

@@ -51,6 +51,8 @@ function factsFor(status: Status, over: Partial<QueueRowActionFacts> = {}): Queu
     isChild: false,
     parkedWrite: false,
     memberCount: 0,
+    isMember: false,
+    named: false,
     workflowLabel: "Person Lookup",
     hasReviewPanel: false,
     ...over,
@@ -116,15 +118,18 @@ describe("queue-row action descriptors — the per-status set", () => {
    */
   const EXPECTED: Readonly<Record<Status, readonly string[]>> = {
     // `bump` needs a queued lifecycle (`executeBump`'s own refusal names it).
-    queued: ["bump", "cancel", "hide"],
-    running: ["cancel", "hide"],
-    blocked: ["cancel", "hide"],
-    "awaiting-approval": ["cancel", "hide"],
+    // `rename` is on EVERY status: `executePresentation` has no state
+    // precondition, so a run that has already written to UCPath can still be
+    // named — which is the whole reason a rename is safe to offer (D233).
+    queued: ["bump", "cancel", "rename", "hide"],
+    running: ["cancel", "rename", "hide"],
+    blocked: ["cancel", "rename", "hide"],
+    "awaiting-approval": ["cancel", "rename", "hide"],
     // Terminal: nothing to cancel, nothing to bump, a re-run is possible.
-    done: ["retry", "hide"],
-    failed: ["retry", "hide"],
-    cancelled: ["retry", "hide"],
-    partial: ["retry", "hide"],
+    done: ["retry", "rename", "hide"],
+    failed: ["retry", "rename", "hide"],
+    cancelled: ["retry", "rename", "hide"],
+    partial: ["retry", "rename", "hide"],
   };
 
   it("serves exactly the declared set for every queue status", () => {
@@ -153,10 +158,14 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.deepEqual(placements("queued"), {
       bump: ["footer", "menu"],
       cancel: ["footer", "menu"],
+      // Menu-only in both states, and in the demo: the footer is the FREQUENT
+      // subset, and naming a run is something an operator does once.
+      rename: ["menu"],
       hide: ["menu"],
     });
     assert.deepEqual(placements("done"), {
       retry: ["footer", "menu"],
+      rename: ["menu"],
       hide: ["footer", "menu"],
     });
     for (const status of QueueStatusSchema.options) {
@@ -175,8 +184,29 @@ describe("queue-row action descriptors — the per-status set", () => {
    * that drew a `↺` would be drawing a button that always refuses.
    */
   it("drops retry for a delegated child, and keeps hide", () => {
-    assert.deepEqual(keysFor("failed", { isChild: true }), ["hide"]);
-    assert.deepEqual(keysFor("failed"), ["retry", "hide"]);
+    assert.deepEqual(keysFor("failed", { isChild: true }), ["rename", "hide"]);
+    assert.deepEqual(keysFor("failed"), ["retry", "rename", "hide"]);
+  });
+
+  /**
+   * A MEMBER row loses `rename`, and it is the one narrowing in this file that
+   * is not a kernel precondition. `displayName` REPLACES the title on the row
+   * it rides, so naming a member would put free text where the group's list
+   * prints the person that item is about. A `linked` child keeps its control:
+   * it is a row read on its own, not one line of somebody's tally.
+   */
+  it("drops rename for a delegated MEMBER, and keeps it for every other row", () => {
+    assert.deepEqual(keysFor("running", { isMember: true }), ["cancel", "hide"]);
+    assert.deepEqual(keysFor("running", { isChild: true }), ["cancel", "rename", "hide"]);
+  });
+
+  /** The label states which act this is; the server knows whether a name exists. */
+  it("names an unnamed run and renames a named one", () => {
+    const labelFor = (named: boolean): string | undefined =>
+      queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("done", { named }))
+        .find(({ key }) => key === "rename")?.label;
+    assert.equal(labelFor(false), "Name this run\u2026");
+    assert.equal(labelFor(true), "Rename run\u2026");
   });
 
   /** The demo's group row: one key `FooterActions` titles with the blast radius. */
@@ -228,13 +258,15 @@ describe("queue-row action descriptors — the per-status set", () => {
       queueRowActions(policy, factsFor(status)).map(({ key }) => key);
     assert.deepEqual(keys("awaiting-approval"), ["cancel", "hide"]);
     assert.deepEqual(keys("running"), ["hide"], "a condition that does not hold must remove the action");
+    // The policy above does not enable `rename`, and the projection cannot add
+    // an action a descriptor never declared — the narrowing runs both ways.
     // Enabling something the projection never serves cannot conjure it.
     const wide = WorkflowActionPolicySchema.parse({
       enabled: ["retry", "cancel", "bump", "rename", "hide", "unhide", "open-review", "open-evidence"],
     });
     assert.deepEqual(
       queueRowActions(wide, factsFor("queued")).map(({ key }) => key),
-      ["bump", "cancel", "hide"],
+      ["bump", "cancel", "rename", "hide"],
     );
   });
 });
@@ -312,7 +344,14 @@ describe("queue-row action descriptors — every served verb has a command behin
       const composed = composeCommandRequest(
         action,
         { runId: uuid(1), expectedVersion: action.expectedVersion },
-        { actorId: "local-operator", source: "queue" },
+        {
+          actorId: "local-operator",
+          source: "queue",
+          // The one served verb carrying a value only a human authors (D233).
+          // Supplying it here is what makes this a composition test rather
+          // than a re-assertion of the refusal the next case owns.
+          renameAnswer: "Friday exception pack",
+        },
       );
       assert.equal(
         composed.state,
@@ -322,6 +361,53 @@ describe("queue-row action descriptors — every served verb has a command behin
       const parsed = CommandRequestSchema.safeParse(composed.request);
       assert.ok(parsed.success, `${action.key} composed an envelope the kernel refuses`);
     }
+  });
+
+  /**
+   * D233's refusal, through the same entry point. A `rename` descriptor can
+   * reach the generic dispatcher — from the row's context menu, if a surface
+   * forgets to intercept it — and the only honest answer there is a refusal:
+   * a name this composer chose would be a value nobody authored landing on a
+   * run record, which is the substitution the gate's own arms already refuse.
+   */
+  it("refuses a rename with no name, and one the display-name schema would reject", () => {
+    const rename = served.find((action) => action.kind === "command" && action.command === "rename");
+    assert.ok(rename?.kind === "command", "the projection served no rename to test");
+    const target = { runId: uuid(1), expectedVersion: rename.expectedVersion };
+    const base = { actorId: "local-operator", source: "queue" } as const;
+
+    const unanswered = composeCommandRequest(rename, target, base);
+    assert.equal(unanswered.state, "refused");
+    if (unanswered.state === "refused") assert.match(unanswered.reason, /no name was supplied/);
+
+    // Blank, and blank-after-trim, are the same refusal: the field's own rule
+    // is what answers, so the operator never meets a kernel error instead.
+    for (const blank of ["", "   "]) {
+      const composed = composeCommandRequest(rename, target, { ...base, renameAnswer: blank });
+      assert.equal(composed.state, "refused", `"${blank}" composed a rename`);
+    }
+
+    // A bound the KERNEL holds, refused where it is typed rather than on the
+    // wire: 121 code points against `RunDisplayNameSchema`'s 120.
+    const tooLong = composeCommandRequest(rename, target, { ...base, renameAnswer: "x".repeat(121) });
+    assert.equal(tooLong.state, "refused");
+
+    // And a name that IS sendable composes an envelope the kernel parses, with
+    // the operator's text trimmed and nothing else changed about it.
+    const ok = composeCommandRequest(rename, target, { ...base, renameAnswer: "  Friday exception pack  " });
+    assert.equal(ok.state, "ready");
+    if (ok.state !== "ready") return;
+    const parsed = CommandRequestSchema.safeParse(ok.request);
+    assert.ok(parsed.success);
+    if (!parsed.success) return;
+    assert.equal(parsed.data.family, "run");
+    assert.equal(parsed.data.type, "rename");
+    assert.deepEqual(
+      parsed.data.type === "rename" ? parsed.data.payload : undefined,
+      { displayName: "Friday exception pack" },
+    );
+    // CAS-bound to the descriptor's own revision, like every other verb.
+    assert.equal(parsed.data.target.expectedVersion, rename.expectedVersion);
   });
 
   /**

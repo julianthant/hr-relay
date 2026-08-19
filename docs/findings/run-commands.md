@@ -23,7 +23,8 @@ typed `never`, so a fourth shape is both a compile error and a runtime refusal. 
 - ~~Three of the four approval ceremonies refuse on click~~ — closed. All four now compose:
   one-click, choose-a-candidate (no default selected), type-the-EID, and reject with a reason.
 
-Five records remain open below.
+Four records remain open below, with a second RESOLVED block among them (D233) sitting where the
+records it closed were.
 
 ---
 
@@ -61,16 +62,34 @@ Five records remain open below.
 
 ---
 
-## `hide` / `unhide` / `rename` cannot report a conflict
+## RESOLVED 2026-08-19 — the presentation CAS hole, and the rename control behind it (D233)
 
-**Recorded:** 2026-08-19 · **Status:** diagnosed · **Owning doc:** doc 03 §2.4
+Two records are struck here; the surviving `unhide` record below is a different defect and is
+untouched. Normative text: **doc 03 §"Drawing the second batch"**.
 
-- `executePresentation` (`src/core/command-kernel.ts:1564-1567`) re-reads the run and CASes against
-  `current.version` instead of the caller's `request.target.expectedVersion`. Every other run verb
-  CASes the caller's value (`:648`, `:1588`, `:1668`). A stale `Hide` from a tab left open since
-  yesterday silently applies instead of returning `conflict`.
-- Low blast radius (presentation only), but it is the one place the CAS discipline has a hole, and
-  the fix is to use the value the caller already sends.
+- ~~`hide` / `unhide` / `rename` cannot report a conflict~~ — closed. `executePresentation` CASed
+  against its own re-read (`current.version`), which cannot fail, so a stale command applied
+  silently and answered "Recorded." All three verbs now CAS `request.target.expectedVersion` like
+  every other run verb. The reasoning the record called *low blast radius* is what is worth keeping:
+  it is true of `hide` and false of `rename`, because a name is a value the operator AUTHORED and
+  applying yesterday's over today's discards somebody's edit. The guard covering that arm had been
+  asserting the hole as a feature, under the heading *"scopes CAS to the real race families"*; the
+  case and its registered invariant both moved in the same commit.
+- ~~Rename has a kernel command and no operator control~~ (recorded in
+  [queue-rows.md](queue-rows.md), struck there too) — closed. The row serves a `rename` descriptor
+  at `menu`, the surface intercepts it for the dialog's value, and the composer refuses a rename
+  with no name rather than posting a plausible one.
+
+**One CAS observation this pass did NOT act on**, recorded rather than fixed because it is outside
+the seam: **`executeBump` (`command-kernel.ts:715`) never compares `request.target.expectedVersion`
+at all.** It re-reads the run, checks the lifecycle, and passes `current.version` to
+`bumpPriority` — the same shape `executePresentation` had. The record above said *"every other run
+verb CASes the caller's value"* and cited `:648` / `:1588` / `:1675`, which is true of those three
+and not of bump. The blast radius is genuinely small (a stale bump reorders a queued run's claim and
+is refused outright once the run is no longer queued), but it is the same hole, and "one CAS rule
+with no exceptions" is the property that makes the discipline checkable. **What closes it:** the one
+line the presentation fix already models, plus the two `runCommand(..., 999)` bump assertions in
+`command-kernel.test.ts` that would have to state the live version instead.
 
 ---
 

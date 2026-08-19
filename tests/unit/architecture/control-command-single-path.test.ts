@@ -292,7 +292,20 @@ describe("control-command-single-path", () => {
     assert.deepEqual([...new Set(seen)].sort(), [...registry].sort(), "the fixture corpus must cover every family/action");
   });
 
-  it("scopes CAS to the real race families: cancel conflicts on drift, rename/hide do not", () => {
+  /*
+   * D233 INVERTED THIS CASE. It used to read *"cancel conflicts on drift,
+   * rename/hide do not"* and asserted `applied` for a rename and a hide sent at
+   * version 999 — the CAS hole, pinned as a feature under the heading "scopes
+   * CAS to the real race families".
+   *
+   * There is no such scoping. Presentation is exempt from a STATE precondition
+   * (a name is legal on a run in any lifecycle) and that is a different
+   * exemption from being exempt from the version check: a rename carries a
+   * value the operator authored, so a stale one silently discards somebody's
+   * edit and reports "Recorded." Every run verb now CASes the caller's value,
+   * which is the rule with no exceptions a reviewer can actually check.
+   */
+  it("CASes every run verb against the caller's version — presentation included", () => {
     const harness = createHarness();
     assert.equal(harness.database.authority.runs.enqueue(QUEUED_RUN).state, "inserted");
     const base = {
@@ -301,33 +314,48 @@ describe("control-command-single-path", () => {
       source: "dashboard",
       family: "run",
     };
+    const live = harness.database.authority.runs.get(UUID_2)?.version ?? 0;
+    assert.ok(live > 0);
 
-    const renamed = harness.kernel.execute({
+    const staleRename = harness.kernel.execute({
       ...base, commandId: nextCommandId(), type: "rename",
       target: { runId: UUID_2, expectedVersion: 999 },
       payload: { displayName: "Renamed despite drift" },
     });
-    assert.equal(renamed.state, "applied");
+    assert.equal(staleRename.state, "conflict", "a stale rename may not overwrite a current name");
+    assert.equal(harness.database.authority.runs.get(UUID_2)?.displayName, undefined);
 
-    const hidden = harness.kernel.execute({
+    const staleHide = harness.kernel.execute({
       ...base, commandId: nextCommandId(), type: "hide",
       target: { runId: UUID_2, expectedVersion: 999 },
     });
-    assert.equal(hidden.state, "applied");
-
-    // Hide is a reversible presentation tombstone: the run row still exists,
-    // its lifecycle is untouched, and unhide restores visibility.
-    const afterHide = harness.database.authority.runs.get(UUID_2);
-    assert.ok(afterHide !== undefined, "hide may never delete the run row");
-    assert.equal(afterHide.hidden, true);
-    assert.equal(afterHide.lifecycle.state, "queued");
-    assert.equal(afterHide.displayName, "Renamed despite drift");
+    assert.equal(staleHide.state, "conflict");
 
     const cancelled = harness.kernel.execute({
       ...base, commandId: nextCommandId(), type: "cancel",
       target: { runId: UUID_2, expectedVersion: 999 },
     });
     assert.equal(cancelled.state, "conflict", "cancel-tree is CAS-enforced");
+
+    // At the LIVE version all three land, and hide is still a reversible
+    // presentation tombstone: the run row exists, its lifecycle is untouched.
+    const renamed = harness.kernel.execute({
+      ...base, commandId: nextCommandId(), type: "rename",
+      target: { runId: UUID_2, expectedVersion: live },
+      payload: { displayName: "Renamed at the live version" },
+    });
+    assert.equal(renamed.state, "applied");
+    const hidden = harness.kernel.execute({
+      ...base, commandId: nextCommandId(), type: "hide",
+      target: { runId: UUID_2, expectedVersion: harness.database.authority.runs.get(UUID_2)?.version ?? 0 },
+    });
+    assert.equal(hidden.state, "applied");
+
+    const afterHide = harness.database.authority.runs.get(UUID_2);
+    assert.ok(afterHide !== undefined, "hide may never delete the run row");
+    assert.equal(afterHide.hidden, true);
+    assert.equal(afterHide.lifecycle.state, "queued");
+    assert.equal(afterHide.displayName, "Renamed at the live version");
   });
 
   it("enqueue policy is transactional: an injected active-run lookup error creates zero runs", () => {

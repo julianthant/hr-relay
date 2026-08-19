@@ -1563,15 +1563,59 @@ function executeIntake(
   }
 }
 
+/**
+ * What a stale command was about to overwrite, in the operator's terms.
+ *
+ * Exhaustive over this function's declared parameter type rather than over the
+ * three verbs that actually reach it: `RunBasicCommand` groups all five plain
+ * run verbs into ONE union arm, so the three extra keys are the price of a
+ * table the compiler checks. A `Partial` record would take that check away,
+ * and a ternary chain would hand `retry` the word "unhiding".
+ */
+const PRESENTATION_REFRESH: Readonly<Record<(RunBasicCommand | RunRenameCommand)["type"], string>> = {
+  rename: "refresh before renaming it — the name you are holding may not be the name it has",
+  hide: "refresh before hiding it",
+  unhide: "refresh before unhiding it",
+  retry: "refresh before retrying it",
+  cancel: "refresh before cancelling it",
+  bump: "refresh before bumping it",
+};
+
 function executePresentation(
   repositories: AuthorityRepositories,
   request: RunBasicCommand | RunRenameCommand,
   now: string,
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
+  /*
+   * D233 — CAS THE CALLER'S VALUE, like every other run verb (`:648` cancel,
+   * `:1588` write resolution, `:1675` gate).
+   *
+   * This arm used to pass `current.version` — its OWN re-read — into the
+   * store's `expectedVersion`, which is a compare-and-swap against a value
+   * read one line earlier and therefore a CAS that cannot fail. So a stale
+   * `Rename` or `Hide` from a tab left open since yesterday applied silently
+   * instead of answering `conflict`, and the operator was told "Recorded."
+   *
+   * It was written that way on a true premise: presentation changes no
+   * outcome, task, checkpoint, intent or evidence, so a late `Hide` is
+   * harmless. RENAME is where that stops being true — a name is a value the
+   * operator AUTHORED, and applying yesterday's name over today's silently
+   * discards somebody's edit and reports success. Hiding keeps the same
+   * discipline because one CAS rule with no exceptions is the only kind a
+   * reviewer can check.
+   */
+  if (current.version !== request.target.expectedVersion) {
+    conflict(
+      request,
+      current.version,
+      `run ${request.target.runId} is at version ${String(current.version)}, not `
+      + `${String(request.target.expectedVersion)}; ${PRESENTATION_REFRESH[request.type]}`,
+    );
+  }
   const outcome = repositories.runs.updatePresentation({
     runId: request.target.runId,
-    expectedVersion: current.version,
+    expectedVersion: request.target.expectedVersion,
     ...(request.type === "rename"
       ? { displayName: request.payload.displayName }
       : { hidden: request.type === "hide" }),

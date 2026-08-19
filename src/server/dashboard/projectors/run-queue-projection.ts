@@ -1305,6 +1305,8 @@ export class RunQueueProjection {
         isChild: authority.envelope.parent !== undefined,
         parkedWrite: authority.lifecycle.state === "parked-write",
         memberCount: shape === "operation" ? row.memberRunIds.length : 0,
+        isMember: shape === "operation-member",
+        named: authority.displayName !== undefined,
         // The workflow id is the honest stand-in when this build cannot resolve
         // the descriptor — but `queueRowActions` serves nothing in that case, so
         // it is never the text on a control the operator reads.

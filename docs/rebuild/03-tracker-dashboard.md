@@ -428,6 +428,71 @@ row's ⓘ popover, which is a stronger record than a manifest line nobody sees, 
 beside the present one in `run-queue-projection.test.ts`. The fields with no producer at all were not
 added to the schema, so there is no orphan arm for the manifest to declare either.
 
+### Drawing the second batch: the rehearsal hue and the rename control (2026-08-19)
+
+The batch above put six facts on the wire and drew none of them. This is the consumption half, plus
+the two decisions it could not be built without.
+
+**Where each field renders.** `#N` is the footer's SECOND segment, a sibling of the trace chip and
+never a substitute for it — the ordinal is the short number an operator says out loud, the trace id
+is the string every log and receipt is grepped by, and a row whose ordinal is absent (pre-v15) simply
+does not draw the chip. `linkedRuns[]` and the parent route share ONE `PanelRedirectChip`, because
+every redirect must look identical; the chip prints the SERVED `label · status` and routes on the
+link's own `workflowId`, so a child that ran on another day still opens. `facts[]` are the demo's
+`FactChipView` pairs, sized by its `grow` rule so a redirect beside them keeps the spare space.
+`memberPreview` sits under a counted anchor and is SUPPRESSED once the member list is open — the
+preview and the list are then the same names twice, and the preview is the copy that truncates.
+`pipeline[].durationSec`/`executions` ride the micro-steps' hover sentence, where an unmeasured step
+states its state alone rather than ` 0s`. `containment` is a sentence in the row's ⓘ (`root` gets
+none — it is the ordinary row), and three more absent reasons join it there, because a chip that is
+not drawn is the one state that cannot explain itself.
+
+**D232 — the fifth semantic hue, spent on `dry run`.** The palette budget was one accent and four
+semantic hues (info / success / warning / danger) and the rehearsal chip has no honest home in any of
+them: `info` is what the `test` chip beside it is drawn in — the one pair on the row a glance has to
+separate — and every amber token in this product means *a human is involved*, which a rehearsal is
+not. So the budget grows to five, operator-ratified, and `--ds-rehearsal-*` is a REAL light/dark pair
+rather than an alias. Two naming rules travel with it. It is named for what it MEANS, not for its
+colour: `--log-violet` was a hue name on a semantic token and was later re-derived to amber for a
+different meaning, so the name outlived the colour and now lies about it. And it has no `-solid-*`
+step, because this hue is only ever a chip and a solid violet fill would be a fifth voice in the
+loudness ladder. The demo's own tone is *named* `violet` and *bound* to the amber parked tokens; this
+binds the colour the name describes, which is the one deliberate colour deviation on the row. The
+same hue draws the same fact on the Log Panel's provenance bar — one meaning, one colour.
+
+**D233 — a rename is a descriptor-driven control, and every run verb CASes the caller's version.**
+Two halves of one seam.
+
+- **The control.** `rename` has been a kernel command since Phase 1c, and its absence from the served
+  vocabulary was recorded as *"the display-name edit is an inline field on the row, not a
+  descriptor-driven control"*. No build ever grew that field, so §10.3's operator-assigned display
+  name was writable only from a CLI this runtime does not have. It joins `ActionCommandKeySchema` and
+  is served at `menu` on EVERY status — `executePresentation` has no state precondition, so a run
+  that has already written to UCPath can still be named, and that is precisely what makes a rename
+  safe to offer: it touches the subject, the trace and the ordinal not at all. The one narrowing is
+  row shape rather than a kernel fact: a MEMBER row loses the control, because `displayName` replaces
+  the title on the row it rides and naming a member would put free text where the group's list prints
+  the person that item is about. The dialog is intercepted from the descriptor exactly as the identity
+  ceremony is, for the same reason — it carries a value only a human can author, so the composer
+  REFUSES a rename with no name rather than posting a plausible one, and the field states
+  `RunDisplayNameSchema`'s bounds where the operator types so a refusal is never the first they hear
+  of one.
+- **The CAS.** `executePresentation` re-read the run and CASed against its OWN re-read, which is a
+  compare-and-swap that cannot fail: a stale `Rename` or `Hide` from a tab left open since yesterday
+  applied silently and was reported as recorded. It was written on a true premise — presentation
+  changes no outcome, task, checkpoint, intent or evidence — and the premise is about STATE, not about
+  version. **A name is a value the operator authored**, so applying yesterday's over today's discards
+  somebody's edit while answering success. All three presentation verbs now CAS `request.target.expectedVersion`
+  like every other run verb, and hide keeps the discipline because a CAS rule with one exception is a
+  rule nobody can check. The guard that covered this arm had been asserting the hole under the heading
+  *"scopes CAS to the real race families"*; it and its registered invariant both moved.
+
+**The provenance bar takes the two facts a rename makes readable.** `Priority` lands in the ⓘ with
+the reason it matters, which is the demo's own disposition (*"`by` and `priority` are the same two
+words on every row an operator starts on their own machine, so they cost a chip each to say
+nothing"*) — a chip would spend a slot on a constant. `Named by you` states what the rename did NOT
+touch, and is drawn only for a named run, because it answers a question an unnamed run never raises.
+
 ### The per-row action descriptors (2026-08-14)
 
 The fifth row fact with a consumer and no producer, and the only one where BOTH halves were
