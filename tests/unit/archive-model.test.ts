@@ -33,10 +33,15 @@ import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.j
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { buildArchiveIndex, buildArchivedRunDetail } from "../../src/server/dashboard/queries/archive.js";
 import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
+import { createLedgerProjector } from "../../src/infra/ledger/index.js";
+import { UcpathCreateTermination } from "../../src/domain/contracts/ucpath/create-termination.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import type { ArchiveRunSnapshot } from "../../src/services/archive/archive-service.js";
 import { planStart } from "../../src/services/start/plan.js";
 import { HASH_A, HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { ARCHIVED_RUN, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "./fixtures/archive-fixtures.js";
+import { ledgerCommitFixture } from "./fixtures/ledger-projection-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 
 const roots: string[] = [];
@@ -184,6 +189,54 @@ function snapshotSource(world: {
           availableSections: ["logs"],
         },
         failure: { state: "absent", reason: "the run did not settle with a structured failure" },
+        /*
+         * D223's frozen sections. The production seam builds these from the
+         * span fold and the note stream; this suite is about the archive's
+         * durable semantics, so the payloads are minimal and REAL — a note
+         * line that comes back verbatim is what proves the freeze rather than
+         * a re-derivation.
+         */
+        sections: {
+          logs: {
+            state: "present",
+            value: {
+              runId: run.envelope.runId,
+              notes: [{
+                noteId: "dddddddd-0001-4000-8000-dddddddd0001",
+                runId: run.envelope.runId,
+                sequence: 0,
+                at: NOW,
+                level: "info",
+                message: "frozen log line",
+              }],
+              nextCursor: { state: "absent", reason: "end-of-page" },
+            },
+          },
+          data: {
+            state: "present",
+            value: {
+              runId: run.envelope.runId,
+              editing: { state: "locked", reason: "an archived run is read-only" },
+              entries: [{
+                label: "eid",
+                valueRedacted: "108*****",
+                edit: { state: "locked", reason: "an archived run is read-only" },
+              }],
+            },
+          },
+          people: { state: "absent", reason: "this run fanned out no member runs" },
+          attempts: {
+            state: "present",
+            value: [{
+              attempt: 1,
+              steps: 1,
+              startedAt: { state: "present", value: NOW },
+              endedAt: { state: "present", value: NOW },
+              outcomes: [{ outcome: "done", count: 1 }],
+              unfinished: 0,
+            }],
+          },
+        },
       } as unknown as ArchiveRunSnapshot;
     },
   };
@@ -296,7 +349,19 @@ function plan(world: World): { versionPlanId: string; expectedVersion: number; p
     family: "version-archive",
     type: "plan-version-bump",
     target: { scope: { kind: "workflows", workflowIds: ["archive-fixture"] } },
-    payload: { targetVersion: "0.2.0", changeFingerprint: HASH_B },
+    payload: {
+      targetVersion: "0.2.0",
+      changeFingerprint: HASH_B,
+      // Charter §25's change record, authored at plan time and carried into
+      // the application verbatim. Without it a sweep can say who and when, and
+      // nothing about why.
+      changeRecord: {
+        kind: "major",
+        what: "the fixture workflow's probe step changed shape",
+        why: "the archive suite bumps the descriptor to make prior-version runs exist",
+        commit: { state: "present", value: "0123456abcdef" },
+      },
+    },
   }));
   assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "plan refused");
   const target = result.state === "applied" ? result.affectedTargets[0] : undefined;
@@ -320,6 +385,23 @@ function apply(world: World, reviewed: ReturnType<typeof plan>): CommandResult {
     target: { versionPlanId: reviewed.versionPlanId, expectedVersion: reviewed.expectedVersion },
     payload: { planFingerprint: reviewed.planFingerprint },
   }));
+}
+
+/**
+ * The archive read deps with an EMPTY descriptor list — doc 13 §8 guard #11
+ * the only way it proves anything. Nothing on the read path can resolve the
+ * version this run executed, or any version at all. The ledger read-through is
+ * over the SAME state root the world writes to, so a pointer this test
+ * archived resolves the way production would.
+ */
+function emptyRegistryDeps(world: World): Parameters<typeof buildArchivedRunDetail>[0] {
+  return {
+    clock: manualClock(new Date(NOW)),
+    appVersion: "0.1.0",
+    authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
+    descriptors: { list: () => [] },
+    ledger: createLedgerReadThrough(world.stateRoot),
+  } as unknown as Parameters<typeof buildArchivedRunDetail>[0];
 }
 
 /** Every byte under a ledger root, so "untouched" can be asserted literally. */
@@ -364,22 +446,7 @@ describe("the D80 archive model", () => {
     world.registry = V2;
     assert.equal(apply(world, plan(world)).state, "applied");
 
-    /*
-      Doc 13 §8 guard #11 the only way it proves anything: the descriptor list
-      the query is handed is EMPTY, so nothing on the read path can resolve the
-      version this run executed — or any version at all.
-      */
-    const deps = {
-      clock: manualClock(new Date(NOW)),
-      appVersion: "0.1.0",
-      authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
-      descriptors: { list: () => [] },
-      // The read-through over the SAME state root the world writes to, so a
-      // pointer this test archived resolves the way production would.
-      ledger: createLedgerReadThrough(world.stateRoot),
-    } as unknown as Parameters<typeof buildArchivedRunDetail>[0];
-
-    const detail = buildArchivedRunDetail(deps, archived);
+    const detail = buildArchivedRunDetail(emptyRegistryDeps(world), archived);
     assert.equal(detail.runId, archived);
     assert.equal(detail.row.title.length > 0, true);
     assert.equal(detail.detail.header.runId, archived);
@@ -389,9 +456,151 @@ describe("the D80 archive model", () => {
     assert.equal(detail.relaunch.state, "unavailable");
 
     // And the index reads too, with no registered workflow to describe.
-    const index = buildArchiveIndex(deps);
+    const index = buildArchiveIndex(emptyRegistryDeps(world));
     assert.equal(index.entries.length, 1);
     assert.equal(index.versionState.length, 0);
+  });
+
+  it("serves all five tabs' frozen payloads with the workflow registry EMPTY", () => {
+    /*
+     * D223's acceptance bar, and the reason the sections are FROZEN rather
+     * than fetched: the descriptor list is empty, there is no live run to ask,
+     * and every tab still has its bytes. A section that resolved anything at
+     * read time would fail here — which is exactly what `archive-invariants`
+     * proves structurally, one level up.
+     */
+    const world = createWorld();
+    const archived = startRun(world, "10873698", true);
+    world.registry = V2;
+    assert.equal(apply(world, plan(world)).state, "applied");
+
+    const detail = buildArchivedRunDetail(emptyRegistryDeps(world), archived);
+    assert.equal(detail.sections.state, "present");
+    if (detail.sections.state !== "present") return;
+    const { logs, data, people, attempts, captures } = detail.sections.value;
+
+    assert.equal(logs.state, "present");
+    assert.equal(logs.state === "present" ? logs.value.notes[0]?.message : "", "frozen log line");
+    assert.equal(data.state, "present");
+    assert.equal(data.state === "present" ? data.value.entries[0]?.label : "", "eid");
+    assert.equal(attempts.state, "present");
+    assert.equal(attempts.state === "present" ? attempts.value[0]?.attempt : 0, 1);
+    // Both absences carry their own sentence: this run fanned out no members
+    // and captured no artifact, which are facts about the RUN — a record that
+    // predates the frozen block says something else entirely (below).
+    assert.equal(people.state, "absent");
+    assert.equal(captures.state, "absent");
+    assert.match(captures.state === "absent" ? captures.reason : "", /captured no diagnostic artifact/u);
+  });
+
+  it("reads a PRE-D223 record forward and fabricates no tab for it", () => {
+    /*
+     * D133's rule on the archive's own schema. A generation-1 record is stored
+     * exactly as it was written; the reader admits it, and the wire says the
+     * payloads were never captured rather than serving empty panels that would
+     * read as "this run did nothing".
+     */
+    const world = createWorld();
+    world.database.withAuthorityTransaction((repositories) => {
+      repositories.runs.enqueue(QUEUED_RUN);
+      repositories.versionPlans.insert(VERSION_PLAN_ROW);
+      repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      repositories.archivedRuns.insert(ARCHIVED_RUN);
+      return undefined;
+    });
+
+    const stored = world.database.authority.archivedRuns.get(ARCHIVED_RUN.runId);
+    assert.equal(stored?.archiveSchemaGeneration, 1);
+    assert.equal(stored?.sections, undefined);
+    // The stored digest is BYTE-IDENTICAL to the one the record was written
+    // with: canonical JSON omits an absent key, so a generation-1 row's
+    // identity did not move when generation 2 was added.
+    assert.equal(stored?.contentDigest, ARCHIVED_RUN.contentDigest);
+
+    const detail = buildArchivedRunDetail(emptyRegistryDeps(world), ARCHIVED_RUN.runId);
+    assert.equal(detail.archiveSchemaGeneration, 1);
+    assert.equal(detail.sections.state, "absent");
+    assert.match(
+      detail.sections.state === "absent" ? detail.sections.reason : "",
+      /schema generation 1, which predates D223/u,
+    );
+  });
+
+  it("archives a run that FILED a ledger line, and resolves it back from the archive", () => {
+    /*
+     * The end-to-end shape `docs/findings/archive.md` was missing: a REAL
+     * fenced-and-committed write intent, a REAL projected ledger line on disk,
+     * and an archived record that names it by `(system, date, sequence)` and
+     * copies nothing. Everything below is durable state or bytes on disk.
+     */
+    const world = createWorld();
+    const archived = startRun(world, "10873698", true);
+    const run = world.database.authority.runs.get(archived);
+    assert.notEqual(run, undefined);
+    if (run === undefined) return;
+
+    const fixture = ledgerCommitFixture(0, {
+      runId: archived,
+      workflowId: "archive-fixture",
+      itemId: run.envelope.itemId,
+      traceId: run.envelope.traceId,
+      confirmedAt: NOW,
+      // The UCPath termination's OWN proof, so the archived line resolves
+      // through `LEDGER_PRESENTATION_DECLARATIONS` rather than through the
+      // undeclared fallback — the declaration and the archive meet here.
+      proof: {
+        schemaHash: deriveSchemaHash(UcpathCreateTermination.writeSafety.completion.proofSchema, "output"),
+        value: {
+          kind: "ucpath-termination",
+          emplId: "10873698",
+          effectiveDate: "06/11/2026",
+          transactionId: "T002209631",
+          approvalStatus: "Pending",
+          displayedName: "Deterministic Person",
+          source: "ss-smart-hr-detail-read",
+        },
+      },
+    });
+    assert.equal(
+      world.database.authority.writeIntents.fenceAttempt({ intent: fixture.intent, attempt: fixture.attempt }).state,
+      "fenced",
+    );
+    world.database.commitWriteAttempt(fixture.commit);
+    const projected = createLedgerProjector(
+      world.database,
+      manualClock(new Date(NOW)),
+      { stateRoot: world.stateRoot, projectorId: "archive-model-test", leaseMs: 30_000 },
+    ).projectAll();
+    assert.equal(projected.length, 1);
+    assert.equal(projected[0]?.state, "projected");
+
+    const before = ledgerBytes(world.stateRoot);
+    world.registry = V2;
+    assert.equal(apply(world, plan(world)).state, "applied");
+
+    // The archived record NAMES the line and copies none of it, and the bump
+    // left the partition byte-identical — the ledger is an audit lifecycle.
+    const stored = world.database.authority.archivedRuns.get(archived);
+    assert.deepEqual(
+      stored?.evidence.ledgerPartitions.map((pointer) => ({ ...pointer })),
+      [{ system: "ucpath", date: NOW.slice(0, 10), sequence: 0 }],
+    );
+    assert.deepEqual(ledgerBytes(world.stateRoot), before);
+
+    // And the archived detail resolves it — with the registry EMPTY, because a
+    // ledger line is interpreted by its commit contract, never by a descriptor.
+    const detail = buildArchivedRunDetail(emptyRegistryDeps(world), archived);
+    assert.equal(detail.ledger.length, 1);
+    const [line] = detail.ledger;
+    assert.equal(line.state, "resolved");
+    if (line.state !== "resolved") return;
+    assert.equal(line.system, "ucpath");
+    assert.equal(line.instance, "prod");
+    assert.deepEqual({ ...line.action }, {
+      state: "present",
+      value: "Termination for 10873698 effective 06/11/2026 (Pending)",
+    });
+    assert.deepEqual({ ...line.confirmation }, { state: "present", value: "T002209631" });
   });
 
   it("carries the frozen row's resolved instances onto the INDEX entry", () => {

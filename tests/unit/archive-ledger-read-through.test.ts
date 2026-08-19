@@ -21,6 +21,10 @@ import {
   resolveLedgerLine,
   type LedgerLinePointer,
 } from "../../src/domain/archive/ledger-resolution.js";
+import { KualiSaveSeparationFinalization } from "../../src/domain/contracts/kuali/save-separation-finalization.js";
+import { UcpathCreateTermination } from "../../src/domain/contracts/ucpath/create-termination.js";
+import { UcpathDeletePendingTerminations } from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { HASH_A, HASH_B, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
 
@@ -38,6 +42,8 @@ function stateRoot(): string {
 }
 
 const KEY = "kuali:doc-4489:timekeeper-annotation";
+const TERMINATION_KEY = "ucpath:termination|10800000|06/11/2026";
+const SWEEP_KEY = "ucpath:pending-terminations|10800000";
 
 /** The pointer, through its own schema — `sequence` is a branded non-negative. */
 function at(system: string, date: string, sequence: number): LedgerLinePointer {
@@ -119,11 +125,11 @@ describe("resolving an archived run's ledger pointers", () => {
     assert.equal(createLedgerReadThrough(root).resolve([at("kuali", "2026-08-04", 0)])[0].state, "resolved");
   });
 
-  it("serves Action and Confirmation as reasoned absences until a contract declares them", () => {
+  it("serves Action and Confirmation as reasoned absences for a proof no contract declares", () => {
     // Not an oversight: a ledger entry declares neither leaf, and its `proof`
     // is schema-bound to whichever commit contract wrote it, so reading a
-    // field NAME out of it is the guess D204 bans on an HR record.
-    assert.deepEqual([...LEDGER_PRESENTATION_DECLARATIONS], []);
+    // field NAME out of it is the guess D204 bans on an HR record. This
+    // fixture's proof is bound to a hash nothing declares.
     const resolved = resolveLedgerLine(
       at("kuali", "2026-08-04", 0),
       entryPayload(),
@@ -133,6 +139,106 @@ describe("resolving an archived run's ledger pointers", () => {
     assert.equal(resolved.action.state, "absent");
     assert.equal(resolved.confirmation.state, "absent");
     assert.match(resolved.action.state === "absent" ? resolved.action.reason : "", /no commit contract declares/);
+  });
+
+  /* ── the declared readings (D223's `LEDGER_PRESENTATION_DECLARATIONS`) ─── */
+
+  it("declares exactly separations' three commit contracts, keyed by PROOF SCHEMA", () => {
+    /*
+     * The key matters and `(system, completionKind)` could not have worked:
+     * two of the three are `save-verify` writes on `ucpath`, so one key would
+     * have named two contracts. `proof.schemaHash` is the contract's own
+     * identity and it is already on every line.
+     */
+    assert.deepEqual(
+      LEDGER_PRESENTATION_DECLARATIONS.map(({ taskId }) => taskId),
+      [
+        "ucpath/delete-pending-terminations",
+        "ucpath/create-termination",
+        "kuali/save-separation-finalization",
+      ],
+    );
+    const hashes = LEDGER_PRESENTATION_DECLARATIONS.map(({ proofSchema }) => deriveSchemaHash(proofSchema, "output"));
+    assert.equal(new Set(hashes).size, hashes.length, "two declarations share a proof-schema hash");
+  });
+
+  it("reads the UCPath termination's action and its transaction id as the CONFIRMATION", () => {
+    const resolved = resolveLedgerLine(at("ucpath", "2026-08-04", 0), entryPayload({
+      system: "ucpath",
+      idempotencyKey: TERMINATION_KEY,
+      idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", TERMINATION_KEY),
+      proof: {
+        schemaHash: deriveSchemaHash(UcpathCreateTermination.writeSafety.completion.proofSchema, "output"),
+        value: {
+          kind: "ucpath-termination",
+          emplId: "10800000",
+          effectiveDate: "06/11/2026",
+          transactionId: "T002209631",
+          approvalStatus: "Pending",
+          displayedName: "Deterministic Person",
+          source: "ss-smart-hr-detail-read",
+        },
+      },
+    }));
+    assert.equal(resolved.state, "resolved");
+    if (resolved.state !== "resolved") return;
+    assert.deepEqual({ ...resolved.action }, {
+      state: "present",
+      value: "Termination for 10800000 effective 06/11/2026 (Pending)",
+    });
+    assert.deepEqual({ ...resolved.confirmation }, { state: "present", value: "T002209631" });
+  });
+
+  it("says a UCPath grid delete HAS no confirmation, which is not the same as undeclared", () => {
+    /*
+     * The load-bearing difference. "Nothing declares this" means nobody looked;
+     * this reason means somebody did and found the external system issues no
+     * receipt. An operator reading a blank cell must be able to tell them apart.
+     */
+    const resolved = resolveLedgerLine(at("ucpath", "2026-08-04", 0), entryPayload({
+      system: "ucpath",
+      idempotencyKey: SWEEP_KEY,
+      idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", SWEEP_KEY),
+      proof: {
+        schemaHash: deriveSchemaHash(UcpathDeletePendingTerminations.writeSafety.completion.proofSchema, "output"),
+        value: {
+          kind: "ucpath-pending-terminations-clear",
+          emplId: "10800000",
+          scannedRowCount: 3,
+          observedAt: "2026-08-13T10:18:00.000Z",
+          source: "ss-smart-hr-detail-read",
+        },
+      },
+    }));
+    assert.equal(resolved.state, "resolved");
+    if (resolved.state !== "resolved") return;
+    assert.equal(
+      resolved.action.state === "present" ? resolved.action.value : "",
+      "Cleared pending terminations for 10800000 (grid scanned 3 rows)",
+    );
+    assert.equal(resolved.confirmation.state, "absent");
+    const reason = resolved.confirmation.state === "absent" ? resolved.confirmation.reason : "";
+    assert.match(reason, /issues no confirmation number/u);
+    assert.doesNotMatch(reason, /no commit contract declares/u);
+  });
+
+  it("REFUSES a line whose proof names a declared schema and does not satisfy it", () => {
+    // The hash says which contract wrote the line; the contract's own schema
+    // refuses the value. Reading the leaves anyway would present a value
+    // nothing validated, on a record about a real person's employment.
+    const resolved = resolveLedgerLine(at("kuali", "2026-08-04", 0), entryPayload({
+      proof: {
+        schemaHash: deriveSchemaHash(KualiSaveSeparationFinalization.writeSafety.completion.proofSchema, "output"),
+        value: { kind: "kuali-saved-finalization" },
+      },
+    }));
+    assert.equal(resolved.state, "resolved");
+    if (resolved.state !== "resolved") return;
+    assert.equal(resolved.action.state, "absent");
+    assert.match(
+      resolved.action.state === "absent" ? resolved.action.reason : "",
+      /kuali\/save-separation-finalization's schema and does not satisfy it/u,
+    );
   });
 
   it("names a MISSING partition rather than dropping the row", () => {

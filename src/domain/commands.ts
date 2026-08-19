@@ -26,6 +26,7 @@ import {
   WriteIntentIdSchema,
 } from "./ids.js";
 import { ArtifactRefSchema } from "./artifacts.js";
+import { VersionBumpChangeRecordSchema } from "./archive/change-record.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import { CheckpointPatchSchema } from "./workflow/checkpoint.js";
 
@@ -218,7 +219,17 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
     family: z.literal("version-archive"),
     type: z.literal("plan-version-bump"),
     target: z.strictObject({ scope: VersionScopeSchema }),
-    payload: z.strictObject({ targetVersion: SemverSchema, changeFingerprint: FingerprintSchema }),
+    /**
+     * Charter §25 / doc 03 §10.2: a bump's scope is declared by whoever makes
+     * the change AND recorded in that update's change record. `changeRecord`
+     * is required here — the plan is where the author is, and asking the
+     * question later would mean asking somebody who did not make the change.
+     */
+    payload: z.strictObject({
+      targetVersion: SemverSchema,
+      changeFingerprint: FingerprintSchema,
+      changeRecord: VersionBumpChangeRecordSchema,
+    }),
   }),
   z.strictObject({
     ...CommandEnvelopeFields,

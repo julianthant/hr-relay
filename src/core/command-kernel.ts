@@ -1922,6 +1922,11 @@ function executeVersionBumpPlan(
     scope,
     targetVersion: request.payload.targetVersion,
     changeFingerprint: request.payload.changeFingerprint,
+    // Charter §25's change record, authored by the person making the change.
+    // It rides the PLAN, so the fingerprint the operator's apply cites back
+    // covers the words as well as the run sets — an apply cannot rewrite the
+    // reason it was reviewed under.
+    changeRecord: request.payload.changeRecord,
     observedAppVersion: dependencies.appVersion,
     observedIdentities: assessment.identities,
     candidates: assessment.candidates,
@@ -2028,6 +2033,9 @@ function executeVersionBumpApply(
     appliedAppVersion: dependencies.appVersion,
     appliedIdentities: assessment.identities,
     archivedRunIds,
+    // Verbatim from the reviewed plan. Re-authoring it at apply would let the
+    // recorded reason differ from the one the plan fingerprint covers.
+    changeRecord: plan.changeRecord,
     appliedBy: request.requestedBy,
     appliedAt: now,
   }));

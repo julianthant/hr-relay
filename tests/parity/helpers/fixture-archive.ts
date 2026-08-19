@@ -37,6 +37,9 @@ const SWEEP_ID = "aa11bb22-0003-4000-8000-aa11bb220003";
 const PLAN_ID = "aa11bb22-0004-4000-8000-aa11bb220004";
 const ARCHIVE_DIGEST = "e".repeat(64);
 const NOTE_ID = "aa11bb22-0005-4000-8000-aa11bb220005";
+const CAPTURE_ARTIFACT_ID = "aa11bb22-000a-4000-8000-aa11bb22000a";
+const CAPTURE_BUNDLE_ID = "aa11bb22-000b-4000-8000-aa11bb22000b";
+const MEMBER_RUN_ID = "aa11bb22-000c-4000-8000-aa11bb22000c";
 
 const at = (minute: number): string =>
   `${FIXTURE_DAY}T${String(9 + Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}:00.000Z`;
@@ -157,6 +160,19 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
     appliedBy: "local-operator",
     appliedAt: at(60),
     archivedCount: 1,
+    // Charter §25's change record: the WHY the reference set had no way to
+    // photograph before, with the commit half taking its PRESENT arm here and
+    // the plan below taking the absent one.
+    changeRecord: {
+      state: "present",
+      value: {
+        kind: "major",
+        what: "Person Lookup now reads the empl record beside the name",
+        why: "a two-job subject resolved the wrong employment row, so the step's output shape changed",
+        commit: { state: "present", value: "9f2c41d" },
+      },
+    },
+    fromVersions: [1],
   }],
   versionState: [{
     workflowId: "person-lookup",
@@ -196,15 +212,138 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
       enqueuedAt: at(12),
       drift: ["descriptor-version"],
     }],
+    changeRecord: {
+      state: "present",
+      value: {
+        kind: "minor",
+        what: "Person Lookup's CRM cross-check tolerates a middle initial",
+        why: "three subjects a week were parking on a name mismatch that was not one",
+        commit: { state: "absent", reason: "authored from the dashboard before the change was tagged" },
+      },
+    },
     plannedBy: "local-operator",
     plannedAt: at(90),
     state: "planned",
   }],
 });
 
+/**
+ * D223's frozen sections, at archive schema generation 2 — the payloads the
+ * five tabs render. The corpus photographs the range on purpose: log lines at
+ * two levels, data entries dated by both a live and a derived observation, a
+ * member row, an attempt history with a REAL retry in it (attempt 1 failed a
+ * step, attempt 2 settled), and a described capture tile — the tile is what
+ * makes the Evidence tab a tab rather than a list of ids.
+ */
+const ARCHIVED_SECTIONS = {
+  logs: {
+    state: "present",
+    value: {
+      runId: ARCHIVED_RUN_ID,
+      notes: [
+        { noteId: NOTE_ID, runId: ARCHIVED_RUN_ID, sequence: 0, at: at(4), level: "info", message: "UCPath person read started" },
+        {
+          noteId: "aa11bb22-000d-4000-8000-aa11bb22000d",
+          runId: ARCHIVED_RUN_ID,
+          sequence: 1,
+          at: at(12),
+          level: "warning",
+          message: "CRM session was replaced after a dead-session probe",
+        },
+        {
+          noteId: "aa11bb22-000e-4000-8000-aa11bb22000e",
+          runId: ARCHIVED_RUN_ID,
+          sequence: 2,
+          at: at(21),
+          level: "info",
+          message: "Cross verification agreed on both identifiers",
+        },
+      ],
+      nextCursor: { state: "absent", reason: "end-of-page" },
+    },
+  },
+  data: {
+    state: "present",
+    value: {
+      runId: ARCHIVED_RUN_ID,
+      editing: { state: "locked", reason: "an archived run is read-only; there is nothing to resume a correction into" },
+      entries: [
+        {
+          label: "Employee ID",
+          valueRedacted: "108*****",
+          edit: { state: "locked", reason: "an archived run is read-only" },
+          observedAt: at(4),
+          source: "live",
+        },
+        {
+          label: "Department",
+          valueRedacted: "Supply Chain Services",
+          edit: { state: "locked", reason: "an archived run is read-only" },
+          observedAt: at(12),
+          source: "derived",
+        },
+      ],
+    },
+  },
+  people: {
+    state: "present",
+    value: {
+      parentRunId: ARCHIVED_RUN_ID,
+      members: [{
+        runId: MEMBER_RUN_ID,
+        parentRunId: ARCHIVED_RUN_ID,
+        rowRevision: 4,
+        label: "EID 10873698",
+        status: "done",
+      }],
+      total: 1,
+      nextCursor: { state: "absent", reason: "end-of-page" },
+    },
+  },
+  attempts: {
+    state: "present",
+    value: [
+      {
+        attempt: 1,
+        steps: 2,
+        startedAt: { state: "present", value: at(4) },
+        endedAt: { state: "present", value: at(11) },
+        outcomes: [{ outcome: "done", count: 1 }, { outcome: "failed", count: 1 }],
+        unfinished: 0,
+      },
+      {
+        attempt: 2,
+        steps: 2,
+        startedAt: { state: "present", value: at(12) },
+        endedAt: { state: "present", value: at(21) },
+        outcomes: [{ outcome: "done", count: 2 }],
+        unfinished: 0,
+      },
+    ],
+  },
+  captures: {
+    state: "present",
+    value: [{
+      artifactId: CAPTURE_ARTIFACT_ID,
+      bundleId: CAPTURE_BUNDLE_ID,
+      kind: "screenshot",
+      mediaType: "image/png",
+      byteLength: 184_320,
+      digest: "f".repeat(64),
+      sensitivity: "redacted",
+      capturedAt: at(11),
+      origin: "failure",
+      dimensions: { width: 1440, height: 900 },
+      step: { state: "present", nodeId: "cross-verify" },
+      system: { state: "present", value: "crm" },
+      retention: { kind: "ordinary", purgeAfter: "2026-09-02T09:11:00.000Z" },
+    }],
+  },
+} as const;
+
 export const FIXTURE_ARCHIVED_RUN: ArchivedRunDetailWire = ArchivedRunDetailWireSchema.parse({
   wireVersion: 1,
-  archiveSchemaGeneration: 1,
+  archiveSchemaGeneration: 2,
   runId: ARCHIVED_RUN_ID,
   applicationId: SWEEP_ID,
   workflowId: "person-lookup",
@@ -220,11 +359,12 @@ export const FIXTURE_ARCHIVED_RUN: ArchivedRunDetailWire = ArchivedRunDetailWire
   receipt: { state: "absent", reason: "this run settled before receipts were derived" },
   failure: { state: "absent", reason: "the run did not settle with a structured failure" },
   evidence: {
-    artifactIds: [],
+    artifactIds: [CAPTURE_ARTIFACT_ID],
     checkpointNodeIds: ["ucpath-person", "cross-verify"],
     writeIntentIds: [],
     ledgerPartitions: [],
   },
+  sections: { state: "present", value: ARCHIVED_SECTIONS },
   // The pointers above, resolved. This run filed nothing, so there is nothing
   // to resolve — an empty list here is the same fact as an empty pointer list,
   // never a resolution that silently dropped a row.
@@ -235,7 +375,7 @@ export const FIXTURE_ARCHIVED_RUN: ArchivedRunDetailWire = ArchivedRunDetailWire
   retention: archiveRetention({
     now: at(120),
     endedAt: { state: "present", value: at(21) },
-    pointerCounts: { artifacts: 0, checkpoints: 2, writeIntents: 0, ledgerLines: 0 },
+    pointerCounts: { artifacts: 1, checkpoints: 2, writeIntents: 0, ledgerLines: 0 },
   }),
   relaunches: [],
   relaunch: {

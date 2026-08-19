@@ -51,6 +51,8 @@ import {
   WriteIntentIdSchema,
 } from "../ids.js";
 import { RunInputStorageSchema, RunStateSchema } from "../run/record.js";
+import { VersionBumpChangeRecordSchema } from "./change-record.js";
+import { ArchivedRunSectionsSchema } from "./sections.js";
 import { sha256Hex } from "../sha256.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
 
@@ -60,8 +62,24 @@ import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
  * implement refuses by name instead of parsing an older shape through a newer
  * schema and reporting the difference as data.
  */
-export const ArchiveSchemaGenerationSchema = z.literal(1);
-export const CURRENT_ARCHIVE_SCHEMA_GENERATION = 1;
+export const ArchiveSchemaGenerationSchema = z.union([z.literal(1), z.literal(2)]);
+export type ArchiveSchemaGeneration = z.infer<typeof ArchiveSchemaGenerationSchema>;
+
+/**
+ * Generation 2 is D223: the archived record FREEZES its section payloads
+ * (`sections` below) beside the row it already froze.
+ *
+ * The bump is read-forward in D133's exact sense and NOT a migration. Nothing
+ * on disk moves: `archived_runs` stores the record as JSON, generation-1 rows
+ * keep parsing (the new block is optional and the union admits their
+ * generation), and their `contentDigest` stays byte-identical because
+ * canonical JSON omits an absent key. What the generation buys is the thing an
+ * optional field alone cannot say — a WRITER may not adopt the read-forward
+ * shape (§`refineSectionGeneration`), so a record that names no sections is
+ * unambiguously one written before they existed rather than one this build
+ * failed to freeze.
+ */
+export const CURRENT_ARCHIVE_SCHEMA_GENERATION = 2;
 
 /** What "the current version of this workflow" means, as a value. */
 export const WorkflowVersionIdentitySchema = z.strictObject({
@@ -130,6 +148,34 @@ export const VersionBumpCandidateSchema = z.strictObject({
 export type VersionBumpCandidate = z.infer<typeof VersionBumpCandidateSchema>;
 
 /**
+ * The change record and the generation are one fact stated twice, exactly as
+ * the archived record's sections are — and for the same reason. A reader must
+ * admit a generation-1 plan (it is on disk and nothing may invent a `why` for
+ * it); a writer may not produce one, or "nobody wrote a reason" and "this plan
+ * predates reasons" would be the same row.
+ */
+function refineChangeRecordGeneration(
+  record: Readonly<{ archiveSchemaGeneration: number; changeRecord?: unknown }>,
+  context: z.RefinementCtx,
+): void {
+  if (record.archiveSchemaGeneration >= 2 && record.changeRecord === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["changeRecord"],
+      message: "a version bump at generation 2 or later must carry charter §25's change record "
+        + "(what, why, kind, commit); an absent one means generation 1",
+    });
+  }
+  if (record.archiveSchemaGeneration === 1 && record.changeRecord !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["archiveSchemaGeneration"],
+      message: "a generation-1 version bump predates the change record and cannot carry one",
+    });
+  }
+}
+
+/**
  * The immutable, reviewable plan (D95: `plan-version-bump`). It records what
  * the registry looked like when it was made; `apply` re-derives candidates and
  * blockers from authority at apply time and refuses if the registry has since
@@ -148,9 +194,17 @@ export const VersionBumpPlanSchema = z.strictObject({
   observedIdentities: z.array(WorkflowVersionIdentitySchema).min(1),
   candidates: z.array(VersionBumpCandidateSchema),
   blockers: z.array(VersionBumpBlockerSchema),
+  /**
+   * Charter §25's change record, authored by whoever made the change. Optional
+   * and bound to the generation for the same read-forward reason the archived
+   * record's sections are: a plan minted before generation 2 carries none and
+   * says so, and a plan minted NOW may not omit it.
+   */
+  changeRecord: VersionBumpChangeRecordSchema.optional(),
   plannedBy: ActorIdSchema,
   plannedAt: IsoInstantSchema,
 }).superRefine((plan, context) => {
+  refineChangeRecordGeneration(plan, context);
   const ids = plan.observedIdentities.map((identity) => identity.workflowId);
   if (new Set(ids).size !== ids.length) {
     context.addIssue({ code: "custom", path: ["observedIdentities"], message: "a workflow appears twice in one plan" });
@@ -183,9 +237,11 @@ export const VersionBumpApplicationSchema = z.strictObject({
   /** Re-derived inside the applying transaction, never copied from the plan. */
   appliedIdentities: z.array(WorkflowVersionIdentitySchema).min(1),
   archivedRunIds: z.array(RunIdSchema),
+  /** Copied from the reviewed plan VERBATIM — never re-authored at apply. */
+  changeRecord: VersionBumpChangeRecordSchema.optional(),
   appliedBy: ActorIdSchema,
   appliedAt: IsoInstantSchema,
-});
+}).superRefine(refineChangeRecordGeneration);
 export type VersionBumpApplication = z.infer<typeof VersionBumpApplicationSchema>;
 
 /**
@@ -259,6 +315,14 @@ const ArchivedRunContentFields = {
   ]),
   evidence: ArchivedEvidencePointersSchema,
   /**
+   * D223's frozen section payloads — the log lines, the data points with their
+   * provenance, the member outcome rows, the described captures and the
+   * per-attempt history. OPTIONAL, and bound to `archiveSchemaGeneration` by
+   * `refineSectionGeneration`: absent means generation 1, which predates the
+   * block. See `./sections.ts` for why every section is an absence union.
+   */
+  sections: ArchivedRunSectionsSchema.optional(),
+  /**
    * The archived immutable input. Relaunch replans from `raw` through TODAY's
    * ingress and canonical schemas — never from `parsed`, which was validated
    * by a schema that has since moved.
@@ -266,10 +330,51 @@ const ArchivedRunContentFields = {
   input: RunInputStorageSchema,
 } as const;
 
-function refineArchivedIdentity(
-  record: Readonly<{ runId: string; traceId: string; row: { runId: string; traceId: string }; detail: { runId: string } }>,
+/**
+ * The generation and the frozen sections are ONE fact stated twice, so they
+ * are checked against each other in both directions.
+ *
+ * A reader may meet a generation-1 record and must read it forward. A WRITER
+ * may not produce one: a new record that named no sections would be
+ * indistinguishable from a historical one, and "this build could not freeze
+ * the logs" would then be recorded as "this record predates logs" — a silent
+ * downgrade on the record whose whole job is to be complete. The other
+ * direction matters just as much: a record claiming generation 1 while
+ * carrying sections would be describing bytes it does not hold.
+ */
+function refineSectionGeneration(
+  record: Readonly<{ archiveSchemaGeneration: number; sections?: unknown }>,
   context: z.RefinementCtx,
 ): void {
+  if (record.archiveSchemaGeneration >= 2 && record.sections === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["sections"],
+      message: "an archive record at generation 2 or later must carry its frozen sections (D223); "
+        + "an absent block means generation 1, and a record that could not freeze them must refuse, not shrink",
+    });
+  }
+  if (record.archiveSchemaGeneration === 1 && record.sections !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["archiveSchemaGeneration"],
+      message: "a generation-1 archive record predates D223's frozen sections and cannot carry them",
+    });
+  }
+}
+
+function refineArchivedIdentity(
+  record: Readonly<{
+    runId: string;
+    traceId: string;
+    archiveSchemaGeneration: number;
+    sections?: unknown;
+    row: { runId: string; traceId: string };
+    detail: { runId: string };
+  }>,
+  context: z.RefinementCtx,
+): void {
+  refineSectionGeneration(record, context);
   if (record.row.runId !== record.runId) {
     context.addIssue({ code: "custom", path: ["row", "runId"], message: "archived row identity must match the record" });
   }

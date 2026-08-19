@@ -1,7 +1,6 @@
 import { sha256Hex } from "../../../src/domain/sha256.js";
-import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
+import { deriveIdempotencyKeyDigest, deriveWriteBindingProofDigest } from "../../../src/domain/write-safety.js";
 import {
-  BINDING_PROOF_DIGEST,
   COMMITTED_OUTCOME,
   LEDGER_PAYLOAD,
   LATER,
@@ -41,11 +40,46 @@ export interface LedgerCommitFixture {
  */
 export function ledgerCommitFixture(
   index: number,
-  overrides: Readonly<{ confirmedAt?: string; system?: string }> = {},
+  overrides: Readonly<{
+    confirmedAt?: string;
+    system?: string;
+    /**
+     * Bind the filed transaction to a REAL run. The archive derives a record's
+     * ledger pointers by walking `writeIntents.listByRun`, so a fixture whose
+     * intent names a run nobody enqueued can never be archived — which is
+     * exactly the gap `docs/findings/archive.md` recorded.
+     */
+    runId?: string;
+    workflowId?: string;
+    itemId?: string;
+    traceId?: string;
+    /**
+     * The commit's completion proof, in ONE place. It is stamped into four
+     * mutually-bound spots (the entry, the commit's `completionProof`, the
+     * outcome, and the terminal span's copy of the outcome) and the atomic
+     * commit refuses a bundle where they disagree — so it may only ever be
+     * overridden here.
+     */
+    proof?: Readonly<{ schemaHash: string; value: unknown }>;
+  }> = {},
 ): LedgerCommitFixture {
   const suffix = String(index).padStart(2, "0");
   const system = overrides.system ?? "ucpath";
   const confirmedAt = overrides.confirmedAt ?? LATER;
+  const runId = overrides.runId ?? UUID_2;
+  const workflowId = overrides.workflowId ?? "separation";
+  const itemId = overrides.itemId ?? UUID_3;
+  const traceId = overrides.traceId ?? "se-120000-2222";
+  const proof = overrides.proof ?? LEDGER_PAYLOAD.proof;
+  const outcome = { ...COMMITTED_OUTCOME, proof, confirmedAt };
+  /*
+   * The binding proof names the run it was observed under, and the fence
+   * refuses a proof whose run, attempt, task or lease disagrees with the
+   * intent — so binding a fixture to a real run has to move the proof too, and
+   * its digest is re-derived rather than carried over.
+   */
+  const bindingProof = Object.freeze({ ...SUBJECT_PROOF, runId });
+  const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
   const idempotencyKey = `106941${suffix}|termination|2026-08-01`;
   const idempotencyKeyDigest = deriveIdempotencyKeyDigest(system, idempotencyKey);
   const writeIntentId = fixtureUuid(`intent-${suffix}-${system}`);
@@ -55,18 +89,18 @@ export function ledgerCommitFixture(
 
   const intent = Object.freeze({
     writeIntentId,
-    workflowId: "separation",
-    itemId: UUID_3,
+    workflowId,
+    itemId,
     taskId: "ucpath/terminate-person",
     system,
     idempotencyKey,
     idempotencyKeyDigest,
     currentAttemptId: writeAttemptId,
     generation: 1,
-    runId: UUID_2,
+    runId,
     runAttempt: 1,
-    bindingProof: SUBJECT_PROOF,
-    bindingProofDigest: BINDING_PROOF_DIGEST,
+    bindingProof,
+    bindingProofDigest,
     fencedAt: NOW,
     version: 1,
     createdAt: NOW,
@@ -78,11 +112,11 @@ export function ledgerCommitFixture(
     writeAttemptId,
     writeIntentId,
     generation: 1,
-    runId: UUID_2,
+    runId,
     runAttempt: 1,
     leaseId: UUID_6,
-    bindingProof: SUBJECT_PROOF,
-    bindingProofDigest: BINDING_PROOF_DIGEST,
+    bindingProof,
+    bindingProofDigest,
     fencedAt: NOW,
     outcome: { state: "attempting" },
     recordedAt: NOW,
@@ -94,15 +128,21 @@ export function ledgerCommitFixture(
     idempotencyKey,
     idempotencyKeyDigest,
     writeIntentId,
+    workflowId,
+    itemId,
+    runId,
+    traceId,
+    proof,
+    bindingProofDigest,
     confirmedAt,
   });
 
   const commit = Object.freeze({
     writeIntentId,
     generation: 1,
-    completionProof: LEDGER_PAYLOAD.proof,
+    completionProof: proof,
     confirmedAt,
-    outcome: { ...COMMITTED_OUTCOME, confirmedAt },
+    outcome,
     ledgerOutbox: {
       outboxId: ledgerOutboxId,
       aggregate: { kind: "write-intent", writeIntentId, generation: 1 },
@@ -119,8 +159,13 @@ export function ledgerCommitFixture(
         system,
         idempotencyKey,
         idempotencyKeyDigest,
+        bindingProofDigest,
+        runId,
+        traceId,
+        workflowId,
+        itemId,
         occurredAt: confirmedAt,
-        outcome: { ...COMMITTED_OUTCOME, confirmedAt },
+        outcome,
       },
       projection: { state: "pending" },
       createdAt: confirmedAt,

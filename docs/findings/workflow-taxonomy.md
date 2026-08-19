@@ -81,3 +81,23 @@ requires naming the composition it proves). Disposition needed: either a third r
 (e.g. `proving-standalone`) served on the wire and dropped by the rail alongside harnesses,
 or the operator keeps it visible deliberately. A rail-side hardcoded id list is not an
 option — that is exactly the workflow-specific customization the role model exists to avoid.
+
+## Workflow short code
+
+**Recorded:** 2026-08-14 · **Status:** triaged 2026-08-14 — deferred to the workflow-taxonomy
+question this file owns · moved here from [archive.md](archive.md) 2026-08-19 when that file was
+cleared to zero (Track B5). It was always a taxonomy question wearing an archive record's
+clothes: a short code is a descriptor PRESENTATION attribute several surfaces want, so it is
+decided once here and then frozen into archived records like the label already is (D179 freezes
+the label precisely so the archive never resolves a descriptor).
+
+- **Symptom:** an archive list row reads `EID 10873698 · Person Lookup v1` where the demo reads
+  `Tomás Rivera · pl v3.0`, and the version registry has no code column. At 800 rows the long
+  label costs the name column real width. The Activity per-workflow table records the same need.
+- **Demo element:** `run.workflowCode` on the row's name cell, in the sweep header's
+  `bumpNameLabel`, and as the registry table's leading token.
+- **Missing wire field:** no short code exists anywhere in the rebuild — not on the descriptor,
+  not on the wire. `workflowId` (`separations-kuali-read`) is the only short-ish handle and it is
+  not short.
+- **Where it would come from:** a descriptor field, decided here alongside the rest of the
+  taxonomy, then frozen into the archived record.

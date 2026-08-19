@@ -164,3 +164,21 @@ footer rule (*"A row footer's facts WRAP; they never truncate … so a run with 
 takes a second line instead of cutting its trace id to `1…`"*) and is pixel-identical on a
 demo-shaped short subtitle. The row is readable; whether a three-line prose note belongs in a
 queue footer at all is the backend question this record holds open.
+
+## Priority and preset on a queue row (inherited by the archive)
+
+**Recorded:** 2026-08-19 · **Status:** recorded · moved here from
+[archive.md](archive.md) when that file was cleared to zero (Track B5).
+
+- **Symptom:** the demo's identity chip row shows `priority` and `preset` beside version, app,
+  trace, by and attempt; the served row shows neither. The archive INHERITS the gap, because an
+  archived row is a frozen copy of `QueueSurfaceWire` — so this is a queue-row record, not an
+  archive one, and fixing it here fixes both.
+- **Demo element:** `Chip label="priority"` and `Chip label="preset"` in the run summary.
+- **Missing wire field:** `QueueBaseFields` carries neither.
+- **Where it would come from:** the start plan holds the preset and the priority the operator
+  chose; both would have to reach `QueueSurfaceWire` at projection time. Read-forward per D133 —
+  a run enqueued before the field existed reports its absence with the reason, and rows archived
+  from then on carry it forward automatically, exactly as `dryRun` did (commit 446e7d7).
+- **Already closed:** `dryRun` LANDED on `QueueBaseFields` 2026-08-14 (446e7d7) and the archived
+  detail draws it.
