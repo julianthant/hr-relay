@@ -3,7 +3,7 @@
 Records about the BFF's span-fold/projection layer — cases where a served surface
 disagrees with what the on-disk streams and authority actually hold.
 
-No open records.
+One open record (below).
 
 _(The 2026-08-14 "run timeline empty for runs enqueued after dashboard boot" record was
 resolved the same day by **D218** — the cross-process disk tail. The diagnosis and fix
@@ -36,3 +36,23 @@ guard the channel never had: a fixture asserting a run with declared `details` p
 one `span.patched` per resolved detail leaf. Until then, every `details`-fed surface is
 structurally empty and any test asserting through fixtures proves nothing about production (the
 "fixture emitter hides the fork" lesson).
+
+## A requeue duplicates a task-span entry at the same fold key
+
+**Recorded:** 2026-08-19 (found by the B4a verification pass) · **Status:** diagnosed ·
+**Owning doc:** doc 03 §2.3 · **Priority:** very low (not a wrong-value hazard)
+
+**Symptom.** The task-span fold keys by `(attempt, spanPath)`
+(`src/server/dashboard/projectors/run-queue-projection.ts` ~:638) and a `span.started`
+unconditionally pushes a new entry (~:600). A REQUEUE — claim-generation bump with the attempt
+unchanged — re-executes a node at the same span path, so the second `span.started` appends a
+duplicate entry while the matching `span.ended` binds to the first.
+
+**Consequence.** The new `pipeline[].executions` counter (B4a, D230 batch) would honestly report 2,
+but `durationSec` sums only the closed entry — an undercount, never a fabricated value (unmeasured
+intervals are dropped, never zeroed). Pre-existing shape, made visible by the new field.
+
+**What a fix involves.** Either fold the requeued execution into the full span identity the
+executor already carries (the D123 lesson: a folded span is a fact about ONE execution), or bind
+`span.ended` to the LAST open entry at its key. Any unit touching the fold key must know
+`executions`/`durationSec` now depend on it.
