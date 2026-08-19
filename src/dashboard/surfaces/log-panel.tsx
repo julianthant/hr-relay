@@ -170,6 +170,29 @@ export type { IdentityGatePayload };
  * to each other, since a threshold that drifts between them is a region whose
  * component choice and column arrangement disagree.
  */
+/**
+ * THE OUTCOME BAR'S WORDS for a settled run — D238.
+ *
+ * A REHEARSAL says so first. The bar states what the run came to, and for a dry
+ * run what it came to is a PREVIEW: nothing was written, nothing was fenced,
+ * and the verdict beside the word is `partial` rather than `verified-done`
+ * because the receipt for the same run derives exactly that. The word leads
+ * because the verdict is only readable once you know which kind of run produced
+ * it — `partial` alone reads as a run that half-worked, which is the opposite
+ * of what a clean rehearsal means.
+ *
+ * Exported as a pure function so the sentence is pinned by a test rather than
+ * only by a screenshot: this tree renders no React in the unit lane, and the
+ * one label that must never say `verified-done` for a preview is not a thing to
+ * leave to the parity corpus alone (D187's lesson, from the other side).
+ */
+export function terminalOutcomeText(
+  outcome: Extract<RunDetailWire["outcome"], { state: "terminal" }>,
+): string {
+  const rehearsal = outcome.rehearsal === true ? "dry run · " : "";
+  return `${rehearsal}${outcome.result} · ${fmtClock(outcome.completedAt)}`;
+}
+
 export const DETAIL_THREE_COLUMN_PX = 868;
 export const DETAIL_SHAPE_BESIDE_PX = 1068;
 
@@ -1639,18 +1662,9 @@ export function LogPanel({
   const outcome = detail.outcome;
   const outcomeStatus =
     outcome.state === "terminal" ? outcomeDsStatusOf(outcome.result) : dsStatusOf(detail.header.status);
-  /**
-   * D238 — a REHEARSAL says so first.
-   *
-   * The bar states what the run came to, and for a dry run what it came to is a
-   * preview: nothing was written, nothing was fenced, and the verdict beside the
-   * word is `partial` rather than `verified-done` because the receipt for the
-   * same run derives exactly that. The word leads because the verdict is only
-   * readable once you know which kind of run produced it.
-   */
   const outcomeText =
     outcome.state === "terminal"
-      ? `${outcome.rehearsal === true ? "dry run · " : ""}${outcome.result} · ${fmtClock(outcome.completedAt)}`
+      ? terminalOutcomeText(outcome)
       : gate.state === "open"
         ? gate.label
         : outcome.reason;
