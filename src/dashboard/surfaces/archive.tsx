@@ -1077,8 +1077,18 @@ function ArchivedRunDetail({
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = `archive-${detail.detail.header.traceId}.json`;
+    /*
+     * Mounted before the click and revoked on the next tick, both deliberately.
+     * A detached anchor does not fire in every browser, and revoking the object
+     * URL synchronously can race the download the click just started — which
+     * would leave the toast below claiming a file that never arrived. A success
+     * message for an act that did not happen is the failure this program bans,
+     * so the two lines that make it impossible are worth the noise.
+     */
+    document.body.append(anchor);
     anchor.click();
-    URL.revokeObjectURL(url);
+    anchor.remove();
+    window.setTimeout(() => { URL.revokeObjectURL(url); }, 0);
     toast({
       tone: "success",
       title: `archive-${detail.detail.header.traceId}.json`,
