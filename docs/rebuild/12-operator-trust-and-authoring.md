@@ -498,6 +498,50 @@ Owned by `src/core/evidence-receipt.ts` and `src/domain/trust/gate-decisions.ts`
 `evidence-receipt` guard against the REAL gated descriptor, with a foreign gate row, a gate that left
 the graph, and an undeclared arm value as negative controls.
 
+### D237 — a settled gate's panel names the verdict, the approver and the instant
+
+**Ratified 2026-08-19.** D202 put the approver into authority, D203 taught the kernel to read a
+`gate_results` row as a dependency's evidence, and D204 taught the RECEIPT the same thing. The
+**panel** was never taught it. `run-detail`'s `resolved` gate arm was keyed on the span stream's
+`resolutionKey`, and the command service emits the literal `resolved` for every gate — deliberately,
+with a comment naming the deferral (*"Until gate descriptors declare display keys (2h Review), the
+one honest key is the fact of resolution itself"*). So the approve/reject arm was **structurally
+unreachable**: every settled gated run's panel reported `gate: { state: "absent", reason: "gate
+identity-approval resolved with key resolved, which is not an approve/reject verdict" }`, a sentence
+that reads like a data problem and was a vocabulary deferral. Separations §9.17 item 7(a) recorded
+it against a real settled run; this closes it.
+
+**The source is the durable row, and it is the SAME row the receipt reads.** The panel query takes
+`authority.gateResults.listByRun(runId)` — D204's own read — and derives the verdict through D204's
+declared arm table (`src/domain/trust/gate-decisions.ts`), with `resolvedBy` and `resolvedAt` taken
+off the row the kernel wrote inside the resolving transaction. The span stream is not consulted for
+the verdict at all, which is the point: a projection of an event's display key was never authority
+for what a human decided, and the two surfaces an operator reads side by side — the panel and the
+receipt — now cannot disagree about who answered a gate. The wire's `resolved` arm therefore carries
+`resolvedBy` as a REQUIRED field; requiring it is safe precisely because the arm was unreachable, so
+no served wire and no archived record can hold a `resolved` gate that predates it, and an optional
+field would have bought read-forward safety for a shape nothing ever wrote at the price of a settled
+gate that renders without naming a human.
+
+**Where the panel and the receipt deliberately DIVERGE: what a gap does.** The receipt REFUSES to
+derive at all when a gate is undeclared or stores an arm value no declaration lists (D204) — it is
+the durable artifact, and a trust record that guessed would be worse than no record. The panel must
+still render the run it exists to explain, so each way the read can fail to produce a verdict is a
+NAMED absence instead: no durable row beside a folded `gate.resolved` span (stated as exactly that
+divergence, so a lost decision never reads as a workflow that asked for none), no declaration for
+`(workflow, gate)` naming the file that owes one, an arm value no declaration lists naming both what
+was stored and what is declared, and a declared outcome that is not an approve/reject verdict. In
+neither surface does anything guess the word.
+
+**What the operator sees.** The panel draws a DECISION RECORD in the run's own stream at
+`resolvedAt` — the settled counterpart of the open gate's decision card, in the same geometry —
+carrying the verdict, the approver and the instant. The archived detail's Decision card names the
+approver for the same reason. Doc 03 owns the presentation; this section owns the derivation.
+
+Owned by `src/server/dashboard/queries/run-detail.ts` and `src/domain/dashboard/run-detail.ts`,
+over `src/domain/trust/gate-decisions.ts`; pinned by
+`tests/unit/server/run-detail-gate-outcome.test.ts` with every named absence as a negative control.
+
 ### Named gap: a transaction node cannot yet be a terminal dependency — CLOSED by D144
 
 **Closed 2026-08-04 (D144, doc 09 §3.1).** The gap was real: the sequencer stored a transaction
