@@ -359,6 +359,23 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
     return c.json(result, status);
   });
 
+  /**
+   * D235 — the bulk door. It is a SECOND route rather than a mode of the one
+   * above because the two answer different shapes: one command answers one
+   * `CommandResult`, and N commands answer N of them. Folding a vector into the
+   * single-result union would have made every existing consumer parse a shape
+   * it can never receive, and would have given the collapse-into-"Done" defect
+   * a place to hide.
+   *
+   * No `intake.prepare` warm-up: the bulk vocabulary is the three run verbs,
+   * none of which reaches an async seam.
+   */
+  app.post("/api/v1/commands/bulk", async (c) => {
+    const body: unknown = await c.req.json();
+    const result = deps.commands.executeBulk(body);
+    return c.json(result, result.state === "refused" ? 422 : 200);
+  });
+
   app.get("/events/v1", (c) => {
     const topics = z.string()
       .regex(TOPICS_PATTERN, "topics must be dashboard-day:<YYYY-MM-DD>")
