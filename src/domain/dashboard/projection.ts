@@ -42,7 +42,92 @@ const PipelineStepWireSchema = z.strictObject({
   id: z.string().regex(/^[a-z][a-z0-9-]*$/),
   label: z.string().min(1),
   state: z.enum(["pending", "active", "done", "failed", "skipped", "blocked"]),
+  /**
+   * How long this step's spans took, summed over EVERY execution of the node.
+   *
+   * Optional in the same shape (and for the same reason) as the run-detail
+   * timeline's `durationMs` one surface over: a step that has not ended, a step
+   * whose `span.started` was never folded because a restart closed a span an
+   * earlier process opened, and a step whose two instants disagree all carry
+   * NO duration rather than a zero. A zero would read as "instant", which is a
+   * measurement, and none of those three states measured anything.
+   *
+   * Summed rather than latest-wins because a node re-executed across a gate
+   * resume (D214) genuinely spent both intervals, and the chip is reporting
+   * time spent on the step — not the length of its last try. `executions`
+   * beside it is what keeps the two readings apart.
+   */
+  durationSec: z.number().int().nonnegative().optional(),
+  /**
+   * How many times this node executed, present only when it is more than once
+   * (D214/D225 — a gate park and its resume are two executions inside one
+   * attempt). Absence means exactly one execution, which is the ordinary case
+   * and needs no chip decoration.
+   */
+  executions: z.number().int().min(2).optional(),
 });
+
+/**
+ * The run's own so-what, as the queue's chip band prints it (doc 03 §9 D7).
+ *
+ * `label`/`value` is the demo's `FactChipView` shape, and the values are the
+ * ones the RECEIPT prints — the receipt's `output` facts, not a second
+ * derivation over the terminal result, so the chip on the row and the row in
+ * the Receipt tab can never disagree about what a run produced.
+ */
+const RunFactWireSchema = z.strictObject({
+  label: z.string().min(1),
+  value: z.string().min(1),
+});
+
+/**
+ * How this row is contained by its parent (doc 03 §2's delegation vocabulary,
+ * doc 13 §1.1 — *projected, never inferred from a workflow id*).
+ *
+ * - `root`   — no parent. The ordinary row.
+ * - `member` — created by a parent fanning out. Renders nested in the group and
+ *              is counted in its rollup, never at top level.
+ * - `linked` — an independently meaningful sub-run the parent waits on. Keeps
+ *              its OWN row in its own panel; the parent shows a chip.
+ *
+ * **There is deliberately no `rejected` arm**, though the doc's vocabulary
+ * names one. A submission the parent could not turn into work never becomes a
+ * run: `fanOutQueuedRuns` refuses the WHOLE fan-out inside the caller's
+ * transaction, and a start-plan refusal rides the plan as data. So there is no
+ * queue row a `rejected` containment could describe, and an arm nothing can
+ * produce is the orphan `wire-connectivity` exists to catch. It lands with the
+ * first producer that writes a rejected child row, and not before.
+ */
+export const ContainmentSchema = z.enum(["root", "member", "linked"]);
+
+/**
+ * A run this row DELEGATED TO and is waiting on — the demo's
+ * `PanelRedirectChip`, which prints `Name · status ↗` and jumps panels.
+ *
+ * The chip needs three things and therefore so does the wire: where to jump
+ * (`workflowId` + `panelKind`), what to call it (`label`), and what it is doing
+ * right now (`status`). Serving bare ids would make the client re-derive the
+ * target's status from the day payload — which only works while the target is
+ * on the same day, and is the second status path D81 exists to delete.
+ */
+const LinkedRunWireSchema = z.strictObject({
+  runId: RunIdSchema,
+  workflowId: WorkflowIdSchema,
+  label: z.string().min(1),
+  panelKind: PanelKindSchema,
+  status: QueueStatusSchema,
+});
+
+/**
+ * The run's scheduling class (`RunEnvelope.priority`, D95's `bump` target).
+ *
+ * A deliberate MIRROR of `RunPrioritySchema`, kept member-for-member identical
+ * by `wire-connectivity.test.ts`'s mirror joint. The copy exists because
+ * `src/domain/run/envelope.ts` reaches `workflow/checkpoint.js` and this module
+ * is in the dashboard bundle's reach (doc 13 §8.13) — never because the two may
+ * differ.
+ */
+export const QueuePrioritySchema = z.enum(["interactive", "bulk"]);
 
 const QueueBaseFields = {
   runId: RunIdSchema,
@@ -76,6 +161,76 @@ const QueueBaseFields = {
    * cheapest possible way to read a dry run as a submitted transaction.
    */
   dryRun: z.boolean(),
+  /**
+   * D95's scheduling class, read from the run envelope (its one home) exactly
+   * as `dryRun` is. There is no absent arm and there must never be one: every
+   * envelope carries a priority, `bumpPriority` rewrites this same field, and
+   * the footer chip is how an operator sees that their `bump` landed.
+   */
+  priority: QueuePrioritySchema,
+  /**
+   * This run's ORDINAL within its workflow — the footer's `#N` (D230).
+   *
+   * Durable on `RunRecord`, assigned at enqueue, never derived here: a number
+   * computed from a row's position in THIS day's page would give the same run a
+   * different number tomorrow, which is the one property a name may not have.
+   *
+   * The absent arm is read-forward (D133) and is the only one: a run enqueued
+   * before schema v15 carries no ordinal, and the row draws its trace id in that
+   * slot — the identity every log, receipt and support conversation already
+   * uses. The two are siblings once both are present, never substitutes.
+   */
+  runNumber: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: PositiveIntSchema }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
+  /**
+   * How this row is contained by its parent — `root`, `member` or `linked`.
+   *
+   * It is PROJECTED from the run's own shape and lineage (doc 13 §1.1's
+   * *never inferred from a workflow id*), and it is served in its own right
+   * rather than left to the client to reconstruct from `surfaceKind` plus
+   * `lineage`: those two answer "how do I lay this out" and "who is my parent",
+   * and neither answers "am I counted", which is the question containment is.
+   */
+  containment: ContainmentSchema,
+  /**
+   * The runs this row DELEGATED TO and is waiting on (doc 03 §9 D6/D10/D13).
+   *
+   * An EMPTY array is a real answer, exactly as it is for `actions`: this run
+   * spawned no child that keeps its own row. Today every registered workflow
+   * produces an empty one, because no descriptor in this build declares a
+   * `child-run` node that fans out to a separately-panelled run — that is an
+   * honest zero, not a stub, and the projector fills it the moment a child with
+   * a non-member shape appears in the fold.
+   *
+   * A MEMBER child never appears here: it is counted in its parent's rollup and
+   * rendered nested, and listing it in both places would let a group's own
+   * chips contradict its own count.
+   */
+  linkedRuns: z.array(LinkedRunWireSchema),
+  /**
+   * What this run PRODUCED, in the words its receipt uses (doc 03 §9 D7).
+   *
+   * Read from the run's ALREADY-DERIVED evidence receipt — the same plain
+   * lookup `warnings` does, and never `ensureReceipt`: D141 makes derivation an
+   * act that persists a row, and a read model that wrote authority while
+   * rendering a queue would be a projection deciding when a durable record
+   * exists.
+   *
+   * Only a receipt output fact whose redacted value is `allowed` AND primitive
+   * becomes a chip. A dropped or transformed leaf is redacted, and the queue —
+   * on screen all day, screenshotted into tickets — is the last surface that may
+   * print one; a structured leaf is not a chip, and flattening an object into
+   * one would be inventing a presentation the receipt never authored. The
+   * absent `reason` distinguishes "not settled", "no receipt derived", "the
+   * receipt recorded no output" and "every output leaf was redacted or
+   * structured", because a silent empty band collapses all four.
+   */
+  facts: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: z.array(RunFactWireSchema).min(1) }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
   startedAt: IsoInstantSchema,
   updatedAt: IsoInstantSchema,
   /**
@@ -297,6 +452,53 @@ function refineActions(
   }
 }
 
+/**
+ * Containment, lineage and surface kind are three views of one fact, so the
+ * schema refuses a payload where they disagree rather than letting a surface
+ * pick a winner.
+ *
+ * A `root` row has no parent and a parented row is never `root` — that half is
+ * pure bookkeeping. The load-bearing half is `member`: a member is the row that
+ * is COUNTED inside its parent's rollup and never at top level, and
+ * `surfaceKind` is what the projector's own count filter reads, so a row that
+ * called itself a member while presenting as a single run would be counted
+ * twice — once in its parent's rollup and once in the day's totals.
+ */
+function refineContainment(
+  surface: {
+    containment: z.infer<typeof ContainmentSchema>;
+    surfaceKind: string;
+    lineage: { state: "root" | "child" };
+    runId: string;
+    linkedRuns: readonly { runId: string }[];
+  },
+  context: z.RefinementCtx,
+): void {
+  const parented = surface.lineage.state === "child";
+  if (parented === (surface.containment === "root")) {
+    context.addIssue({
+      code: "custom",
+      path: ["containment"],
+      message: `a ${surface.lineage.state} row cannot be contained as ${surface.containment}`,
+    });
+  }
+  if ((surface.containment === "member") !== (surface.surfaceKind === "member")) {
+    context.addIssue({
+      code: "custom",
+      path: ["containment"],
+      message: `containment ${surface.containment} disagrees with surfaceKind ${surface.surfaceKind}; `
+        + "a member is exactly the row counted in its parent's rollup instead of the day's totals",
+    });
+  }
+  const linkedIds = surface.linkedRuns.map(({ runId }) => runId);
+  if (new Set(linkedIds).size !== linkedIds.length) {
+    context.addIssue({ code: "custom", path: ["linkedRuns"], message: "linked run ids must be unique" });
+  }
+  if (linkedIds.includes(surface.runId)) {
+    context.addIssue({ code: "custom", path: ["linkedRuns"], message: "a run cannot be linked to itself" });
+  }
+}
+
 const RegularQueueSurfaceWireSchema = z.strictObject({
   ...QueueBaseFields,
   surfaceKind: z.enum(["single", "preview"]),
@@ -304,6 +506,7 @@ const RegularQueueSurfaceWireSchema = z.strictObject({
   refineEndedAt(surface, context);
   refineGateOpenedAt(surface, context);
   refineActions(surface, context);
+  refineContainment(surface, context);
 });
 const MemberQueueSurfaceWireSchema = z.strictObject({
   ...QueueBaseFields,
@@ -312,6 +515,7 @@ const MemberQueueSurfaceWireSchema = z.strictObject({
   refineEndedAt(surface, context);
   refineGateOpenedAt(surface, context);
   refineActions(surface, context);
+  refineContainment(surface, context);
   if (surface.lineage.state !== "child") {
     context.addIssue({ code: "custom", path: ["lineage"], message: "member surfaces require a parent run" });
   }
@@ -325,10 +529,31 @@ const OperationQueueSurfaceWireSchema = z.strictObject({
     terminal: z.number().int().nonnegative(),
     failed: z.number().int().nonnegative(),
   }),
+  /**
+   * The first few members BY NAME, so a counted anchor whose own title is a
+   * number — `5 separations` — still says who is in it.
+   *
+   * It is on the OPERATION variant alone because only a group has members, and
+   * it is DERIVED from the member rows' own served titles rather than authored:
+   * a preview composed from anything but the titles those rows draw could name
+   * somebody the group does not contain. The `+N more` tail is part of the
+   * string for the same reason the count is — both come off one member list, in
+   * one place, so the preview and the rollup cannot disagree.
+   *
+   * Absent when the group has no members yet, or when none of them has resolved
+   * a subject the preview could print; a group is a real thing before its
+   * fan-out lands, and an empty string in that slot would read as a group of
+   * nobody.
+   */
+  memberPreview: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
 }).superRefine((surface, context) => {
   refineEndedAt(surface, context);
   refineGateOpenedAt(surface, context);
   refineActions(surface, context);
+  refineContainment(surface, context);
   if (new Set(surface.memberRunIds).size !== surface.memberRunIds.length) {
     context.addIssue({ code: "custom", path: ["memberRunIds"], message: "operation member ids must be unique" });
   }

@@ -37,6 +37,14 @@ function surface(input: Record<string, unknown>) {
     configFingerprint: HASH_B,
     resolvedInstances: [],
     dryRun: false,
+    priority: "interactive",
+    runNumber: { state: "present", value: 1 },
+    // Containment tracks the surface kind this fixture is building, because the
+    // wire refuses a payload where the two disagree — a member is exactly the
+    // row counted in its parent's rollup instead of the day's totals.
+    containment: input.surfaceKind === "member" ? "member" : "root",
+    linkedRuns: [],
+    facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
     startedAt: NOW,
     updatedAt: NOW,
     endedAt: { state: "absent", reason: "run has not ended" },
@@ -127,6 +135,7 @@ describe("member ordering (R3 finding 13)", () => {
       status: "running",
       memberRunIds: members.map((member) => String(member.runId)),
       memberRollup: { total: 5, terminal: 4, failed: 1 },
+      memberPreview: { state: "absent", reason: "this fixture names no member subjects" },
     });
     assert.deepEqual(
       visibleRunIds([operation, ...members], "attention", NOW),
@@ -155,6 +164,7 @@ describe("member ordering (R3 finding 13)", () => {
       status: "running",
       memberRunIds: members.map((member) => String(member.runId)),
       memberRollup: { total: 3, terminal: 3, failed: 3 },
+      memberPreview: { state: "absent", reason: "this fixture names no member subjects" },
     });
     assert.deepEqual(visibleRunIds([operation, ...members], "attention", NOW), [
       runId(9),

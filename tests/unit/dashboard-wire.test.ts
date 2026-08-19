@@ -37,6 +37,11 @@ const QUEUE = {
   configFingerprint: HASH_B,
   resolvedInstances: [{ system: "ucpath", instance: "prod" }],
   dryRun: false,
+priority: "interactive",
+runNumber: { state: "present", value: 1 },
+containment: "root",
+linkedRuns: [],
+facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
   startedAt: NOW,
   updatedAt: NOW,
   endedAt: { state: "absent", reason: "run is running" },
@@ -307,8 +312,37 @@ describe("dashboard wire primitives", () => {
   it("keeps queue surfaces flat and operation-only membership coherent", () => {
     assert.equal(QueueSurfaceWireSchema.safeParse(QUEUE).success, true);
     assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, surfaceKind: "preview" }).success, true);
-    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, surfaceKind: "member", lineage: { state: "child", parentRunId: RUN_2 } }).success, true);
+    const member = {
+      ...QUEUE,
+      surfaceKind: "member",
+      containment: "member",
+      lineage: { state: "child", parentRunId: RUN_2 },
+    };
+    assert.equal(QueueSurfaceWireSchema.safeParse(member).success, true);
     assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, surfaceKind: "member" }).success, false);
+    /*
+     * Containment, lineage and surface kind are three views of one fact, and
+     * the schema refuses every way they can disagree. The load-bearing arm is
+     * the second: a row that called itself a member while presenting as a
+     * single run would be counted twice — once in its parent's rollup and once
+     * in the day's totals — because `surfaceKind` is what the count filter
+     * reads and `containment` is what the layout reads.
+     */
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...member, containment: "root" }).success, false);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, containment: "member" }).success, false);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, containment: "linked" }).success, false);
+    // A linked child keeps its own single row: parented, and NOT counted.
+    assert.equal(QueueSurfaceWireSchema.safeParse({
+      ...QUEUE, containment: "linked", lineage: { state: "child", parentRunId: RUN_2 },
+    }).success, true);
+    // A row may not chip itself, nor name one target twice.
+    assert.equal(QueueSurfaceWireSchema.safeParse({
+      ...QUEUE,
+      linkedRuns: [{ runId: RUN_1, workflowId: "onboarding", label: "Onboarding", panelKind: "run", status: "running" }],
+    }).success, false);
+    const chip = { runId: RUN_2, workflowId: "onboarding", label: "Onboarding", panelKind: "run", status: "running" };
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, linkedRuns: [chip] }).success, true);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, linkedRuns: [chip, chip] }).success, false);
     const operation = {
       ...QUEUE,
       surfaceKind: "operation",
@@ -316,6 +350,7 @@ describe("dashboard wire primitives", () => {
       availableSections: ["people", "logs", "receipt"],
       memberRunIds: [RUN_2],
       memberRollup: { total: 1, terminal: 0, failed: 0 },
+      memberPreview: { state: "present", value: "Ada Lovelace" },
     };
     assert.equal(QueueSurfaceWireSchema.safeParse(operation).success, true);
     assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, memberRunIds: [RUN_2] }).success, false);

@@ -168,6 +168,21 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
     // no absent arm — a rehearsal that renders like a real filing is the
     // cheapest way to read a dry run as a submitted transaction.
     dryRun: input.dryRun ?? false,
+    priority: input.seed === 9 ? "bulk" : "interactive",
+    /*
+     * D230: the corpus pins BOTH arms for the same reason it pins both arms of
+     * `appVersion` — a run enqueued before schema v15 carries no ordinal, and a
+     * reference set that only ever photographed the present arm would not show
+     * what the footer does when the number is genuinely absent.
+     */
+    runNumber: input.seed === 4
+      ? { state: "absent", reason: "enqueued before runs carried a workflow ordinal (D230)" }
+      : { state: "present", value: input.seed },
+    containment: kind === "member" ? "member" : "root",
+    linkedRuns: [],
+    facts: TERMINAL.has(input.status)
+      ? { state: "absent", reason: "this run's evidence receipt records no output fact" }
+      : { state: "absent", reason: `run is ${input.status} and has not produced a terminal result` },
     startedAt: at(startedMinute),
     // D124: a settled run carries its own terminal instant, so the row can
     // show what it TOOK instead of counting since it started, and the
@@ -227,6 +242,9 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
       surfaceKind: "operation",
       memberRunIds: memberSeeds.map((seed) => uuidOf(seed)),
       memberRollup: { total: memberSeeds.length, terminal, failed },
+      memberPreview: memberSeeds.length === 0
+        ? { state: "absent", reason: "this group has fanned out to no members yet" }
+        : { state: "present", value: `EID 10873698 +${String(memberSeeds.length - 1)} more` },
     };
   }
   return { ...base, surfaceKind: kind };
