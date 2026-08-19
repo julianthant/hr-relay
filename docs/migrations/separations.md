@@ -1707,7 +1707,7 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 - [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **OPEN on all three commits**; the §4f2 canary is still unnamed. **Doc 4524's recommendation as the Kuali candidate is WITHDRAWN** (§9.16 §3): its action was completed 2026-08-14 and its form no longer renders. Doc **4510** is the best-mapped open document for a Kuali finalization commit, on the STANDALONE `separations-kuali-finalization` graph — the composed `separations` graph refuses it before the gate, **live-proved 2026-08-14 (§9.17 item 2)**: run `ee9824f7`, not dry, refused `NO_ACTIVE_EMPLOYMENT` at `employment` in 17.6 s with no gate opened and zero writes, because UCPath still shows one `Inactive` employment for EID 10001799
 - [x] `identity-gate-before-separation-commit` green — every commit is graph-reachable only through the gate node (doc 09 §14.6 guard #2; the structural half of §4d) — and §14.5's digest binding is now proved LIVE (§9.14): the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's
 - [x] D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved — **MET 2026-08-14 (§9.17 item 6)**: three entries touched (`legacy-workflow-separations`, `legacy-tool-debug-kronos`, `legacy-tool-ops-sanity-check-record`), all correctly `open` at the runtime's own milestone, nothing stale under D188's arm, no legacy path deleted. One finding for the operator: **D192's deferral condition on `legacy-tool-ops-sanity-check-record` is now materially satisfied** — the §14.2 packet's `comparisons` array is exactly the prose-observations-beside-the-gate shape D192 asked for — and it is flagged rather than re-dispositioned, because closing an inventory entry is an operator decision
-- [ ] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above became D214/D215 and both landed with theirs; the `already-present` receipt arm platform slice 2 named landed at `b73b546`.** **PARTLY MET after §9.17**: the re-run's own defect — D215's `not-observed` subject verdict missing from the span WIRE leaf, which killed the worker on the first preview that ever settled — landed with its regression case at `e1ba81b`. **Of the two findings the pass named rather than pinned, one is now closed**: the retry checkpoint re-collision (§9.17 item 8) landed as **D221** with `tests/unit/retry-item-attempt.test.ts` — the attempt in an item-scoped checkpoint key is the ITEM's attempt, so a retry takes the item's next one and its `always-rerun` executions can no longer land on the retried run's key. **Still open**: the browser-profile wedge (§9.17 item 5 — three consecutive 60 s `sessionAcquireMs` failures on one worker profile while a fresh profile logged in in 17.9 s; recorded as a shape, not diagnosed to root cause)
+- [ ] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above became D214/D215 and both landed with theirs; the `already-present` receipt arm platform slice 2 named landed at `b73b546`.** **PARTLY MET after §9.17**: the re-run's own defect — D215's `not-observed` subject verdict missing from the span WIRE leaf, which killed the worker on the first preview that ever settled — landed with its regression case at `e1ba81b`. **Of the two findings the pass named rather than pinned, one is now closed**: the retry checkpoint re-collision (§9.17 item 8) landed as **D221** with `tests/unit/retry-item-attempt.test.ts` — the attempt in an item-scoped checkpoint key is the ITEM's attempt, so a retry takes the item's next one and its `always-rerun` executions can no longer land on the retried run's key — and it is now **LIVE-PROVED on the composed graph (§9.20, 2026-08-19)**: six retries through the real command endpoint across two logical items (attempts 2→3 on doc 4510, 2→3→4→5→6 on doc 4502), every one minting the item's next unspent attempt, none refused, no collision, `timecard-search` — §9.18 item 8's own node — re-executed at three separate attempts, one retried run replaying eight checkpoints written by two earlier runs at two different attempts, and the last of them reaching a terminal **`done`** at D215's `already-present` preview terminal with zero durable write rows. **Still open**: the browser-profile wedge (§9.17 item 5), now with a much tighter reproduction from §9.20 item 6 — a UCPath profile that had completed exactly ONE Duo ceremony minutes earlier wedged on the very next acquisition (60.01 s, no `PS_TOKEN`, one `frameless-session-binding-*` cookie) while a cold profile logged in in 16.9 s, so "stale accumulation over days" is ruled out and the shape is narrower; still recorded rather than diagnosed to root cause, and §9.20 item 7 adds a second, unrelated cold-profile observation on New Kronos
 - [x] **§2.6 confirmed and ratified: D194 recorded in doc 01 §2.8, pointer in doc 04 round 48, `STORES.md` §1 updated** (2026-08-12) — every new read task this migration authors is authored under it
 
 ---
@@ -4489,7 +4489,9 @@ D115 provenance that belong to the doc that owns them.
 - **The retry path**, item 8 — known-broken for this graph during the pass and not exercised further
   in it. **FIXED afterwards as D221** and pinned by a fixture walk over the real interpreter and the
   real retry command; it has still never been exercised LIVE on this graph, which is the honest
-  remaining statement.
+  remaining statement. _(Superseded 2026-08-19: **§9.20** is that live exercise — six retries through
+  the real command endpoint across two logical items, no collision, and a retried run reaching the
+  preview terminal.)_
 
 ### 9.18 Operator inputs, 2026-08-18 — the dry-run practice set, and four rulings
 
@@ -4795,4 +4797,310 @@ a date on it, never in a plan sentence.** Two named Kuali canaries have now evap
   read-only pass.
 - **The two dates' WIRE shapes** and the other five unasserted Kuali wire shapes, unchanged: they close
   only by observing a real `submitDocumentV2` payload.
+- **The parity lane**, unchanged: no dashboard bytes moved in this pass.
+
+---
+
+### 9.20 The live retry proof — D221 exercised on the composed graph for the first time, 2026-08-19
+
+D221 landed on 2026-08-14 with `tests/unit/retry-item-attempt.test.ts` and, in §9.17's own words,
+*"has still never been exercised LIVE on this graph, which is the honest remaining statement."* This
+pass is that exercise. Everything below ran against production through the REAL pipeline — start
+plan → `POST /api/v1/commands` → worker claim → gate → real approval → resume — on a BFF whose
+served `separations` `contractFingerprint` was verified against the working tree's build manifest
+BEFORE anything was planned (§9.16 §5's standing habit).
+
+**Every run was `dryRun: true`.** No UCPath transaction was staged or submitted, no Kuali `Save` /
+`Send Back` / `Mark Complete` was clicked, `submitDocumentV2` was never issued, the Smart HR
+wizard's `Continue` was never clicked, and `Delete Selected Transactions` was never clicked. The two
+gate approvals were taken through this system's own command endpoint, which is our gate, not an HR
+system write.
+
+**Nothing was written, anywhere.** Asserted against the authority database after the pass, not from
+logs: `write_intents` **2**, `write_attempts` **3**, `durable_outbox` **2** — byte-for-byte the same
+counts §9.17 recorded, all of them 2026-08-04's Phase-2 controlled commit on Kuali doc **4489**,
+newest row `2026-08-04T17:08:54.867Z`. **Zero** rows in any of the three carry a `ucpath` or
+`separations` permanent key, and `run_checkpoints` holds **zero** rows for `clear-pending`,
+`file-termination`, `finalize-kuali` or `receipt` across every run this database has ever held.
+
+#### The honest status
+
+| Asked for | Status |
+|---|---|
+| A retry through the REAL command endpoint mints the item's NEXT unspent attempt | **MET, six times** — two lineages, attempts 2→3 and 2→3→4→5→6 |
+| The enqueue does not refuse, and no checkpoint collision occurs | **MET** — every retry claimed and executed; §9.18 item 8's refusal never appeared |
+| The retried run reaches a real terminal state | **MET** — five terminal `failed`, and one terminal **`done`** at the preview terminal |
+| Checkpoint REUSE across a retry | **MET** — one retried run replayed **eight** nodes written by **two different runs at two different attempts**, then re-executed the `always-rerun` node |
+| The `always-rerun` node §9.18 item 8 died on, re-executed across a retry | **MET** — `timecard-search` executed at attempts 4, 5 and 6, and inserted checkpoints at four distinct `(attempt, claimGeneration)` keys |
+| A same-day healthy baseline beside the retry evidence | **MET** — run `4ee84ac2` reached D215's `already-present` preview terminal |
+| Zero durable write rows, proved from authority | **MET** — counts above |
+| A new platform defect | **NONE.** Two OPERATIONAL findings, items 5 and 6 |
+
+#### 1. The two lineages, verbatim from authority
+
+Every row below is `dryRun: true`. `runNumber` is the workflow ordinal (D230); `retryOf` is the run
+each retry names.
+
+| Run | Trace | Item | Attempt | `runNumber` | `retryOf` | Outcome | Wall |
+|---|---|---|---|---|---|---|---|
+| `3ad69642` | `sp-061311-3ad6` | `571baa04` (doc 4510) | **2** | 1 | — | `failed` | 86.4 s |
+| `14947724` | `sp-063118-1494` | `571baa04` (doc 4510) | **3** | 2 | `3ad69642` | `failed` | 35.4 s |
+| `6d809932` | `sp-063316-6d80` | `c9837287` (doc 4502) | **2** | 3 | — | `failed` | 76.1 s |
+| `97438b59` | `sp-063905-9743` | `c9837287` (doc 4502) | **3** | 4 | `6d809932` | `failed` | 62.1 s |
+| `3fe48219` | `sp-064154-3fe4` | `c9837287` (doc 4502) | **4** | 5 | `97438b59` | `failed` | 45.5 s |
+| `6f7821f7` | `sp-064320-6f78` | `c9837287` (doc 4502) | **5** | 6 | `3fe48219` | `failed` | 208.1 s |
+| `4ee84ac2` | `sp-064758-4ee8` | `c9837287` (doc 4502) | **6** | 7 | `6f7821f7` | **`done`** | 136.3 s |
+
+The 4510 item had spent attempt 1 on 2026-08-14 (§9.17 part B, `ee9824f7`, not dry). The 4502 base
+item had spent attempt 1 **three times** — `1fd7b3a4`, `12a5cd3e` and `555ba4b4`, all born at 1
+because that is what a pre-D221 enqueue did. Both items' next unspent attempt was therefore correct
+on the first read, and every retry advanced it by exactly one.
+
+#### 2. What D221 demonstrably did, stated as the counterfactual
+
+D221's rule is one sentence of code in `command-kernel.ts` — a retry's envelope takes
+`repositories.runs.nextItemAttempt({workflow, itemId})` instead of `1` — backed by a refusal in
+`authority-database.ts` that rejects an attempt the item has already spent:
+
+> `run <id> is enqueued for separations item <item> at attempt <n>, which that item has already`
+> `spent (its next unspent attempt is <m>); an attempt is the item's, not the run's, and no two runs`
+> `of one item may hold the same one`
+
+**That refusal never fired in this pass**, because nothing ever tried to spend a spent attempt. What
+makes the fix load-bearing is what would have happened without it, and the checkpoint ledger says it
+exactly. Checkpoint replay is item-scoped and takes the LATEST row for `(workflow, item, node)`
+regardless of attempt; the checkpoint INSERT is keyed
+`(workflow, item, node, attempt, claimGeneration)`.
+
+- **Retry `97438b59` (attempt 3).** Its first executed node was `name-search`. Pre-D221 it would have
+  been born at attempt 1 / generation 1, and the item already holds `name-search` at exactly that key
+  — written by `12a5cd3e` on 2026-08-14 — with different content, because this was a fresh live read.
+  It would have died there, in about two seconds, one node into a run that went on to read UCPath
+  successfully.
+- **Retry `3fe48219` (attempt 4).** Its first executed node was **`timecard-search`** — §9.18 item
+  8's node, the one whose live collision message that item records verbatim. Pre-D221 it would have
+  been born at attempt 1 / generation 1, where `12a5cd3e` already holds a row. Instead it ran the
+  node live for 32.19 s.
+
+Post-D221 the ledger simply grew beside the old rows. Every checkpoint written today, in order:
+
+| Node | Attempt | Claim gen | Run |
+|---|---|---|---|
+| `document` · `plan` · `termination-type` | 2 | 1 | `6d809932` |
+| `name-search` · `subject` · `job-summary` · `employment` · `department-option` | 3 | 1 | `97438b59` |
+| `timecard-search` · `timecard` · `dates` · `comparison` | 5 | 1 | `6f7821f7` |
+| `timecard-search` · `approval` | 5 | **2** | `6f7821f7` |
+| `timecard-search` | 6 | 1 | `4ee84ac2` |
+| `timecard-search` · `approval` | 6 | **2** | `4ee84ac2` |
+
+`timecard-search` — an `always-rerun` node by design, because its product is browser state — holds
+**four** rows from today at four distinct keys, beside the two rows from 2026-08-14 at
+`(attempt 1, generation NULL)` and `(attempt 1, generation 1)`. D214's generation half and D221's
+attempt half are visible in the same column: the generation separates the two executions inside one
+attempt that a gate park-and-resume produces, and the attempt separates the retries.
+
+#### 3. Checkpoint reuse across a retry, which is the half that makes a retry cheap
+
+Retry `3fe48219` (attempt 4) emitted **no spans at all** for `document`, `plan`, `termination-type`,
+`name-search`, `subject`, `job-summary`, `employment` or `department-option` — a replayed node emits
+none — and started directly at `timecard-search#1.1`. Those eight checkpoints were written by **two
+different runs at two different attempts** (`6d809932` at attempt 2; `97438b59` at attempt 3), which
+is cross-run, cross-attempt replay working exactly as D221 promised it would remain untouched.
+Retry `4ee84ac2` (attempt 6) did the same, and additionally replayed `timecard`, `dates` and
+`comparison` from attempt 5's rows after its own gate resume.
+
+`npm run rebuild:cli explain run sp-064758-4ee8 --json` reports it in its own `reuse` section, which
+lists exactly the replayed nodes that carry a declared freshness bound:
+
+```
+reuse  [ { nodeId: "name-search",  kind: "checkpoint", ageMs: 612568, freshnessLimitMs: 1.44e7 },
+         { nodeId: "job-summary",  kind: "checkpoint", ageMs: 608893, freshnessLimitMs: 1.44e7 } ]
+writes []
+```
+
+Both were ~10.2 minutes old against a 4 h bound — a retry three runs later reusing reads the first
+run paid for, with the freshness contract still checked rather than assumed.
+
+**One consequence worth naming: a retry re-asks the gate.** The durable gate decision is keyed
+`<runId>:<gateId>`, so a retried run is a new run with no decision of its own and parks again. That
+is correct — a new attempt is a new decision, and D211's digest binds an approval to the packet it
+was shown — and it is why this pass took **two** real approvals rather than one.
+
+#### 4. The run that closed it: `4ee84ac2` · `sp-064758-4ee8` · attempt 6 · terminal `done`
+
+The retried run reached the same preview terminal §9.17 reached, on the same subject, five days
+later and six attempts into one logical item.
+
+| Segment | Node | Wall |
+|---|---|---|
+| claim → gate | eight nodes **replayed**, then `timecard-search#1.1` | **1.83 s** (warm New Kronos session) |
+| | `timecard` · `dates` · `comparison` replayed | — |
+| | `gate.opened` | at `13:48:20.969Z`, **1.85 s** after claim |
+| approval → terminal | `timecard-search#2.1` (always-rerun, generation 2) | 29.82 s |
+| | `approval#2.1` | 0.00 s |
+| | `clear-pending` preview, incl. a cold UCPath login | 23.6 s |
+
+The gate as the wire served it, and the approval:
+
+```
+gateId            identity-approval          parkedAt   2026-08-19T13:48:21.033Z
+resumeAt          approval                   expectedVersion 8
+resultSchemaHash  2165f585c743…              evidenceDigest  29435d362c6c…
+approvalShape     one-click                  approvableEids  [10001754]
+options[0]        eid 10001754 · chosenFrom "checked" · "Dreitho Cramia"
+observedAt        2026-08-19T13:40:02.416Z   (the replayed job-summary read, attempt 3)
+```
+
+Command `1e61ca28-7a6a-4441-b11c-48c1db263770` at `2026-08-19T13:48:53.801Z`, applied; the durable
+decision landed at `13:48:53.810Z` attributed to `local-operator`, carrying `decision: approved`,
+`eid 10001754`, `chosenFrom: checked` and the bound `evidenceDigest`. The packet was the §9.17 shape
+on the same subject — four comparisons all `agrees`, `single-active-job`, and D211's write plan
+(`UC_INVOL_TERM` / `Appointment Expired` / empl record `0` / effective `04/01/2026` / LDW
+`03/31/2026`; department `000412 - Housing/Dining/Hospitality`; dates unchanged with
+`unclassifiedPayCodes: ["Farmworkers Day"]`). The `evidenceDigest` moved from §9.17's `a43f789b…` to
+`29435d36…` — the `observedAt` inside the packet is a different read, so a different packet, so a
+different approval. That is the binding working, not drift.
+
+**The terminal, verbatim.** `transaction.previewed` at `2026-08-19T13:50:14.442Z`, `node:
+clear-pending`, `subject: not-observed`, `externalCommit: none`. The `run_results` row is a
+`dry-run-preview` bound to schema hash **`86cd007a59d4…`** — the same preview schema §9.17 recorded,
+not the workflow's declared result — carrying
+
+```
+outcome  { state: "already-present", proofSource: "live-probe" }
+probe    ucpath-pending-terminations-clear · emplId 10001754
+         source "ss-smart-hr-detail-read" · scannedRowCount 2 · observedAt 13:50:11.375Z
+dependencies  [ approval ]  checkpoint attempt 6, claimGeneration 2
+externalCommit "none"
+```
+
+The receipt is `partial` / `unknown` / `output: []` with the one load-bearing warning, and its
+`descriptorFingerprint` is the run's own retained `2c9cb58e…` (D199):
+
+> `DRY_RUN_PREVIEW` — *"this run was a DRY RUN: transaction node "clear-pending" was previewed
+> (settled already-present at its present probe, before anything was staged, observed
+> 2026-08-19T13:50:14.441Z) and the run ended there. No external write was attempted — no write
+> intent, no fence, no commit — so this receipt states what WOULD have been written, never what was"*
+
+Verification is D210's shape unchanged: fourteen nodes `verified` including `node.identity-approval`
+(D204, live for the fourth time), the four write-half nodes and `completion.terminal-result`
+`unknown`. `subjectBindings` carries all three read contracts' subject proofs.
+
+#### 5. The 4510 lineage, and why it is the cleanest half of the proof
+
+Doc **4510** is the subject §9.19 recorded as GONE — its Kuali action was completed on 2026-08-14 and
+`ActionPage` answers `document: null`. That makes it the ideal retry subject: a run on it fails
+loudly, at the first node, for a reason that has nothing to do with the platform. Both runs failed
+identically, in 34.30 s and 35.14 s, on the ported bound that exists for exactly this:
+
+> **`document-unavailable`** · node `document` · task `kuali/read-separation-document`
+>
+> *"Kuali action 6a7a33b2ac106d428b3217e0 did not render document 4510: Kuali action
+> 6a7a33b2ac106d428b3217e0 did not render a document-number heading within 30000ms; the action id may
+> be stale (a completed step redirects to the Action List) — refusing to treat this page as a
+> document (observed URL https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb/actions/
+> 6a7a33b2ac106d428b3217e0/view). An action id names a workflow STEP, not a document, so a completed
+> or reassigned step no longer resolves to a form."*
+
+The retry `14947724` was queued at `13:31:18.294Z`, claimed **1.07 s** later, executed `document`
+live, and terminalized `failed` at `13:31:53.699Z` — a complete retry cycle in **35.4 s**, at the
+item's attempt **3**, with no collision and no refusal. **A failing-again retry is a valid terminal**:
+what is being proved is that retry works, and a run that fails for the same external reason twice is
+the honest outcome when the world has not changed.
+
+#### 6. Operational finding — the UCPath profile wedge, sharpened
+
+§9.17 item 5 recorded a worker browser profile reaching a state where every UCPath acquisition burns
+the whole 60 s `timeouts.sessionAcquireMs` bound while a fresh profile logs in fine, and recorded it
+*"as a shape, not diagnosed to root cause."* This pass reproduced it twice and narrowed it
+considerably, because it watched a profile go from cold to wedged inside six minutes.
+
+| Time | Profile state | UCPath acquisition |
+|---|---|---|
+| 13:33:32 → 13:34:32 | 5 days old (last written 2026-08-14) | **60.01 s**, `login-failed` |
+| 13:35 | cold-profile login smoke, `--cold` | **16.9 s**, `PS_TOKEN` proved, both negative facts proved |
+| 13:39:34 → 13:39:52 | **freshly deleted, cold** | **18.25 s**, `logged-in`, read succeeded |
+| 13:45:49 → 13:46:49 | the SAME profile, one login old | **60.01 s**, `login-failed` |
+| 13:49:50 → 13:50:11 | **freshly deleted, cold** | **20.49 s**, `logged-in`, probe read succeeded |
+
+The cookie jar says the same thing both times it wedged: the flow reaches Duo and never completes.
+After the 13:46 failure the profile held **one** `frameless-session-binding-*` cookie at
+`api-ce13a1a7.duosecurity.com` (expiring `14:00:55`, i.e. minted at that attempt), the
+`auth-sid-c` / `hac|…` / `lam|…` / `trc|…` set, a `SimpleSAML` cookie at `idpproxy-ucpath` — and
+**zero `PS_TOKEN` rows**, the exact positive artifact the verifier requires. The 2026-08-14 profile
+§9.17 examined had three such binding cookies, one per failed attempt; this one had one, because it
+had failed once.
+
+**What is new here.** §9.17's profile had accumulated days of state, which left "stale accumulation"
+as the obvious hypothesis. This one had completed exactly ONE successful Duo ceremony minutes
+earlier and nothing else, and the very next acquisition on it wedged. So the shape is narrower than
+recorded: *a per-(worker, system, config) profile that has completed one Duo WebAuthn ceremony can
+fail every subsequent acquisition, while a cold profile succeeds in under 20 s.* The remediation is
+unchanged and still operator-level — delete the directory, it is a cache and not authority — and the
+runtime still says nothing about it: the failure message names Duo hand-approval and
+`timeouts.duoApprovalSeconds`, which is a real cause and is not this one. **Not diagnosed to root
+cause here either**, and deliberately not fixed in a live-proof slice; it is the same open item §6
+already carries, now with a much tighter reproduction.
+
+#### 7. Operational finding — a COLD New Kronos profile's first Employee Search
+
+The New Kronos profile was also five days old and refused its login by name, which is the verifier
+doing its job rather than a wedge:
+
+> `[new-kronos/search-employee] unhandled: new-kronos login failed at verify-landing: the login could`
+> `not prove the authenticated application: the observed URL is not the UKG Dimensions (WFD)`
+> `application; the ForgeRock sign-on host shares the mykronos.com domain and is refused here`
+> `(observed URL https://cust01-prd07-ath01.prd.mykronos.com/authn/XUI/?realm=ucsd_prd_01&…)`
+
+Deleting it fixed the login — and the FIRST search on the now-cold profile then failed differently,
+32.19 s in:
+
+> `[new-kronos] an Employee Search result row does not carry the "Name <name> ID <eid>" identity WFD`
+> `renders — observed ""; refusing to read a row whose subject is unknown`
+
+The very next attempt, on the same profile now warm, resolved the same search in **1.83 s** and every
+Kronos read afterwards worked (29.98 s, 31.13 s, 29.82 s — all logins, matching §9.17's ~30 s). So
+the refusal is **first-search-on-a-cold-profile** behaviour, not a selector break: the row rendered
+before its identity text did. **Recorded, not diagnosed** — the honest statement is that a cold WFD
+profile's first Employee Search can present a result row whose identity cell is still empty, and the
+driver correctly refuses to read a row whose subject it cannot name rather than guessing. Whether
+that wants a bounded wait on the identity cell is the driver owner's call, not this pass's.
+
+#### 8. Two operational facts about the runtime, both working as designed
+
+**(a) A SIGTERM'd worker leaves its authority lease live for 60 s.** Stopping the worker to clear a
+profile and restarting it immediately was refused:
+
+> `worker separations-worker-1 cannot start: worker separations-worker-1 already holds a live lease`
+> `in state idle; a second process may not answer to the same worker id`
+
+That is the intended interlock. The lease heartbeat was 11 s old, well inside
+`WORKER_CLAIM_STALE_AFTER_MS` (60 s), so the reclaim-before-acquire sweep correctly declined to
+settle a lease it could not prove stale. Waiting past the window and restarting produced the expected
+
+> `stale worker lease reclaimed before start; its process never settled`
+
+and the worker came up. Worth knowing operationally: **there is a 60-second floor on restarting a
+worker you killed**, and the recorded remedy is to wait, never to hand-edit a lease.
+
+**(b) The runtime lock releases on a dead holder, as designed.** The `workers` role lock was left
+unreleased by the killed process (`releasedAt: null`, pid 28837); the next boot observed liveness via
+`process.kill(pid, 0)`, found the holder gone, and proceeded to generation 51 without touching the
+file by hand. Same for the `server` lock this pass inherited.
+
+#### What is honestly NOT RUN
+
+- **Every real write, of every kind**, and all three controlled commits — unchanged from §9.17. The
+  composed graph has still never entered a transaction node's commit arm on any subject.
+- **The gate REJECTION arm.** Both approvals were `approved`; `identity-approval-rejected` has still
+  never been taken live.
+- **The `would-prepare` preview arm**, unchanged: only `already-present` has ever settled live, for
+  §9.17's reason — the only mapped subject with a pending row is the one the composition refuses
+  pre-gate.
+- **A retry across a DESCRIPTOR change.** Every checkpoint replayed today was written under the same
+  `contractFingerprint` the retry ran under. The 2026-08-14 rows correctly did NOT replay
+  (`contract-fingerprint-mismatch`), which is why the first run of each lineage re-read everything —
+  observed, but the migration path itself was not exercised.
+- **`probeToFenceMaxMs`'s per-beat decomposition**, unchanged from §9.17 item 4: a preview has no
+  fence.
 - **The parity lane**, unchanged: no dashboard bytes moved in this pass.
