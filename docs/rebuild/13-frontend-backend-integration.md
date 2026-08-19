@@ -413,6 +413,29 @@ Bulk commands return one complete per-target vector. A partial result can never 
 success toast. Server action descriptors are the only source for command availability, labels,
 placement, confirmation copy, required forms, and revision tokens.
 
+**A served descriptor may also declare how much CEREMONY its command costs, and a surface obeys it
+or refuses (D226, 2026-08-19).** The identity gate is the case that forced the rule: doc 09 §14.6
+risk 1 makes `approvalShape` a SERVER computation precisely so a frontend cannot quietly turn a
+risky approval into one click, and the `identity-gate` section serves it beside the packet and both
+typed resolutions. Three obligations follow for any surface that renders such a control, and they
+generalise to every future server-declared ceremony:
+
+1. **Render the shape the server named, and only that one.** The control for a shape that asks the
+   operator to CHOOSE carries no pre-selected option — a pre-selected radio is a one-click approve
+   wearing a radio's clothes, which is the downgrade the server-side computation exists to prevent.
+2. **A shape this build does not know draws a NAMED REFUSAL and blocks the send.** It may not fall
+   back to the cheapest control it does know. A wire value can outrun a bundle — a server upgraded
+   ahead of an open tab — and answering under a ceremony nobody implemented is worse than having no
+   guard, because the server is still reporting that it asked a question.
+3. **The operator supplies only what no served fact carries.** Every other leaf of the payload is
+   read off the section — the schema hash, the evidence digest, and the label the server paired with
+   each option. A client that derived any of them would be a second implementation of the
+   descriptor's identity, and a client that INVENTED one would put a value nobody authored onto a
+   durable record. Composition stays in the one composer; the surface hands it the human's answer.
+
+The `RunDetailSectionResponse` arm this is stated over is `identity-gate`; doc 09 §14.11 owns the
+gate's own ceremony table.
+
 ### 3.5 Resumable subscription protocol
 
 One EventSource carries closed envelopes:

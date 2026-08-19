@@ -1802,6 +1802,68 @@ as **`same`** under the ported tier function, because the token alignment tolera
 the longer side. Legacy fires its wrong-person control only on `different`. A tier-triggered gate would
 not have fired on the very case it exists for.
 
+### 14.11 As-built — the THREE CEREMONIES exist, and an unknown shape refuses (D226, 2026-08-19)
+
+§14.6 risk 1 requires the **shape of the control to change with the risk**, and §14.9's as-built
+records how that is enforced on the server: `approvalShape` is computed in
+`deriveApprovalShape` and served on the wire *"precisely so a frontend cannot quietly turn every
+gate into one click."* **Until this decision the frontend implemented one of the three shapes.**
+`command-dispatch.ts` composed a `one-click` approval from served facts and refused
+`choose-a-candidate`, `type-the-eid` and every rejection BY NAME, because each needs a value no
+served fact carries. The refusals were correct and the control was, in practice, unusable: a
+separations run whose packet is anything but unambiguous had no answer available in the dashboard
+at all, and the rejection arm — §14.4's *"`rejected` terminalizes the run; it never falls through
+to a write"* — could not be reached from the surface the operator works on.
+
+**All three are built.** The ceremony is derived from the served shape and nothing else
+(`src/dashboard/app/identity-ceremony.ts`), and the surface renders exactly the one control the
+server asked for (`src/dashboard/surfaces/identity-approve.tsx`):
+
+| served `approvalShape` | the control | what the operator supplies |
+|---|---|---|
+| `one-click` | the server's own confirm verb over the single named candidate | nothing beyond the press — the served option IS the answer |
+| `choose-a-candidate` | every approvable candidate, **with no default selected** | which candidate the separation document means |
+| `type-the-eid` | an empty 8-digit field | the EID, stated rather than recognised |
+| *(either shape)* `rejected` | a reason field | why this is not the right person |
+
+**No default is selected in the `choose` ceremony, and that is load-bearing rather than styling.** A
+pre-selected radio is a one-click approve wearing a radio's clothes, which is the same downgrade
+§14.6 risk 1 forbids the server to permit and the client to perform.
+
+**An `approvalShape` this build has no ceremony for REFUSES BY NAME.** It never falls back to the
+approve button, never picks the first option, never "defaults" to one click. A surface that met an
+unrecognised shape and approved anyway would be §14.6 risk 1 with the server's own guard *removed*,
+which is strictly worse than having no guard: the server would still be reporting that it had asked
+for a choice while the client answered it. The refusal is stated twice by construction — the arm's
+parameter is `never`, so a fourth shape is a compile error in this build, and the runtime arm still
+exists because a wire value can outrun a bundle (a server upgraded ahead of an open browser tab).
+The same rule covers a packet whose shape and candidate count CONTRADICT each other — a `one-click`
+packet naming two candidates, a `choose-a-candidate` packet naming one: the server states both
+facts, and when they disagree only the server can say which it meant.
+
+**What the client may and may not compose.** The operator supplies the decision; every other leaf of
+the `IdentityApprovalResult` is read off the served section. In particular the `chosenFrom` label
+comes from the served option and is never inferred — §14.9 #3 records that the post-gate node
+re-derives where the approved EID came from and refuses a label the packet contradicts
+(`identity-approval-choice-mismatch`), so a client-invented label would put a false statement on the
+receipt. The typed-EID ceremony refuses an EID the packet never showed at the field it is typed into,
+naming §14.9 #2's own durable code (`identity-approval-eid-not-shown`), so the run never has to.
+Composition stays in `composeCommandRequest` — the ONE place a served control becomes a command —
+which now takes the operator's answer as context rather than inventing one.
+
+**What the operator sees before the control.** §14.4's packet is rendered in its own order:
+disconfirming evidence first under its own heading (`comparisons` arrives sorted disagreements-first
+by construction), then every approvable candidate read ACROSS rather than down, then §14.10's write
+plan — because the approval binds to the digest of the exact packet shown, and *an approval of a
+person is not an approval of a date.* Rendering the plan is what makes that binding something the
+operator actually saw rather than a property of a hash.
+
+**The reference corpus now photographs a gated run.** The parity corpus had served no `identity-gate`
+section since it existed, so every `run-open-gate` reference showed a decision card with no way to
+answer it and all three ceremonies were unphotographed. Two gated fixtures now serve one each, with
+their shapes DERIVED by `deriveApprovalShape` from real inputs rather than authored — a fixture that
+asserted the shape would photograph its own opinion of a policy this section makes the server's.
+
 ### 14.8 Scope — the Kuali timekeeper-annotation workflow takes NO identity-approval gate (D127)
 
 **Ratified by the operator 2026-08-04.** `kuali-timekeeper-annotation` — the Phase-2 transaction
