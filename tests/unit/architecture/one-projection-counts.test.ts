@@ -24,14 +24,29 @@
  *    same pass member containment is applied, so a prior-version run leaves the
  *    queue, the workflow badge, the status pill and the month calendar at the
  *    same instant.
+ *
+ * 3. THE CARVE-OUT (D236) — the Activity report's write-ledger block is the ONE
+ *    served total that does not descend from this projection, because the
+ *    ledger is a different authority whose entries outlive the runs that filed
+ *    them (doc 03 §10.1). An exemption nothing bounds is an exemption anything
+ *    can join, so it is pinned from both sides: STRUCTURALLY, a ledger block is
+ *    built in exactly one module and consumed in exactly one, so a third path
+ *    over the ledger fails by file name; and BEHAVIOURALLY, filing entries into
+ *    the seeded world's ledger must move the block and must move NO count —
+ *    "reported beside the totals" is a claim about what does not happen.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { relative } from "node:path";
 import ts from "typescript";
 import { afterEach, describe, it } from "vitest";
+import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
+import { ledgerDirectory, ledgerFilePath } from "../../../src/infra/ledger/ledger-projector.js";
+import { IDEMPOTENCY_KEY, LEDGER_PAYLOAD } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   claimEventOf,
+  failureRecordOf,
+  instantOffsetOf,
   makeWorld,
   queuedEventOf,
   runRecordOf,
@@ -43,6 +58,41 @@ import { REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 
 const COUNT_FIELDS = new Set(["monthCounts", "workflowCounts", "statusCounts"]);
 const THE_PROJECTION = "src/server/dashboard/projectors/run-queue-projection.ts";
+
+/**
+ * D236's exemption, bounded by file name.
+ *
+ * `ActivityLedgerBlockSchema` is where a block is BUILT: the domain module
+ * declares it and the one ledger read-through parses one. `foldActivityRange`
+ * is where a block is ASKED FOR: the read-through offers it and the projection
+ * passes it through. Any other `src/` module naming either identifier is a
+ * second counting path over the write ledger — the exact thing D81 deletes,
+ * one authority over.
+ */
+const LEDGER_BLOCK_BUILDERS = [
+  "src/domain/dashboard/activity.ts",
+  "src/infra/ledger/ledger-read-through.ts",
+];
+const LEDGER_BLOCK_CONSUMERS = [
+  "src/infra/ledger/ledger-read-through.ts",
+  THE_PROJECTION,
+];
+
+function identifiers(filePath: string): ReadonlySet<string> {
+  const source = ts.createSourceFile(
+    filePath,
+    readFileSync(filePath, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const found = new Set<string>();
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) found.add(node.text);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
 
 function countFieldConstructions(filePath: string): readonly string[] {
   const source = ts.createSourceFile(
@@ -91,6 +141,32 @@ describe("one-projection-counts (D81)", () => {
     assert.ok(
       countFieldConstructions(`${REPO_ROOT}/${THE_PROJECTION}`).length >= 3,
       "the run/queue projection must be the module that builds the count fields",
+    );
+  });
+
+  it("bounds D236's carve-out to one builder and one consumer", () => {
+    const files = walkFiles(`${REPO_ROOT}/src`, { extensions: [".ts", ".tsx"] });
+    const builders: string[] = [];
+    const consumers: string[] = [];
+    for (const file of files) {
+      const relativePath = relative(REPO_ROOT, file).replaceAll("\\", "/");
+      const names = identifiers(file);
+      if (names.has("ActivityLedgerBlockSchema")) builders.push(relativePath);
+      if (names.has("foldActivityRange")) consumers.push(relativePath);
+    }
+    // Exact set equality both ways: a NEW module folding the ledger is the
+    // second counting path this guard exists to refuse, and a module that
+    // stopped doing so means the carve-out moved and this list is now a
+    // sentence about nothing.
+    assert.deepEqual(
+      builders.sort((a, b) => a.localeCompare(b)),
+      [...LEDGER_BLOCK_BUILDERS].sort((a, b) => a.localeCompare(b)),
+      "a write-ledger block is built in exactly the modules D236 names",
+    );
+    assert.deepEqual(
+      consumers.sort((a, b) => a.localeCompare(b)),
+      [...LEDGER_BLOCK_CONSUMERS].sort((a, b) => a.localeCompare(b)),
+      "a write-ledger block is asked for in exactly the modules D236 names",
     );
   });
 
@@ -165,5 +241,46 @@ describe("one-projection-counts (D81)", () => {
 
     // And the month calendar rendering descends from the same fold.
     assert.deepEqual(payload.monthCounts, [{ day: DAY, count: 6 }]);
+
+    /*
+     * D236 — the carve-out, as the thing that must NOT happen. Two real ledger
+     * lines are filed into this world's own append-only ledger, which is a
+     * different authority from every row above; the Activity report must report
+     * them and every count must be byte-identical to the payload just proved.
+     * A block that moved a count would be the second summation path D81 deletes
+     * wearing an exemption's clothes.
+     */
+    // The Activity report refuses a failure breakdown with a hole in it, so
+    // the seeded failed run gets its authority record here — the day wire never
+    // asked for one, which is why this seed had none until the report joined.
+    world.authority.failures.set(
+      uuidOf(9007),
+      failureRecordOf({ seed: 7, code: "SESSION_LOST", transient: true }),
+    );
+    mkdirSync(ledgerDirectory(world.stateRoot), { recursive: true });
+    for (const [seq, instance] of [[0, "prod"], [1, "test"]] as const) {
+      appendFileSync(
+        ledgerFilePath(world.stateRoot, "ucpath", instantOffsetOf(0).slice(0, 10)),
+        `${JSON.stringify({
+          outboxId: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`,
+          seq,
+          payload: {
+            ...LEDGER_PAYLOAD,
+            idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", IDEMPOTENCY_KEY),
+            instance,
+            confirmedAt: instantOffsetOf(0),
+          },
+        })}\n`,
+        "utf8",
+      );
+    }
+    const report = world.projection.buildActivityReportWire(DAY, DAY);
+    assert.deepEqual(report.ledger, {
+      systems: [{ system: "ucpath", entries: 2, prod: 1, test: 1 }],
+    });
+    assert.deepEqual(world.projection.buildDashboardDayWire(DAY).monthCounts, payload.monthCounts);
+    assert.deepEqual(world.projection.buildDashboardDayWire(DAY).statusCounts, payload.statusCounts);
+    assert.deepEqual(world.projection.buildDashboardDayWire(DAY).workflowCounts, payload.workflowCounts);
+    assert.equal(report.totalRuns, 6);
   });
 });

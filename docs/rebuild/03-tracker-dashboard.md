@@ -2970,16 +2970,64 @@ Consequences that follow and must not be re-litigated per surface: **collapse ru
 archived runs (§10.2), and delegated-member containment are applied once, inside the projection.**
 **The Activity report (D180) is a range rendering of this same payload**, built inside the
 projection for the same reason: a report that summed rows a second way could disagree with the day
-it summarises. Its contract lives in doc 13 §6.7.
+it summarises. Its contract lives in doc 13 §6.7. One block on it — the write ledger — is the single
+ratified exception, and it is spelled out immediately below (D236).
 A member counted in a group is not also counted at top level because there is no second place that
 could count it.
+
+#### D236 — the write-ledger carve-out (2026-08-19, operator ruling)
+
+**There is exactly ONE exemption from the sentence above, and it is named here so nothing else can
+claim to be it.** The Activity report's `Write ledger — what was actually filed` block is folded
+from the durable write ledger (`src/infra/ledger/`), **not** from this projection.
+
+**Why it cannot be derived from the projection.** §10.2 rule 1 already decides the half that
+matters: *the write ledger is never archived — archiving is a display lifecycle, the ledger is an
+audit one.* The ledger is append-only and is never pruned (D86), so **its entries outlive the runs
+that filed them**: a window whose runs have all left the live surfaces on a version bump can still
+hold ledger lines, and folding those lines out of the run corpus would report *"nothing was filed"*
+about real HR transactions that were. That is not a count/badge divergence — it is a different
+question over a different corpus, and D81 exists to stop two answers to ONE question, not to forbid
+a second question.
+
+**The shape of the exemption, which is what keeps it from spreading.**
+
+1. **Reported BESIDE the totals, never derived from them.** `ActivityReportWire.ledger` is its own
+   block. The wire's refinements deliberately assert **no** relationship between it and `totalRuns`,
+   the status buckets or the workflow cross-tab — a cross-check would be a claim that the two corpora
+   cover the same rows, and that claim is false. What IS checked is one level down, where both
+   numbers come from the same authority: each system row's `entries` must partition into
+   `prod` + `test`.
+2. **The seam is stated where the reader is.** The block carries it in its own subtitle, and
+   `activityReportCaveats` carries it into the panel's ⓘ and into the CSV export (D240). A second
+   authority the reader cannot see is a second authority the reader assumes is the first one.
+3. **ONE reader, reused.** The fold lives on the existing archive read-through
+   (`LedgerReadThrough.foldActivityRange`), not in a new module: two readers of an append-only audit
+   file would be two parse disciplines, and the wrong one would be wrong about what was filed into a
+   live HR system. A line it cannot read **throws by name** rather than being skipped — the pointer
+   path can answer one citation with a reason, a fold has no such column, and skipping silently
+   subtracts a filed transaction from the count of what was filed.
+4. **The window closes on the entry's own `confirmedAt`**, read through the same local-day rule this
+   projection buckets rows with. A partition FILE name is a UTC date and decides only which files are
+   opened (widened one day at each end); letting it decide membership would drop a write confirmed
+   late in the local day out of the report over a timezone.
+5. **The empty state is now honest.** "No ledger entries. Nothing in this report's reach filed
+   anything into a real HR system" is a fact the moment the axis is served, and was an *assertion*
+   before it was — which is why the ported surface omitted the block entirely rather than rendering
+   its empty state over an unserved axis.
 
 **Guard (doc 10).** `one-projection-counts` — any count/aggregate in a surface path that does not
 originate from the projection payload fails. Backed by a fixture asserting Workflow Panel total,
 Status Bar sum, and rendered Queue Row count are equal by construction for a seeded world that
-includes hidden, archived, delegated, and rejected rows. *(The `?view=rebuild-demo` replica already
+includes archived, delegated, and rejected rows. *(The `?view=rebuild-demo` replica already
 proves this shape: one `countRows()` feeds rail badges, Status Bar, and queue — divergence is
-structurally unrepresentable there.)*
+structurally unrepresentable there.)* **D236's exemption is bounded by the same guard, from both
+sides:** a write-ledger block may be BUILT only in `src/domain/dashboard/activity.ts` and
+`src/infra/ledger/ledger-read-through.ts`, and ASKED FOR only in that read-through and the one
+projection — exact set equality both ways, so a third counting path over the ledger fails by file
+name. The behavioural arm files real ledger lines into the seeded world and requires the block to
+move while every count stays byte-identical: *"reported beside the totals"* is a claim about what
+does not happen, so that is what is asserted.
 
 ### 10.2 Versioning and archive-on-version-bump (D80)
 

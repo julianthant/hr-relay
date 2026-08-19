@@ -761,6 +761,26 @@ is unchanged and still enforced. The operator's demo argues the tile row's case 
 ported surface ships it; this restatement is what ratifies the port per doc 04's rule that a
 decision lands in its owning doc.)*
 
+#### D236 — the write-ledger block is SERVED, as a second authority (2026-08-19)
+
+`ActivityReportWire` gains `ledger: { systems: [{ system, entries, prod, test }] }`, the demo's last
+Activity block. **It is the one field on this payload that does not come out of
+`run-queue-projection.ts`'s fold**, and doc 03 §10.1 owns the carve-out that permits it — read it
+there; the normative text is not restated here. What this doc owns is the wire shape and the route:
+
+- The block rides the SAME `GET /api/v1/reports/activity?from=&to=` response, over the same window.
+  A second endpoint would make the two halves of one report separately refreshable, and a supervisor
+  reading a page whose blocks were fetched at different instants is reading two reports.
+- The projection takes the fold as a narrow **port** (`deps.ledger.foldActivityRange`) and passes the
+  result through. It is a port rather than a private read so the second authority is visible in the
+  type; the projection never opens the ledger itself.
+- `superRefine` asserts **nothing** between `ledger` and any run total, on purpose — see the
+  carve-out. The one refinement is per row: `entries === prod + test`.
+- Rows are ordered by `entries` descending, ties broken by system id, so the order is total and a
+  re-run over the same corpus cannot reshuffle its own rows.
+- The surface renders the block on the **zero-run branch too**, because a range with no runs can
+  still hold entries.
+
 ### 6.8 Phase 3+ workflow migrations
 
 Each workflow migration uses the same integration checklist:
