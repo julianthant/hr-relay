@@ -25,6 +25,7 @@ import {
   WorkflowVersionIdentitySchema,
 } from "../archive/model.js";
 import { ArchiveRetentionWireSchema } from "../archive/retention.js";
+import { ArchivedRunSectionsSchema } from "../archive/sections.js";
 import { ResolvedLedgerLineWireSchema } from "../archive/ledger-resolution.js";
 import { SemverSchema, VersionScopeSchema } from "../commands.js";
 import {
@@ -174,6 +175,19 @@ export const ArchivedRunDetailWireSchema = z.strictObject({
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
   evidence: ArchivedEvidencePointersSchema,
+  /**
+   * D223's five tabs. The archived record froze the section payloads beside the
+   * row, and this serves them verbatim — no re-derivation, no fetch, no
+   * descriptor. A record written before generation 2 has none, and the wire
+   * says which of the two absences it is: the tab renders the sentence rather
+   * than an empty panel, because "this run logged nothing" and "this record
+   * predates frozen logs" are different facts and the operator acts on them
+   * differently.
+   */
+  sections: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: ArchivedRunSectionsSchema }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
   /**
    * The evidence pointers' ledger half, RESOLVED against the live ledger at
    * read time. The pointers above stay pointers — the ledger is never archived

@@ -33,7 +33,7 @@ import {
 import type { Clock } from "../../../domain/clock.js";
 import { VersionScopeSchema } from "../../../domain/commands.js";
 import type { WorkflowVersionIdentity } from "../../../domain/archive/model.js";
-import { versionBumpPlanFingerprint } from "../../../domain/archive/model.js";
+import { CURRENT_ARCHIVE_SCHEMA_GENERATION, versionBumpPlanFingerprint } from "../../../domain/archive/model.js";
 import { archiveRetention } from "../../../domain/archive/retention.js";
 import type { LedgerReadThrough } from "../../../infra/ledger/ledger-read-through.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
@@ -121,7 +121,7 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
     const archived = repositories.archivedRuns.list();
     return ArchiveIndexWireSchema.parse({
       wireVersion: 1,
-      archiveSchemaGeneration: 1,
+      archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
       generatedAt: deps.clock.now().toISOString(),
       currentAppVersion: deps.appVersion,
       entries: archived.map((record) => ({
@@ -210,6 +210,21 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
       receipt: record.receipt,
       failure: record.failure,
       evidence: record.evidence,
+      /*
+       * The frozen sections, verbatim. A record written before generation 2
+       * carries none, and the absence NAMES its generation rather than serving
+       * empty panels — an archived run whose logs are simply blank and one
+       * whose logs were never frozen are different facts, and the second one is
+       * the only one an operator can do anything about.
+       */
+      sections: record.sections === undefined
+        ? {
+          state: "absent",
+          reason: `this record was archived at schema generation ${String(record.archiveSchemaGeneration)}, `
+            + "which predates D223's frozen section payloads; its log lines, data points, member rows, "
+            + "capture descriptions and attempt history were never captured and are not reconstructible",
+        }
+        : { state: "present", value: record.sections },
       /*
        * The read-through. The archived record keeps naming the lines and
        * copies none of them, so this is the one place the two meet — and it

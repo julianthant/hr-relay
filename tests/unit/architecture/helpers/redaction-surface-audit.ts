@@ -989,6 +989,37 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/archive-index", path: "versionState[].blockers[].title", origin: "captured-hr-value" },
   { surface: "wire/archive-index", path: "versionState[].workflowLabel", origin: "repository-authored" },
 
+  /*
+   * D223's frozen sections. Every leaf below is the SAME leaf the live
+   * run-detail section carries, frozen — so each takes the disposition its
+   * live twin already has, and the two lists are read together on purpose: a
+   * frozen copy that quietly relaxed an origin would be a redaction downgrade
+   * nobody reviewed.
+   *
+   * `captures[].system.value` is `repository-authored` because it is the
+   * declared store half of a `TaskIdSchema` (`<registered-store>/<operation>`),
+   * which is a closed set this repository owns — not a value any external
+   * system supplied.
+   */
+  { surface: "wire/archived-run-detail", path: "sections.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.logs.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.logs.value.notes[].message", origin: "external-text" },
+  { surface: "wire/archived-run-detail", path: "sections.value.data.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.data.value.editing.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].label", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].valueRedacted", origin: "captured-hr-value" },
+  { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].edit.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].edit.value", origin: "captured-hr-value" },
+  { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].edit.pendingCorrection.value", origin: "captured-hr-value" },
+  { surface: "wire/archived-run-detail", path: "sections.value.people.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.people.value.members[].label", origin: "captured-hr-value" },
+  { surface: "wire/archived-run-detail", path: "sections.value.attempts.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.attempts.value[].startedAt.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.attempts.value[].endedAt.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.captures.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.captures.value[].step.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.captures.value[].system.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.captures.value[].system.value", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "appVersion.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "ledger[].pointer.system", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "ledger[].system", origin: "repository-authored" },

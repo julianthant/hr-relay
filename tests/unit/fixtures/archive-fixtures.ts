@@ -28,6 +28,9 @@ export const ARCHIVE_APPLICATION_ID = UUID_6;
 export const ARCHIVE_PLAN_ID = UUID_7;
 /** The FRESH run a relaunch mints — never the archived run's own identity. */
 export const RELAUNCHED_RUN_ID = UUID_5;
+/** The generation-2 record's own identity — see `ARCHIVED_RUN_WITH_SECTIONS`. */
+export const SECTIONED_RUN_ID = "99999999-0009-4000-8000-999900000009";
+const SECTIONED_TRACE_ID = "pl-170002-9999";
 
 const CURRENT_IDENTITY = {
   workflowId: WORKFLOW_ID,
@@ -171,6 +174,67 @@ export const ARCHIVED_RUN: ArchivedRunRecord = ArchivedRunRecordSchema.parse({
   ...ARCHIVED_CONTENT,
   contentDigest: archivedRunContentDigest(ARCHIVED_CONTENT),
 });
+
+/**
+ * The same run archived at generation 2 (D223) — the one that carries frozen
+ * sections. `ARCHIVED_RUN` above stays at generation 1 ON PURPOSE: it is the
+ * read-forward witness, and a suite that only ever held the new shape could
+ * not tell whether a pre-D223 record still parses.
+ *
+ * The `runId` differs because both records can be inserted into ONE database:
+ * `archived_runs` is keyed by run, and two rows for one run is not a state the
+ * archive can be in.
+ */
+export const ARCHIVED_RUN_WITH_SECTIONS: ArchivedRunRecord = (() => {
+  const content = ArchivedRunContentSchema.parse({
+    ...ARCHIVED_CONTENT,
+    archiveSchemaGeneration: 2,
+    runId: SECTIONED_RUN_ID,
+    traceId: SECTIONED_TRACE_ID,
+    row: { ...ARCHIVED_ROW, runId: SECTIONED_RUN_ID, traceId: SECTIONED_TRACE_ID },
+    detail: {
+      ...ARCHIVED_DETAIL,
+      runId: SECTIONED_RUN_ID,
+      header: { ...ARCHIVED_DETAIL.header, runId: SECTIONED_RUN_ID, traceId: SECTIONED_TRACE_ID },
+    },
+    sections: {
+      logs: {
+        state: "present",
+        value: {
+          runId: SECTIONED_RUN_ID,
+          notes: [{ noteId: UUID_1, runId: SECTIONED_RUN_ID, sequence: 0, at: NOW, level: "info", message: "frozen log line" }],
+          nextCursor: { state: "absent", reason: "end-of-page" },
+        },
+      },
+      data: {
+        state: "present",
+        value: {
+          runId: SECTIONED_RUN_ID,
+          editing: { state: "locked", reason: "an archived run is read-only" },
+          entries: [{
+            label: "Employee ID",
+            valueRedacted: "108*****",
+            edit: { state: "locked", reason: "an archived run is read-only" },
+          }],
+        },
+      },
+      people: { state: "absent", reason: "this run fanned out no member runs" },
+      attempts: {
+        state: "present",
+        value: [{
+          attempt: 1,
+          steps: 1,
+          startedAt: { state: "present", value: NOW },
+          endedAt: { state: "present", value: NOW },
+          outcomes: [{ outcome: "done", count: 1 }],
+          unfinished: 0,
+        }],
+      },
+      captures: { state: "absent", reason: "this run captured no diagnostic artifact" },
+    },
+  });
+  return ArchivedRunRecordSchema.parse({ ...content, contentDigest: archivedRunContentDigest(content) });
+})();
 
 export const ARCHIVE_RELAUNCH: ArchiveRelaunchRecord = ArchiveRelaunchRecordSchema.parse({
   archiveSchemaGeneration: 1,
