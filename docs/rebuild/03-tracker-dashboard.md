@@ -2661,6 +2661,19 @@ and the count carries the `Needs you` composite's own eye glyph — the same one
 wears — because the number is the day's whole `Needs you` across *every* panel, which is the point
 of a control that is on screen when no per-workflow badge is.
 
+**The action bar is an ISLAND (D224, 2026-08-18, operator decision).** It had been the one
+full-bleed element in a shell otherwise made of cards, spanning edge to edge and separated from the
+panels below by a bottom hairline. It now carries the same treatment as every panel beside it —
+full border, `--ds-radius-lg`, `--ds-surface-card`, `overflow-hidden` so the select-mode band cannot
+square off a rounded corner — while the SHELL supplies its outside edge (`mx`/`mt` at
+`--ds-shell-inset`), exactly as the panel region supplies its own with `p-[var(--ds-shell-inset)]`.
+The gap above the panels therefore equals the gap between them. Two consequences, both improvements
+and neither a separate decision: the bar's inner padding becomes `--ds-space-cozy`, which is the
+same 12px `--ds-shell-inset` resolves to, so the leading control now aligns with the queue panel's
+own header text rather than with the window edge; and the bottom hairline goes, because a bordered
+island already states where it ends. The three groups, their order, the no-wrap rule and the middle
+group's sideways scroll are all unmoved.
+
 **Row commands moved to a right-click context menu** (`ContextMenu`, opened by the platform's
 Menu / Shift+F10 key and by `m` through `openContextMenuFor()`); the per-row `⋯` overflow button is
 gone — a control whose only job is to admit there are more controls, costing a slot on every row.

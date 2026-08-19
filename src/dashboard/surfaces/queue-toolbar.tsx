@@ -17,6 +17,18 @@
  * The row never wraps: a fixed `--ds-h-bar` with `flex-wrap` silently CLIPS the
  * second line, so the middle group scrolls instead.
  *
+ * IT IS AN ISLAND, not a full-bleed band (D224, operator decision). It carries
+ * the same card treatment as every panel beside it — full border,
+ * `--ds-radius-lg`, `--ds-surface-card`, `overflow-hidden` so the select-mode
+ * band below cannot square off a rounded corner — and the shell supplies its
+ * outside edge through `className` exactly as it does for the storage banner.
+ * The bar had been the one full-width element in a shell made of cards, held
+ * apart only by a bottom hairline. Two things fall out and both are
+ * improvements: the inner padding becomes `--ds-space-cozy`, which is the same
+ * 12px `--ds-shell-inset` resolves to, so the leading control now aligns with
+ * the queue panel's own header text instead of with the window edge; and the
+ * bottom hairline goes, because a bordered island already states where it ends.
+ *
  * WHAT IS DELIBERATELY NOT PORTED: `runBulkCommand` and the four bulk command
  * buttons. The demo sends `retry` / `bump` / `cancel` / `hide` from each row's
  * own served `actions[]`, and this projection serves NO row actions at all —
@@ -34,6 +46,7 @@ import {
   Select,
   dsBorder,
   dsIcon,
+  dsRadius,
   dsSize,
   dsSurface,
   dsText,
@@ -53,6 +66,7 @@ export function QueueToolbar({
   leading,
   runStart,
   filters,
+  className,
 }: {
   sort: QueueSortKey;
   onSort: (key: QueueSortKey) => void;
@@ -69,12 +83,22 @@ export function QueueToolbar({
   runStart?: ReactNode;
   /** shell-owned: the status filter group, folded in from its own band */
   filters?: ReactNode;
+  /** the shell's own edge — the island does not know where it is mounted */
+  className?: string;
 }) {
   const allSelected = visibleIds.length > 0 && selectedCount === visibleIds.length;
 
   return (
-    <div className={cn("flex shrink-0 flex-col border-b", dsBorder.subtle)}>
-      <div className={cn("flex items-center", dsSize.hBar, "gap-[var(--ds-space-snug)] px-[var(--ds-shell-inset)]")}>
+    <div
+      className={cn(
+        "flex shrink-0 flex-col overflow-hidden border",
+        dsRadius.lg,
+        dsBorder.base,
+        dsSurface.card,
+        className,
+      )}
+    >
+      <div className={cn("flex items-center", dsSize.hBar, "gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)]")}>
         {leading}
         {runStart}
         {(leading !== undefined || runStart !== undefined) && (
@@ -148,7 +172,7 @@ export function QueueToolbar({
             "flex items-center border-t bg-[var(--ds-recess-bg)]",
             dsSize.hBar,
             dsBorder.subtle,
-            "gap-[var(--ds-space-snug)] px-[var(--ds-shell-inset)]",
+            "gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)]",
           )}
         >
           {/* NOT disabled at zero, which is the demo's own call

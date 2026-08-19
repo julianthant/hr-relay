@@ -875,11 +875,17 @@ function LoadedApp({
             row of unrelated ghost buttons crammed right, above a bare status
             strip that hung off no inset at all — so the pills started 8px from
             the window edge while every other band in the shell started at
-            `--ds-shell-inset`. The toolbar owns the inset now, and the three
-            groups are the demo's: where you are + what you start · what you are
-            looking at · how you are looking at it.
+            `--ds-shell-inset`. The three groups are the demo's: where you are +
+            what you start · what you are looking at · how you are looking at it.
+
+            D224: it is an ISLAND, and the shell owns its outside edge — the
+            same `mx`/`mt` inset the panel region below applies with its own
+            `p-[var(--ds-shell-inset)]`, so the gap above the panels equals the
+            gap between them and the toolbar reads as one more card in a shell
+            made of cards. The card treatment itself lives in the component.
           */}
           <QueueToolbar
+            className="mx-[var(--ds-shell-inset)] mt-[var(--ds-shell-inset)]"
             sort={sort}
             onSort={onSort}
             selectMode={selectMode}
