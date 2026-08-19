@@ -1285,9 +1285,9 @@ is then checked like every other candidate.
 already data in the driver registries (§1.2); walking recipes to recompute it would produce a second
 answer that could disagree with the one `semantic-ui-registry` pins.
 
-**A closure is reported as its presence, never as decompiled prose.** `bind`, `choose`, `when`,
+**A closure is reported as its presence, never as decompiled prose.** `bind`, `choose`,
 `derive`, and the write-safety key function are shown as the shape they sit in plus their source
-file. `inputSubject` states whether it is a declared constant or a function of the input rather than
+file. (`when` was in that list until D227 removed it from the list of closures entirely — see §5.9.) `inputSubject` states whether it is a declared constant or a function of the input rather than
 being evaluated against a fabricated input to print a specimen answer. A freshness bound of
 `Infinity` crosses the wire as the word `unbounded`: as a raw number `JSON.stringify` turns it into
 `null`, which reads as a MISSING bound rather than a deliberate one.

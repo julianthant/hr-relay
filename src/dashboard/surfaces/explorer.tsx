@@ -1584,10 +1584,12 @@ function NodeInfo({ workflow, node }: { workflow: ExplorerWorkflowWire; node: Ex
             read-only and carry none.
           </p>
           <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
-            Every closure this node owns — `when`, `bind`, `choose`, `derive`, the write-safety key
-            — is reported as the shape it sits in plus the file that owns it. A decompiled
-            rendering of what a function computes would be a second, unreviewed description of the
-            code.
+            Every closure this node owns — `bind`, `choose`, `derive`, the write-safety key — is
+            reported as the shape it sits in plus the file that owns it. A decompiled rendering of
+            what a function computes would be a second, unreviewed description of the code. A
+            node&apos;s `when` is the exception because it stopped being a closure: it is a declared
+            condition, and the sentence above is a projection of the same value the executor
+            evaluates.
           </p>
         </div>
       </PopoverContent>
