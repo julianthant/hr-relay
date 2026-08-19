@@ -65,6 +65,7 @@ import {
   BadgeCheck,
   Camera,
   ChevronDown,
+  Download,
   ChevronRight,
   CircleAlert,
   FileClock,
@@ -129,6 +130,7 @@ import {
   dsRadius,
   dsText,
   useDsEnterTransition,
+  useToasts,
 } from "../ds/ui.js";
 import { systemClock } from "../../domain/clock.js";
 import type {
@@ -142,6 +144,7 @@ import type {
 import { EVENT_STREAM_RETENTION_DAYS, type ArchiveRetentionWire } from "../../domain/archive/retention.js";
 import { timelineEventDuration } from "../../domain/dashboard/run-detail.js";
 import type { ResolvedLedgerLineWire } from "../../domain/archive/ledger-resolution.js";
+import type { ArchivedCaptureTile, ArchivedRunAttempt, ArchivedRunSections } from "../../domain/archive/sections.js";
 import type { CommandResult } from "../../domain/commands.js";
 import { DashboardClientError } from "../client/errors.js";
 import { useDashboardClient } from "../state/client-context.js";
@@ -156,7 +159,7 @@ const SOURCE_SURFACE = "archive";
 export const ARCHIVE_INDEX = "";
 
 type ArchiveView = "runs" | "versions";
-type ArchiveTab = "summary" | "evidence";
+type ArchiveTab = "summary" | "logs" | "data" | "people" | "evidence";
 
 /**
  * Why a run is prior-version, in the operator's words. The wire's reasons are a
@@ -1040,6 +1043,36 @@ function ArchivedRunDetail({
 }) {
   const [tab, setTab] = useState<ArchiveTab>("summary");
   useEffect(() => { setTab("summary"); }, [detail.runId]);
+  const { toast } = useToasts();
+
+  /**
+   * D223's frozen sections, or the sentence saying this record predates them.
+   * The tabs never fetch: an archived run has nothing live to fetch against,
+   * and a tab that tried would be the descriptor coupling D179 removed.
+   */
+  const sections = detail.sections.state === "present" ? detail.sections.value : undefined;
+  const sectionsAbsence = detail.sections.state === "absent" ? detail.sections.reason : undefined;
+
+  const exportRun = useCallback(() => {
+    /*
+     * EXACTLY the display-redacted `ArchivedRunDetailWire` this surface holds
+     * — never a re-derivation and never a second projection. The export
+     * inherits the wire's redaction posture and carries nothing more, which is
+     * why D223 could ratify it without opening a new redaction surface.
+     */
+    const blob = new Blob([JSON.stringify(detail, undefined, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `archive-${detail.detail.header.traceId}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    toast({
+      tone: "success",
+      title: `archive-${detail.detail.header.traceId}.json`,
+      description: "Exactly what this page holds — the display-redacted archived record, nothing re-derived.",
+    });
+  }, [detail, toast]);
 
   const row = detail.row;
   const status: DsStatus = dsStatusOf(row.status);
@@ -1084,6 +1117,16 @@ function ArchivedRunDetail({
         subtitle={`${detail.workflowLabel} · archived ${fmtClock(detail.archivedAt)} by ${detail.archivedBy}`}
         icon={<FileClock aria-hidden className={dsIcon.lg} />}
         meta={<StatusPill status={status} size="sm" />}
+        actions={(
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={<Download aria-hidden className={dsIcon.md} />}
+            onClick={exportRun}
+          >
+            Export
+          </Button>
+        )}
       />
 
       {/*
@@ -1109,6 +1152,17 @@ function ArchivedRunDetail({
       <Tabs value={tab} onValueChange={(next) => setTab(next as ArchiveTab)} className="min-h-0 flex-1">
         <TabList label="Archived run detail">
           <Tab value="summary">Summary</Tab>
+          <Tab value="logs" count={frozenLogCount(sections)}>Logs</Tab>
+          <Tab value="data" count={frozenDataCount(sections)}>Data</Tab>
+          {/*
+            People exists only where the run HAS members — the demo's own rule.
+            A tab that always rendered would put an empty table under a heading
+            for every single-subject run, and a record with no frozen sections
+            cannot answer the question at all, so it does not claim to.
+          */}
+          {sections?.people.state === "present" && (
+            <Tab value="people" count={sections.people.value.members.length}>People</Tab>
+          )}
           <Tab value="evidence" count={evidenceCount}>Evidence</Tab>
         </TabList>
 
@@ -1263,6 +1317,41 @@ function ArchivedRunDetail({
             </Card>
           </div>
 
+          {/*
+            The retry's shape. `context.attempts` is a COUNT and a count cannot
+            say what each attempt did — on a run that failed twice before
+            settling, that is the whole story. The rows are folded off
+            `(runId, attempt, spanPath)`, which is the identity the projection
+            already carried.
+          */}
+          <Card>
+            <CardBody className="flex flex-col gap-[var(--ds-space-snug)]">
+              <SectionLabel>Attempts</SectionLabel>
+              {sections?.attempts.state === "present" ? (
+                <Table label="What each attempt of this run did">
+                  <THead>
+                    <TR>
+                      <TH>Attempt</TH>
+                      <TH>Steps</TH>
+                      <TH align="right">Ran</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {sections.attempts.value.map((attempt) => (
+                      <AttemptRow key={attempt.attempt} attempt={attempt} />
+                    ))}
+                  </TBody>
+                </Table>
+              ) : (
+                <Well>
+                  <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>
+                    {sections?.attempts.state === "absent" ? sections.attempts.reason : sectionsAbsence}
+                  </span>
+                </Well>
+              )}
+            </CardBody>
+          </Card>
+
           <Card>
             <CardBody className="flex flex-col gap-[var(--ds-space-snug)]">
               <SectionLabel>Write ledger — never archived</SectionLabel>
@@ -1342,6 +1431,122 @@ function ArchivedRunDetail({
           )}
         </TabPanel>
 
+        <TabPanel value="logs" className="flex min-h-0 flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
+          <FrozenSection section={sections?.logs} absence={sectionsAbsence} what="log lines">
+            {(page) => page.notes.length === 0 ? (
+              <EmptyState
+                icon={<Info aria-hidden className={dsIcon.lg} />}
+                title="This run wrote no log line"
+                description="The note stream was frozen at archive time and it was empty. That is the run's own record, not a gap in this one."
+              />
+            ) : (
+              <Card>
+                <CardBody className="flex flex-col gap-[var(--ds-space-hair)]">
+                  {page.notes.map((note) => (
+                    <div key={note.noteId} className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
+                      <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-faint)]")}>
+                        {fmtClock(note.at)}
+                      </span>
+                      <Badge tone={FROZEN_LEVEL_TONE[note.level]}>{note.level}</Badge>
+                      <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg)]")}>
+                        {note.message}
+                      </span>
+                    </div>
+                  ))}
+                </CardBody>
+              </Card>
+            )}
+          </FrozenSection>
+        </TabPanel>
+
+        <TabPanel value="data" className="flex min-h-0 flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
+          <FrozenSection section={sections?.data} absence={sectionsAbsence} what="data points">
+            {(data) => data.entries.length === 0 ? (
+              <EmptyState
+                icon={<Info aria-hidden className={dsIcon.lg} />}
+                title="This run recorded no display-safe data point"
+                description="Nothing was frozen because nothing was there — the run's declared details were empty."
+              />
+            ) : (
+              <Card>
+                <CardBody>
+                  <Table label="Data points this run recorded">
+                    <THead>
+                      <TR>
+                        <TH>Field</TH>
+                        <TH>Value</TH>
+                        <TH align="right">Observed</TH>
+                      </TR>
+                    </THead>
+                    <TBody>
+                      {data.entries.map((entry) => (
+                        <TR key={`${entry.label}-${entry.valueRedacted}`}>
+                          <TD>{entry.label}</TD>
+                          <TD>
+                            <span className={dsText.nums}>{entry.valueRedacted}</span>
+                            {entry.correctedAt !== undefined && (
+                              <Badge tone="warning" className="ml-[var(--ds-space-hair)]">corrected</Badge>
+                            )}
+                          </TD>
+                          <TD align="right">
+                            {/*
+                              Both halves are read forward (D133): a value whose
+                              producing checkpoint carried no provenance simply
+                              has no instant, and an em dash is the honest cell
+                              — dating it from the archive instant would date
+                              the ROW rather than the FACT.
+                            */}
+                            <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
+                              {entry.observedAt === undefined ? "—" : fmtClock(entry.observedAt)}
+                              {entry.source !== undefined && ` · ${entry.source}`}
+                            </span>
+                          </TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                </CardBody>
+              </Card>
+            )}
+          </FrozenSection>
+        </TabPanel>
+
+        {sections?.people.state === "present" && (
+          <TabPanel value="people" className="flex min-h-0 flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
+            <Card>
+              <CardBody>
+                <Table label="Member runs this run fanned out">
+                  <THead>
+                    <TR>
+                      <TH>Member</TH>
+                      <TH align="right">Outcome</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {sections.people.value.members.map((member) => (
+                      <TR key={member.runId}>
+                        <TD>
+                          <span className="flex min-w-0 flex-col">
+                            <span className={cn(dsText.body, "truncate text-[color:var(--ds-fg)]")}>{member.label}</span>
+                            <span className={cn(dsText.meta, dsText.nums, "truncate text-[color:var(--ds-fg-faint)]")}>
+                              {member.runId}
+                            </span>
+                          </span>
+                        </TD>
+                        <TD align="right"><StatusPill status={dsStatusOf(member.status)} size="sm" /></TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              </CardBody>
+            </Card>
+            <p className={cn(dsText.meta, "text-[color:var(--ds-fg-faint)]")}>
+              Frozen at archive time. Each member run was archived by the same sweep and has its own row in the list
+              beside this panel.
+            </p>
+          </TabPanel>
+        )}
+
         <TabPanel value="evidence" className="flex flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
           {evidenceCount === 0 ? (
             <EmptyState
@@ -1352,13 +1557,33 @@ function ArchivedRunDetail({
           ) : (
             <>
               {/*
-                Pointers, not tiles. The wire archives evidence as IDS — the
-                bytes, the checkpoints and the ledger lines stay where they are
-                — so a thumbnail here would be a drawn stand-in for a real
-                system page, which is the one thing an evidence surface may
-                never do.
+                Tiles for the captures the record can DESCRIBE, pointers for the
+                rest. The bytes still stay where they are — D179's "evidence is
+                pointers only" is about the content, and nothing here reads it —
+                but a chip carrying `9f2c…` and nothing else cannot say what the
+                capture was of, when it was taken, or whether it is pinned. The
+                thumbnail is a labelled placeholder at the capture's real aspect,
+                never a drawn stand-in for a real system page.
               */}
-              <EvidencePointerGroup label="Captures" ids={detail.evidence.artifactIds} />
+              {sections?.captures.state === "present" ? (
+                <Card>
+                  <CardBody className="flex flex-col gap-[var(--ds-space-snug)]">
+                    <div className="flex items-center gap-[var(--ds-space-snug)]">
+                      <SectionLabel>Captures</SectionLabel>
+                      <CountBadge value={sections.captures.value.length} className="ml-auto" />
+                    </div>
+                    <div className="flex flex-col gap-[var(--ds-space-snug)]">
+                      {sections.captures.value.map((tile) => <CaptureTileRow key={tile.artifactId} tile={tile} />)}
+                    </div>
+                  </CardBody>
+                </Card>
+              ) : (
+                <EvidencePointerGroup
+                  label="Captures"
+                  ids={detail.evidence.artifactIds}
+                  note={sections?.captures.state === "absent" ? sections.captures.reason : sectionsAbsence}
+                />
+              )}
               <EvidencePointerGroup label="Checkpoints" ids={detail.evidence.checkpointNodeIds} />
               <EvidencePointerGroup label="Write intents" ids={detail.evidence.writeIntentIds} tone="warning" />
               <p className={cn(dsText.meta, "text-[color:var(--ds-fg-faint)]")}>
@@ -1398,10 +1623,13 @@ function EvidencePointerGroup({
   label,
   ids,
   tone,
+  note,
 }: {
   label: string;
   ids: readonly string[];
   tone?: "warning";
+  /** Why these are bare ids rather than described tiles, when they are. */
+  note?: string;
 }) {
   if (ids.length === 0) return null;
   return (
@@ -1414,8 +1642,166 @@ function EvidencePointerGroup({
         <div className="flex flex-wrap gap-[var(--ds-space-hair)]">
           {ids.map((id) => <Chip key={id} tone={tone} title={id}>{id}</Chip>)}
         </div>
+        {note !== undefined && (
+          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-faint)]")}>{note}</span>
+        )}
       </CardBody>
     </Card>
+  );
+}
+
+/* ── D223's frozen sections ──────────────────────────────────────────────── */
+
+const FROZEN_LEVEL_TONE = {
+  info: "neutral",
+  warning: "warning",
+  error: "danger",
+} as const satisfies Record<"info" | "warning" | "error", "neutral" | "warning" | "danger">;
+
+/** The counts the tab strip prints — absent is not zero, so it prints nothing. */
+function frozenLogCount(sections: ArchivedRunSections | undefined): number | undefined {
+  return sections?.logs.state === "present" ? sections.logs.value.notes.length : undefined;
+}
+function frozenDataCount(sections: ArchivedRunSections | undefined): number | undefined {
+  return sections?.data.state === "present" ? sections.data.value.entries.length : undefined;
+}
+
+/**
+ * One frozen section, or the sentence saying why there is none.
+ *
+ * The two absences are deliberately kept apart. A section the record HOLDS but
+ * that is empty is a fact about the run; a record written before D223 froze
+ * sections at all is a fact about this record, and only the second one is a
+ * reason to go looking somewhere else. Neither is ever rendered as a blank
+ * panel — an empty tab is the one thing that reads as "the surface is broken".
+ */
+function FrozenSection<Payload>({
+  section,
+  absence,
+  what,
+  children,
+}: {
+  section: { state: "present"; value: Payload } | { state: "absent"; reason: string } | undefined;
+  absence: string | undefined;
+  what: string;
+  children: (value: Payload) => ReactNode;
+}) {
+  if (section === undefined) {
+    return (
+      <Refusal
+        title={`This record's ${what} were never frozen`}
+        code="archive-sections-absent"
+        outcome="Nothing is missing from the run — the payloads were never captured, and they are not reconstructible."
+      >
+        <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+          {absence ?? `the archived record carries no frozen ${what} and states no reason, which is itself a defect`}
+        </p>
+      </Refusal>
+    );
+  }
+  if (section.state === "absent") {
+    return (
+      <Well>
+        <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>{section.reason}</span>
+      </Well>
+    );
+  }
+  return <>{children(section.value)}</>;
+}
+
+function AttemptRow({ attempt }: { attempt: ArchivedRunAttempt }) {
+  const outcomes = attempt.outcomes.map(({ outcome, count }) => `${String(count)} ${outcome}`);
+  if (attempt.unfinished > 0) outcomes.push(`${String(attempt.unfinished)} unfinished`);
+  return (
+    <TR>
+      <TD>
+        <span className={cn(dsText.body, dsText.nums, "text-[color:var(--ds-fg)]")}>#{attempt.attempt}</span>
+      </TD>
+      <TD>
+        <span className="flex min-w-0 flex-col">
+          <span className={cn(dsText.body, "text-[color:var(--ds-fg)]")}>{plural(attempt.steps, "step")}</span>
+          {outcomes.length > 0 && (
+            <span className={cn(dsText.meta, "truncate text-[color:var(--ds-fg-muted)]")}>{outcomes.join(" · ")}</span>
+          )}
+        </span>
+      </TD>
+      <TD align="right">
+        {/*
+          Both instants are absence unions on the wire and each carries its own
+          reason: an attempt that folded no span at all and an attempt whose
+          `span.started` never reached the fold are different facts, and the
+          title is where the second one is readable.
+        */}
+        <span
+          className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}
+          title={attempt.startedAt.state === "absent" ? attempt.startedAt.reason : undefined}
+        >
+          {attempt.startedAt.state === "present" ? fmtClock(attempt.startedAt.value) : "—"}
+          {attempt.endedAt.state === "present" && ` → ${fmtClock(attempt.endedAt.value)}`}
+        </span>
+      </TD>
+    </TR>
+  );
+}
+
+/**
+ * ONE described capture. The thumbnail is a LABELLED placeholder holding the
+ * capture's real aspect ratio — never a drawn approximation of the page, which
+ * is the one thing an evidence surface may not produce. The archived record
+ * carries no bytes and this surface reads none.
+ */
+function CaptureTileRow({ tile }: { tile: ArchivedCaptureTile }) {
+  return (
+    <div className="flex min-w-0 items-start gap-[var(--ds-space-snug)]">
+      <span
+        className={cn(
+          "flex w-[96px] shrink-0 items-center justify-center border",
+          dsRadius.sm,
+          "border-[color:var(--ds-border)] bg-[color:var(--ds-bg-inset)]",
+        )}
+        style={{
+          aspectRatio: tile.dimensions === undefined
+            ? "4 / 3"
+            : `${String(tile.dimensions.width)} / ${String(tile.dimensions.height)}`,
+        }}
+        aria-hidden
+      >
+        <Camera className={dsIcon.md} />
+      </span>
+      <span className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
+        <span className="flex flex-wrap items-center gap-[var(--ds-space-hair)]">
+          <Badge tone={tile.origin === "operator-request" ? "neutral" : "danger"}>{tile.kind}</Badge>
+          <span className={cn(dsText.body, "truncate text-[color:var(--ds-fg)]")}>
+            {tile.step.state === "present" ? tile.step.nodeId : "step unrecorded"}
+          </span>
+          {tile.system.state === "present" && <Chip label="system">{tile.system.value}</Chip>}
+        </span>
+        <MetaLine
+          items={[
+            fmtClock(tile.capturedAt),
+            tile.origin,
+            `${String(Math.max(1, Math.round(tile.byteLength / 1024)))} KB`,
+            tile.sensitivity,
+            tile.retention.kind === "pinned"
+              ? `pinned (${tile.retention.reason})`
+              : `purge after ${fmtInstantDay(tile.retention.purgeAfter)}`,
+          ]}
+        />
+        {/*
+          The two things a pointer alone could never say, kept as reasons rather
+          than dropped: a capture whose step is unrecorded and one whose system
+          is unrecorded are different gaps, and both are actionable.
+        */}
+        {(tile.step.state === "absent" || tile.system.state === "absent") && (
+          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-faint)]")}>
+            {tile.step.state === "absent" ? tile.step.reason : tile.system.state === "absent" ? tile.system.reason : ""}
+          </span>
+        )}
+        <span className={cn(dsText.meta, dsText.nums, "truncate text-[color:var(--ds-fg-faint)]")} title={tile.artifactId}>
+          {tile.artifactId}
+        </span>
+      </span>
+    </div>
   );
 }
 
