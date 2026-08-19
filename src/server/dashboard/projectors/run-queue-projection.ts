@@ -1304,7 +1304,12 @@ export class RunQueueProjection {
         dryRun: authority.envelope.dryRun,
         isChild: authority.envelope.parent !== undefined,
         parkedWrite: authority.lifecycle.state === "parked-write",
-        memberCount: shape === "operation" ? row.memberRunIds.length : 0,
+        // The count the confirm copy calls "delegated members" (cancelBody's
+        // "cancels the group and every one of its N delegated members"): the
+        // operation-member subset, NOT every child. A non-member child keeps its
+        // own row, its own cancel, and its own cascade policy, so counting it
+        // here would promise a cancellation this copy does not own.
+        memberCount: shape === "operation" ? memberChildIds.length : 0,
         isMember: shape === "operation-member",
         named: authority.displayName !== undefined,
         // The workflow id is the honest stand-in when this build cannot resolve
