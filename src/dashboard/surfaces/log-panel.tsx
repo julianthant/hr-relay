@@ -623,6 +623,93 @@ function InlineDecision({
 }
 
 /**
+ * THE DECISION RECORD, rendered where the decision was TAKEN (D237).
+ *
+ * The open card above is what a run held at a gate draws; this is what the same
+ * gate leaves behind once somebody answers it. Before D237 there was nothing:
+ * the wire's resolved arm was unreachable, so a settled gated run's panel went
+ * silent about the one step a human performed — and "who approved this" is
+ * exactly the question doc 09 §14.6 risk 6 exists for.
+ *
+ * All three facts are the SERVER's, off one durable `gate_results` row: the
+ * verdict through D204's declared arm table, the approver and the instant off
+ * the row the kernel wrote inside the resolving transaction. This component
+ * composes no sentence the wire did not supply a fact for.
+ *
+ * It sits in the stream at its own instant, like the failure record, because
+ * that is where it happened — a settled decision hoisted to the panel top would
+ * compete with the outcome bar for the same glance while saying something the
+ * outcome bar cannot say.
+ */
+const GATE_RECORD_TONE: Record<"approved" | "rejected", string> = {
+  approved:
+    "border-[color:var(--ds-status-verified-done-border)] bg-[var(--ds-status-verified-done-bg)]",
+  rejected:
+    "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]",
+};
+const GATE_RECORD_FG: Record<"approved" | "rejected", string> = {
+  approved: "text-[color:var(--ds-status-verified-done-fg)]",
+  rejected: "text-[color:var(--ds-danger)]",
+};
+const GATE_RECORD_WORD: Record<"approved" | "rejected", string> = {
+  approved: "Approved",
+  rejected: "Rejected",
+};
+
+function InlineGateDecisionRecord({
+  gate,
+  anchorRef,
+}: {
+  gate: Extract<RunDetailWire["gate"], { state: "resolved" }>;
+  anchorRef?: (node: HTMLElement | null) => void;
+}) {
+  const { resolution } = gate;
+  return (
+    <div
+      ref={anchorRef}
+      tabIndex={-1}
+      data-panel-gate-record=""
+      aria-label={`Decision record — ${gate.label}`}
+      className={cn(
+        "mx-[var(--ds-space-cozy)] my-[var(--ds-space-base)] ml-5 border p-[var(--ds-space-cozy)]",
+        dsRadius.lg,
+        dsFocus,
+        "border-[length:var(--ds-border-w-rail)]",
+        GATE_RECORD_TONE[resolution],
+      )}
+    >
+      <div className="flex items-center gap-[var(--ds-space-snug)]">
+        <UserRoundSearch aria-hidden className={cn(dsIcon.md, "shrink-0", GATE_RECORD_FG[resolution])} />
+        <span className={cn(dsText.ui, "min-w-0 truncate font-semibold", GATE_RECORD_FG[resolution])}>
+          {gate.label}
+        </span>
+        {/* The card's own tint already carries the verdict's loudness, so the
+            chip stays neutral for an approval and goes loud only for a refusal
+            — a rejected identity is the one an operator must not read past. */}
+        <Chip label="decision" tone={resolution === "approved" ? "neutral" : "danger"}>
+          {GATE_RECORD_WORD[resolution]}
+        </Chip>
+        <span
+          className={cn(
+            dsText.meta,
+            dsText.nums,
+            "ml-auto shrink-0 whitespace-nowrap opacity-85",
+            GATE_RECORD_FG[resolution],
+          )}
+        >
+          {fmtClock(gate.resolvedAt)}
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-[var(--ds-space-base)] pl-5">
+        {/* The whole point of the record: a name and an instant, both durable. */}
+        <MetaLine items={[`${GATE_RECORD_WORD[resolution]} by ${gate.resolvedBy}`, fmtClock(gate.resolvedAt)]} />
+      </div>
+    </div>
+  );
+}
+
+/**
  * THE FAILURE RECORD, rendered where the run died.
  *
  * 1i serves the record's IDENTITY (`{ runId, failureId }`) and the facts around
@@ -994,6 +1081,9 @@ function LogsTab({
 
   const gate = detail.gate;
   const decisionAt = gate.state === "open" ? anchorIndex(lines, gate.openedAt) : undefined;
+  // D237: the settled decision's own instant. The two gate anchors are mutually
+  // exclusive by the wire's union, so they can never both draw.
+  const gateRecordAt = gate.state === "resolved" ? anchorIndex(lines, gate.resolvedAt) : undefined;
   const failureAt =
     failure !== undefined && detail.outcome.state === "terminal" && detail.outcome.result === "failed"
       ? anchorIndex(lines, detail.outcome.completedAt)
@@ -1013,6 +1103,8 @@ function LogsTab({
         anchorRef={decisionRef}
       />
     ) : null;
+  const gateRecord =
+    gate.state === "resolved" ? <InlineGateDecisionRecord gate={gate} /> : null;
   const failureRecord =
     failure !== undefined && failureAt !== undefined ? (
       <InlineFailureRecord
@@ -1035,6 +1127,7 @@ function LogsTab({
           plain content in it and the track beside it runs the whole panel. */}
       <div className="flex flex-1 flex-col pb-[var(--ds-space-base)] pt-[var(--ds-space-tight)]">
         {decisionAt === -1 && decision}
+        {gateRecordAt === -1 && gateRecord}
         {failureAt === -1 && failureRecord}
         {parkedAt === -1 && parkedRecord}
         {lines.length === 0 ? (
@@ -1080,6 +1173,7 @@ function LogsTab({
                   </span>
                 </div>
                 {decisionAt === index && decision}
+                {gateRecordAt === index && gateRecord}
                 {failureAt === index && failureRecord}
                 {parkedAt === index && parkedRecord}
               </div>
@@ -1545,9 +1639,18 @@ export function LogPanel({
   const outcome = detail.outcome;
   const outcomeStatus =
     outcome.state === "terminal" ? outcomeDsStatusOf(outcome.result) : dsStatusOf(detail.header.status);
+  /**
+   * D238 — a REHEARSAL says so first.
+   *
+   * The bar states what the run came to, and for a dry run what it came to is a
+   * preview: nothing was written, nothing was fenced, and the verdict beside the
+   * word is `partial` rather than `verified-done` because the receipt for the
+   * same run derives exactly that. The word leads because the verdict is only
+   * readable once you know which kind of run produced it.
+   */
   const outcomeText =
     outcome.state === "terminal"
-      ? `${outcome.result} · ${fmtClock(outcome.completedAt)}`
+      ? `${outcome.rehearsal === true ? "dry run · " : ""}${outcome.result} · ${fmtClock(outcome.completedAt)}`
       : gate.state === "open"
         ? gate.label
         : outcome.reason;
