@@ -15,6 +15,7 @@ import { FingerprintSchema } from "../../../src/domain/ids.js";
 import {
   UiCatalogWireSchema,
   WorkflowExplorerWireSchema,
+  type ExplorerProvenanceWire,
 } from "../../../src/domain/dashboard/explorer.js";
 import {
   EXPLORER_SOURCE_ROOT,
@@ -67,11 +68,12 @@ describe("the contract field census (D226)", () => {
     for (const field of search.fields.filter((one) => one.side === "output")) {
       assert.equal(field.recorded.state, "observed");
       if (field.recorded.state !== "observed") continue;
-      const rule = [...(search.provenance?.byField ?? [])]
+      const rules: readonly ExplorerProvenanceWire["byField"][number][] = search.provenance.byField;
+      const matching = rules
         .filter((entry) => String(field.path) === String(entry.path)
           || String(field.path).startsWith(`${String(entry.path)}.`))
-        .sort((left, right) => String(right.path).length - String(left.path).length)[0];
-      assert.equal(field.recorded.source, rule?.source ?? search.provenance?.default);
+        .toSorted((left, right) => String(right.path).length - String(left.path).length)[0];
+      assert.equal(field.recorded.source, matching?.source ?? search.provenance.default);
     }
   });
 
