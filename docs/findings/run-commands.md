@@ -6,49 +6,24 @@ them. Delete a record when its fix lands in the owning doc.
 
 ---
 
-## The identity gate draws its buttons and never draws its EVIDENCE
+## RESOLVED 2026-08-19 — the gate's evidence and its three ceremonies (D226)
 
-**Recorded:** 2026-08-19 · **Status:** diagnosed — the WIRE half is complete, the surface half is
-missing · **Owning doc:** doc 09 §14 (the packet), doc 03 (the decision card)
+Two records lived here and are struck. Track B1 built the three ceremonies against the SERVER's
+`approvalShape` and put §14.4's packet on screen: disagreements first under their own heading, then
+every approvable candidate, then D211's write plan. An unrecognised shape returns `unsupported` and
+blocks the send with a named refusal — it never degrades to approve — and the arm's parameter is
+typed `never`, so a fourth shape is both a compile error and a runtime refusal. Normative text:
+**doc 09 §14.11**; the surface obligations generalise in **doc 13 §3.4**.
 
-- **Symptom:** a run parked at the ALWAYS-GATE renders `InlineDecision`
-  (`src/dashboard/surfaces/log-panel.tsx:544`) — the gate label, "since <time>", the held-here
-  sentence, and the two `resolve-gate` buttons. It renders **none of the evidence the approval is
-  about**: no candidate list, no field-by-field Kuali-vs-UCPath comparison, no `chosenFrom`/`origin`
-  strings, no disagreement detail. The only trace of the packet on screen is the Approve button's
-  confirm body, which names the *count* of disagreeing fields (`queries/run-detail.ts:868-871`).
-- **What IS served:** the whole `identity-gate` section — packet, `options`, `approvalShape`,
-  `evidenceDigest`, `resultSchemaHash`, both action descriptors — and it IS fetched now (R5's
-  escalation fixed the fetch; `log-panel.tsx:182` documents the earlier state where nothing fetched
-  it at all).
-- **Why it matters more than a missing panel:** doc 09 §14's whole argument is that the operator
-  reviews DISCONFIRMING evidence before authorizing a real termination, and §14.6's rubber-stamping
-  risk is exactly "the operator clicks approve without reading". A gate that shows a button and no
-  evidence is the rubber-stamp shape by construction. The D204 receipt work put the approver into
-  authority; this is the other half — what they were shown.
-- **Where the fix belongs:** the separations-completion plan's Track B1, and it is bigger than the
-  three missing ceremonies: the packet renderer is the ceremony's substrate.
+- ~~The identity gate draws its buttons and never draws its EVIDENCE~~ — closed, with one honest
+  nuance the fix does not hide: the evidence renders in the **ceremony dialog**, one click from the
+  stream card, not inline in `InlineDecision`. §14.6's rubber-stamp shape IS closed (the packet is
+  on screen and the control is blocked until the operator answers). If the operator wants the
+  disagreements visible on the card itself, that is a new record, not this one.
+- ~~Three of the four approval ceremonies refuse on click~~ — closed. All four now compose:
+  one-click, choose-a-candidate (no default selected), type-the-EID, and reject with a reason.
 
----
-
-## Three of the four approval ceremonies refuse on click
-
-**Recorded:** 2026-08-19 · **Status:** diagnosed — honest refusals, incomplete surface ·
-**Owning doc:** doc 09 §14
-
-- **Symptom:** `deriveApprovalShape` (`src/domain/separations/identity-evidence.ts:208`) emits three
-  shapes and the wire always serves both `resolve-gate-approved` and `resolve-gate-rejected`.
-  `src/dashboard/app/command-dispatch.ts` sends only **one-click approve with exactly one
-  candidate** (`:105`, `:117`). It refuses, by name: `choose-a-candidate`, `type-the-eid`, and any
-  rejection ("this build has no field to type one into", `:88`).
-- **The sharp end:** `one-click` is the shape the server picks when names match, the candidate is
-  unambiguous and there is a single active job — i.e. the EASY case. `choose-a-candidate` and
-  `type-the-eid` are what the server picks when the names differ, the search was ambiguous, or the
-  document EID conflicts — **the cases the gate exists for**. On those runs both buttons refuse and
-  the only working exit from the UI is `Cancel run`.
-- **Not a defect in the refusals.** Sending an approval the ceremony did not authorize would be the
-  silent-wrong-value failure this program forbids; refusing loudly is correct. The gap is that the
-  ceremonies were never built.
+Five records remain open below.
 
 ---
 
