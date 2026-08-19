@@ -78,6 +78,13 @@ function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): un
     configFingerprint: HASH,
     resolvedInstances: [],
     dryRun: facts.dryRun,
+    priority: "interactive",
+    runNumber: { state: "present", value: 1 },
+    // A delegated child of a non-operation parent is `linked`: it keeps its own
+    // row, so `executeRetry` refusing it is the shape this fixture exercises.
+    containment: facts.isChild ? "linked" : "root",
+    linkedRuns: [],
+    facts: { state: "absent", reason: `run is ${status} and has no served facts in this fixture` },
     startedAt: NOW,
     updatedAt: NOW,
     endedAt: terminal

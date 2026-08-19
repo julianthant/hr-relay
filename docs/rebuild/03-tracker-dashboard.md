@@ -372,6 +372,62 @@ said what the row should say.
   this doc's sparse count arrays — and the absent `reason` keeps three states apart that a silent
   zero would collapse: not settled, no receipt derived, receipt with no warning.
 
+### The second batch: ordinal, class, links and outcome (2026-08-19)
+
+Six more §1.2/§9 row facts had a consumer and no producer. **What follows is the as-built for each
+one that has a REAL source; the ones whose source does not exist are NOT served as a permanently
+absent arm** — a wire field nothing can populate is the orphan `wire-connectivity.test.ts` exists to
+catch, and they are restated in `docs/findings/queue-rows.md` with the producer each one waits on.
+Only `runNumber` and the containment vocabulary are new decisions (**D230**, **D231**); the rest is
+doc 13 §3.2's approved queue contract finally being filled in.
+
+- **`runNumber` (D230).** Read from `RunRecord.runNumber`, never derived. A number computed from a
+  row's position in THIS day's sorted array would be a different number tomorrow for the same run,
+  which is the one property a name may not have. The absent arm is D133 read-forward and is the
+  only one: a run enqueued before schema v15 carries no ordinal, and the footer draws the trace id
+  in that slot meanwhile — the identity every log, receipt and support conversation already uses.
+  The two are siblings once both are present, never substitutes.
+- **`priority`.** Read from the run ENVELOPE, which is D95's `bump` target — not the `run.queued`
+  span's frozen copy. `bumpPriority` rewrites the envelope and emits no span of its own, so a row
+  reading the span would keep saying `bulk` after the operator's bump had already changed the claim
+  order. No absent arm, for `dryRun`'s reason: every envelope carries one. It is a deliberate enum
+  MIRROR of `RunPrioritySchema` (doc 13 §8.13 keeps `src/domain/run/envelope.ts` out of the bundle's
+  reach), pinned member-for-member by `wire-connectivity.test.ts`'s mirror joint.
+- **`containment` + `linkedRuns[]` (D231).** See doc 04's D231 row for the whole contract. Two
+  things are worth restating here because they are queue-panel behaviour: the schema refuses a
+  payload where containment, lineage and `surfaceKind` disagree, and the member/linked partitions
+  are disjoint BY CONSTRUCTION rather than by intention — the rollup counts only `operation-member`
+  children, so a child is never both counted in a group and chipped beside it.
+- **`facts[]` (§9 D7).** Read from the run's ALREADY-DERIVED evidence receipt's `output` — the same
+  plain `getReceipt` lookup `warnings` does, never `ensureReceipt`, for D141's reason. The receipt's
+  outputs ARE the flattening the Receipt tab prints, so reading them here is what keeps the chip on
+  the row and the row in the tab from being two derivations of one result. A leaf becomes a chip
+  only when its redacted value is `allowed` **and** a JSON primitive: the queue is on screen all day
+  and gets screenshotted into tickets, so it is the last surface that may print a dropped or
+  transformed value, and flattening an object into a string would author a presentation the receipt
+  never did. Both exclusions are COUNTED into the absent `reason`, which is what keeps four states
+  apart that an empty band would collapse — not settled, no receipt derived, a receipt with no
+  output, and a receipt whose every output was withheld.
+- **`pipeline[].durationSec` / `executions`.** Summed over EVERY execution of the node rather than
+  taken from the last, because a node re-executed across a gate resume (D214) genuinely spent both
+  intervals and the chip reports time spent on the step. The same refusals as the run-detail
+  timeline's `durationMs`: a step with no end, no folded start, unreadable instants, or an end
+  before its start carries NO duration — zero is a measurement, and "unmeasured" is not.
+  `executions` is present only at two or more, because one is the ordinary case.
+- **`memberPreview` (operation rows only).** Composed from the member rows' OWN titles, resolved
+  through the same subject-or-composed-title rule those rows draw, so a preview can never name
+  somebody the group does not contain or spell a subject two ways; the `+N more` count comes off the
+  same member list as the rollup. Absent when the group has fanned out to nobody yet, or when the
+  span fold has not seen the members it names — a group is a real thing before its fan-out lands,
+  and an empty string in that slot would read as a group of nobody.
+
+**Why none of this went into `config/pending-wire-bindings.json`.** That manifest's `declared-unserved`
+direction is for a schema arm a producer cannot reach — a section key, a command verb, a route. Every
+field above is SERVED: its absence is a present/absent union whose `reason` the operator reads in the
+row's ⓘ popover, which is a stronger record than a manifest line nobody sees, and its arms are pinned
+beside the present one in `run-queue-projection.test.ts`. The fields with no producer at all were not
+added to the schema, so there is no orphan arm for the manifest to declare either.
+
 ### The per-row action descriptors (2026-08-14)
 
 The fifth row fact with a consumer and no producer, and the only one where BOTH halves were

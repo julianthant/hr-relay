@@ -41,7 +41,9 @@ import {
   ParkedWriteSubjectEvidenceSchema,
   RunDetailSectionResponseSchema,
 } from "../../../src/domain/dashboard/run-detail.js";
+import { QueuePrioritySchema } from "../../../src/domain/dashboard/projection.js";
 import { CommandRequestSchema } from "../../../src/domain/commands.js";
+import { RunPrioritySchema } from "../../../src/domain/run/envelope.js";
 import { RunOutcomeSchema, RunRecordSchema, RunStateSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { SubjectEvidenceSchema, WriteIntentRecordSchema } from "../../../src/domain/write-safety.js";
 import { availableSections } from "../../../src/server/dashboard/queries/run-detail.js";
@@ -399,6 +401,18 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
         name: "parked-write subject evidence",
         durable: SubjectEvidenceSchema,
         wire: ParkedWriteSubjectEvidenceSchema,
+      },
+      {
+        /*
+         * D95's scheduling class. `src/domain/dashboard/projection.ts` is in
+         * the dashboard bundle's reach and `src/domain/run/envelope.ts` reaches
+         * `workflow/checkpoint.js`, so the queue wire re-declares the enum for
+         * doc 13 §8.13's reason — and a member added to either side (a third
+         * priority class, say) has to show up on both.
+         */
+        name: "run priority",
+        durable: RunPrioritySchema,
+        wire: QueuePrioritySchema,
       },
     ] as const;
 

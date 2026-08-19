@@ -281,6 +281,28 @@ function emptyActivityWorkflowCounts(): ActivityWorkflowCounts {
   };
 }
 
+/**
+ * How many members a group's preview names before it says `+N more`. Three is
+ * the demo's own number and it is a LAYOUT fact, not a policy one: the preview
+ * shares one line with the group's title.
+ */
+const MEMBER_PREVIEW_LIMIT = 3;
+
+/**
+ * One entry of a row's `linkedRuns`, before `QueueSurfaceWireSchema.parse`
+ * brands its identities. Declared here rather than reused off the wire type for
+ * the reason every other value in `#surface` is built plain: the schema is what
+ * turns a composed object into a served one, and a builder that already held
+ * branded ids would be claiming the parse it has not run.
+ */
+interface LinkedRunView {
+  readonly runId: string;
+  readonly workflowId: string;
+  readonly label: string;
+  readonly panelKind: "run" | "member" | "group";
+  readonly status: string;
+}
+
 const TASK_OUTCOME_PIPELINE = {
   done: "done",
   failed: "failed",
@@ -941,14 +963,51 @@ export class RunQueueProjection {
   #pipeline(row: RunFoldRecord): QueueSurfaceWire["pipeline"] {
     const descriptor = this.#deps.descriptors.resolve(row.queued.workflow);
     const spanByNode = new Map<string, z.infer<typeof TaskSpanFoldSchema>>();
+    /**
+     * Every execution of each node, not just the last one. `spanByNode` above
+     * is deliberately latest-wins — one node draws ONE chip, and two chips for
+     * one step would show it in two states at once — but the chip's DURATION is
+     * time spent on the step, which a node re-executed across a gate resume
+     * (D214) genuinely spent twice. Two maps, two questions.
+     */
+    const executionsByNode = new Map<string, z.infer<typeof TaskSpanFoldSchema>[]>();
     for (const span of row.taskSpans) {
       const nodeId = nodeIdOfTaskSpanPath(span.spanPath);
       if (nodeId !== undefined) spanByNode.set(nodeId, span);
+      const key = nodeId ?? span.name;
+      const bucket = executionsByNode.get(key);
+      if (bucket === undefined) executionsByNode.set(key, [span]);
+      else bucket.push(span);
     }
     const stepState = (span: z.infer<typeof TaskSpanFoldSchema> | undefined): "pending" | "active" | "done" | "failed" | "skipped" | "blocked" => {
       if (span === undefined) return "pending";
       if (span.outcome === undefined) return "active";
       return TASK_OUTCOME_PIPELINE[span.outcome];
+    };
+    /**
+     * The measured half of a step, in the same shape the run-detail timeline
+     * computes it (`spanDuration` there) — and with the same refusals. A span
+     * with no end, no folded start, unreadable instants, or an end before its
+     * start contributes NOTHING; a step where nothing measured carries no
+     * duration at all rather than a zero, because zero is a measurement and
+     * "unmeasured" is not.
+     */
+    const stepMeasurement = (nodeId: string): { durationSec?: number; executions?: number } => {
+      const executions = executionsByNode.get(nodeId) ?? [];
+      let ms = 0;
+      let measured = false;
+      for (const span of executions) {
+        if (span.startedAt === undefined || span.endedAt === undefined) continue;
+        const started = Date.parse(span.startedAt);
+        const ended = Date.parse(span.endedAt);
+        if (!Number.isFinite(started) || !Number.isFinite(ended) || ended < started) continue;
+        ms += ended - started;
+        measured = true;
+      }
+      return {
+        ...(measured ? { durationSec: Math.round(ms / 1000) } : {}),
+        ...(executions.length >= 2 ? { executions: executions.length } : {}),
+      };
     };
     if (descriptor === undefined) {
       // No registered descriptor (e.g. a replayed historical workflow): the
@@ -960,7 +1019,12 @@ export class RunQueueProjection {
       for (const span of row.taskSpans) {
         observed.set(nodeIdOfTaskSpanPath(span.spanPath) ?? span.name, { label: span.name, span });
       }
-      return [...observed].map(([id, { label, span }]) => ({ id, label, state: stepState(span) }));
+      return [...observed].map(([id, { label, span }]) => ({
+        id,
+        label,
+        state: stepState(span),
+        ...stepMeasurement(id),
+      }));
     }
     return descriptorRuntimeNodes(descriptor)
       .filter((node) => node.kind === "task" || node.kind === "transaction" || node.kind === "child-run")
@@ -968,7 +1032,168 @@ export class RunQueueProjection {
         id: String(node.id),
         label: String(node.id),
         state: stepState(spanByNode.get(String(node.id))),
+        ...stepMeasurement(String(node.id)),
       }));
+  }
+
+  /**
+   * D230: this run's ordinal within its workflow, read from AUTHORITY.
+   *
+   * It is never derived here and there is deliberately no fallback. A number
+   * computed from this row's position in the day's sorted array would be a
+   * different number on a different day's page for the same run, which is
+   * exactly the defect the durable field exists to remove — so a run enqueued
+   * before schema v15 reports its absence with the reason, and the footer draws
+   * its trace id instead.
+   */
+  #runNumber(authority: RunRecord): { state: "present"; value: number } | { state: "absent"; reason: string } {
+    return authority.runNumber === undefined
+      ? { state: "absent", reason: "enqueued before runs carried a workflow ordinal (D230)" }
+      : { state: "present", value: authority.runNumber };
+  }
+
+  /**
+   * How this row is contained by its parent.
+   *
+   * The whole decision is the run's own SHAPE plus its lineage, both of which
+   * are write-once identity attributes on the `run.queued` span — never the
+   * workflow id, which doc 13 §1.1 names as the inference this must not be.
+   * A parented run whose shape is `operation-member` is the row a group counts;
+   * any other parented run keeps its own row in its own panel and its parent
+   * shows a chip.
+   */
+  #containment(queued: RunQueuedWire): "root" | "member" | "linked" {
+    if (queued.parentRunId === undefined) return "root";
+    return queued.shape === "operation-member" ? "member" : "linked";
+  }
+
+  /**
+   * The runs this row delegated to and is waiting on — the parent's half of
+   * `containment: "linked"`.
+   *
+   * Read from the SAME child set the member rollup reads (`row.memberRunIds`,
+   * folded from each child's `run.queued.parentRunId`), partitioned by the
+   * child's own shape, so the two lists are disjoint by construction: a row a
+   * group counts is never also a chip on that group, and a chip is never also
+   * counted. Each entry carries the target's live status, resolved through the
+   * SAME `#status` every row's own status comes from — the client re-deriving
+   * it from the day payload would be the second status path D81 deletes, and it
+   * would go blank the moment the target sat on another day.
+   *
+   * A child the fold has not seen yet is skipped rather than guessed at: a chip
+   * that named a run and could not say what it was doing would be a link to a
+   * status nobody computed.
+   */
+  #linkedRuns(row: RunFoldRecord): readonly LinkedRunView[] {
+    const linked: LinkedRunView[] = [];
+    for (const childId of row.memberRunIds) {
+      const child = this.#rows.get(childId);
+      if (child === undefined || child.queued.shape === "operation-member") continue;
+      const childDescriptor = this.#deps.descriptors.resolve(child.queued.workflow);
+      linked.push({
+        runId: child.queued.runId,
+        workflowId: child.queued.workflow,
+        // The workflow id is the honest stand-in when this build cannot resolve
+        // the descriptor: it is what the run IS, not a guessed pretty name.
+        label: childDescriptor?.label ?? child.queued.workflow,
+        panelKind: panelKindOf(child.queued.shape),
+        status: this.#status(child, this.#authorityRun(childId)),
+      });
+    }
+    return linked;
+  }
+
+  /**
+   * The first few members BY NAME — the group's `memberPreview`.
+   *
+   * Composed from the member rows' OWN titles, resolved through the same
+   * `#subjectTitle`-or-composed-title rule their rows draw, so a preview can
+   * never name somebody the group does not contain or spell a subject two ways.
+   * The count in the `+N more` tail comes off the same list as the rollup.
+   */
+  #memberPreview(
+    memberIds: readonly string[],
+  ): { state: "present"; value: string } | { state: "absent"; reason: string } {
+    if (memberIds.length === 0) {
+      return { state: "absent", reason: "this group has fanned out to no members yet" };
+    }
+    const titles: string[] = [];
+    for (const memberId of memberIds) {
+      const member = this.#rows.get(memberId);
+      if (member === undefined) continue;
+      const memberAuthority = this.#authorityRun(memberId);
+      titles.push(this.#subjectTitle(member.queued.workflow, memberAuthority) ?? member.queued.title);
+    }
+    const shown = titles.slice(0, MEMBER_PREVIEW_LIMIT);
+    if (shown.length === 0) {
+      return {
+        state: "absent",
+        reason: `this group names ${String(memberIds.length)} member(s) the span fold has not seen, so none can be named`,
+      };
+    }
+    const remaining = titles.length - shown.length;
+    return {
+      state: "present",
+      value: remaining > 0 ? `${shown.join(", ")} +${String(remaining)} more` : shown.join(", "),
+    };
+  }
+
+  /**
+   * D7: what this run PRODUCED, in the words its receipt uses.
+   *
+   * The same plain `getReceipt` lookup `#warnings` does — never `ensureReceipt`,
+   * because D141 makes derivation an act that persists a row and this
+   * projection never mutates authority. The receipt's `output` facts ARE the
+   * flattening the Receipt tab prints, so reading them here is what keeps the
+   * chip on the row and the row in the tab from being two derivations of one
+   * result.
+   *
+   * A leaf becomes a chip only when its redacted value is `allowed` AND a JSON
+   * primitive. The redaction half is not negotiable: the queue is on screen all
+   * day and gets screenshotted into tickets, so it is the last surface that may
+   * print a dropped or transformed value. The primitive half is honesty about
+   * shape — an object or array is not a chip, and flattening one into a string
+   * would author a presentation the receipt never did. Both exclusions are
+   * COUNTED into the absent reason rather than silently swallowed.
+   */
+  #facts(
+    runId: string,
+    status: QueueSurfaceWire["status"],
+  ): { state: "present"; value: readonly { label: string; value: string }[] } | { state: "absent"; reason: string } {
+    if (!TERMINAL_QUEUE_STATUSES.has(status)) {
+      return { state: "absent", reason: `run is ${status} and has not produced a terminal result` };
+    }
+    const receipt = this.#deps.authority.getReceipt(runId);
+    if (receipt === undefined) {
+      return {
+        state: "absent",
+        reason: "no evidence receipt has been derived for this run, so its outputs are unknown",
+      };
+    }
+    if (receipt.output.length === 0) {
+      return { state: "absent", reason: "this run's evidence receipt records no output fact" };
+    }
+    const chips: { label: string; value: string }[] = [];
+    let withheld = 0;
+    for (const fact of receipt.output) {
+      if (fact.state !== "satisfied" || fact.value.state !== "allowed") {
+        withheld += 1;
+        continue;
+      }
+      const { value } = fact.value;
+      if (typeof value === "string") chips.push({ label: fact.field, value });
+      else if (typeof value === "number" || typeof value === "boolean") {
+        chips.push({ label: fact.field, value: String(value) });
+      } else withheld += 1;
+    }
+    if (chips.length === 0) {
+      return {
+        state: "absent",
+        reason: `all ${String(withheld)} of this run's output facts are redacted or structured, `
+          + "and neither is a value the queue may print",
+      };
+    }
+    return { state: "present", value: chips };
   }
 
   #surface(row: RunFoldRecord, authority: RunRecord): QueueSurfaceWire {
@@ -976,11 +1201,22 @@ export class RunQueueProjection {
     const shape = queued.shape;
     const status = this.#status(row, authority);
     const descriptor = this.#deps.descriptors.resolve(queued.workflow);
-    const failedTerminalMembers = row.memberRunIds.filter((memberId) => {
+    /**
+     * The children a group COUNTS, which is not every child it spawned. The
+     * fold links a child to its parent on `run.queued.parentRunId` regardless
+     * of shape, and `containment` splits that set in two: an `operation-member`
+     * is counted in this rollup and never at top level, and everything else
+     * keeps its own row and appears on `linkedRuns` instead. Partitioning here
+     * is what makes the two lists disjoint rather than merely intended to be —
+     * a child on both would be counted once and chipped once for the same work.
+     */
+    const memberChildIds = row.memberRunIds.filter((memberId) =>
+      this.#rows.get(memberId)?.queued.shape === "operation-member");
+    const failedTerminalMembers = memberChildIds.filter((memberId) => {
       const member = this.#rows.get(memberId);
       return member?.ended?.outcome === "failed";
     });
-    const terminalMembers = row.memberRunIds.filter((memberId) => this.#rows.get(memberId)?.ended !== undefined);
+    const terminalMembers = memberChildIds.filter((memberId) => this.#rows.get(memberId)?.ended !== undefined);
     const base = {
       runId: queued.runId,
       itemId: queued.itemId,
@@ -1012,6 +1248,17 @@ export class RunQueueProjection {
        * the one that decided whether the write kernel was allowed to commit.
        */
       dryRun: authority.envelope.dryRun,
+      /**
+       * D95's scheduling class, read from the envelope for the same reason
+       * `dryRun` is: `bumpPriority` rewrites the envelope, and a row that read
+       * the `run.queued` span's frozen copy would keep saying `bulk` after the
+       * operator's bump had already changed the claim order.
+       */
+      priority: authority.envelope.priority,
+      runNumber: this.#runNumber(authority),
+      containment: this.#containment(queued),
+      linkedRuns: this.#linkedRuns(row),
+      facts: this.#facts(queued.runId, status),
       startedAt: queued.ts,
       updatedAt: authority.updatedAt,
       endedAt: this.#endedAt(row, authority, status),
@@ -1070,12 +1317,13 @@ export class RunQueueProjection {
       return QueueSurfaceWireSchema.parse({
         ...base,
         surfaceKind: "operation",
-        memberRunIds: row.memberRunIds,
+        memberRunIds: memberChildIds,
         memberRollup: {
-          total: row.memberRunIds.length,
+          total: memberChildIds.length,
           terminal: terminalMembers.length,
           failed: failedTerminalMembers.length,
         },
+        memberPreview: this.#memberPreview(memberChildIds),
       });
     }
     return QueueSurfaceWireSchema.parse({ ...base, surfaceKind: surfaceKindOf(shape) });

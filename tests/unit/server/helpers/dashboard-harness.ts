@@ -263,6 +263,15 @@ export interface SeedRunInput {
   readonly dryRun?: boolean;
   /** The operator's own name for the run — the `rename` command's durable field. */
   readonly displayName?: string;
+  /** D95's scheduling class, the `bump` command's durable target. */
+  readonly priority?: "interactive" | "bulk";
+  /**
+   * D230's workflow ordinal. `undefined` is the READ-FORWARD arm, not a
+   * convenience default — it is exactly the shape of every run enqueued before
+   * schema v15, so a seed that omits it exercises the absence rather than
+   * skipping it.
+   */
+  readonly runNumber?: number;
 }
 
 export function runRecordOf(input: SeedRunInput): RunRecord {
@@ -286,7 +295,7 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
         },
       }),
       shape: input.shape ?? "single",
-      priority: "interactive",
+      priority: input.priority ?? "interactive",
       dryRun: input.dryRun ?? false,
       ...(input.injected === undefined ? {} : { injected: input.injected }),
       attempt: 1,
@@ -296,6 +305,7 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
     lifecycle: input.lifecycle ?? { state: "queued" },
     claimGeneration: input.claimGeneration ?? 0,
     ...(input.displayName === undefined ? {} : { displayName: input.displayName }),
+    ...(input.runNumber === undefined ? {} : { runNumber: input.runNumber }),
     hidden: input.hidden ?? false,
     version: input.version ?? 1,
     createdAt: enqueuedAt,
@@ -318,8 +328,8 @@ export function queuedEventOf(world: DashboardWorld, input: SeedRunInput): RunQu
     itemId: record.envelope.itemId,
     ...(record.envelope.parent === undefined ? {} : { parentRunId: record.envelope.parent.runId }),
     shape: record.envelope.shape,
-    priority: "interactive",
-    dryRun: false,
+    priority: record.envelope.priority,
+    dryRun: record.envelope.dryRun,
     actorId: "local-operator",
     title: input.title ?? `EID 10873698 #${String(input.seed)}`,
     descriptorVersion: 1,
@@ -443,6 +453,34 @@ export function receiptWithWarningsOf(input: Readonly<{
     })),
     confidence: "partial",
     result: "done-with-warnings",
+  });
+}
+
+/**
+ * A receipt carrying OUTPUT facts — the queue row's `facts[]` chips (D7).
+ *
+ * The three arms it can author are exactly the three the row has to keep apart:
+ * an `allowed` primitive becomes a chip, an `allowed` STRUCTURED value does not
+ * (an object is not a chip), and a `drop`ped leaf must never reach a surface an
+ * operator screenshots.
+ */
+export function receiptWithOutputOf(input: Readonly<{
+  seed: number;
+  outputs: readonly { field: string; value: unknown; redact?: "drop" }[];
+  workflow?: string;
+}>): RunEvidenceReceipt {
+  return RunEvidenceReceiptSchema.parse({
+    ...cleanReceiptOf(input),
+    output: input.outputs.map((entry, index) => ({
+      id: uuidOf(input.seed + 7200 + index),
+      field: entry.field,
+      mandatory: true,
+      source: { kind: "system", taskId: "ucpath/search-person-org", observedAt: NOW },
+      state: "satisfied",
+      value: entry.redact === "drop"
+        ? { key: entry.field, state: "redacted", classification: "sensitive-hr", transform: "drop" }
+        : { key: entry.field, state: "allowed", classification: "safe-diagnostic", transform: "allow", value: entry.value },
+    })),
   });
 }
 

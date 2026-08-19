@@ -241,6 +241,31 @@ export const RunRecordSchema = z.strictObject({
    * the current build's.
    */
   appVersion: AppVersionSchema.optional(),
+  /**
+   * D230: this run's ORDINAL within its workflow — the queue footer's `#N`.
+   *
+   * Assigned once, at the one enqueue transaction, from the maximum this
+   * workflow has already spent, and never rewritten. It is durable for the
+   * reason the row's own finding names: deriving it from the position of a run
+   * in a DAY's page would give the same run a different number on a different
+   * day's page, and an ordinal an operator quotes in a support conversation
+   * that means something else tomorrow is worse than no ordinal at all.
+   *
+   * It is NOT identity — `runId` and `traceId` are — and nothing joins on it.
+   * It is a short human handle for a run within one workflow's history, which
+   * is why a gap is legal (a refused enqueue inside a fan-out leaves nothing
+   * behind, and the numbers around it stay meaningful) while a REPEAT is not:
+   * `runs.enqueue` refuses a number the workflow has already spent and a
+   * `UNIQUE (workflow, run_number)` index is the SQL backstop under it.
+   *
+   * **Optional because it is read forward, never back-filled (D133).** Every
+   * run enqueued before schema v15 carries none, and computing one for those
+   * rows now — by created_at order, say — would mint an ordinal that was never
+   * true of them and would collide with the live counter. An absent number is
+   * reported as absent with its reason; the row draws its trace id, which is
+   * the identity every log and receipt already prints.
+   */
+  runNumber: PositiveIntSchema.optional(),
   /** Optimistic-concurrency token every command target carries. */
   version: PositiveIntSchema,
   createdAt: IsoInstantSchema,

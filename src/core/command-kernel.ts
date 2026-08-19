@@ -623,6 +623,13 @@ function executeRetry(
     // under — not the build the run it retries carried. The DESCRIPTOR
     // identity above is deliberately inherited; the app build is not.
     appVersion: dependencies.appVersion,
+    /*
+     * D230: a retry is a fresh enqueue, so it takes the workflow's NEXT ordinal
+     * rather than inheriting the retried run's. The two runs are two rows an
+     * operator can name apart, which is the whole point of the number; a retry
+     * that re-used `#7` would make one footer describe two runs.
+     */
+    runNumber: repositories.runs.nextWorkflowRunNumber(current.envelope.workflow),
     version: 1,
     createdAt: now,
     updatedAt: now,

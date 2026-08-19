@@ -313,6 +313,23 @@ are the same fact at two scopes and both come off this one array, filled in the 
 countable loop beside the day-wide totals it must agree with (D81). A client-side fold over
 `queueSurfaces` is the second count path that rule exists to delete, and remains forbidden.
 
+**A queue row states its ORDINAL, its CLASS and what it MADE** (D230/D231, 2026-08-19).
+`QueueBaseFields` carries `runNumber` — durable on `RunRecord`, assigned per workflow at enqueue,
+served with a D133 read-forward absent arm and never derived from a row's position in the day's
+array; `priority` — read from the run envelope, which is what D95's `bump` rewrites, and a
+deliberate enum mirror of `RunPrioritySchema` kept identical by §8.8's mirror joint because
+`src/domain/run/envelope.ts` is outside the bundle's reach (§8.13); `containment`
+(`root | member | linked`, projected from shape and lineage, with a refinement refusing every
+disagreement with `lineage`/`surfaceKind` and no `rejected` arm until a producer writes such a row);
+`linkedRuns[]` — each delegated child's id, workflow, label, panel kind and LIVE status, because a
+client re-deriving the target's status from `queueSurfaces` is D81's forbidden second path and goes
+blank the moment the target sits on another day; `facts[]` — the run's already-derived evidence
+receipt's `output`, chipped only where the redacted value is `allowed` and primitive; and
+`pipeline[].durationSec`/`executions`, summed over every execution of the node. An operation row
+additionally carries `memberPreview`, composed from its members' own served titles. Every one of
+these carries its absence as a reasoned arm rather than a zero, an empty band, or a plausible
+number.
+
 The approved queue contract must include:
 
 - immutable identity, attempt/lineage, actor, descriptor/app/config versions and resolved instance;

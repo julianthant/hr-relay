@@ -151,6 +151,16 @@ function snapshotSource(world: {
           configFingerprint: run.envelope.configFingerprint,
           resolvedInstances: world.resolvedInstances ?? [],
           dryRun: run.envelope.dryRun,
+          priority: run.envelope.priority,
+          // D230: the archived row freezes the ordinal the live row carried;
+          // a run enqueued before schema v15 froze an absence, and resolving
+          // one now would be back-filling on the archive's read path.
+          runNumber: run.runNumber === undefined
+            ? { state: "absent", reason: "enqueued before runs carried a workflow ordinal (D230)" }
+            : { state: "present", value: run.runNumber },
+          containment: "root",
+          linkedRuns: [],
+          facts: { state: "absent", reason: "this run's evidence receipt records no output fact" },
           startedAt: NOW,
           updatedAt: NOW,
           endedAt: { state: "present", value: NOW },
