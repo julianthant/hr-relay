@@ -10,10 +10,20 @@
  *   result IS factory-verified terminal authority, D110), `failed→failed`,
  *   `cancelled|discarded|superseded→cancelled`; an `interrupted` run keeps an
  *   ABSENT outcome ("recovery will requeue or settle it") because the landed
- *   enum has no arm that names it without claiming a verdict.
- * - gate resolutionKey → GateDecisionWire resolution: only the literal keys
- *   `approved`/`rejected` map; any other key renders the gate absent with the
- *   key named in the reason rather than coercing it into a boolean verdict.
+ *   enum has no arm that names it without claiming a verdict. **D238**: a
+ *   `done` run whose own envelope asked for a dry run is a PREVIEW terminal and
+ *   takes `partial` with `rehearsal: true` — the same verdict
+ *   `buildRunEvidenceReceipt` derives for it, because `verified-done` names an
+ *   independently verified REAL completion and a rehearsal wrote nothing.
+ * - the gate's durable `gate_results` row → GateDecisionWire resolution
+ *   (**D237**). NOT the span stream's `resolutionKey`, which the command
+ *   service deliberately emits as the literal `resolved` for every gate: the
+ *   verdict comes from D204's declared arm table over the row's own payload,
+ *   and `resolvedBy`/`resolvedAt` come from the row the kernel wrote inside the
+ *   resolving transaction (D202). Every way that read can fail to produce a
+ *   verdict — no row, no declaration, an unlisted arm value, a declared outcome
+ *   that is not an approve/reject verdict — renders the gate absent with the
+ *   exact gap named, never coerced into a boolean.
  * - note level → NoteWire level: `error→error`, `warn|waiting→warning`,
  *   everything else `info`.
  * - task span outcome → timeline state: `done→done`, `failed→failed`,
@@ -41,6 +51,9 @@ import {
   type TimelineStepWire,
 } from "../../../domain/dashboard/run-detail.js";
 import type { WriteBindingProof, WriteIntentRecord } from "../../../domain/write-safety.js";
+import type { GateResultRecord } from "../../../domain/gates.js";
+import { evidenceLeaves } from "../../../domain/trust/evidence-classification.js";
+import { findGateDecision } from "../../../domain/trust/gate-decisions.js";
 import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
 import type { FailureRecord } from "../../../domain/trust/failure.js";
 import { runClaim, type RunRecord } from "../../../domain/run/record.js";
@@ -140,6 +153,14 @@ export interface RunDetailQueryDeps {
      * a generation recovery has since advanced.
      */
     getWriteIntent(writeIntentId: string): WriteIntentRecord | undefined;
+    /**
+     * D237: every gate this run resolved, oldest first — the SAME
+     * `authority.gateResults.listByRun` read D204 gave the receipt. The panel
+     * and the receipt therefore cannot disagree about who answered a gate, and
+     * the span stream (whose `resolutionKey` is the literal `resolved`) is not
+     * consulted for the verdict at all.
+     */
+    listGateResults(runId: string): readonly GateResultRecord[];
   };
   /** Resolves the CURRENT registered descriptor for a workflow. */
   readonly descriptors: {
@@ -179,6 +200,84 @@ function requireRun(deps: RunDetailQueryDeps, runId: string): { row: RunFoldReco
     throw new Error(`run ${runId} exists in the span stream but not in authority`);
   }
   return { row, authority };
+}
+
+/**
+ * D237 — what a SETTLED gate's panel says: approved or rejected, by whom, when.
+ *
+ * The verdict is read from the gate's own durable `gate_results` row through
+ * D204's declared arm table, which is the same derivation the evidence receipt
+ * uses — so the panel and the receipt cannot disagree about a human decision.
+ * The span stream is deliberately NOT the source: the command service emits
+ * `resolutionKey: "resolved"` for every gate (the one key that is true without
+ * a display vocabulary), so a wire arm keyed on it was structurally unreachable
+ * and every settled gated run's panel said the gate was absent — separations
+ * §9.17 item 7(a).
+ *
+ * Every way this read can fail to produce a verdict is a NAMED absence, not a
+ * coerced one. That is the split with the receipt, and it is deliberate: the
+ * receipt is the durable artifact and REFUSES to derive at all when a gate is
+ * undeclared or stores an arm value nobody declared (D204), while the panel
+ * must still render the run it is explaining — so it states the exact gap in
+ * the reason an operator reads instead of taking the surface down. Neither ever
+ * guesses the word.
+ */
+function settledGateWire(
+  runId: string,
+  workflowId: string,
+  stored: GateResultRecord | undefined,
+  folded: RunFoldRecord["resolvedGates"][number] | undefined,
+): unknown {
+  if (stored === undefined) {
+    return folded === undefined
+      ? { state: "absent", reason: "this run declares no operator gate" }
+      : {
+        state: "absent",
+        reason: `this run's span stream recorded gate ${folded.gate} resolved at ${folded.resolvedAt}, `
+          + "and authority holds no gate result row for it — the decision cannot be attributed to anyone",
+      };
+  }
+  const gateId = String(stored.gateId);
+  const declaration = findGateDecision(workflowId, gateId);
+  if (declaration === undefined) {
+    return {
+      state: "absent",
+      reason: `gate ${gateId} of ${workflowId} has no declared decision in `
+        + "src/domain/trust/gate-decisions.ts, so this build cannot say what its stored answer means",
+    };
+  }
+  const leaves = evidenceLeaves(stored.result.value);
+  const decided = leaves.find((leaf) => leaf.path === declaration.decisionPath);
+  if (decided === undefined) {
+    return {
+      state: "absent",
+      reason: `gate ${gateId} stored no leaf at its declared decision path "${declaration.decisionPath}" `
+        + `(it stored: ${leaves.map((leaf) => leaf.path).join(", ")})`,
+    };
+  }
+  const arm = declaration.arms.find((candidate) => candidate.value === decided.value);
+  if (arm === undefined) {
+    return {
+      state: "absent",
+      reason: `gate ${gateId} stored ${JSON.stringify(decided.value)} at "${declaration.decisionPath}" and no `
+        + `declared arm matches it (declared: ${declaration.arms.map((candidate) => candidate.value).join(", ")})`,
+    };
+  }
+  if (arm.outcome !== "approved" && arm.outcome !== "rejected") {
+    return {
+      state: "absent",
+      reason: `gate ${gateId} resolved as ${arm.outcome}, which is not an approve/reject verdict`,
+    };
+  }
+  return {
+    state: "resolved",
+    gateId: deterministicUuid(`gate:${runId}:${gateId}`),
+    label: gateId,
+    resolution: arm.outcome,
+    resolvedBy: stored.resolvedBy,
+    resolvedAt: stored.resolvedAt,
+    revision: 2,
+  };
 }
 
 /**
@@ -427,32 +526,40 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
       openedAt: openGate.openedAt,
       revision: 1,
     };
-  } else if (lastResolved !== undefined) {
-    gate = lastResolved.resolutionKey === "approved" || lastResolved.resolutionKey === "rejected"
-      ? {
-        state: "resolved",
-        gateId: deterministicUuid(`gate:${runId}:${lastResolved.gate}`),
-        label: lastResolved.gate,
-        resolution: lastResolved.resolutionKey,
-        resolvedAt: lastResolved.resolvedAt,
-        revision: 2,
-      }
-      : {
-        state: "absent",
-        reason: `gate ${lastResolved.gate} resolved with key ${lastResolved.resolutionKey}, which is not an approve/reject verdict`,
-      };
   } else {
-    gate = { state: "absent", reason: "this run declares no operator gate" };
+    gate = settledGateWire(
+      runId,
+      authority.envelope.workflow,
+      deps.authority.listGateResults(runId).at(-1),
+      lastResolved,
+    );
   }
 
   const { lifecycle } = authority;
+  /**
+   * D238 — a PREVIEW terminal is not a verified completion.
+   *
+   * The run's own envelope is the authority for "this was a rehearsal": it is
+   * retained at plan time and is the same fact `buildRunEvidenceReceipt` checks
+   * against the stored terminal row's preview schema hash (D210). A `done` run
+   * that asked for a dry run reached its preview terminal — it staged nothing
+   * durable, wrote no intent, fenced nothing and committed nothing — so the
+   * result it may wear is the one the receipt derives for it, `partial`, and
+   * never `verified-done`.
+   */
+  const rehearsed = lifecycle.state === "terminal"
+    && lifecycle.outcome === "done"
+    && authority.envelope.dryRun;
   const outcome = lifecycle.state === "terminal"
     ? lifecycle.outcome === "interrupted"
       ? { state: "absent", reason: "run interrupted; doc-09 recovery will requeue or settle it" }
       : {
         state: "terminal",
-        result: ({ done: "verified-done", failed: "failed", cancelled: "cancelled", discarded: "cancelled", superseded: "cancelled" } as const)[lifecycle.outcome],
+        result: rehearsed
+          ? "partial"
+          : ({ done: "verified-done", failed: "failed", cancelled: "cancelled", discarded: "cancelled", superseded: "cancelled" } as const)[lifecycle.outcome],
         completedAt: lifecycle.endedAt,
+        ...(rehearsed ? { rehearsal: true } : {}),
       }
     : { state: "absent", reason: `run is ${status}` };
 

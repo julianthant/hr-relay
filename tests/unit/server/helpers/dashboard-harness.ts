@@ -17,6 +17,7 @@ import { NotificationRecordSchema } from "../../../../src/domain/notifications.j
 import { RunRecordSchema, type RunRecord } from "../../../../src/domain/run/record.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/domain/trust/evidence.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../../src/domain/trust/failure.js";
+import { GateResultRecordSchema, type GateResultRecord } from "../../../../src/domain/gates.js";
 import type { RunCheckpointRecord } from "../../../../src/domain/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../../src/domain/write-safety.js";
 import type { RunQueuedWire } from "../../../../src/events/types.js";
@@ -93,6 +94,14 @@ export interface AuthorityFake {
   readonly writeIntents: Map<string, WriteIntentRecord>;
   getWriteIntent(writeIntentId: string): WriteIntentRecord | undefined;
   putWriteIntent(record: WriteIntentRecord): void;
+  /**
+   * D204/D237: the durable gate decisions, oldest first, exactly as
+   * `authority.gateResults.listByRun` serves them. A parsed insert, so a
+   * fixture cannot seed a shape the real repository would refuse.
+   */
+  readonly gateResults: GateResultRecord[];
+  listGateResults(runId: string): readonly GateResultRecord[];
+  putGateResult(record: unknown): void;
 }
 
 export function authorityFake(): AuthorityFake {
@@ -102,6 +111,7 @@ export function authorityFake(): AuthorityFake {
   const failures = new Map<string, FailureRecord>();
   const receipts = new Map<string, RunEvidenceReceipt>();
   const writeIntents = new Map<string, WriteIntentRecord>();
+  const gateResults: GateResultRecord[] = [];
   const notifications: NotificationRecord[] = [];
   const checkpointKey = (workflowId: string, itemId: string, nodeId: string): string =>
     `${workflowId}\u0000${itemId}\u0000${nodeId}`;
@@ -125,6 +135,9 @@ export function authorityFake(): AuthorityFake {
     writeIntents,
     getWriteIntent: (writeIntentId) => writeIntents.get(writeIntentId),
     putWriteIntent: (record) => writeIntents.set(record.writeIntentId, record),
+    gateResults,
+    listGateResults: (runId) => gateResults.filter((record) => record.runId === runId),
+    putGateResult: (record) => gateResults.push(GateResultRecordSchema.parse(record)),
   };
 }
 

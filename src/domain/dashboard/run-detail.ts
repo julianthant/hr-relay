@@ -196,14 +196,64 @@ export const TimelineWireSchema = z.strictObject({
     // factory demands THOSE unique; the wire does not re-litigate it.
   });
 
+/**
+ * D237 — the `resolved` arm carries the APPROVER.
+ *
+ * `resolvedBy` is REQUIRED and that is safe to require rather than read
+ * forward: until D237 this arm was structurally unreachable (the command
+ * service emits `resolutionKey: "resolved"` for every gate and the server
+ * mapped only the literal keys `approved`/`rejected`), so no served wire and no
+ * archived record can hold a `resolved` gate that predates the field. Making it
+ * optional would have bought read-forward safety for a shape nothing ever
+ * wrote, at the cost of a settled gate that can render without naming a human —
+ * which is the whole defect this arm exists to close.
+ *
+ * The three facts are one durable row's, never three surfaces': the kernel
+ * writes `resolvedBy`/`resolvedAt` onto the `gate_results` row inside the same
+ * transaction that stores the result (D202), and the verdict comes from D204's
+ * declared arm table over that row's own payload — the same source the evidence
+ * receipt derives its decision row from.
+ */
 export const GateDecisionWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   z.strictObject({ state: z.literal("open"), gateId: NoteIdSchema, label: z.string().min(1), openedAt: IsoInstantSchema, revision: RecordRevisionSchema }),
-  z.strictObject({ state: z.literal("resolved"), gateId: NoteIdSchema, label: z.string().min(1), resolution: z.enum(["approved", "rejected"]), resolvedAt: IsoInstantSchema, revision: RecordRevisionSchema }),
+  z.strictObject({ state: z.literal("resolved"), gateId: NoteIdSchema, label: z.string().min(1), resolution: z.enum(["approved", "rejected"]), resolvedBy: ActorIdSchema, resolvedAt: IsoInstantSchema, revision: RecordRevisionSchema }),
 ]);
+/**
+ * D238 — a REHEARSAL's terminal outcome.
+ *
+ * `rehearsal` states that this run's terminal record is a dry-run PREVIEW: the
+ * envelope asked for a dry run and the stored terminal row is bound to the
+ * preview schema (D210's coherence pair). It is not a sixth `result` and not a
+ * new confidence tier — the verdict itself stays in the receipt's own closed
+ * vocabulary, and a previewed run takes `partial`, which is exactly what
+ * `buildRunEvidenceReceipt` derives for the same run (its terminal-result
+ * obligation is `unknown` and its `DRY_RUN_PREVIEW` warning is load-bearing).
+ * The refinement below is the load-bearing half: `verified-done` is reserved for
+ * an independently verified REAL completion, so a rehearsal may never wear it.
+ *
+ * `z.literal(true).optional()` rather than a boolean: absence is the only other
+ * spelling of "not a rehearsal", so `false` would be a second one. Optional for
+ * D133 read-forward — a `RunDetailWire` frozen into an archived record before
+ * this field existed still parses, and its silence is not a claim that the run
+ * was real.
+ */
 export const OutcomeWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
-  z.strictObject({ state: z.literal("terminal"), result: z.enum(["verified-done", "done-with-warnings", "failed", "cancelled", "partial"]), completedAt: IsoInstantSchema }),
+  z.strictObject({
+    state: z.literal("terminal"),
+    result: z.enum(["verified-done", "done-with-warnings", "failed", "cancelled", "partial"]),
+    completedAt: IsoInstantSchema,
+    rehearsal: z.literal(true).optional(),
+  }).superRefine((outcome, context) => {
+    if (outcome.rehearsal === true && outcome.result === "verified-done") {
+      context.addIssue({
+        code: "custom",
+        path: ["result"],
+        message: "a rehearsal cannot be verified-done; that result names an independently verified real completion",
+      });
+    }
+  }),
 ]);
 export const ContextSummaryWireSchema = z.strictObject({
   dataFacts: z.number().int().nonnegative(),
