@@ -582,4 +582,139 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(inverted.ok, false);
     assert.match(String((await json(inverted)).message), /ends before it starts/);
   });
+
+  it("executes a bulk cancel as N CAS-bound children and answers the per-run vector (D235)", async () => {
+    const h = harness();
+
+    // Three real runs through the real plan -> start doors, one per subject.
+    const startRun = async (eid: string, commandId: string): Promise<string> => {
+      const planResponse = await h.app.request("/api/v1/start-plans", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid, mode: "read-only" }], dryRun: false }),
+      });
+      assert.equal(planResponse.status, 200);
+      const plan = await json(planResponse);
+      const fingerprints = plan.fingerprints as Record<string, string>;
+      const started = await h.app.request("/api/v1/commands", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          commandId,
+          requestedAt: h.clock.now().toISOString(),
+          requestedBy: "local-operator",
+          source: "start-run",
+          family: "start",
+          type: "start-run",
+          target: { workflowId: "fixture-graph", startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion },
+          payload: {
+            descriptorFingerprint: fingerprints.descriptorFingerprint,
+            configFingerprint: fingerprints.configFingerprint,
+            ingressSchemaHash: fingerprints.ingressSchemaHash,
+            canonicalInputSchemaHash: fingerprints.canonicalInputSchemaHash,
+            inputFingerprint: fingerprints.inputFingerprint,
+          },
+        }),
+      });
+      assert.equal((await json(started)).state, "applied");
+      return (plan.planned as { runId: string }[])[0].runId;
+    };
+    const runA = await startRun("10873698", "1a000000-0000-4000-8000-000000000001");
+    const runB = await startRun("10002296", "1a000000-0000-4000-8000-000000000002");
+    const runC = await startRun("10873700", "1a000000-0000-4000-8000-000000000003");
+    const versionOf = (runId: string): number => {
+      const run = h.database.authority.runs.get(runId);
+      assert.notEqual(run, undefined, `run ${runId} exists in authority`);
+      return (run as { version: number }).version;
+    };
+
+    // runC is cancelled up front so its bulk child exercises the REFUSED arm
+    // through the same kernel precondition a single press would hit.
+    const soloCancel = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId: "1a000000-0000-4000-8000-000000000004",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "queue",
+        family: "run",
+        type: "cancel",
+        target: { runId: runC, expectedVersion: versionOf(runC) },
+      }),
+    });
+    assert.equal((await json(soloCancel)).state, "applied");
+
+    // Whole-request refusals reach NO target: an empty batch, a duplicated
+    // target, and the all-or-none mode this runtime deliberately refuses.
+    const envelope = {
+      commandId: "1a000000-0000-4000-8000-00000000000b",
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "queue",
+      family: "run",
+      type: "cancel",
+      bulkCommandId: "1a000000-0000-4000-8000-00000000000b",
+      mode: "best-effort",
+    } as const;
+    const postBulk = async (body: unknown): Promise<{ status: number; payload: Record<string, unknown> }> => {
+      const response = await h.app.request("/api/v1/commands/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      return { status: response.status, payload: await json(response) };
+    };
+
+    const empty = await postBulk({ ...envelope, targets: [] });
+    assert.equal(empty.status, 422);
+    assert.equal(empty.payload.state, "refused");
+    assert.equal(empty.payload.code, "schema-mismatch");
+
+    const duplicated = await postBulk({
+      ...envelope,
+      targets: [{ runId: runA, expectedVersion: 1 }, { runId: runA, expectedVersion: 1 }],
+    });
+    assert.equal(duplicated.payload.state, "refused");
+    assert.match(String(duplicated.payload.message), /more than once/);
+
+    const allOrNone = await postBulk({ ...envelope, mode: "all-or-none", targets: [{ runId: runA, expectedVersion: 1 }] });
+    assert.equal(allOrNone.payload.state, "refused");
+    assert.equal(allOrNone.payload.code, "capability-unavailable");
+    assert.match(String(allOrNone.payload.message), /Nothing was\s+attempted/);
+
+    // The mixed vector: one applied, one conflict (stale version, with the
+    // server's currentVersion), one refused by the kernel's own precondition.
+    const bulkBody = {
+      ...envelope,
+      targets: [
+        { runId: runA, expectedVersion: versionOf(runA) },
+        { runId: runB, expectedVersion: 999 },
+        { runId: runC, expectedVersion: versionOf(runC) },
+      ],
+    };
+    const first = await postBulk(bulkBody);
+    assert.equal(first.status, 200);
+    assert.equal(first.payload.state, "vector");
+    assert.equal(first.payload.requestedCount, 3);
+    const results = first.payload.results as Record<string, unknown>[];
+    assert.deepEqual(results.map(({ outcome }) => outcome), ["applied", "conflict", "refused"]);
+    assert.equal(results[0].runId, runA);
+    assert.equal(results[0].replayed, false);
+    assert.equal(results[1].runId, runB);
+    assert.equal(results[1].currentVersion, versionOf(runB), "conflict carries the server's own current version");
+    assert.equal(results[2].runId, runC);
+    assert.equal(typeof results[2].code, "string");
+    const childIds = new Set(results.map(({ commandId }) => commandId));
+    assert.equal(childIds.size, 3, "each target's child command has its own derived identity");
+
+    // Re-delivering the SAME bulk envelope replays the applied child rather
+    // than filing a second cancel: the child ids are derived, not minted.
+    const replay = await postBulk(bulkBody);
+    assert.equal(replay.payload.state, "vector");
+    const replayed = replay.payload.results as Record<string, unknown>[];
+    assert.deepEqual(replayed.map(({ outcome }) => outcome), ["applied", "conflict", "refused"]);
+    assert.equal(replayed[0].replayed, true, "the applied child is answered from the journal, not re-executed");
+    assert.equal(replayed[0].commandId, results[0].commandId);
+  });
 });
