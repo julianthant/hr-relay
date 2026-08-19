@@ -4147,11 +4147,7 @@ export class AuthorityDatabase implements Disposable {
           request.expectedVersion,
           request.now,
           undefined,
-          (current) => RunRecordSchema.parse({
-            ...current,
-            ...(request.displayName === undefined ? {} : { displayName: request.displayName }),
-            ...(request.hidden === undefined ? {} : { hidden: request.hidden }),
-          }),
+          (current) => RunRecordSchema.parse({ ...current, displayName: request.displayName }),
         );
       },
       bumpPriority: (input: unknown) => {

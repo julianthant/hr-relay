@@ -83,7 +83,6 @@ export function buildQueuedRun(spec: QueuedRunSpec): RunRecord {
     },
     lifecycle: { state: "queued" },
     claimGeneration: 0,
-    hidden: false,
     appVersion: spec.appVersion,
     runNumber: spec.runNumber,
     version: 1,

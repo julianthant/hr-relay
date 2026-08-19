@@ -65,8 +65,6 @@ export const CommandActionSchema = z.enum([
   "cancel",
   "bump",
   "rename",
-  "hide",
-  "unhide",
   "edit-checkpoint",
   "resolve-write-present",
   "resolve-write-absent",
@@ -247,7 +245,7 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
 ]);
 
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "cancel", "bump", "hide", "unhide"]), target: RunVersionTargetSchema }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "cancel", "bump"]), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
   // D166: doc 06 §6.3's field-level patch model. The earlier whole-checkpoint
   // blob payload was a deferred-arm placeholder no producer ever sent.
@@ -347,7 +345,7 @@ export const CommandAuditRecordSchema = z.strictObject({
 export const BulkRunCommandRequestSchema = z.strictObject({
   ...CommandEnvelopeFields,
   family: z.literal("run"),
-  type: z.enum(["retry", "cancel", "bump", "hide", "unhide"]),
+  type: z.enum(["retry", "cancel", "bump"]),
   bulkCommandId: CommandIdSchema,
   targets: z.array(RunVersionTargetSchema).min(1),
   mode: z.enum(["all-or-none", "best-effort"]),
@@ -364,7 +362,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"],
   settings: ["apply-settings"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
-  run: ["retry", "cancel", "bump", "rename", "hide", "unhide", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"],
+  run: ["retry", "cancel", "bump", "rename", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze"],
   capture: ["capture-upload", "capture-replace", "capture-reorder", "capture-delete", "capture-finalize", "capture-retry-finalize", "capture-discard"],
@@ -394,7 +392,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"] },
   { family: "settings", actions: ["apply-settings"] },
   { family: "version-archive", actions: ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"] },
-  { family: "run", actions: ["retry", "cancel", "bump", "rename", "hide", "unhide", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"] },
+  { family: "run", actions: ["retry", "cancel", "bump", "rename", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze"] },
   { family: "capture", actions: ["capture-upload", "capture-replace", "capture-reorder", "capture-delete", "capture-finalize", "capture-retry-finalize", "capture-discard"] },

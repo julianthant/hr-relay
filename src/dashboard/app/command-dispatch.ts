@@ -227,9 +227,7 @@ export function composeCommandRequest(
     case "retry":
     case "cancel":
     case "bump":
-    case "hide":
-    case "unhide":
-      // Four verbs whose whole payload is the target. `rename` is deliberately
+      // Three verbs whose whole payload is the target. `rename` is deliberately
       // NOT in this list even though its target is identical — it carries a
       // value, and a fall-through here would post a rename with no name.
       return {

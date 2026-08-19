@@ -75,7 +75,7 @@ export const EnqueuePolicySchema = z.enum(["reject-active", "supersede-active", 
 export type EnqueuePolicy = z.infer<typeof EnqueuePolicySchema>;
 
 export const CommandActionIdSchema = z.enum([
-  "retry", "cancel", "bump", "rename", "hide", "unhide",
+  "retry", "cancel", "bump", "rename",
   "edit-checkpoint", "resolve-write-present", "resolve-write-absent",
 ]);
 export const NavigationActionIdSchema = z.enum(["open-review", "open-evidence"]);
@@ -105,7 +105,7 @@ export type WorkflowActionPolicy = z.infer<typeof WorkflowActionPolicySchema>;
 /** The action set every ordinary workflow gets; a descriptor opts into more, never fewer by accident. */
 export const STANDARD_WORKFLOW_ACTIONS: WorkflowActionPolicy = Object.freeze(
   WorkflowActionPolicySchema.parse({
-    enabled: ["retry", "cancel", "bump", "rename", "hide", "unhide"],
+    enabled: ["retry", "cancel", "bump", "rename"],
   }),
 );
 

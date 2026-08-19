@@ -4,7 +4,7 @@
  * Every control surface — dashboard, CLI, gate resolvers, recovery — mutates
  * authority through exactly this dispatcher. It is exhaustive over D95's nine
  * family/action shells: Phase-1f activates start-run, the worker/browser arms,
- * run retry/cancel/bump/rename/hide/unhide plus typed write resolution, and
+ * run retry/cancel/bump/rename plus typed write resolution, and
  * gate resolution. Every later arm stays schema-recognized and returns
  * `rejected{code:"capability-unavailable"}` computed with ZERO authority side
  * effects — no journal row, no audit row, no generation advance.
@@ -105,8 +105,6 @@ const PHASE1_ACTIVE = {
     "cancel",
     "bump",
     "rename",
-    "hide",
-    "unhide",
     "resolve-write-present",
     "resolve-write-absent",
     "edit-checkpoint",
@@ -195,7 +193,7 @@ export interface WorkflowDescriptorResolver {
  * must return the updated run; a throw unwinds the whole command.
  */
 type RunCommand = Extract<CommandRequest, { family: "run" }>;
-type RunBasicCommand = Extract<RunCommand, { type: "retry" | "cancel" | "bump" | "hide" | "unhide" }>;
+type RunBasicCommand = Extract<RunCommand, { type: "retry" | "cancel" | "bump" }>;
 type RunEditCheckpointCommand = Extract<RunCommand, { type: "edit-checkpoint" }>;
 type CaptureCommand = Extract<CommandRequest, { family: "capture" }>;
 type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
@@ -618,7 +616,6 @@ function executeRetry(
     input: current.input,
     lifecycle: { state: "queued" },
     claimGeneration: 0,
-    hidden: false,
     // A retry is a fresh enqueue, so it stamps the build it is enqueued
     // under — not the build the run it retries carried. The DESCRIPTOR
     // identity above is deliberately inherited; the app build is not.
@@ -1564,61 +1561,50 @@ function executeIntake(
 }
 
 /**
- * What a stale command was about to overwrite, in the operator's terms.
+ * The one presentation verb: `rename`.
  *
- * Exhaustive over this function's declared parameter type rather than over the
- * three verbs that actually reach it: `RunBasicCommand` groups all five plain
- * run verbs into ONE union arm, so the three extra keys are the price of a
- * table the compiler checks. A `Partial` record would take that check away,
- * and a ternary chain would hand `retry` the word "unhiding".
+ * D234 retired `hide`/`unhide` on the operator's ruling that the queue's model
+ * is runs and ARCHIVED runs, with no third hidden class, so this arm no longer
+ * has a set of verbs to spell a refusal for and the copy is a constant. If a
+ * second presentation verb is ever ratified, the refusal copy goes back to a
+ * compiler-checked table keyed on the parameter type — a ternary chain there
+ * is how `retry` ends up told to "refresh before renaming it".
  */
-const PRESENTATION_REFRESH: Readonly<Record<(RunBasicCommand | RunRenameCommand)["type"], string>> = {
-  rename: "refresh before renaming it — the name you are holding may not be the name it has",
-  hide: "refresh before hiding it",
-  unhide: "refresh before unhiding it",
-  retry: "refresh before retrying it",
-  cancel: "refresh before cancelling it",
-  bump: "refresh before bumping it",
-};
-
 function executePresentation(
   repositories: AuthorityRepositories,
-  request: RunBasicCommand | RunRenameCommand,
+  request: RunRenameCommand,
   now: string,
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
   /*
-   * D233 — CAS THE CALLER'S VALUE, like every other run verb (`:648` cancel,
-   * `:1588` write resolution, `:1675` gate).
+   * D233 — CAS THE CALLER'S VALUE, like every other run verb (cancel, bump,
+   * write resolution, gate).
    *
    * This arm used to pass `current.version` — its OWN re-read — into the
    * store's `expectedVersion`, which is a compare-and-swap against a value
    * read one line earlier and therefore a CAS that cannot fail. So a stale
-   * `Rename` or `Hide` from a tab left open since yesterday applied silently
-   * instead of answering `conflict`, and the operator was told "Recorded."
+   * `Rename` from a tab left open since yesterday applied silently instead of
+   * answering `conflict`, and the operator was told "Recorded."
    *
-   * It was written that way on a true premise: presentation changes no
-   * outcome, task, checkpoint, intent or evidence, so a late `Hide` is
-   * harmless. RENAME is where that stops being true — a name is a value the
-   * operator AUTHORED, and applying yesterday's name over today's silently
-   * discards somebody's edit and reports success. Hiding keeps the same
-   * discipline because one CAS rule with no exceptions is the only kind a
-   * reviewer can check.
+   * It was written that way on a true premise about the verbs D234 has since
+   * retired: hiding changes no outcome, task, checkpoint, intent or evidence,
+   * so a late one was harmless. RENAME is where that stops being true — a name
+   * is a value the operator AUTHORED, and applying yesterday's name over
+   * today's silently discards somebody's edit and reports success.
    */
   if (current.version !== request.target.expectedVersion) {
     conflict(
       request,
       current.version,
       `run ${request.target.runId} is at version ${String(current.version)}, not `
-      + `${String(request.target.expectedVersion)}; ${PRESENTATION_REFRESH[request.type]}`,
+      + `${String(request.target.expectedVersion)}; refresh before renaming it — the name you are `
+      + "holding may not be the name it has",
     );
   }
   const outcome = repositories.runs.updatePresentation({
     runId: request.target.runId,
     expectedVersion: request.target.expectedVersion,
-    ...(request.type === "rename"
-      ? { displayName: request.payload.displayName }
-      : { hidden: request.type === "hide" }),
+    displayName: request.payload.displayName,
     now,
   });
   requireApplied(outcome, `${request.type} on run ${request.target.runId}`);
@@ -2296,10 +2282,7 @@ function dispatchActive(
         case "retry": return executeRetry(dependencies, repositories, request, now);
         case "cancel": return executeCancel(repositories, request, now);
         case "bump": return executeBump(repositories, request, now);
-        case "rename":
-        case "hide":
-        case "unhide":
-          return executePresentation(repositories, request, now);
+        case "rename": return executePresentation(repositories, request, now);
         case "resolve-write-present":
         case "resolve-write-absent":
           return executeWriteResolution(dependencies, repositories, request, now);
