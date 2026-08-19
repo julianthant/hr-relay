@@ -28,10 +28,25 @@
    The `:root` block keeps a FALLBACK that aliases the app's own theme, so a
    primitive rendered outside a themed subtree still resolves every token.
 
-   PALETTE BUDGET: one accent + four semantic hues (info / success / warning /
-   danger), and nothing else. `Running` is neutral on purpose — it is the most
-   common status on screen and a hue spent there is a hue spent everywhere. The
-   categorical `--log-*` accents are retired to a neutral ramp (see each theme).
+   PALETTE BUDGET: one accent + FIVE semantic hues (info / success / warning /
+   danger / rehearsal), and nothing else. `Running` is neutral on purpose — it is
+   the most common status on screen and a hue spent there is a hue spent
+   everywhere. The categorical `--log-*` accents are retired to a neutral ramp
+   (see each theme).
+
+   THE FIFTH HUE IS SPENT ON `dry run`, and it was bought rather than borrowed
+   (D232, operator-ratified 2026-08-19). The budget was four hues for four
+   YEARS of this file's life and the rehearsal chip has no honest home in any of
+   them: `info` is the `test` chip it sits directly beside — the one pair a
+   glance has to separate — and every amber token means "a human is involved",
+   which a rehearsal is not. So `--ds-rehearsal-*` is a real hue with real
+   light/dark values, NOT an alias of `--ds-status-parked-*`; the demo's own tone
+   is named `violet` and bound to those amber parked tokens, which is the
+   collision this deviates from on purpose. It is deliberately NOT named after
+   its colour: `--log-violet` was a hue name on a semantic token and was
+   re-derived to amber for a different meaning (unconfirmed / parked), so the
+   name outlived the colour and now lies about it. A token named for what it
+   MEANS cannot rot that way.
 
    Naming: --ds-<group>-<role>[-<state>]
      surface | border | fg | control | status | radius | text | lh | space
@@ -296,6 +311,20 @@
   --ds-success-mark: var(--success);
   --ds-success-bg: color-mix(in srgb, var(--success) 12%, transparent);
   --ds-success-border: color-mix(in srgb, var(--success) 38%, transparent);
+
+  /* REHEARSAL — a run that read every system and wrote to none (D6/D232).
+
+     The one hue no status owns, because a rehearsal is not a status: a dry run
+     can be queued, running, done or failed, and the flag is orthogonal to all
+     four. It is declared with a literal here rather than aliased to an app
+     token because the product's own theme has no violet — see each theme block
+     for its pair. No `-solid-*` on purpose: this hue is only ever a chip, and a
+     solid violet fill would be a fifth voice in the loudness ladder. */
+  --rehearsal: #a78bfa;
+  --ds-rehearsal-fg: var(--rehearsal);
+  --ds-rehearsal-mark: var(--rehearsal);
+  --ds-rehearsal-bg: color-mix(in srgb, var(--rehearsal) 13%, transparent);
+  --ds-rehearsal-border: color-mix(in srgb, var(--rehearsal) 55%, transparent);
 
   /* ---------------------------------------------------------------------
      DIRECTION — which way a value moved. ONE axis, TWO tones.
@@ -858,6 +887,15 @@ body[data-demo-theme="dark"] {
   --ds-success-bg: color-mix(in srgb, #12b76a 12%, transparent);
   --ds-success-border: color-mix(in srgb, #12b76a 38%, transparent);
 
+  /* Rehearsal (D232). #a78bfa measures 6.5:1 as text on this theme's card
+     plane (#18181b), so the swatch and the text step are one value here — the
+     same place the `-fg` / `-mark` split lands on every other dark-theme hue. */
+  --rehearsal: #a78bfa;
+  --ds-rehearsal-fg: #a78bfa;
+  --ds-rehearsal-mark: #a78bfa;
+  --ds-rehearsal-bg: color-mix(in srgb, #a78bfa 13%, transparent);
+  --ds-rehearsal-border: color-mix(in srgb, #a78bfa 55%, transparent);
+
   /* --- direction (read / write) ------------------------------------------
      Measured on the card plane (#18181b): read text 8.1:1, write text 10.0:1,
      read mark 8.1:1, write mark 6.4:1. Both clear the 4.5:1 text floor, so on
@@ -1049,6 +1087,15 @@ body[data-demo-theme="light"] {
   --ds-success-mark: #059669;
   --ds-success-bg: color-mix(in srgb, #059669 12%, transparent);
   --ds-success-border: color-mix(in srgb, #065f46 38%, transparent);
+
+  /* Rehearsal (D232). This is the theme the `-fg` / `-mark` split exists for:
+     violet-600 (#7c3aed) is 5.5:1 on white as a mark but the chip's ink is read
+     at 11px, so the text step drops to violet-700 (#6d28d9) at 7.1:1. */
+  --rehearsal: #6d28d9;
+  --ds-rehearsal-fg: #6d28d9;
+  --ds-rehearsal-mark: #7c3aed;
+  --ds-rehearsal-bg: color-mix(in srgb, #7c3aed 10%, transparent);
+  --ds-rehearsal-border: color-mix(in srgb, #6d28d9 40%, transparent);
 
   /* --- direction (read / write) ------------------------------------------
      This is the theme the `-fg` / `-mark` split exists for. Sky-600 (#0284c7)
