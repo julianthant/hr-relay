@@ -104,6 +104,7 @@ import {
   EXIT_TERMINAL_AT,
   seedPersonLookupExitRun,
 } from "../unit/fixtures/receipt-run-fixtures.js";
+import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
 
 /* ── the source file, as an operator would upload it ─────────────────────── */
 
@@ -214,6 +215,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
     clock,
     appVersion: APP_VERSION,
     descriptorSetHash: descriptorSetHash(descriptors.map((descriptor) => descriptor.contractFingerprint)),
+    ledger: createLedgerReadThrough(stateRoot),
     authority: {
       getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),

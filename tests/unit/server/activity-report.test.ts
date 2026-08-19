@@ -12,9 +12,13 @@
  * operator cannot see.
  */
 import assert from "node:assert/strict";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { ActivityReportWireSchema, type ActivityReportWire } from "../../../src/domain/dashboard/activity.js";
+import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
+import { ledgerDirectory, ledgerFilePath } from "../../../src/infra/ledger/ledger-projector.js";
+import { IDEMPOTENCY_KEY, LEDGER_PAYLOAD } from "../fixtures/phase1c-contract-fixtures.js";
 import { kualiTimekeeperAnnotationDescriptor } from "../../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
@@ -549,5 +553,73 @@ describe("the Activity report refuses rather than inventing a window", () => {
     w.authority.records.delete(uuidOf(12));
     assert.equal(w.projection.buildActivityReportWire(D0, D2).totalRuns, 8);
     assert.throws(() => w.projection.buildActivityReportWire(D3, D3), /not in authority/);
+  });
+});
+
+/**
+ * D236 — the write-ledger block: the ONE total on this payload that does not
+ * descend from the run/queue fold.
+ *
+ * Both cases below exist because the two corpora genuinely do not cover the
+ * same rows. The block is read over the same window and reported BESIDE the
+ * totals, and the wire deliberately asserts no relationship between them —
+ * which is exactly why a range holding zero runs can still hold entries.
+ */
+describe("the Activity report's write-ledger block (D236)", () => {
+  function fileLedgerEntry(
+    w: DashboardWorld,
+    seq: number,
+    overrides: Readonly<{ system?: string; instance?: "prod" | "test"; confirmedAt: string }>,
+  ): void {
+    const system = overrides.system ?? "ucpath";
+    mkdirSync(ledgerDirectory(w.stateRoot), { recursive: true });
+    const path = ledgerFilePath(w.stateRoot, system, overrides.confirmedAt.slice(0, 10));
+    appendFileSync(path, `${JSON.stringify({
+      outboxId: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`,
+      seq,
+      payload: {
+        ...LEDGER_PAYLOAD,
+        system,
+        idempotencyKeyDigest: deriveIdempotencyKeyDigest(system, IDEMPOTENCY_KEY),
+        instance: overrides.instance ?? "prod",
+        confirmedAt: overrides.confirmedAt,
+      },
+    })}\n`, "utf8");
+  }
+
+  it("serves what was filed beside the totals, without reconciling the two", () => {
+    const w = world({ descriptors: REGISTRY });
+    seedActivityWorld(w);
+    fileLedgerEntry(w, 0, { confirmedAt: instantOffsetOf(1) });
+    fileLedgerEntry(w, 1, { confirmedAt: instantOffsetOf(1), instance: "test" });
+
+    const report = w.projection.buildActivityReportWire(D0, D2);
+    assert.deepEqual(report.ledger, {
+      systems: [{ system: "ucpath", entries: 2, prod: 1, test: 1 }],
+    });
+    // The seam, stated as an assertion: the block is NOT a partition of the
+    // range's runs, and nothing on the wire pretends it is.
+    assert.notEqual(report.ledger.systems[0]?.entries, report.totalRuns);
+  });
+
+  it("still reports entries over a window whose runs are all gone", () => {
+    const w = world({ descriptors: REGISTRY });
+    // No spans at all — the run corpus is empty for this range, which is also
+    // what an archived-away week looks like. A ledger entry outlives the run
+    // that filed it, so reporting "nothing was filed" here would be a false
+    // statement about a real HR transaction.
+    fileLedgerEntry(w, 0, { system: "kuali", confirmedAt: instantOffsetOf(1) });
+
+    const report = w.projection.buildActivityReportWire(D0, D2);
+    assert.equal(report.totalRuns, 0);
+    assert.deepEqual(report.ledger, {
+      systems: [{ system: "kuali", entries: 1, prod: 1, test: 0 }],
+    });
+  });
+
+  it("serves an empty block when nothing in the window filed anything", () => {
+    const w = world({ descriptors: REGISTRY });
+    seedActivityWorld(w);
+    assert.deepEqual(w.projection.buildActivityReportWire(D0, D2).ledger, { systems: [] });
   });
 });

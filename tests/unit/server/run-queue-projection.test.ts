@@ -38,6 +38,7 @@ import {
   uuidOf,
   type DashboardWorld,
 } from "./helpers/dashboard-harness.js";
+import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 
 const worlds: DashboardWorld[] = [];
 
@@ -307,6 +308,7 @@ describe("THE run/queue projection (D81)", () => {
       clock: w.clock,
       appVersion: APP_VERSION,
       descriptorSetHash: DESCRIPTOR_SET_HASH,
+      ledger: createLedgerReadThrough(w.stateRoot),
       authority: w.authority,
       descriptors: { resolve: () => undefined },
       projectionStore: w.store,

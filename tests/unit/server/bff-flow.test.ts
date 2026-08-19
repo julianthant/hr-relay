@@ -37,6 +37,7 @@ import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER,
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
+import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 
 interface Harness {
   readonly app: Hono;
@@ -76,6 +77,7 @@ function harness(): Harness {
     clock,
     appVersion: "0.1.0",
     descriptorSetHash: descriptorSetHash([fixtureDescriptor.contractFingerprint]),
+    ledger: createLedgerReadThrough(stateRoot),
     authority: { getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: () => [],
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
