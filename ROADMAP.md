@@ -5,7 +5,7 @@
 > changelog is `docs/rebuild/04-reconciliation.md`. If this file ever disagrees with those, **they
 > win**. Sessions: regenerate the status sections of this file at every slice boundary.
 >
-> **Last updated:** 2026-08-16 · Phase 3 active · decisions through **D221** · schema **v14**
+> **Last updated:** 2026-08-18 · Phase 3 active · decisions through **D225** · schema **v14**
 
 ---
 
@@ -18,10 +18,10 @@
 | Phases complete | 0, 1 (a–e, f, g-spine, i-spine), 2 (proof + 2g + 2h + 2i + 2j) |
 | Active phase | **Phase 3 — per-workflow migration**; separations **chunks 1, 2 and 3 LANDED** (the `new-kronos` store + timecard-read sub-workflow, D196; the `kuali` separation-document read + the `separations` mini-store + §4a's live-captured exhaustive termination-type map, D197; the UCPath whole-employment-grid read + doc 09 §14's **ALWAYS-GATE identity approval**, D201/D202/D203 — live-proved to terminal `done` through a real operator gate command; and **chunk 4** — the UCPath termination WRITE, D206, two fenced transactions with the ALWAYS-GATE in front of both) and **chunk 5a/5b/5c** — the Kuali finalization write's contracts, driver, descriptor, graph and its live read-only + dry-run pass, D207, ONE transaction node behind the same ALWAYS-GATE) and **chunk 6a — THE COMPOSITION, D211**: eighteen nodes, one ALWAYS-GATE, three fenced transactions) and **chunk 6b — the COMPOSED LIVE PASS, D212/D213**: the whole read chain live on two real subjects in 82 s, parked at the ALWAYS-GATE, a real approval through the real command endpoint, resumed — with ZERO durable write rows proved from authority. Two live defects found and fixed; the preview terminal was blocked one node short by two named PLATFORM items (a dry run previews the pending-sweep prepare without its probe; an `always-rerun` node collides with its own checkpoint across a gate resume), both since FIXED as D214/D215) and **chunk 6c — the PREVIEW TERMINAL REACHED**: the composed dry run on doc 4502 settled at a real preview terminal (`transaction.previewed`, a terminal row bound to the preview schema hash, a `partial`/`unknown` receipt with the load-bearing `DRY_RUN_PREVIEW`), and the composed REAL run on canary doc 4510 refused `NO_ACTIVE_EMPLOYMENT` **before the gate** — still ZERO durable write rows in the whole database beyond 2026-08-04's Phase-2 commit. The controlled real commits stay open on your named canaries. **Since 6c (08-14→08-15):** platform fixes **D218** (the projector tails the span stream from disk, cross-process — post-boot runs no longer serve an empty timeline) and **D221** (a retry is the ITEM's next attempt, so a run failing at/after an `always-rerun` node is retryable again); **D219/D220** workflow roles (a chunk harness renders as a step of its composition; the rail lists MAIN workflows only); and the **dashboard detail-fidelity wave** — queue rows (liveMessage/dryRun/gate-age/warnings/per-row actions/subject titles), run-detail per-step durations, archive (instance filter, computed retention, ledger read-through), and the Activity report's per-workflow cross-tab with the Who column |
 | After Phase 3 | The one all-at-once cutover (D89/D93), then rollback-window closure |
-| Decisions ratified | D1–D221 (D131 is a permanent gap — never reused) |
+| Decisions ratified | D1–D225 (D131 is a permanent gap — never reused) |
 | Authority schema | v14 (D214 rebuilds `run_checkpoints` with `claimGeneration`; released migrations SHA-pinned, immutable; D221 deliberately moved no schema) |
 | Guards | **61 active** / 8 retired / 2 planned (`one-time-import-offline`, `preflight-coverage`) |
-| Tests | full `npm run test` 2026-08-16: **1998 across 209 files**, green · **parity 147/147 green in ASSERT mode** (2026-08-14 re-freeze) |
+| Tests | full `npm run test` 2026-08-18: **2017 across 211 files**, green · **parity 147/147 green in ASSERT mode** (2026-08-14 re-freeze) |
 | Workflows registered | 8 — `person-lookup` (live-proven), `kuali-timekeeper-annotation` (controlled-commit-proven), and separations chunks 1–5: `separations-kronos-timecard`, `separations-kuali-read`, `separations-identity-check` (all three live-proven), `separations-ucpath-termination` (prepare arm live-proven; commit awaits the canary), `separations-kuali-finalization` (prepare arm live-proven on real doc 4524; commit awaits the canary), and **`separations` itself — the composition, live-proved through the real pipeline to its gate, back, and all the way to a real PREVIEW TERMINAL (6c); only the controlled commits stay open**. Every module now declares a closed **role** (D219/D220): `separations` is the composition, its five chunks are `chunk-harness of separations`, `kuali-timekeeper-annotation` is `proving`; the rail lists main workflows only |
 | Legacy capability register | 78 entries: **48 open · 20 replaced · 7 native · 3 retired** — cutover requires zero open |
 | Production writes proven | Kuali controlled commit on real doc 4489 (D135): fence → click → read-back → settle, idempotent re-run 2 ms |
@@ -32,24 +32,25 @@ write safety, evidence, storage, intake, capture, operator surfaces, restore/soa
 the platform one at a time, each with its own live proof. Platform risk is largely retired; the
 remaining work is volume with per-workflow verification.
 
-**Backend vs frontend, as of 2026-08-16:**
+**Backend vs frontend, as of 2026-08-18:**
 
 - **Backend** — separations is at **7 of 9 exit criteria** (`docs/migrations/separations.md` §6):
   everything through the composed live dry run to a real preview terminal is MET. Open: **the three
   controlled commits** (blocked on you naming a §4f2 canary — see §4 below) and one regression
   record (the browser-profile wedge from §9.17 item 5, recorded as a shape but not root-caused; the
-  retry collision half closed as D221). No decision higher than D221 exists; no workflow after
-  separations is named yet (doc 07 §3.3 keeps its ordering for "whatever is taken up next").
+  retry collision half closed as D221). No workflow after separations is named yet (doc 07 §3.3 keeps its ordering for "whatever is taken up next").
 - **Frontend** — the detail-fidelity wave (`docs/plans/2026-08-13-detail-fidelity-audit.md`) is
-  **COMPLETE R1–R8**, and the 08-14→08-15 push landed queue rows, taxonomy, run-detail durations,
-  archive, and the Activity cross-tab on the REAL wire. What remains lives in the
-  **findings ledger** (`docs/findings/`, ~24 open records: queue-rows 7 · archive 8 · activity 5 ·
+  **COMPLETE R1–R8**, and the 08-14→08-18 push landed queue rows, taxonomy, run-detail durations,
+  archive, the Activity cross-tab, and the **categorical run-detail timeline (D225)** on the REAL wire. What remains lives in the
+  **findings ledger** (`docs/findings/`, ~23 open records: archive 8 · queue-rows 6 · activity 5 ·
   explorer 3 · dashboard-projection 1) plus the plan's named tails: the wire-hookup ledger rows
   still to declare, the bulk command strip + result-vector band, the worker-card/session-footer
   wire batch, the **identity-approval ceremonies** (one-click send works; choose-a-candidate /
   type-the-EID / rejection-reason are refused by name until built), and a gated parity fixture.
   Two live-run surface honesty gaps are recorded, not fixed (§9.17 item 7): a settled gated run's
   panel cannot say its gate was approved, and a preview run's outcome chip reads `verified-done`.
+  **The execution brief for all of it is `docs/handoffs/2026-08-18-phase-3-completion-orchestrator.md`**,
+  built on the plan at `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md`.
 
 ---
 
