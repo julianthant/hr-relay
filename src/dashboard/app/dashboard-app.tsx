@@ -46,6 +46,7 @@ import {
   type QueueViewState,
 } from "../surfaces/queue.js";
 import { ConfirmCommandDialog, type ActionTarget, type PendingCommand } from "../surfaces/actions.js";
+import { RenameRunDialog, type PendingRename } from "../surfaces/run-identity.js";
 import { composeCommandRequest, type CommandAction } from "./command-dispatch.js";
 import { useGlobalKeys } from "./global-keys.js";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/status.js";
@@ -309,6 +310,8 @@ function LoadedApp({
    * descriptor carries no `confirm`).
    */
   const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null);
+  /** the run whose name is being edited (D233); `null` while the dialog is shut */
+  const [pendingRename, setPendingRename] = useState<PendingRename | null>(null);
   const client = useDashboardClient();
   const { toast } = useToasts();
 
@@ -501,7 +504,16 @@ function LoadedApp({
    * out (the same rule `park-resolve.tsx` follows).
    */
   const dispatchCommand = useCallback(
-    (action: CommandAction, target: ActionTarget): void => {
+    /**
+     * `answers` carries the values only a HUMAN can author, collected by
+     * whichever dialog owns that question. There is exactly one today
+     * (`renameAnswer`), and it is a parameter rather than another piece of
+     * component state for the reason the identity ceremony taught: a value the
+     * composer must not invent should travel WITH the call that needs it, so
+     * "the dialog did not answer" and "the state had not updated yet" can
+     * never look the same.
+     */
+    (action: CommandAction, target: ActionTarget, answers: { renameAnswer?: string } = {}): void => {
       /*
         The gate section is still handed to the composer even though the gate's
         own controls no longer route here (D226 sends them to the ceremony
@@ -518,6 +530,7 @@ function LoadedApp({
         actorId: boot.actor.id,
         source: "run-detail",
         gate: sections["identity-gate"],
+        ...(answers.renameAnswer === undefined ? {} : { renameAnswer: answers.renameAnswer }),
       });
       if (composed.state === "refused") {
         toast({ tone: "danger", title: "Nothing was sent", description: composed.reason });
@@ -561,6 +574,34 @@ function LoadedApp({
         if (action.navigate.runId !== undefined) selectRun(action.navigate.runId);
         return;
       }
+      /*
+        RENAME ASKS FOR A VALUE (D233), so it is intercepted before the confirm
+        branch rather than after it — the demo's own shape
+        (`RebuildDemo.tsx:240`). A confirm dialog re-states a decision already
+        made; this one COLLECTS the decision, and the two are not
+        interchangeable. `composeCommandRequest` refuses a rename with no name,
+        so a descriptor that somehow reached the generic path below cannot post
+        an empty one.
+
+        A run the day's projection no longer holds cannot be renamed HERE: the
+        dialog states the run's identity and its elapsed from that row, and
+        inventing a subject line for a run this build cannot see is the
+        substitution the confirm path already refuses one line down.
+      */
+      if (action.command === "rename") {
+        const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === target.runId);
+        if (surface === undefined) {
+          toast({
+            tone: "danger",
+            title: "Nothing was sent",
+            description: `run ${target.runId} is not on the day this panel is showing, so there is no row to `
+              + "name. Open the day it ran on and rename it there.",
+          });
+          return;
+        }
+        setPendingRename({ action, target, surface, nowIso: boot.serverClock.now });
+        return;
+      }
       if (action.confirm !== undefined) {
         const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === target.runId);
         setPendingCommand({
@@ -577,7 +618,7 @@ function LoadedApp({
       }
       dispatchCommand(action, target);
     },
-    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun],
+    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, boot.serverClock.now],
   );
 
   /**
@@ -1133,6 +1174,20 @@ function LoadedApp({
         onConfirm={(confirmed) => {
           setPendingCommand(null);
           dispatchCommand(confirmed.action, confirmed.target);
+        }}
+      />
+
+      {/* Rename asks for a VALUE, then goes through the SAME command service as
+          every other verb — CAS-bound to the row version its descriptor was
+          projected at, so a name typed against yesterday's row is refused by
+          the kernel with the server's own sentence rather than silently
+          overwriting today's (D233). */}
+      <RenameRunDialog
+        pending={pendingRename}
+        onCancel={() => setPendingRename(null)}
+        onConfirm={(confirmed, name) => {
+          setPendingRename(null);
+          dispatchCommand(confirmed.action, confirmed.target, { renameAnswer: name });
         }}
       />
     </div>

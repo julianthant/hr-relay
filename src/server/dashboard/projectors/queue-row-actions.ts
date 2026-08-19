@@ -26,15 +26,12 @@
  * D179's "Apply stays clickable" rule at row scale: a control disabled by a
  * client-side guess is the client claiming to know what only a transaction can.
  *
- * The three kernel-accepted run verbs this projection deliberately never
- * serves, each for a reason rather than an omission:
+ * The kernel-accepted run verbs this projection deliberately never serves, each
+ * for a reason rather than an omission:
  *
  *  - `unhide` — a hidden run is EXCLUDED from the queue projection, so no row
  *    exists to hang it off. Serving it would need a surface that lists hidden
  *    runs, and this build has none.
- *  - `rename` — the display-name edit is an inline field on the row, not a
- *    descriptor-driven control (the same disposition `wire-connectivity`'s
- *    `KERNEL_ONLY_COMMANDS` already records).
  *  - `resolve-gate` / `resolve-write-present` / `resolve-write-absent` — these
  *    are answered from their own run-detail SECTIONS, which carry the packet
  *    and the evidence note their payloads require. A row control could not
@@ -78,6 +75,20 @@ export interface QueueRowActionFacts {
   readonly parkedWrite: boolean;
   /** delegated members under an operation row; `0` for every other surface */
   readonly memberCount: number;
+  /**
+   * This row IS one delegated member of a group (`surfaceKind === "member"`),
+   * rather than a root run or the group anchor itself. Only `rename` reads it —
+   * see `KERNEL_ADMITS.rename`.
+   */
+  readonly isMember: boolean;
+  /**
+   * The operator has already named this run. It changes one word of one label
+   * ("Rename run…" against "Name this run…"), which is a served-copy decision
+   * like every other label in this file: the server knows whether a name exists
+   * and the client must not re-derive it from a `displayName` field it happens
+   * to also hold.
+   */
+  readonly named: boolean;
   /** the workflow's own label, for confirm copy that names what is about to run */
   readonly workflowLabel: string;
   /** doc 03 §2.4's `has-review-panel` condition input */
@@ -85,7 +96,7 @@ export interface QueueRowActionFacts {
 }
 
 /** The verbs this projection may serve, each a member of `ActionCommandKeySchema`. */
-type ServedCommand = "retry" | "cancel" | "bump" | "hide";
+type ServedCommand = "retry" | "cancel" | "bump" | "rename" | "hide";
 
 /**
  * The kernel's own preconditions, restated as row-level admission.
@@ -115,6 +126,22 @@ const KERNEL_ADMITS: Readonly<Record<ServedCommand, (facts: QueueRowActionFacts)
    * queued run's claim order can be bumped".
    */
   bump: (facts) => facts.status === "queued",
+  /*
+   * `executePresentation`: no state precondition at all — a name changes no
+   * outcome, task, checkpoint, intent or evidence, so the kernel accepts a
+   * rename in every state, including on a run that has already written to
+   * UCPath. That is the whole reason a rename is safe to offer at all.
+   *
+   * The ONE narrowing is row shape, and it is not a kernel fact: a MEMBER row
+   * is one delegated item inside a group, and `displayName` REPLACES the title
+   * on the row it rides. So naming a member would put free text where that
+   * group list prints the person the item is about — a subject's name silently
+   * becoming "Friday exception pack" in a list of fifty is the wrong-person
+   * hazard this product spends a gate on. The group anchor is where a name
+   * belongs, and it keeps its control. (The demo excludes the same rows,
+   * `demo-wire.ts:2564`, `spec.rowType !== "member"`.)
+   */
+  rename: (facts) => !facts.isMember,
   /*
    * `executePresentation`: no state precondition at all — Hide is a reversible
    * presentation tombstone (doc 03 §2.4) that changes no outcome, task,
@@ -161,6 +188,10 @@ function policyEnables(
  */
 function placementOf(command: ServedCommand, facts: QueueRowActionFacts): ActionDescriptorWire["placement"] {
   const terminal = TERMINAL_QUEUE_STATUSES.has(facts.status);
+  // `rename` is menu-only in the demo and here, for the reason the footer set
+  // exists: the footer is the FREQUENT subset. Naming a run is a thing an
+  // operator does once, to one run, on purpose.
+  if (command === "rename") return ["menu"];
   const inFooter = command === "hide" ? terminal : true;
   return inFooter ? ["footer", "menu"] : ["menu"];
 }
@@ -230,6 +261,26 @@ function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
       // descriptor version, no archive — and a dialog in front of a reversible
       // reordering is ceremony that teaches the operator to click through.
       return { ...base, key: "bump", label: "Run next", intent: "neutral", icon: "bump" };
+    case "rename":
+      /*
+       * No `confirm` — and that is not the same omission `bump` makes. A
+       * confirm dialog re-states a decision the operator already made; rename
+       * has no decision to re-state until they have TYPED one, so the surface
+       * intercepts this descriptor and opens the rename dialog, which is where
+       * the value comes from. Handing it a `confirm` as well would ask twice
+       * about one act, and `command-dispatch.ts` refuses to compose a rename
+       * with no name rather than sending a plausible one.
+       *
+       * The label follows the demo (`demo-wire.ts:2568`): a run that has never
+       * been named is being NAMED, not renamed.
+       */
+      return {
+        ...base,
+        key: "rename",
+        label: facts.named ? "Rename run…" : "Name this run…",
+        intent: "neutral",
+        icon: "rename",
+      };
     case "hide":
       return {
         ...base,
@@ -250,7 +301,7 @@ function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
 }
 
 /** The served command order, which is also the footer's left-to-right order. */
-const SERVED_ORDER: readonly ServedCommand[] = ["retry", "bump", "cancel", "hide"];
+const SERVED_ORDER: readonly ServedCommand[] = ["retry", "bump", "cancel", "rename", "hide"];
 
 /**
  * Every control this row may draw.

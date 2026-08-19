@@ -13,29 +13,54 @@
  *    short-prefix (the wire's name for the run's shape) instead of the demo's
  *    fixture `v3.1` pair; "shape moved" compares it against the bootstrap's
  *    current descriptor hash — same hazard, same tone, real fact;
- *  - the `dry run` chip is not drawn: the 1g queue wire serves no dry-run flag
- *    (the start plan's dry-run truth lives on the Start surface). Drawing one
- *    from anything else would be inference;
  *  - `RunSelector` (the `‹ #2 of 2 ›` attempt lineage strip with rerun diff)
  *    is not ported: the wire serves only the attempt ordinal — the demo
  *    itself renders nothing without at least two lineage attempts;
- *  - `RenameRunDialog` defers with the rename command (not in the Phase-1
- *    served-action vocabulary); priority and preset rows likewise.
+ *  - the `preset` block still defers: no descriptor in this tree declares a
+ *    preset, so there is nothing for the chain to carry
+ *    (`docs/findings/queue-rows.md`).
+ *
+ * TWO OF THOSE DEFERRALS CLOSED (D232/D233, 2026-08-19), and one of them had
+ * gone stale rather than merely waiting:
+ *  - the `dry run` chip IS drawn. Its deferral said *"the 1g queue wire serves
+ *    no dry-run flag"*, which stopped being true when `QueueBaseFields.dryRun`
+ *    landed. The demo's own rule is stated three paragraphs down and this file
+ *    was quoting it while implementing half of it: **the two hazards stay
+ *    visible**, and only `test` was on screen;
+ *  - `RenameRunDialog` and the `Priority` row land together, because a rename
+ *    is the one thing on this bar an operator changes.
  */
-import { Info, TriangleAlert } from "lucide-react";
+import { FlaskConical, Info, TriangleAlert } from "lucide-react";
+import { useState } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import {
   BulletList,
+  Button,
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  Field,
   IconButton,
+  Input,
   KeyValueList,
+  MetaLine,
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Well,
   dsIcon,
   dsText,
 } from "../ds/ui.js";
-import type { QueueSurfaceWireSchema } from "../../domain/dashboard/projection.js";
+import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import {
+  isTerminalQueueStatus,
+  type QueueSurfaceWireSchema,
+} from "../../domain/dashboard/projection.js";
+import { renameDraftProblem } from "../app/rename-draft.js";
+import type { ActionTarget } from "./actions.js";
+import { runTiming } from "./format.js";
 
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 
@@ -98,6 +123,25 @@ export function RunProvenanceBar({
       </span>
 
       {/* Hazards, never disclosed. */}
+      {/*
+        A REHEARSAL, in the demo's own slot and words (`DemoRunIdentity.tsx:111`)
+        — and in D232's rehearsal hue rather than the demo's `info`, because
+        `info` is what the `test` chip beside it is drawn in on the queue row,
+        and one fact must not have two colours in one product. The hue was
+        bought for this MEANING; the bar and the row draw the same meaning.
+      */}
+      {surface.dryRun && (
+        <span
+          title="A rehearsal: it read every system and wrote to none. The receipt says what it WOULD have written."
+          className={cn(
+            dsText.meta,
+            "inline-flex shrink-0 items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-rehearsal-fg)]",
+          )}
+        >
+          <FlaskConical aria-hidden className={dsIcon.sm} />
+          dry run
+        </span>
+      )}
       {testSystems.length > 0 && (
         <span
           title={`Ran against the TEST instance of ${testSystems.map(({ system }) => system).join(", ")} — nothing here reached production.`}
@@ -126,6 +170,24 @@ export function RunProvenanceBar({
                   tone: staleApp || ranAppVersion === undefined ? "warning" : "default",
                 },
                 { key: "Requested by", value: surface.actorId },
+                /*
+                  PRIORITY, in the ⓘ rather than as a chip — the demo's own
+                  disposition, in its own words: *"`by` and `priority` are the
+                  same two words on every row an operator starts on their own
+                  machine, so they cost a chip each to say nothing — they moved
+                  into the ⓘ, in full, with the reason each matters."* The
+                  reason is the bullet below; this is the value.
+                */
+                { key: "Priority", value: surface.priority },
+                /*
+                  The operator's own name, stated where the run's identity is.
+                  It is the row's TITLE elsewhere, which is exactly why it
+                  belongs here too: the bar is where you check that the thing
+                  you renamed is still the thing you think it is.
+                */
+                ...(surface.displayName.state === "present"
+                  ? [{ key: "Named", value: surface.displayName.value }]
+                  : []),
                 { key: "Config", value: shortFingerprint(surface.configFingerprint) },
                 { key: "Attempt", value: `#${surface.attempt}` },
                 ...surface.resolvedInstances.map(({ system, instance }) => ({
@@ -137,6 +199,9 @@ export function RunProvenanceBar({
             />
             <BulletList
               items={[
+                surface.priority === "bulk"
+                  ? "Bulk yields the worker to anything interactive — a 50-person packet must never make one urgent separation wait."
+                  : "Interactive takes a worker ahead of bulk work.",
                 shapeMoved
                   ? `This run's SHAPE is a prior descriptor. It is not comparable with a ${shortFingerprint(currentDescriptorHash)} run, and a retry would replay retired code.`
                   : "The descriptor fingerprint is the run's shape; a row served under the same fingerprint is the same run shape.",
@@ -145,11 +210,196 @@ export function RunProvenanceBar({
                   : staleApp
                     ? `Ran under app ${ranAppVersion}; this dashboard is ${currentAppVersion}. The app build is the other half of the archive key.`
                     : `Ran under the app build this dashboard is running (${currentAppVersion}), which is why it is stated once on the Sessions bar rather than on every run.`,
+                /*
+                  The rename's whole safety argument, stated on the run it was
+                  applied to: a name replaces nothing. It is drawn only for a
+                  named run because it is an answer to "why does this row say
+                  something I typed", and a run nobody named never raises it.
+                */
+                ...(surface.displayName.state === "present"
+                  ? [`Named by you. The subject is still ${surface.title} and the trace id ${surface.traceId} is unchanged — history matches either way.`]
+                  : []),
               ]}
             />
           </div>
         </PopoverContent>
       </Popover>
     </span>
+  );
+}
+
+/* ── rename ──────────────────────────────────────────────────────────────── */
+
+/**
+ * The run whose name is being edited, and the descriptor that authorised it.
+ *
+ * The whole SURFACE rides along rather than five copied fields: the dialog's
+ * footer states the run's identity (subject, trace, `#N`, elapsed) and that is
+ * precisely the set that must not be re-derived anywhere else. `nowIso` is the
+ * bootstrap-calibrated instant the row's own elapsed is measured against, so
+ * the dialog and the row it opened from cannot disagree by a second.
+ */
+export interface PendingRename {
+  action: Extract<ActionDescriptorWire, { kind: "command" }>;
+  target: ActionTarget;
+  surface: QueueSurfaceWire;
+  nowIso: string;
+}
+
+/**
+ * Ported from the demo's `RenameRunDialog` (`DemoRunIdentity.tsx:320`).
+ *
+ * Naming a run does not touch its identity: the subject, the trace id and the
+ * `#N` ordinal all stay exactly as they were. That is the whole reason a rename
+ * is safe to offer on a row that has already written to UCPath, and it is why
+ * the footer prints those three facts UNDER the field — the operator can see
+ * that the things which identify this run are not what they are editing.
+ */
+export function RenameRunDialog({
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  pending: PendingRename | null;
+  onCancel: () => void;
+  onConfirm: (pending: PendingRename, name: string) => void;
+}) {
+  return (
+    <Dialog open={Boolean(pending)} onOpenChange={(open) => !open && onCancel()}>
+      {pending && (
+        <RenameDialogBody
+          // The dialog is REMOUNTED per run: `key` on the body is what discards
+          // a half-typed name when the operator closes this and opens the
+          // rename on a different row. Without it the field's state would
+          // survive and offer one run's draft name for another run.
+          key={String(pending.surface.runId)}
+          pending={pending}
+          onCancel={onCancel}
+          onConfirm={onConfirm}
+        />
+      )}
+    </Dialog>
+  );
+}
+
+function RenameDialogBody({
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  pending: PendingRename;
+  onCancel: () => void;
+  onConfirm: (pending: PendingRename, name: string) => void;
+}) {
+  const surface = pending.surface;
+  const named = surface.displayName.state === "present";
+  const [name, setName] = useState(named && surface.displayName.state === "present" ? surface.displayName.value : "");
+  const [attempted, setAttempted] = useState(false);
+  const [ruleOpen, setRuleOpen] = useState(false);
+  /*
+   * THE SAME RULE THE COMPOSER APPLIES (`rename-draft.ts`), stated at the field
+   * the value is typed into. `composeCommandRequest` calls it again as a
+   * backstop — a refusal that reaches the composer is a surface bug, and the
+   * operator should never be the one to discover a bound.
+   */
+  const problem = renameDraftProblem(name);
+  const timing = runTiming(surface, pending.nowIso, isTerminalQueueStatus);
+
+  const submit = (): void => {
+    setAttempted(true);
+    if (problem !== undefined) return;
+    onConfirm(pending, name.trim());
+  };
+
+  return (
+    <DialogContent size="sm" title={named ? "Rename this run" : "Name this run"}>
+      <DialogBody className="flex flex-col gap-[var(--ds-space-snug)]">
+        <Field
+          label={
+            <span className="flex items-center gap-[var(--ds-space-tight)]">
+              Name
+              {/*
+                WHAT A NAME DOES, one press away. It is a rule of the PRODUCT,
+                true of every rename, so drawing it in full every time the
+                dialog opens is three lines nobody asked for on the tenth
+                rename — and deleting it loses the one sentence that makes a
+                rename obviously safe.
+
+                It is NOT a `Popover`, for the reason the demo records: a
+                Popover portals BELOW a Dialog, so it opens in the
+                accessibility tree and nowhere on screen. Anything disclosed
+                from inside a dialog is disclosed inside the dialog.
+              */}
+              <IconButton
+                size="xs"
+                label="What a name does"
+                aria-expanded={ruleOpen}
+                onClick={() => setRuleOpen((open) => !open)}
+                icon={<Info aria-hidden className={dsIcon.sm} />}
+              />
+            </span>
+          }
+          // Shown only after a send was attempted: a field that turns red while
+          // somebody is still typing their first character is reporting an
+          // empty box as an error.
+          error={attempted ? problem ?? null : null}
+        >
+          <Input
+            value={name}
+            autoFocus
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") submit();
+            }}
+            placeholder={surface.title}
+          />
+        </Field>
+        {ruleOpen && (
+          <Well>
+            <BulletList
+              items={[
+                "It rides the queue row and the receipt.",
+                "The subject, the trace id and the run number are untouched, so everything in history still matches.",
+                "It is yours — nothing downstream reads it.",
+              ]}
+            />
+          </Well>
+        )}
+      </DialogBody>
+
+      {/*
+        THE HOUSE FOOTER: `meta (quiet, left) · Cancel · [primary]`.
+
+        `Cancel` and not "Keep the name it has": at that length the two buttons
+        read as two peers rather than as a dismissal and a commit, and on a
+        surface with exactly two exits an unmistakable primary is the whole job
+        of the footer.
+
+        The meta line is the run's IDENTITY — the facts a rename does not
+        touch. `#N` is drawn only when the server served one: a run enqueued
+        before schema v15 has no ordinal, and the footer of all places must not
+        invent one (D230).
+      */}
+      <DialogFooter
+        meta={
+          <MetaLine
+            tone="faint"
+            items={[
+              `subject ${surface.title}`,
+              surface.traceId,
+              surface.runNumber.state === "present" ? `#${String(surface.runNumber.value)}` : false,
+              timing?.text ?? false,
+            ]}
+          />
+        }
+      >
+        <Button variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button variant="primary" disabled={problem !== undefined} title={problem} onClick={submit}>
+          Save the name
+        </Button>
+      </DialogFooter>
+    </DialogContent>
   );
 }

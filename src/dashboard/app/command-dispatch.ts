@@ -36,6 +36,7 @@ import {
   type IdentityGateAnswer,
   type IdentityGatePayload,
 } from "./identity-ceremony.js";
+import { renameDraftProblem } from "./rename-draft.js";
 
 export type CommandAction = Extract<ActionDescriptorWire, { kind: "command" }>;
 
@@ -70,6 +71,16 @@ export interface CommandContext {
    * refuses without one rather than choosing on the operator's behalf.
    */
   readonly gateAnswer?: IdentityGateAnswer | undefined;
+  /**
+   * What the operator typed into the rename dialog (D233), already judged by
+   * `renameDraftProblem`. OPTIONAL for the same reason `gateAnswer` is: a
+   * `rename` descriptor can reach this composer without ever passing through
+   * the dialog — from the row's context menu, if a surface forgets to
+   * intercept it — and the honest answer there is a refusal, not a name this
+   * file chose. There is no "keep the current name" default: that would post a
+   * command that writes what is already written and report it as a rename.
+   */
+  readonly renameAnswer?: string | undefined;
 }
 
 /**
@@ -218,6 +229,9 @@ export function composeCommandRequest(
     case "bump":
     case "hide":
     case "unhide":
+      // Four verbs whose whole payload is the target. `rename` is deliberately
+      // NOT in this list even though its target is identical — it carries a
+      // value, and a fall-through here would post a rename with no name.
       return {
         state: "ready",
         request: {
@@ -227,6 +241,35 @@ export function composeCommandRequest(
           target: { runId: target.runId, expectedVersion: action.expectedVersion },
         },
       };
+    case "rename": {
+      /*
+       * The second command whose payload carries a value only a human can
+       * author (D233), and it takes the same shape as the first: the dialog
+       * collects it, this composer refuses without it, and nothing here
+       * invents one. `renameDraftProblem` is the SAME rule the dialog's field
+       * states, so a refusal that reaches this line is a surface bug rather
+       * than something the operator has to read.
+       */
+      const answer = context.renameAnswer;
+      if (answer === undefined) {
+        return {
+          state: "refused",
+          reason: "no name was supplied; the rename dialog owns that value and nothing here may author one",
+        };
+      }
+      const problem = renameDraftProblem(answer);
+      if (problem !== undefined) return { state: "refused", reason: problem };
+      return {
+        state: "ready",
+        request: {
+          ...envelope,
+          family: "run",
+          type: "rename",
+          target: { runId: target.runId, expectedVersion: action.expectedVersion },
+          payload: { displayName: answer.trim() },
+        },
+      };
+    }
     case "resolve-gate":
       return composeGateResult(action, context.gate, context.gateAnswer, envelope);
     case "resolve-write-present":

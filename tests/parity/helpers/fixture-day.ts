@@ -227,6 +227,10 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
       isChild: input.parentSeed !== undefined,
       parkedWrite: false,
       memberCount: kind === "operation" ? (input.memberSeeds ?? []).length : 0,
+      isMember: kind === "member",
+      // Every fixture row serves `displayName` absent (`:202`), so no reference
+      // has ever photographed a named run — the label stays "Name this run…".
+      named: false,
       workflowLabel: personLookupDescriptor.label,
       hasReviewPanel: personLookupDescriptor.capabilities?.review ?? false,
     }),
