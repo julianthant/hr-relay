@@ -30,6 +30,13 @@ import {
   type WorkflowVersionIdentity,
 } from "../../domain/archive/model.js";
 import type { VersionScope } from "../../domain/commands.js";
+import {
+  ArchivedCaptureTileSchema,
+  ArchivedRunSectionsSchema,
+  type ArchivedCaptureTile,
+  type ArchivedProjectionSections,
+  type ArchivedRunSections,
+} from "../../domain/archive/sections.js";
 import type { QueueSurfaceWire } from "../../domain/dashboard/projection.js";
 import type { FailureDetailWire, RunDetailWire } from "../../domain/dashboard/run-detail.js";
 import { isTerminalRunState, type RunRecord } from "../../domain/run/record.js";
@@ -52,6 +59,13 @@ export interface ArchiveRunSnapshot {
    * would be a second projection of a fact D81 says has exactly one.
    */
   readonly failure: FailureSection;
+  /**
+   * D223's frozen section payloads, PROJECTION half. The kernel cannot build
+   * these either — a note stream and a member row are read-model facts — so
+   * they ride the same seam as the row and the detail, and the archive record
+   * completes them with the capture tiles it derives from authority.
+   */
+  readonly sections: ArchivedProjectionSections;
 }
 
 export type FailureSection =
@@ -275,8 +289,94 @@ export function deriveArchivedRunRecord(input: ArchivedRunDerivationInput): Arch
         .map((projection) => ({ system: projection.system, date: projection.date, sequence: projection.seq }))
         .sort((a, b) => a.system.localeCompare(b.system) || a.date.localeCompare(b.date) || a.sequence - b.sequence),
     },
+    sections: ArchivedRunSectionsSchema.parse({
+      ...input.snapshot.sections,
+      captures: deriveCaptureTiles(input),
+    } satisfies ArchivedRunSections),
     input: run.input,
   });
 
   return ArchivedRunRecordSchema.parse({ ...content, contentDigest: archivedRunContentDigest(content) });
+}
+
+/**
+ * The Evidence tab's tiles — every captured artifact, DESCRIBED.
+ *
+ * D179's "evidence is pointers only" is about the bytes and it stands: nothing
+ * here reads the content store. What it adds is the description authority
+ * already holds beside the pointer, because a chip carrying `9f2c…` and
+ * nothing else cannot tell an operator what the capture was OF, when it was
+ * taken, or whether its bytes are pinned.
+ *
+ * `step` and `system` are joined off the bundle's ORIGIN failure — the only
+ * place either is recorded — and both stay named absences when the origin
+ * names no failure or the failure names no node. Borrowing the run's last node
+ * would attach a capture to a step it may not belong to, which on an evidence
+ * surface is a fabricated provenance.
+ */
+function deriveCaptureTiles(input: ArchivedRunDerivationInput): ArchivedRunSections["captures"] {
+  const { repositories, run } = input;
+  const tiles: ArchivedCaptureTile[] = [];
+  for (const bundle of repositories.diagnosticBundles.listByRun(run.envelope.runId)) {
+    const failure = bundle.origin.kind === "operator-request"
+      ? undefined
+      : repositories.failures.get(bundle.origin.failureId);
+    const step: ArchivedCaptureTile["step"] = failure === undefined
+      ? {
+        state: "absent",
+        reason: bundle.origin.kind === "operator-request"
+          ? "an operator-requested capture names no failure, and a diagnostic bundle records no step of its own"
+          : `this bundle names failure ${bundle.origin.failureId}, which authority no longer holds`,
+      }
+      : failure.nodeId === undefined
+        ? { state: "absent", reason: "the failure this capture was taken for names no workflow node" }
+        : { state: "present", nodeId: failure.nodeId };
+    for (const row of repositories.diagnosticBundles.listAttachments(bundle.bundleId)) {
+      const { attachment } = row;
+      tiles.push(ArchivedCaptureTileSchema.parse({
+        artifactId: attachment.artifactId,
+        bundleId: bundle.bundleId,
+        kind: attachment.kind,
+        mediaType: attachment.mediaType,
+        byteLength: attachment.byteLength,
+        digest: attachment.digest,
+        sensitivity: attachment.sensitivity,
+        capturedAt: bundle.createdAt,
+        origin: bundle.origin.kind,
+        ...(attachment.kind === "screenshot"
+          ? { dimensions: { width: attachment.width, height: attachment.height } }
+          : {}),
+        step,
+        system: systemOfCapture(failure?.taskId),
+        retention: bundle.retention,
+      }));
+    }
+  }
+  if (tiles.length === 0) {
+    return { state: "absent", reason: "this run captured no diagnostic artifact" };
+  }
+  return {
+    state: "present",
+    value: [...tiles].sort((left, right) => left.artifactId.localeCompare(right.artifactId)),
+  };
+}
+
+/**
+ * The system a capture belongs to, read off the failing task's id.
+ *
+ * `TaskIdSchema`'s grammar is literally `<registered-store>/<kebab-case-
+ * operation>`, so the prefix is a DECLARED component of the identifier rather
+ * than a substring somebody hopes means something — which is the difference
+ * D204 draws between a mapping and a sniff. A `workflow:<id>/…` service task
+ * names no external system and says so.
+ */
+function systemOfCapture(taskIdValue: string | undefined): ArchivedCaptureTile["system"] {
+  if (taskIdValue === undefined) {
+    return { state: "absent", reason: "no failing task is recorded for this capture, so it names no system" };
+  }
+  const store = taskIdValue.slice(0, taskIdValue.indexOf("/"));
+  if (store === "" || store.startsWith("workflow:")) {
+    return { state: "absent", reason: `${taskIdValue} is a workflow-service task and touches no external system` };
+  }
+  return { state: "present", value: store };
 }

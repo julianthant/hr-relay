@@ -341,7 +341,7 @@ const ContextDataEntryEditSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("locked"), reason: z.string().min(1) }),
 ]);
 
-const ContextDataSectionSchema = z.strictObject({
+export const ContextDataSectionSchema = z.strictObject({
   runId: RunIdSchema,
   /**
    * The run-level half of the edit policy, computed against raw authority

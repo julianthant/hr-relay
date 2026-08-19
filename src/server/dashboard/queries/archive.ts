@@ -23,6 +23,7 @@
  * production projections the live surfaces render, so the frozen bytes are the
  * bytes the operator last saw.
  */
+import { z } from "zod";
 import {
   ArchiveIndexWireSchema,
   ArchivedRunDetailWireSchema,
@@ -41,6 +42,21 @@ import {
   type ArchiveRunSnapshot,
   type ArchiveSnapshotSource,
 } from "../../../services/archive/archive-service.js";
+import {
+  ArchivedProjectionSectionsSchema,
+  ArchivedRunAttemptSchema,
+  type ArchivedProjectionSections,
+  type ArchivedRunAttempt,
+} from "../../../domain/archive/sections.js";
+import {
+  NotePageSchema,
+  PeoplePageSchema,
+  type ContextDataSectionWire,
+} from "../../../domain/dashboard/run-detail.js";
+
+/** The frozen log page's own shape — one place, so the loop and the parse agree. */
+type FrozenNotePage = z.infer<typeof NotePageSchema>;
+import type { RunFoldRecord } from "../projectors/run-queue-projection.js";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "./run-detail.js";
 
 export interface ArchiveQueryDeps {
@@ -275,8 +291,176 @@ export function createArchiveSnapshotSource(deps: RunDetailQueryDeps): ArchiveSn
           // archive keeps whichever one the live surface would have shown
           // rather than flattening three different facts into one absence.
           : { state: "absent", reason: payload.state === "error" ? payload.message : payload.reason },
+        sections: freezeProjectionSections(deps, runId),
       };
       return Object.freeze(snapshot);
     },
   });
+}
+
+/**
+ * The upper bound on `logs` paging. It is a REFUSAL bound, not a page size: the
+ * loop below walks the section's own cursor to the end and throws if it has not
+ * arrived, because a frozen log that silently stopped at N would be an archived
+ * run whose story ends mid-sentence with nothing saying so.
+ */
+const FROZEN_LOG_PAGE_LIMIT = 500;
+
+/**
+ * D223's four projection-owned sections, frozen through the SAME production
+ * queries the live surfaces call. Nothing here re-derives a payload the live
+ * panel would have shown differently — that is the whole reason the freeze goes
+ * through this seam instead of reading authority a second time.
+ */
+function freezeProjectionSections(deps: RunDetailQueryDeps, runId: string): ArchivedProjectionSections {
+  const fold = deps.projection.runFold(runId);
+  if (fold === undefined) {
+    throw new Error(`run ${runId} has no span fold; its sections cannot be frozen`);
+  }
+  return ArchivedProjectionSectionsSchema.parse({
+    logs: { state: "present", value: freezeLogs(deps, runId) },
+    data: { state: "present", value: freezeData(deps, runId) },
+    people: freezePeople(deps, runId, fold.memberRunIds),
+    attempts: { state: "present", value: foldAttempts(fold) },
+  });
+}
+
+/**
+ * EVERY note line, walked through the section's own cursor.
+ *
+ * The archived page reports `end-of-page` because it genuinely is the end —
+ * there is no archived section endpoint to fetch a second page from, so a
+ * frozen `nextCursor: present` would name a request nothing serves. Refusing
+ * past the bound is the only honest alternative to truncating.
+ */
+function freezeLogs(deps: RunDetailQueryDeps, runId: string): FrozenNotePage {
+  const notes: FrozenNotePage["notes"][number][] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < FROZEN_LOG_PAGE_LIMIT; page += 1) {
+    const section = buildRunSection(deps, runId, "logs", cursor);
+    if (section.section !== "logs") {
+      throw new Error(`the logs section of run ${runId} came back as ${section.section}`);
+    }
+    notes.push(...section.payload.notes);
+    if (section.payload.nextCursor.state === "absent") {
+      return NotePageSchema.parse({
+        runId,
+        notes,
+        nextCursor: { state: "absent", reason: "end-of-page" },
+      });
+    }
+    cursor = section.payload.nextCursor.value;
+  }
+  throw new Error(
+    `run ${runId} still reports more log pages after ${String(FROZEN_LOG_PAGE_LIMIT)} of them; refusing to `
+    + "freeze a truncated log, because an archived run whose story stops mid-sentence says nothing about it",
+  );
+}
+
+function freezeData(deps: RunDetailQueryDeps, runId: string): ContextDataSectionWire {
+  const section = buildRunSection(deps, runId, "context-data");
+  if (section.section !== "context-data") {
+    throw new Error(`the data section of run ${runId} came back as ${section.section}`);
+  }
+  return section.payload;
+}
+
+/**
+ * The member rows, projected from the fold's OWN member ids.
+ *
+ * There is no live `people` section in this composition (doc 03 D19's People
+ * tab is a group-panel surface 2h left unbuilt), so this is not a freeze of a
+ * served payload — it is the same projection the queue renders, one row per
+ * member, which is exactly what the demo's member table shows. A run with no
+ * members says so; a member the projection cannot render REFUSES the archive,
+ * for the same reason an unrenderable row does.
+ */
+function freezePeople(
+  deps: RunDetailQueryDeps,
+  runId: string,
+  memberRunIds: readonly string[],
+): ArchivedProjectionSections["people"] {
+  if (memberRunIds.length === 0) {
+    return { state: "absent", reason: "this run fanned out no member runs" };
+  }
+  const members = memberRunIds.map((memberRunId) => {
+    const surface = deps.projection.queueSurface(memberRunId);
+    if (surface === undefined) {
+      throw new Error(
+        `run ${runId} names member ${memberRunId}, which the projection cannot render; refusing to archive a `
+        + "run whose member rows would be permanently unreadable",
+      );
+    }
+    return {
+      runId: surface.runId,
+      parentRunId: runId,
+      rowRevision: surface.rowRevision,
+      label: surface.displayName.state === "present" ? surface.displayName.value : surface.title,
+      status: surface.status,
+    };
+  });
+  return {
+    state: "present",
+    value: PeoplePageSchema.parse({
+      parentRunId: runId,
+      members,
+      total: members.length,
+      nextCursor: { state: "absent", reason: "end-of-page" },
+    }),
+  };
+}
+
+/**
+ * The per-attempt history, folded from the run's own task spans.
+ *
+ * Span identity is `(runId, attempt, spanPath)`, so grouping by `attempt` is
+ * reading the identity the fold already carries rather than inferring a
+ * boundary from instants. Attempt 1 is always emitted even when it folded no
+ * spans — a run that died before its first task still HAD a first attempt, and
+ * an empty attempt list would say the run never started.
+ */
+function foldAttempts(fold: RunFoldRecord): readonly ArchivedRunAttempt[] {
+  const byAttempt = new Map<number, RunFoldRecord["taskSpans"][number][]>();
+  for (let attempt = 1; attempt <= fold.attempt; attempt += 1) byAttempt.set(attempt, []);
+  for (const span of fold.taskSpans) {
+    const bucket = byAttempt.get(span.attempt);
+    if (bucket === undefined) byAttempt.set(span.attempt, [span]);
+    else bucket.push(span);
+  }
+  return [...byAttempt.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([attempt, spans]) => {
+      const counts = new Map<string, number>();
+      let unfinished = 0;
+      for (const span of spans) {
+        if (span.outcome === undefined) unfinished += 1;
+        else counts.set(span.outcome, (counts.get(span.outcome) ?? 0) + 1);
+      }
+      const starts = spans.map((span) => span.startedAt).filter((at): at is string => at !== undefined).sort();
+      const ends = spans.map((span) => span.endedAt).filter((at): at is string => at !== undefined).sort();
+      return ArchivedRunAttemptSchema.parse({
+        attempt,
+        steps: spans.length,
+        startedAt: starts[0] === undefined
+          ? {
+            state: "absent",
+            reason: spans.length === 0
+              ? "this attempt folded no task span at all"
+              : "no span.started was folded for any step of this attempt",
+          }
+          : { state: "present", value: starts[0] },
+        endedAt: ends.at(-1) === undefined
+          ? {
+            state: "absent",
+            reason: spans.length === 0
+              ? "this attempt folded no task span at all"
+              : "no step of this attempt folded a span.ended",
+          }
+          : { state: "present", value: ends.at(-1) },
+        outcomes: [...counts.entries()]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([outcome, count]) => ({ outcome, count })),
+        unfinished,
+      });
+    });
 }

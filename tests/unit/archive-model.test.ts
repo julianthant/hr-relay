@@ -184,6 +184,54 @@ function snapshotSource(world: {
           availableSections: ["logs"],
         },
         failure: { state: "absent", reason: "the run did not settle with a structured failure" },
+        /*
+         * D223's frozen sections. The production seam builds these from the
+         * span fold and the note stream; this suite is about the archive's
+         * durable semantics, so the payloads are minimal and REAL — a note
+         * line that comes back verbatim is what proves the freeze rather than
+         * a re-derivation.
+         */
+        sections: {
+          logs: {
+            state: "present",
+            value: {
+              runId: run.envelope.runId,
+              notes: [{
+                noteId: "dddddddd-0001-4000-8000-dddddddd0001",
+                runId: run.envelope.runId,
+                sequence: 0,
+                at: NOW,
+                level: "info",
+                message: "frozen log line",
+              }],
+              nextCursor: { state: "absent", reason: "end-of-page" },
+            },
+          },
+          data: {
+            state: "present",
+            value: {
+              runId: run.envelope.runId,
+              editing: { state: "locked", reason: "an archived run is read-only" },
+              entries: [{
+                label: "eid",
+                valueRedacted: "108*****",
+                edit: { state: "locked", reason: "an archived run is read-only" },
+              }],
+            },
+          },
+          people: { state: "absent", reason: "this run fanned out no member runs" },
+          attempts: {
+            state: "present",
+            value: [{
+              attempt: 1,
+              steps: 1,
+              startedAt: { state: "present", value: NOW },
+              endedAt: { state: "present", value: NOW },
+              outcomes: [{ outcome: "done", count: 1 }],
+              unfinished: 0,
+            }],
+          },
+        },
       } as unknown as ArchiveRunSnapshot;
     },
   };
