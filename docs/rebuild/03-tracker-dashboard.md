@@ -2906,6 +2906,27 @@ the rail's level instead: attention reaches the operator through the Status Bar'
 `Needs you` total and the notification inbox, neither of which is rail-scoped. Counts, labels,
 registration and §3.2 obligations are all unmoved from D219.
 
+**Amended again (D241, 2026-08-19): a proving workflow heads `Test equipment`, not an HR
+category.** D220 removed the proving workflow from the rail and left it where it was everywhere
+else — so `kuali-timekeeper-annotation` still headed the Run Modal's picker and the Explorer under
+**Operations**, beside daily work, which is what the operator was asking about (*"a crash test
+dummy is not a workflow … maybe it belongs in a different category, perhaps in test"*). A
+descriptor's `category` answers *which HR area does this touch*; for a workflow that exists to
+prove the write kernel that is the wrong question with a plausible answer, and a plausible wrong
+answer is worse than none. So the ONE grouping rule reads the module's ROLE for these entries and
+not their category: an entry whose role is `proving` groups under the heading **`Test equipment`**,
+appended after every listed and unlisted category, on every surface that lists it. It appears
+exactly once — it is lifted out of the category pass, never duplicated into it — and the group
+DROPS when nothing proving is served, exactly as an empty category does. The rail is unchanged in
+behaviour: it already filters to `standalone` + `composition`, so the new group arrives empty there
+and drops. The picker's AUTO-PICK set narrows to the same pair on the same argument (D219's "a
+dialog that opens on a step the operator did not ask for" holds one level out: it must not open on
+test equipment either); the workflow stays startable from its own panel and from the picker's
+`Test equipment` group, because a proof nobody can re-run is not a standing proof. The heading
+lives in `dashboard/surfaces/workflow-category.ts` beside the category order and the nesting rule —
+a rail-side or picker-side id list is exactly the workflow-specific customization the role model
+exists to avoid.
+
 **One composed action bar** replaces the two stacked bars above the queue. The status filters are
 one *group* inside it, not a band of their own; the two composites (`All` / `Needs you`) are a
 segmented control — a different shape for a different kind of thing — and a **zero-count status

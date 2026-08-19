@@ -671,7 +671,12 @@ composition. `kuali-timekeeper-annotation` is the type specimen: it exists to ca
 controlled-transaction proof and stays registered and startable because a kernel change may need
 that proof re-run. It deliberately carries no `of` — there is nothing for it to be a step of, and
 `chunk-harness` would force it to name a composition it does not prove. Presentation is doc 03's
-(§Shell, D220 amendment): the rail drops it alongside harnesses; the picker and the Explorer keep it.
+(§Shell, D220 and D241 amendments): the rail drops it alongside harnesses, and the surfaces that
+still list it — the picker and the Explorer — group it by this ROLE under `Test equipment` rather
+than under the HR `category` its descriptor declares. That override is stated here because it is
+the one place a role outranks a category: a proving workflow's category answers *which HR area does
+this touch*, which is the wrong question about equipment, and `operations` is not false enough to
+be noticed (D241).
 
 **Why the module and not the descriptor** is D170's argument verbatim: taxonomy is presentation and
 server bookkeeping, not part of a run's contract identity — a run of `separations-kuali-finalization`
