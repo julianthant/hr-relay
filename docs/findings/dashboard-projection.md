@@ -3,7 +3,8 @@
 Records about the BFF's span-fold/projection layer — cases where a served surface
 disagrees with what the on-disk streams and authority actually hold.
 
-One open record (below).
+Two open records (below): the dead `span.patched` channel (B8 retires it by operator ruling) and
+the requeue span-fold duplicate.
 
 _(The 2026-08-14 "run timeline empty for runs enqueued after dashboard boot" record was
 resolved the same day by **D218** — the cross-process disk tail. The diagnosis and fix
