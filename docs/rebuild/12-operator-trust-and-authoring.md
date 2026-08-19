@@ -1285,9 +1285,9 @@ is then checked like every other candidate.
 already data in the driver registries (§1.2); walking recipes to recompute it would produce a second
 answer that could disagree with the one `semantic-ui-registry` pins.
 
-**A closure is reported as its presence, never as decompiled prose.** `bind`, `choose`, `when`,
+**A closure is reported as its presence, never as decompiled prose.** `bind`, `choose`,
 `derive`, and the write-safety key function are shown as the shape they sit in plus their source
-file. `inputSubject` states whether it is a declared constant or a function of the input rather than
+file. (`when` was in that list until D228 removed it from the list of closures entirely — see §5.9.) `inputSubject` states whether it is a declared constant or a function of the input rather than
 being evaluated against a fabricated input to print a specimen answer. A freshness bound of
 `Infinity` crosses the wire as the word `unbounded`: as a raw number `JSON.stringify` turns it into
 `null`, which reads as a MISSING bound rather than a deliberate one.
@@ -1317,15 +1317,18 @@ the demo draws a fact this wire does not serve, the port omits or restates rathe
 the toolbar slot the demo's run picker occupies carries the workflow identity band (the run overlay
 stays excluded per the first exclusion above — the demo's per-node run state, recorded values,
 provenance lines and delegation child rows are ALL that one exclusion, seen from four angles); the
-node panel's contract table lists TASK ARMS, not contract fields, with its header counting arms and
-the ⓘ saying so in as many words; the graph header omits the demo's file-count segment (a per-run
+node panel's contract table listed TASK ARMS, not contract fields, with its header counting arms and
+the ⓘ saying so in as many words — **superseded by §5.9 (D227), which serves a derived field census
+and counts fields**; the graph header omits the demo's file-count segment (a per-run
 fact, not a registry one); no lane dividers exist because no lane fact exists on the descriptor
 (a descriptor-authored phase would sit inside §5.3's closed editable set once Phase B exists); and
 the demo's `Version registry` header action is absent because no version-registry surface exists in
-this tree. The conditional-node line prints "runs when the descriptor's own when() predicate
-holds" — honest, and less than the demo's authored sentence; an authored `whenLabel` / node
-`purpose` / workflow `summary` (descriptor presentation data, projected like the label) is the
-recorded path to the demo's prose and is data authoring, not an exclusion. Read-only per D186
+this tree. The conditional-node line printed "runs when the descriptor's own when() predicate
+holds" — honest, and less than the demo's authored sentence — and the recorded fix named an authored
+`whenLabel` / node `purpose` / workflow `summary`. **Two thirds of that landed and one third was
+refused**: `purpose` and `summary` are authored data (§5.9, D229), while `whenLabel` is refused
+because a sentence beside a predicate is a second description of one rule — the `when` itself became
+a DECLARED condition instead (doc 02 §3.3, D228). Read-only per D186
 throughout: no edit affordances anywhere.
 
 ### 5.8 The generated UI catalog gets a surface, and it serves the COMMITTED artifact (2026-08-09, D177)
@@ -1345,6 +1348,79 @@ acting on it would be acting on fiction.
 **Provenance sits beside the id, not behind it.** §10 says plainly that the registry cannot make a
 stale live verification current, so every row carries its `verifiedAt` and both evidence refs at the
 same weight as its id — never folded into a disclosure a hurried reader skips.
+
+### 5.9 The node panel is a FIELD table, and its census is derived (2026-08-19, D227)
+
+§5.7's presentation delta recorded that the ported node panel listed TASK ARMS where the operator's
+demo lists contract FIELDS, and that the header counted arms with the ⓘ saying so. That gap is
+closed: the panel is a field table, `Field · System · Recorded`, and no part of it is authored.
+
+**The census is a projection of the contract's own zod shape.** `contractSchemaLeaves`
+(`src/validation/contract-boundary.ts`) walks the SAME schema object `deriveSchemaHash` fingerprints
+into `inputSchemaHash` / `outputSchemaHash`, so the field list and the hash on the arm band above it
+describe one shape. A hand-maintained field list beside a schema hash is the classic pair that
+eventually disagrees, and there is nowhere in this tree to author one.
+
+Three rules decide the census, and each is borrowed rather than invented:
+
+- **An array is ONE leaf**, exactly as `evidenceLeaves` and the freshness / provenance `byField`
+  prefix rule already treat it. Indexing rows would be a census of a specimen run, not of a
+  contract — and a `Recorded` verdict would then resolve at a granularity no policy can name.
+- **A union contributes the UNION of its arms' leaves**, and a path missing from any arm is
+  `sometimes`. That is `schemaOwnsPath`'s `every`/`some` split seen from the producing side. A field
+  that is `z.null()` in one arm and an OBJECT in another is listed as its children only: the bare
+  null row would count a container as a field, and the children's `sometimes` already carries "this
+  may hold no record".
+- **An unrecognised zod tag throws by name.** A tag this walker does not understand may be a
+  container, and emitting one row for it would under-report a whole subtree while looking complete.
+
+**`Recorded` is a fact about provenance, never a value.** No run is laid over this graph (§5.7's
+first exclusion), so the recorded VALUE of a field is not a fact the registry holds. What it does
+hold is the descriptor's declaration, and every arm of `ExplorerFieldRecordedWireSchema` is a
+statement the registry can actually make: a read arm's output leaf is `observed` with its provenance
+source (longest declared prefix, the kernel's own rule) and its freshness bound (whole-path match,
+also the kernel's own rule — the two genuinely differ and the explorer states each the way its
+consumer enforces it); an INPUT leaf is `bound`, because the graph binds it and nothing observes it;
+a prepare arm's output is `not-recorded`, because its checkpoint is in-memory-only; a commit arm's
+output is `checkpointed` in the transaction outcome (D144). The fifth arm is `unknown`, and it is
+deliberately reachable — a read contract whose provenance this projection did not receive leaves its
+outputs undeclared, and the column then says so by name rather than printing the `live` most reads
+happen to declare. Substituting the common answer for the missing one is the plausible-but-wrong
+value the charter forbids.
+
+**A node's `when`, in words.** §5.7 recorded the conditional line as "runs when the descriptor's own
+when() predicate holds" and named an authored `whenLabel` as the fix. The fix taken instead is
+**D228** (doc 02 §3.3): the condition is DECLARED data, the executor evaluates it and the surface
+renders it through `describeNodeCondition` — one value, two readers, so the sentence cannot disagree
+with the rule. §5.7's "a closure is reported as its presence" is unchanged for `bind`, `choose`,
+`derive` and the write-safety key; `when` simply stopped being a closure. The wire's
+`shape.conditional: boolean` is replaced by `shape.condition`, and a condition the closed vocabulary
+cannot express is a compile error in the descriptor rather than a plausible sentence here.
+
+**The descriptor's own words (D229).** §5.7 recorded that the ⓘs open with the DERIVATION ("this
+graph is the as-built descriptor, read from …") where the demo opens with the descriptor's own
+sentence, and named authored prose as the fix. A descriptor now carries `summary` — one sentence
+about the workflow — and `nodePurposes`, one sentence per node, both plain data on the broad
+descriptor view beside `subjectProjection` and `timeline`. A declared node-purpose list is
+**exhaustive**, checked by the factory for D225's reason: a node quietly missing its sentence is a
+node the surface stops explaining while every gate stays green. The derivation note has not gone —
+it moved one paragraph down, because the descriptor's sentence is what the reader came for and the
+derivation is how they know to trust it.
+
+The wire carries `{state:"authored"} | {state:"absent", reason}` rather than throwing, and the
+choice is deliberate: the explorer serves every registered workflow in ONE document, so refusing the
+whole surface over a missing sentence would take the operator's index of the system down for a piece
+of prose. The `absent` reason names the file that owes one, because the reader of this surface is
+exactly the person — or the AI — who would author it, and nothing composes a sentence from a
+two-word label. **`explorer-prose-declared` is what makes the arm unreachable in the product**: a
+registered workflow with no summary, or a node with no purpose, fails the build. A fixture
+descriptor is out of scope by design — it is not in the composition root, and prose about a graph
+nobody runs is prose nobody reads.
+
+**The header counts fields now.** A read is one field a read arm observes FROM a system — an output
+leaf; a write is one field a commit arm writes TO a system — an input leaf. A prepare arm stages the
+values its commit then writes, so its inputs are deliberately not counted, or every write would be
+reported twice. The demo's third segment (`1 file`) stays absent for the reason §5.7 already gave.
 
 ---
 

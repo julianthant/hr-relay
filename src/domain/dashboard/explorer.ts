@@ -24,6 +24,7 @@
  * a decompiled approximation of what the function does.
  */
 import { z } from "zod";
+import { ContractSchemaLeafKindSchema } from "../../validation/contract-boundary.js";
 import { ContractFieldPathSchema, TaskErrorCodeSchema } from "../contracts/base.js";
 import {
   BrowserSystemIdSchema,
@@ -38,6 +39,7 @@ import {
 } from "../ids.js";
 import { SecretNameSchema } from "../secret-names.js";
 import { UiCatalogEntrySchema } from "../ui/contracts.js";
+import { NodeConditionSchema } from "../workflow/node-condition.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 
@@ -200,6 +202,60 @@ export const ExplorerProvenanceWireSchema = z.strictObject({
 });
 export type ExplorerProvenanceWire = z.infer<typeof ExplorerProvenanceWireSchema>;
 
+/**
+ * How ONE field of a contract gets recorded — the "Recorded" column of the
+ * explorer's field table (doc 12 §5.9).
+ *
+ * The demo's third column carries the value a RUN recorded. No run is laid over
+ * this graph (§5.7's first exclusion), so what is honestly servable is the fact
+ * the descriptor declares about the field's PROVENANCE: whether the value is
+ * observed live from the system or derived from other facts, and the freshness
+ * bound it is observed under. Every arm below is a statement the registry can
+ * actually make; there is no arm that guesses.
+ *
+ * `unknown` is deliberately reachable. A read contract's freshness and
+ * provenance policies are optional on this wire, so a contract that carried
+ * neither would leave its outputs undeclared — and the column then says so by
+ * name rather than printing the `live` that most reads happen to declare.
+ */
+export const ExplorerFieldRecordedWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("observed"),
+    source: z.enum(["live", "derived"]),
+    maxAge: ExplorerFreshnessLimitWireSchema,
+    override: z.enum(["forbidden", "audited"]).optional(),
+  }),
+  /** An INPUT leaf: the graph binds this value, so nothing observes it. */
+  z.strictObject({ state: z.literal("bound"), reason: z.string().min(1) }),
+  /** A prepare arm's output: `checkpoint: in-memory-only`, so nothing stores it. */
+  z.strictObject({ state: z.literal("not-recorded"), reason: z.string().min(1) }),
+  /** A commit arm's output: stored inside the transaction outcome (D144). */
+  z.strictObject({ state: z.literal("checkpointed"), reason: z.string().min(1) }),
+  z.strictObject({ state: z.literal("unknown"), reason: z.string().min(1) }),
+]);
+export type ExplorerFieldRecordedWire = z.infer<typeof ExplorerFieldRecordedWireSchema>;
+
+/**
+ * One FIELD of a task arm's contract — the row the demo's node panel draws
+ * (`Field · System · Recorded`), derived from the contract's own zod shape.
+ *
+ * `kind` and `presence` come from `contractSchemaLeaves`, which walks the SAME
+ * schema object `inputSchemaHash` / `outputSchemaHash` fingerprint — one shape,
+ * described once. An array is ONE field, matching the rule `evidenceLeaves` and
+ * the freshness / provenance `byField` prefix already use, so a `Recorded`
+ * verdict resolves at exactly the granularity a policy can name.
+ */
+export const ExplorerContractFieldWireSchema = z.strictObject({
+  path: ContractFieldPathSchema,
+  side: z.enum(["input", "output"]),
+  kind: ContractSchemaLeafKindSchema,
+  presence: z.enum(["always", "sometimes"]),
+  /** The closed vocabulary an `enum`/`literal` field admits. */
+  options: z.array(z.string().min(1)).min(1).optional(),
+  recorded: ExplorerFieldRecordedWireSchema,
+});
+export type ExplorerContractFieldWire = z.infer<typeof ExplorerContractFieldWireSchema>;
+
 /** One task arm of a node: a `task` node has one, a `transaction` node has two. */
 export const ExplorerTaskWireSchema = z.strictObject({
   arm: z.enum(["task", "prepare", "commit"]),
@@ -220,6 +276,8 @@ export const ExplorerTaskWireSchema = z.strictObject({
   writeSafety: ExplorerWriteSafetyWireSchema.optional(),
   inputSchemaHash: FingerprintSchema,
   outputSchemaHash: FingerprintSchema,
+  /** Every field this contract's input and output own, sorted, side-tagged. */
+  fields: z.array(ExplorerContractFieldWireSchema),
   contractSource: SourceLinkWireSchema,
   /** The store's task implementation, and the fingerprint the manifest gave it. */
   implSource: SourceLinkWireSchema,
@@ -239,8 +297,14 @@ export const ExplorerNodeShapeWireSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("task"),
     replay: z.enum(["checkpoint", "always-rerun"]),
-    /** The node declares a `when` predicate; the closure itself is source-only. */
-    conditional: z.boolean(),
+    /**
+     * D228 — the node's `when`, served as the DECLARATION the executor
+     * evaluates. It replaced a `conditional: boolean` beside an opaque closure,
+     * which is why the surface can now say what the condition is: the client
+     * renders it through `describeNodeCondition`, the one projection of the one
+     * declaration, so the sentence cannot disagree with the rule.
+     */
+    condition: NodeConditionSchema.optional(),
   }),
   z.strictObject({
     kind: z.literal("transaction"),
@@ -285,9 +349,27 @@ export const ExplorerNodeShapeWireSchema = z.discriminatedUnion("kind", [
 ]);
 export type ExplorerNodeShapeWire = z.infer<typeof ExplorerNodeShapeWireSchema>;
 
+/**
+ * The descriptor's own words about a workflow or a node (D229).
+ *
+ * `absent` is an arm rather than a throw on purpose. The explorer serves every
+ * registered workflow in ONE document, so refusing the whole surface over a
+ * missing sentence would take the operator's index of the system down for a
+ * piece of prose. Saying *which* descriptor owes a sentence is the honest and
+ * strictly more useful answer, and `explorer-prose-declared` makes the arm
+ * unreachable for a registered workflow by failing the build instead.
+ */
+export const ExplorerProseWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("authored"), text: z.string().min(1) }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+export type ExplorerProseWire = z.infer<typeof ExplorerProseWireSchema>;
+
 export const ExplorerNodeWireSchema = z.strictObject({
   id: NodeIdSchema,
   label: z.string().min(1),
+  /** D229 — the descriptor's own sentence about why this node exists. */
+  purpose: ExplorerProseWireSchema,
   dependsOn: z.array(NodeIdSchema),
   shape: ExplorerNodeShapeWireSchema,
   tasks: z.array(ExplorerTaskWireSchema),
@@ -346,6 +428,8 @@ export type ExplorerScenarioWire = z.infer<typeof ExplorerScenarioWireSchema>;
 export const ExplorerWorkflowWireSchema = z.strictObject({
   id: WorkflowIdSchema,
   label: z.string().min(1),
+  /** D229 — the descriptor's own sentence about what this workflow does. */
+  summary: ExplorerProseWireSchema,
   code: z.string().min(1),
   icon: z.string().min(1),
   category: z.string().min(1),

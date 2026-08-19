@@ -24,6 +24,8 @@ import type {
 import { NodeIdSchema } from "../domain/ids.js";
 import type { DelegationEdgeId, ItemId, NodeId } from "../domain/ids.js";
 import type { RetryPolicy } from "../domain/session.js";
+import { parseNodeCondition } from "../domain/workflow/node-condition.js";
+import type { NodeConditionSpec } from "../domain/workflow/node-condition.js";
 import type {
   AnyWorkflowRef,
   BranchNode,
@@ -111,7 +113,8 @@ export interface StepOpts<
   readonly label?: string;
   readonly dependsOn: D;
   readonly bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<C["input"]>;
-  readonly when?: (scope: ScopeFor<InputSchema, S, D>) => boolean;
+  /** D228 — a DECLARED condition; the closure form is gone on purpose. */
+  readonly when?: NodeConditionSpec;
   /** REQUIRED — no default (doc 02 §5.3). */
   readonly replay: "checkpoint" | "always-rerun";
 }
@@ -553,7 +556,7 @@ function makeBuilder(state: MutableFlowState): unknown {
       label?: string;
       dependsOn: readonly string[];
       bind: (scope: never) => unknown;
-      when?: (scope: never) => boolean;
+      when?: NodeConditionSpec;
       replay: "checkpoint" | "always-rerun";
     }): unknown {
       push({
@@ -563,7 +566,7 @@ function makeBuilder(state: MutableFlowState): unknown {
         ...(opts.label === undefined ? {} : { label: opts.label }),
         uses: contract,
         bind: opts.bind,
-        ...(opts.when === undefined ? {} : { when: opts.when }),
+        ...(opts.when === undefined ? {} : { when: parseNodeCondition(opts.when) }),
         replay: opts.replay,
       } as GraphNodeBase);
       return builder;

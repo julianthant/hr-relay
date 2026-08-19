@@ -949,11 +949,28 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].details[].label", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].editableFields[].label", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].label", origin: "repository-authored" },
+  // D229 — the descriptor's own prose, and the projection's own sentence naming
+  // the file that owes one. Both are written in this repository; neither can
+  // carry a value read off a page, a run, or a person.
+  { surface: "wire/workflow-explorer", path: "workflows[].nodes[].purpose.text", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].nodes[].purpose.reason", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].summary.text", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].summary.reason", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.branches[].id", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.cases[].name", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.edgeId", origin: "repository-authored" },
+  // D228 — the scalar a declared `when` compares against, written in the
+  // descriptor's own source. A condition is data about the GRAPH; nothing about
+  // a run, a person, or a page can reach it.
+  { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.condition.value", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.statusKey", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].tasks[].binding.note", origin: "repository-authored" },
+  // D227 — a field census leaf. `options[]` is the closed vocabulary an enum or
+  // literal declares IN THE SOURCE, and `recorded.reason` is one of a handful of
+  // sentences this repository's own projection composes. Neither can carry a
+  // value read off a live page: the census walks a schema, not a run.
+  { surface: "wire/workflow-explorer", path: "workflows[].nodes[].tasks[].fields[].options[]", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].nodes[].tasks[].fields[].recorded.reason", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].tasks[].binding.storeNamespace", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].tasks[].contractSource.reason", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].tasks[].implSource.reason", origin: "repository-authored" },

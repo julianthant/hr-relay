@@ -353,8 +353,8 @@ export interface TaskStepNode<TCtx, C extends AnyReadContract> {
   bind: (ctx: TCtx) => z.input<C["input"]>;
   /** Declared graph dependencies; freshness and scheduling use these static edges. */
   dependsOn: readonly string[];
-  /** Optional condition may read workflow input AND declared upstream outputs. */
-  when?: (scope: TCtx) => boolean;
+  /** Optional condition — a DECLARED value, not a closure (D228, §3.3). */
+  when?: NodeCondition;
   /** Resume policy — REQUIRED, no default (§5.3). */
   replay: "checkpoint" | "always-rerun";
   // Prepare and commit contracts are illegal here: they appear only inside one transaction node.
@@ -980,7 +980,7 @@ interface StepOpts<
   label?: string;                                        // defaults to contract.title (§1.5)
   dependsOn: D;
   bind: (scope: FlowScope<InputSchema, Pick<S, D[number]>>) => z.input<C["input"]>;
-  when?: (scope: FlowScope<InputSchema, Pick<S, D[number]>>) => boolean;
+  when?: NodeConditionSpec;                              // D228 — declared, see §3.3
   replay: "checkpoint" | "always-rerun";                 // REQUIRED
 }
 
@@ -1195,6 +1195,53 @@ graph semantics and typed outputs. Scenario coverage is mandatory for zero/one/m
 partial failure, cancellation, retry/resume, duplicate replay, and multiple independent edges.
 
 ---
+
+### 3.3 A node's `when` is a DECLARED condition, not a closure (2026-08-19, D228)
+
+`when` was `(scope) => boolean`. That is the right type for a rule nothing but the executor ever
+reads, and the wrong one the moment a surface has to say *what* the rule is: doc 12 §5.7 correctly
+refused to decompile a closure, so the explorer printed "runs when the descriptor's own `when()`
+predicate holds" — true, and useless to the operator looking at a node that did not run. The
+recorded fix was an authored `whenLabel` beside the predicate, and that fix carries the defect this
+whole tree exists to avoid: two descriptions of one rule, which drift the moment somebody edits the
+predicate and not the sentence. **A surface that says a node runs on a condition it no longer runs
+on is worse than a surface that says nothing.**
+
+So the condition itself is data. `src/domain/workflow/node-condition.ts` declares a **closed, flat**
+vocabulary — `is-true`, `is-false`, `equals`, `not-equals`, `is-present`, `is-absent` — over an
+operand that is either the run's canonical input or a declared upstream node's output, both named by
+a dotted `ContractFieldPath`. `evaluateNodeCondition` is the ONE evaluator (the executor's planning
+pass and its execution pass both call it), and `describeNodeCondition` is a total projection of the
+same value into words. The sentence cannot disagree with the rule because it IS the rule.
+
+**Four refusals, each replacing a silent wrong answer.**
+
+- **`is-present` / `is-absent` are the only arms that tolerate a missing value.** Every other arm
+  throws when the operand resolves to nothing, because *"the field the condition reads is missing"*
+  and *"the condition is false"* are different facts, and letting the first masquerade as the second
+  is how a node silently stops running.
+- **A path that traverses a non-object throws.** A condition written against a shape the contract
+  does not have is a descriptor defect; answering "absent" would make it look like an ordinary skip.
+- **`is-true` / `is-false` refuse a non-boolean** rather than coercing. The closure form could return
+  a non-boolean and the executor had to check for it after the fact; a declaration cannot.
+- **The factory refuses a path no schema owns, and an upstream node the condition does not depend
+  on.** `defineWorkflowDescriptor` checks both — `owns` for the arms that read a VALUE (a condition
+  reading a field only one union arm carries would throw mid-run on the other arm) and `offers` for
+  the two arms whose entire question is whether the field is there. The closure form could only fail
+  on the one run whose input finally reached the node; a declaration fails at module load, which is
+  every test.
+
+**What was deliberately not built.** No `all-of` / `any-of`. A recursive condition tree is an
+expression language, and shaping one against the ONE conditional node this tree has today is exactly
+how an authoring surface acquires the wrong shape (D186's own argument, one level down). A condition
+the vocabulary cannot express is a **compile error in the descriptor**, not a plausible sentence on
+the surface, and widening the union is a reviewed code change precisely as D104's branch-case names
+are. That is the loud refusal doc 12 §5.7 asked for, moved from runtime into the type system.
+
+The authored face (`NodeConditionSpec`) takes plain strings and the builder parses it through
+`NodeConditionSchema`, the same shape `WorkflowCapabilitiesSpec` takes for the same reason: a
+descriptor literal never spells a brand. `HasWhen<O>` and every downstream `T | undefined` typing are
+unchanged — conditionality is still a key-presence fact at the type level.
 
 ## 4. The run-state machine (gates are run-state, not task internals — D5)
 
@@ -1714,7 +1761,8 @@ export const personLookupDescriptor = workflow("person-lookup", PersonLookupInpu
       crm: outputs["cross-verify"], keepNonHdh: input.keepNonHdh }) })
   .step("crm-dates", CrmReadOnboardingDates, {          // crm/read-onboarding-dates
     label: "CRM Dates", dependsOn: ["searching"],
-    when: ({ input }) => input.includeCrmDates === true, replay: "checkpoint",
+    when: { kind: "is-true", of: { from: "input", path: "includeCrmDates" } },
+    replay: "checkpoint",
     bind: ({ outputs }) => ({
       eid: require(outputs.searching.selection.selected, "searching", "selection.selected").emplId }) })
   .build({

@@ -382,6 +382,10 @@ export const separationsKualiFinalizationDescriptor = defineWorkflowDescriptor({
   ),
   code: "sf",
   label: "Kuali Finalization",
+  summary:
+    "Chunk 5 of the separations migration: the Kuali finalization SAVE, provable alone. Reads the "
+    + "identity picture, resolves the department option, parks for approval, then stages every "
+    + "finalization field in one pass and saves once.",
   icon: "ShieldCheck",
   category: "separation",
   canonicalInput: SeparationsKualiFinalizationCanonicalInput,
@@ -431,6 +435,45 @@ export const separationsKualiFinalizationDescriptor = defineWorkflowDescriptor({
     title: (input) => `Kuali ${input.documentNumber} finalization`,
     subtitle: (input) => `${input.employeeName} — ${input.transactionNumber}`,
   },
+  /** D229 — the descriptor's own words about each node, projected by the explorer. */
+  nodePurposes: [
+    {
+      nodeId: "job-summary",
+      purpose: "Reads the subject's whole UCPath job summary grid verbatim — every row, every status — and "
+        + "classifies nothing; the disposition is a separate, pure fold.",
+    },
+    {
+      nodeId: "name-search",
+      purpose: "Searches UCPath Person Org by the document's employee name, unconditionally, so the operator "
+        + "sees every person that name matches rather than only the ones a similarity threshold selected.",
+    },
+    {
+      nodeId: "department-option",
+      purpose: "Resolves the subject's UCPath department to the exact option this document's OWN control offers, "
+        + "refusing one the control does not carry. Pure: it reaches no browser.",
+    },
+    {
+      nodeId: "comparison",
+      purpose: "Builds the identity evidence packet the gate shows — DISCONFIRMING evidence first — and the "
+        + "digest an approval binds to. Pure: it reaches no browser.",
+    },
+    {
+      nodeId: "identity-approval",
+      purpose: "The ALWAYS-GATE. A human confirms this is the right person before anything downstream may "
+        + "consume the identity, and only the typed resolve-gate command can settle it.",
+    },
+    {
+      nodeId: "approval",
+      purpose: "Re-derives the evidence and checks the stored approval against it, so an approval of a packet "
+        + "that has since moved cannot stand. It re-runs on every attempt rather than replaying its own "
+        + "previous answer.",
+    },
+    {
+      nodeId: "finalize-kuali",
+      purpose: "Stages every finalization field in ONE pass from the reconciled variables, saves once, and "
+        + "proves the save by reloading and comparing each written field against exactly what was staged.",
+    },
+  ],
   scenarios: [
     "separations-kuali-finalization/stage-refusals",
     "separations-kuali-finalization/save-verify-read-back",

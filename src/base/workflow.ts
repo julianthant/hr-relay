@@ -77,6 +77,7 @@ import {
   StepProjectionSchema,
   SubjectProjectionSpecRuntimeSchema,
   SurfaceShapeSchema,
+  NodePurposeSpecSchema,
   TimelineCategoryProjectionSchema,
   TimelineCategorySpecSchema,
   VerdictDefinitionSchema,
@@ -90,6 +91,7 @@ import type {
   GateProjectionDefinition,
   IconName,
   InputSubject,
+  NodePurposeSpec,
   StepProjection,
   SurfaceShape,
   TimelineCategoryProjection,
@@ -244,6 +246,14 @@ export interface WorkflowDescriptor<
    * one-category-per-node default. Always present, always exhaustive.
    */
   readonly timeline: readonly TimelineCategoryProjection[];
+  /**
+   * D229 — the descriptor's own sentence about what this workflow does, and one
+   * about each node. Plain data, DERIVED by the factory into an exhaustive,
+   * frozen list: a partial declaration would leave some nodes silently
+   * prose-less on the one surface whose job is to explain them.
+   */
+  readonly summary?: string;
+  readonly nodePurposes: readonly NodePurposeSpec[];
   readonly enqueue: EnqueuePolicy;
   readonly actions: WorkflowActionPolicy;
   readonly presets?: readonly InputPreset<z.input<InputSchema>>[];
@@ -302,6 +312,9 @@ export interface AnyWorkflowDescriptor {
     label: string;
     nodes: readonly Readonly<{ id: string; label: string }>[];
   }>[];
+  /** D229 — the descriptor's own prose; plain data, so it rides the broad view. */
+  readonly summary?: string;
+  readonly nodePurposes: readonly Readonly<{ nodeId: string; purpose: string }>[];
   readonly enqueue: EnqueuePolicy;
   readonly actions: WorkflowActionPolicy;
   readonly coordinator?: CoordinatorPolicy;
@@ -326,6 +339,7 @@ export interface WorkflowDescriptorSpec<
 > extends Omit<
   WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D>,
   "id" | "contractFingerprint" | "input" | "result" | "nodes" | "scenarios" | "timeline"
+  | "nodePurposes"
 > {
   readonly id: string;
   readonly contractFingerprint: string;
@@ -339,6 +353,13 @@ export interface WorkflowDescriptorSpec<
    * it parses scenario ids.
    */
   readonly timeline?: readonly Readonly<{ label: string; nodes: readonly string[] }>[];
+  /**
+   * D229 — the authored form: one sentence per node, keyed by node id. Plain
+   * strings, parsed by the factory into branded ids exactly as `timeline` is.
+   * Optional so a fixture graph need not carry prose, and EXHAUSTIVE when
+   * declared: a partial list would leave some nodes silently prose-less.
+   */
+  readonly nodePurposes?: readonly Readonly<{ nodeId: string; purpose: string }>[];
   /** The built graph — its exact node tuple, result spec, and accumulators. */
   readonly flow: BuiltFlow<InputSchema, ResultSchema, Nodes, S, D>;
 }
@@ -745,6 +766,43 @@ function deriveTimeline(
   return Object.freeze(categories);
 }
 
+/**
+ * D229 — normalize the descriptor's per-node prose.
+ *
+ * A declared list is EXHAUSTIVE for the same reason D225's timeline is: the
+ * explorer's whole job is to explain a graph, and a node quietly missing its
+ * sentence is a node the surface stops explaining while every gate stays green.
+ * A descriptor that declares nothing gets an empty list, and the explorer says
+ * so by name rather than composing a sentence from the label.
+ */
+function deriveNodePurposes(
+  id: string,
+  nodes: readonly RuntimeFlowNode[],
+  declared: readonly Readonly<{ nodeId: string; purpose: string }>[] | undefined,
+): readonly NodePurposeSpec[] {
+  if (declared === undefined) return Object.freeze([]);
+  const known = new Set(nodes.map((node) => String(node.id)));
+  const seen = new Set<string>();
+  const purposes = declared.map((entry) => {
+    const parsed = NodePurposeSpecSchema.parse(entry);
+    if (!known.has(String(parsed.nodeId))) {
+      throw new Error(`${id}: node purpose names undeclared node ${String(parsed.nodeId)}`);
+    }
+    if (seen.has(String(parsed.nodeId))) {
+      throw new Error(`${id}: node purposes name node ${String(parsed.nodeId)} twice`);
+    }
+    seen.add(String(parsed.nodeId));
+    return parsed;
+  });
+  const missing = nodes.map((node) => String(node.id)).filter((nodeId) => !seen.has(nodeId));
+  if (missing.length > 0) {
+    throw new Error(
+      `${id}: a declared node-purpose list is exhaustive (D229) and this one does not cover: ${missing.join(", ")}`,
+    );
+  }
+  return Object.freeze(purposes);
+}
+
 function deriveGates(nodes: readonly RuntimeFlowNode[]): readonly GateProjectionDefinition[] {
   return Object.freeze(nodes.filter((node) => node.kind === "gate").map((node) =>
     GateProjectionDefinitionSchema.parse({
@@ -889,6 +947,40 @@ export function defineWorkflowDescriptor<
 
   for (const verdict of spec.verdicts ?? []) VerdictDefinitionSchema.parse(verdict);
   assertUnique(id, "verdict keys", (spec.verdicts ?? []).map((verdict) => verdict.key));
+
+  /**
+   * D228 — a declared `when` names a real field of a real schema, checked here
+   * the same way a detail's path is. The closure form could only fail at run
+   * time, on the one run whose input finally reached the node; a declaration is
+   * refused at `defineWorkflowDescriptor`, which is module load and therefore
+   * every test.
+   *
+   * `owns` for the arms that read a VALUE (a condition reading a field only one
+   * union arm carries would throw mid-run on the other arm) and `offers` for
+   * `is-present` / `is-absent`, whose entire question is whether the field is
+   * there.
+   */
+  for (const node of nodes) {
+    if (node.kind !== "task" || node.when === undefined) continue;
+    const condition = node.when;
+    const rule = condition.kind === "is-present" || condition.kind === "is-absent"
+      ? "offers" as const
+      : "owns" as const;
+    const owner = `node "${String(node.id)}" when`;
+    if (condition.of.from === "input") {
+      if (rule === "offers") assertSchemaOffersPath(spec.flow.input, String(condition.of.path), `${id}: ${owner}`);
+      else assertSchemaOwnsPath(spec.flow.input, String(condition.of.path), `${id}: ${owner}`);
+      continue;
+    }
+    const upstream = String(condition.of.nodeId);
+    if (!node.dependsOn.map(String).includes(upstream)) {
+      throw new Error(
+        `${id}: ${owner} reads node ${upstream}, which it does not depend on — `
+        + "the condition would be evaluated before that node had an answer",
+      );
+    }
+    assertNodeFieldPath(id, nodes, upstream, String(condition.of.path), owner, rule);
+  }
 
   for (const detail of spec.details) {
     DetailProjectionSpecRuntimeSchema.parse(detail);
@@ -1047,6 +1139,7 @@ export function defineWorkflowDescriptor<
     nodes: spec.flow.nodes,
     scenarios: declaredScenarios,
     timeline: deriveTimeline(id, nodes, spec.timeline),
+    nodePurposes: deriveNodePurposes(id, nodes, spec.nodePurposes),
   });
   PROJECTIONS.set(descriptor, Object.freeze({
     steps,

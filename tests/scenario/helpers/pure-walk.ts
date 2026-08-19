@@ -20,6 +20,7 @@ import type { z } from "zod";
 import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
 import type { RuntimeFlowNode, RuntimeScope } from "../../../src/domain/workflow/graph.js";
+import { evaluateNodeCondition } from "../../../src/domain/workflow/node-condition.js";
 import {
   joinDelegationOutcomes,
   planDelegationFanOut,
@@ -78,7 +79,7 @@ export function walkDescriptor(
 
     switch (node.kind) {
       case "task": {
-        if (node.when !== undefined && !node.when(scope)) {
+        if (node.when !== undefined && !evaluateNodeCondition(node.when, scope)) {
           skipped.push(id);
           outputs[id] = undefined;
           continue;

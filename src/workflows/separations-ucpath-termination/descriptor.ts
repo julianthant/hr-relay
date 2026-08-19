@@ -328,6 +328,10 @@ export const separationsUcpathTerminationDescriptor = defineWorkflowDescriptor({
   ),
   code: "st",
   label: "UCPath Termination",
+  summary:
+    "Chunk 4 of the separations migration: the UCPath termination FILING, provable alone. Reads the "
+    + "identity picture, parks for approval, clears any pending termination already on the record, then "
+    + "files the termination through the Smart HR wizard.",
   icon: "ShieldCheck",
   category: "separation",
   canonicalInput: SeparationsUcpathTerminationCanonicalInput,
@@ -383,6 +387,50 @@ export const separationsUcpathTerminationDescriptor = defineWorkflowDescriptor({
     title: (input) => `${input.employeeName} (${input.emplId})`,
     subtitle: (input) => `Termination effective ${input.effectiveDate}`,
   },
+  /** D229 — the descriptor's own words about each node, projected by the explorer. */
+  nodePurposes: [
+    {
+      nodeId: "job-summary",
+      purpose: "Reads the subject's whole UCPath job summary grid verbatim — every row, every status — and "
+        + "classifies nothing; the disposition is a separate, pure fold.",
+    },
+    {
+      nodeId: "name-search",
+      purpose: "Searches UCPath Person Org by the document's employee name, unconditionally, so the operator "
+        + "sees every person that name matches rather than only the ones a similarity threshold selected.",
+    },
+    {
+      nodeId: "termination-type",
+      purpose: "Resolves the document's termination type to the UCPath template and reason code it files under, "
+        + "refusing a type nobody has mapped. Pure: it reaches no browser.",
+    },
+    {
+      nodeId: "comparison",
+      purpose: "Builds the identity evidence packet the gate shows — DISCONFIRMING evidence first — and the "
+        + "digest an approval binds to. Pure: it reaches no browser.",
+    },
+    {
+      nodeId: "identity-approval",
+      purpose: "The ALWAYS-GATE. A human confirms this is the right person before anything downstream may "
+        + "consume the identity, and only the typed resolve-gate command can settle it.",
+    },
+    {
+      nodeId: "approval",
+      purpose: "Re-derives the evidence and checks the stored approval against it, so an approval of a packet "
+        + "that has since moved cannot stand. It re-runs on every attempt rather than replaying its own "
+        + "previous answer.",
+    },
+    {
+      nodeId: "clear-pending",
+      purpose: "Sweeps any pending termination already sitting on the subject's record, so the filing below is "
+        + "not the second one. It probes before it fences, and a dry run stops after staging.",
+    },
+    {
+      nodeId: "file-termination",
+      purpose: "Files the termination through the UCPath Smart HR wizard — the real write. It probes for a "
+        + "filing that already exists, fences before the click, and a dry run stops after staging.",
+    },
+  ],
   scenarios: [
     "separations-ucpath-termination/dry-run-preview",
     "separations-ucpath-termination/already-present",

@@ -30,10 +30,10 @@
  * exclusion — the run-detail timeline already serves those facts per run — so
  * it is absent here rather than approximated, and the toolbar band it occupied
  * carries the workflow's identity instead. The demo's node panel is a
- * FIELD-level contract table (`Wage · ucpath · $18.50/hr`); this wire serves
- * contracts at the ARM level, so the same table is drawn over the node's task
- * arms with the descriptor's declaration in the third column. Each gap is a
- * record in `docs/findings/explorer.md`.
+ * FIELD-level contract table (`Wage · ucpath · $18.50/hr`); this one is too
+ * (D227), over a census derived from each contract's own zod shape — with the
+ * third column carrying how the field is RECORDED rather than what one run
+ * recorded, because no run is laid over this graph.
  *
  * ## What is NOT here, and why that is honest
  *
@@ -58,7 +58,9 @@ import {
   Workflow,
 } from "lucide-react";
 import type {
+  ExplorerContractFieldWire,
   ExplorerNodeWire,
+  ExplorerProseWire,
   ExplorerTaskWire,
   ExplorerWorkflowWire,
   SourceLinkWire,
@@ -105,6 +107,7 @@ import {
   type WorkflowGroupEntry,
   type WorkflowGroupingFacts,
 } from "./workflow-category.js";
+import { describeNodeCondition } from "../../domain/workflow/node-condition.js";
 import { plural } from "./format.js";
 
 /* ── the node vocabulary ─────────────────────────────────────────────────── */
@@ -161,14 +164,16 @@ export function fmtFreshness(limit: number | "unbounded"): string {
 }
 
 /**
- * The demo's `contractTotals`, counted over what this wire actually carries.
+ * The demo's `contractTotals`, now a real FIELD census (D227).
  *
- * The demo counts CONTRACT FIELD rows by direction (`9 reads · 4 writes · 1
- * file`); this wire's contracts are projected per arm, not per field, so the
- * same line counts ARMS — a `read` effect is a read and a `prepare`/`commit`
- * pair is a write. The count is therefore smaller than the demo's and means a
- * different thing, which is why the graph's ⓘ says so in as many words rather
- * than letting the number imply a field census nobody served.
+ * A read is one field a read arm observes FROM a system — its output leaves. A
+ * write is one field a commit arm writes TO a system — its input leaves. The
+ * prepare arm's inputs are deliberately not counted: it stages the same values
+ * its commit then writes, so counting both would report every write twice.
+ *
+ * The demo's third segment (`1 file`) stays absent: it is a per-run artifact
+ * count, and doc 12 §5.7 already dispositioned it as a run fact rather than a
+ * registry one.
  */
 export function explorerGraphTotals(
   workflow: ExplorerWorkflowWire,
@@ -177,11 +182,32 @@ export function explorerGraphTotals(
   let writes = 0;
   for (const node of workflow.nodes) {
     for (const task of node.tasks) {
-      if (task.effect === "read") reads += 1;
-      else writes += 1;
+      for (const field of task.fields) {
+        if (task.effect === "read" && field.side === "output") reads += 1;
+        if (task.effect === "commit" && field.side === "input") writes += 1;
+      }
     }
   }
   return { nodes: workflow.nodes.length, reads, writes };
+}
+
+/**
+ * The system a task arm binds to, as the contract table's middle column.
+ *
+ * A browser store names its driver's system; a headless store has none, so its
+ * namespace is the honest answer to "where does this run" — and an unbound
+ * contract says `unbound` rather than borrowing the workflow's system.
+ */
+export function taskSystemLabel(task: ExplorerTaskWire): string {
+  if (task.binding.state !== "bound") return "unbound";
+  return task.binding.driverSystem ?? task.binding.storeNamespace;
+}
+
+/** One field row's second line: which side it sits on, and what it holds. */
+export function fieldShapeLine(field: ExplorerContractFieldWire): string {
+  const side = field.side === "input" ? "in" : "out";
+  const presence = field.presence === "sometimes" ? " · sometimes" : "";
+  return `${side} · ${field.kind}${presence}`;
 }
 
 export type DryRunPosture = "boundary" | "no-rehearsal" | "no-system-write";
@@ -704,9 +730,9 @@ function GraphNodeRow({
             <Chip tone="danger">a dry run does not stop this</Chip>
           )}
         </span>
-        {node.shape.kind === "task" && node.shape.conditional && (
+        {node.shape.kind === "task" && node.shape.condition !== undefined && (
           <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
-            runs when the descriptor&apos;s own when() predicate holds
+            {describeNodeCondition(node.shape.condition)}
           </span>
         )}
         <span className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
@@ -852,51 +878,128 @@ function DirHeaderRow({ dir }: { dir: "read" | "write" }) {
 }
 
 /**
- * One task arm as a contract row.
+ * One task ARM, as a sub-band naming the contract every field row beneath it
+ * belongs to.
  *
- * The demo's third column carries the value THIS RUN recorded for the field. No
- * run is laid over this graph (§5.7), and the descriptor's own declaration is
- * the honest thing to put in a column headed by what the contract promises: the
- * freshness and provenance a read is bound by, the completion a write is proved
- * by. A blank cell would read as "nothing declared", which is a different and
- * false statement.
+ * The demo bands only by direction, because its rows are fields of ONE run's
+ * node. Here a node owns one or two whole contracts, and a field row that did
+ * not say which contract it came from would be unresolvable back to a source
+ * file — which is the surface's entire job. So the arm keeps its id, its verb,
+ * and the policy chips that are facts about the WHOLE contract rather than
+ * about any one field.
  */
-function ContractRow({ task }: { task: ExplorerTaskWire }) {
+function ContractArmBand({ task }: { task: ExplorerTaskWire }) {
   const bound = task.binding.state === "bound";
   return (
     <TR className="h-auto align-top">
-      <TD className="py-[var(--ds-space-snug)]">
-        <span className={cn(dsText.meta, dsText.nums, dsClip.text, "block text-[color:var(--ds-fg)]")}>
-          {task.taskId}
-        </span>
-        <span className={cn(dsText.micro, "block text-[color:var(--ds-fg-faint)]")}>
-          {ARM_WORD[task.arm]} · {task.title}
-        </span>
-      </TD>
-      <TD className="py-[var(--ds-space-snug)]">
-        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-          {task.binding.state === "bound"
-            ? (task.binding.driverSystem ?? task.binding.storeNamespace)
-            : "unbound"}
-        </span>
-      </TD>
-      <TD className="py-[var(--ds-space-snug)]">
-        <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">
-          {!bound && <Chip tone="warning">no implementation</Chip>}
-          {task.freshness !== undefined && (
-            <Chip label="fresh" title={`${String(task.freshness.defaultMaxAge)} ms`}>
-              {fmtFreshness(task.freshness.defaultMaxAge)}
-            </Chip>
-          )}
-          {task.provenance !== undefined && <Chip label="from">{task.provenance.default}</Chip>}
-          {task.writeSafety !== undefined && (
-            <Chip tone="warning" label="proof">{task.writeSafety.completionKind}</Chip>
-          )}
-          {task.checkpoint !== undefined && <Chip label="checkpoint">{task.checkpoint}</Chip>}
-          {task.artifacts !== undefined && <Chip label="artifacts">{task.artifacts}</Chip>}
+      <TD colSpan={3} className="py-[var(--ds-space-snug)]">
+        <span className="flex min-w-0 flex-wrap items-baseline gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-hair)]">
+          <span className={cn(dsText.meta, dsText.nums, "font-semibold text-[color:var(--ds-fg)]")}>
+            {task.taskId}
+          </span>
+          <span className={cn(dsText.micro, "text-[color:var(--ds-fg-faint)]")}>
+            {ARM_WORD[task.arm]} · {task.title}
+          </span>
+          <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">
+            {!bound && <Chip tone="warning">no implementation</Chip>}
+            {task.freshness !== undefined && (
+              <Chip label="fresh" title={`${String(task.freshness.defaultMaxAge)} ms`}>
+                {fmtFreshness(task.freshness.defaultMaxAge)}
+              </Chip>
+            )}
+            {task.provenance !== undefined && <Chip label="from">{task.provenance.default}</Chip>}
+            {task.writeSafety !== undefined && (
+              <Chip tone="warning" label="proof">{task.writeSafety.completionKind}</Chip>
+            )}
+            {task.checkpoint !== undefined && <Chip label="checkpoint">{task.checkpoint}</Chip>}
+            {task.artifacts !== undefined && <Chip label="artifacts">{task.artifacts}</Chip>}
+          </span>
         </span>
       </TD>
     </TR>
+  );
+}
+
+/**
+ * The `Recorded` cell — how THIS field gets recorded, never what a run recorded.
+ *
+ * No run is laid over this graph (§5.7's first exclusion), so a recorded VALUE
+ * is not a fact this surface holds. What the descriptor does declare is the
+ * field's provenance and its freshness bound, and each remaining arm states the
+ * genuine reason a field has no observation behind it. `unknown` is drawn as a
+ * warning on purpose: a read whose provenance nothing declares is a gap in the
+ * contract, not a quiet default.
+ */
+function FieldRecorded({ recorded }: { recorded: ExplorerContractFieldWire["recorded"] }) {
+  switch (recorded.state) {
+    case "observed":
+      return (
+        <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">
+          <Chip label="from">{recorded.source}</Chip>
+          <Chip label="fresh" title={`${String(recorded.maxAge)} ms`}>{fmtFreshness(recorded.maxAge)}</Chip>
+          {recorded.override !== undefined && <Chip label="override">{recorded.override}</Chip>}
+        </span>
+      );
+    case "checkpointed":
+      return <Chip label="stored" title={recorded.reason}>transaction checkpoint</Chip>;
+    case "unknown":
+      return <Chip tone="warning" title={recorded.reason}>unknown</Chip>;
+    case "bound":
+    case "not-recorded":
+      return (
+        <span className={cn(dsText.micro, "text-[color:var(--ds-fg-faint)]")} title={recorded.reason}>
+          {recorded.state === "bound" ? "bound by the graph" : "not recorded"}
+        </span>
+      );
+  }
+}
+
+/**
+ * One FIELD of a contract — the demo's row, over this tree's own census.
+ *
+ * The census is derived from the contract's zod shape by `contractSchemaLeaves`,
+ * which walks the SAME schema object the arm's `inputSchemaHash` /
+ * `outputSchemaHash` fingerprint. There is no authored field list anywhere
+ * behind this row.
+ */
+function ContractFieldRow({ field, system }: { field: ExplorerContractFieldWire; system: string }) {
+  return (
+    <TR className="h-auto align-top">
+      <TD className="py-[var(--ds-space-hair)] pl-[var(--ds-space-base)]">
+        <span className={cn(dsText.meta, dsText.nums, dsClip.text, "block text-[color:var(--ds-fg)]")}>
+          {field.path}
+        </span>
+        <span
+          className={cn(dsText.micro, "block text-[color:var(--ds-fg-faint)]")}
+          title={field.options === undefined ? undefined : field.options.join(" · ")}
+        >
+          {fieldShapeLine(field)}
+        </span>
+      </TD>
+      <TD className="py-[var(--ds-space-hair)]">
+        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{system}</span>
+      </TD>
+      <TD className="py-[var(--ds-space-hair)]">
+        <FieldRecorded recorded={field.recorded} />
+      </TD>
+    </TR>
+  );
+}
+
+/** An arm's sub-band followed by every field its contract owns, in order. */
+function ContractArmRows({ task }: { task: ExplorerTaskWire }) {
+  const system = taskSystemLabel(task);
+  return (
+    <>
+      <ContractArmBand task={task} />
+      {task.fields.map((field) => (
+        <ContractFieldRow
+          key={`${field.side}:${String(field.path)}`}
+          field={field}
+          system={system}
+        />
+      ))}
+    </>
   );
 }
 
@@ -1132,8 +1235,8 @@ function NodeDetail({
           )}
         </div>
 
-        {node.shape.kind === "task" && node.shape.conditional && (
-          <MetaLine items={["runs when the descriptor's own when() predicate holds"]} />
+        {node.shape.kind === "task" && node.shape.condition !== undefined && (
+          <MetaLine items={[describeNodeCondition(node.shape.condition)]} />
         )}
 
         {node.tasks.length === 0 ? (
@@ -1141,10 +1244,12 @@ function NodeDetail({
         ) : (
           <Table label={`${String(node.id)} contract`} layout="fixed">
             {/*
-              The demo's 44/20 split is sized for FIELD names (`Wage`); a
-              contract id is three times that long, so the first column takes
-              the width the second one does not need — a truncated `ucpath/…`
-              is the one value on this surface that has to survive whole.
+              The demo's 44/20 split is sized for FIELD names (`Wage`). A field
+              path here is longer (`selection.selected.employeeStatus`) and the
+              arm band above it carries a whole contract id, so the first column
+              takes the width the second one does not need — a truncated
+              `ucpath/…` is the one value on this surface that has to survive
+              whole.
             */}
             <colgroup>
               <col className="w-[46%]" />
@@ -1153,16 +1258,18 @@ function NodeDetail({
             </colgroup>
             <THead>
               <TR>
-                <TH>Contract</TH>
+                <TH>Field</TH>
                 <TH>System</TH>
-                <TH>Declared</TH>
+                <TH>Recorded</TH>
               </TR>
             </THead>
             <TBody>
               {reads.length > 0 && <DirHeaderRow dir="read" />}
-              {reads.map((task) => <ContractRow key={`r-${String(task.taskId)}`} task={task} />)}
+              {reads.map((task) => <ContractArmRows key={`r-${String(task.taskId)}`} task={task} />)}
               {writes.length > 0 && <DirHeaderRow dir="write" />}
-              {writes.map((task) => <ContractRow key={`w-${task.arm}-${String(task.taskId)}`} task={task} />)}
+              {writes.map((task) => (
+                <ContractArmRows key={`w-${task.arm}-${String(task.taskId)}`} task={task} />
+              ))}
             </TBody>
           </Table>
         )}
@@ -1259,8 +1366,12 @@ function NodeShapeFacts({ node }: { node: ExplorerNodeWire }) {
         <FactRow label="Replay">
           <FactChips>
             <Chip label="checkpoint">{shape.replay}</Chip>
-            <Chip label="condition" tone={shape.conditional ? "info" : "neutral"}>
-              {shape.conditional ? "declares when()" : "always runs"}
+            <Chip
+              label="condition"
+              tone={shape.condition === undefined ? "neutral" : "info"}
+              title={shape.condition === undefined ? undefined : describeNodeCondition(shape.condition)}
+            >
+              {shape.condition === undefined ? "always runs" : shape.condition.kind}
             </Chip>
           </FactChips>
         </FactRow>
@@ -1336,6 +1447,27 @@ function NodeShapeFacts({ node }: { node: ExplorerNodeWire }) {
  * The ⓘs — where everything this page has to TEACH lives
  * ====================================================================== */
 
+/**
+ * The descriptor's own words, or the gap named (D229).
+ *
+ * An absent sentence is drawn faint and italic and says which file owes one —
+ * the reader of this surface is the person who would author it. Nothing here
+ * composes prose from a label: a sentence assembled from two words would read
+ * as the descriptor's own and be nobody's.
+ */
+function Prose({ prose }: { prose: ExplorerProseWire }) {
+  if (prose.state === "absent") {
+    return (
+      <p className={cn(dsText.body, "italic leading-relaxed text-[color:var(--ds-fg-faint)]")}>
+        {prose.reason}
+      </p>
+    );
+  }
+  return (
+    <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg)]")}>{prose.text}</p>
+  );
+}
+
 const POSTURE_NOTE: Record<DryRunPosture, string> = {
   boundary:
     "A dry run executes every node above the dashed line and stops after the transaction's prepare arm — the commit never runs. That line, not gated access, is the whole safety boundary of a rehearsal.",
@@ -1366,7 +1498,14 @@ function GraphInfo({
       </PopoverTrigger>
       <PopoverContent title={workflow.label} side="bottom" align="end" width="lg">
         <div className="flex flex-col gap-[var(--ds-space-base)]">
-          <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg)]")}>
+          {/*
+            The descriptor's OWN sentence leads, because that is what the reader
+            came for; the derivation note below it is how to trust the sentence.
+            An undeclared summary names the file that owes one rather than
+            composing something from the two-word label (D229).
+          */}
+          <Prose prose={workflow.summary} />
+          <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
             This graph is the as-built descriptor, read from the one composition root at
             {" "}
             {workflow.sources.descriptor.state === "resolved"
@@ -1379,7 +1518,7 @@ function GraphInfo({
             {POSTURE_NOTE[posture]}
           </p>
           <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
-            {`${plural(totals.reads, "read")} and ${plural(totals.writes, "write")} count CONTRACTS, not fields: this projection serves a task's schemas by hash, so a field census is not a number it can honestly report.`}
+            {`${plural(totals.reads, "read")} and ${plural(totals.writes, "write")} count FIELDS, derived from each contract's own zod shape (D227): a read is a field a read arm observes from a system, a write is a field a commit arm writes to one. A prepare arm stages the values its commit then writes, so its inputs are not counted twice.`}
           </p>
           <p
             className={cn(
@@ -1422,7 +1561,8 @@ function NodeInfo({ workflow, node }: { workflow: ExplorerWorkflowWire; node: Ex
       </PopoverTrigger>
       <PopoverContent title={String(node.id)} side="bottom" align="end" width="lg">
         <div className="flex flex-col gap-[var(--ds-space-base)]">
-          <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg)]")}>
+          <Prose prose={node.purpose} />
+          <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
             {`${node.label} — a ${kind.word.toLowerCase()} node of ${workflow.label}.`}
           </p>
           {node.shape.kind === "child-run" && (
@@ -1444,10 +1584,12 @@ function NodeInfo({ workflow, node }: { workflow: ExplorerWorkflowWire; node: Ex
             read-only and carry none.
           </p>
           <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
-            Every closure this node owns — `when`, `bind`, `choose`, `derive`, the write-safety key
-            — is reported as the shape it sits in plus the file that owns it. A decompiled
-            rendering of what a function computes would be a second, unreviewed description of the
-            code.
+            Every closure this node owns — `bind`, `choose`, `derive`, the write-safety key — is
+            reported as the shape it sits in plus the file that owns it. A decompiled rendering of
+            what a function computes would be a second, unreviewed description of the code. A
+            node&apos;s `when` is the exception because it stopped being a closure: it is a declared
+            condition, and the sentence above is a projection of the same value the executor
+            evaluates.
           </p>
         </div>
       </PopoverContent>

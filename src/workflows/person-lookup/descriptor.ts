@@ -142,7 +142,7 @@ const personLookupFlow = flow(PersonLookupInput)
   .step("crm-dates", CrmReadOnboardingDates, {
     label: "CRM Dates",
     dependsOn: ["searching"],
-    when: ({ input }) => input.includeCrmDates,
+    when: { kind: "is-true", of: { from: "input", path: "includeCrmDates" } },
     replay: "checkpoint",
     bind: ({ outputs }) => ({
       eid: requireFact(outputs.searching.selection.selected, "searching", "selection.selected").emplId,
@@ -173,6 +173,10 @@ export const personLookupDescriptor = defineWorkflowDescriptor({
   ),
   code: "pl",
   label: "Person Lookup",
+  summary:
+    "Resolves ONE person across UCPath and the CRM: searches Person Org by EID or name, "
+    + "cross-verifies the match against the CRM onboarding record, folds the two into an active / "
+    + "inactive verdict, and reads the CRM onboarding dates when the run asks for them.",
   icon: "Search",
   category: "search",
   canonicalInput: PersonLookupCanonicalInput,
@@ -245,6 +249,25 @@ export const personLookupDescriptor = defineWorkflowDescriptor({
     title: (input) => ("emplId" in input ? `EID ${input.emplId}` : input.name),
     subtitle: (input) => (input.includeCrmDates ? "with CRM dates" : "person lookup"),
   },
+  /** D229 — the descriptor's own words about each node, projected by the explorer. */
+  nodePurposes: [
+    {
+      nodeId: "searching",
+      purpose: "Searches UCPath Person Org by the EID or name the run was started with, and returns every "
+        + "candidate it saw beside the one it resolved.",
+    },
+    {
+      nodeId: "cross-verify",
+      purpose: "Reads the CRM onboarding record for the same person, so the UCPath match is confirmed against a "
+        + "second system rather than trusted alone.",
+    },
+    {
+      nodeId: "active-status",
+      purpose: "Folds the UCPath picture and the CRM record into one active / inactive / undetermined verdict "
+        + "with the reason it reached that verdict. Pure: it reaches no browser.",
+    },
+    { nodeId: "crm-dates", purpose: "Reads the CRM invited, completed and start dates for the resolved person." },
+  ],
   scenarios: [
     "person-lookup/happy-by-eid",
     "person-lookup/happy-by-eid-with-dates",
