@@ -349,7 +349,19 @@ function plan(world: World): { versionPlanId: string; expectedVersion: number; p
     family: "version-archive",
     type: "plan-version-bump",
     target: { scope: { kind: "workflows", workflowIds: ["archive-fixture"] } },
-    payload: { targetVersion: "0.2.0", changeFingerprint: HASH_B },
+    payload: {
+      targetVersion: "0.2.0",
+      changeFingerprint: HASH_B,
+      // Charter §25's change record, authored at plan time and carried into
+      // the application verbatim. Without it a sweep can say who and when, and
+      // nothing about why.
+      changeRecord: {
+        kind: "major",
+        what: "the fixture workflow's probe step changed shape",
+        why: "the archive suite bumps the descriptor to make prior-version runs exist",
+        commit: { state: "present", value: "0123456abcdef" },
+      },
+    },
   }));
   assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "plan refused");
   const target = result.state === "applied" ? result.affectedTargets[0] : undefined;

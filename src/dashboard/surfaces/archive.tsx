@@ -39,12 +39,15 @@
  *
  * ## What this surface will not invent
  *
- * The demo renders several facts this wire does not carry — a dry-run flag and
- * a resolved instance per LIST row, per-attempt history, evidence tiles with
- * labels and retention dates, and the change record (what/why/commit) behind a
- * sweep. Each is recorded in `docs/findings/archive.md` rather than
- * approximated here: a plausible-but-wrong value on a record whose whole job
- * is to be trustworthy is the one thing this surface must never produce.
+ * The demo renders a few facts this wire still does not carry — a dry-run flag
+ * and a resolved instance per LIST row, and a short workflow code. Each is
+ * recorded in the findings ledger rather than approximated here: a
+ * plausible-but-wrong value on a record whose whole job is to be trustworthy
+ * is the one thing this surface must never produce. What HAS landed since that
+ * sentence was written is D223's five tabs off the frozen sections, the
+ * described capture tiles, the per-attempt history, Export, and charter §25's
+ * change record — the last of which is authored in the bump dialog, because
+ * the only person who can say why a version moved is the one moving it.
  *
  * ## The bump is on this page on purpose
  *
@@ -93,6 +96,7 @@ import {
   EmptyState,
   Field,
   IconButton,
+  Input,
   MetaLine,
   PageHeader,
   Panel,
@@ -119,6 +123,7 @@ import {
   TH,
   THead,
   TR,
+  Textarea,
   TimelineSteps,
   Well,
   type DsSortDirection,
@@ -144,8 +149,12 @@ import type {
 import { EVENT_STREAM_RETENTION_DAYS, type ArchiveRetentionWire } from "../../domain/archive/retention.js";
 import { timelineEventDuration } from "../../domain/dashboard/run-detail.js";
 import type { ResolvedLedgerLineWire } from "../../domain/archive/ledger-resolution.js";
+import {
+  VersionBumpChangeRecordSchema,
+  type VersionBumpChangeRecord,
+} from "../../domain/archive/change-record.js";
 import type { ArchivedCaptureTile, ArchivedRunAttempt, ArchivedRunSections } from "../../domain/archive/sections.js";
-import type { CommandResult } from "../../domain/commands.js";
+import type { CommandResult, VersionScope } from "../../domain/commands.js";
 import { DashboardClientError } from "../client/errors.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
@@ -581,14 +590,13 @@ function SweepSectionRow({
                       : `${sweep.scope.workflowIds.join(", ")} — every prior-version run of ${sweep.scope.workflowIds.length === 1 ? "that workflow" : "those workflows"} left the live surfaces in one act.`}
                   </p>
                   {/*
-                    The change record doc 03 §10.2 asks for — what moved, why,
-                    and the commit — is not on this wire. Naming its absence is
-                    the honest arm; inventing a sentence from the ids would be
-                    a second, fabricated account of a decision with one author.
+                    Charter §25's change record: what moved and WHY, authored
+                    by whoever made the change at the moment they made it. A
+                    sweep applied before it was collected says so — inventing a
+                    sentence from the ids would be a second, fabricated account
+                    of a decision with one author.
                   */}
-                  <p className={cn(dsText.meta, "text-[color:var(--ds-fg-faint)]")}>
-                    No written change record is served with a sweep, so what moved and why is not shown here.
-                  </p>
+                  <ChangeRecordBody record={sweep.changeRecord} />
                   <MetaLine
                     items={[
                       sweep.appliedBy,
@@ -596,6 +604,9 @@ function SweepSectionRow({
                       `app ${sweep.appliedAppVersion}`,
                       fmtClock(sweep.appliedAt),
                       `${plural(sweep.archivedCount, "run")} archived`,
+                      sweep.fromVersions.length === 0
+                        ? "archived nothing, so no from-version"
+                        : `v${sweep.fromVersions.join(", v")} → ${sweep.targetVersion}`,
                     ]}
                   />
                 </div>
@@ -1012,6 +1023,7 @@ function SweepRecordCard({ sweep, applicationId }: { sweep: ArchiveSweepWire | u
           </span>
         </div>
         <p className={cn(dsText.body, "text-[color:var(--ds-fg)]")}>{sweepNameLabel(sweep)}</p>
+        <ChangeRecordBody record={sweep.changeRecord} />
         <MetaLine
           items={[
             fmtClock(sweep.appliedAt),
@@ -1805,6 +1817,159 @@ function CaptureTileRow({ tile }: { tile: ArchivedCaptureTile }) {
   );
 }
 
+/* ── the bump's change record — charter §25, authored where the author is ── */
+
+/**
+ * WHAT moved and WHY, or the reason this bump has neither.
+ *
+ * Both halves render: the words are the whole point, and a bump applied before
+ * the record was collected states that rather than showing an empty block — a
+ * blank would read as "nobody had a reason", which is a different and worse
+ * claim than "nobody was asked".
+ */
+function ChangeRecordBody({ record }: { record: ArchiveSweepWire["changeRecord"] }) {
+  if (record.state === "absent") {
+    return <p className={cn(dsText.meta, "text-[color:var(--ds-fg-faint)]")}>{record.reason}</p>;
+  }
+  return (
+    <div className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
+      <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-hair)]">
+        <Badge tone={record.value.kind === "major" ? "warning" : "neutral"}>{record.value.kind}</Badge>
+        <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg)]")}>{record.value.what}</span>
+      </div>
+      <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{record.value.why}</p>
+      <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-faint)]")}>
+        {record.value.commit.state === "present" ? `commit ${record.value.commit.value}` : record.value.commit.reason}
+      </span>
+    </div>
+  );
+}
+
+
+/** What the operator clicked Bump on, carried into the authoring dialog. */
+interface BumpAuthoring {
+  /** The thing being bumped, in the operator's words, for the dialog title. */
+  readonly title: string;
+  readonly scope: { readonly scope: VersionScope };
+  readonly changeFingerprint: string;
+}
+
+/**
+ * The change record doc 03 §10.2 has always asked for, collected at the one
+ * moment somebody can answer it.
+ *
+ * `what` and `why` are required because a record with neither is the state
+ * this dialog exists to end — every sweep could say who applied it and when,
+ * and nothing about why. `commit` is not required and does not default to a
+ * blank: an application bump often has no single commit, and a fabricated hash
+ * on the record that exists to be trustworthy is worse than an honest "none".
+ * Leaving it empty records the reason instead.
+ */
+function BumpChangeRecordDialog({
+  authoring,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  authoring: BumpAuthoring | undefined;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (authoring: BumpAuthoring, changeRecord: VersionBumpChangeRecord) => void;
+}) {
+  const [kind, setKind] = useState<"major" | "minor">("minor");
+  const [what, setWhat] = useState("");
+  const [why, setWhy] = useState("");
+  const [commit, setCommit] = useState("");
+
+  useEffect(() => {
+    if (authoring === undefined) return;
+    setKind("minor");
+    setWhat("");
+    setWhy("");
+    setCommit("");
+  }, [authoring]);
+
+  const trimmedCommit = commit.trim();
+  const composed = authoring === undefined
+    ? undefined
+    : VersionBumpChangeRecordSchema.safeParse({
+      kind,
+      what: what.trim(),
+      why: why.trim(),
+      commit: trimmedCommit === ""
+        ? { state: "absent", reason: "the operator recorded no commit for this bump" }
+        : { state: "present", value: trimmedCommit },
+    });
+
+  return (
+    <Dialog open={authoring !== undefined} onOpenChange={(open) => { if (!open) onCancel(); }}>
+      {authoring !== undefined && (
+        <DialogContent
+          size="lg"
+          title={`Bump ${authoring.title}`}
+          description="Every prior-version run leaves the live surfaces in one act. What moved, and why, is recorded with it — that is the question the archive exists to answer later."
+        >
+          <DialogBody className="flex flex-col gap-[var(--ds-space-base)]">
+            <Field label="Kind" description="MAJOR is a shape change; MINOR is behaviour inside the same shape.">
+              <Select value={kind} onChange={(event) => setKind(event.target.value === "major" ? "major" : "minor")}>
+                <option value="minor">minor — behaviour changed</option>
+                <option value="major">major — the shape changed</option>
+              </Select>
+            </Field>
+            <Field label="What moved" required hint={`${String(what.trim().length)}/200`}>
+              <Input
+                value={what}
+                maxLength={200}
+                placeholder="the CRM cross-check tolerates a middle initial"
+                onChange={(event) => setWhat(event.target.value)}
+              />
+            </Field>
+            <Field
+              label="Why"
+              required
+              description="The half nobody can reconstruct from a diff."
+              hint={`${String(why.trim().length)}/1000`}
+            >
+              <Textarea
+                rows={3}
+                value={why}
+                maxLength={1000}
+                placeholder="three subjects a week were parking on a name mismatch that was not one"
+                onChange={(event) => setWhy(event.target.value)}
+              />
+            </Field>
+            <Field
+              label="Commit"
+              description="Optional. Left empty, the record says no commit was named rather than showing a blank."
+            >
+              <Input
+                value={commit}
+                maxLength={120}
+                placeholder="9f2c41d"
+                onChange={(event) => setCommit(event.target.value)}
+              />
+            </Field>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={busy}
+              disabled={composed === undefined || !composed.success}
+              onClick={() => {
+                if (composed?.success === true) onConfirm(authoring, composed.data);
+              }}
+            >
+              Plan the bump…
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      )}
+    </Dialog>
+  );
+}
+
 /* ── relaunch — it asks, it previews, and it names what already landed ───── */
 
 function RelaunchConfirmDialog({
@@ -2034,8 +2199,17 @@ function VersionsView({
     return counts;
   }, [wire.entries]);
 
-  const plan = useCallback(
-    (state: WorkflowVersionStateWire) => {
+  /**
+   * The bump is authored, not clicked. Charter §25 records WHAT moved and WHY
+   * in the same act that archives the runs, and the person clicking Bump is
+   * the person who made the change — so the question is asked here rather than
+   * left to whoever reads the archive six months later, who cannot answer it.
+   */
+  const [authoring, setAuthoring] = useState<BumpAuthoring | undefined>(undefined);
+
+  const submitPlan = useCallback(
+    (authored: BumpAuthoring, changeRecord: VersionBumpChangeRecord) => {
+      setAuthoring(undefined);
       onCommand({
         commandId: crypto.randomUUID(),
         requestedAt: systemClock.now().toISOString(),
@@ -2043,34 +2217,38 @@ function VersionsView({
         source: SOURCE_SURFACE,
         family: "version-archive",
         type: "plan-version-bump",
-        target: { scope: { kind: "workflows", workflowIds: [state.workflowId] } },
+        // An `application`-scope plan must name the RUNNING build (D179): a
+        // scope nobody can verify could archive every run on the strength of a
+        // typo, so the value comes from the served index, never from a field.
+        target: authored.scope,
         payload: {
           targetVersion: wire.currentAppVersion,
-          changeFingerprint: state.current.contractFingerprint,
+          changeFingerprint: authored.changeFingerprint,
+          changeRecord,
         },
       });
     },
     [actorId, onCommand, wire.currentAppVersion],
   );
 
+  const plan = useCallback(
+    (state: WorkflowVersionStateWire) => {
+      setAuthoring({
+        title: state.workflowLabel,
+        scope: { scope: { kind: "workflows", workflowIds: [state.workflowId] } },
+        changeFingerprint: state.current.contractFingerprint,
+      });
+    },
+    [],
+  );
+
   const planApplication = useCallback(() => {
-    onCommand({
-      commandId: crypto.randomUUID(),
-      requestedAt: systemClock.now().toISOString(),
-      requestedBy: actorId,
-      source: SOURCE_SURFACE,
-      family: "version-archive",
-      type: "plan-version-bump",
-      // An `application`-scope plan must name the RUNNING build (D179): a
-      // scope nobody can verify could archive every run on the strength of a
-      // typo, so the value comes from the served index, never from a field.
-      target: { scope: { kind: "application", applicationVersion: wire.currentAppVersion } },
-      payload: {
-        targetVersion: wire.currentAppVersion,
-        changeFingerprint: wire.versionState[0]?.current.contractFingerprint ?? "",
-      },
+    setAuthoring({
+      title: `the whole dashboard (app ${wire.currentAppVersion})`,
+      scope: { scope: { kind: "application", applicationVersion: wire.currentAppVersion } },
+      changeFingerprint: wire.versionState[0]?.current.contractFingerprint ?? "",
     });
-  }, [actorId, onCommand, wire.currentAppVersion, wire.versionState]);
+  }, [wire.currentAppVersion, wire.versionState]);
 
   const apply = useCallback(() => {
     if (openPlan === undefined) return;
@@ -2117,6 +2295,13 @@ function VersionsView({
               may not be interpretable against new dashboard state.
             </span>
           </Banner>
+
+          <BumpChangeRecordDialog
+            authoring={authoring}
+            busy={busy}
+            onCancel={() => setAuthoring(undefined)}
+            onConfirm={submitPlan}
+          />
 
           <div className="overflow-x-auto">
             <Table label="Workflow version registry">

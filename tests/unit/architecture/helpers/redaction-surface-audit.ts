@@ -1020,6 +1020,27 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/archived-run-detail", path: "sections.value.captures.value[].step.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.captures.value[].system.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.captures.value[].system.value", origin: "repository-authored" },
+  /*
+   * Charter §25's change record. `what`, `why` and `commit.value` are typed by
+   * the OPERATOR, so they are `external-text` on the same terms as an
+   * operator-assigned `displayName`: free text this repository did not author
+   * and may not claim to have bounded. The two `reason` halves are ours.
+   */
+  { surface: "wire/archive-index", path: "sweeps[].changeRecord.reason", origin: "repository-authored" },
+  { surface: "wire/archive-index", path: "sweeps[].changeRecord.value.what", origin: "external-text" },
+  { surface: "wire/archive-index", path: "sweeps[].changeRecord.value.why", origin: "external-text" },
+  { surface: "wire/archive-index", path: "sweeps[].changeRecord.value.commit.value", origin: "external-text" },
+  { surface: "wire/archive-index", path: "sweeps[].changeRecord.value.commit.reason", origin: "external-text" },
+  { surface: "wire/archive-index", path: "plans[].changeRecord.reason", origin: "repository-authored" },
+  { surface: "wire/archive-index", path: "plans[].changeRecord.value.what", origin: "external-text" },
+  { surface: "wire/archive-index", path: "plans[].changeRecord.value.why", origin: "external-text" },
+  { surface: "wire/archive-index", path: "plans[].changeRecord.value.commit.value", origin: "external-text" },
+  { surface: "wire/archive-index", path: "plans[].changeRecord.value.commit.reason", origin: "external-text" },
+  { surface: "wire/version-bump-plan", path: "changeRecord.reason", origin: "repository-authored" },
+  { surface: "wire/version-bump-plan", path: "changeRecord.value.what", origin: "external-text" },
+  { surface: "wire/version-bump-plan", path: "changeRecord.value.why", origin: "external-text" },
+  { surface: "wire/version-bump-plan", path: "changeRecord.value.commit.value", origin: "external-text" },
+  { surface: "wire/version-bump-plan", path: "changeRecord.value.commit.reason", origin: "external-text" },
   { surface: "wire/archived-run-detail", path: "appVersion.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "ledger[].pointer.system", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "ledger[].system", origin: "repository-authored" },

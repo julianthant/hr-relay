@@ -362,6 +362,18 @@ async function send(
     : { state: result.state };
 }
 
+/**
+ * Charter §25's change record every bump in this walk carries. The archive's
+ * whole point is that somebody can read it later; "who and when" without "what
+ * and why" is the half of that which does not survive six months.
+ */
+const WALK_CHANGE_RECORD = {
+  kind: "major",
+  what: "the intake fixture workflow's descriptor moved to v2",
+  why: "the walk bumps the version so the settled run becomes prior-version and the archive has something to sweep",
+  commit: { state: "absent", reason: "authored inside a scenario walk, which has no commit to name" },
+} as const;
+
 function versionCommand(
   world: World,
   type: string,
@@ -608,7 +620,7 @@ describe("the operator lifecycle, across slices", () => {
     world.registry = [INTAKE_V2];
     const blockedPlan = versionCommand(world, "plan-version-bump", {
       scope: { kind: "workflows", workflowIds: [INTAKE_FIXTURE_WORKFLOW_ID] },
-    }, { targetVersion: "0.2.0", changeFingerprint: HASH_C });
+    }, { targetVersion: "0.2.0", changeFingerprint: HASH_C, changeRecord: WALK_CHANGE_RECORD });
     assert.equal(blockedPlan.state, "applied");
     const planTarget = blockedPlan.state === "applied" ? blockedPlan.affectedTargets[0] : undefined;
     const versionPlanId = planTarget?.family === "version-archive" ? planTarget.versionPlanId : "";
@@ -632,7 +644,7 @@ describe("the operator lifecycle, across slices", () => {
     cancel(world, blockedRunId);
     const reviewed = versionCommand(world, "plan-version-bump", {
       scope: { kind: "workflows", workflowIds: [INTAKE_FIXTURE_WORKFLOW_ID] },
-    }, { targetVersion: "0.2.0", changeFingerprint: HASH_C });
+    }, { targetVersion: "0.2.0", changeFingerprint: HASH_C, changeRecord: WALK_CHANGE_RECORD });
     const reviewedTarget = reviewed.state === "applied" ? reviewed.affectedTargets[0] : undefined;
     const reviewedPlanId = reviewedTarget?.family === "version-archive" ? reviewedTarget.versionPlanId : "";
     const reviewedRow = database.authority.versionPlans.get(reviewedPlanId);
@@ -812,7 +824,7 @@ describe("the operator lifecycle, across slices", () => {
     const lastLiveRow = world.projection.queueSurface(runId);
     const reviewed = versionCommand(world, "plan-version-bump", {
       scope: { kind: "application", applicationVersion: APP_VERSION },
-    }, { targetVersion: "0.2.0", changeFingerprint: HASH_C });
+    }, { targetVersion: "0.2.0", changeFingerprint: HASH_C, changeRecord: WALK_CHANGE_RECORD });
     assert.equal(reviewed.state, "applied", reviewed.state === "rejected" ? reviewed.message : "plan refused");
     const target = reviewed.state === "applied" ? reviewed.affectedTargets[0] : undefined;
     const versionPlanId = target?.family === "version-archive" ? target.versionPlanId : "";

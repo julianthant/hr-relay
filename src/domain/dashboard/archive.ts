@@ -24,6 +24,7 @@ import {
   VersionDriftReasonSchema,
   WorkflowVersionIdentitySchema,
 } from "../archive/model.js";
+import { VersionBumpChangeRecordSchema } from "../archive/change-record.js";
 import { ArchiveRetentionWireSchema } from "../archive/retention.js";
 import { ArchivedRunSectionsSchema } from "../archive/sections.js";
 import { ResolvedLedgerLineWireSchema } from "../archive/ledger-resolution.js";
@@ -86,6 +87,22 @@ export const ArchiveSweepWireSchema = z.strictObject({
   appliedBy: ActorIdSchema,
   appliedAt: IsoInstantSchema,
   archivedCount: z.number().int().nonnegative(),
+  /**
+   * Charter §25's change record — what moved and WHY. Absent for a sweep
+   * applied before generation 2, with the reason: a bump nobody wrote a reason
+   * for and a bump that predates the field are different facts.
+   */
+  changeRecord: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: VersionBumpChangeRecordSchema }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
+  /**
+   * The descriptor versions the runs THIS sweep archived were carrying —
+   * derived from the archived records' own frozen identities, not from the
+   * plan. A sweep that archived nothing has no from-version and says so; a
+   * multi-workflow sweep can legitimately have several.
+   */
+  fromVersions: z.array(z.number().int().positive()),
 });
 export type ArchiveSweepWire = z.infer<typeof ArchiveSweepWireSchema>;
 
@@ -117,6 +134,10 @@ export const VersionBumpPlanWireSchema = z.strictObject({
   observedIdentities: z.array(WorkflowVersionIdentitySchema).min(1),
   candidates: z.array(VersionBumpCandidateSchema),
   blockers: z.array(VersionBumpBlockerSchema),
+  changeRecord: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: VersionBumpChangeRecordSchema }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
   plannedBy: ActorIdSchema,
   plannedAt: IsoInstantSchema,
   state: z.enum(["planned", "applied"]),

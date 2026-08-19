@@ -51,6 +51,7 @@ import {
   WriteIntentIdSchema,
 } from "../ids.js";
 import { RunInputStorageSchema, RunStateSchema } from "../run/record.js";
+import { VersionBumpChangeRecordSchema } from "./change-record.js";
 import { ArchivedRunSectionsSchema } from "./sections.js";
 import { sha256Hex } from "../sha256.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
@@ -147,6 +148,34 @@ export const VersionBumpCandidateSchema = z.strictObject({
 export type VersionBumpCandidate = z.infer<typeof VersionBumpCandidateSchema>;
 
 /**
+ * The change record and the generation are one fact stated twice, exactly as
+ * the archived record's sections are — and for the same reason. A reader must
+ * admit a generation-1 plan (it is on disk and nothing may invent a `why` for
+ * it); a writer may not produce one, or "nobody wrote a reason" and "this plan
+ * predates reasons" would be the same row.
+ */
+function refineChangeRecordGeneration(
+  record: Readonly<{ archiveSchemaGeneration: number; changeRecord?: unknown }>,
+  context: z.RefinementCtx,
+): void {
+  if (record.archiveSchemaGeneration >= 2 && record.changeRecord === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["changeRecord"],
+      message: "a version bump at generation 2 or later must carry charter §25's change record "
+        + "(what, why, kind, commit); an absent one means generation 1",
+    });
+  }
+  if (record.archiveSchemaGeneration === 1 && record.changeRecord !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["archiveSchemaGeneration"],
+      message: "a generation-1 version bump predates the change record and cannot carry one",
+    });
+  }
+}
+
+/**
  * The immutable, reviewable plan (D95: `plan-version-bump`). It records what
  * the registry looked like when it was made; `apply` re-derives candidates and
  * blockers from authority at apply time and refuses if the registry has since
@@ -165,9 +194,17 @@ export const VersionBumpPlanSchema = z.strictObject({
   observedIdentities: z.array(WorkflowVersionIdentitySchema).min(1),
   candidates: z.array(VersionBumpCandidateSchema),
   blockers: z.array(VersionBumpBlockerSchema),
+  /**
+   * Charter §25's change record, authored by whoever made the change. Optional
+   * and bound to the generation for the same read-forward reason the archived
+   * record's sections are: a plan minted before generation 2 carries none and
+   * says so, and a plan minted NOW may not omit it.
+   */
+  changeRecord: VersionBumpChangeRecordSchema.optional(),
   plannedBy: ActorIdSchema,
   plannedAt: IsoInstantSchema,
 }).superRefine((plan, context) => {
+  refineChangeRecordGeneration(plan, context);
   const ids = plan.observedIdentities.map((identity) => identity.workflowId);
   if (new Set(ids).size !== ids.length) {
     context.addIssue({ code: "custom", path: ["observedIdentities"], message: "a workflow appears twice in one plan" });
@@ -200,9 +237,11 @@ export const VersionBumpApplicationSchema = z.strictObject({
   /** Re-derived inside the applying transaction, never copied from the plan. */
   appliedIdentities: z.array(WorkflowVersionIdentitySchema).min(1),
   archivedRunIds: z.array(RunIdSchema),
+  /** Copied from the reviewed plan VERBATIM — never re-authored at apply. */
+  changeRecord: VersionBumpChangeRecordSchema.optional(),
   appliedBy: ActorIdSchema,
   appliedAt: IsoInstantSchema,
-});
+}).superRefine(refineChangeRecordGeneration);
 export type VersionBumpApplication = z.infer<typeof VersionBumpApplicationSchema>;
 
 /**

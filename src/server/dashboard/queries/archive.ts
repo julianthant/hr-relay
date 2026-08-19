@@ -155,6 +155,26 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
         appliedBy: application.appliedBy,
         appliedAt: application.appliedAt,
         archivedCount: application.archivedRunIds.length,
+        changeRecord: application.changeRecord === undefined
+          ? {
+            state: "absent",
+            reason: "this sweep was applied before charter §25's change record was collected; nobody was "
+              + "asked what moved or why, and neither is reconstructible",
+          }
+          : { state: "present", value: application.changeRecord },
+        /*
+         * Derived from the ARCHIVED RECORDS' own frozen identities rather than
+         * from the plan: the plan's `observedIdentities` are the versions the
+         * bump moves TO, and the question "from what" is answered by what the
+         * swept runs were actually carrying. A sweep that archived nothing has
+         * no from-version, and an empty list is that fact — there is no run to
+         * read one off.
+         */
+        fromVersions: [...new Set(
+          archived
+            .filter((record) => record.applicationId === application.applicationId)
+            .map((record) => record.archivedIdentity.descriptorVersion),
+        )].sort((left, right) => left - right),
       })),
       versionState,
       plans: repositories.versionPlans.list().map((row) => ({
@@ -168,6 +188,12 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
         observedIdentities: row.plan.observedIdentities,
         candidates: row.plan.candidates,
         blockers: row.plan.blockers,
+        changeRecord: row.plan.changeRecord === undefined
+          ? {
+            state: "absent",
+            reason: "this plan was minted before charter §25's change record was collected",
+          }
+          : { state: "present", value: row.plan.changeRecord },
         plannedBy: row.plan.plannedBy,
         plannedAt: row.plan.plannedAt,
         state: row.state,

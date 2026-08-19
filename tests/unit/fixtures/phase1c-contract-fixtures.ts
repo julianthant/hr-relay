@@ -37,6 +37,19 @@ const SOURCE_COLUMN_ID = sourceColumnId("Employee ID#", 1);
 const WORKER_TARGET = { workerId: "worker-1", expectedVersion: 1 };
 const CAPTURE_TARGET = { captureSessionId: UUID_4, expectedVersion: 1 };
 
+/**
+ * Charter §25's change record, as every bump fixture spells it. `commit` takes
+ * its ABSENT arm on purpose: the union's two halves both have to be exercised
+ * somewhere, and an absent commit with a reason is the arm a bump nobody
+ * tagged actually takes.
+ */
+export const VERSION_BUMP_CHANGE_RECORD = {
+  kind: "minor",
+  what: "onboarding read step now binds the empl record",
+  why: "a two-job person resolved the wrong row and the fix changes what the step returns",
+  commit: { state: "absent", reason: "authored from the dashboard before the change was tagged" },
+} as const;
+
 export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "start", type: "start-run", target: { workflowId: "onboarding", startPlanId: UUID_3, expectedVersion: 1 }, payload: { descriptorFingerprint: HASH_A, configFingerprint: HASH_B, ingressSchemaHash: HASH_C, canonicalInputSchemaHash: HASH_A, inputFingerprint: HASH_C } },
   { ...BASE_COMMAND, family: "intake", type: "inspect-intake", target: INTAKE_TARGET, payload: { sheet: "Cohort A", headerRowIndex: 2 } },
@@ -53,7 +66,7 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "worker-browser", type: "refresh-browser", target: { ...WORKER_TARGET, browserSessionId: UUID_4 } },
   { ...BASE_COMMAND, family: "worker-browser", type: "reopen-browser", target: { ...WORKER_TARGET, browserSessionId: UUID_4 } },
   { ...BASE_COMMAND, family: "settings", type: "apply-settings", target: { expectedRevision: 1 }, payload: { settingsSchemaHash: HASH_A, patchFingerprint: HASH_B, patch: {} } },
-  { ...BASE_COMMAND, family: "version-archive", type: "plan-version-bump", target: { scope: { kind: "workflows", workflowIds: ["onboarding"] } }, payload: { targetVersion: "1.1.0", changeFingerprint: HASH_A } },
+  { ...BASE_COMMAND, family: "version-archive", type: "plan-version-bump", target: { scope: { kind: "workflows", workflowIds: ["onboarding"] } }, payload: { targetVersion: "1.1.0", changeFingerprint: HASH_A, changeRecord: VERSION_BUMP_CHANGE_RECORD } },
   { ...BASE_COMMAND, family: "version-archive", type: "apply-version-bump", target: { versionPlanId: UUID_3, expectedVersion: 1 }, payload: { planFingerprint: HASH_A } },
   { ...BASE_COMMAND, family: "version-archive", type: "relaunch-archived-run", target: { archivedRunId: UUID_2, archiveFingerprint: HASH_A } },
   ...["retry", "cancel", "bump", "hide", "unhide"].map((type) => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),

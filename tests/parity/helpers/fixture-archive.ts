@@ -160,6 +160,19 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
     appliedBy: "local-operator",
     appliedAt: at(60),
     archivedCount: 1,
+    // Charter §25's change record: the WHY the reference set had no way to
+    // photograph before, with the commit half taking its PRESENT arm here and
+    // the plan below taking the absent one.
+    changeRecord: {
+      state: "present",
+      value: {
+        kind: "major",
+        what: "Person Lookup now reads the empl record beside the name",
+        why: "a two-job subject resolved the wrong employment row, so the step's output shape changed",
+        commit: { state: "present", value: "9f2c41d" },
+      },
+    },
+    fromVersions: [1],
   }],
   versionState: [{
     workflowId: "person-lookup",
@@ -199,6 +212,15 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
       enqueuedAt: at(12),
       drift: ["descriptor-version"],
     }],
+    changeRecord: {
+      state: "present",
+      value: {
+        kind: "minor",
+        what: "Person Lookup's CRM cross-check tolerates a middle initial",
+        why: "three subjects a week were parking on a name mismatch that was not one",
+        commit: { state: "absent", reason: "authored from the dashboard before the change was tagged" },
+      },
+    },
     plannedBy: "local-operator",
     plannedAt: at(90),
     state: "planned",
