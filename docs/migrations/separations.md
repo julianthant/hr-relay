@@ -4516,3 +4516,283 @@ retired, doc 12 §4.4) · the archived detail follows the demo — five tabs, Ex
 §10.2). The operator also ratified the separations-completion plan's ordering
 (`docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` §7 Decision 5:
 Track B now, Track A on the canary).
+
+---
+
+### 9.19 The 4537 canary mapping pass — read-only against Kuali and UCPath, 2026-08-19
+
+Read-only against production, Duo cleared hands-off by Duo Autopilot, in this pass's OWN
+playwright-cli session (`s919`) on its own profile, which was deleted afterwards. **Nothing was
+submitted, saved, approved or finalized.** Kuali `Save` / `Send Back` / `Mark Complete` were never
+clicked, `submitDocumentV2` was never issued, the Smart HR wizard was never opened, and
+`Delete Selected Transactions` was never clicked. No dashboard run was planned and no worker ran;
+the browser was driven directly. Every Kuali finding below came from the same PASSIVE `ActionPage`
+response listener §9.12's instrument established — Kuali issues that query itself on every document
+route open, and this pass read the answer and sent nothing extra.
+
+**Why it ran.** §9.18 recorded the operator naming Kuali doc **4537** and owed it *"a read-only
+mapping pass before anything else cites it"*; the operator has since named it the **§4f2 canary** —
+the real production target for the three controlled commits separations still owes. This pass asks
+whether 4537 can carry them.
+
+#### The honest status, in one table
+
+| Commit | Verdict on doc 4537, 2026-08-19 | Whose refusal |
+|---|---|---|
+| ① `clear-pending` sweep, COMMITTED arm | **NO — nothing to clear.** UCPath holds five transactions for this EID and **every one is `Approved`**; zero `Pending`. The probe settles `already-present` at beat ① and the sweep's committed arm gets no live witness from 4537 | neither — the world simply has no pending row |
+| ② UCPath termination filing | **BLOCKED TODAY, until Pacific calendar day 2026-08-28.** Everything else it needs is satisfied — one ACTIVE employment row, a resolvable template, a department option that exists — but the document's Last Day Worked is `08/28/2026`, nine days out | **OURS.** `separation-date-in-future` (S7), refused at `plan`. UCPath itself was NOT asked and no claim is made about what it would do |
+| ③ Kuali finalization save | **YES, structurally — and it should not go first.** The action is open (`completed: false`), all four owning sections are `edit` at this step, and all twelve staged controls resolve to exactly one visible, editable node. But its `transactionNumber` is INGRESS, and until ② runs there is no real UCPath transaction for it to name | ours, by ordering — nothing in Kuali refuses it |
+
+#### 1. Doc 4537, as the passive `ActionPage` read found it
+
+One document open, one captured response, **9.41 s** wall including a deliberate 9 s passive dwell
+(navigation itself settled in ~0.4 s). Read twice, ~2 minutes apart, byte-identical both times.
+
+| Fact | Value |
+|---|---|
+| serial number / heading | `4537` / level-1 heading `"4537 "` |
+| action id | `6a8336ee44b521eae41895dc` |
+| document id | `6a8336b8e3a1c002a0314ca3` |
+| step | **`Task 1 - Kristina & TES`** |
+| `completed` / document `status` | `false` / `published` — the form is **open** |
+| created | `2026-08-17T16:28:40.453Z` |
+| submitted by / created by | **Marc Angelo Olitoquit** (`maolitoquit`, schoolId `10539275`) |
+| `defaultFormToViewOnly` | `true` — and every control is editable anyway; `sectionSettings` wins (see item 3) |
+
+**The subject is NOT the name §9.18 recorded.** §9.18 wrote the action list's person column through
+as the subject: *"4537 Marc Angelo Olitoquit"*. That column is the **submitter**. The document's own
+subject is:
+
+```
+EID*                              10628128
+Employee Last Name, First Name*   Bragado, Alyssa
+Location*                         Graduate and Family Housing - Mesa Nueva/Nuevo West
+Division                          Residential Services
+Employee Type                     Student
+Student Title Code                4920<TAB>- STDT 3
+Type of Termination*              Graduated/No longer a Student
+```
+
+A record that names the wrong person is one nobody can act on, so the correction is stated rather
+than quietly applied. (`Student Title Code`'s option label carries a literal TAB — §9.12 found that
+on a different document, and this is the third confirmation that it is a property of the FORM.)
+
+**`Type of Termination` resolves.** `Graduated/No longer a Student` is in
+`src/domain/separations/termination-type.ts`'s declared map → `involuntary("No Longer Student")` →
+template `UC_INVOL_TERM`, reason `No Longer Student`. The chunk-4 gate dependency would not refuse.
+
+#### 2. The twelve staged fields, as the document holds them today
+
+**Five of twelve hold values; seven are absent from the model entirely.**
+
+| Field | `formKey` | Live model value on 4537 |
+|---|---|---|
+| `lastDayWorked` | `ER1WhBzjcm` | **`1787875200000`** — `08/28/2026` |
+| `separationDate` | `oEcp1xtQkj` | **`1787875200000`** — `08/28/2026` |
+| `department` | `JPYGckVxcf` | `{"id":"GfKti1EX5VL","label":"000412 - Housing/Dining/Hospitality"}` |
+| `payrollTitleCode` | `2FlOeR5pd9` | `"004920"` |
+| `payrollTitle` | `sVmpq6tG9X` | `"STDT 3"` |
+| `requestAcknowledged` | `xKRU6vmYSY` | `[{"id":"5ZaHvv-OLS","label":"Request Acknowledged - In Progress"}]` |
+| `timekeeperName` | `QGJ63YrCom` | `"Juan Ramirez"` |
+| `terminationEffectiveDate` | `DoWSfJhpRm` | **absent** |
+| `transactionNumber` | `wPyuyY0wT0` | **absent** |
+| `submittedTerminationTemplate` | `6Ejy-1rfQJ` | **absent** |
+| `finalPay` | `8CXaCSIvx5` | **absent** |
+| `timekeeperComments` | `J_upFRq074` | **absent** |
+
+That is six populated of the seven the document's own submitter fills, plus the two dates — and
+`transactionNumber` **absent**, which is the honest state for a document whose UCPath transaction has
+not been filed. Contrast 4510, which still carries `T002209631` for a transaction that no longer
+exists (§9.16). **4537 is the cleaner canary on this axis**: a finalization here writes a transaction
+number into an empty field rather than over a stale one.
+
+`1787875200000` is UTC midnight on `08/28/2026` — the **fourth** independent confirmation of the epoch
+rule (4510, 4524, 4495, now 4537), and the rendered controls agree: both date textboxes read
+`08/28/2026`.
+
+#### 3. §4e's section discharge, re-derived independently on a third document and a second step
+
+4537's `sectionSettings` map is **ten entries, two of them `hide`** (`4WIES6A7P`, `VhuKxRTrN`) — the
+same key set §9.16 recorded, served at `Task 1 - Kristina & TES`. Walking the form template and
+carrying the nearest enclosing section id reproduces §9.12/§9.16's ownership map exactly:
+
+| Section | Fields it owns on 4537 | Setting at this step |
+|---|---|---|
+| `m9LaWN3zL` | `terminationEffectiveDate`, `department`, `payrollTitleCode`, `payrollTitle`, `transactionNumber`, `submittedTerminationTemplate`, `finalPay` | `edit` |
+| `cF6IPyCVw` | `requestAcknowledged`, `timekeeperName` | `edit` |
+| `a_Alfq9a2` | `timekeeperComments` | `edit` |
+| `eTURtLdMM` | `lastDayWorked`, `separationDate` | `edit` |
+
+**All four owning sections are `edit`, so §4e's one-save model holds on 4537: ONE save, ONE reload
+read-back, one fence, one permanent key.** The extraction validated itself the same way §9.16's did —
+the date gadgets' template DOM ids came back `ORt4nOmlp` and `bKTJvewkM` and `timekeeperName`'s came
+back `BWmkKqx40`, all byte-identical to the recorded captures, read here by a different instrument on
+a different document.
+
+**`exactly-one-editable`, on a third open document.** Every one of the twelve staged controls plus
+the four identity controls resolved to **exactly one** node that was visible, enabled and editable:
+
+| Control | count | visible | editable | DOM id | value read back |
+|---|---|---|---|---|---|
+| `Last Day Worked*` | 1 | ✓ | ✓ | `ORt4nOmlp` | `08/28/2026` |
+| `Separation Date (Last day actively employed)*` | 1 | ✓ | ✓ | `bKTJvewkM` | `08/28/2026` |
+| `Termination Effective Date*` | 1 | ✓ | ✓ | `jfJmtLuh9` | `""` |
+| `Department*` | 1 | ✓ | ✓ | `M-O_gndwl` | `GfKti1EX5VL` |
+| `Payroll Title Code*` | 1 | ✓ | ✓ | `c-t30RkWp` | `004920` |
+| `Payroll Title*` | 1 | ✓ | ✓ | `kQ6Tl7wtH` | `STDT 3` |
+| `Transaction Number:*` | 1 | ✓ | ✓ | `gFGo7o-Wa` | `""` |
+| `Timekeeper Name:*` | 1 | ✓ | ✓ | `BWmkKqx40` | `Juan Ramirez` |
+| `Timekeeper/Approver Comments:` | 1 | ✓ | ✓ | `uTMNjRmwc` | `""` |
+| `Submitted Termination Template` | 1 | ✓ | ✓ | `y_VXzkty8lleTCMaXciLd4ujCWvVG` | unchecked |
+| `Request Acknowledged - In Progress` | 1 | ✓ | ✓ | `5ZaHvv-OLSYRJhDTR1fb5Dp7bRFEUk` | checked |
+| `Does not need Final Pay (student employee)` | 1 | ✓ | ✓ | `UJeOIMZve50` | unselected |
+| `EID*` | 1 | ✓ | ✓ | `gxeqDUf5t` | `10628128` |
+| `Employee Last Name, First Name*` | 1 | ✓ | ✓ | `z2dC6cL7J` | `Bragado, Alyssa` |
+| `Type of Termination*` | 1 | ✓ | ✓ | `FHJBn2YWj` | `DOsAMgFdJ` |
+| `Location*` | 1 | ✓ | ✓ | `YrsJFqbhs` | `Graduate and Family Housing…` |
+
+`Save`, `Send Back` and `Mark Complete` each resolve to **exactly one** button; there is no `Submit`.
+Nothing was clicked. Worth one line because it looks contradictory: the action reports
+`defaultFormToViewOnly: true` and every control is editable regardless — the per-step
+`sectionSettings` map is what decides, and this step's is `edit`.
+
+#### 4. UCPath, EID 10628128 — the employment picture
+
+Person Organizational Summary, `Empl ID = 10628128`, search settled to a **results grid** (three rows,
+so no auto-navigation) **4.67 s** after the page opened. Verbatim:
+
+| Empl ID | Empl Rcd | HR status | BU | Job code | Job title |
+|---|---|---|---|---|---|
+| 10628128 | 0 | **Inactive** | SDCMP | 004921 | STDT 2 |
+| 10628128 | 1 | **Inactive** | SDCMP | CWR011 | Staff Volunteer |
+| 10628128 | 2 | **Active** | SDCMP | **004920** | **STDT 3** |
+
+Drilled in and expanded Employment Instances (`View All`), **4.89 s**; displayed EID `10628128`,
+displayed name `Alyssa Bragado`:
+
+```
+empl record 0 · eff 06/09/2025 · Inactive · SDCMP · position 40855708
+dept 000412 HOUSING/DINING/HOSPITALITY · job 004921 STDT 2 · expected job end 06/30/2025
+FTE 0.440000 · Student: Casual/Restricted
+
+empl record 2 · eff 06/12/2026 · Active  · SDCMP · position 41183054
+dept 000412 HOUSING/DINING/HOSPITALITY · job 004920 STDT 3 · expected job end 09/20/2026
+FTE 0.490000 · Student: Casual/Restricted
+```
+
+**One active row, so `classifyJobSummary` answers `single-active-job` — the ordinary separation shape,
+and `match-active-employment` does NOT refuse.** That is the first mapped subject in this migration for
+which it does not: 4510's subject was `Inactive` and 4524's document is gone.
+
+**And the document agrees with the ACTIVE row, not a stale one.** Doc 4537 carries `004920` / `STDT 3`
+and `000412 - Housing/Dining/Hospitality`; empl record 2 carries job code `004920` `STDT 3` in dept
+`000412 HOUSING/DINING/HOSPITALITY`. The names line up too — `Bragado, Alyssa` against UCPath's
+`Alyssa Bragado`. This is the best-agreeing subject/document pair the migration has read.
+
+**One observation, recorded rather than fixed.** The detail page renders the two EMPLOYEE instances in
+two tables, `tdgbrPER_ASGN_EMP_VW$0` and `$1` — both matched by
+`UCPATH_PERSON_ORG_ASSIGNMENTS_GRID`'s `table[id^="tdgbrPER_ASGN_EMP_VW$"]`, and its `.locator("tr")`
++ `evaluateAll` collects both, so the read sees both rows (confirmed live: two `tr` under that
+locator). Empl record **1** is a CONTINGENT-WORKER instance and renders in a different table,
+`tdgbrPER_ASGN_CWR_VW$0`, which that selector does not match — and the CWR row carries **no HR-status
+cell at all** (`1 | 06/24/2025 | SDCMP | 000254 | AQUARIUM-MUSEUM | CWR011 | Staff Volunteer |
+09/19/2025 | 0.000000 | Staff: Contingent Worker | …`); the search results grid is where its
+`Inactive` comes from. Here it changes nothing — the disposition is `single-active-job` either way,
+and this pass is read-only so nothing was changed. It is written down because **a person holding an
+ACTIVE contingent-worker instance would be invisible to the assignments-grid read**, and that is a
+question for whoever next owns that selector, not a claim that today's answer is wrong.
+
+#### 5. UCPath, EID 10628128 — the pending-transaction picture
+
+SS Smart HR Transactions, `Empl ID = 10628128` with the operator set to `=`; the results grid settled
+in **2.33 s**, and every one of the five transaction detail pages was read back and proved its own id.
+Whole scan: **5.01 s**.
+
+| Transaction | Name | EID | Action | Status | Start date | BU |
+|---|---|---|---|---|---|---|
+| `T002125072` | Alyssa Bragado | 10628128 | COM | **Approved** | 06/24/2025 | SDCMP |
+| `T001941738` | Alyssa Bragado | 10628128 | **TER** | **Approved** | 06/09/2025 | SDCMP |
+| `T001927738` | Alyssa Bragado | 10628128 | HIR | **Approved** | 07/07/2025 | SDCMP |
+| `T001884520` | Alyssa Bragado | 10628128 | ADD | **Approved** | 09/20/2024 | SDCMP |
+| `T001175063` | Alyssa Bragado | 10628128 | HIR | **Approved** | 02/02/2023 | SDCMP |
+
+**Zero `Pending` rows.** The 2025 `TER` is the termination of empl record 0 and is long since
+approved; the `HIR` a month later is the rehire that produced today's active record 2. So the
+`clear-pending` sweep on this subject settles **`already-present`** at beat ① with nothing staged and
+nothing clicked — the same arm every mapped subject has taken since the operator deleted `T002209631`
+(§9.16). **Naming 4537 the canary does not give the sweep's COMMITTED arm a witness**, and that
+remains true of every subject this migration has mapped.
+
+#### 6. What S7 says, exactly, and when it stops saying it
+
+`resolveSeparationPlan` compares both Kuali dates against `pacificCalendarDay(observedAt)` and refuses
+`separation-date-in-future` when either is LATER. On Pacific calendar day **2026-08-19**:
+
+> Kuali document 4537 carries a Last Day Worked of 08/28/2026, which is after 2026-08-19 — the Pacific
+> calendar day this run read the document. The employee is not yet eligible for separation (S7).
+
+The comparison is strictly *later*, so equality passes: **4537 becomes plannable on Pacific calendar
+day 2026-08-28**, nine days from this pass, and its derived termination effective date would be
+`08/29/2026` (separation date plus one). Until then a composed `separations` run on 4537 fails at
+`plan` in milliseconds, before any browser — the same refusal 4495 proved live at §9.17a run 4.
+
+**Attribution matters here and is the §9.16 lesson applied.** This is OUR rule. This pass did **not**
+type 10628128 into the Smart HR wizard's Page B, so it makes **no claim** about whether UCPath would
+stage a termination for a future-dated subject; that question is unasked, not answered. What is
+answered is that nothing on our side except the date blocks the filing: one active job, a template
+that resolves, a department option the document already holds.
+
+#### 7. The live document inventory moved again — 4510 is gone
+
+The Kuali action list holds exactly **three** items today, and 4510 is not one of them. Re-opening its
+recorded action id confirms it:
+
+| Doc | Action id | Step | State, 2026-08-19 |
+|---|---|---|---|
+| 4537 | `6a8336ee44b521eae41895dc` | `Task 1 - Kristina & TES` | **open** · Bragado, Alyssa / EID 10628128 · LDW+sep `08/28/2026` (future) · five of twelve staged fields populated |
+| 4502 | `6a766ae6f0549046f7f0dc06` | `Task 1 - Jan` | **open** · Emily Zimmerman · in the action list, unchanged from §9.16 |
+| 4495 | `6a73abda824c9a5388e0ceaa` | `Task 1 - Kristina & TES` | **open** · Alaric Bermudez · LDW/sep `09/02/2026`, still future, S7 still refuses |
+| 4510 | `6a7a33b2ac106d428b3217e0` | `Task 1 - Jan` | **COMPLETED** · `completed: true`, `document: null`, form gone, both date controls resolve to **zero** nodes |
+| 4524 | `6a7e45bcbac487bbc6a2ceae` | `Task 1 - Kristina & TES` | COMPLETED 2026-08-14 (§9.16), unchanged |
+
+**§9.16 item 4's recommendation is withdrawn on the facts.** It named doc **4510** the best-mapped
+open document for a standalone `separations-kuali-finalization` controlled commit. Its action has since
+been completed, `ActionPage` answers `document: null`, and `kuali/read-separation-document` can no
+longer read it — exactly what happened to 4524 between §9.12 and §9.16, now for the second time. The
+generalization §9.16 drew stands and is worth restating: **a live inventory belongs in an as-built with
+a date on it, never in a plan sentence.** Two named Kuali canaries have now evaporated between passes.
+
+#### 8. So what should the operator do
+
+- **③ before ② is the wrong order.** `separations-kuali-finalization` takes `transactionNumber` as
+  INGRESS and has no `match-active-employment` and no S7 check, so it is runnable on 4537 **today**.
+  But its whole product is a Kuali document recording a termination that UCPath filed, and UCPath has
+  filed nothing for 10628128 since 2025. Running it now would either write a fabricated transaction
+  number onto a real HR document or leave the field naming nothing — the write would land, and the
+  record would be false. **Wait for ②.**
+- **② is a date away, not a defect away.** On or after **2026-08-28** the composed graph plans 4537,
+  reaches its ALWAYS-GATE with a single active job and a resolvable template, and its UCPath
+  transaction node is the §4f2 canary the operator intended. Nothing else has to change.
+- **① has no target and 4537 does not become one.** The sweep's committed arm needs a subject with a
+  **pending** UCPath transaction, and 4537's subject has five approved ones and no pending row. If that
+  arm is to be proved live, the subject has to come from somewhere else — or from a pending row that
+  exists at the moment ② runs, which is the one honest way it could still appear (filing ② and then
+  re-running ① before an approver clears it).
+- **The practice set is unchanged.** 4502 remains the full-chain composed dry-run subject (§9.17);
+  4537 and 4495 serve the standalone read workflows and the S7 refusal path until their dates pass —
+  4537 on 2026-08-28, 4495 on 2026-09-02.
+
+#### What is honestly NOT RUN
+
+- **Every real write, of every kind.** No Kuali save, no UCPath transaction, no sweep. All three
+  controlled commits remain owed.
+- **The Smart HR wizard, at all.** Page-B stageability for 10628128 was NOT probed, so this pass makes
+  no statement about what UCPath would do with a future-dated subject.
+- **Any dashboard run.** The BFF was not started and no run was planned, so nothing here exercised the
+  composed graph, the gate, the receipt, or S7's live refusal on 4537 — S7's verdict above is read off
+  the rule and the observed dates, not off a run. A composed run on 4537 has never happened.
+- **Kronos**, the timecard window, and the finalization's `already-present` arm — none reachable from a
+  read-only pass.
+- **The two dates' WIRE shapes** and the other five unasserted Kuali wire shapes, unchanged: they close
+  only by observing a real `submitDocumentV2` payload.
+- **The parity lane**, unchanged: no dashboard bytes moved in this pass.
