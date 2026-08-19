@@ -144,19 +144,45 @@ function transactionNode(
 }
 
 describe("the graph panel's derivations", () => {
-  it("draws the real person-lookup graph in declaration order and counts its ARMS", () => {
+  it("draws the real person-lookup graph in declaration order and counts its FIELDS", () => {
     const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
     const workflow = wire.workflows.find((one) => String(one.id) === "person-lookup");
     assert.ok(workflow !== undefined);
     const totals = explorerGraphTotals(workflow);
     assert.equal(totals.nodes, workflow.nodes.length);
+    // D226 — a read is one OUTPUT field of a read arm, never an arm. The count
+    // is strictly larger than the arm count it replaced, which is the whole
+    // point: an arm is a contract, and an operator asks about a field.
+    const armCount = workflow.nodes
+      .flatMap((node) => node.tasks)
+      .filter((task) => task.effect === "read").length;
     assert.equal(
       totals.reads,
-      workflow.nodes.flatMap((node) => node.tasks).filter((task) => task.effect === "read").length,
+      workflow.nodes
+        .flatMap((node) => node.tasks)
+        .filter((task) => task.effect === "read")
+        .flatMap((task) => task.fields)
+        .filter((field) => field.side === "output").length,
     );
+    assert.ok(totals.reads > armCount);
     // A read-only workflow has no write arm at all, which is what makes the
     // `no system of record` posture below a FACT rather than a missing line.
     assert.equal(totals.writes, 0);
+  });
+
+  it("counts a commit arm's INPUT fields as writes, and never its prepare twin's", () => {
+    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const workflow = wire.workflows.find((one) => String(one.id) === "kuali-timekeeper-annotation");
+    assert.ok(workflow !== undefined);
+    const totals = explorerGraphTotals(workflow);
+    const commit = workflow.nodes
+      .flatMap((node) => node.tasks)
+      .filter((task) => task.effect === "commit");
+    assert.ok(commit.length > 0);
+    assert.equal(
+      totals.writes,
+      commit.flatMap((task) => task.fields).filter((field) => field.side === "input").length,
+    );
   });
 
   it("reports a graph with no transaction node as changing no system of record", () => {

@@ -1346,6 +1346,50 @@ acting on it would be acting on fiction.
 stale live verification current, so every row carries its `verifiedAt` and both evidence refs at the
 same weight as its id — never folded into a disclosure a hurried reader skips.
 
+### 5.9 The node panel is a FIELD table, and its census is derived (2026-08-19, D226)
+
+§5.7's presentation delta recorded that the ported node panel listed TASK ARMS where the operator's
+demo lists contract FIELDS, and that the header counted arms with the ⓘ saying so. That gap is
+closed: the panel is a field table, `Field · System · Recorded`, and no part of it is authored.
+
+**The census is a projection of the contract's own zod shape.** `contractSchemaLeaves`
+(`src/validation/contract-boundary.ts`) walks the SAME schema object `deriveSchemaHash` fingerprints
+into `inputSchemaHash` / `outputSchemaHash`, so the field list and the hash on the arm band above it
+describe one shape. A hand-maintained field list beside a schema hash is the classic pair that
+eventually disagrees, and there is nowhere in this tree to author one.
+
+Three rules decide the census, and each is borrowed rather than invented:
+
+- **An array is ONE leaf**, exactly as `evidenceLeaves` and the freshness / provenance `byField`
+  prefix rule already treat it. Indexing rows would be a census of a specimen run, not of a
+  contract — and a `Recorded` verdict would then resolve at a granularity no policy can name.
+- **A union contributes the UNION of its arms' leaves**, and a path missing from any arm is
+  `sometimes`. That is `schemaOwnsPath`'s `every`/`some` split seen from the producing side. A field
+  that is `z.null()` in one arm and an OBJECT in another is listed as its children only: the bare
+  null row would count a container as a field, and the children's `sometimes` already carries "this
+  may hold no record".
+- **An unrecognised zod tag throws by name.** A tag this walker does not understand may be a
+  container, and emitting one row for it would under-report a whole subtree while looking complete.
+
+**`Recorded` is a fact about provenance, never a value.** No run is laid over this graph (§5.7's
+first exclusion), so the recorded VALUE of a field is not a fact the registry holds. What it does
+hold is the descriptor's declaration, and every arm of `ExplorerFieldRecordedWireSchema` is a
+statement the registry can actually make: a read arm's output leaf is `observed` with its provenance
+source (longest declared prefix, the kernel's own rule) and its freshness bound (whole-path match,
+also the kernel's own rule — the two genuinely differ and the explorer states each the way its
+consumer enforces it); an INPUT leaf is `bound`, because the graph binds it and nothing observes it;
+a prepare arm's output is `not-recorded`, because its checkpoint is in-memory-only; a commit arm's
+output is `checkpointed` in the transaction outcome (D144). The fifth arm is `unknown`, and it is
+deliberately reachable — a read contract whose provenance this projection did not receive leaves its
+outputs undeclared, and the column then says so by name rather than printing the `live` most reads
+happen to declare. Substituting the common answer for the missing one is the plausible-but-wrong
+value the charter forbids.
+
+**The header counts fields now.** A read is one field a read arm observes FROM a system — an output
+leaf; a write is one field a commit arm writes TO a system — an input leaf. A prepare arm stages the
+values its commit then writes, so its inputs are deliberately not counted, or every write would be
+reported twice. The demo's third segment (`1 file`) stays absent for the reason §5.7 already gave.
+
 ---
 
 ## 6. Notifications—durable, event-derived, and actionable

@@ -35,6 +35,7 @@ import { descriptorRuntimeNodes } from "../../../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import type { RegisteredTaskStore } from "../../../base/store.js";
 import { ContractFieldPathSchema } from "../../../domain/contracts/base.js";
+import { contractSchemaLeaves } from "../../../validation/contract-boundary.js";
 import type { AnyTaskContract } from "../../../domain/contracts/base.js";
 import type { Clock } from "../../../domain/clock.js";
 import { z } from "zod";
@@ -43,7 +44,9 @@ import {
   ExplorerProvenanceWireSchema,
   SourcePathSchema,
   WorkflowExplorerWireSchema,
+  type ExplorerContractFieldWire,
   type ExplorerEdgeWire,
+  type ExplorerFieldRecordedWire,
   type ExplorerFreshnessWire,
   type ExplorerNodeShapeWire,
   type ExplorerNodeWire,
@@ -303,6 +306,118 @@ function writeSafetyWire(contract: AnyTaskContract): ExplorerWriteSafetyWire | u
 }
 
 /**
+ * The freshness bound a field is read under, EXACTLY as the kernel resolves it.
+ *
+ * `freshnessLimitMs` matches a `byField` rule on the whole path and falls back
+ * to the default; the provenance resolver matches on the longest PREFIX. The two
+ * genuinely differ, and the explorer states each the way its own consumer
+ * enforces it — a surface that harmonised them would be printing a bound the
+ * kernel does not apply.
+ */
+function fieldFreshness(
+  freshness: ExplorerFreshnessWire | undefined,
+  path: string,
+): Readonly<{ maxAge: ExplorerFreshnessWire["defaultMaxAge"]; override?: "forbidden" | "audited" }> | undefined {
+  if (freshness === undefined) return undefined;
+  const rule = freshness.byField.find((entry) => String(entry.path) === path);
+  const override = rule?.override ?? freshness.defaultOverride;
+  return {
+    maxAge: rule?.maxAge ?? freshness.defaultMaxAge,
+    ...(override === undefined ? {} : { override }),
+  };
+}
+
+/**
+ * The provenance of one output leaf — `src/core/task-provenance.ts`'s own rule,
+ * repeated here because that module is the kernel's and this is a projection of
+ * the same declaration: longest declared PREFIX wins, else the policy default.
+ */
+function fieldProvenance(
+  provenance: ExplorerProvenanceWire | undefined,
+  path: string,
+): "live" | "derived" | undefined {
+  if (provenance === undefined) return undefined;
+  const matching = [...provenance.byField]
+    .filter((entry) => path === String(entry.path) || path.startsWith(`${String(entry.path)}.`))
+    .sort((left, right) => String(right.path).length - String(left.path).length)[0];
+  return matching?.source ?? provenance.default;
+}
+
+/** Why an INPUT leaf is not an observation — one sentence per arm, no default. */
+const INPUT_BINDING_REASON: Record<"read" | "prepare" | "commit", string> = {
+  read: "the graph binds this value from the run's input and its upstream outputs — it is the query, not an observation",
+  prepare: "the graph binds this value and the prepare arm stages it onto the page — it is not an observation",
+  commit: "the graph binds this value and the commit arm writes it — it is not an observation",
+};
+
+/**
+ * How each field of one contract is recorded (doc 12 §5.9).
+ *
+ * Every arm is a statement the registry can make from the descriptor alone. The
+ * `unknown` arm is the one that matters: a read contract whose provenance the
+ * projection did not receive leaves its outputs undeclared, and the column then
+ * says `unknown` naming the gap rather than printing the `live` most reads
+ * happen to declare. Substituting the common answer for the missing one is the
+ * plausible-but-wrong value this program forbids.
+ */
+function contractFieldWires(
+  contract: AnyTaskContract,
+  freshness: ExplorerFreshnessWire | undefined,
+  provenance: ExplorerProvenanceWire | undefined,
+): readonly ExplorerContractFieldWire[] {
+  const effect = contract.effect;
+  const recordedOutput = (path: string): ExplorerFieldRecordedWire => {
+    if (effect === "prepare") {
+      return {
+        state: "not-recorded",
+        reason: "the prepare arm's checkpoint is in-memory-only, so nothing durable holds this field",
+      };
+    }
+    if (effect === "commit") {
+      return {
+        state: "checkpointed",
+        reason: "the transaction outcome checkpoint stores this arm's whole output envelope (D144)",
+      };
+    }
+    const source = fieldProvenance(provenance, path);
+    const bound = fieldFreshness(freshness, path);
+    if (source === undefined || bound === undefined) {
+      return {
+        state: "unknown",
+        reason: source === undefined
+          ? "this read contract declares no provenance policy, so nothing states how the field is observed"
+          : "this read contract declares no freshness policy, so nothing states how old the observation may be",
+      };
+    }
+    return {
+      state: "observed",
+      source,
+      maxAge: bound.maxAge,
+      ...(bound.override === undefined ? {} : { override: bound.override }),
+    };
+  };
+  return [
+    ...contractSchemaLeaves(contract.input).map((leaf) => ({
+      ...leaf,
+      side: "input" as const,
+      recorded: { state: "bound" as const, reason: INPUT_BINDING_REASON[effect] },
+    })),
+    ...contractSchemaLeaves(contract.output).map((leaf) => ({
+      ...leaf,
+      side: "output" as const,
+      recorded: recordedOutput(leaf.path),
+    })),
+  ].map((leaf) => ({
+    path: ContractFieldPathSchema.parse(leaf.path),
+    side: leaf.side,
+    kind: leaf.kind,
+    presence: leaf.presence,
+    ...(leaf.options === undefined ? {} : { options: [...leaf.options] }),
+    recorded: leaf.recorded,
+  }));
+}
+
+/**
  * The task → UI id index, REVERSED out of the catalog's own `taskUses`.
  *
  * The relationship already exists as data in the driver registries; deriving it
@@ -416,6 +531,7 @@ function taskWire(
     ...(writeSafetyWire(contract) === undefined ? {} : { writeSafety: writeSafetyWire(contract) }),
     inputSchemaHash: deriveSchemaHash(contract.input, "input"),
     outputSchemaHash: deriveSchemaHash(contract.output, "output"),
+    fields: contractFieldWires(contract, freshness, provenance),
     contractSource: contractSourceLink(taskId, closures),
     implSource: implSourceLink(taskId, taskClosure),
     ...(implFingerprint === undefined ? {} : { implFingerprint }),

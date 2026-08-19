@@ -30,6 +30,89 @@ import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-s
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 const HASH = FingerprintSchema.parse("c".repeat(64));
 
+/** Every task arm of every registered workflow, flattened. */
+function allTasks() {
+  return buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH))
+    .workflows.flatMap((workflow) => workflow.nodes.flatMap((node) => node.tasks));
+}
+
+describe("the contract field census (D226)", () => {
+  it("gives every arm a field for every leaf of both its schemas", () => {
+    for (const task of allTasks()) {
+      assert.ok(
+        task.fields.length > 0,
+        `${String(task.taskId)} serves no field census`,
+      );
+      assert.ok(task.fields.some((field) => field.side === "input"));
+      assert.ok(task.fields.some((field) => field.side === "output"));
+    }
+  });
+
+  it("never records an INPUT leaf as an observation — the graph binds it", () => {
+    for (const task of allTasks()) {
+      for (const field of task.fields.filter((one) => one.side === "input")) {
+        assert.equal(
+          field.recorded.state,
+          "bound",
+          `${String(task.taskId)} input ${String(field.path)} claims to be observed`,
+        );
+      }
+    }
+  });
+
+  it("resolves a read output's provenance by the LONGEST declared prefix, as the kernel does", () => {
+    const search = allTasks().find((task) => String(task.taskId) === "ucpath/search-person-org");
+    assert.ok(search !== undefined);
+    assert.ok(search.provenance !== undefined);
+    for (const field of search.fields.filter((one) => one.side === "output")) {
+      assert.equal(field.recorded.state, "observed");
+      if (field.recorded.state !== "observed") continue;
+      const rule = [...(search.provenance?.byField ?? [])]
+        .filter((entry) => String(field.path) === String(entry.path)
+          || String(field.path).startsWith(`${String(entry.path)}.`))
+        .sort((left, right) => String(right.path).length - String(left.path).length)[0];
+      assert.equal(field.recorded.source, rule?.source ?? search.provenance?.default);
+    }
+  });
+
+  it("states what holds a WRITE arm's fields rather than calling them observations", () => {
+    const prepare = allTasks().find((task) => task.effect === "prepare");
+    const commit = allTasks().find((task) => task.effect === "commit");
+    assert.ok(prepare !== undefined && commit !== undefined);
+    for (const field of prepare.fields.filter((one) => one.side === "output")) {
+      // A prepare's product is browser state, and its checkpoint is
+      // in-memory-only — so nothing durable holds the field, and the column
+      // says that rather than leaving a blank a reader would read as "none".
+      assert.equal(field.recorded.state, "not-recorded");
+    }
+    for (const field of commit.fields.filter((one) => one.side === "output")) {
+      assert.equal(field.recorded.state, "checkpointed");
+    }
+  });
+
+  it("serves a field census whose paths every policy rule can name", () => {
+    for (const task of allTasks()) {
+      const outputs = new Set(
+        task.fields.filter((field) => field.side === "output").map((field) => String(field.path)),
+      );
+      for (const rule of task.provenance?.byField ?? []) {
+        assert.ok(
+          outputs.has(String(rule.path))
+            || [...outputs].some((path) => path.startsWith(`${String(rule.path)}.`)),
+          `${String(task.taskId)} provenance rule ${String(rule.path)} names no censused field`,
+        );
+      }
+      for (const rule of task.freshness?.byField ?? []) {
+        assert.ok(
+          outputs.has(String(rule.path))
+            || [...outputs].some((path) => path.startsWith(`${String(rule.path)}.`)),
+          `${String(task.taskId)} freshness rule ${String(rule.path)} names no censused field`,
+        );
+      }
+    }
+  });
+});
+
 describe("the workflow explorer projection", () => {
   it("parses through its own wire schema over the real registry", () => {
     const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
