@@ -71,6 +71,8 @@ export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 type MemberSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "member" }>;
 type OperationSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "operation" }>;
 type PipelineStep = QueueSurfaceWire["pipeline"][number];
+/** One delegated child this row waits on and does NOT count (D231). */
+export type LinkedRunWire = QueueSurfaceWire["linkedRuns"][number];
 
 /* ── the queue's client-owned view state (doc 13 §4) ─────────────────────── */
 
@@ -122,6 +124,14 @@ export interface QueueHandlers {
    * without moving the panel would open a run the queue beside it cannot show.
    */
   onOpenParent?: (runId: string) => void;
+  /**
+   * Jump to a run this row DELEGATED TO (D231's `linkedRuns[]`). Same shape as
+   * `onOpenParent` and separate from it on purpose: the wire hands the whole
+   * link — its workflow, its panel kind and its live status — so the route does
+   * not have to find the target in the day payload first, which is exactly what
+   * fails when the child ran on another day.
+   */
+  onOpenLinked?: (link: LinkedRunWire) => void;
 }
 
 /**
@@ -287,6 +297,25 @@ const STEP_TONE: Record<PipelineStep["state"], string> = {
   skipped: "bg-[var(--ds-border-subtle)]",
 };
 
+/**
+ * One step, as the dots' hover sentence reads it.
+ *
+ * Ported from the demo's own `MicroSteps` title
+ * (`DemoQueue.tsx:273`, `${label}${durationSec ? ` ${fmtElapsed()}` : ""} (${state})`)
+ * — a duration is printed only when the server measured one, and an unmeasured
+ * step says its state alone rather than ` 0s`, which would be a measurement.
+ *
+ * `executions` has no demo counterpart because the demo has no gate resume:
+ * doc 03 serves it only at two or more (D214/D225), and a node that ran twice
+ * across a park spent BOTH intervals, so the count is what keeps `1m 40s` from
+ * reading as one long try.
+ */
+function stepTitle(step: PipelineStep): string {
+  const duration = step.durationSec === undefined ? "" : ` ${fmtElapsed(step.durationSec)}`;
+  const executions = step.executions === undefined ? "" : ` ×${String(step.executions)}`;
+  return `${step.label}${duration}${executions} (${step.state})`;
+}
+
 function MicroSteps({ pipeline }: { pipeline: QueueSurfaceWire["pipeline"] }) {
   if (pipeline.length === 0) return null;
   return (
@@ -294,7 +323,7 @@ function MicroSteps({ pipeline }: { pipeline: QueueSurfaceWire["pipeline"] }) {
       // Same height as StatusBadge `sm` / the title row — centres the dots on
       // the name instead of leaving them top-aligned in a taller chip stack.
       className="inline-flex h-[var(--ds-h-xs)] shrink-0 items-center gap-[3px]"
-      title={pipeline.map((step) => `${step.label} (${step.state})`).join(" · ")}
+      title={pipeline.map(stepTitle).join(" · ")}
       aria-label={`Steps: ${pipeline.map((step) => `${step.label} ${step.state}`).join(", ")}`}
     >
       {pipeline.map((step) => (
@@ -309,12 +338,24 @@ function MicroSteps({ pipeline }: { pipeline: QueueSurfaceWire["pipeline"] }) {
  * chooses — six hand-rolled copies of this span is how a queue ends up with six
  * chip heights on one line.
  */
-type RowChipTone = "neutral" | "info" | "warning";
+type RowChipTone = "neutral" | "info" | "warning" | "rehearsal";
 
 const ROW_CHIP_TONE: Record<RowChipTone, string> = {
   neutral: "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-recess-fg-quiet)]",
   info: "border-[color:var(--ds-info-border)] bg-[var(--ds-info-bg)] text-[color:var(--ds-info-fg)]",
   warning: "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] text-[color:var(--ds-status-waiting-fg)]",
+  /*
+   * THE FOURTH TONE (D232), and the whole reason a fifth hue was bought.
+   *
+   * The demo names this tone `violet` and binds it to `--ds-status-parked-*`,
+   * which every theme in this tree derives from AMBER — so on screen the demo's
+   * rehearsal chip is the same colour as the `△ N` warning chip that can sit
+   * beside it, and one step off the `test` chip on its other side. Those two
+   * neighbours are exactly the pair a glance has to separate, so this binds the
+   * real violet the demo's tone NAME describes rather than the amber its tokens
+   * resolve to. It is the one deliberate colour deviation on this row.
+   */
+  rehearsal: "border-[color:var(--ds-rehearsal-border)] bg-[var(--ds-rehearsal-bg)] text-[color:var(--ds-rehearsal-fg)]",
 };
 
 const rowChip = (tone: RowChipTone, extra?: string): string =>
@@ -368,6 +409,26 @@ function HeaderChips({
           className={rowChip("info", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}
         >
           test
+        </span>
+      )}
+      {/*
+        DRY RUN — the rehearsal flag, in the demo's own slot and words
+        (`DemoQueue.tsx:437`, *"this rehearsal reads the systems and writes
+        nothing"*).
+
+        It is SERVED (D6 — `dryRun` is on the envelope, so there is no absent
+        arm and no inference), and it sits immediately after `test` because the
+        two are the row's two hazards and are read together. A rehearsal that
+        renders identically to a real filing is the cheapest possible way to
+        read a dry run as a submitted transaction, which is why this is a chip
+        on the row rather than a fact behind the ⓘ.
+      */}
+      {surface.dryRun && (
+        <span
+          title="Dry run — this rehearsal reads the systems and writes nothing."
+          className={rowChip("rehearsal", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}
+        >
+          dry run
         </span>
       )}
       {/*
@@ -461,8 +522,37 @@ function absentFacts(surface: QueueSurfaceWire): { label: string; reason: string
   const facts: { label: string; reason: string }[] = [];
   if (surface.subtitle.state === "absent") facts.push({ label: "Subtitle", reason: surface.subtitle.reason });
   if (surface.liveMessage.state === "absent") facts.push({ label: "Live message", reason: surface.liveMessage.reason });
+  /*
+   * D230/§9 D7's two absences, in the one place doc 03's second-batch delta
+   * says an operator reads them. Both are drawn on the ROW as nothing at all —
+   * a chip that is not there — and "nothing at all" is the state that cannot
+   * explain itself, which is what the ⓘ is for. Four distinct reasons hide
+   * behind an empty fact band and the server counts all four; collapsing them
+   * into a silent gap is the absence-versus-failure conflation this program
+   * bans.
+   */
+  if (surface.runNumber.state === "absent") facts.push({ label: "Run number", reason: surface.runNumber.reason });
+  if (surface.facts.state === "absent") facts.push({ label: "Outcome", reason: surface.facts.reason });
+  if (surface.surfaceKind === "operation" && surface.memberPreview.state === "absent") {
+    facts.push({ label: "Members", reason: surface.memberPreview.reason });
+  }
   return facts;
 }
+
+/**
+ * How this row is CONTAINED, in the product's own words (D231).
+ *
+ * FRONTEND COPY, the same move `PANEL_EXPLANATION` makes one map up: the
+ * containment vocabulary is a served closed enum and what a rebuild PANEL does
+ * with each arm is a fact about this product, not about the run. `root` gets no
+ * sentence — it is the ordinary row, and a line on every card explaining that
+ * nothing delegated it is the noise D24 refuses.
+ */
+const CONTAINMENT_EXPLANATION: Record<QueueSurfaceWire["containment"], string | undefined> = {
+  root: undefined,
+  member: "It was created by a run that fanned out, so it is counted inside that group's own tally rather than in the day's totals, and it is drawn nested under it.",
+  linked: "A run delegated to this one and is waiting on it. It keeps this row, in this panel, because it is worth reading on its own — the run that delegated it shows a chip pointing here.",
+};
 
 function RowInfo({
   surface,
@@ -473,6 +563,7 @@ function RowInfo({
 }) {
   const facts = absentFacts(surface);
   const panelName = PANEL_KIND_NAME[surface.panelKind];
+  const containment = CONTAINMENT_EXPLANATION[surface.containment];
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -497,6 +588,9 @@ function RowInfo({
           <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
             {PANEL_EXPLANATION[surface.panelKind]}
           </p>
+          {containment !== undefined && (
+            <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>{containment}</p>
+          )}
           {facts.map((fact) => (
             <p key={fact.label} className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
               <span className="font-semibold text-[color:var(--ds-fg)]">{fact.label}: </span>
@@ -580,6 +674,35 @@ function RowFooterLine({
         )}
       >
         <span className="whitespace-nowrap">{fmtClock(surface.startedAt)}</span>
+        {/*
+          #N — the run's ORDINAL within its workflow, in the demo's own slot
+          (`DemoQueue.tsx:709`, `#{row.run}`): the footer's second segment.
+
+          It is a SIBLING of the trace chip beside it, never a substitute. The
+          ordinal is the short number an operator says out loud (*"#7 failed
+          again"*) and the trace id is the string every log, receipt and support
+          conversation is grepped by; the demo drew only the first because its
+          fixtures had no trace to print in the footer at all.
+
+          Absent is drawn as ABSENCE (D230/D133): a run enqueued before schema
+          v15 carries no ordinal, so the chip simply is not there and the trace
+          chip is the whole of the row's name. Nothing is substituted — a `#0`,
+          or the day-position of the row, would be a number an operator could
+          quote that means something else tomorrow.
+        */}
+        {surface.runNumber.state === "present" && (
+          <span
+            title={`Run #${String(surface.runNumber.value)} of this workflow`}
+            className={cn(
+              "inline-flex shrink-0 items-center border px-[var(--ds-space-tight)] whitespace-nowrap",
+              "h-[var(--ds-h-xs)]",
+              dsRadius.sm,
+              "border-[color:var(--ds-recess-border)] bg-transparent",
+            )}
+          >
+            #{surface.runNumber.value}
+          </span>
+        )}
         {/* The trace id is the run's NAME in every log, every receipt and every
             support conversation, so it is the last thing that may be cut. It is
             `nowrap`: if the line runs out, the SEGMENTS AFTER IT wrap. It reads
@@ -863,9 +986,12 @@ function MemberLine({
             "min-w-0 truncate",
             // A FAILED member's fact is the failure (R3 finding 21). The demo
             // tints this cell whenever the member failed and was not contained
-            // as `rejected`; containment is not on this wire, so the tint keys
-            // off the served status alone — a strictly wider set that cannot
-            // mis-tint a member the server called failed.
+            // as `rejected`, and the tint keys off the served status ALONE —
+            // which is now provably identical rather than merely wider:
+            // `containment` IS served (D231) and has no `rejected` arm, because
+            // a submission the parent could not turn into work never becomes a
+            // run at all. A member the server called failed is never rejected,
+            // so the demo's second condition can only ever hold.
             status === "failed" ? "text-[color:var(--ds-status-failed-fg)]" : "text-[color:var(--ds-fg-muted)]",
           )}
         >
@@ -1101,14 +1227,26 @@ const linkChip = cn(
   "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]",
 );
 
-function ParentBackChip({
-  parent,
+/**
+ * THE shared panel jump — `Name · status ↗` (demo `PanelRedirectChip`, :1099).
+ *
+ * Both arms of the band go through this one component: the route BACK to the
+ * run that delegated this one, and the route FORWARD to a run this one
+ * delegated. The demo made the same choice for the same stated reason — every
+ * redirect must look identical, so neither direction gets a leading ← or a
+ * different hue.
+ */
+function PanelRedirectChip({
+  label,
+  status,
+  title,
   onOpen,
 }: {
-  parent: NonNullable<ReturnType<QueueParentLookup>>;
+  label: string;
+  status: ProposedStatus;
+  title: string;
   onOpen: () => void;
 }) {
-  const title = `${parent.workflowLabel} · ${parent.title} — the run that delegated this one`;
   return (
     <button
       type="button"
@@ -1122,10 +1260,84 @@ function ParentBackChip({
       className={cn(linkChip, "min-w-max flex-1 justify-start")}
     >
       <span className="whitespace-nowrap">
-        {parent.workflowLabel} · {statusText(parent.status).toLowerCase()}
+        {label} · {statusText(status).toLowerCase()}
       </span>
       <ArrowUpRight aria-hidden className="size-3 shrink-0" />
     </button>
+  );
+}
+
+function ParentBackChip({
+  parent,
+  onOpen,
+}: {
+  parent: NonNullable<ReturnType<QueueParentLookup>>;
+  onOpen: () => void;
+}) {
+  return (
+    <PanelRedirectChip
+      label={parent.workflowLabel}
+      status={parent.status}
+      title={`${parent.workflowLabel} · ${parent.title} — the run that delegated this one`}
+      onOpen={onOpen}
+    />
+  );
+}
+
+/**
+ * A run this row DELEGATED TO — the demo's `PanelRedirectChip`/
+ * `LinkedReviewChip` (:1099 / :1159), which are one chip with two labels.
+ *
+ * EVERY WORD IT PRINTS IS SERVED (D231). `label` is what to call the target and
+ * `status` is the target's live status, both resolved server-side through the
+ * same status function the row's own status comes from — so the chip never
+ * re-derives a status out of the day payload, which is the second status path
+ * D81 exists to delete and which goes blank the moment the child ran on another
+ * day. `panelKind` supplies the sentence about what OPENING it shows, through
+ * the same frontend vocabulary the ⓘ uses; the run id is the route.
+ */
+function LinkedRunChip({ link, onOpen }: { link: LinkedRunWire; onOpen: () => void }) {
+  return (
+    <PanelRedirectChip
+      label={link.label}
+      status={dsStatusOf(link.status)}
+      title={`${link.label} — this run delegated to it and is waiting on it. `
+        + `${PANEL_EXPLANATION[link.panelKind]}`}
+      onOpen={onOpen}
+    />
+  );
+}
+
+/**
+ * A run's own SO-WHAT, as a chip — the demo's `FactChipView` (:168).
+ *
+ * `label` + `value`, and the values are the ones the RECEIPT prints (§9 D7):
+ * the queue chip and the Receipt tab are ONE derivation read twice, never two
+ * derivations of one result. The demo's `arrowTo` / `warn` / `fullRow` props
+ * have no served counterpart — the wire carries a flat `{label, value}` pair
+ * because that is what a receipt output fact is — so they are omitted rather
+ * than inferred from the value's text.
+ *
+ * `grow` follows the demo exactly: beside a redirect chip a fact stays at its
+ * natural width (`grow={0}`) and lets the redirect own the spare space;
+ * otherwise it starts at full content width, refuses to shrink, and shares only
+ * genuine leftover — which makes the wrap greedy, so a second fact joins the
+ * line only when both stay readable and otherwise moves down intact.
+ */
+function FactChip({ fact, grow }: { fact: { label: string; value: string }; grow: boolean }) {
+  return (
+    <span
+      className={grow ? "max-w-full" : "shrink-0"}
+      style={grow ? { flexGrow: 1, flexShrink: 0, flexBasis: "max-content" } : undefined}
+    >
+      <span
+        title={`${fact.label} ${fact.value}`}
+        className={cn(rowChip("neutral"), "w-full max-w-full")}
+      >
+        <span className="text-[color:var(--ds-fg-faint)]">{fact.label}</span>
+        <span className={cn(dsClip.text, "min-w-0 text-[color:var(--ds-fg-secondary)]")}>{fact.value}</span>
+      </span>
+    </span>
   );
 }
 
@@ -1189,6 +1401,13 @@ export function QueueRow({
   const subline =
     membersVisible || surface.liveMessage.state !== "present" ? undefined : surface.liveMessage.value;
   const parent = surface.lineage.state === "child" ? parentOf?.(surface.lineage.parentRunId) : undefined;
+  /**
+   * Whether the chip band holds a REDIRECT, which is what decides how a fact
+   * beside it is sized (`FactChipView`'s `grow` prop, `DemoQueue.tsx:1037`): a
+   * redirect owns the spare space and the facts stay at their natural width, so
+   * `Oath Upload · running ↗` never gets squeezed by a `signed 2:24 PM`.
+   */
+  const hasRedirect = parent !== undefined || surface.linkedRuns.length > 0;
   const { onToggleBulk, onAction } = handlers;
   const bulkIds = state.bulkIds;
   const titleTooltip = queueRowTitleTooltip(surface);
@@ -1301,6 +1520,40 @@ export function QueueRow({
               </div>
             </div>
 
+            {/*
+              WHO IS IN THE GROUP (`DemoQueue.tsx:928-931`, `memberPreview`).
+
+              A counted anchor — `5 separations` — has no subject of its own, so
+              the names ARE its identity; without them the row is a number. It
+              is SUPPRESSED the moment the member list is on screen, which is
+              the demo's own rule: the preview and the list are then the same
+              names twice on one card, and the preview is the copy that
+              truncates.
+
+              The demo also gates this on `row.groupNoun`. That field is not
+              served and was deliberately not added — no registered workflow in
+              this tree is operation-shaped, so a declared noun would be shaped
+              by a sample of zero (D186's argument, one level down) — and the
+              gate is unnecessary here anyway: `memberPreview` exists only on
+              the operation variant, so its presence IS the "this row stands for
+              a set" test the noun was standing in for.
+
+              Absent draws NOTHING: a group that has fanned out to nobody yet is
+              a real state, and an empty string in this slot reads as a group of
+              nobody. Its reason rides the ⓘ with every other absence.
+            */}
+            {isOperation
+              && surface.surfaceKind === "operation"
+              && !membersVisible
+              && surface.memberPreview.state === "present" && (
+              <div
+                className={cn(dsText.meta, "col-start-2 truncate text-[color:var(--ds-fg-muted)]")}
+                title={surface.memberPreview.value}
+              >
+                {surface.memberPreview.value}
+              </div>
+            )}
+
             {subline !== undefined && (
               <div
                 className={cn(
@@ -1353,13 +1606,23 @@ export function QueueRow({
               title column otherwise, so a jump never hangs off a different
               edge from the row it belongs to.
 
-              ONE chip of the demo's band is served today: the route back to the
-              run that delegated this one (R3 finding 6). The fact chips, the
-              linked-review pointer and the extracted-people count all need
-              `QueueBaseFields` batch fields this wire does not carry, and are on
-              the wire-hookup ledger.
+              Three of the demo's four chip families are served and drawn: the
+              forward routes to the runs this one delegated to (`linkedRuns[]`,
+              D231), the route back to the run that delegated this one, and the
+              run's own outcome facts (`facts[]`, §9 D7). The fourth — the
+              `N people` extracted count — is NOT drawn and is not a rendering
+              gap: nothing in this tree computes how many people an OCR packet
+              holds, so the field was deliberately never added to the wire
+              (`docs/findings/queue-rows.md`), and a count invented from an
+              array length inside somebody's result is exactly the guess D7 must
+              not make.
+
+              ORDER, from the demo: forward redirects, then the parent route,
+              then the facts. A redirect is where you GO and a fact is what
+              happened, and putting the navigation first is what keeps the wrap
+              from breaking the route across two lines.
             */}
-            {parent !== undefined && (
+            {(parent !== undefined || surface.linkedRuns.length > 0 || surface.facts.state === "present") && (
               <div
                 className={cn(
                   "flex w-full min-w-0 flex-wrap items-center",
@@ -1367,7 +1630,16 @@ export function QueueRow({
                   membersVisible ? cn("col-span-2", MEMBER_WELL_PAD) : "col-start-2",
                 )}
               >
-                <ParentBackChip parent={parent} onOpen={() => handlers.onOpenParent?.(parent.runId)} />
+                {surface.linkedRuns.map((link) => (
+                  <LinkedRunChip key={link.runId} link={link} onOpen={() => handlers.onOpenLinked?.(link)} />
+                ))}
+                {parent !== undefined && (
+                  <ParentBackChip parent={parent} onOpen={() => handlers.onOpenParent?.(parent.runId)} />
+                )}
+                {surface.facts.state === "present"
+                  && surface.facts.value.map((fact) => (
+                    <FactChip key={fact.label} fact={fact} grow={!hasRedirect} />
+                  ))}
               </div>
             )}
           </div>

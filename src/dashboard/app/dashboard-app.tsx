@@ -1017,6 +1017,19 @@ function LoadedApp({
                     if (parent !== undefined) setActiveWorkflowId(String(parent.workflowId));
                     selectRun(runId);
                   },
+                  /*
+                    THE FORWARD ROUTE (D231). Same two moves as the parent jump
+                    — switch the panel, then select — but it never searches the
+                    day payload: the served link carries its own `workflowId`,
+                    which is the whole reason the wire serves the link rather
+                    than a bare id. A child that ran on another day is exactly
+                    the case a lookup would fail silently on, and it is the case
+                    the chip exists for.
+                  */
+                  onOpenLinked: (link) => {
+                    setActiveWorkflowId(String(link.workflowId));
+                    selectRun(String(link.runId));
+                  },
                 }}
                 actionsOf={servedActions}
                 workflowLabelOf={workflowLabelOf}
