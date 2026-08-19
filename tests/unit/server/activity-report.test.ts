@@ -3,7 +3,7 @@
  * run/queue projection.
  *
  * The report is not a second counting path, so the assertions below are mostly
- * about AGREEMENT: the same hidden row, archived row and contained member that
+ * about AGREEMENT: the same archived row and contained member that
  * leave `buildDashboardDayWire` leave every aggregate here, once, at the same
  * instant, because the exclusion is decided in one place and inherited. The
  * other half is D124 at scale — a terminal run whose surface carries no end
@@ -103,7 +103,7 @@ function seedActivityWorld(w: DashboardWorld): void {
     version: 3,
   }));
 
-  queuedEventOf(w, { seed: 3, hidden: true });
+  queuedEventOf(w, { seed: 3 });
 
   atDayOffset(w, 1);
   const kuali = "kuali-timekeeper-annotation";
@@ -175,15 +175,15 @@ describe("the Activity report (D180)", () => {
 
     const report = ActivityReportWireSchema.parse(w.projection.buildActivityReportWire(D0, D2));
 
-    // 7 top-level rows: the hidden row, the archived row, the two members and
-    // the out-of-range day are all gone, and the schema's own superRefine has
+    // 8 top-level rows: the archived row, the two members and the out-of-range
+    // day are all gone, and the schema's own superRefine has
     // already asserted that statuses sum to this number and that terminal +
     // in-flight partition it.
-    assert.equal(report.totalRuns, 7);
+    assert.equal(report.totalRuns, 8);
     assert.equal(report.terminalRuns, 5);
-    assert.equal(report.inFlightRuns, 2);
+    assert.equal(report.inFlightRuns, 3);
     assert.deepEqual(report.days, [
-      { day: D0, runs: 2 },
+      { day: D0, runs: 3 },
       { day: D1, runs: 2 },
       { day: D2, runs: 3 },
     ]);
@@ -211,12 +211,12 @@ describe("the Activity report (D180)", () => {
       {
         workflowId: "person-lookup",
         registration: { state: "registered", label: "Person Lookup", categoryId: "search" },
-        runs: 3,
+        runs: 4,
         // The one `done` run has no derived receipt, so its warning set is
         // UNREAD — never folded into `readBack`, which would report a run
         // nobody checked as one that came back clean.
         completion: { readBack: 0, warnings: 0, warningsUnknown: 1 },
-        failed: 1, cancelled: 0, partial: 0, open: 1,
+        failed: 1, cancelled: 0, partial: 0, open: 2,
       },
       {
         workflowId: "retired-flow",
@@ -240,7 +240,7 @@ describe("the Activity report (D180)", () => {
     // rather than borrowing a category or vanishing from the total.
     assert.deepEqual(report.categories, [
       { category: { state: "registered", categoryId: "operations" }, runs: 3 },
-      { category: { state: "registered", categoryId: "search" }, runs: 3 },
+      { category: { state: "registered", categoryId: "search" }, runs: 4 },
       {
         category: {
           state: "unregistered",
@@ -256,7 +256,7 @@ describe("the Activity report (D180)", () => {
       { status: "blocked", runs: 1, sample: [uuidOf(7)] },
       { status: "done", runs: 1, sample: [] },
       { status: "failed", runs: 3, sample: [] },
-      { status: "queued", runs: 1, sample: [uuidOf(9)] },
+      { status: "queued", runs: 2, sample: [uuidOf(3), uuidOf(9)] },
       { status: "running", runs: 1, sample: [uuidOf(8)] },
     ]);
     // Outcomes are AUTHORITY's settled verdicts, so only the five terminal
@@ -407,7 +407,7 @@ describe("the Activity report (D180)", () => {
       [
         "a row column that outruns its whole-report total",
         { ...report, workflows: report.workflows.map((row, index) => (index === 0 ? { ...row, open: 2, runs: 2 } : row)) },
-        /workflow rows sum to 4 open but the non-terminal status totals says 3/,
+        /workflow rows sum to 5 open but the non-terminal status totals says 4/,
       ],
       [
         "a completion split that does not cover the done runs",
@@ -470,19 +470,19 @@ describe("the Activity report inherits the day's exclusions rather than re-decid
     const w = world({ descriptors: REGISTRY });
     seedActivityWorld(w);
     const before = w.projection.buildActivityReportWire(D0, D2);
-    assert.equal(before.totalRuns, 7);
-    assert.equal(w.projection.buildDashboardDayWire(D0).queueSurfaces.length, 2);
+    assert.equal(before.totalRuns, 8);
+    assert.equal(w.projection.buildDashboardDayWire(D0).queueSurfaces.length, 3);
 
     // D80/D179: one version bump archives the run. Nothing re-runs, nothing
     // re-decides — the next read of either surface simply does not see it.
     w.authority.archived.add(uuidOf(1));
     const after = w.projection.buildActivityReportWire(D0, D2);
-    assert.equal(after.totalRuns, 6);
+    assert.equal(after.totalRuns, 7);
     assert.equal(after.terminalRuns, 4);
-    assert.deepEqual(after.days[0], { day: D0, runs: 1 });
+    assert.deepEqual(after.days[0], { day: D0, runs: 2 });
     assert.equal(after.durations.measuredRuns, 3);
     assert.equal(after.durations.totalMs, 90_000);
-    assert.equal(w.projection.buildDashboardDayWire(D0).queueSurfaces.length, 1);
+    assert.equal(w.projection.buildDashboardDayWire(D0).queueSurfaces.length, 2);
   });
 
   it("counts a delegated member inside its operation, never a second time at top level", () => {
@@ -547,7 +547,7 @@ describe("the Activity report refuses rather than inventing a window", () => {
     // report bounds its range FIRST, so a stale row on some other day cannot
     // make an unrelated week unanswerable.
     w.authority.records.delete(uuidOf(12));
-    assert.equal(w.projection.buildActivityReportWire(D0, D2).totalRuns, 7);
+    assert.equal(w.projection.buildActivityReportWire(D0, D2).totalRuns, 8);
     assert.throws(() => w.projection.buildActivityReportWire(D3, D3), /not in authority/);
   });
 });

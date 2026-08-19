@@ -68,7 +68,7 @@ function asUnionLike(node: unknown): UnionLike {
  * per-family discriminated unions, and it accepts both a `z.literal` and a
  * `z.enum` on the discriminant because the kernel writes `type: z.enum([...])`
  * wherever several verbs share a target shape. Reading only literals would
- * have silently missed `retry`/`cancel`/`bump`/`hide`/`unhide` — the five that
+ * have silently missed `retry`/`cancel`/`bump` — the three that
  * matter most here.
  */
 export function discriminantValues(schema: unknown, key: string): readonly string[] {
@@ -185,4 +185,27 @@ export function routeMatches(pattern: string, clientPath: string): boolean {
   return patternSegments.every((segment, index) => (
     segment.startsWith(":") || segment === clientSegments[index]
   ));
+}
+
+/* ── 5. served-descriptor producers ───────────────────────────────────────── */
+
+/** Block and line comments, removed before a producer scan. */
+const COMMENTS = /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
+/** An `ActionDescriptorWire` literal names its verb as `command:` or `key:`. */
+const DESCRIPTOR_COMMAND = /\b(?:command|key)\s*:\s*"([a-z-]+)"/g;
+
+/**
+ * The command verbs a served-descriptor producer can actually EMIT.
+ *
+ * Comments are stripped first, and that is the load-bearing half: the verb this
+ * check was written for (`unhide`) appeared in the projector only inside the
+ * prose explaining why it is never served, and a scan that counted prose would
+ * have called the dead key healthy.
+ *
+ * A stripper bug is fail-CLOSED here — deleting real code makes a live key look
+ * unprojected, which fails the arm loudly rather than passing it quietly.
+ */
+export function projectedCommandKeys(source: string): readonly string[] {
+  const code = source.replaceAll(COMMENTS, " ");
+  return [...new Set([...code.matchAll(DESCRIPTOR_COMMAND)].map(([, key]) => key ?? ""))].sort();
 }

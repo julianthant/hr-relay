@@ -129,16 +129,17 @@ export const RunInjectPatchesRequestSchema = z.strictObject({
   now: IsoInstantSchema,
 });
 
+/**
+ * D234 retired `hidden`, so the display name is the whole of presentation and
+ * is REQUIRED — the pair used to be two optional fields with a refinement
+ * forbidding the empty update, and an optional lone field would re-admit
+ * exactly that no-op.
+ */
 export const RunPresentationRequestSchema = z.strictObject({
   runId: RunIdSchema,
   expectedVersion: PositiveIntSchema,
-  displayName: RunDisplayNameSchema.optional(),
-  hidden: z.boolean().optional(),
+  displayName: RunDisplayNameSchema,
   now: IsoInstantSchema,
-}).superRefine((request, context) => {
-  if (request.displayName === undefined && request.hidden === undefined) {
-    context.addIssue({ code: "custom", message: "a presentation update must change the display name or the hidden flag" });
-  }
 });
 
 export const RunUpdateOutcomeSchema = z.discriminatedUnion("state", [

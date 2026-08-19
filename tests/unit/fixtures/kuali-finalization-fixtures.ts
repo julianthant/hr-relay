@@ -200,7 +200,6 @@ export function finalizationQueuedRun(
     },
     lifecycle: { state: "queued" },
     claimGeneration: 0,
-    hidden: false,
     version: 1,
     createdAt: FINALIZATION_NOW,
     updatedAt: FINALIZATION_NOW,

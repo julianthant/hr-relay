@@ -276,7 +276,6 @@ export function compositionQueuedRun(
     },
     lifecycle: { state: "queued" },
     claimGeneration: 0,
-    hidden: false,
     version: 1,
     createdAt: COMPOSITION_NOW,
     updatedAt: COMPOSITION_NOW,

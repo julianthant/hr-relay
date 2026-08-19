@@ -21,7 +21,13 @@
  *     kernel's own request union, and every kernel verb is either serveable as
  *     an action or named in a closed exemption table WITH the reason it is
  *     kernel-internal. A served descriptor naming a command the kernel refuses
- *     is a control that 422s on click.
+ *     is a control that 422s on click. And — the direction D234 added, because
+ *     the guard had been blind to it — every serveable verb is one some
+ *     PRODUCER actually emits: `unhide` sat in the vocabulary for a whole phase
+ *     while `queue-row-actions.ts` structurally excluded it, so the key was
+ *     kernel-accepted, schema-blessed, and unreachable by any surface. Both
+ *     halves of a joint have to exist; a key nothing projects is the same
+ *     unbuilt half as a section arm nothing returns.
  *  3. **Routes ↔ client.** Every path the dashboard and phone clients call
  *     resolves to a route `api.ts` registers; a registered route no client
  *     calls is allowed only through the manifest.
@@ -41,7 +47,9 @@ import {
   ParkedWriteSubjectEvidenceSchema,
   RunDetailSectionResponseSchema,
 } from "../../../src/domain/dashboard/run-detail.js";
-import { QueuePrioritySchema } from "../../../src/domain/dashboard/projection.js";
+import { QueuePrioritySchema, QueueStatusSchema } from "../../../src/domain/dashboard/projection.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
+import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
 import { CommandRequestSchema } from "../../../src/domain/commands.js";
 import { RunPrioritySchema } from "../../../src/domain/run/envelope.js";
 import { RunOutcomeSchema, RunRecordSchema, RunStateSchema, type RunRecord } from "../../../src/domain/run/record.js";
@@ -59,6 +67,7 @@ import {
   armField,
   clientRouteReferences,
   discriminantValues,
+  projectedCommandKeys,
   normalizeClientPath,
   readPendingWireBindings,
   routeMatches,
@@ -73,6 +82,16 @@ afterEach(() => {
 });
 
 const SECTION_SCHEMA_NAME = "RunDetailSectionResponseSchema";
+/**
+ * The section-level `ActionDescriptorWire` producer, read as SOURCE.
+ *
+ * The queue row's producer beside it is CALLED instead (`queueRowActions` is a
+ * pure function of a policy and a flat fact record), which is the standard arm
+ * 1 already holds itself to. This one composes its descriptors deep inside a
+ * whole run-detail build, so a scan of the literals it can emit is the honest
+ * cheap reading — and its three verbs are plain literals there.
+ */
+const SECTION_DESCRIPTOR_PRODUCER = "src/server/dashboard/queries/run-detail.ts";
 const API_ROUTES_FILE = "src/server/dashboard/routes/api.ts";
 const CLIENT_ROOTS = ["src/dashboard/client", "src/dashboard/phone/capture-client.ts"];
 
@@ -188,6 +207,37 @@ function reachableSections(): { readonly reachable: ReadonlySet<string>; readonl
  * whose payload the operator composes on a dedicated surface rather than by
  * clicking a row control, is correctly absent from the vocabulary.
  */
+/**
+ * Every command verb the QUEUE ROW producer can emit, proven by CALLING it —
+ * the standard arm 1 holds itself to, and the reason a `key` that is computed
+ * (`cancel-tree` for a group, `cancel` otherwise) is read correctly here and
+ * would be missed by any scan of its source.
+ *
+ * The sweep runs every status against both member and non-member shapes,
+ * because the row's admission table narrows on both.
+ */
+function projectedRowCommands(): ReadonlySet<string> {
+  const commands = new Set<string>();
+  for (const status of QueueStatusSchema.options) {
+    for (const isMember of [false, true]) {
+      const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, {
+        status,
+        rowRevision: 1,
+        dryRun: false,
+        isChild: false,
+        parkedWrite: false,
+        memberCount: 0,
+        isMember,
+        named: false,
+        workflowLabel: "Person Lookup",
+        hasReviewPanel: false,
+      });
+      for (const action of actions) if (action.kind === "command") commands.add(action.command);
+    }
+  }
+  return commands;
+}
+
 const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "start-run": "the Start surface composes a start plan; there is no run row to hang it off yet",
   "plan-worker-count": "worker-browser commands target the worker pool, not a run row",
@@ -302,6 +352,24 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
         problems.push(`KERNEL_ONLY_COMMANDS exempts "${type}", which the kernel no longer accepts`);
       }
     }
+    /*
+     * The direction D234 added. A key the kernel accepts and the vocabulary
+     * names is still dead if nothing composes a descriptor for it — which is
+     * exactly what `unhide` was, and what the two checks above could not see.
+     */
+    const projected = new Set<string>([
+      ...projectedRowCommands(),
+      ...projectedCommandKeys(readFileSync(join(REPO_ROOT, SECTION_DESCRIPTOR_PRODUCER), "utf8")),
+    ]);
+    assert.ok(projected.size > 3, "the descriptor-producer read under-ran; the scan or the row sweep is stale");
+    for (const key of actionKeys) {
+      if (projected.has(key)) continue;
+      problems.push(
+        `ActionCommandKeySchema names "${key}" and nothing projects it — not queueRowActions over any `
+        + `status, and no descriptor literal in ${SECTION_DESCRIPTOR_PRODUCER}. A served key nothing `
+        + "projects is a control no surface can draw: either project it or retire it from the vocabulary",
+      );
+    }
     assert.deepEqual(problems, [], `wire connectivity — commands:\n  ${problems.join("\n  ")}`);
   });
 
@@ -365,6 +433,26 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     const kernelTypes = discriminantValues(CommandRequestSchema, "type");
     assert.ok(kernelTypes.includes("resolve-write-absent"), "introspection missed a known kernel verb");
     assert.ok(!kernelTypes.includes("force-done"), "the kernel must never accept a force-done verb");
+
+    // (b2) the producer scan reads CODE, not prose — the arm that would have
+    //      caught `unhide`. A key named only in a comment must not count, and a
+    //      key named in a descriptor literal must.
+    assert.deepEqual(
+      projectedCommandKeys('/* key: "unhide" is never served */\nconst a = { key: "retry" };'),
+      ["retry"],
+    );
+    assert.deepEqual(projectedCommandKeys('// command: "unhide"\nconst a = { command: "resolve-gate" };'), ["resolve-gate"]);
+    //      And through the REAL readers: a verb no producer emits must be
+    //      absent from the projected set, which is what makes the arm above
+    //      able to fail at all. `unhide` is the retired key that motivated it
+    //      (D234) and `force-done` is one that never existed.
+    const projected = new Set<string>([
+      ...projectedRowCommands(),
+      ...projectedCommandKeys(readFileSync(join(REPO_ROOT, SECTION_DESCRIPTOR_PRODUCER), "utf8")),
+    ]);
+    assert.ok(projected.has("rename"), "the readers missed a verb the row demonstrably serves");
+    assert.ok(!projected.has("unhide"));
+    assert.ok(!projected.has("force-done"));
 
     // (c) a client path with no route, and a route pattern that must not
     //     over-match — a matcher that accepted anything would report every

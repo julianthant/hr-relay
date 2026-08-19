@@ -23,8 +23,8 @@ typed `never`, so a fourth shape is both a compile error and a runtime refusal. 
 - ~~Three of the four approval ceremonies refuse on click~~ — closed. All four now compose:
   one-click, choose-a-candidate (no default selected), type-the-EID, and reject with a reason.
 
-Four records remain open below, with a second RESOLVED block among them (D233) sitting where the
-records it closed were.
+Three records remain open below, with two more RESOLVED blocks among them (D233, D234) sitting
+where the records they closed were.
 
 ---
 
@@ -80,30 +80,38 @@ untouched. Normative text: **doc 03 §"Drawing the second batch"**.
   at `menu`, the surface intercepts it for the dialog's value, and the composer refuses a rename
   with no name rather than posting a plausible one.
 
-**One CAS observation this pass did NOT act on**, recorded rather than fixed because it is outside
-the seam: **`executeBump` (`command-kernel.ts:715`) never compares `request.target.expectedVersion`
-at all.** It re-reads the run, checks the lifecycle, and passes `current.version` to
-`bumpPriority` — the same shape `executePresentation` had. The record above said *"every other run
-verb CASes the caller's value"* and cited `:648` / `:1588` / `:1675`, which is true of those three
-and not of bump. The blast radius is genuinely small (a stale bump reorders a queued run's claim and
-is refused outright once the run is no longer queued), but it is the same hole, and "one CAS rule
-with no exceptions" is the property that makes the discipline checkable. **What closes it:** the one
-line the presentation fix already models, plus the two `runCommand(..., 999)` bump assertions in
-`command-kernel.test.ts` that would have to state the live version instead.
+~~**One CAS observation this pass did NOT act on** — `executeBump` never compares
+`request.target.expectedVersion`~~ — closed 2026-08-19 with the D234 block below, on this record's
+own reasoning and D233's rule.
 
 ---
 
-## `unhide` is a dead verb across the whole stack
+## RESOLVED 2026-08-19 — the hide/unhide pair is retired, and bump joins the CAS rule (D234)
 
-**Recorded:** 2026-08-19 · **Status:** diagnosed · **Owning doc:** doc 03 §2.4
+Two records are struck here. Normative text: **doc 03 §"D234 — the queue's model is runs and
+archived runs"**.
 
-- The kernel arm exists, `ActionCommandKeySchema` carries the key, `command-dispatch.ts:163` has the
-  case — and **nothing can ever produce the descriptor**: `queue-row-actions.ts`'s `ServedCommand`
-  type excludes it (`:87`), because hidden runs are excluded from the queue projection and this
-  build has no hidden-runs surface (`:35`).
-- It escapes `wire-connectivity` because that guard checks kernel↔schema symmetry, not that a served
-  key is ever projected. **Either build the hidden-runs view or retire the verb** — and consider
-  widening the guard, since this is the shape of hole it exists to catch.
+- ~~`unhide` is a dead verb across the whole stack~~ — closed by RETIREMENT, on the operator's
+  dated ruling: *"there are runs and archived runs; there should be no hidden runs."* The record
+  named two exits — build the hidden-runs view, or retire the verb — and the operator took the
+  second. `hide` went with it: its own confirm copy admitted the row *"cannot be brought back from
+  here"*, which is a one-way door dressed as a reversible tombstone. The whole stack moved (both
+  kernel arms, both schema enums, the served vocabulary, the descriptor policy, the client
+  composer, the row descriptor, and the hidden-run exclusion the projection was applying in three
+  places). The durable `RunRecord.hidden` stays as a parse-tolerated `optional()` vestige, because
+  the schema is strict and every stored row carries `"hidden": false` — dropping the key would stop
+  the authority database opening.
+  **The guard widening this record suggested was cheap and true, so it landed**:
+  `wire-connectivity`'s command arm gains a third direction — every serveable verb must be one some
+  producer emits, read by CALLING `queueRowActions` over every status and by scanning the
+  comment-stripped literals of `queries/run-detail.ts`. Comments are stripped because `unhide`
+  appeared in the projector ONLY inside the prose explaining why it is never served; a scan that
+  counted prose would have called the dead key healthy.
+- ~~`executeBump` never compares `request.target.expectedVersion`~~ (recorded in the D233 block
+  above, struck there too) — closed on D233's own rule, with no new decision number. The check
+  lands BEFORE the lifecycle precondition, matching `executeCancel`, and the two
+  `runCommand(..., 999)` assertions the record named now state the live version. **Every run verb
+  CASes the caller's value. There are no exceptions left.**
 
 ---
 

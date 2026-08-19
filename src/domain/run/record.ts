@@ -224,8 +224,24 @@ export const RunRecordSchema = z.strictObject({
   claimGeneration: NonNegativeIntSchema,
   /** Operator-assigned label over a stable id (doc 03 D83); never identity. */
   displayName: RunDisplayNameSchema.optional(),
-  /** Reversible presentation tombstone (D49), not a delete. */
-  hidden: z.boolean(),
+  /**
+   * RETIRED (D234) — a parse-tolerated vestige, read by nothing and written by
+   * nothing.
+   *
+   * D49's reversible presentation tombstone is gone: the operator's ruling is
+   * that there are runs and archived runs and no third hidden class, so every
+   * producer of this field and every reader of it was removed with the verbs.
+   * The KEY stays in the schema because `RunRecordSchema` is strict and every
+   * row this database already holds carries `"hidden": false` inside its
+   * `record_json` — dropping the key would make the authority database refuse
+   * to open, which is D133's read-forward rule pointing the other way. It is
+   * `optional()` rather than required so that new rows simply omit it; an
+   * absent value means nothing and must never be given a meaning.
+   *
+   * There is no migration to delete it: `hidden` was never a column, only a
+   * leaf inside the stored record, and released migration bodies are immutable.
+   */
+  hidden: z.boolean().optional(),
   /**
    * Charter §25 / D179: the app build this run was ENQUEUED under, stamped
    * once and never rewritten. It is the other half of the archive key — a

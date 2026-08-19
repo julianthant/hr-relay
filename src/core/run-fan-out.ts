@@ -160,7 +160,6 @@ export function fanOutQueuedRuns(
       },
       lifecycle: { state: "queued" },
       claimGeneration: 0,
-      hidden: false,
       appVersion: envelope.appVersion,
       /*
        * D230 — this run's ordinal within its workflow, the queue footer's `#N`.

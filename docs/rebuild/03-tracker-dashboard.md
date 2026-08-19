@@ -208,7 +208,9 @@ open:
 
 The runtime command kernel is exhaustive over D95's family/action union. Phase 1f activates
 `start-run`; worker/browser plan, spawn, stop, pause/resume, refresh, and reopen; run retry, cancel,
-priority bump, rename, hide/unhide, and typed write resolution; and gate resolution. `run`'s
+priority bump, rename, and typed write resolution; and gate resolution (`hide`/`unhide` were
+activated here too and were RETIRED by D234 — see *"D234 — the queue's model is runs and archived
+runs"* below). `run`'s
 `edit-checkpoint` arm plus the `intake`, `settings`, `version-archive`, `notification`, and `capture`
 families remain schema-recognized but return
 `rejected{code:"capability-unavailable",message}` with zero authority side effects until their
@@ -483,9 +485,18 @@ Two halves of one seam.
   changes no outcome, task, checkpoint, intent or evidence — and the premise is about STATE, not about
   version. **A name is a value the operator authored**, so applying yesterday's over today's discards
   somebody's edit while answering success. All three presentation verbs now CAS `request.target.expectedVersion`
-  like every other run verb, and hide keeps the discipline because a CAS rule with one exception is a
+  like every other run verb, and hide kept the discipline because a CAS rule with one exception is a
   rule nobody can check. The guard that covered this arm had been asserting the hole under the heading
-  *"scopes CAS to the real race families"*; it and its registered invariant both moved.
+  *"scopes CAS to the real race families"*; it and its registered invariant both moved. **One arm the
+  fix did not reach was `bump`** — recorded rather than fixed at the time because it sits outside the
+  presentation seam — and it has since been closed on this same rule, with no new decision number:
+  `executeBump` re-read the run and passed its OWN `current.version` to `bumpPriority`. Its blast
+  radius is genuinely smaller (a stale bump reorders a queued run's claim, and is refused outright
+  once the run has left `queued`), which is an argument for the fix being cheap rather than for
+  leaving the one exception in place. The check lands BEFORE the lifecycle precondition, matching
+  `executeCancel`: a caller holding yesterday's version does not get to learn today's lifecycle from
+  the refusal it gets. **Every run verb now CASes `request.target.expectedVersion`. There are no
+  exceptions left.**
 
 **The provenance bar takes the two facts a rename makes readable.** `Priority` lands in the ⓘ with
 the reason it matters, which is the demo's own disposition (*"`by` and `priority` are the same two
@@ -511,9 +522,12 @@ branches fail*).
 
 | Queue status | Served keys | Command | Footer |
 |---|---|---|---|
-| `queued` | `bump`, `cancel`, `hide` | `bump` / `cancel` / `hide` | `bump`, `cancel` |
-| `running`, `blocked`, `awaiting-approval` | `cancel`, `hide` | `cancel` / `hide` | `cancel` |
-| `done`, `failed`, `cancelled`, `partial` | `retry`, `hide` | `retry` / `hide` | both |
+| `queued` | `bump`, `cancel`, `rename` | `bump` / `cancel` / `rename` | `bump`, `cancel` |
+| `running`, `blocked`, `awaiting-approval` | `cancel`, `rename` | `cancel` / `rename` | `cancel` |
+| `done`, `failed`, `cancelled`, `partial` | `retry`, `rename` | `retry` / `rename` | `retry` |
+
+_(`rename` joined the served set with D233 and is `menu`-only; `hide` left it with D234. Placement no
+longer varies with status, because `hide`'s footer slot was the only one that read `terminal`.)_
 
 Plus two row-shape refinements: a delegated child drops `retry` (`executeRetry` refuses one by
 name), and an operation row's cancel is keyed `cancel-tree` so the footer titles it with its blast
@@ -523,11 +537,9 @@ list rather than a second vocabulary. A run whose workflow has no registered des
 build serves an EMPTY list — the policy is the workflow's own statement of what it offers, and a
 build that cannot read it must not guess a default set onto a run it cannot describe.
 
-**Three kernel-accepted verbs are deliberately not served from a row**, each with an owner rather
-than an omission. `unhide` — a hidden run is excluded from the queue projection, so no row exists
-to hang it off; the trigger that ends this is a surface that lists hidden runs. `rename` — the
-display-name edit is an inline field on the row, which is the disposition the wire-connectivity
-guard's `KERNEL_ONLY_COMMANDS` already records. `resolve-gate` / `resolve-write-present` /
+**Some kernel-accepted verbs are deliberately not served from a row**, each with an owner rather
+than an omission. `edit-checkpoint` — 2i-C's Edit Data rail owns it, because the payload is a field
+patch set a row cannot compose. `resolve-gate` / `resolve-write-present` /
 `resolve-write-absent` — each is answered from its own run-detail SECTION, which carries the packet
 or the evidence note its payload requires; a row control could not compose either, and offering one
 irreversible answer by two roads is what `command-dispatch.ts` already refuses by name.
@@ -681,6 +693,64 @@ run-detail parity fixture composes its `RunDetailWire` directly and serves no `s
 reference records the per-event fallback. That is a corpus gap with an owner (D187's lesson —
 a reference nobody takes is a defect nobody catches), and it closes with Track B's fixture work and
 its one deliberate re-freeze, not with a second re-freeze here.
+
+---
+
+### D234 — the queue's model is runs and archived runs (2026-08-19)
+
+**Operator ruling, dated:** *"There are runs and archived runs; there should be no hidden runs."*
+The `hide`/`unhide` presentation pair is RETIRED across the whole stack. This section is the
+normative text; every earlier sentence in this doc that describes hiding is superseded by it.
+
+**What it removes.** Both kernel arms (`executePresentation` keeps `rename` alone); both keys in
+`CommandActionSchema`, `RunCommandRequestSchema` and `BulkRunCommandRequestSchema`;
+`ActionCommandKeySchema`; `CommandActionIdSchema` and `STANDARD_WORKFLOW_ACTIONS`; the client
+composer's fall-through group; the row projector's `hide` descriptor; and — the half that actually
+changes what an operator sees — the **hidden-run exclusion in the queue projection**, which had been
+applied three separate times (the patch/snapshot notifier, the day wire, the Activity report). Every
+run is now rendered. Archiving (D179/D80) is the one thing that takes a run off the queue, and that
+is what makes the count story checkable: ONE whole-run exclusion, applied once, inherited by every
+surface.
+
+**Why it is a retirement and not a deferral.** `unhide` could never have been served: a hidden run
+was filtered out of the queue projection, so no row existed to hang the verb off, and no build ever
+grew a hidden-runs surface. So the reversible half of a *"reversible presentation tombstone"* was
+unreachable from the product, and the row's own confirm copy said so out loud — *"this build serves
+no surface that lists hidden runs, so the row cannot be brought back from here."* A one-way door
+dressed as a tombstone is worse than no door: an operator who hides a run has taken an action they
+cannot see the consequences of and cannot undo. The two honest exits were "build the hidden-runs
+view" or "retire the verb", and the operator chose.
+
+**The durable field is a parse-tolerated vestige, not a deletion.** `RunRecord.hidden` becomes
+`z.boolean().optional()`, written by nothing and read by nothing. It cannot simply be dropped:
+`RunRecordSchema` is strict, `hidden` has never been a SQL column (it lives inside the row's
+`record_json`), and every row the production database already holds carries `"hidden": false` — so
+removing the key would make the authority database refuse to open on every historical row. That is
+D133's read-forward rule pointing the other way, and the same reason no migration is written:
+released migration bodies are immutable and this field never appears in one. An ABSENT value means
+nothing and must never be given a meaning. Production carried **zero** rows with the flag set when
+this landed (40+ runs, none hidden), so nothing reappears.
+
+**What replaces the count arithmetic.** Nothing had to be invented — the exclusion pass already
+existed for archived rows and member containment, and hiding was one predicate inside it. Removing
+that predicate moves counts (a formerly hidden row now counts in the day, the badge, the status
+pill, the month calendar and the Activity report at the same instant, by construction) and moves no
+structure.
+
+**Two side effects worth stating.** Row placement no longer varies with status, because `hide`'s
+footer slot was the only one that read `terminal`. And a settled delegated MEMBER row is now served
+NO control at all — `retry` is refused for a child by the kernel and `rename` by row shape — which
+is the honest answer rather than a gap: every verb the row could draw is one somebody refuses.
+
+**The guard that could not see this.** `wire-connectivity` audited kernel↔schema symmetry in both
+directions and was structurally blind to a key that is accepted, blessed, and projected by nothing.
+Its command arm gains a third direction: every serveable verb must be one some PRODUCER emits, read
+by CALLING `queueRowActions` over every status in both member and non-member shapes (the standard
+its section arm already holds itself to, and the only way to read a computed key correctly) and by
+scanning the comment-stripped descriptor literals of `queries/run-detail.ts`. Comments are stripped
+and that is load-bearing: `unhide` appeared in the projector ONLY inside the prose explaining why it
+is never served, so a scan that counted prose would have called the dead key healthy for the whole
+phase it was dead.
 
 ---
 
@@ -1209,7 +1279,7 @@ closed policies; workflows never own cancel/delete/retry/bump/update implementat
 ```ts
 export type EnqueuePolicy = "reject-active" | "supersede-active" | "allow-parallel";
 export type CommandActionId =
-  | "retry" | "cancel" | "bump" | "rename" | "hide" | "unhide"
+  | "retry" | "cancel" | "bump" | "rename"
   | "edit-checkpoint" | "resolve-write-present" | "resolve-write-absent";
 export type NavigationActionId = "open-review" | "open-evidence";
 export type WorkflowActionId = CommandActionId | NavigationActionId;
@@ -1228,7 +1298,7 @@ interface CommandEnvelope {
 export type RunCommandRequest = CommandEnvelope & (
   | {
       target: { runId: RunId; expectedVersion: PositiveInt };
-      type: "retry" | "cancel" | "bump" | "hide" | "unhide";
+      type: "retry" | "cancel" | "bump";
       payload?: never;
     }
   | {
@@ -1268,7 +1338,7 @@ export type CommandRequest =
 /** Multi-select never means "loop and hope". Targets and versions are frozen at confirmation. */
 export interface BulkCommandRequest {
   bulkCommandId: CommandId;
-  type: "retry" | "cancel" | "bump" | "hide" | "unhide";
+  type: "retry" | "cancel" | "bump";
   targets: readonly [
     { runId: RunId; expectedVersion: PositiveInt },
     ...{ runId: RunId; expectedVersion: PositiveInt }[],
@@ -1309,15 +1379,18 @@ Command semantics are binding:
 | Cancel | Resolves the full dependency tree from authoritative SQLite, applies every edge's doc 02 cancel policy, and commits state transitions together. If the tree is unavailable/inconsistent, no target is cancelled. Visible queue roots are never an authority fallback. |
 | Bump | **Run-family only:** changes priority/claim order through an idempotent transactional command; it does not fabricate a requeue, mutate business input, change a descriptor version, or archive anything. Running work returns a typed rejection unless the scheduler explicitly supports cooperative yield. Version drift alone does not conflict. |
 | Rename | Replaces only the operator-visible run display name with a strict `RunDisplayName` payload: NFC-normalized, already trimmed, 1–120 Unicode code points, and no control characters. Empty, whitespace-padded, overlong, non-normalized, or unknown-key payloads fail boundary parsing. Identity and trace id never change. |
-| Hide / Unhide | A reversible presentation tombstone only. It changes no run outcome, task, dependency, checkpoint, intent, or evidence. The UI label is **Hide**, never Delete. |
+| ~~Hide / Unhide~~ | **RETIRED (D234.)** The queue's model is runs and archived runs; there is no third hidden class. See *"D234 — the queue's model is runs and archived runs"* below. |
 | Purge | Not a row action. `cli purge-run <exact-run-id> --backup <path>` is an offline maintenance command requiring a fresh verified backup and refusing any active/dependency/write-authority reference. It writes a purge receipt. |
 | Edit checkpoint | Uses doc 06's field-level patch/provenance model, creates a new run/attempt as specified there, and never mutates original input or a completed proof. |
 
 Every command is inserted durably before application and records the target's monotonic `version`.
-Re-delivery returns `already-applied`. CAS is enforced only for real race families: cancel-tree,
-edit-vs-resume, gate resolution, and write recovery; a stale projection conflicts and forces refresh
-only for those arms. Other arms retain the version seam for audit/future concurrency but validate
-current authority without rejecting solely because the observed version changed. The command audit
+Re-delivery returns `already-applied`. **CAS is enforced on every run verb** (D233, and D234 for
+`bump` — the last arm that compared against its own re-read): a stale projection conflicts and forces
+a refresh, with no exceptions. The earlier reading of this line scoped CAS to *"real race families:
+cancel-tree, edit-vs-resume, gate resolution, and write recovery"* and let the rest validate current
+authority without rejecting on drift; that scoping was about STATE, not about version, and a name or
+a claim order is a value an operator authored. A rule with one exception is a rule nobody can check.
+The command audit
 records requester (`local-operator` for now), source surface, reason, before/after versions, affected
 dependency ids, and outcome. API routes are thin schema parsers over this service—there are no
 workflow-specific mutation endpoints except domain gates whose handlers themselves issue commands.
@@ -1326,7 +1399,7 @@ Bulk commands first resolve the union of all authoritative dependency targets. `
 validates every policy plus expected versions for CAS-enforced arms, and applies one transaction or
 none. `best-effort` writes a child command/result per requested target and returns the complete
 applied/conflict/rejected vector; the UI may never collapse a partial result into “Done.” Bulk cancel
-defaults to `all-or-none`; bulk hide defaults to `best-effort`. There is no client loop whose last
+defaults to `all-or-none`. There is no client loop whose last
 response overwrites earlier errors.
 
 For descriptor-driven starts, the Enqueue row above is reached only by consuming the server-issued
@@ -1347,7 +1420,7 @@ or handler exists:
 | `worker-browser` | plan/spawn/stop/pause/resume worker and refresh/reopen browser; exact worker id, or worker id + browser session id, plus observed version where authority is mutable |
 | `settings` | `apply-settings`; one expected config revision plus one strict atomic multi-leaf patch—never per-field route writes |
 | `version-archive` | `plan-version-bump`, `apply-version-bump`, and archived-run relaunch; the plan action names an exact workflow/app scope and fingerprints, while apply consumes one immutable plan id/version and refuses blockers or drift |
-| `run` | retry/cancel/**priority `bump`**/rename/hide/unhide/edit-checkpoint/write resolution; exact run id + observed version |
+| `run` | retry/cancel/**priority `bump`**/rename/edit-checkpoint/write resolution; exact run id + observed version |
 | `gate` | resolve one exact `(runId, gateId)` with schema-hash-bound result + observed version |
 | `notification` | read/unread/snooze one exact actor-owned notification + observed version |
 | `capture` | the closed doc 06 session/photo/finalize/discard arms; exact capture session/photo ids + observed version |

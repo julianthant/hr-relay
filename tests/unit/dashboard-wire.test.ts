@@ -68,14 +68,8 @@ facts: { state: "absent", reason: "run is running and has not produced a termina
       },
     },
     {
-      key: "hide", label: "Hide", intent: "neutral", icon: "delete",
-      placement: ["menu"], kind: "command", command: "hide", expectedVersion: 1,
-      confirm: {
-        title: "Hide this row",
-        body: "Hiding changes nothing about the run.",
-        confirmLabel: "Hide",
-        tone: "neutral",
-      },
+      key: "rename", label: "Rename run\u2026", intent: "neutral", icon: "rename",
+      placement: ["menu"], kind: "command", command: "rename", expectedVersion: 1,
     },
   ],
   rowRevision: 1,

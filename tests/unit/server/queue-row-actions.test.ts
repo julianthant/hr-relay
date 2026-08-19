@@ -121,15 +121,15 @@ describe("queue-row action descriptors — the per-status set", () => {
     // `rename` is on EVERY status: `executePresentation` has no state
     // precondition, so a run that has already written to UCPath can still be
     // named — which is the whole reason a rename is safe to offer (D233).
-    queued: ["bump", "cancel", "rename", "hide"],
-    running: ["cancel", "rename", "hide"],
-    blocked: ["cancel", "rename", "hide"],
-    "awaiting-approval": ["cancel", "rename", "hide"],
+    queued: ["bump", "cancel", "rename"],
+    running: ["cancel", "rename"],
+    blocked: ["cancel", "rename"],
+    "awaiting-approval": ["cancel", "rename"],
     // Terminal: nothing to cancel, nothing to bump, a re-run is possible.
-    done: ["retry", "rename", "hide"],
-    failed: ["retry", "rename", "hide"],
-    cancelled: ["retry", "rename", "hide"],
-    partial: ["retry", "rename", "hide"],
+    done: ["retry", "rename"],
+    failed: ["retry", "rename"],
+    cancelled: ["retry", "rename"],
+    partial: ["retry", "rename"],
   };
 
   it("serves exactly the declared set for every queue status", () => {
@@ -161,12 +161,10 @@ describe("queue-row action descriptors — the per-status set", () => {
       // Menu-only in both states, and in the demo: the footer is the FREQUENT
       // subset, and naming a run is something an operator does once.
       rename: ["menu"],
-      hide: ["menu"],
     });
     assert.deepEqual(placements("done"), {
       retry: ["footer", "menu"],
       rename: ["menu"],
-      hide: ["footer", "menu"],
     });
     for (const status of QueueStatusSchema.options) {
       for (const action of queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor(status))) {
@@ -183,9 +181,9 @@ describe("queue-row action descriptors — the per-status set", () => {
    * through their delegation edge policy, not generic retry"), so a member row
    * that drew a `↺` would be drawing a button that always refuses.
    */
-  it("drops retry for a delegated child, and keeps hide", () => {
-    assert.deepEqual(keysFor("failed", { isChild: true }), ["rename", "hide"]);
-    assert.deepEqual(keysFor("failed"), ["retry", "rename", "hide"]);
+  it("drops retry for a delegated child, and keeps rename", () => {
+    assert.deepEqual(keysFor("failed", { isChild: true }), ["rename"]);
+    assert.deepEqual(keysFor("failed"), ["retry", "rename"]);
   });
 
   /**
@@ -196,8 +194,8 @@ describe("queue-row action descriptors — the per-status set", () => {
    * it is a row read on its own, not one line of somebody's tally.
    */
   it("drops rename for a delegated MEMBER, and keeps it for every other row", () => {
-    assert.deepEqual(keysFor("running", { isMember: true }), ["cancel", "hide"]);
-    assert.deepEqual(keysFor("running", { isChild: true }), ["cancel", "rename", "hide"]);
+    assert.deepEqual(keysFor("running", { isMember: true }), ["cancel"]);
+    assert.deepEqual(keysFor("running", { isChild: true }), ["cancel", "rename"]);
   });
 
   /** The label states which act this is; the server knows whether a name exists. */
@@ -251,22 +249,22 @@ describe("queue-row action descriptors — the per-status set", () => {
   /** Doc 03 §2.4's closed condition rules narrow a policy; they never widen it. */
   it("honours a descriptor condition that narrows an enabled action", () => {
     const policy = WorkflowActionPolicySchema.parse({
-      enabled: ["retry", "cancel", "bump", "hide"],
+      enabled: ["retry", "cancel", "bump", "rename"],
       conditions: [{ action: "cancel", requires: "gate-open" }],
     });
     const keys = (status: Status): string[] =>
       queueRowActions(policy, factsFor(status)).map(({ key }) => key);
-    assert.deepEqual(keys("awaiting-approval"), ["cancel", "hide"]);
-    assert.deepEqual(keys("running"), ["hide"], "a condition that does not hold must remove the action");
-    // The policy above does not enable `rename`, and the projection cannot add
-    // an action a descriptor never declared — the narrowing runs both ways.
-    // Enabling something the projection never serves cannot conjure it.
+    assert.deepEqual(keys("awaiting-approval"), ["cancel", "rename"]);
+    assert.deepEqual(keys("running"), ["rename"], "a condition that does not hold must remove the action");
+    // The projection cannot add an action a descriptor never declared, and the
+    // narrowing runs both ways: enabling something the projection never serves
+    // cannot conjure it either.
     const wide = WorkflowActionPolicySchema.parse({
-      enabled: ["retry", "cancel", "bump", "rename", "hide", "unhide", "open-review", "open-evidence"],
+      enabled: ["retry", "cancel", "bump", "rename", "edit-checkpoint", "open-review", "open-evidence"],
     });
     assert.deepEqual(
       queueRowActions(wide, factsFor("queued")).map(({ key }) => key),
-      ["bump", "cancel", "rename", "hide"],
+      ["bump", "cancel", "rename"],
     );
   });
 });
@@ -413,23 +411,30 @@ describe("queue-row action descriptors — every served verb has a command behin
   /**
    * The negative control, through the SAME entry point. A check that has never
    * been observed to fail is indistinguishable from one that cannot — and the
-   * three verbs below are exactly the ones a future projection would be tempted
-   * to serve from a row: `unhide` has no row to ride (a hidden run leaves the
-   * queue), and the two write resolutions are answered by the parked-write
-   * dialog, which is the only surface that can carry the evidence note.
+   * verbs below are exactly the ones a future projection would be tempted to
+   * serve from a row: the two write resolutions are answered by the
+   * parked-write dialog, which is the only surface that can carry the evidence
+   * note, and `edit-checkpoint` is answered by the Data section that composes
+   * its patches.
+   *
+   * `unhide` used to lead this list, exempted because no queue row could exist
+   * for a hidden run. D234 retired it along with `hide`, so the exemption is
+   * gone rather than restated: there are runs and archived runs, and every run
+   * this projection folds gets a row.
    */
   it("catches a synthesized descriptor whose verb this path cannot send", () => {
-    const unreachable = ["unhide", "resolve-write-present", "resolve-write-absent"] as const;
+    const unreachable = ["edit-checkpoint", "resolve-write-present", "resolve-write-absent"] as const;
     for (const command of unreachable) {
       assert.ok(
         !served.some((action) => action.kind === "command" && action.command === command),
         `the projection serves "${command}", which this test asserts it must not`,
       );
     }
-    // (a) `unhide` IS a live kernel verb, so the vocabulary check alone would
-    //     pass it; what refuses it is that no queue row can exist for a hidden
-    //     run. Stated here so the exclusion is a decision, not an oversight.
-    assert.ok((PHASE1_ACTIVE_COMMAND_ARMS.run as readonly string[]).includes("unhide"));
+    // (a) `edit-checkpoint` IS a live kernel verb, so the vocabulary check
+    //     alone would pass it; what refuses it is that a row cannot compose a
+    //     patch set. Stated here so the exclusion is a decision, not an
+    //     oversight.
+    assert.ok((PHASE1_ACTIVE_COMMAND_ARMS.run as readonly string[]).includes("edit-checkpoint"));
     // (b) a verb the kernel does not implement at all must fail the vocabulary
     //     check — this is the arm that catches an invented control.
     assert.ok(!(ActionCommandKeySchema.options as readonly string[]).includes("force-done"));

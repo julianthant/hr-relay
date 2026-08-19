@@ -65,7 +65,7 @@ const EXPECTED_ACTIVE = {
     "resume-worker", "refresh-browser", "reopen-browser",
   ],
   run: [
-    "retry", "cancel", "bump", "rename", "hide", "unhide",
+    "retry", "cancel", "bump", "rename",
     "resolve-write-present", "resolve-write-absent",
     // D166: the Edit-Data save activated with its CAS-against-resume-fence arm.
     "edit-checkpoint",
@@ -304,6 +304,12 @@ describe("control-command-single-path", () => {
    * value the operator authored, so a stale one silently discards somebody's
    * edit and reports "Recorded." Every run verb now CASes the caller's value,
    * which is the rule with no exceptions a reviewer can actually check.
+   *
+   * The verbs the case walks moved twice since. D234 retired `hide`/`unhide`,
+   * and `bump` — the one arm D233's own record left open, because it CASed its
+   * OWN re-read rather than the caller's — joined the rule here on D233's
+   * reasoning, which is why the case now walks the whole live run vocabulary
+   * instead of a sample of it.
    */
   it("CASes every run verb against the caller's version — presentation included", () => {
     const harness = createHarness();
@@ -325,11 +331,16 @@ describe("control-command-single-path", () => {
     assert.equal(staleRename.state, "conflict", "a stale rename may not overwrite a current name");
     assert.equal(harness.database.authority.runs.get(UUID_2)?.displayName, undefined);
 
-    const staleHide = harness.kernel.execute({
-      ...base, commandId: nextCommandId(), type: "hide",
+    const staleBump = harness.kernel.execute({
+      ...base, commandId: nextCommandId(), type: "bump",
       target: { runId: UUID_2, expectedVersion: 999 },
     });
-    assert.equal(staleHide.state, "conflict");
+    assert.equal(staleBump.state, "conflict", "bump CASes the caller's value too (D233's rule)");
+    assert.equal(
+      harness.database.authority.runs.get(UUID_2)?.envelope.priority,
+      QUEUED_RUN.envelope.priority,
+      "a refused bump reorders nothing",
+    );
 
     const cancelled = harness.kernel.execute({
       ...base, commandId: nextCommandId(), type: "cancel",
@@ -337,25 +348,25 @@ describe("control-command-single-path", () => {
     });
     assert.equal(cancelled.state, "conflict", "cancel-tree is CAS-enforced");
 
-    // At the LIVE version all three land, and hide is still a reversible
-    // presentation tombstone: the run row exists, its lifecycle is untouched.
+    // At the LIVE version both land, and rename is still presentation-only:
+    // the run row exists, its lifecycle is untouched.
     const renamed = harness.kernel.execute({
       ...base, commandId: nextCommandId(), type: "rename",
       target: { runId: UUID_2, expectedVersion: live },
       payload: { displayName: "Renamed at the live version" },
     });
     assert.equal(renamed.state, "applied");
-    const hidden = harness.kernel.execute({
-      ...base, commandId: nextCommandId(), type: "hide",
+    const bumped = harness.kernel.execute({
+      ...base, commandId: nextCommandId(), type: "bump",
       target: { runId: UUID_2, expectedVersion: harness.database.authority.runs.get(UUID_2)?.version ?? 0 },
     });
-    assert.equal(hidden.state, "applied");
+    assert.equal(bumped.state, "applied");
 
-    const afterHide = harness.database.authority.runs.get(UUID_2);
-    assert.ok(afterHide !== undefined, "hide may never delete the run row");
-    assert.equal(afterHide.hidden, true);
-    assert.equal(afterHide.lifecycle.state, "queued");
-    assert.equal(afterHide.displayName, "Renamed at the live version");
+    const afterRename = harness.database.authority.runs.get(UUID_2);
+    assert.ok(afterRename !== undefined, "presentation may never delete the run row");
+    assert.equal(afterRename.lifecycle.state, "queued");
+    assert.equal(afterRename.displayName, "Renamed at the live version");
+    assert.equal(afterRename.envelope.priority, "interactive");
   });
 
   it("enqueue policy is transactional: an injected active-run lookup error creates zero runs", () => {

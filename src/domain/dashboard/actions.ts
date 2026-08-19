@@ -7,7 +7,7 @@
  * Ported (shape) from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/demo-wire.ts (`ActionDescriptorWire`),
  * narrowed to the command vocabulary the rebuild's Phase-1 kernel actually
- * accepts (`src/domain/commands.ts`: run retry/cancel/bump/hide/unhide, gate
+ * accepts (`src/domain/commands.ts`: run retry/cancel/bump/rename, gate
  * resolve-gate). The 1g BFF does not serve these yet — until it does, surfaces
  * receive an empty list and honestly draw no run-action controls (1i landing
  * note; serving lands with the doc 03 action-policy projection).
@@ -36,9 +36,16 @@ export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "delete", 
  * run verb, and the demo (`RebuildDemo.tsx:240`) serves it exactly that way: a
  * `menu` descriptor the surface INTERCEPTS to collect its one value, the same
  * shape `resolve-gate` already uses for the ceremony dialog's answer.
+ *
+ * `hide` and `unhide` LEFT the vocabulary with D234, on the operator's ruling
+ * that *"there are runs and archived runs; there should be no hidden runs."*
+ * `unhide` had never been serveable at all — a hidden run was filtered out of
+ * the queue projection, so no row existed to hang it off — and `hide` was a
+ * one-way door dressed as a reversible tombstone. Archiving is the model that
+ * takes a run off the queue, and it is the only one.
  */
 export const ActionCommandKeySchema = z.enum([
-  "retry", "cancel", "bump", "rename", "hide", "unhide", "resolve-gate",
+  "retry", "cancel", "bump", "rename", "resolve-gate",
   "resolve-write-present", "resolve-write-absent",
 ]);
 

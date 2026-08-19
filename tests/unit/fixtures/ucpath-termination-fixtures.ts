@@ -158,7 +158,6 @@ export function terminationQueuedRun(
     },
     lifecycle: { state: "queued" },
     claimGeneration: 0,
-    hidden: false,
     version: 1,
     createdAt: TERMINATION_NOW,
     updatedAt: TERMINATION_NOW,
