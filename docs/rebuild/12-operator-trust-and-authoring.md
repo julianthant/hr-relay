@@ -1317,15 +1317,18 @@ the demo draws a fact this wire does not serve, the port omits or restates rathe
 the toolbar slot the demo's run picker occupies carries the workflow identity band (the run overlay
 stays excluded per the first exclusion above — the demo's per-node run state, recorded values,
 provenance lines and delegation child rows are ALL that one exclusion, seen from four angles); the
-node panel's contract table lists TASK ARMS, not contract fields, with its header counting arms and
-the ⓘ saying so in as many words; the graph header omits the demo's file-count segment (a per-run
+node panel's contract table listed TASK ARMS, not contract fields, with its header counting arms and
+the ⓘ saying so in as many words — **superseded by §5.9 (D226), which serves a derived field census
+and counts fields**; the graph header omits the demo's file-count segment (a per-run
 fact, not a registry one); no lane dividers exist because no lane fact exists on the descriptor
 (a descriptor-authored phase would sit inside §5.3's closed editable set once Phase B exists); and
 the demo's `Version registry` header action is absent because no version-registry surface exists in
-this tree. The conditional-node line prints "runs when the descriptor's own when() predicate
-holds" — honest, and less than the demo's authored sentence; an authored `whenLabel` / node
-`purpose` / workflow `summary` (descriptor presentation data, projected like the label) is the
-recorded path to the demo's prose and is data authoring, not an exclusion. Read-only per D186
+this tree. The conditional-node line printed "runs when the descriptor's own when() predicate
+holds" — honest, and less than the demo's authored sentence — and the recorded fix named an authored
+`whenLabel` / node `purpose` / workflow `summary`. **Two thirds of that landed and one third was
+refused**: `purpose` and `summary` are authored data (§5.9, D228), while `whenLabel` is refused
+because a sentence beside a predicate is a second description of one rule — the `when` itself became
+a DECLARED condition instead (doc 02 §3.3, D227). Read-only per D186
 throughout: no edit affordances anywhere.
 
 ### 5.8 The generated UI catalog gets a surface, and it serves the COMMITTED artifact (2026-08-09, D177)
