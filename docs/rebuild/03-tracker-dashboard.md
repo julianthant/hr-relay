@@ -2905,6 +2905,125 @@ surface already holds — the export inherits the display redaction and carries 
 new redaction surface exists. Both halves are build items owned by the separations-completion
 plan's Track B5; this ruling is the ratification the records were waiting for.
 
+#### D223 as-built — the frozen sections, Export, and the change record (Track B5, 2026-08-19)
+
+**Archive schema generation 2.** The archived record's own
+`archiveSchemaGeneration` is the version that moved — not the SQL schema, which
+did not, and no migration was written. `archived_runs` stores the record as
+JSON, the generation schema is a union of the generations this reader
+implements, the new blocks are optional, and a generation-1 row's
+`contentDigest` is byte-identical because canonical JSON omits an absent key.
+What the generation buys is the half an optional field cannot carry:
+`refineSectionGeneration` refuses a WRITER that omits the block, in both
+directions. A reader must admit a generation-1 record — those bytes are on disk
+and nothing may back-fill them — and a writer may not produce one, or "this
+build could not freeze the logs" would be recorded as "this record predates
+logs", which is a silent downgrade on the record whose whole job is to be
+complete.
+
+**What is frozen, and where each half comes from.** Four sections ride the
+existing `ArchiveSnapshotSource` seam, so the frozen bytes are the bytes the
+live surfaces last rendered rather than a second derivation: **logs** (EVERY
+note line, walked through the live section's own cursor to `end-of-page` — a
+frozen `nextCursor: present` would name a fetch the archive has no endpoint
+for, and the freeze refuses past a bound rather than truncating), **data**,
+**people** (projected from the fold's own `memberRunIds`; a member the
+projection cannot render REFUSES the archive, for the same reason an
+unrenderable row does), and **attempts**. The fifth, **captures**, is derived
+from authority beside the evidence pointers, because a diagnostic bundle is not
+a read-model fact.
+
+Every section is an explicit absence union and never an empty payload standing
+in for two facts. A run with no members and a run whose member rows could not be
+projected are different situations; so are "this run wrote no log line" and
+"this record predates frozen logs" — the wire's `sections` absence names its own
+generation and states that the payloads are not reconstructible.
+
+**The captures are DESCRIBED pointers, not copies.** D179's "evidence is
+pointers only" is about the BYTES and it stands — nothing on this path reads the
+content store. What a tile adds is what a pointer alone could never say: kind,
+media type, size, digest, sensitivity, the capture instant, the bundle's origin,
+a screenshot's pixel size, and the bundle's DECLARED retention (never an
+observation of whether the bytes are still there — that is `archiveRetention`'s
+read-time computation). `step` and `system` are joined off the bundle's ORIGIN
+failure, the only place either is recorded, and both stay named absences when
+the origin names no failure or the failure names no node; borrowing the run's
+last node would attach a capture to a step it may not belong to. `system` is
+read as the declared store half of a `TaskId` (`<registered-store>/<operation>`)
+— a component of the identifier's own grammar, not a substring somebody hopes
+means something.
+
+**The per-attempt history is a projection of an identity the fold already
+carried.** Span identity is `(runId, attempt, spanPath)` (§1.1), so grouping by
+attempt reads the key rather than inferring a boundary from instants. Attempt 1
+is emitted even when it folded no span — a run that died before its first task
+still HAD a first attempt. There is deliberately no per-attempt trace id (a
+trace belongs to the run) and no per-attempt status pill (it would have to be
+invented from the span mix); the mix is served verbatim and the surface counts
+it.
+
+**Export** writes `archive-<traceId>.json` containing EXACTLY the
+display-redacted `ArchivedRunDetailWire` the surface holds — not a
+re-derivation and not a second projection, which is why it opens no new
+redaction surface. Every new wire leaf is dispositioned in the redaction audit
+against the disposition its LIVE twin already carries; a frozen copy that
+relaxed an origin would be a downgrade nobody reviewed.
+
+**`LEDGER_PRESENTATION_DECLARATIONS` is keyed by the PROOF SCHEMA HASH.**
+`(system, completionKind)` cannot work: separations files two different UCPath
+writes — the pending-transaction sweep and the termination — and both are
+`save-verify` on `ucpath`. `proof.schemaHash` is the contract's own identity and
+is already on every line, so a declaration carries the commit contract's
+`proofSchema`, derives that hash from it, and PARSES the stored proof through it
+before reading a leaf; a line whose proof names a declared schema and does not
+satisfy it is reported by name rather than read past. Two of the three
+declarations state their confirmation column ABSENT with a reason, which is the
+point of a declaration rather than a gap in it — UCPath issues no receipt for an
+in-progress-grid delete, and Kuali's save is UI-silent (D128) and proves
+completion by reload read-back. "This write has no confirmation number" and
+"nobody has declared how to read one" are different facts and an operator
+reading a blank cell must be able to tell them apart.
+
+**Charter §25's change record now exists.** The paragraph above ("the scope of a
+bump is declared by whoever makes the change … and recorded in that update's
+change record: what, why, version, commit") had no collecting surface, so every
+sweep could say who applied it and when and nothing about why. It is authored at
+PLAN time in a dialog — the only person who can say why a version moved is the
+one moving it, and asking later means asking somebody who did not make the
+change. It rides the plan, so the fingerprint the operator's apply cites back
+covers the words as well as the run sets, and apply copies it into the
+application VERBATIM; re-authoring it there would let the recorded reason differ
+from the one the plan was reviewed under. `commit` is an explicit absence union
+rather than a required string, because a workflow bump usually has a commit and
+an application bump often does not, and demanding a hash would put a fabricated
+one on the record that exists to be trustworthy. It is read forward on the same
+terms as the sections: a pre-generation-2 sweep says "nobody was asked" rather
+than showing an empty block, which would read as "nobody had a reason".
+
+**`fromVersions` is derived from the ARCHIVED RECORDS, not from the plan.** A
+plan's `observedIdentities` are the versions the bump moves TO; "from what" is
+answered by what the swept runs were actually carrying, so the index folds the
+distinct `archivedIdentity.descriptorVersion` of the records each application
+owns. A sweep that archived nothing has no from-version and the empty list is
+that fact — there is no run to read one off.
+
+**What `archive-invariants` proves after this.** The structural bar is
+unchanged and met: the archived-run read path still value-reaches no registry
+module anywhere in its import closure, so every tab renders with the descriptor
+list EMPTY — which `archive-model.test.ts` now executes tab by tab, alongside a
+generation-1 record read forward and a run that FILED a real ledger line,
+archived and resolved back with the registry empty. Importing the three commit
+contracts into the ledger read-through is inside that bar two ways: their
+closure reaches no Node built-in (doc 13 §8.13 — the module lands on the
+dashboard bundle) and no descriptor module. A task contract is neither; it is
+the schema of one write, and the ledger is never archived, so interpreting its
+lines with current code is exactly right.
+
+**Storage growth.** The operator accepted the per-archived-run cost on
+2026-08-18. The measured per-run delta is owed in this block once a real archive
+exists — no production database has archived a run yet, and a number from a
+fixture would be a measurement of the fixture.
+
 ### 10.3 Operator-assigned run display names (D83)
 
 Any run can be renamed by the operator. The label rides the **row and the receipt**; the trace id is
