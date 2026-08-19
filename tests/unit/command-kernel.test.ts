@@ -401,7 +401,6 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
       },
       lifecycle: { state: "queued" },
       claimGeneration: 0,
-      hidden: false,
       version: 1,
       createdAt: NOW,
       updatedAt: NOW,
@@ -565,7 +564,6 @@ describe("D113 run arms", () => {
       input: parent.input,
       lifecycle: { state: "queued" },
       claimGeneration: 0,
-      hidden: false,
       version: 1,
       createdAt: NOW,
       updatedAt: NOW,
@@ -647,7 +645,6 @@ describe("D113 run arms", () => {
       input: parent.input,
       lifecycle: { state: "queued" },
       claimGeneration: 0,
-      hidden: false,
       version: 1,
       createdAt: NOW,
       updatedAt: NOW,
@@ -661,26 +658,44 @@ describe("D113 run arms", () => {
     assert.equal(harness.database.authority.runs.get(orphanId)?.lifecycle.state, "queued");
   });
 
-  it("bump elevates a queued run to interactive and refuses running work; drift alone never conflicts", () => {
+  /*
+   * D233's rule applied to bump. This case used to pass `999` to every call
+   * with the comment "bump is NOT a CAS arm" — which was true of the code and
+   * is the hole itself: `executeBump` re-read the run and handed its own
+   * `current.version` to the store, a compare-and-swap that cannot fail. Every
+   * run verb now CASes the CALLER's value, with no exceptions.
+   */
+  it("bump elevates a queued run to interactive at the live version, and refuses a stale one", () => {
     const harness = createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
-    // Deliberately stale observed version: bump is NOT a CAS arm.
-    const bumped = harness.kernel.execute(runCommand("bump", runId, 999));
-    assert.equal(bumped.state, "applied");
-    const run = harness.database.authority.runs.get(runId);
-    assert.equal(run?.envelope.priority, "interactive");
+    const version = () => harness.database.authority.runs.get(runId)?.version ?? 0;
 
-    const again = harness.kernel.execute(runCommand("bump", runId, 999));
+    const stale = harness.kernel.execute(runCommand("bump", runId, version() + 998));
+    assert.equal(stale.state, "conflict", "a stale bump may not reorder the claim queue");
+    if (stale.state === "conflict") {
+      assert.equal(stale.currentVersion, version());
+      assert.match(stale.message, /refresh before bumping it/);
+    }
+    // The refusal wrote nothing: the run is still at its authored priority.
+    assert.equal(harness.database.authority.runs.get(runId)?.envelope.priority, "bulk");
+
+    const bumped = harness.kernel.execute(runCommand("bump", runId, version()));
+    assert.equal(bumped.state, "applied");
+    assert.equal(harness.database.authority.runs.get(runId)?.envelope.priority, "interactive");
+
+    // Re-bumping an already-interactive run is the no-op arm: it advances no
+    // version, so the SAME expected version is still live and still accepted.
+    const again = harness.kernel.execute(runCommand("bump", runId, version()));
     assert.equal(again.state, "applied");
 
     const claimed = harness.database.authority.runs.claimNext({ workflow: "kernel-reject", workerId: "worker-1", now: NOW });
     assert.equal(claimed.state, "claimed");
-    const busy = harness.kernel.execute(runCommand("bump", runId, 999));
+    const busy = harness.kernel.execute(runCommand("bump", runId, version()));
     assert.equal(busy.state, "rejected");
     if (busy.state === "rejected") assert.equal(busy.code, "invalid-state");
   });
 
-  it("rename, hide, and unhide are presentation-only and change no lifecycle", () => {
+  it("rename is presentation-only and changes no lifecycle", () => {
     const harness = createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
     const version = () => {
@@ -693,55 +708,43 @@ describe("D113 run arms", () => {
       runCommand("rename", runId, version(), { payload: { displayName: "Kernel case" } }),
     );
     assert.equal(renamed.state, "applied");
-    const hidden = harness.kernel.execute(runCommand("hide", runId, version()));
-    assert.equal(hidden.state, "applied");
-    let run = harness.database.authority.runs.get(runId);
+    const run = harness.database.authority.runs.get(runId);
     assert.equal(run?.displayName, "Kernel case");
-    assert.equal(run?.hidden, true);
-    // The whole claim of "presentation-only": three commands, and the run is
-    // exactly where it was — same state, same claim, same everything else.
+    // The whole claim of "presentation-only": the run is exactly where it was
+    // — same state, same claim, same everything else.
     assert.equal(run?.lifecycle.state, "queued");
-    const unhidden = harness.kernel.execute(runCommand("unhide", runId, version()));
-    assert.equal(unhidden.state, "applied");
-    run = harness.database.authority.runs.get(runId);
-    assert.equal(run?.hidden, false);
   });
 
   /*
    * D233. This case previously asserted the OPPOSITE — it passed version `999`
-   * to all three verbs and pinned `applied`, under the heading "never
-   * CAS-reject". The premise was that presentation changes no outcome, so a
-   * stale one is harmless. Rename is the counterexample: a name is a value the
-   * operator authored, and applying yesterday's name over today's silently
-   * discards an edit and answers "Recorded."
+   * and pinned `applied`, under the heading "never CAS-reject". The premise was
+   * that presentation changes no outcome, so a stale one is harmless. Rename is
+   * the counterexample: a name is a value the operator authored, and applying
+   * yesterday's name over today's silently discards an edit and answers
+   * "Recorded." D234 retired the two verbs that made the premise look true.
    */
-  it("refuses a stale rename, hide, or unhide with the live version (D233)", () => {
+  it("refuses a stale rename with the live version (D233)", () => {
     const harness = createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800001");
     const live = harness.database.authority.runs.get(runId)?.version ?? 0;
     assert.ok(live > 0);
     const stale = live + 998;
 
-    for (const [type, payload] of [
-      ["rename", { payload: { displayName: "Yesterday's name" } }],
-      ["hide", {}],
-      ["unhide", {}],
-    ] as const) {
-      const result = harness.kernel.execute(runCommand(type, runId, stale, payload));
-      assert.equal(result.state, "conflict", `${type} applied over a stale version`);
-      if (result.state === "conflict") {
-        // The server's own sentence names the version that IS live, because it
-        // is the only party that knows it.
-        assert.equal(result.currentVersion, live);
-        assert.match(result.message, new RegExp(`not ${String(stale)}`));
-      }
+    const result = harness.kernel.execute(
+      runCommand("rename", runId, stale, { payload: { displayName: "Yesterday's name" } }),
+    );
+    assert.equal(result.state, "conflict", "a stale rename applied over a current name");
+    if (result.state === "conflict") {
+      // The server's own sentence names the version that IS live, because it
+      // is the only party that knows it.
+      assert.equal(result.currentVersion, live);
+      assert.match(result.message, new RegExp(`not ${String(stale)}`));
     }
 
-    // Nothing was written by any of the three.
+    // Nothing was written.
     const run = harness.database.authority.runs.get(runId);
     assert.equal(run?.version, live);
     assert.equal(run?.displayName, undefined);
-    assert.equal(run?.hidden, false);
   });
 });
 

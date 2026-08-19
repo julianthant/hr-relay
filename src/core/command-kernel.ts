@@ -716,6 +716,32 @@ function executeBump(
   now: string,
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
+  /*
+   * D233's rule, applied to the one arm the presentation fix did not reach:
+   * every run verb CASes THE CALLER'S value. This function used to pass
+   * `current.version` — its own re-read, one line above — into the store's
+   * `expectedVersion`, which is a compare-and-swap against a value that cannot
+   * have moved and therefore a CAS that cannot fail.
+   *
+   * The blast radius is genuinely smaller than rename's: a stale bump reorders
+   * a queued run's claim and is refused outright once the run has left
+   * `queued`. That is an argument for the fix being cheap, not for skipping it
+   * — "one CAS rule with no exceptions" is the property that makes the
+   * discipline checkable, and an exception nobody can see is how the
+   * presentation hole survived from Phase 1c.
+   *
+   * It is checked BEFORE the lifecycle precondition, matching `executeCancel`:
+   * a caller holding yesterday's version does not get to learn today's
+   * lifecycle from the refusal it gets.
+   */
+  if (current.version !== request.target.expectedVersion) {
+    conflict(
+      request,
+      current.version,
+      `run ${request.target.runId} is at version ${String(current.version)}, not `
+      + `${String(request.target.expectedVersion)}; refresh before bumping it`,
+    );
+  }
   if (current.lifecycle.state !== "queued") {
     reject(
       request,
@@ -729,7 +755,7 @@ function executeBump(
   }
   const outcome = repositories.runs.bumpPriority({
     runId: request.target.runId,
-    expectedVersion: current.version,
+    expectedVersion: request.target.expectedVersion,
     now,
   });
   requireApplied(outcome, `bumping run ${request.target.runId}`);
