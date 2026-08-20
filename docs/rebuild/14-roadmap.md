@@ -1,12 +1,12 @@
 # HR Rebuild Roadmap
-<!-- This file is written in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. -->
+<!-- `docs/rebuild/14-roadmap.md` is the plan as written, in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. -->
 asOf: 2026-08-20
 head: 81287bb
-eyebrow: hr-automation-rebuild · derived view · source: ROADMAP.md
+eyebrow: hr-automation-rebuild · the plan · source: docs/rebuild/14-roadmap.md
 source: Stems from `docs/rebuild/07-master-plan.md` (§2 phases, §3.3 order, §3.7 sizes)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
 source: `docs/plans/2026-08-20-dashboard-architecture-audit.md` (Track D) · doc 07 wins on any disagreement
-footer: Generated from `ROADMAP.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; `/custom-update-plan` keeps plan, site and owning docs in step. The normative plan is `docs/rebuild/07-master-plan.md`; the decision changelog `docs/rebuild/04-reconciliation.md`. Sizes are relative build sizes (doc 07 §3.7), not calendar.
+footer: Generated from `docs/rebuild/14-roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; `/custom-update-plan` keeps plan, site and owning docs in step. The normative plan is `docs/rebuild/07-master-plan.md`; the decision changelog `docs/rebuild/04-reconciliation.md`. Sizes are relative build sizes (doc 07 §3.7), not calendar.
 > The ground-up rebuild of UCSD's UCPath HR automation, as a tree. **Phases 0–2 are complete** — the platform is built and proven; **Phase 3** migrates the 13 remaining legacy workflows one at a time and entered at **separations**; legacy stays the sole production authority until one all-at-once cutover. Every box shows what it **builds** (by layer, filled when built) and what it **needs** — select one for detail, hover to light up what it unlocks.
 
 tiles:

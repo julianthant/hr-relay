@@ -4,7 +4,7 @@ import { z } from "zod";
 
 /**
  * `npm run roadmap` — render `docs/roadmap/index.html` from the plan itself:
- * `ROADMAP.md`, written in the roadmap notation (see `parsePlan` below).
+ * `docs/rebuild/14-roadmap.md`, written in the roadmap notation (see `parsePlan` below).
  *
  * The plan is the website's single source: phases → tasks → sub-tasks, what
  * every node BUILDS (`builds:` checklist, one layer tag per line) and what it
@@ -913,7 +913,7 @@ function renderPage(roadmap: Roadmap): string {
 }
 
 
-// ─── the plan notation: ROADMAP.md → Roadmap ─────────────────────────────────
+// ─── the plan notation: docs/rebuild/14-roadmap.md → Roadmap ─────────────────
 //
 //   # Title                      asOf: / head: / eyebrow: / footer: / source: (repeatable) / > lede
 //   tiles:  - Label | value | sub   (a leading "!" marks the hot tile)
@@ -945,14 +945,14 @@ interface RawNode {
 }
 
 function fail(lineNo: number, message: string): never {
-  throw new Error(`ROADMAP.md:${String(lineNo)}: ${message}`);
+  throw new Error(`docs/rebuild/14-roadmap.md:${String(lineNo)}: ${message}`);
 }
 
 function parsePlan(text: string): unknown {
   const lines = text.split("\n");
   const start = lines.indexOf("<!-- roadmap:start -->");
   const end = lines.indexOf("<!-- roadmap:end -->");
-  if (start < 0 || end < 0 || end < start) throw new Error("ROADMAP.md: missing <!-- roadmap:start --> / <!-- roadmap:end --> markers");
+  if (start < 0 || end < 0 || end < start) throw new Error("docs/rebuild/14-roadmap.md: missing <!-- roadmap:start --> / <!-- roadmap:end --> markers");
 
   // ── meta ──
   const meta: Record<string, unknown> = {};
@@ -1125,7 +1125,7 @@ function parsePlan(text: string): unknown {
 // ─── entry ─────────────────────────────────────────────────────────────────
 
 const ROOT = resolve(import.meta.dirname, "..");
-const SOURCE = resolve(ROOT, "ROADMAP.md");
+const SOURCE = resolve(ROOT, "docs/rebuild/14-roadmap.md");
 const TARGET = resolve(ROOT, "docs/roadmap/index.html");
 
 async function publish(path: string, content: string): Promise<void> {
