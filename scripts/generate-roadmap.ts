@@ -209,17 +209,21 @@ function renderNotes(notes: string[] | undefined): string {
  * The node's binding to the plan SSOT, as a muted line under the drawer title.
  * The site is ONE static file with no server behind it, so a ref is not a link
  * — it is a `title` naming the file on disk, which is what a reader needs to
- * open it. `NN` is a phase doc `00`–`05` under `docs/rebuild/`; the glob stands
- * in for its slug on purpose: this renderer is pure, and reading the directory
- * to resolve `01` → `01-build-the-spine.md` would put I/O in a function whose
- * whole job is formatting.
+ * open it. A PHASE ref reads `doc 03a §2.1` and titles `docs/rebuild/03a-*.md`;
+ * the glob stands in for the slug on purpose, because this renderer is pure and
+ * reading the directory to resolve `01` → `01-build-the-spine.md` would put I/O
+ * in a function whose whole job is formatting. A REFERENCE ref reads
+ * `ref write-safety §5` and needs no glob — an unnumbered spec IS its filename.
  */
 function renderDocs(docs: DocRef[] | undefined): string {
   if (docs === undefined || docs.length === 0) return "";
   const refs = docs.map((ref) => {
-    const file = `docs/rebuild/${ref.doc}-*.md`;
+    const reference = ref.kind === "reference";
+    const slug = reference ? ref.doc.slice("ref:".length) : ref.doc;
+    const file = reference ? `docs/rebuild/reference/${slug}.md` : `docs/rebuild/${slug}-*.md`;
     const title = ref.section === undefined ? file : `${file} §${ref.section}`;
-    return `<span class="docref" title="${escapeHtml(title)}">doc ${escapeHtml(ref.doc)}${ref.section === undefined ? "" : ` §${escapeHtml(ref.section)}`}</span>`;
+    const label = `${reference ? "ref" : "doc"} ${slug}${ref.section === undefined ? "" : ` §${ref.section}`}`;
+    return `<span class="docref" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
   });
   return `<p class="docrefs">${refs.join(" · ")}</p>`;
 }

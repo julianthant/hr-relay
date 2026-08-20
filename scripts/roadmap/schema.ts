@@ -30,18 +30,27 @@ export type Layer = z.infer<typeof LayerSchema>;
 export const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /**
- * A node's binding to the plan SSOT: which `docs/rebuild/NN-*.md` section owns
- * the contract this node builds. `doc` is the two-digit document number,
- * `section` the part after `§` (dotted numbers, a range, or a short heading
- * slug), `raw` the ref exactly as it was written in the notation.
+ * A node's binding to the plan SSOT: which doc section owns the contract this
+ * node builds. Two kinds, because the shelf has two halves — a `phase` ref
+ * names an actionable `docs/rebuild/NN-*.md` by its phase number (`03a`), a
+ * `reference` ref names an unnumbered spec under `docs/rebuild/reference/` by
+ * slug and carries the `ref:` prefix in `doc` (`ref:write-safety`). `section`
+ * is the part after `§` (dotted numbers, a range, or a heading NAME — the
+ * phase docs number no headings), `raw` the ref exactly as the notation wrote
+ * it. Whether the named file and section EXIST is the `roadmap-doc-binding`
+ * guard's question; this schema only pins the shape.
  */
 export const DocRefSchema = z
   .object({
-    doc: z.string().regex(/^(?:0\d|1[0-4])$/),
+    doc: z.string().regex(/^(?:0[0-2]|03[abc]|0[45]|ref:[a-z][a-z0-9-]*)$/),
+    kind: z.enum(["phase", "reference"]),
     section: z.string().min(1).optional(),
     raw: z.string().min(1),
   })
-  .strict();
+  .strict()
+  .refine((ref) => ref.kind === (ref.doc.startsWith("ref:") ? "reference" : "phase"), {
+    message: "kind must agree with doc: a ref:<slug> doc is a reference, a phase number is a phase",
+  });
 export type DocRef = z.infer<typeof DocRefSchema>;
 
 /** One session's work on one node: what landed, by whom, when. Rendered newest-first. */

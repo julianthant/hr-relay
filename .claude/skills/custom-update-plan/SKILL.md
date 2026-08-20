@@ -51,7 +51,7 @@ status: active                             ← done | active | you | planned | p
 when: 08-12 → today | nine days so far     ← primary | secondary (secondary optional)
 size: XL                                   ← S | M | L | XL (optional)
 chip: active                               ← optional; chip-tone: overrides the colour
-doc: 07 §3 · 09 §5 · 02 §5.4–5.6           ← the docs/rebuild sections that OWN this node's contracts
+doc: 03c §Phase summary · ref:write-safety §5   ← the doc sections that OWN this node's contracts
 open: yes                                  ← yes | no (unused by the tree; kept for the doc)
 
 > summary — one line; more "> " lines are joined with a space
@@ -75,7 +75,7 @@ status: you
 date: D196 · D205 live 08-13               ← the item's info line (dates, decisions)
 size: L
 chip: blocked at A1 — needs you
-doc: 09 §14 · 02 §1.1                      ← same attribute on a task or sub-task
+doc: ref:write-safety §14 · ref:workflow-model §1.1   ← same attribute on a task or sub-task
 
 > desc
 builds: … / needs: … / log: … / note: …
@@ -97,14 +97,25 @@ builds: … / needs: … / log: … / note: …
 Verbatim from the parser's own banner (`scripts/roadmap/parse-plan.ts`) — the grammar is what the parser enforces, line by line:
 
 ```
-doc: NN §x.y · NN §x.y–x.z · NN
+doc: 03a §2.1 · ref:write-safety §5 · 00
   An ATTRIBUTE line (so it sits in the attribute block under the heading,
   beside `status:`), legal on a phase, a task or a sub-task. Its value is
-  one or more refs joined by " · ". A ref is a two-digit `docs/rebuild/`
-  document number (00–14), optionally followed by " §" and a section:
-  dotted numbers (`5.4`), a range (`5.4–5.6`), or a short heading slug
-  (`Phase-2`). Rendered as a muted `doc 13 §5 · doc 03 §2.6` line under the
-  drawer title. Absence is legal HERE — presence is a guard's business.
+  one or more refs joined by " · ". A ref is `<doc>` or `<doc> §<section>`,
+  and `<doc>` is one of exactly two things:
+    · a PHASE doc number — `00` `01` `02` `03a` `03b` `03c` `04` `05`,
+      the actionable `docs/rebuild/NN-*.md` docs (the number IS the phase,
+      and phase 3 is three docs, so bare `03` is not one of them);
+    · `ref:<slug>` — a spec under `docs/rebuild/reference/`, cited by name
+      because it is unnumbered: `ref:write-safety`, `ref:decisions`. The
+      slug is syntactically a kebab-case filename stem; whether that file
+      EXISTS is the `roadmap-doc-binding` guard's business, not the
+      parser's, which is the same split as the section below.
+  A section is anything after " §" that carries no " · " and no edge
+  whitespace: dotted numbers (`5.4`), a range (`5.4–5.6`), or a heading
+  NAME (`Phase summary`) — the phase docs number no headings, so naming
+  one is the only way to cite it. Rendered as a muted
+  `doc 03a §2.1 · ref write-safety §5` line under the drawer title.
+  Absence is legal HERE — presence is a guard's business.
 
 log:
 - YYYY-MM-DD | <session> | <text>
@@ -128,7 +139,7 @@ Rules that keep the tree honest:
 - **A feature marked `[x]` must be landed at HEAD**; cite the commit/decision in its text. Never pre-mark.
 - **`you:` items are the operator's** — switch to `you(met):` only on their explicit answer.
 - **Ids are stable anchors** (`order-3`, `track-a`, `sep-6c`) — never rename one; links and deep links bind to them. `needs:` refs must resolve; cycles fail loud.
-- **The doc binding is two-way** (D263, `docs/roadmap/roadmap.md` §Governance) — every node carries a `doc:` line naming the `docs/rebuild/NN §x.y` sections that OWN its contracts, and every doc section that describes a node carries `<!-- roadmap: <id> -->` on the line directly under its heading. Doc 07 stays normative: where the tree and the doc disagree, the doc is right and the tree is corrected. The `roadmap-doc-binding` guard (landing as step 3 of `docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md`) refuses a `doc:` ref that resolves to no such section and a `<!-- roadmap: id -->` tag that names no such node — so a rename on either side fails the gate instead of rotting.
+- **The doc binding is two-way** (D263, `docs/roadmap/roadmap.md` §Governance) — every node carries a `doc:` line naming the phase-doc (`03a §2.1`) and reference (`ref:write-safety §5`) sections that OWN its contracts, and every doc section that describes a node carries `<!-- roadmap: <id> -->` on the line directly under its heading. The phase docs stay normative: where the tree and the doc disagree, the doc is right and the tree is corrected. The `roadmap-doc-binding` guard (landing as step 3 of `docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md`) refuses a `doc:` ref that resolves to no such section and a `<!-- roadmap: id -->` tag that names no such node — so a rename on either side fails the gate instead of rotting.
 - **`log:` lines are append-only.** Never edit or delete another session's line; a wrong one is corrected by a NEW line that says so. The block is a journal, not a status field.
 - Inline markup in any text: `` `code` ``, `**bold**`; D-numbers are auto-highlighted. No other markdown inside the region.
 - The plan records **what is built and what is required**; it does not invent scope. An unplanned feature is a finding for `docs/findings/`, not a roadmap line.

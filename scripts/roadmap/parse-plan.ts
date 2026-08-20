@@ -23,14 +23,25 @@ import type { Layer, Status } from "./schema.js";
  *
  * The three binding/journal shapes, in full:
  *
- *   doc: NN §x.y · NN §x.y–x.z · NN
+ *   doc: 03a §2.1 · ref:write-safety §5 · 00
  *     An ATTRIBUTE line (so it sits in the attribute block under the heading,
  *     beside `status:`), legal on a phase, a task or a sub-task. Its value is
- *     one or more refs joined by " · ". A ref is a two-digit `docs/rebuild/`
- *     document number (00–14), optionally followed by " §" and a section:
- *     dotted numbers (`5.4`), a range (`5.4–5.6`), or a short heading slug
- *     (`Phase-2`). Rendered as a muted `doc 13 §5 · doc 03 §2.6` line under the
- *     drawer title. Absence is legal HERE — presence is a guard's business.
+ *     one or more refs joined by " · ". A ref is `<doc>` or `<doc> §<section>`,
+ *     and `<doc>` is one of exactly two things:
+ *       · a PHASE doc number — `00` `01` `02` `03a` `03b` `03c` `04` `05`,
+ *         the actionable `docs/rebuild/NN-*.md` docs (the number IS the phase,
+ *         and phase 3 is three docs, so bare `03` is not one of them);
+ *       · `ref:<slug>` — a spec under `docs/rebuild/reference/`, cited by name
+ *         because it is unnumbered: `ref:write-safety`, `ref:decisions`. The
+ *         slug is syntactically a kebab-case filename stem; whether that file
+ *         EXISTS is the `roadmap-doc-binding` guard's business, not the
+ *         parser's, which is the same split as the section below.
+ *     A section is anything after " §" that carries no " · " and no edge
+ *     whitespace: dotted numbers (`5.4`), a range (`5.4–5.6`), or a heading
+ *     NAME (`Phase summary`) — the phase docs number no headings, so naming
+ *     one is the only way to cite it. Rendered as a muted
+ *     `doc 03a §2.1 · ref write-safety §5` line under the drawer title.
+ *     Absence is legal HERE — presence is a guard's business.
  *
  *   log:
  *   - YYYY-MM-DD | <session> | <text>
@@ -55,11 +66,20 @@ export const BOX_STATUS: Record<string, Status> = { x: "done", " ": "planned", "
 const LAYER_TOKEN: Record<string, Layer> = { FE: "frontend", BE: "backend", BOTH: "both", WIRE: "wiring", DOCS: "docs", PROOF: "proof" };
 
 const HEADING_RE = /^(#{2,5}) (.*?)(?: \{#([a-z0-9][a-z0-9-]*)\})?\s*$/;
-/** `NN` or `NN §<section>`; NN is a two-digit `docs/rebuild/` number 00–14. */
-const DOC_REF_RE = /^(0\d|1[0-4])(?: §([A-Za-z0-9]+(?:[.\-–][A-Za-z0-9]+)*))?$/;
+/**
+ * `<doc>` or `<doc> §<section>` — `<doc>` a phase-doc number (`00`…`03a`…`05`)
+ * or `ref:<slug>` naming a `docs/rebuild/reference/` spec. The section admits
+ * spaces because the phase docs number no headings; it may not carry the ` · `
+ * that separates refs, and may not have edge whitespace.
+ */
+const DOC_REF_RE = /^(0[0-2]|03[abc]|0[45]|ref:[a-z][a-z0-9-]*)(?: §([^·\s](?:[^·]*[^·\s])?))?$/;
+
+/** The phase docs, in build order — the only numbers a `doc:` ref may name. */
+export const PHASE_DOC_NUMBERS = ["00", "01", "02", "03a", "03b", "03c", "04", "05"] as const;
 
 interface RawDocRef {
   doc: string;
+  kind: "phase" | "reference";
   section?: string;
   raw: string;
 }
@@ -102,10 +122,14 @@ function parseDocRefs(value: string, lineNo: number): RawDocRef[] {
   return refs.map((raw) => {
     const match = DOC_REF_RE.exec(raw);
     if (match === null) {
-      fail(lineNo, `a doc: ref must be "NN", "NN §x.y" or "NN §x.y–x.z" with NN a two-digit docs/rebuild number 00–14, refs joined by " · ": "${raw}"`);
+      fail(
+        lineNo,
+        `a doc: ref must be "<doc>" or "<doc> §<section>", refs joined by " · ", where <doc> is a phase doc number (${PHASE_DOC_NUMBERS.join(" ")}) or "ref:<slug>" naming a docs/rebuild/reference/ spec: "${raw}"`,
+      );
     }
+    const doc = match[1] ?? "";
     const section = match[2];
-    return { doc: match[1] ?? "", ...(section === undefined ? {} : { section }), raw };
+    return { doc, kind: doc.startsWith("ref:") ? "reference" : "phase", ...(section === undefined ? {} : { section }), raw };
   });
 }
 
