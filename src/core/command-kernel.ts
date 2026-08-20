@@ -643,6 +643,59 @@ interface CancelTarget {
   readonly dependencyId?: string;
 }
 
+/**
+ * D246 — CANCEL IS REFUSED WHILE A FENCED WRITE IS STILL UNRESOLVED.
+ *
+ * Doc 09 §4.1 has always said cancel "cannot alter the intent", and that
+ * sentence is right. What it did not say is what happens NEXT: a cancelled run
+ * is terminal, `executeWriteResolution` refuses anything that is not
+ * `parked-write`, and `buildParkedWritePayload` throws for any other lifecycle
+ * — so the moment the cancel lands, BOTH typed resolutions become unreachable
+ * and the durable record reads "this run is over" about a real HR write nobody
+ * settled. Cancel was not altering the intent; it was ORPHANING it.
+ *
+ * So the refusal is at the door rather than at the exit. It is the same shape
+ * the rest of this program already takes on an unresolved possible-submit —
+ * D118's claim sweeper refuses to requeue a run holding an `attempting` intent,
+ * D200 refuses to start over a `claimed` row that holds one, D179's archive
+ * `apply` refuses a plan whose candidate could still be mid-submit — and it
+ * loses nothing: cancel stays available the instant the write is answered.
+ *
+ * BOTH unresolved statuses are refused. `parked` is the state the operator can
+ * see; `attempting` is the one they cannot, and it is strictly worse, because a
+ * run that is not `parked-write` serves no parked-write section at all — a
+ * cancel there would strand an intent with no surface that even mentions it.
+ *
+ * The scan covers EVERY target in the cascade, not just the run the operator
+ * named: a cancelled parent whose child holds a fenced write orphans that
+ * write exactly the same way, and doc 03 §2.4's tree rule is already that an
+ * unusable tree cancels NOTHING.
+ */
+function refuseCancelOverUnresolvedWrite(
+  repositories: AuthorityRepositories,
+  request: RunBasicCommand,
+  targets: readonly CancelTarget[],
+): void {
+  for (const target of targets) {
+    const runId = target.run.envelope.runId;
+    for (const intent of repositories.writeIntents.listByRun(runId)) {
+      if (intent.status !== "attempting" && intent.status !== "parked") continue;
+      const scope = runId === request.target.runId
+        ? `run ${runId}`
+        : `run ${runId}, a cascade-cancelled member of ${request.target.runId},`;
+      reject(
+        request,
+        "invalid-state",
+        `${scope} holds ${intent.system} write intent ${intent.writeIntentId} at generation `
+        + `${String(intent.generation)}, which is ${intent.status}: a real HR transaction was fenced and `
+        + "nobody has said whether it landed. Cancelling would settle the run terminal and take both of "
+        + "doc 09 §4.1's typed resolutions off the surface with it, so nothing was cancelled. Record the "
+        + "write present or absent first, then cancel.",
+      );
+    }
+  }
+}
+
 function executeCancel(
   repositories: AuthorityRepositories,
   request: RunBasicCommand,
@@ -689,6 +742,7 @@ function executeCancel(
     }
   };
   walk(current);
+  refuseCancelOverUnresolvedWrite(repositories, request, targets);
 
   const affectedTargets: TargetReference[] = [];
   const versionChanges: VersionChange[] = [];

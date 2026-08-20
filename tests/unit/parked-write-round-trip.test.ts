@@ -420,3 +420,134 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
   });
 });
+
+/**
+ * D246. The record this closes read: *"Cancelling a parked-write run strands
+ * the intent with no exit."* Doc 09 §4.1's "cancel cannot alter the intent" was
+ * honoured exactly — and the cancel still took both resolutions away with it,
+ * because a terminal run serves no parked-write section and
+ * `executeWriteResolution` refuses every lifecycle but `parked-write`.
+ *
+ * Every case here asserts the same two things after the refusal: NOTHING moved
+ * (the run is still parked, the intent still unresolved) and the refusal names
+ * the intent, so an operator reading it knows which write to go answer.
+ */
+describe("cancel over an unresolved fenced write (doc 09 §4.1, D246)", () => {
+  function cancelCommand(runId: string, expectedVersion: number) {
+    return {
+      commandId: nextCommandId(),
+      requestedAt: WRITE_FIXTURE_NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "run",
+      type: "cancel",
+      target: { runId, expectedVersion },
+    } as const;
+  }
+
+  it("refuses the cancel by name and cancels nothing while the intent is parked", async () => {
+    const harness = roundTrip();
+    await harness.park();
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(parked);
+
+    const result = harness.kernel.execute(cancelCommand(WRITE_FIXTURE_RUN_ID, parked.version));
+    assert.ok(result.state === "rejected");
+    assert.equal(result.code, "invalid-state");
+    assert.ok(result.message.includes(intent.writeIntentId), "the refusal names the intent to answer");
+    assert.match(result.message, /parked/);
+    assert.match(result.message, /09 §4\.1/);
+
+    // Nothing moved — not the run, not the intent, not the version.
+    const after = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(after && after.lifecycle.state === "parked-write");
+    assert.equal(after.version, parked.version);
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
+  });
+
+  it("refuses it for an ATTEMPTING intent too — the state with no section at all", async () => {
+    const harness = roundTrip();
+    await harness.park();
+    const parkedIntentRecord = parkedIntent(harness.database);
+    // `reopenParkedAttempt` is the CAS `resolvePresent` itself performs before
+    // beat ⑦ accepts an attestation, so this is the real shape of an
+    // `attempting` row rather than a hand-built one. A run holding one serves
+    // no parked-write section, which is why cancelling it is the worse case.
+    const attempting = harness.database.withAuthorityTransaction((repositories) =>
+      repositories.writeIntents.reopenParkedAttempt({
+        writeIntentId: parkedIntentRecord.writeIntentId,
+        generation: parkedIntentRecord.generation,
+        expectedVersion: parkedIntentRecord.version,
+        now: WRITE_FIXTURE_NOW,
+      }));
+    assert.equal(attempting.status, "attempting");
+    const run = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(run);
+
+    const result = harness.kernel.execute(cancelCommand(WRITE_FIXTURE_RUN_ID, run.version));
+    assert.ok(result.state === "rejected");
+    assert.equal(result.code, "invalid-state");
+    assert.ok(result.message.includes(attempting.writeIntentId));
+    assert.match(result.message, /attempting/);
+    assert.equal(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
+  });
+
+  it("lifts the moment the write is answered ABSENT", async () => {
+    const harness = roundTrip();
+    await harness.park();
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(parked);
+
+    assert.equal(
+      harness.kernel.execute(resolutionCommand("resolve-write-absent", {
+        runId: WRITE_FIXTURE_RUN_ID,
+        expectedVersion: parked.version,
+        writeIntentId: intent.writeIntentId,
+        intentGeneration: intent.generation,
+      }, { evidenceNote: "checked UCPath: no transaction exists for this key" })).state,
+      "applied",
+    );
+    const resumed = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(resumed);
+
+    const cancelled = harness.kernel.execute(cancelCommand(WRITE_FIXTURE_RUN_ID, resumed.version));
+    assert.equal(cancelled.state, "applied");
+    const settled = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(settled && settled.lifecycle.state === "terminal");
+    assert.equal(settled.lifecycle.outcome, "cancelled");
+    // The retryable intent is untouched by the cancel, exactly as §4.1 says.
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "retryable");
+  });
+
+  it("lifts the moment the write is answered PRESENT", async () => {
+    const harness = roundTrip();
+    await harness.park();
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(parked);
+
+    assert.equal(
+      harness.kernel.execute(resolutionCommand("resolve-write-present", {
+        runId: WRITE_FIXTURE_RUN_ID,
+        expectedVersion: parked.version,
+        writeIntentId: intent.writeIntentId,
+        intentGeneration: intent.generation,
+      }, {
+        proof: {
+          schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
+          value: { transactionId: "T998877" },
+        },
+        evidenceNote: "receipt T998877 is visible in UCPath",
+      })).state,
+      "applied",
+    );
+    const resumed = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(resumed);
+
+    const cancelled = harness.kernel.execute(cancelCommand(WRITE_FIXTURE_RUN_ID, resumed.version));
+    assert.equal(cancelled.state, "applied");
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "committed");
+  });
+});

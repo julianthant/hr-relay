@@ -186,15 +186,31 @@ function placementOf(command: ServedCommand): ActionDescriptorWire["placement"] 
   return ["footer", "menu"];
 }
 
+/**
+ * D246 changed what this sentence has to say for a parked-write row, and the
+ * change is the difference between a warning and the truth. It used to admit
+ * that cancelling "does not answer whether that transaction landed" — which
+ * was accurate and incomplete, because the cancel also took both typed
+ * resolutions off the surface, so nobody could answer it afterwards either.
+ * The kernel now REFUSES that cancel, and the copy says so.
+ *
+ * The control is still served and still clickable. Only the kernel's own
+ * transaction can see whether an intent is still unresolved at the instant the
+ * command lands, and a button greyed out by a projected fact would be this
+ * projector claiming to know what only that transaction knows (D179's rule for
+ * the archive's Apply, same shape).
+ */
 function cancelBody(facts: QueueRowActionFacts): string {
   const scope = facts.memberCount > 0
     ? `This cancels the group and every one of its ${String(facts.memberCount)} delegated members. `
     : "This stops the run where it is and settles it cancelled. ";
-  const park = facts.parkedWrite
-    ? "This run is parked on a fenced write whose outcome is UNKNOWN — cancelling records the run as "
-      + "cancelled and does not answer whether that transaction landed. "
-    : "";
-  return `${scope}${park}Cancelling is final: a cancelled run is never resumed, only run again.`;
+  if (facts.parkedWrite) {
+    return `${scope}This run is parked on a fenced write whose outcome is UNKNOWN, and cancelling is `
+      + "REFUSED until that write is answered — a cancelled run cannot be resolved, so the cancel would "
+      + "strand a real HR transaction nobody settled. Record it present or absent on the run's parked "
+      + "write panel first, then cancel.";
+  }
+  return `${scope}Cancelling is final: a cancelled run is never resumed, only run again.`;
 }
 
 function retryBody(facts: QueueRowActionFacts): string {

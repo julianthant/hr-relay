@@ -231,9 +231,19 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.equal(rehearsal.confirm?.tone, "neutral");
     assert.match(rehearsal.confirm?.body ?? "", /rehearsal performs no real/);
 
+    /*
+     * D246: the parked-write body used to warn that cancelling "does not answer
+     * whether that transaction landed" — accurate, and short of the truth,
+     * because the cancel also made it unanswerable. The kernel refuses that
+     * cancel now, so the copy has to say the control will refuse and what to do
+     * first. The control is still SERVED: only the kernel's transaction can see
+     * whether the intent is still unresolved when the command lands.
+     */
     const parked = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("blocked", { parkedWrite: true }))[0];
     assert.ok(parked?.kind === "command" && parked.command === "cancel");
     assert.match(parked.confirm?.body ?? "", /outcome is UNKNOWN/);
+    assert.match(parked.confirm?.body ?? "", /REFUSED until that write is answered/);
+    assert.match(parked.confirm?.body ?? "", /present or absent/);
   });
 
   /**
