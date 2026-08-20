@@ -939,6 +939,38 @@ As-built contract:
   DIFFERENT run still clears both, because the previous run's sections beside this run's header is
   the wrong answer rather than a stale one.
 
+### The shape hazard compares a run against ITS OWN workflow's served shape (as-built correction)
+
+**This mints no decision.** The hazard's contract was already stated — a run whose descriptor moved
+is not comparable with a current one, and a retry would replay retired code. The code compared the
+wrong pair, so this is a defect fix ratified in place rather than a new ruling.
+
+**What was wrong.** `RunProvenanceBar` computed `shapeMoved = surface.descriptorHash !==
+currentDescriptorHash`, where `surface.descriptorHash` is the RUN's one-workflow
+`contractFingerprint` (`run-queue-projection.ts`, from `queued.contractFingerprint`) and
+`currentDescriptorHash` was the bootstrap's `descriptorHash` — the hash of the whole eight-workflow
+SET. **Two different kinds of value, so never equal.** Every run the dashboard has ever drawn wore
+the amber *"Ran under Separation shape 59830cf6; runs are served by 76a28eef now … a retry would
+replay retired code"*, including the proof's three runs whose fingerprint was byte-identical to the
+one `GET /api/v1/explorer` served for `separations` and the build manifest held. This is D179's
+`staleApp` defect inverted, and worse: a warning that could never fire is bad, and one that can
+never NOT fire trains the eye past the one chip that would announce a genuinely retired shape.
+
+As-built contract:
+
+- **The comparison is against the run's OWN workflow's served fingerprint**, which the boot document
+  has always carried per workflow (`WorkflowBootstrapPrimitive.descriptorFingerprint`, served
+  straight from that descriptor's `contractFingerprint`). **No wire grows** — this is D251's rule
+  again: check what the served document already answers before booking a row.
+- **Three verdicts, not a boolean.** `classifyRunShape` returns `current`, `moved` (carrying the
+  shape now serving, so the sentence names it) or **`unserved`** — a run whose workflow this build
+  does not register has no current shape to have moved to, and calling that "moved" would state a
+  fact nobody established. It is still drawn as a hazard, with its own sentence, because a retry
+  there has nothing to run.
+- **Both directions are pinned by a test** (`tests/unit/dashboard/run-shape-hazard.test.ts`):
+  identical → silent, moved → warns naming the served shape, unregistered → `unserved`. A hazard is
+  only as trustworthy as its negative case, and this one had never had one.
+
 ## 0. What exists today (and what specifically hurts)
 
 | Today | Mechanism | Pain |

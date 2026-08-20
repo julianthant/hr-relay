@@ -370,6 +370,22 @@ function LoadedApp({
     [workflows],
   );
   /**
+   * The fingerprint ONE workflow is served under today (§9.22 item 3).
+   *
+   * The provenance bar's shape hazard compares a run's own
+   * `contractFingerprint` against this. It used to compare against
+   * `boot.descriptorHash` — the hash of the whole descriptor SET — which a
+   * one-workflow fingerprint can never equal, so the amber "the run's SHAPE
+   * moved" chip was on for every run ever drawn. A workflow this build does
+   * not register serves no fingerprint, and that is its own verdict rather
+   * than an assumed move.
+   */
+  const workflowShapeOf = useCallback(
+    (workflowId: string): string | undefined =>
+      workflows.find((w) => w.id === workflowId)?.descriptorFingerprint,
+    [workflows],
+  );
+  /**
    * The active workflow's served 2-char code. A workflow id the boot document
    * does not carry has no code, and the launcher then draws NOTHING in that
    * slot — the demo's own `WORKFLOW_CODE[active] ?? ""`. Deriving two letters
@@ -1285,7 +1301,7 @@ function LoadedApp({
                   onTab={onTab}
                   workflowLabel={workflowLabelOf(detailValue.header.workflowId)}
                   currentAppVersion={boot.appVersion}
-                  currentDescriptorHash={boot.descriptorHash}
+                  servedDescriptorHash={workflowShapeOf(detailValue.header.workflowId)}
                   actorId={boot.actor.id}
                   onDetailEdited={() => setDetailNonce((nonce) => nonce + 1)}
                   aiAdvisory={advisoryAvailability}

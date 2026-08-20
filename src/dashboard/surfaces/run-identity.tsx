@@ -34,7 +34,7 @@ import { FlaskConical, Info, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
-import { shortFingerprint } from "./run-identity-model.js";
+import { classifyRunShape, shortFingerprint } from "./run-identity-model.js";
 import {
   BulletList,
   Button,
@@ -79,16 +79,25 @@ export function RunProvenanceBar({
   surface,
   workflowLabel,
   currentAppVersion,
-  currentDescriptorHash,
+  servedDescriptorHash,
 }: {
   surface: QueueSurfaceWire;
   workflowLabel: string;
   currentAppVersion: string;
-  currentDescriptorHash: string;
+  /**
+   * The fingerprint THIS RUN'S OWN WORKFLOW is served under today, or
+   * `undefined` when this build registers no such workflow (§9.22 item 3).
+   *
+   * It used to be the bootstrap's whole-descriptor-SET hash, which a
+   * one-workflow fingerprint can never equal — so the hazard below was on for
+   * every run ever drawn.
+   */
+  servedDescriptorHash: string | undefined;
 }) {
   const testSystems = surface.resolvedInstances.filter(({ instance }) => instance === "test");
   const ranShape = shortFingerprint(surface.descriptorHash);
-  const shapeMoved = surface.descriptorHash !== currentDescriptorHash;
+  const shape = classifyRunShape(surface.descriptorHash, servedDescriptorHash);
+  const shapeMoved = shape.state !== "current";
   /**
    * D179: the row now carries the build the RUN was enqueued under, so this
    * comparison can finally fire. Before D179 the projection stamped the
@@ -104,9 +113,11 @@ export function RunProvenanceBar({
     <span className="flex min-w-0 shrink-0 items-center gap-[var(--ds-space-snug)]">
       <span
         title={
-          shapeMoved
-            ? `Ran under ${workflowLabel} shape ${ranShape}; runs are served by ${shortFingerprint(currentDescriptorHash)} now. The run's SHAPE moved, so these are not comparable — a retry would replay retired code.`
-            : `${workflowLabel} ${ranShape} — the descriptor currently serving runs.`
+          shape.state === "moved"
+            ? `Ran under ${workflowLabel} shape ${ranShape}; ${workflowLabel} runs are served by ${shortFingerprint(shape.servedShape)} now. The run's SHAPE moved, so these are not comparable — a retry would replay retired code.`
+            : shape.state === "unserved"
+              ? `Ran under ${workflowLabel} shape ${ranShape}; this dashboard serves no ${workflowLabel} descriptor at all, so there is nothing to compare it with — and nothing for a retry to run.`
+              : `${workflowLabel} ${ranShape} — the descriptor currently serving ${workflowLabel} runs.`
         }
         className={cn(
           dsText.meta,
@@ -198,9 +209,11 @@ export function RunProvenanceBar({
                 surface.priority === "bulk"
                   ? "Bulk yields the worker to anything interactive — a 50-person packet must never make one urgent separation wait."
                   : "Interactive takes a worker ahead of bulk work.",
-                shapeMoved
-                  ? `This run's SHAPE is a prior descriptor. It is not comparable with a ${shortFingerprint(currentDescriptorHash)} run, and a retry would replay retired code.`
-                  : "The descriptor fingerprint is the run's shape; a row served under the same fingerprint is the same run shape.",
+                shape.state === "moved"
+                  ? `This run's SHAPE is a prior descriptor. It is not comparable with a ${shortFingerprint(shape.servedShape)} run, and a retry would replay retired code.`
+                  : shape.state === "unserved"
+                    ? `This build registers no ${workflowLabel} descriptor, so this run's shape cannot be compared with a current one — and this run cannot be retried here.`
+                    : "The descriptor fingerprint is the run's shape; a row served under the same fingerprint is the same run shape.",
                 ranAppVersion === undefined
                   ? `${surface.appVersion.state === "absent" ? surface.appVersion.reason : ""} — the app build is the other half of the archive key, so this run can only be told apart from a current one by its descriptor.`
                   : staleApp
