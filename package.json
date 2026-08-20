@@ -17,6 +17,8 @@
     "test:parity:update": "PARITY_UPDATE=1 playwright test --config playwright.parity.config.ts",
     "build:manifest": "tsx scripts/generate-build-manifest.ts",
     "build:manifest:check": "tsx scripts/generate-build-manifest.ts --check",
+    "roadmap": "tsx scripts/generate-roadmap.ts",
+    "roadmap:check": "tsx scripts/generate-roadmap.ts --check",
     "ui:catalog": "tsx scripts/generate-ui-catalog.ts",
     "selector:search": "tsx scripts/search-ui.ts",
     "typecheck": "tsc --noEmit",

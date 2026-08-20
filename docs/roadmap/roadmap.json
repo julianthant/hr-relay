@@ -1,0 +1,1724 @@
+{
+  "meta": {
+    "title": "HR Rebuild Roadmap",
+    "asOf": "2026-08-20",
+    "head": "ce53e35",
+    "eyebrow": "hr-automation-rebuild · derived view · single source: docs/roadmap/roadmap.json",
+    "lede": "The ground-up rebuild of UCSD's UCPath HR automation, as a timeline and a dependency tree. **Phases 0–2 are complete** — the platform is built and proven. **Phase 3** migrates the 13 remaining legacy workflows one at a time and entered at **separations**. Legacy stays the sole production authority until one all-at-once cutover. Every node lists what it **builds** and what it **needs**; the tree at the bottom shows what unlocks what.",
+    "sources": [
+      "Merges `ROADMAP.md` · `docs/rebuild/07-master-plan.md` (§2 phases, §3.3 order, §3.7 sizes)",
+      "`docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)",
+      "`docs/plans/2026-08-20-dashboard-architecture-audit.md` (Track D) · doc 07 wins on any disagreement"
+    ],
+    "footer": "Derived view — the plan SSOT is `docs/rebuild/07-master-plan.md`, the decision changelog `docs/rebuild/04-reconciliation.md`; `ROADMAP.md` is the prose tracking view. Update all of them together with `/custom-update-plan`. Sizes are relative build sizes (doc 07 §3.7), not calendar."
+  },
+  "tiles": [
+    {
+      "label": "Phases complete",
+      "value": "0 · 1 · 2",
+      "sub": "runtime marker `completedThrough: 2j`",
+      "hot": false
+    },
+    {
+      "label": "Active",
+      "value": "Phase 3",
+      "sub": "per-workflow migration · entered at separations",
+      "hot": false
+    },
+    {
+      "label": "Workflows migrated",
+      "value": "2 of 15",
+      "sub": "+ separations at 7 of 9 exit criteria",
+      "hot": false
+    },
+    {
+      "label": "Decisions",
+      "value": "D1–D255",
+      "sub": "D131 retired, never reused",
+      "hot": false
+    },
+    {
+      "label": "Gates",
+      "value": "61 guards",
+      "sub": "2,017 tests · parity 147/147 · schema v14",
+      "hot": false
+    },
+    {
+      "label": "Critical-path blocker",
+      "value": "Name the canary",
+      "sub": "§4f2 — the three controlled commits wait on you",
+      "hot": true
+    }
+  ],
+  "spine": [
+    {
+      "kind": "phase",
+      "id": "phase-0",
+      "status": "done",
+      "when": {
+        "primary": "2026-07-31",
+        "secondary": "seeded from legacy @5879004"
+      },
+      "phase": "Phase 0",
+      "title": "Foundation design",
+      "chip": {
+        "text": "complete"
+      },
+      "size": "M",
+      "open": false,
+      "summary": "Docs 00–13 reconciled through Round 12 (D1–D94); testing policy ratified; the all-at-once cutover (D89/D93) and the two-repo model ratified; the separations identity gate designed here, not at order 8 (D77).",
+      "features": [
+        {
+          "text": "the plan SSOT `docs/rebuild/00–13`, each doc owning its contracts",
+          "layer": "docs"
+        },
+        {
+          "text": "the decision changelog `04-reconciliation` as a pointer index",
+          "layer": "docs"
+        },
+        {
+          "text": "ALWAYS-GATE identity approval designed (doc 09 §14)",
+          "layer": "docs"
+        },
+        {
+          "text": "size model + MUST / SHOULD / LATER delivery tiers (D76)",
+          "layer": "docs"
+        },
+        {
+          "text": "two-repo coexistence + one cutover (D88–D94)",
+          "layer": "docs"
+        }
+      ],
+      "items": [
+        {
+          "status": "done",
+          "title": "ALWAYS-GATE identity approval",
+          "date": "D77 · doc 09 §14",
+          "desc": "Manual approval on every separation, both types, no auto-approve-on-match — the control that defends against the `T002173685` wrong-person incident, pulled forward from order 8."
+        },
+        {
+          "status": "done",
+          "title": "Size model + delivery tiers",
+          "date": "D76 · doc 07 §3.7",
+          "desc": "MUST (the spine) · SHOULD (Phase-2 tails) · LATER (explorer, advisories, catalog) — what may slip without invalidating the base."
+        }
+      ]
+    },
+    {
+      "kind": "phase",
+      "id": "phase-1",
+      "status": "done",
+      "when": {
+        "primary": "07-31 → 08-04",
+        "secondary": "five days"
+      },
+      "phase": "Phase 1",
+      "title": "The SPINE",
+      "chip": {
+        "text": "complete 2026-08-04"
+      },
+      "size": "XL",
+      "open": false,
+      "summary": "The minimum base that carries one workflow end to end. **Exit (D74): person-lookup ran LIVE** against real UCPath + CRM on the new executor — run `4ebf7275` / trace `pl-000619-4ebf`, recovered a dead CRM session mid-run, terminal `done` at attempt 2, all four parity surfaces from the ONE projection.",
+      "requires": [
+        {
+          "kind": "node",
+          "ref": "phase-0"
+        }
+      ],
+      "items": [
+        {
+          "id": "p1-base",
+          "status": "done",
+          "title": "1a · 1b — guards, baselines, the strict domain leaf",
+          "date": "2026-07-31",
+          "size": "L",
+          "features": [
+            {
+              "text": "guard plumbing + the reviewed guard inventory",
+              "layer": "backend"
+            },
+            {
+              "text": "honest legacy baselines + the D58 capability inventory",
+              "layer": "docs"
+            },
+            {
+              "text": "strict domain leaf (zod at every boundary)",
+              "layer": "backend"
+            },
+            {
+              "text": "clock / config / secrets single-sourced (doc 11)",
+              "layer": "backend"
+            },
+            {
+              "text": "runtime isolation pinned (`.tracker-rebuild`, 3938/5174, locks)",
+              "layer": "backend"
+            }
+          ]
+        },
+        {
+          "id": "p1-authority",
+          "status": "done",
+          "title": "1c · 1d · 1e — authority storage, UI registry + drivers, the workflow DAG",
+          "date": "2026-08-01",
+          "size": "XL",
+          "features": [
+            {
+              "text": "authority SQLite + backup / doctor / degraded mode / restore interlock",
+              "layer": "backend"
+            },
+            {
+              "text": "the command family + proof union type shells",
+              "layer": "backend"
+            },
+            {
+              "text": "semantic UI registry (406 ported selector keys, provenance-pinned) + ucpath / crm / kuali drivers",
+              "layer": "backend"
+            },
+            {
+              "text": "task contracts (doc 01) and the three authoring tiers",
+              "layer": "backend"
+            },
+            {
+              "text": "workflow DAG, delegation, the completion program (doc 02)",
+              "layer": "backend"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "p1-base"
+            }
+          ]
+        },
+        {
+          "id": "p1-kernel",
+          "status": "done",
+          "title": "1f — registry, workers, commands, the write sequencer",
+          "date": "2026-08-02 → 03",
+          "size": "XL",
+          "features": [
+            {
+              "text": "the ONE `WORKFLOW_MODULES` composition root",
+              "layer": "backend"
+            },
+            {
+              "text": "worker loop with claim / heartbeat / CAS, worker-owned browser sessions",
+              "layer": "backend"
+            },
+            {
+              "text": "start-plan ingress authority (D109), terminal authority (D110/D114), provider admission (D112)",
+              "layer": "backend"
+            },
+            {
+              "text": "the write sequencer: probe → prepare → binding proof → fence → commit → proof → atomic outbox",
+              "layer": "backend"
+            },
+            {
+              "text": "login proven by CONTENT, never URL (D120); Duo Autopilot hands-off",
+              "layer": "backend"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "p1-authority"
+            }
+          ]
+        },
+        {
+          "id": "p1-spine",
+          "status": "done",
+          "title": "1g-spine · 1i-spine — spans, the ONE projection, the BFF, the Person Lookup shell",
+          "date": "2026-08-04",
+          "size": "M",
+          "features": [
+            {
+              "text": "span emission + the one run/queue projection",
+              "layer": "backend"
+            },
+            {
+              "text": "in-process Hono BFF: bootstrap / day / run-detail queries, one typed client, resumable SSE",
+              "layer": "both"
+            },
+            {
+              "text": "the exact Person Lookup shell in the approved design system, both themes",
+              "layer": "frontend"
+            },
+            {
+              "text": "the Playwright parity lane (a11y + screenshot, ASSERT mode)",
+              "layer": "proof"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "p1-kernel"
+            }
+          ]
+        },
+        {
+          "id": "p1-exit",
+          "status": "done",
+          "title": "Phase 1 exit — the live run",
+          "date": "D74 · 2026-08-04",
+          "desc": "Found three presentation defects no fixture could — skipped-arm (D123), terminal duration (D124), accessible-name collision (D126) — all fixed the same day. Open item it left: a dead CRM session cost **262.9 s** to surface → `sessionAcquireMs` (D125).",
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "p1-spine"
+            }
+          ],
+          "features": [
+            {
+              "text": "person-lookup live against real UCPath + CRM, dead-session recovery mid-run, all four parity surfaces from one projection",
+              "layer": "proof"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "phase",
+      "id": "phase-2",
+      "status": "done",
+      "when": {
+        "primary": "08-04 → 08-09",
+        "secondary": "six days"
+      },
+      "phase": "Phase 2",
+      "title": "Transaction proof, then the deferred base tails",
+      "chip": {
+        "text": "complete 2026-08-09"
+      },
+      "size": "XL",
+      "open": false,
+      "summary": "**The controlled commit is MET live (D135):** one real Kuali write on doc `4489` — dry run zero durable rows · forced mismatch refused pre-fence · commit 16.45 s with reload read-back proof · idempotent re-run `already-present` in 2 ms · both docs restored. Then four tails landed against a proven spine.",
+      "requires": [
+        {
+          "kind": "node",
+          "ref": "p1-exit"
+        }
+      ],
+      "items": [
+        {
+          "id": "p2-proof",
+          "status": "done",
+          "title": "Transaction proof — the first real write",
+          "date": "D128–D135 · 2026-08-04",
+          "size": "L",
+          "features": [
+            {
+              "text": "`kuali/save-timekeeper-annotation` — the one-transaction-node proving workflow",
+              "layer": "backend"
+            },
+            {
+              "text": "fence durable before the click, reload read-back, propagation window measured (`recoveryAbsence: stabilized`)",
+              "layer": "proof"
+            },
+            {
+              "text": "mutation-capability registry; `write-sequencer.ts` the only mint",
+              "layer": "backend"
+            },
+            {
+              "text": "preview / binding / fenced write / read-back / parked-write resolution through the production client",
+              "layer": "both"
+            }
+          ],
+          "desc": "Same-day withdrawal of the wrong D128 conclusion: the two real causes were driver defects in THIS tree (a ~700 ms gadget debounce, a `commit` returning at request time). Write-heavy migration unblocked.",
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "p1-exit"
+            }
+          ]
+        },
+        {
+          "id": "p2-2g",
+          "status": "done",
+          "title": "2g — event / trust layer",
+          "date": "D134–D145",
+          "size": "L",
+          "features": [
+            {
+              "text": "schema v10",
+              "layer": "backend"
+            },
+            {
+              "text": "automatic redacted diagnostic capture",
+              "layer": "backend"
+            },
+            {
+              "text": "durable actor-keyed notification inbox (row commits before any OS delivery)",
+              "layer": "backend"
+            },
+            {
+              "text": "knowledge / fix admission",
+              "layer": "backend"
+            },
+            {
+              "text": "ordered fsync'd ledger projector",
+              "layer": "backend"
+            },
+            {
+              "text": "D82's evidence receipt DERIVED from authority",
+              "layer": "backend"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "p2-proof"
+            }
+          ]
+        },
+        {
+          "id": "p2-2h",
+          "status": "done",
+          "title": "2h — data / intake foundation",
+          "date": "D146–D167",
+          "size": "XL",
+          "features": [
+            {
+              "text": "canonical field registry + column mapping",
+              "layer": "backend"
+            },
+            {
+              "text": "validation / rejection + immutable intake manifests + rerun diff",
+              "layer": "backend"
+            },
+            {
+              "text": "extraction / OCR / roster / normalization stores",
+              "layer": "backend"
+            },
+            {
+              "text": "OCR three-producer routes (live-proven on the real 44-page I-9 scan) + classify/group scanner",
+              "layer": "both"
+            },
+            {
+              "text": "executor / worker provider + artifact wiring",
+              "layer": "wiring"
+            },
+            {
+              "text": "durable capture sessions",
+              "layer": "backend"
+            },
+            {
+              "text": "Edit Data core",
+              "layer": "backend"
+            },
+            {
+              "text": "legacy change accounting RETIRED (D150)",
+              "layer": "docs"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "p2-proof"
+            }
+          ]
+        },
+        {
+          "id": "p2-2i",
+          "status": "done",
+          "title": "2i — the operator surface (A–G)",
+          "date": "D168–D180",
+          "size": "L",
+          "features": [
+            {
+              "text": "trust surfaces + notification bell over the durable inbox",
+              "layer": "both"
+            },
+            {
+              "text": "Edit Data rail (D168)",
+              "layer": "both"
+            },
+            {
+              "text": "Settings + storage doctor + live backup cadence (D169)",
+              "layer": "both"
+            },
+            {
+              "text": "intake surface over schema v12 (D170–D173)",
+              "layer": "both"
+            },
+            {
+              "text": "token-scoped phone capture: QR start, PDF bundler, intake handoff (D174/D175)",
+              "layer": "both"
+            },
+            {
+              "text": "read-only Workflow Explorer + UI catalog",
+              "layer": "both"
+            },
+            {
+              "text": "AI advisories (redaction / strict-output / exhaustion / zero-authority pinned)",
+              "layer": "both"
+            },
+            {
+              "text": "archive model (schema v13, UPDATE/DELETE aborted in SQL) + version bump + Activity report (D176–D180)",
+              "layer": "both"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "p2-2g"
+            },
+            {
+              "kind": "node",
+              "ref": "p2-2h"
+            }
+          ]
+        },
+        {
+          "id": "p2-2j",
+          "status": "done",
+          "title": "2j — the closing gate",
+          "date": "D181–D190 · 2026-08-09",
+          "size": "M",
+          "features": [
+            {
+              "text": "scenario corpus + `scenario-coverage` audit",
+              "layer": "proof"
+            },
+            {
+              "text": "restore drill on a copy of the real authority DB (corrupt → doctor refuses 0.92 s → restore 0.99 s)",
+              "layer": "proof"
+            },
+            {
+              "text": "3-worker soak, concurrency matrix, redaction scan",
+              "layer": "proof"
+            },
+            {
+              "text": "capability-inventory validation (D184/D188)",
+              "layer": "docs"
+            },
+            {
+              "text": "every owning doc to as-built",
+              "layer": "docs"
+            }
+          ],
+          "desc": "**Found four real defects every earlier green gate missed:** `cli storage restore` could never have worked (D181); every `paper-ink` parity reference had been photographed dark; the run-detail trust panel was **2 px wide** since 1i-spine (D187); the receipt builder 500'd on a reachable path.",
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "p2-2i"
+            }
+          ]
+        },
+        {
+          "status": "never",
+          "title": "Left Phase 2 by explicit disposition",
+          "desc": "Workflow Explorer EDIT half — D186, trigger: the *second* production workflow whose policy you want to change · BFF serves no frontend bytes / no `dashboard:prod` — D189, builds at the first phone-consuming migration (orders 3–4), confirmed 2026-08-12."
+        }
+      ]
+    },
+    {
+      "kind": "flag",
+      "status": "done",
+      "when": "2026-08-12",
+      "text": "**D193 — scope and entry.** Solo, local, never hosted. Phase 3 enters at **separations (order 8)**, chosen to force the store task libraries into existence; the §3.3 ordering is NOT re-sequenced. Separations questionnaire fully answered → READY TO BUILD. `test:coverage` becomes the per-commit gate (D191)."
+    },
+    {
+      "kind": "phase",
+      "id": "phase-3",
+      "status": "active",
+      "when": {
+        "primary": "08-12 → today",
+        "secondary": "nine days so far"
+      },
+      "phase": "Phase 3",
+      "title": "Per-workflow migration — separations first",
+      "chip": {
+        "text": "active"
+      },
+      "size": "XL",
+      "open": true,
+      "summary": "One workflow at a time through the seven-step loop (doc 07 §3.1): questionnaire → author → guards → **live dry run** → **controlled commit** → rebuild-ready → close-out. Organised since 2026-08-18 into four tracks; **Tracks 0 and B are landed, C is in progress, A is blocked on you.**",
+      "requires": [
+        {
+          "kind": "node",
+          "ref": "p2-2j"
+        }
+      ],
+      "items": [
+        {
+          "status": "done",
+          "title": "Separations — built bottom-up, chunks 1 → 6c",
+          "date": "D196–D215 · 2026-08-12 → 14",
+          "chip": {
+            "text": "composition reached its preview terminal"
+          },
+          "desc": "Store tasks first, then one small provable sub-workflow per system interaction, then composed — lego recomposition, never conditional branches inside one monolith (§3.1/§3.2 directives).",
+          "items": [
+            {
+              "id": "sep-1",
+              "status": "done",
+              "title": "1 · new-kronos timecard read",
+              "date": "D196 · D205 live 08-13",
+              "features": [
+                {
+                  "text": "the `new-kronos` store: real driver, login recipe, published UI registry, 16 ported selectors live-re-verified",
+                  "layer": "backend"
+                },
+                {
+                  "text": "two page-visit read tasks; `separations-kronos-timecard` sub-workflow",
+                  "layer": "backend"
+                },
+                {
+                  "text": "virtualized-grid read terminated on coverage, not on the widget (D205)",
+                  "layer": "backend"
+                },
+                {
+                  "text": "live proof: run `sk-171645-4adf`, 64-day window, 67 days covered",
+                  "layer": "proof"
+                }
+              ],
+              "desc": "Live proof took 17 attempts and ten defects — the last two (pinned-viewport scroll, header/cell column offset) unreachable by any fixture.",
+              "requires": [
+                {
+                  "kind": "fact",
+                  "text": "§b questionnaire answered (2026-08-12)",
+                  "met": true
+                }
+              ]
+            },
+            {
+              "id": "sep-2",
+              "status": "done",
+              "title": "2 · Kuali separation-document read",
+              "date": "D197 · live 08-12",
+              "features": [
+                {
+                  "text": "a READ family on the existing `kuali` driver (14 more selectors live-re-verified)",
+                  "layer": "backend"
+                },
+                {
+                  "text": "the `separations` pure mini-store",
+                  "layer": "backend"
+                },
+                {
+                  "text": "§4a termination-type map captured live: 16 options + blank sentinel, exact-match-only, no default arm",
+                  "layer": "proof"
+                }
+              ],
+              "desc": "Five real runs `done`, three with `verified` receipts over real documents."
+            },
+            {
+              "id": "sep-3",
+              "status": "done",
+              "title": "3 · UCPath employment grid + the ALWAYS-GATE",
+              "date": "D201–D203 · live 08-12",
+              "features": [
+                {
+                  "text": "rich whole-grid UCPath read, classified by a pure fold (D201)",
+                  "layer": "backend"
+                },
+                {
+                  "text": "the identity-approval gate node, server-computed approval shape",
+                  "layer": "backend"
+                },
+                {
+                  "text": "gate results as dependency evidence (D203) and in the receipt (D204)",
+                  "layer": "backend"
+                },
+                {
+                  "text": "first live gated run — parked, real approval through the real command endpoint, resumed",
+                  "layer": "proof"
+                }
+              ],
+              "desc": "The first live gated run: parked, a real approval through the real command endpoint, resumed — and it found that a gate's durable record is not a checkpoint (D203)."
+            },
+            {
+              "id": "sep-4",
+              "status": "done",
+              "title": "4 · UCPath termination WRITE",
+              "date": "D206 · prepare live 08-14",
+              "features": [
+                {
+                  "text": "two fenced transactions: the pending sweep + the filing",
+                  "layer": "backend"
+                },
+                {
+                  "text": "Smart HR wizard prepare arm live-proven",
+                  "layer": "proof"
+                },
+                {
+                  "text": "a duplicate-filing defect caught by the first live read",
+                  "layer": "proof"
+                }
+              ],
+              "requires": [
+                {
+                  "kind": "node",
+                  "ref": "sep-3"
+                }
+              ]
+            },
+            {
+              "id": "sep-5",
+              "status": "done",
+              "title": "5a/b/c · Kuali finalization WRITE",
+              "date": "D207 · D217 · prepare live on doc 4524",
+              "features": [
+                {
+                  "text": "ONE transaction node behind the same gate",
+                  "layer": "backend"
+                },
+                {
+                  "text": "all ten `submitDocumentV2` formKeys captured passively off Kuali's `ActionPage`",
+                  "layer": "proof"
+                },
+                {
+                  "text": "the step-13 date write-backs folded into the one-pass staged set (D217)",
+                  "layer": "backend"
+                }
+              ],
+              "requires": [
+                {
+                  "kind": "node",
+                  "ref": "sep-2"
+                }
+              ]
+            },
+            {
+              "id": "sep-6a",
+              "status": "done",
+              "title": "6a · THE COMPOSITION",
+              "date": "D211",
+              "features": [
+                {
+                  "text": "eighteen nodes, one ALWAYS-GATE, three fenced transactions",
+                  "layer": "backend"
+                },
+                {
+                  "text": "the gate packet carries the dates, template and department the approval binds",
+                  "layer": "backend"
+                }
+              ],
+              "desc": "An approval of a person is not an approval of a date — the packet's digest covers what the approval authorises.",
+              "requires": [
+                {
+                  "kind": "node",
+                  "ref": "sep-1"
+                },
+                {
+                  "kind": "node",
+                  "ref": "sep-4"
+                },
+                {
+                  "kind": "node",
+                  "ref": "sep-5"
+                }
+              ]
+            },
+            {
+              "id": "sep-6b",
+              "status": "done",
+              "title": "6b · composed LIVE pass",
+              "date": "D212–D215",
+              "features": [
+                {
+                  "text": "whole read chain on two real subjects in 82 s, parked, approved, resumed — zero durable write rows",
+                  "layer": "proof"
+                },
+                {
+                  "text": "checkpoint key gains `claimGeneration` (D214, schema v14)",
+                  "layer": "backend"
+                },
+                {
+                  "text": "a dry run probes in the real order and REPORTS `already-present` (D215)",
+                  "layer": "backend"
+                }
+              ],
+              "requires": [
+                {
+                  "kind": "node",
+                  "ref": "sep-6a"
+                }
+              ]
+            },
+            {
+              "id": "sep-6c",
+              "status": "done",
+              "title": "6c · PREVIEW TERMINAL reached",
+              "date": "doc 4502 · canary 4510 refused pre-gate",
+              "features": [
+                {
+                  "text": "a real `transaction.previewed` terminal with a `partial`/`unknown` receipt",
+                  "layer": "proof"
+                },
+                {
+                  "text": "the real run on 4510 refused `NO_ACTIVE_EMPLOYMENT` before the gate",
+                  "layer": "proof"
+                }
+              ],
+              "desc": "Still zero write rows beyond 2026-08-04's proof.",
+              "requires": [
+                {
+                  "kind": "node",
+                  "ref": "sep-6b"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "platform-fixes",
+          "status": "done",
+          "title": "Platform fixes the live runs forced",
+          "date": "2026-08-14 → 19",
+          "features": [
+            {
+              "text": "D218 the projector tails the span stream FROM DISK, cross-process",
+              "layer": "backend"
+            },
+            {
+              "text": "D221 a retry is the ITEM's next attempt",
+              "layer": "backend"
+            },
+            {
+              "text": "D219/D220 workflow roles (composition / chunk-harness / proving)",
+              "layer": "both"
+            },
+            {
+              "text": "D222 the backup hazard moved from the banner to the durable inbox",
+              "layer": "both"
+            },
+            {
+              "text": "D243/D244 Duo's shared signature counter — the browser-profile wedge root-caused",
+              "layer": "backend"
+            }
+          ]
+        },
+        {
+          "status": "done",
+          "title": "2026-08-18 — the completion plan",
+          "date": "docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md",
+          "desc": "Detail-fidelity wave R1–R8 complete; the run-detail timeline made categorical (D225). The rest of Phase 3's separations work organised into Tracks 0 / A / B / C.",
+          "items": [
+            {
+              "id": "track-0",
+              "status": "done",
+              "title": "Track 0 · plan repairs",
+              "chip": {
+                "text": "landed"
+              },
+              "features": [
+                {
+                  "text": "the four plan-text staleness items fixed",
+                  "layer": "docs"
+                }
+              ]
+            },
+            {
+              "id": "track-a",
+              "status": "you",
+              "title": "Track A · separations backend completion",
+              "chip": {
+                "text": "blocked at A1 — needs you"
+              },
+              "desc": "Separations is at **7 of 9 exit criteria**. What remains is the one thing code cannot do: name the target the three real writes may touch.",
+              "features": [
+                {
+                  "text": "controlled commit ① pending sweep · ② UCPath termination · ③ Kuali finalization — each with fence + read-back evidence",
+                  "layer": "proof",
+                  "status": "planned"
+                },
+                {
+                  "text": "`probeToFenceMaxMs` per beat; D207's 30 s Kuali window on this write's own evidence; seven Kuali payload shapes observed live; the `would-prepare` preview arm live",
+                  "layer": "proof",
+                  "status": "planned"
+                },
+                {
+                  "text": "the first live RETRY on the composed graph (D221 exercised)",
+                  "layer": "proof",
+                  "status": "planned"
+                },
+                {
+                  "text": "browser-profile wedge root-caused (A7)",
+                  "layer": "backend",
+                  "status": "done"
+                },
+                {
+                  "text": "close-out: regression scenarios, knowledge records, capability dispositions → separations **rebuild-ready**",
+                  "layer": "docs",
+                  "status": "planned"
+                }
+              ],
+              "requires": [
+                {
+                  "kind": "node",
+                  "ref": "sep-6c"
+                },
+                {
+                  "kind": "you",
+                  "text": "name the §4f2 canary target(s)",
+                  "met": false
+                }
+              ],
+              "table": {
+                "columns": [
+                  "#",
+                  "Step",
+                  "Status"
+                ],
+                "rows": [
+                  {
+                    "tone": "you",
+                    "cells": [
+                      "A1",
+                      "**You name the §4f2 canary** — doc 4524 withdrawn (its Kuali action completed 08-14); doc 4510 is legal for the standalone Kuali finalization but the composed graph refuses it pre-gate (its one employment row is `Inactive` — making an active terminable employment exist is an operator act); the UCPath termination and the pending-sweep's committed arm have **no live subject at all**",
+                      "**YOU**"
+                    ]
+                  },
+                  {
+                    "cells": [
+                      "A2–A4",
+                      "Controlled commits ① pending sweep · ② UCPath termination · ③ Kuali finalization",
+                      "after A1"
+                    ]
+                  },
+                  {
+                    "cells": [
+                      "A5",
+                      "Obligations only the commits discharge (timings, propagation window, seven payload shapes, the preview arm live)",
+                      "after A2–A4"
+                    ]
+                  },
+                  {
+                    "cells": [
+                      "A6",
+                      "One live RETRY on the composed graph — D221 landed and tested, never exercised on a real run",
+                      "executable now"
+                    ]
+                  },
+                  {
+                    "tone": "done",
+                    "cells": [
+                      "A7",
+                      "Root-cause the browser-profile wedge — **closed by D243/D244**",
+                      "done"
+                    ]
+                  },
+                  {
+                    "cells": [
+                      "A8",
+                      "Close-out (§3.1 step 7) → separations **rebuild-ready**",
+                      "after A2–A7"
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "id": "track-b",
+              "status": "done",
+              "title": "Track B · dashboard completion",
+              "chip": {
+                "text": "B1–B8 all landed · 08-19 → 20"
+              },
+              "desc": "Separations as the forcing function; the findings ledger swept to zero-or-decided — the definition of \"frontend done\".",
+              "features": [
+                {
+                  "text": "B1 the three identity-approval ceremonies + rejection, against the SERVER's shape; gated parity fixture (D226)",
+                  "layer": "both"
+                },
+                {
+                  "text": "B2 a settled gate's decision on the panel; a rehearsal never wears `verified-done` (D237/D238)",
+                  "layer": "both"
+                },
+                {
+                  "text": "B3 the run modal's four rows — three were already in the bundle, one drawn as a read-only fact (D250/D251)",
+                  "layer": "frontend"
+                },
+                {
+                  "text": "B4 queue rows: `QueueBaseFields` served + drawn, rename, the bulk strip + result vector, runs + archived runs (D230–D235)",
+                  "layer": "both"
+                },
+                {
+                  "text": "B5 archive: frozen sections, five tabs, Export, ledger read-through (D223)",
+                  "layer": "both"
+                },
+                {
+                  "text": "B6 explorer: field census, the declared `when` in words, descriptor prose (D227–D229)",
+                  "layer": "both"
+                },
+                {
+                  "text": "B7 worker-card / session-footer batch; the rail names step, direction and bound; a CAS conflict is a refusal (D252/D253)",
+                  "layer": "wiring"
+                },
+                {
+                  "text": "B8 findings ledger zero-or-decided; `span.patched` RETIRED; a span close binds to an OPEN entry (D254/D255)",
+                  "layer": "backend"
+                }
+              ],
+              "requires": [
+                {
+                  "kind": "node",
+                  "ref": "sep-6c"
+                }
+              ]
+            },
+            {
+              "id": "track-c",
+              "status": "active",
+              "title": "Track C · connection proof",
+              "chip": {
+                "text": "in progress — §9.22 written today"
+              },
+              "desc": "One pass: the REAL dashboard drives a REAL composed separations dry run — plan → start → gate parks → approve through the B1 ceremony → resume → preview terminal → archive — every UI assertion paired against a direct authority-database check. Closes with the ONE deliberate parity re-freeze. Re-runs over the real commits as Track A's final evidence.",
+              "features": [
+                {
+                  "text": "`docs/migrations/separations.md` §9.22 — items 1–8 recorded",
+                  "layer": "proof",
+                  "status": "done"
+                },
+                {
+                  "text": "every surface's assertion paired against a direct authority check over the ONE run",
+                  "layer": "proof",
+                  "status": "active"
+                },
+                {
+                  "text": "the deliberate parity re-freeze",
+                  "layer": "proof",
+                  "status": "planned"
+                }
+              ],
+              "requires": [
+                {
+                  "kind": "node",
+                  "ref": "track-b"
+                }
+              ]
+            },
+            {
+              "id": "track-d",
+              "status": "proposed",
+              "title": "Track D · dashboard hardening, pre-cutover budgets",
+              "chip": {
+                "text": "proposed 2026-08-20 — awaiting your ruling"
+              },
+              "desc": "From today's architecture audit (`docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Ten ordered moves, none a rewrite; sequenced after Track C, before the next workflow leans on the dashboard. Doubles as the first measurement of doc 13 §7.4's performance budgets — a cutover exit criterion.",
+              "features": [
+                {
+                  "text": "D1 one status/outcome derivation (the detail panel drops two arms the queue has)",
+                  "layer": "backend",
+                  "status": "proposed"
+                },
+                {
+                  "text": "D2 hygiene: dead hooks/exports, typed 404, the inert phone-host gate, the D253 sentence",
+                  "layer": "both",
+                  "status": "proposed"
+                },
+                {
+                  "text": "D3 every command settlement through `settleCommandResult`",
+                  "layer": "frontend",
+                  "status": "proposed"
+                },
+                {
+                  "text": "D4 patch-splice without re-parsing the whole day + `memo`; record §7.4's first numbers",
+                  "layer": "frontend",
+                  "status": "proposed"
+                },
+                {
+                  "text": "D5 bound the read scans (member preview, notes corpus, duplicate receipt reads)",
+                  "layer": "backend",
+                  "status": "proposed"
+                },
+                {
+                  "text": "D6 `useResource` in `state/`",
+                  "layer": "frontend",
+                  "status": "proposed"
+                },
+                {
+                  "text": "D7 split `LoadedApp`",
+                  "layer": "frontend",
+                  "status": "proposed"
+                },
+                {
+                  "text": "D8 models for intake / archive / log-panel; one task-span fold",
+                  "layer": "both",
+                  "status": "proposed"
+                },
+                {
+                  "text": "D9 virtualized list primitive",
+                  "layer": "frontend",
+                  "status": "proposed"
+                },
+                {
+                  "text": "D10 one CAS transport",
+                  "layer": "wiring",
+                  "status": "proposed"
+                }
+              ],
+              "requires": [
+                {
+                  "kind": "node",
+                  "ref": "track-c"
+                },
+                {
+                  "kind": "you",
+                  "text": "rule placement, the descriptor-bundle question (§3.5), and scope (D1–D3 / D1–D5 / all)",
+                  "met": false
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "operator-calls",
+          "status": "you",
+          "title": "Smaller operator calls open",
+          "chip": {
+            "text": "needs you"
+          },
+          "desc": "The gate-age pill (D12 vs your later direction) · D192 re-disposition of `legacy-tool-ops-sanity-check-record` · A6's first live retry as evidence. (The decide-first findings are settled: hours-saved DROPPED by D239; archive tabs and export closed by D223/D240.)"
+        }
+      ]
+    },
+    {
+      "kind": "today",
+      "text": "2026-08-20 · HEAD ce53e35 · separations 7 / 9 · dashboard at \"frontend done\""
+    },
+    {
+      "kind": "phase",
+      "id": "migrations",
+      "status": "planned",
+      "when": {
+        "primary": "next",
+        "secondary": "undated — order, not calendar"
+      },
+      "phase": "Phase 3 · continued",
+      "title": "The remaining migrations",
+      "chip": {
+        "text": "12 workflows · order by risk / reuse"
+      },
+      "open": true,
+      "summary": "Doc 07 §3.3's risk-proof ordering, kept as-is after the separations entry: reads populate the stores, the OCR service unblocks four consumers, write-heavy lands last. **No workflow after separations is named yet.** Each owes the 12-item §b questionnaire before building, a live dry run, and (for writes) a controlled commit on a target you approve. **Store reality:** only ucpath, crm, kuali, new-kronos have real drivers today; onbase, servicenow, i9, old-kronos, sharepoint are 3-line session declarations with zero tasks.",
+      "requires": [
+        {
+          "kind": "node",
+          "ref": "phase-3"
+        }
+      ],
+      "items": [
+        {
+          "id": "order-0",
+          "status": "done",
+          "title": "Order 0 · person-lookup",
+          "chip": {
+            "text": "live-proven (Phase 1)"
+          },
+          "size": "M",
+          "features": [
+            {
+              "text": "resolve a person by name / EID against real UCPath + CRM",
+              "layer": "both"
+            }
+          ]
+        },
+        {
+          "id": "order-1",
+          "status": "planned",
+          "title": "Order 1 · person-lookup Search + Match · i9-lookup",
+          "size": "M",
+          "desc": "read — HR-Tasks Search/Match; who signed I-9 §2. Two modes prove one descriptor can preserve distinct system surfaces.",
+          "features": [
+            {
+              "text": "Search + Match modes on person-lookup (D15)",
+              "layer": "both"
+            },
+            {
+              "text": "the `i9` store: driver, login recipe, tasks (zero today)",
+              "layer": "backend"
+            },
+            {
+              "text": "i9-lookup workflow + its queue/detail surfaces",
+              "layer": "both"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "phase-2"
+            },
+            {
+              "kind": "you",
+              "text": "§b questionnaire (12 answers) for each workflow",
+              "met": false
+            }
+          ]
+        },
+        {
+          "id": "order-2",
+          "status": "planned",
+          "title": "Order 2 · crm-doc-download · sharepoint-download · old-kronos-reports",
+          "size": "M",
+          "desc": "read / download — iDocs PDFs; rosters; Time Detail PDFs. Single-system reads and downloads at low risk.",
+          "features": [
+            {
+              "text": "the `sharepoint` and `old-kronos` stores (declaration-only today)",
+              "layer": "backend"
+            },
+            {
+              "text": "crm document download on the existing crm driver",
+              "layer": "backend"
+            },
+            {
+              "text": "downloads land as content-addressed artifacts; the artifact-bytes route",
+              "layer": "both"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "phase-2"
+            },
+            {
+              "kind": "you",
+              "text": "§b questionnaire for each workflow",
+              "met": false
+            }
+          ]
+        },
+        {
+          "id": "order-3",
+          "status": "planned",
+          "title": "Order 3 · the OCR pipeline workflow",
+          "size": "M",
+          "desc": "service — PDF → extraction → review → fan-out. No browser, no submit; the 2h service stores are already built.",
+          "features": [
+            {
+              "text": "the OCR pipeline workflow over the 2h extraction / normalization / ocr / roster stores",
+              "layer": "backend"
+            },
+            {
+              "text": "the **OCR review UI** — expanded page ↔ extracted-text pair (never a collapsed table)",
+              "layer": "frontend"
+            },
+            {
+              "text": "review/approve commands + progressive record patches",
+              "layer": "wiring"
+            },
+            {
+              "text": "**D189's byte path**: BFF static handler + `capture.html` + ngrok launcher + the phone-origin guard arm; `--prod` starts meaning what it says",
+              "layer": "backend"
+            },
+            {
+              "text": "capture → workflow binding (`CAPTURE_INTAKE_BINDINGS` filled for the first honest consumer)",
+              "layer": "wiring"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "p2-2h"
+            },
+            {
+              "kind": "you",
+              "text": "§b questionnaire",
+              "met": false
+            }
+          ]
+        },
+        {
+          "id": "order-4",
+          "status": "planned",
+          "title": "Order 4 · oath-signature · emergency-contact",
+          "size": "L",
+          "desc": "OCR fan-out + light write — oath date rows; emergency-contact fill. Exercises the completion union (D11), approval gates (D5) and operation-member fan-out; the write is a bounded UCPath enter/fill.",
+          "features": [
+            {
+              "text": "first operation fan-out + approval gates through the real review UI",
+              "layer": "both"
+            },
+            {
+              "text": "oath-signature and emergency-contact workflows",
+              "layer": "backend"
+            },
+            {
+              "text": "Group People surface live over real members (paged members + rollup)",
+              "layer": "frontend"
+            },
+            {
+              "text": "the first non-separations controlled commits on UCPath enter/fill",
+              "layer": "proof"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "order-3"
+            },
+            {
+              "kind": "you",
+              "text": "§b questionnaire; controlled-commit target approval",
+              "met": false
+            }
+          ]
+        },
+        {
+          "id": "order-5",
+          "status": "planned",
+          "title": "Order 5 · i9-check",
+          "size": "L",
+          "desc": "UCPath read + durable roster projection — verify I-9 packet, the master retention workbook. Operation coordinator + member enqueue + display-only rows, no external submit.",
+          "features": [
+            {
+              "text": "the operation coordinator at scale",
+              "layer": "backend"
+            },
+            {
+              "text": "stable-keyed SQLite outbox + serialized workbook projector",
+              "layer": "backend"
+            },
+            {
+              "text": "the first Excel export writer (the master I-9 retention workbook)",
+              "layer": "backend"
+            },
+            {
+              "text": "i9-check surfaces (member rows, retention status)",
+              "layer": "frontend"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "order-1"
+            },
+            {
+              "kind": "node",
+              "ref": "order-4"
+            },
+            {
+              "kind": "you",
+              "text": "§b questionnaire",
+              "met": false
+            }
+          ]
+        },
+        {
+          "id": "order-6",
+          "status": "planned",
+          "title": "Order 6 · work-study · kronos-pay-rule",
+          "size": "L",
+          "desc": "**first real writes** — PayPath pool/comp; UKG pay rules. Small, isolated workflow-specific production commits on the proven transaction kernel.",
+          "features": [
+            {
+              "text": "work-study and kronos-pay-rule commit contracts",
+              "layer": "backend"
+            },
+            {
+              "text": "intake grid constants entry + unbind arm (`effectiveDate`, D172/D173)",
+              "layer": "both"
+            },
+            {
+              "text": "the canonical-EID audit gate: replay real stored inputs through `Eid` `/^10\\d{6}$/`, surface every rejection",
+              "layer": "proof"
+            },
+            {
+              "text": "the new-kronos store gains its pay-rule write family",
+              "layer": "backend"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "sep-1"
+            },
+            {
+              "kind": "node",
+              "ref": "p2-proof"
+            },
+            {
+              "kind": "you",
+              "text": "§b questionnaire; controlled-commit target approval",
+              "met": false
+            }
+          ]
+        },
+        {
+          "id": "order-7",
+          "status": "planned",
+          "title": "Order 7 · oath-upload · onbase",
+          "size": "L",
+          "desc": "write-heavy — ServiceNow ticket + PDF; OnBase document import. Prove ServiceNow `receipt`; resolve OnBase OQ2 (`upload-verify` vs `unverifiableByPage`); oath-upload ports the born-at-upload fence.",
+          "features": [
+            {
+              "text": "the `servicenow` and `onbase` stores (declaration-only today)",
+              "layer": "backend"
+            },
+            {
+              "text": "ServiceNow receipt probe; OnBase upload-verify",
+              "layer": "backend"
+            },
+            {
+              "text": "oath-upload's born-at-upload fence",
+              "layer": "backend"
+            },
+            {
+              "text": "rebuild-verified propagation windows for ServiceNow",
+              "layer": "proof"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "order-6"
+            },
+            {
+              "kind": "you",
+              "text": "name a ServiceNow live-probe target",
+              "met": false
+            },
+            {
+              "kind": "you",
+              "text": "name an OnBase probe target (none exists today)",
+              "met": false
+            }
+          ]
+        },
+        {
+          "id": "order-8",
+          "status": "you",
+          "title": "Order 8 · separations",
+          "size": "XL",
+          "chip": {
+            "text": "chunks 1–6c landed — commits blocked on your canary"
+          },
+          "desc": "write-heavy — UCPath termination + Kuali finalization. The wrong-person incident (`T002173685`); the deepest write-safety proof, entered first by your choice (D193).",
+          "features": [
+            {
+              "text": "everything under Track A above",
+              "layer": "proof",
+              "status": "planned"
+            },
+            {
+              "text": "the record-sanity-check advisory's disposition (D192 — deferred to this order)",
+              "layer": "docs",
+              "status": "planned"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "track-a"
+            }
+          ]
+        },
+        {
+          "id": "order-9",
+          "status": "planned",
+          "title": "Order 9 · onboarding",
+          "size": "XL",
+          "desc": "write-heavy — the real hire transaction. The duplicate-person incident; last, highest-stakes, most reuse of everything below it.",
+          "features": [
+            {
+              "text": "the hire probe with the no-EID key (`ProbeVerdict`-widened)",
+              "layer": "backend"
+            },
+            {
+              "text": "roster ingest",
+              "layer": "backend"
+            },
+            {
+              "text": "the onboarding composition over the ucpath / crm / kuali / kronos stores",
+              "layer": "backend"
+            },
+            {
+              "text": "onboarding's gate ceremony + start surface",
+              "layer": "both"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "order-8"
+            },
+            {
+              "kind": "node",
+              "ref": "order-5"
+            },
+            {
+              "kind": "you",
+              "text": "§b questionnaire; a hire canary you approve",
+              "met": false
+            }
+          ]
+        },
+        {
+          "id": "cross-cutting",
+          "status": "planned",
+          "title": "Cross-cutting Phase 3 capabilities (no single order)",
+          "desc": "Where legacy is still ahead — the honest list, each shaped against a real run corpus rather than invented in planning.",
+          "features": [
+            {
+              "text": "editable settings — the `apply-settings` command family (read-only today; D169/D184)",
+              "layer": "both"
+            },
+            {
+              "text": "cross-date search module",
+              "layer": "both"
+            },
+            {
+              "text": "screenshots gallery + the artifact-bytes route",
+              "layer": "both"
+            },
+            {
+              "text": "Excel export writers (3 in legacy)",
+              "layer": "backend"
+            },
+            {
+              "text": "`test-login` / setup wizard equivalents, or their retirement with evidence",
+              "layer": "docs"
+            }
+          ],
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "phase-3"
+            }
+          ]
+        }
+      ],
+      "notes": [
+        "**Legacy capability register:** 48 open · 20 replaced · 7 native · 3 retired — cutover requires zero open. Every entry advances to native / replaced / retired at its order's migration."
+      ]
+    },
+    {
+      "kind": "phase",
+      "id": "deferred",
+      "status": "planned",
+      "when": {
+        "primary": "comes due",
+        "secondary": "at a named trigger"
+      },
+      "phase": "Deferred",
+      "title": "The X → Y traceback",
+      "chip": {
+        "text": "every deferral names its trigger",
+        "tone": "never"
+      },
+      "open": false,
+      "summary": "\"I want to do X; the plan said build Y; Y is deferred.\" None is silently dropped, none is \"can't ever work\"; two have a decided stance instead of a trigger (D193) — they simply do not get built unless you ask.",
+      "items": [
+        {
+          "id": "def-capture-binding",
+          "status": "planned",
+          "title": "Photograph a paper form on your phone → it becomes an OCR-backed run",
+          "desc": "`CAPTURE_INTAKE_BINDINGS` is deliberately empty — neither current workflow can honestly derive an employee id from a photograph. Comes due with the first OCR-consuming workflow; \"close this first\": the `run.queued` span from projector-enqueued runs.",
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "order-3"
+            }
+          ]
+        },
+        {
+          "id": "def-byte-path",
+          "status": "planned",
+          "title": "Run the dashboard without the dev server / use the phone page in production",
+          "desc": "BFF static bytes + `capture.html` + the ngrok launcher + a guard arm that the file handler serves nothing outside the capture allow-list to a phone origin. D189 / D175; \"production\" here means LOCAL (D193).",
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "order-3"
+            }
+          ]
+        },
+        {
+          "id": "def-explorer-edit",
+          "status": "planned",
+          "title": "Edit a workflow's presentation / policy without a code change",
+          "desc": "The Workflow Explorer EDIT half. D186: an editor shaped by a sample of one workflow would be wrong.",
+          "requires": [
+            {
+              "kind": "fact",
+              "text": "a SECOND production workflow whose policy you want to change",
+              "met": false
+            }
+          ]
+        },
+        {
+          "id": "def-sanity-check",
+          "status": "planned",
+          "title": "A record-sanity-check advisory panel",
+          "desc": "The one AI tool kept open (run-summary and selector-suggestion are RETIRED, D192). §9.17 flags its deferral condition as materially satisfied by the §14.2 packet's comparisons.",
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "order-8"
+            },
+            {
+              "kind": "you",
+              "text": "re-disposition D192 (keep open / close the inventory entry)",
+              "met": false
+            }
+          ]
+        },
+        {
+          "id": "def-settings",
+          "status": "planned",
+          "title": "Edit settings in the dashboard",
+          "desc": "The `apply-settings` command family — rebuild settings are read-only, \"nothing here pretends to save\" (D169/D184). Phase 3 milestone, no single trigger; listed under cross-cutting above.",
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "cross-cutting"
+            }
+          ]
+        },
+        {
+          "id": "def-propagation",
+          "status": "planned",
+          "title": "Trust UCPath / ServiceNow wait-before-negative-read windows",
+          "desc": "Rebuild-verified propagation measurements replace ported legacy knowledge at each system's own live probe (doc 07 §3.8).",
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "order-7"
+            }
+          ]
+        },
+        {
+          "id": "def-search-export",
+          "status": "planned",
+          "title": "Search runs across dates / view screenshots / export Excel",
+          "desc": "No search module, artifact-bytes route or export writers in the BFF yet — capability register open; shaped against a real run corpus.",
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "cross-cutting"
+            }
+          ]
+        },
+        {
+          "id": "def-retention",
+          "status": "never",
+          "title": "Auto-purge diagnostics on the 14/8/5 schedule · reclaim unreferenced artifact bytes",
+          "chip": {
+            "text": "won't build unless you ask"
+          },
+          "desc": "Retention-sweep scheduling (the sweep itself is built and tested) and a content-store refcount — D193: disk growth on one local machine isn't worth a durable reference count."
+        }
+      ],
+      "notes": [
+        "**Never, by design:** unverified silent fallbacks · selector `.or()` chains · per-daemon logs / bespoke polling hooks / secondary count caches · per-action mutation routes · generic retry on a parked write · DSL/codegen workflow authoring (D79a) · LAN/remote operator mode · hosting (D193) · legacy change accounting (D150)."
+      ]
+    },
+    {
+      "kind": "phase",
+      "id": "cutover",
+      "status": "planned",
+      "when": {
+        "primary": "after Phase 3"
+      },
+      "phase": "Cutover",
+      "title": "One all-at-once authority switch",
+      "chip": {
+        "text": "not started"
+      },
+      "size": "L",
+      "open": false,
+      "summary": "D89 / D93. No workflow flips individually, no mixed-engine production, ever. The entire legacy repo is preserved as the rollback asset; nothing in it is deleted until rollback-window closure with separate explicit authorization.",
+      "features": [
+        {
+          "text": "stop new legacy enqueues → drain / park / reconcile → back up both repos' state",
+          "layer": "proof"
+        },
+        {
+          "text": "approved offline one-time imports (`one-time-import-offline` guard activates)",
+          "layer": "backend"
+        },
+        {
+          "text": "atomically repoint the launcher → smoke gates",
+          "layer": "proof"
+        },
+        {
+          "text": "rollback bridge verified before the switch",
+          "layer": "proof"
+        }
+      ],
+      "requires": [
+        {
+          "kind": "node",
+          "ref": "order-1"
+        },
+        {
+          "kind": "node",
+          "ref": "order-2"
+        },
+        {
+          "kind": "node",
+          "ref": "order-3"
+        },
+        {
+          "kind": "node",
+          "ref": "order-4"
+        },
+        {
+          "kind": "node",
+          "ref": "order-5"
+        },
+        {
+          "kind": "node",
+          "ref": "order-6"
+        },
+        {
+          "kind": "node",
+          "ref": "order-7"
+        },
+        {
+          "kind": "node",
+          "ref": "order-8"
+        },
+        {
+          "kind": "node",
+          "ref": "order-9"
+        },
+        {
+          "kind": "node",
+          "ref": "cross-cutting"
+        },
+        {
+          "kind": "node",
+          "ref": "track-d"
+        },
+        {
+          "kind": "fact",
+          "text": "legacy capability register at zero open (48 open today)",
+          "met": false
+        },
+        {
+          "kind": "fact",
+          "text": "doc 07 §6 definition of done + doc 07 §7.4 / doc 13 §10 integration criteria green in the real built app",
+          "met": false
+        }
+      ],
+      "items": [
+        {
+          "id": "rollback-window",
+          "status": "planned",
+          "title": "Rollback window, then closure",
+          "desc": "Legacy code, tests and state intact; closure is its own later authorization.",
+          "requires": [
+            {
+              "kind": "node",
+              "ref": "cutover"
+            }
+          ]
+        },
+        {
+          "id": "later-unplanned",
+          "status": "never",
+          "title": "Later, unplanned",
+          "chip": {
+            "text": "ideas, not a hosted future"
+          },
+          "desc": "Package the local app (\"web app → real app\"); a cooperation / multi-user mode built on top of solo (D193)."
+        }
+      ]
+    }
+  ]
+}
