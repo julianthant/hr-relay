@@ -19,6 +19,7 @@ const RECORD_1 = "55555555-5555-4555-8555-555555555555";
 const ARTIFACT_1 = "66666666-6666-4666-8666-666666666666";
 const NOTIFICATION_1 = "77777777-7777-4777-8777-777777777777";
 const FAILURE_1 = "99999999-9999-4999-8999-999999999999";
+const SESSION_1 = "88888888-8888-4888-8888-888888888888";
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
 const NOW = "2026-07-31T17:00:00.000Z";
@@ -85,7 +86,17 @@ const DAY = {
   workflowCounts: [{ workflowId: "onboarding", count: 1, statusCounts: [{ status: "running", count: 1 }] }],
   statusCounts: [{ status: "running", count: 1 }],
   queueSurfaces: [QUEUE],
-  workerCards: [{ workerId: "ucpath-worker", system: "ucpath", state: "working", currentRun: { state: "present", runId: RUN_1, traceId: "on-120000-1111" }, revision: 1 }],
+  workerCards: [{
+    workerId: "ucpath-worker",
+    workflowId: "onboarding",
+    state: "working",
+    directive: "run",
+    startedAt: NOW,
+    currentRun: { state: "present", runId: RUN_1, traceId: "on-120000-1111" },
+    browsers: [{ sessionId: SESSION_1, system: "ucpath", openedAt: NOW }],
+    leaseVersion: 3,
+    revision: 1,
+  }],
   notifications: [{ notificationId: NOTIFICATION_1, actorId: "local-operator", severity: "info", title: "Run started", state: "unread", occurredAt: NOW, revision: 1 }],
 };
 

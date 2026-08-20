@@ -28,6 +28,7 @@ import type {
   WorkflowCountWireSchema,
 } from "../../domain/dashboard/projection.js";
 import type { SubscriptionState } from "../client/index.js";
+import { elapsedSecondsBetween } from "./format.js";
 import { type QueueStatus } from "./status-model.js";
 import {
   groupWorkflowsByCategory,
@@ -297,19 +298,22 @@ export type WorkerState = WorkerCardWire["state"];
  * A worker's state, on the same hue ramp as everything else, so "this daemon is
  * alive" and "this row is running" are not two unrelated blues.
  *
- * THREE OF THESE SIX ARMS ARE CURRENTLY UNREACHABLE, and that is recorded
- * rather than pruned (R7-1, `docs/plans/2026-08-13-detail-fidelity-audit.md`).
- * `run-queue-projection.ts:805` derives the state from two observations alone —
- * `endedAt` ⇒ `stopped`, a claimed row ⇒ `working`, otherwise `idle` — so
- * `waiting`, `paused` and `failed` never arrive on the wire, which is also why
- * the collapsed bar's attention chip can never fire today. The arms stay
- * because the states are REAL in authority: `workerLeases.control` already
- * moves a lease through stop/pause/resume directives
- * (`src/core/command-kernel.ts:1767-1796`) and a lease that died carries its
- * own terminal state. What closes it is the ledger's `WorkerCardWireSchema`
- * batch — the projector folding the authority lease lifecycle into this enum
- * instead of inferring two arms from row presence. Until then the surface shows
- * honest absence: no chip, and no state word nothing produced.
+ * EVERY ARM HAS A PRODUCER since D248, and that is what changed: the projector
+ * used to derive the state from two observations (`endedAt` ⇒ stopped, a
+ * claimed row ⇒ working, otherwise idle), so `waiting`, `paused` and `failed`
+ * could never arrive and the bar's attention chip could never fire. The card is
+ * now the authority worker lease, so `starting` is a daemon that has taken its
+ * lease and not yet reported a phase — the demo's own point that calling such a
+ * worker `idle` misreads capacity — and the terminal lifecycle splits by its
+ * recorded reason: asked to stop is `Stopped`, died is `Failed`.
+ *
+ * Two arms LEFT this table rather than staying unreachable. `waiting` was the
+ * demo's "blocked on a lease another worker holds", and this platform gives
+ * every worker its own browser session per system (doc 05 §1), so there is no
+ * cross-worker lease to wait on and nothing that could record a holder.
+ * `paused` left because a pause is a DIRECTIVE, not a phase — see
+ * `workerDirectiveNote` below, and the durable record's own header for why the
+ * two must not be folded into one word.
  */
 export const WORKER_TONE: Record<WorkerState, { dot: string; label: string; text: string }> = {
   // `Running`, not `Working` — the demo's word and the ratified status
@@ -317,22 +321,63 @@ export const WORKER_TONE: Record<WorkerState, { dot: string; label: string; text
   // the same event seen from two places; two words for it made them read as
   // two facts.
   working: { dot: "bg-[var(--ds-success-fg)]", label: "Running", text: "text-[color:var(--ds-success-fg)]" },
-  waiting: {
-    dot: "bg-[var(--ds-status-waiting-fg)]",
-    label: "Waiting",
+  starting: {
+    dot: "bg-[var(--ds-status-waiting-fg)] animate-pulse motion-reduce:animate-none",
+    label: "Starting",
     text: "text-[color:var(--ds-status-waiting-fg)]",
   },
   idle: { dot: "bg-[var(--ds-fg-faint)]", label: "Idle", text: "text-[color:var(--ds-fg-muted)]" },
-  paused: {
-    dot: "bg-[var(--ds-status-parked-fg)]",
-    label: "Paused",
-    text: "text-[color:var(--ds-status-parked-fg)]",
-  },
   stopped: { dot: "bg-[var(--ds-fg-faint)] opacity-60", label: "Stopped", text: "text-[color:var(--ds-fg-muted)]" },
   failed: { dot: "bg-[var(--ds-danger)]", label: "Failed", text: "text-[color:var(--ds-danger)]" },
 };
 
-export const WORKER_STATE_ORDER: WorkerState[] = ["working", "waiting", "idle", "paused", "failed", "stopped"];
+export const WORKER_STATE_ORDER: WorkerState[] = ["working", "starting", "idle", "failed", "stopped"];
+
+/** How a settled lease ended, in the operator's words rather than the enum's. */
+export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopReason"]>, string> = {
+  operator: "stopped by you",
+  shutdown: "shut down",
+  crashed: "crashed",
+  "lease-expired": "lease expired — its process stopped reporting",
+};
+
+/**
+ * The operator's standing directive, when it is not `run`.
+ *
+ * It renders BESIDE the state word and never as it. `src/domain/run/worker.ts`
+ * is explicit about why: a command writes what was asked and the worker writes
+ * what is true, so a card that read `Paused` while its worker was mid-write on
+ * a real HR system would be reporting an intent as a fact. A worker asked to
+ * pause finishes its item first — that is the whole meaning of the pair.
+ */
+export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
+  if (card.state === "stopped" || card.state === "failed") return undefined;
+  if (card.directive === "pause") return "Pausing after this item";
+  if (card.directive === "stop") return "Stopping after this item";
+  return undefined;
+}
+
+/**
+ * Whether a `stop-worker` command has anything to act on.
+ *
+ * A settled lease takes no directives (the kernel refuses it by name — a
+ * stopped worker starts a new lease generation instead), and a worker already
+ * asked to stop is not asked twice. The button is DISABLED rather than hidden,
+ * because a control that vanishes reads as a control that was never there.
+ */
+export function canStopWorker(card: WorkerCardWire): boolean {
+  return card.state !== "stopped" && card.state !== "failed" && card.directive !== "stop";
+}
+
+/**
+ * How long this worker has been up — live against the served instant, and
+ * `endedAt − startedAt` once it has settled (D124's rule, one surface over).
+ * Never `now − startedAt` for a dead worker: that number grows forever and
+ * answers a question nobody asks of a process that is gone.
+ */
+export function workerElapsedSeconds(card: WorkerCardWire, nowIso: string): number {
+  return elapsedSecondsBetween(card.startedAt, card.endedAt ?? nowIso);
+}
 
 /**
  * Ported verbatim from legacy
@@ -366,8 +411,15 @@ export const capacityChip = (full: boolean): string =>
       : "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-recess-fg-quiet)]",
   );
 
-/** The tallies the collapsed bar always shows, even at zero. */
-export const ALWAYS_TALLIED: WorkerState[] = ["working", "idle"];
+/**
+ * The tallies the collapsed bar always shows, even at zero.
+ *
+ * `starting` joins them for the demo's own stated reason (`DemoShell.tsx:1860`):
+ * *a daemon that is alive but has not reported a phase is still starting, never
+ * idle — calling it idle misreads capacity.* A three-way split at zero is also
+ * what stops the bar's width jumping the moment a worker boots.
+ */
+export const ALWAYS_TALLIED: WorkerState[] = ["working", "starting", "idle"];
 
 /**
  * The connection, as the operator sees it — the whole point of the bar's right

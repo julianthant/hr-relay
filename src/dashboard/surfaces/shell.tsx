@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  CircleHelp,
   Eye,
   LayoutDashboard,
   Minus,
@@ -30,6 +31,7 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
+  Button,
   IconButton,
   Tooltip,
   dsBorder,
@@ -47,8 +49,8 @@ import {
 
 import type { SubscriptionState } from "../client/index.js";
 import { PROPOSED_STATUS, dsStatusOf, type QueueStatus } from "./status-model.js";
-import { SystemChip } from "./system-chip.js";
-import { plural } from "./format.js";
+import { SYSTEM_LABEL } from "./system-chip-model.js";
+import { elapsedSecondsBetween, fmtElapsed, plural } from "./format.js";
 import {
   type WorkflowGroupEntry,
 } from "./workflow-category.js";
@@ -58,6 +60,7 @@ import {
   type StatusBucket,
   type StatusCountWire,
   WORKER_STATE_ORDER,
+  WORKER_STOP_REASON_LABEL,
   WORKER_TONE,
   WORKFLOW_PANEL_MODE_LABEL,
   type WorkerCardWire,
@@ -67,12 +70,15 @@ import {
   type WorkflowPanelMode,
   activeCount,
   buildWorkflowRailGroups,
+  canStopWorker,
   capacityChip,
   connectionTone,
   needsYouCount,
   statusCount,
   toolbarControl,
   totalCount,
+  workerDirectiveNote,
+  workerElapsedSeconds,
   workflowCount,
   workflowStatusCounts,
 } from "./shell-model.js";
@@ -652,21 +658,128 @@ export function StatusFilters({
 }
 
 /**
- * One worker card.
+ * ONE browser session this worker holds (D248, R7-3).
  *
- * Everything on it is served: the worker's id, its system, its state, and the
- * run it is on. The demo's browser-health tile grid, elapsed clock, queued
- * count, lease-wait sentence and `Stop` button are NOT served by the 1g
- * projection and are omitted rather than drawn from nothing — an invented
- * health tile on a panel whose entire job is health would be the worst possible
- * lie. The micro-pipeline is the one exception in KIND, not in honesty: its
- * band is reserved at the demo's height and drawn EMPTY (see the base below),
- * because holding a baseline costs nothing and claims nothing.
+ * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+ * `DemoShell.tsx:1436-1516` (`BrowserTile`), with two deliberate divergences,
+ * both of them the demo's own honest arm rather than a reduction of it:
+ *
+ * - **Every tile reads `Not checked`**, which is the demo's `unknown` tone and
+ *   carries its comment verbatim — *it must NOT read as healthy.* Nothing in
+ *   this build probes a live session, so any other word would be a health
+ *   claim nobody made.
+ * - **The second line is the session's AGE, not a URL.** No span, checkpoint or
+ *   lease records a page address; composing one from the system id would put a
+ *   plausible-looking string where an observation belongs. How long a session
+ *   has been open is a fact the wire actually carries.
+ *
+ * The demo's right-click menu (Peek / Check now / Bring to front / Refresh /
+ * Reopen / Pause auto-recovery) is NOT ported. `refresh-browser` and
+ * `reopen-browser` are real kernel verbs whose process effects the dashboard
+ * supervisor refuses BY NAME (`server/dashboard/compose.ts` —
+ * `refreshBrowser`/`reopenBrowser` are undefined on purpose, doc 05's live
+ * lane), so every item would open a menu that 500s on click.
  */
-function WorkerCard({ card }: { card: WorkerCardWire }) {
+function BrowserTile({
+  browser,
+  span,
+  nowIso,
+}: {
+  browser: WorkerCardWire["browsers"][number];
+  span: boolean;
+  nowIso: string;
+}) {
+  const openFor = fmtElapsed(elapsedSecondsBetween(browser.openedAt, nowIso));
+  return (
+    <div
+      title={`${SYSTEM_LABEL[browser.system]} — not checked · session ${String(browser.sessionId)} · open ${openFor}`}
+      className={cn(
+        "flex w-full min-w-0 flex-col border",
+        "gap-[var(--ds-space-hair)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]",
+        dsRadius.md,
+        // The demo's `unknown` tone: no fill, faint ink — a tile that has not
+        // been checked must not look like one that passed.
+        "border-[color:var(--ds-border-subtle)] bg-transparent text-[color:var(--ds-fg-faint)]",
+        span && "col-span-2",
+      )}
+    >
+      <span className={cn(dsText.caps, "flex items-center gap-[var(--ds-space-tight)]")}>
+        <CircleHelp aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
+        {SYSTEM_LABEL[browser.system]}
+      </span>
+      <span className={cn(dsText.micro, "truncate opacity-80")}>Not checked · open {openFor}</span>
+    </div>
+  );
+}
+
+/**
+ * One worker card — the authority lease, drawn (D248/D249).
+ *
+ * The header names the WORKFLOW, because that is what the operator started and
+ * what the panel is about; the worker id is a process name and lives in the
+ * title. The queued chip beside it is the SERVED per-workflow status count
+ * (D81's one fold), never a client-side pass over the queue.
+ *
+ * Two demo elements are still absent, each for a producer that does not exist.
+ * The lease-wait block ("waiting 4m for the ucpath lease, held by …") has
+ * nothing to report: every worker opens its OWN browser session per system
+ * (doc 05 §1), so there is no cross-worker lease and no holder to name. The
+ * micro-pipeline stays reserved and EMPTY: the wire serves no `steps[]`, and
+ * dots drawn from nothing would be the worst kind of lie on a panel about what
+ * a worker is doing.
+ */
+function WorkerCard({
+  card,
+  workflowLabel,
+  queued,
+  nowIso,
+  onStop,
+}: {
+  card: WorkerCardWire;
+  workflowLabel: string;
+  queued: number;
+  nowIso: string;
+  onStop?: (card: WorkerCardWire) => void;
+}) {
   const tone = WORKER_TONE[card.state];
+  const directive = workerDirectiveNote(card);
+  const elapsed = workerElapsedSeconds(card, nowIso);
+
+  /*
+   * A daemon that DIED is a different object: no tiles, no clock, nothing to
+   * stop. Ported from `DemoShell.tsx:1545-1569` — its own comment is the
+   * reason it stays on screen at all: *keep it visible so the failure is
+   * learned.* The word underneath is the lease's recorded reason, so "crashed"
+   * and "you stopped it" can never render the same.
+   */
+  if (card.state === "failed") {
+    return (
+      <article
+        title={`Worker ${String(card.workerId)}`}
+        className={cn(
+          "flex shrink-0 flex-col border",
+          "w-[var(--ds-w-session-card)] gap-[var(--ds-space-tight)] p-[var(--ds-space-base)]",
+          dsRadius.lg,
+          "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]",
+        )}
+      >
+        <div className="flex items-center gap-[var(--ds-space-base)]">
+          <span aria-hidden className="size-2 shrink-0 rounded-full bg-[var(--ds-danger)]" />
+          <span className={cn(dsText.ui, "min-w-0 flex-1 truncate font-semibold text-[color:var(--ds-fg)]")}>
+            {workflowLabel}
+          </span>
+          <span className={cn(dsText.caps, "shrink-0 text-[color:var(--ds-danger)]")}>{tone.label}</span>
+        </div>
+        <p className={cn(dsText.meta, "text-[color:var(--ds-danger)] opacity-85")}>
+          {card.stopReason === undefined ? "" : WORKER_STOP_REASON_LABEL[card.stopReason]}
+        </p>
+      </article>
+    );
+  }
+
   return (
     <article
+      title={`Worker ${String(card.workerId)}`}
       className={cn(
         // No explicit height: `align-items: stretch` only stretches an item
         // whose cross size computes to `auto`, so an `h-full` here would opt
@@ -675,18 +788,63 @@ function WorkerCard({ card }: { card: WorkerCardWire }) {
         "w-[var(--ds-w-session-card)] gap-[var(--ds-space-snug)] p-[var(--ds-space-base)]",
         dsRadius.lg,
         dsSurface.card,
-        card.state === "failed" ? "border-[color:var(--ds-danger-border)]" : dsBorder.base,
+        dsBorder.base,
       )}
     >
       <div className="flex items-center gap-[var(--ds-space-snug)]">
         <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", tone.dot)} />
         <span className={cn(dsText.ui, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>
-          {String(card.workerId)}
+          {workflowLabel}
         </span>
+        {queued > 0 && (
+          <span
+            className={cn(
+              "inline-flex shrink-0 items-center border px-[var(--ds-space-tight)]",
+              "h-[var(--ds-h-xs)] gap-[var(--ds-space-hair)]",
+              dsRadius.sm,
+              dsText.micro,
+              "border-[color:var(--ds-status-queued-border)] text-[color:var(--ds-status-queued-fg)]",
+            )}
+          >
+            <span className={dsText.nums}>{queued}</span> queued
+          </span>
+        )}
         <span className={cn(dsText.caps, "ml-auto shrink-0", tone.text)}>{tone.label}</span>
       </div>
 
-      <SystemChip system={card.system} />
+      {/* The demo's subline. `currentRun` is a served union, so a worker with no
+          run says WHY in the server's own words rather than going blank. */}
+      <span
+        className={cn(
+          dsText.meta,
+          "-mt-[var(--ds-space-tight)] truncate text-[color:var(--ds-fg-muted)]",
+          card.currentRun.state === "present" && dsText.nums,
+        )}
+        title={card.currentRun.state === "present" ? `Run ${String(card.currentRun.runId)}` : undefined}
+      >
+        {card.currentRun.state === "present" ? String(card.currentRun.traceId) : card.currentRun.reason}
+      </span>
+
+      {/* The operator's standing directive, beside the state and never as it —
+          a worker asked to pause finishes its item first. */}
+      {directive !== undefined && (
+        <span className={cn(dsText.micro, capacityChip(true))}>{directive}</span>
+      )}
+
+      {/* An odd last tile spans both columns: a lone half-width tile beside dead
+          space reads as one that failed to render. */}
+      {card.browsers.length > 0 && (
+        <div className="grid grid-cols-2 gap-[var(--ds-space-tight)]">
+          {card.browsers.map((browser, index) => (
+            <BrowserTile
+              key={String(browser.sessionId)}
+              browser={browser}
+              nowIso={nowIso}
+              span={card.browsers.length % 2 === 1 && index === card.browsers.length - 1}
+            />
+          ))}
+        </div>
+      )}
 
       {/*
         THE BASE — pipeline then footer, pinned to the bottom as ONE block
@@ -704,12 +862,6 @@ function WorkerCard({ card }: { card: WorkerCardWire }) {
         on purpose: an idle worker genuinely has less to say than a blocked one.
       */}
       <div className="mt-auto flex flex-col gap-[var(--ds-space-snug)]">
-        {/* The band is reserved and EMPTY. The demo draws the in-flight item's
-            step dots here; `WorkerCardWireSchema` serves no `steps[]`, and dots
-            drawn from nothing would be the worst kind of lie on a panel about
-            what a worker is doing. It fills when the projector's
-            `WorkerCardWireSchema` batch lands (audit ledger, R7-7) — the height
-            is held now so that landing moves no baseline. */}
         <div aria-hidden className={cn("flex shrink-0 items-center", dsSize.hMicroPipeline)} />
         <div
           className={cn(
@@ -720,24 +872,30 @@ function WorkerCard({ card }: { card: WorkerCardWire }) {
           )}
         >
           {/* THE STEP SLOT — hard left, the demo's answer to "what is this
-              worker doing". No `step` is served, so the slot carries the run
-              THIS worker is on: the nearest true statement the wire can make,
-              and `currentRun` is a served union, so a worker with no run says
-              WHY in the server's own words. It becomes the step, and gains the
-              demo's right-aligned elapsed clock and `Stop` verb, with the same
-              `WorkerCardWireSchema` batch (R7-5/7, and R7-4 for `Stop`, whose
-              server half is already complete and waits only on the lease
-              `version` the CAS checks). */}
-          {card.currentRun.state === "present" ? (
-            <span
-              className={cn(dsText.nums, "min-w-0 flex-1 truncate")}
-              title={`Run ${String(card.currentRun.runId)} · trace ${String(card.currentRun.traceId)}`}
-            >
-              {String(card.currentRun.traceId)}
-            </span>
-          ) : (
-            <span className="min-w-0 flex-1 truncate">{card.currentRun.reason}</span>
-          )}
+              worker doing", and EMPTY exactly as the demo leaves it when no
+              step is known (`s.step ?? ""`). Nothing on this wire names the
+              node a worker is inside; the run it is on is stated on the subline
+              above, which is the nearest true statement available. */}
+          <span className="min-w-0 flex-1 truncate" />
+          {/* The clock is dated by the SERVED instant every other elapsed on
+              screen uses, not by a browser `Date.now()` — the demo ticks its own
+              because it has no server; a second, uncalibrated clock here would
+              let this card and the queue row for the same run disagree. */}
+          <span className={cn(dsText.nums, "shrink-0 tabular-nums")}>
+            {elapsed > 0 ? fmtElapsed(elapsed) : "—"}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            disabled={onStop === undefined || !canStopWorker(card)}
+            title={canStopWorker(card)
+              ? `Stop worker ${String(card.workerId)} after its current item (lease version ${String(card.leaseVersion)})`
+              : `Worker ${String(card.workerId)} is already ${card.directive === "stop" ? "stopping" : "settled"}`}
+            onClick={() => onStop?.(card)}
+          >
+            Stop
+          </Button>
         </div>
       </div>
     </article>
@@ -755,12 +913,27 @@ function WorkerCard({ card }: { card: WorkerCardWire }) {
  */
 export function SessionPanel({
   workerCards,
+  workflows,
+  counts,
+  nowIso,
   connection,
   appVersion,
+  onStopWorker,
 }: {
   workerCards: readonly WorkerCardWire[];
+  /**
+   * The bootstrap's own workflow list — the SAME vocabulary the Workflow Panel
+   * and the Run Modal draw from. The card names a workflow by joining this
+   * list rather than by a second served label: two labels for one workflow is
+   * how the panel and the card come to disagree about what a worker is running.
+   */
+  workflows: readonly WorkflowBootstrapPrimitive[];
+  /** D81's one fold — the queued chip's number, never a pass over the rows. */
+  counts: readonly WorkflowCountWire[];
+  nowIso: string;
   connection: SubscriptionState;
   appVersion: string;
+  onStopWorker?: (card: WorkerCardWire) => void;
 }) {
   const [open, setOpen] = useState(false);
   const tallies = useMemo(() => {
@@ -773,14 +946,27 @@ export function SessionPanel({
   /**
    * WHICH workers, not only how many — the demo's chip carries the naming
    * `title` (`DemoShell.tsx:1887`) because a count with no names cannot be
-   * acted on. The demo names each card's WORKFLOW and the lease it waits on;
-   * neither is served here, so the title joins what IS — the worker id and the
-   * state word — rather than inventing the sentence. It grows the demo's
-   * wording with the `WorkerCardWireSchema` batch (R7-1/R7-10).
+   * acted on. Since D248 the sentence can be the demo's own: the card names its
+   * WORKFLOW and the lease says how it ended, so the title reads
+   * `Separations · crashed` rather than a worker id and a state word.
    */
   const attention = useMemo(
-    () => workerCards.filter((card) => card.state === "failed" || card.state === "waiting"),
+    () => workerCards.filter((card) => card.state === "failed"),
     [workerCards],
+  );
+  /**
+   * The workflow's label and its queued count, joined ONCE for every card.
+   * A workflow the bootstrap does not list falls back to its own id — the
+   * honest stand-in, and the only one available: inventing a display name for
+   * an unregistered workflow would name it something no descriptor declares.
+   */
+  const workflowLabels = useMemo(
+    () => new Map(workflows.map((workflow) => [String(workflow.id), workflow.label])),
+    [workflows],
+  );
+  const labelOf = useCallback(
+    (card: WorkerCardWire): string => workflowLabels.get(String(card.workflowId)) ?? String(card.workflowId),
+    [workflowLabels],
   );
   const link = connectionTone(connection);
 
@@ -826,13 +1012,16 @@ export function SessionPanel({
               </span>
             ))}
           </span>
-          {/* Renders only when the count is above zero — honest absence, and
-              today it can never fire at all (see `WORKER_TONE`'s note: the
-              projector emits neither `failed` nor `waiting`). */}
+          {/* Renders only when the count is above zero — honest absence. Since
+              D248 it CAN fire: a worker whose lease settled `crashed` or
+              `lease-expired` is a `failed` card, which is the state this chip
+              was built for and could never receive. */}
           {attention.length > 0 && (
             <span
               title={attention
-                .map((card) => `${String(card.workerId)} is ${WORKER_TONE[card.state].label.toLowerCase()}`)
+                .map((card) => `${labelOf(card)} · ${
+                  card.stopReason === undefined ? "failed" : WORKER_STOP_REASON_LABEL[card.stopReason]
+                }`)
                 .join(" · ")}
               className={capacityChip(true)}
             >
@@ -891,7 +1080,14 @@ export function SessionPanel({
           )}
         >
           {workerCards.map((card) => (
-            <WorkerCard key={String(card.workerId)} card={card} />
+            <WorkerCard
+              key={String(card.workerId)}
+              card={card}
+              workflowLabel={labelOf(card)}
+              queued={statusCount(workflowStatusCounts(counts, String(card.workflowId)), "queued")}
+              nowIso={nowIso}
+              {...(onStopWorker === undefined ? {} : { onStop: onStopWorker })}
+            />
           ))}
         </div>
       )}

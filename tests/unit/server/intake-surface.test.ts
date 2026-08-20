@@ -155,6 +155,8 @@ function surface(): Surface {
     authority: {
       getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: () => [],
+      listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
+      getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),

@@ -1,8 +1,17 @@
 import { z } from "zod";
 import { NotificationRecordSchema } from "../notifications.js";
+/**
+ * The two worker vocabularies are IMPORTED, not mirrored (§8.8's fourth joint
+ * is for copies forced by §8.13). `src/domain/run/worker.ts` value-imports zod
+ * and `src/domain/ids.ts` and nothing else, so it is bundle-safe — unlike
+ * `run/envelope.ts`, which reaches `workflow/checkpoint.js` and is why the
+ * queue's priority enum has to be a copy.
+ */
+import { WorkerDirectiveSchema, WorkerStopReasonSchema } from "../run/worker.js";
 import { ActionDescriptorWireSchema } from "./actions.js";
 import {
   ActorIdSchema,
+  BrowserSessionIdSchema,
   BrowserSystemIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
@@ -608,15 +617,113 @@ export const WorkflowCountWireSchema = z.strictObject({
     });
   }
 });
+/**
+ * ONE browser session a worker currently holds (D248).
+ *
+ * There is no `health` and no `url`, and both absences are the point. Nothing
+ * in this build probes a live session — the only verdict a health field could
+ * carry is the demo's own `unknown` ("never probed"), and a closed enum whose
+ * other five arms nothing can emit is exactly the orphan §8.8 exists to catch.
+ * No span, checkpoint or lease records a page address either, so a `url` would
+ * have to be composed from the system id, which is a plausible-looking value
+ * nobody observed. The tile therefore states what IS known: which system this
+ * session speaks to, and how long it has been open.
+ */
+export const WorkerBrowserWireSchema = z.strictObject({
+  sessionId: BrowserSessionIdSchema,
+  system: BrowserSystemIdSchema,
+  openedAt: IsoInstantSchema,
+});
+
+/**
+ * ONE worker, AS AUTHORITY HOLDS IT (D248).
+ *
+ * The card is the durable worker lease (`src/domain/run/worker.ts`) joined with
+ * the browser sessions its span stream has open. That direction is doc 05 §3's
+ * own sentence — the lease exists partly because *"the Session Panel needs
+ * worker phase without inferring it from whatever rows happen to be claimed"* —
+ * and the projector used to do precisely the inference it names (a claimed row
+ * ⇒ working, anything else ⇒ idle), which is why a live-but-unstarted daemon
+ * read as `idle` and neither a paused nor a crashed worker could appear at all.
+ *
+ * **`state` and `directive` stay separate**, for the reason the durable record
+ * states in its own header: a command writes what the operator ASKED for and
+ * the worker writes what is actually TRUE, so folding a pending `pause` into
+ * the state word would let a card read `Paused` while it is mid-transaction on
+ * a real HR system. Every arm of both has a producer: `starting`/`idle`/
+ * `working` are lifecycle states the worker's own heartbeat reports,
+ * `stopped`/`failed` split the terminal lifecycle by its recorded reason
+ * (`operator`/`shutdown` versus `crashed`/`lease-expired`, the latter written
+ * by the recovery sweep), and `directive` is written only by the
+ * `stop-worker`/`pause-worker`/`resume-worker` commands. The lifecycle's own
+ * `paused` and `stopping` arms are NOT mirrored here: no code path reports
+ * them, so a wire arm for either would be unreachable by construction.
+ *
+ * `leaseVersion` is the lease's row version — the basis a `stop-worker` command
+ * cites. It is distinct from `revision`, which counts the span events folded
+ * for this worker and is a patch cursor, never a CAS token; binding the Stop
+ * control to `revision` would have fabricated the exact fact a version check
+ * exists to check.
+ */
 export const WorkerCardWireSchema = z.strictObject({
   workerId: WorkerIdSchema,
-  system: BrowserSystemIdSchema,
-  state: z.enum(["idle", "working", "waiting", "paused", "failed", "stopped"]),
+  /** The one workflow this worker claims for (doc 05 §3.1) — from the lease, never guessed. */
+  workflowId: WorkflowIdSchema,
+  state: z.enum(["starting", "idle", "working", "stopped", "failed"]),
+  /** What the operator last ASKED of this worker; `run` is the un-directed state. */
+  directive: WorkerDirectiveSchema,
+  startedAt: IsoInstantSchema,
+  /** Present iff the lease is terminal — the instant it settled, never `now`. */
+  endedAt: IsoInstantSchema.optional(),
+  /** Present iff the lease is terminal — the recorded reason, never inferred. */
+  stopReason: WorkerStopReasonSchema.optional(),
   currentRun: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
     z.strictObject({ state: z.literal("present"), runId: RunIdSchema, traceId: TraceIdSchema }),
   ]),
+  browsers: z.array(WorkerBrowserWireSchema),
+  leaseVersion: RowRevisionSchema,
   revision: RowRevisionSchema,
+}).superRefine((card, context) => {
+  const terminal = card.state === "stopped" || card.state === "failed";
+  if (terminal !== (card.endedAt !== undefined)) {
+    context.addIssue({
+      code: "custom",
+      path: ["endedAt"],
+      message: `a ${card.state} worker card must ${terminal ? "carry" : "carry no"} endedAt`,
+    });
+  }
+  if (terminal !== (card.stopReason !== undefined)) {
+    context.addIssue({
+      code: "custom",
+      path: ["stopReason"],
+      message: `a ${card.state} worker card must ${terminal ? "carry" : "carry no"} stopReason`,
+    });
+  }
+  if (card.endedAt !== undefined && Date.parse(card.endedAt) < Date.parse(card.startedAt)) {
+    context.addIssue({ code: "custom", path: ["endedAt"], message: "worker endedAt precedes startedAt" });
+  }
+  // The split IS the fact `failed` adds over `stopped`: a worker that was asked
+  // to stop and a worker whose process died are two different mornings.
+  const crashed = card.stopReason === "crashed" || card.stopReason === "lease-expired";
+  if (card.stopReason !== undefined && crashed !== (card.state === "failed")) {
+    context.addIssue({
+      code: "custom",
+      path: ["stopReason"],
+      message: `stop reason ${card.stopReason} does not belong to a ${card.state} worker card`,
+    });
+  }
+  // A settled lease holds nothing: its process is gone, and its browser
+  // sessions went with it. Tiles on a dead card would be the panel claiming
+  // resources nobody owns.
+  if (terminal && card.browsers.length > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["browsers"],
+      message: `a ${card.state} worker card holds no browser sessions`,
+    });
+  }
+  requireUnique(card.browsers.map(({ sessionId }) => String(sessionId)), "browsers", context);
 });
 /**
  * 2i-B: durable notification row → wire. Severity orders by what the

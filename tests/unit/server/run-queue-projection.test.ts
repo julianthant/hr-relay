@@ -36,6 +36,7 @@ import {
   taskEventsOf,
   traceOf,
   uuidOf,
+  workerLeaseOf,
   type DashboardWorld,
 } from "./helpers/dashboard-harness.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
@@ -230,8 +231,20 @@ describe("THE run/queue projection (D81)", () => {
     }
   });
 
-  it("projects worker cards from worker/browser spans and links the in-flight run", () => {
+  it("projects a worker card from its authority lease, with the sessions its spans hold open", () => {
+    // D248: the lease is the card. The spans supply what the lease cannot —
+    // the browser sessions this worker is holding, and the trace id that joins
+    // it to a queue row.
     const w = world();
+    w.authority.putWorkerLease(workerLeaseOf({
+      lifecycle: {
+        state: "busy",
+        startedAt: instantOffsetOf(0),
+        heartbeatAt: instantOffsetOf(0, 2_000),
+        runId: uuidOf(1),
+      },
+      version: 7,
+    }));
     w.writer.emit({
       t: "span.started", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       workerId: "person-lookup-worker-1", spanPath: "worker/person-lookup/person-lookup-worker-1", name: "person-lookup",
@@ -248,9 +261,93 @@ describe("THE run/queue projection (D81)", () => {
     const day = w.projection.buildDashboardDayWire(DAY);
     assert.equal(day.workerCards.length, 1);
     const card = day.workerCards[0];
-    assert.equal(card.system, "ucpath");
+    assert.equal(card.workflowId, "person-lookup");
     assert.equal(card.state, "working");
+    assert.equal(card.directive, "run");
+    assert.equal(card.startedAt, instantOffsetOf(0));
+    assert.equal(card.endedAt, undefined);
+    // The CAS basis a `stop-worker` cites is the lease's version, never the
+    // span counter beside it (R7-4).
+    assert.equal(card.leaseVersion, 7);
+    assert.notEqual(Number(card.leaseVersion), Number(card.revision));
+    assert.deepEqual(card.browsers, [
+      { sessionId: uuidOf(50), system: "ucpath", openedAt: instantOffsetOf(0) },
+    ]);
     assert.deepEqual(card.currentRun, { state: "present", runId: uuidOf(1), traceId: traceOf(1) });
+  });
+
+  it("closes a browser tile when its session closes, and keeps a dead worker holding nothing", () => {
+    const w = world();
+    w.authority.putWorkerLease(workerLeaseOf());
+    const spanPath = `worker/person-lookup/person-lookup-worker-1/browser:ucpath#${uuidOf(50)}`;
+    w.writer.emit({
+      t: "span.started", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
+      workerId: "person-lookup-worker-1", spanPath: "worker/person-lookup/person-lookup-worker-1", name: "person-lookup",
+    });
+    w.writer.emit({
+      t: "span.started", kind: "browser", ts: w.clock.now().toISOString(), workflow: "person-lookup",
+      workerId: "person-lookup-worker-1", spanPath, parentSpanPath: "worker/person-lookup/person-lookup-worker-1",
+      name: "browser-session:ucpath", system: "ucpath",
+    });
+    assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0].browsers.length, 1);
+
+    // A POISON close still closes: the session ended badly rather than still
+    // being there to act on.
+    w.writer.emit({
+      t: "span.ended", kind: "browser", ts: w.clock.now().toISOString(), workflow: "person-lookup",
+      workerId: "person-lookup-worker-1", spanPath, parentSpanPath: "worker/person-lookup/person-lookup-worker-1",
+      outcome: "failed", errorSummary: "browser session closed as poisoned",
+    });
+    assert.deepEqual(w.projection.buildDashboardDayWire(DAY).workerCards[0].browsers, []);
+  });
+
+  it("splits a settled lease by its recorded reason and serves the terminal facts", () => {
+    const w = world();
+    w.authority.putWorkerLease(workerLeaseOf({
+      workerId: "person-lookup-worker-1",
+      lifecycle: {
+        state: "stopped",
+        startedAt: instantOffsetOf(0),
+        stoppedAt: instantOffsetOf(0, 60_000),
+        reason: "operator",
+      },
+      directive: "stop",
+      version: 4,
+    }));
+    w.authority.putWorkerLease(workerLeaseOf({
+      workerId: "person-lookup-worker-2",
+      lifecycle: {
+        state: "stopped",
+        startedAt: instantOffsetOf(0),
+        stoppedAt: instantOffsetOf(0, 30_000),
+        reason: "crashed",
+      },
+      directive: "stop",
+      version: 9,
+    }));
+    for (const workerId of ["person-lookup-worker-1", "person-lookup-worker-2"]) {
+      w.writer.emit({
+        t: "span.started", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
+        workerId, spanPath: `worker/person-lookup/${workerId}`, name: "person-lookup",
+      });
+      w.writer.emit({
+        t: "span.started", kind: "browser", ts: w.clock.now().toISOString(), workflow: "person-lookup",
+        workerId, spanPath: `worker/person-lookup/${workerId}/browser:ucpath#${uuidOf(51)}`,
+        parentSpanPath: `worker/person-lookup/${workerId}`, name: "browser-session:ucpath", system: "ucpath",
+      });
+    }
+
+    const [stopped, failed] = w.projection.buildDashboardDayWire(DAY).workerCards;
+    assert.equal(stopped.state, "stopped");
+    assert.equal(stopped.stopReason, "operator");
+    assert.equal(stopped.endedAt, instantOffsetOf(0, 60_000));
+    // A worker that was ASKED to stop and one whose process died are two
+    // different mornings — and neither still holds a browser, whatever the
+    // absence of a close event says.
+    assert.equal(failed.state, "failed");
+    assert.equal(failed.stopReason, "crashed");
+    assert.deepEqual(stopped.browsers, []);
+    assert.deepEqual(failed.browsers, []);
   });
 
   it("keeps a re-run node's chip on the CURRENT run attempt when the span path repeats", () => {
@@ -604,8 +701,12 @@ describe("the live exit-run presentation shapes (D123/D124)", () => {
  * none of them had a projection arm pinned before D190.
  */
 describe("the fold arms a moving run reaches (doc 03 §2.2)", () => {
-  /** A worker card exists only once a browser span has named its system. */
+  /**
+   * A worker card is its LEASE (D248); the spans are what it is holding. Both
+   * are seeded here so these arms exercise the join rather than one half.
+   */
   function seedWorkerSpans(w: DashboardWorld, workerId = "person-lookup-worker-1"): void {
+    w.authority.putWorkerLease(workerLeaseOf({ workerId }));
     w.writer.emit({
       t: "span.started", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       workerId, spanPath: `worker/person-lookup/${workerId}`, name: "person-lookup",
@@ -625,7 +726,10 @@ describe("the fold arms a moving run reaches (doc 03 §2.2)", () => {
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     assert.equal(w.projection.queueSurface(uuidOf(1))?.status, "running");
-    assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0].state, "working");
+    assert.deepEqual(
+      w.projection.buildDashboardDayWire(DAY).workerCards[0].currentRun,
+      { state: "present", runId: uuidOf(1), traceId: traceOf(1) },
+    );
 
     w.writer.emit({
       t: "run.requeued", ts: w.clock.now().toISOString(), workflow: "person-lookup",
@@ -642,6 +746,9 @@ describe("the fold arms a moving run reaches (doc 03 §2.2)", () => {
     assert.equal(fold?.requeues, 1);
     assert.equal(fold?.claimedBy, undefined);
 
+    // The run leaves this worker's hands. The PHASE beside it is the lease's
+    // and does not move here — the worker reports that itself, on its own
+    // heartbeat (D248).
     const card = w.projection.buildDashboardDayWire(DAY).workerCards[0];
     assert.equal(card.state, "idle");
     assert.deepEqual(card.currentRun, { state: "absent", reason: "no claimed run" });
@@ -710,32 +817,54 @@ describe("the fold arms a moving run reaches (doc 03 §2.2)", () => {
     assert.equal(idle.state, "idle");
     assert.deepEqual(idle.currentRun, { state: "absent", reason: "no claimed run" });
 
+    // The worker's own span ending does NOT settle the card: a span is an
+    // observation and the lease is the record. The card turns `stopped` when
+    // authority says the lease did (D248) — which is also what carries the
+    // reason and the instant.
     w.writer.emit({
       t: "span.ended", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       workerId: "person-lookup-worker-1", spanPath: "worker/person-lookup/person-lookup-worker-1",
       outcome: "done",
     });
+    assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0].state, "idle");
+
+    w.authority.putWorkerLease(workerLeaseOf({
+      lifecycle: {
+        state: "stopped",
+        startedAt: instantOffsetOf(0),
+        stoppedAt: instantOffsetOf(0, 9_000),
+        reason: "shutdown",
+      },
+      directive: "stop",
+      version: 3,
+    }));
     const stopped = w.projection.buildDashboardDayWire(DAY).workerCards[0];
     assert.equal(stopped.state, "stopped");
+    assert.equal(stopped.stopReason, "shutdown");
     assert.deepEqual(stopped.currentRun, { state: "absent", reason: "worker stopped" });
   });
 
-  it("orders worker cards by id and shows only the workers that named a system", () => {
+  it("orders worker cards by id and draws only the workers AUTHORITY names", () => {
     const w = world();
-    // Deliberately out of order, and one worker that opened no browser span:
-    // a card with no system has nothing to render and is not a card yet.
+    // Deliberately out of order. Worker 3 holds a live lease and has opened no
+    // browser at all — a real card, with an empty tile grid. Worker 4 is the
+    // other direction: spans in the stream, no lease in authority, so it is
+    // NOT a card, because authority is what says a worker exists (D248).
     seedWorkerSpans(w, "person-lookup-worker-2");
     seedWorkerSpans(w, "person-lookup-worker-1");
+    w.authority.putWorkerLease(workerLeaseOf({ workerId: "person-lookup-worker-3" }));
     w.writer.emit({
       t: "span.started", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
-      workerId: "person-lookup-worker-3", spanPath: "worker/person-lookup/person-lookup-worker-3",
+      workerId: "person-lookup-worker-4", spanPath: "worker/person-lookup/person-lookup-worker-4",
       name: "person-lookup",
     });
 
+    const cards = w.projection.buildDashboardDayWire(DAY).workerCards;
     assert.deepEqual(
-      w.projection.buildDashboardDayWire(DAY).workerCards.map(({ workerId }) => workerId),
-      ["person-lookup-worker-1", "person-lookup-worker-2"],
+      cards.map(({ workerId }) => workerId),
+      ["person-lookup-worker-1", "person-lookup-worker-2", "person-lookup-worker-3"],
     );
+    assert.deepEqual(cards[2].browsers, []);
   });
 
   it("refuses a replayed run.queued rather than folding a second identity over the first", () => {

@@ -283,3 +283,36 @@ export function composeCommandRequest(
       };
   }
 }
+
+/**
+ * The Session Panel's `Stop` (D249) — the second family this app composes, and
+ * it takes its own function rather than a branch inside `composeCommandRequest`
+ * for one structural reason: that composer is exhaustive over the SERVED row
+ * action vocabulary and every one of its arms targets a `runId`. A worker
+ * command targets a worker lease, so widening `ActionTarget` to hold either
+ * would make every run-action arm accept a target it can never use.
+ *
+ * There is nothing to refuse here and therefore no refusal arm: the whole
+ * envelope is composed from facts the card already carries, and the two states
+ * where stopping is meaningless (a settled lease, a worker already stopping)
+ * disable the control at the card rather than being discovered after a click
+ * (`canStopWorker`). `expectedVersion` is the lease version the card was drawn
+ * from — the kernel revalidates the lease inside its own transaction and CASes
+ * on what it reads there (doc 05's ratified shape for a required version that
+ * does not itself gate), so this states the operator's basis rather than
+ * claiming to be the check.
+ */
+export function composeStopWorkerCommand(
+  worker: Readonly<{ workerId: string; leaseVersion: number }>,
+  context: Readonly<{ actorId: string; source: string }>,
+): unknown {
+  return {
+    commandId: crypto.randomUUID(),
+    requestedAt: systemClock.now().toISOString(),
+    requestedBy: context.actorId,
+    source: context.source,
+    family: "worker-browser",
+    type: "stop-worker",
+    target: { workerId: worker.workerId, expectedVersion: worker.leaseVersion },
+  };
+}

@@ -74,11 +74,13 @@ import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { sha256Hex } from "../../../domain/sha256.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../events/types.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
+import type { WorkerLeaseRecord } from "../../../domain/run/worker.js";
 import { queueRowActions } from "./queue-row-actions.js";
 import { resolveSubjectTitle } from "./run-subject-title.js";
+import { workerCardOf, type WorkerBrowserFold } from "./worker-cards.js";
 import type { ProjectionRepositories } from "../../../infra/sqlite/authority-database.js";
 import { readEventStreamLinesFrom, type EventStreamFileCursor, type EventStreamLine } from "../../../infra/events/jsonl-streams.js";
-import { nodeIdOfTaskSpanPath } from "../support.js";
+import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../support.js";
 
 /* ── the persisted fold shape (internal, versioned by its own schema hash) ─ */
 
@@ -134,8 +136,15 @@ interface WorkerFold {
   workerId: string;
   startedAt: string;
   endedAt?: string;
-  system?: string;
   currentRunId?: string;
+  /**
+   * D248 — the browser sessions this worker has OPEN, keyed by session id in
+   * the order they started. A close deletes its entry rather than marking it,
+   * because the tile grid states what a worker is holding: a session that has
+   * closed is not one, and keeping the row would grow without bound over a
+   * long-lived worker that opens a fresh session per fresh boundary.
+   */
+  browsers: Map<string, WorkerBrowserFold>;
   eventCount: number;
 }
 
@@ -167,6 +176,15 @@ export interface RunQueueProjectionDeps {
     getRun(runId: string): RunRecord | undefined;
     /** 2i-B: the durable inbox rows the day wire serves. */
     listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
+    /**
+     * D248: the Session Panel's card set. Two reads, because the panel answers
+     * two questions — every worker that EXISTS right now (`listLive`), and the
+     * settled lease behind a worker the retained span stream still names
+     * (`get`). Doc 05 §3 gives the lease this job explicitly, so the projector
+     * no longer infers phase from whichever rows happen to be claimed.
+     */
+    listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
+    getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
     /**
      * D179/D80: whether a version bump has archived this run. Doc 03 §10.1 is
      * explicit that archived rows are excluded ONCE, inside the projection,
@@ -626,13 +644,23 @@ export class RunQueueProjection {
         return { runIds: [event.runId], workerChanged: false };
       }
       if (event.kind === "worker") {
-        this.#workers.set(event.workerId, { workerId: event.workerId, startedAt: event.ts, eventCount: 1 });
+        this.#workers.set(event.workerId, {
+          workerId: event.workerId,
+          startedAt: event.ts,
+          browsers: new Map(),
+          eventCount: 1,
+        });
         return { runIds: [], workerChanged: true };
       }
       const worker = this.#workers.get(event.workerId)
-        ?? { workerId: event.workerId, startedAt: event.ts, eventCount: 0 };
+        ?? { workerId: event.workerId, startedAt: event.ts, browsers: new Map(), eventCount: 0 };
       this.#workers.set(event.workerId, worker);
-      if (event.system !== undefined) worker.system = event.system;
+      // D248: the tile grid's row. A browser span whose identity cannot be read
+      // is a PRODUCER defect — `browserSessionSpanPath` composes both halves on
+      // every emit — so it degrades this projection by name rather than being
+      // folded as a session with a guessed system or id.
+      const session = browserSessionOfSpanPath(event.spanPath, event.system);
+      worker.browsers.set(session.sessionId, { ...session, openedAt: event.ts });
       worker.eventCount += 1;
       return { runIds: [], workerChanged: true };
     }
@@ -698,6 +726,11 @@ export class RunQueueProjection {
     const worker = this.#workers.get(event.workerId);
     if (worker !== undefined) {
       if (event.kind === "worker") worker.endedAt = event.ts;
+      // A closed session is not a browser this worker holds — including a
+      // poison close, which is a session that ended badly rather than one that
+      // is still there to act on (doc 05 §1: closure is OBSERVED, and this is
+      // the observation).
+      else worker.browsers.delete(browserSessionOfSpanPath(event.spanPath).sessionId);
       worker.eventCount += 1;
     }
     return { runIds: [], workerChanged: true };
@@ -1408,20 +1441,43 @@ export class RunQueueProjection {
       byStatus.set(surface.status, (byStatus.get(surface.status) ?? 0) + 1);
     }
 
-    const workerCards = [...this.#workers.values()]
-      .filter((worker) => worker.system !== undefined)
+    /**
+     * D248 — the card set is AUTHORITY's, not the span stream's.
+     *
+     * Every live lease is a card, because a live lease is a worker that exists
+     * whether or not this process has tailed a single one of its spans. A
+     * settled lease is a card only while the span stream still names its
+     * worker: that keeps a crashed worker on screen exactly as long as the
+     * evidence of its run is retained (`pruneEventStreams`), and stops the
+     * panel accumulating one card per worker id ever started, which is the
+     * cardinality a bare listing of the lease table would have.
+     *
+     * A worker the SPANS name and authority does not is deliberately not a
+     * card: authority is what says a worker exists, and drawing one from a
+     * pruned-authority stream would be the panel inventing a daemon.
+     */
+    const leases = new Map<string, WorkerLeaseRecord>();
+    for (const lease of this.#deps.authority.listLiveWorkerLeases()) leases.set(lease.workerId, lease);
+    for (const workerId of this.#workers.keys()) {
+      if (leases.has(workerId)) continue;
+      const settled = this.#deps.authority.getWorkerLease(workerId);
+      if (settled !== undefined) leases.set(workerId, settled);
+    }
+    const workerCards = [...leases.values()]
       .sort((a, b) => a.workerId.localeCompare(b.workerId))
-      .map((worker) => {
-        const currentRow = worker.currentRunId === undefined ? undefined : this.#rows.get(worker.currentRunId);
-        return {
-          workerId: worker.workerId,
-          system: worker.system,
-          state: worker.endedAt !== undefined ? "stopped" : currentRow !== undefined ? "working" : "idle",
-          currentRun: currentRow === undefined
-            ? { state: "absent", reason: worker.endedAt !== undefined ? "worker stopped" : "no claimed run" }
-            : { state: "present", runId: currentRow.queued.runId, traceId: currentRow.queued.traceId },
-          revision: worker.eventCount,
-        };
+      .map((lease) => {
+        const fold = this.#workers.get(lease.workerId);
+        return workerCardOf({
+          lease,
+          fold: fold === undefined
+            ? undefined
+            : {
+              revision: fold.eventCount,
+              ...(fold.currentRunId === undefined ? {} : { currentRunId: fold.currentRunId }),
+              browsers: [...fold.browsers.values()],
+            },
+          resolveTrace: (runId) => this.#rows.get(runId)?.queued.traceId,
+        });
       });
 
     return DashboardDayWireSchema.parse({

@@ -15,6 +15,7 @@ import { localDatePart, manualClock, type TestClock } from "../../../../src/doma
 import { FingerprintSchema } from "../../../../src/domain/ids.js";
 import { NotificationRecordSchema } from "../../../../src/domain/notifications.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/domain/run/record.js";
+import { isLiveWorker, WorkerLeaseRecordSchema, type WorkerLeaseRecord } from "../../../../src/domain/run/worker.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/domain/trust/evidence.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../../src/domain/trust/failure.js";
 import { GateResultRecordSchema, type GateResultRecord } from "../../../../src/domain/gates.js";
@@ -103,6 +104,16 @@ export interface AuthorityFake {
   readonly gateResults: GateResultRecord[];
   listGateResults(runId: string): readonly GateResultRecord[];
   putGateResult(record: unknown): void;
+  /**
+   * D248: the Session Panel's card set. A parsed insert for the same reason
+   * `putGateResult` is one — a fixture may not seed a lease the real
+   * repository would refuse, and the whole point of the card is that it says
+   * what AUTHORITY holds.
+   */
+  readonly workerLeases: Map<string, WorkerLeaseRecord>;
+  listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
+  getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
+  putWorkerLease(record: unknown): void;
 }
 
 export function authorityFake(): AuthorityFake {
@@ -113,6 +124,7 @@ export function authorityFake(): AuthorityFake {
   const receipts = new Map<string, RunEvidenceReceipt>();
   const writeIntents = new Map<string, WriteIntentRecord>();
   const gateResults: GateResultRecord[] = [];
+  const workerLeases = new Map<string, WorkerLeaseRecord>();
   const notifications: NotificationRecord[] = [];
   const checkpointKey = (workflowId: string, itemId: string, nodeId: string): string =>
     `${workflowId}\u0000${itemId}\u0000${nodeId}`;
@@ -136,6 +148,13 @@ export function authorityFake(): AuthorityFake {
     writeIntents,
     getWriteIntent: (writeIntentId) => writeIntents.get(writeIntentId),
     putWriteIntent: (record) => writeIntents.set(record.writeIntentId, record),
+    workerLeases,
+    listLiveWorkerLeases: () => [...workerLeases.values()].filter((lease) => isLiveWorker(lease)),
+    getWorkerLease: (workerId) => workerLeases.get(workerId),
+    putWorkerLease: (record) => {
+      const lease = WorkerLeaseRecordSchema.parse(record);
+      workerLeases.set(lease.workerId, lease);
+    },
     gateResults,
     listGateResults: (runId) => gateResults.filter((record) => record.runId === runId),
     putGateResult: (record) => gateResults.push(GateResultRecordSchema.parse(record)),
@@ -290,6 +309,39 @@ export interface SeedRunInput {
    * skipping it.
    */
   readonly runNumber?: number;
+}
+
+/**
+ * ONE durable worker lease (D248) — the Session Panel's card, at its source.
+ *
+ * Parsed by the real schema, so a seed cannot express a lease the repository
+ * would refuse: a `stopped` lifecycle carrying a `run` directive, a `busy`
+ * state with no run id, or an `updatedAt` before `createdAt` all fail HERE
+ * rather than passing into an assertion about a shape production cannot reach.
+ */
+export function workerLeaseOf(input: Readonly<{
+  workerId?: string;
+  workflow?: string;
+  lifecycle?: unknown;
+  directive?: "run" | "pause" | "stop";
+  version?: number;
+}> = {}): WorkerLeaseRecord {
+  const startedAt = instantOffsetOf(0);
+  return WorkerLeaseRecordSchema.parse({
+    workerId: input.workerId ?? "person-lookup-worker-1",
+    workflow: input.workflow ?? "person-lookup",
+    processId: 4242,
+    leaseGeneration: 1,
+    lifecycle: input.lifecycle ?? { state: "idle", startedAt, heartbeatAt: instantOffsetOf(0, 1_000) },
+    control: {
+      directive: input.directive ?? "run",
+      requestedAt: startedAt,
+      requestedBy: "local-operator",
+    },
+    version: input.version ?? 1,
+    createdAt: startedAt,
+    updatedAt: instantOffsetOf(0, 1_000),
+  });
 }
 
 export function runRecordOf(input: SeedRunInput): RunRecord {

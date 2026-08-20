@@ -344,6 +344,19 @@ The Session Panel shows worker phase, queued count, trace id, current step, brow
 wait reasons, and failure state. It does not show lane or per-system capacity counters. Settings has
 no lane/budget reference page.
 
+**As-built (D248, 2026-08-20).** The panel's card is this section's lease — `workflow`, lifecycle
+phase, the operator's standing directive, the started/stopped instants, the stop reason and the row
+version — joined with the browser sessions the worker's own spans have open. Two items of the list
+above are NOT drawn, each for a producer that does not exist in this platform rather than for a
+surface that was skipped. There are no **wait reasons**: §1 partitions a browser profile per
+`(worker, system, instance, configFingerprint)`, so a second worker opens its own UCPath window
+rather than queueing behind the first, and there is no cross-worker lease to name a holder for.
+And there is no **health** on a tile: nothing probes a live session, so a tile states which system
+its session speaks to and how long it has been open, and reads `Not checked` — which is the honest
+verdict and must never be drawn as a passing one. `stop-worker` and `pause-worker` reach the lease
+from the panel; `spawn-worker` and `refresh`/`reopen-browser` do not, because their process effects
+refuse by name in the dashboard process (this section's live lane owns them).
+
 ---
 
 ## 5. Speed engineering

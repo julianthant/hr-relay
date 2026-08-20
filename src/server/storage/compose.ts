@@ -186,6 +186,8 @@ function rebuildStagedProjections(
         authority: {
           getRun: (runId) => staged.authority.runs.get(runId),
           listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),
+          listLiveWorkerLeases: () => staged.authority.workerLeases.listLive(),
+          getWorkerLease: (workerId) => staged.authority.workerLeases.get(workerId),
           isArchived: (runId) => staged.authority.archivedRuns.isArchived(runId),
           getFailure: (failureId) => staged.authority.failures.get(failureId),
           getReceipt: (runId) => staged.authority.evidenceReceipts.findByRun(runId),
