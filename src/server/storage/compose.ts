@@ -1,5 +1,5 @@
 /**
- * `rebuild:cli storage doctor` and `rebuild:cli storage restore` (doc 03
+ * `cli storage doctor` and `cli storage restore` (doc 03
  * §2.5).
  *
  * `doctor` is the read-only recovery report. It opens NOTHING read-write —

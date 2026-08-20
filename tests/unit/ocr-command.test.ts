@@ -37,7 +37,7 @@ function run(args: readonly string[], file: unknown = SUBMISSION) {
   });
 }
 
-describe("rebuild:cli ocr", () => {
+describe("cli ocr", () => {
   it("lists every form with its field and mandatory counts", () => {
     const { output, exitCode } = run(["forms"]);
     assert.equal(exitCode, 0);

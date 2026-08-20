@@ -1490,7 +1490,7 @@ outcome and serves it on the doctor wire's `service` arm. Two health readings ex
 and say which they are: the bootstrap summary (`storage.backup`) is CHEAP — the newest manifest
 judged by created-at age (bound 45 min = three intervals) and live generation gap, trusting the
 byte verification every manifest received when it was written — while the doctor
-(`GET /api/v1/storage/doctor`, the Settings section's button, and `rebuild:cli storage doctor
+(`GET /api/v1/storage/doctor`, the Settings section's button, and `cli storage doctor
 [--json]`, exit 0 only when authority is healthy AND a verified current backup exists)
 re-verifies backup BYTES on demand; an unparseable manifest reads `missing` on the summary (its
 closed enum's fail-safe arm) and `invalid`, named, on the doctor. Settings itself
@@ -1507,7 +1507,7 @@ this.
 
 #### D181 — the restore command, and the process locks the interlock was always about (2j, 2026-08-09)
 
-**`rebuild:cli storage restore --from <manifest.json>` is live, and the reason it could not have
+**`cli storage restore --from <manifest.json>` is live, and the reason it could not have
 been built earlier is that its precondition did not exist.** `OfflineAuthorityRestoreService` has
 required a one-time `StoppedSystemProof` since Phase 1c, `RecoveryStopProofStore` has refused to
 issue one without a recorded `RecoveryRuntimeLockSnapshot`, and **nothing in production had ever

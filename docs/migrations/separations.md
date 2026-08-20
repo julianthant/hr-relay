@@ -4911,7 +4911,7 @@ is cross-run, cross-attempt replay working exactly as D221 promised it would rem
 Retry `4ee84ac2` (attempt 6) did the same, and additionally replayed `timecard`, `dates` and
 `comparison` from attempt 5's rows after its own gate resume.
 
-`npm run rebuild:cli explain run sp-064758-4ee8 --json` reports it in its own `reuse` section, which
+`npm run cli explain run sp-064758-4ee8 --json` reports it in its own `reuse` section, which
 lists exactly the replayed nodes that carry a declared freshness bound:
 
 ```

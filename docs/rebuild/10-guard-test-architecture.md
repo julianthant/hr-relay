@@ -942,6 +942,15 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   hidden in an uninvoked function is not proof. A shared port, lock, state root, or browser profile
   is a real collision that no repository boundary prevents, so this arm stays hard.
 
+  **D247 (2026-08-20) narrows the COMMAND half to drift only.** The rebuild's launch commands are
+  plain — `cli`, `dashboard`, `dashboard:prod` (and `web`, `web:build`, `web:preview` for the vite
+  half, which are not isolation rows) — and the distinct-NAME check across the two checkouts is
+  retired: the `rebuild:` prefix dated from the plan to grow this runtime inside the legacy tree, and
+  a name is not a resource two processes can collide on. What the guard still holds is that each
+  declared command is byte-exactly the script in its own `package.json` (both checkouts), plus every
+  resource row above. A muscle-memory `npm run dashboard` in the wrong checkout now starts that
+  checkout's dashboard on its own port, under its own roots and locks — legible, and harmless.
+
   **`test-runtime-root-isolation.test.ts` (2026-08-03 — doc 11 §4) covers the other direction: the
   TEST suite mutating a real runtime root.** `operational-isolation` proves the two runtimes bind
   distinct roots; it says nothing about who writes to them. A unit test did — the browser-session

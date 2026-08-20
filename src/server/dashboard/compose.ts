@@ -23,7 +23,7 @@
  *   semantics), but the dashboard process launching browser-worker OS
  *   processes is doc 05's live worker lane (doc 07 assigns the operator
  *   worker-control surface to 2i / the 1i live slice). The refusal names the
- *   real Phase-1 path: `npm run rebuild:cli worker <workflow-id>`;
+ *   real Phase-1 path: `npm run cli worker <workflow-id>`;
  * - `refresh-browser` / `reopen-browser`: reaching a live worker's session set
  *   from this process is the same live-lane work; acknowledging an effect
  *   that did not happen is exactly what the executor refuses to do.
@@ -192,7 +192,7 @@ export function createDashboardWorkerSupervisor(): WorkerProcessSupervisor {
     spawnWorker: (input: Readonly<{ workflowId: string; workerId: string }>): never => {
       throw new Error(
         `the dashboard process does not launch browser workers (doc 05 live lane); start `
-        + `worker ${input.workerId} with: npm run rebuild:cli worker ${input.workflowId}`,
+        + `worker ${input.workerId} with: npm run cli worker ${input.workflowId}`,
       );
     },
   });

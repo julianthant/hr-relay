@@ -334,7 +334,7 @@ or a semantic helper has exactly one copy.
 
 | Item | Kind | Contract id | What it does | Reuse notes |
 |---|---|---|---|---|
-| `extractFormPageTask` | task | `ocr/extract-form-page` (read) | Builds the same extraction instruction a human/CLI operator would get, sends it to the admitted `ocr.extract` provider, and runs the answer through the SAME `admitOcrExtraction` gate every route uses. | Sessionless; a peer of the `rebuild:cli ocr` routes, not a privileged path. A model answering a different field set than the form declares fails admission (`incomplete-extraction`) with the gate's own problem list — nothing here repairs a partial answer. |
+| `extractFormPageTask` | task | `ocr/extract-form-page` (read) | Builds the same extraction instruction a human/CLI operator would get, sends it to the admitted `ocr.extract` provider, and runs the answer through the SAME `admitOcrExtraction` gate every route uses. | Sessionless; a peer of the `cli ocr` routes, not a privileged path. A model answering a different field set than the form declares fails admission (`incomplete-extraction`) with the gate's own problem list — nothing here repairs a partial answer. |
 
 ### `roster` — service store, real
 

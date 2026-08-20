@@ -853,12 +853,12 @@ never approved. `answersFingerprint` digests what was read while excluding who r
 so "two routes agree" is checkable rather than asserted, and confidence is excluded because it is
 the producer's opinion of itself rather than a fact about the page.
 
-**Routes 2 and 3 are usable now**, through `rebuild:cli ocr`:
+**Routes 2 and 3 are usable now**, through `cli ocr`:
 
 ```
-rebuild:cli ocr forms                      which forms exist, and how many fields each demands
-rebuild:cli ocr instruction <form-type>    the exact brief EVERY route receives
-rebuild:cli ocr admit <submission.json>    run the gate; print the record or the problems
+cli ocr forms                      which forms exist, and how many fields each demands
+cli ocr instruction <form-type>    the exact brief EVERY route receives
+cli ocr admit <submission.json>    run the gate; print the record or the problems
 ```
 
 An AI the operator runs in their own terminal reads `instruction`, writes the JSON it describes, and
@@ -965,7 +965,7 @@ catches confidently-wrong Section 1 reads — needs both extractions in hand and
 work above this layer; the grouping arm this section lands is what makes those pairs findable.
 
 **Measured live, 2026-08-08, on the whole real 44-page Xerox scan** (route 2: the stack classified
-page by page, the grouping and gate run through `rebuild:cli ocr`). All 44 pages accounted; **19
+page by page, the grouping and gate run through `cli ocr`). All 44 pages accounted; **19
 subjects complete** — every findable §1+§2 pair paired, including one whose halves sit 21 pages
 apart (Castillo, §1 p19 + §2 p40) — and **6 incomplete flags** that decompose exactly into the
 honest cases: two genuine paper orphans (a §2 with no §1 anywhere; a §1 with no §2), and two people
@@ -1072,7 +1072,7 @@ fan-out. A byte-identical re-read is idempotent, so replaying a submission is sa
 ### 4.8 Phase-2h as-built — stages 1 and 2 of the scanner pipeline (D158)
 
 `src/domain/ocr/stack.ts` lands classification-consumption and grouping;
-`rebuild:cli ocr stack <classified.json> <form-type>` is the operator surface.
+`cli ocr stack <classified.json> <form-type>` is the operator surface.
 
 **Every page lands in exactly one bucket** — a subject, `unidentified`, `otherForms` or `dataless` —
 and `pagesAccounted` must equal `pagesClassified`. That total coverage is the whole point of looking

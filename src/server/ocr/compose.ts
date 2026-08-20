@@ -5,9 +5,9 @@
  * yields the same record. This is how a producer that is NOT the automated
  * provider pipeline reaches it:
  *
- *   rebuild:cli ocr forms                     which forms exist
- *   rebuild:cli ocr instruction <formType>    the exact brief every route gets
- *   rebuild:cli ocr admit <submission.json>   run the gate; print record or problems
+ *   cli ocr forms                     which forms exist
+ *   cli ocr instruction <formType>    the exact brief every route gets
+ *   cli ocr admit <submission.json>   run the gate; print record or problems
  *
  * An AI the operator runs in their own terminal reads `instruction`, writes the
  * JSON it describes, and hands it to `admit`. So does the operator. So, later,
@@ -35,10 +35,10 @@ import { ClassifiedStackSchema, groupStack, reportStack } from "../../domain/ocr
 
 const USAGE = [
   "usage:",
-  "  rebuild:cli ocr forms",
-  "  rebuild:cli ocr instruction <form-type>",
-  "  rebuild:cli ocr admit <submission.json> [--json]",
-  "  rebuild:cli ocr stack <classified.json> <form-type> [--json]",
+  "  cli ocr forms",
+  "  cli ocr instruction <form-type>",
+  "  cli ocr admit <submission.json> [--json]",
+  "  cli ocr stack <classified.json> <form-type> [--json]",
 ].join("\n");
 
 export interface OcrCommandOutcome {

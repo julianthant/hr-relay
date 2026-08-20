@@ -543,7 +543,7 @@ describe("dashboard-composed worker-browser command arms", () => {
         target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
         payload: { workerId: EXECUTOR_WORKER_ID },
       }),
-      /does not launch browser workers .*rebuild:cli worker person-lookup/s,
+      /does not launch browser workers .*cli worker person-lookup/s,
     );
     // A thrown supervisor error unwinds the command: no journal row, no lease.
     assert.equal(harness.database.authority.commands.get(commandId), undefined);

@@ -17,7 +17,7 @@
         "kind": "replaced",
         "milestone": "1f",
         "replacement": "src/server/worker/compose.ts",
-        "differencesAccepted": "Legacy's detached per-workflow daemon — spawned by daemon-registry, owning its own HTTP control surface, lockfile, session and claim loop — is replaced by a FOREGROUND `rebuild:cli worker <workflow-id> [--drain]` process. Control moves off HTTP onto the one idempotent actor-stamped command family plus the authority's own claim leases, and D181's per-role process lock (.tracker-rebuild/locks) replaces the daemon lockfile while additionally refusing a second live holder of a role by name and PID. There is no per-daemon stdout log file: a worker's events reach the operator only through the ONE projection."
+        "differencesAccepted": "Legacy's detached per-workflow daemon — spawned by daemon-registry, owning its own HTTP control surface, lockfile, session and claim loop — is replaced by a FOREGROUND `cli worker <workflow-id> [--drain]` process. Control moves off HTTP onto the one idempotent actor-stamped command family plus the authority's own claim leases, and D181's per-role process lock (.tracker-rebuild/locks) replaces the daemon lockfile while additionally refusing a second live holder of a role by name and PID. There is no per-daemon stdout log file: a worker's events reach the operator only through the ONE projection."
       },
       "ownerMilestone": "1f",
       "verificationEvidence": [
@@ -25,7 +25,7 @@
         "src/server/worker/compose.ts",
         "src/core/runtime-composition.ts",
         "src/infra/sqlite/runtime-process-locks.ts",
-        "npm run rebuild:cli"
+        "npm run cli"
       ],
       "status": "implemented"
     },
@@ -47,7 +47,7 @@
       "verificationEvidence": [
         "legacy-source-present:src/cli.ts",
         "src/core/runtime-composition.ts",
-        "npm run rebuild:cli"
+        "npm run cli"
       ],
       "status": "open"
     },
@@ -224,7 +224,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "No OCR review/approve UI exists. 2h landed the one extraction gate and its CLI (`rebuild:cli ocr forms|instruction|admit|stack`), but the run-detail Review and People tabs render an explicit `not served yet` placeholder (src/dashboard/surfaces/log-panel.tsx). Doc 07 s3.3 states outright that the OCR review UI lands WITH the OCR workflow at orders 3-4, as an expanded-page-to-extracted-text pair."
+        "reason": "No OCR review/approve UI exists. 2h landed the one extraction gate and its CLI (`cli ocr forms|instruction|admit|stack`), but the run-detail Review and People tabs render an explicit `not served yet` placeholder (src/dashboard/surfaces/log-panel.tsx). Doc 07 s3.3 states outright that the OCR review UI lands WITH the OCR workflow at orders 3-4, as an expanded-page-to-extracted-text pair."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -729,7 +729,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "src/server/ocr/compose.ts serves the ONE extraction gate through `rebuild:cli ocr` (D151/D158) but is not routed: there are no /api/v1/ocr/* endpoints. Doc 07 s3.6 puts the OCR review/approve/retry/research/discard routes at orders 3-4, native to the OCR workflow rather than ported as routes."
+        "reason": "src/server/ocr/compose.ts serves the ONE extraction gate through `cli ocr` (D151/D158) but is not routed: there are no /api/v1/ocr/* endpoints. Doc 07 s3.6 puts the OCR review/approve/retry/research/discard routes at orders 3-4, native to the OCR workflow rather than ported as routes."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1353,7 +1353,7 @@
         "legacy-source-present:src/scripts/ops/summarize-run.ts",
         "src/core/evidence-receipt.ts",
         "src/server/explain/explain-run.ts",
-        "npm run rebuild:cli"
+        "npm run cli"
       ],
       "status": "retired"
     },

@@ -23,8 +23,10 @@ import {
  *
  * What a repo boundary does NOT give you: both runtimes still execute on one
  * machine. A shared port, process lock, state root, or Chromium profile is a
- * real collision, and a muscle-memory `npm run dashboard` in the wrong checkout
- * is a real mistake. Those stay gated exactly as hard as before.
+ * real collision. Those stay gated exactly as hard as before. Command NAMES are
+ * not a resource (D247): the rebuild's launch commands are plain `dashboard`,
+ * `dashboard:prod`, `cli`, and what is still pinned is that each declared
+ * command is byte-exactly the script in its own checkout's package.json.
  */
 
 const isolation = isolationJson as unknown as OperationalIsolationContract;
@@ -96,11 +98,10 @@ describe("operational isolation", () => {
     assert.notEqual(isolation.legacy.backendPort, isolation.rebuild.backendPort);
     assert.notEqual(isolation.legacy.frontendPort, isolation.rebuild.frontendPort);
 
-    // Distinct NAMES, not merely distinct repos: `npm run dashboard` must never
-    // be ambiguous between the two checkouts.
-    const names = [...Object.keys(isolation.legacy.commands), ...Object.keys(isolation.rebuild.commands)];
-    assert.equal(new Set(names).size, names.length);
-    assert.equal(Object.keys(isolation.rebuild.commands).every((name) => name.startsWith("rebuild:")), true);
+    // D247: the rebuild's commands are plain and every declared one is audited
+    // for drift against its own checkout's scripts (below) — the NAMES may
+    // coincide with legacy's.
+    assert.deepEqual(Object.keys(isolation.rebuild.commands), ["dashboard", "dashboard:prod", "cli"]);
   });
 
   it("audits the real checkouts on both sides", () => {

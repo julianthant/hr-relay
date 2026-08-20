@@ -35,7 +35,7 @@ where the records they closed were.
 - **Symptom:** the parked-write surface hard-blocks the *present* arm
   (`src/dashboard/surfaces/park-resolve.tsx:422`, `submit()` guards `if (arm !== "absent") return`
   at `:444`) with code `proof-contract-unserved`, and tells the operator to *"resolve this write
-  from the CLI"* (`:285`). **The CLI has no such command.** `npm run rebuild:cli` supports
+  from the CLI"* (`:285`). **The CLI has no such command.** `npm run cli` supports
   `help | phase | dashboard | worker | explain | ocr | storage`; there is no run-mutation
   subcommand at all, and `POST /api/v1/commands` is the only mutation door in the system.
 - **Consequence:** a fenced write that DID land can be recorded as absent (wrong, and durable) or

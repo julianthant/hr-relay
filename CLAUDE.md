@@ -56,7 +56,7 @@ the one surface whose job is to explain a run (D187). All four are fixed.
 half (doc 12 §5.3, **D186**) is REASSIGNED on D79a's own argument one level down — an editor exists
 to avoid a code change per tweak across many workflows and this tree has one, so its closed policy
 union would be shaped by a sample of one; the trigger that ends the deferral is named. And the
-production BFF **serves no frontend bytes** (doc 13 §6.9, **D189**), so `rebuild:dashboard:prod`
+production BFF **serves no frontend bytes** (doc 13 §6.9, **D189**), so `dashboard:prod`
 names a mode the runtime never parsed and 2i-F's token-scoped phone capture surface has no delivery
 path — deferred because those bytes would ride the one internet-exposed path behind the Host gate,
 and because the tunnel launcher is unbuilt anyway. Neither is a waiver; both name an owner.
@@ -118,8 +118,10 @@ npm run test:watch
 npm run test:parity        # doc 13 §7 visual/a11y parity lane — builds the bundle, ASSERTS every reference
 npm run test:parity:update # the ONE deliberate way to re-freeze a reference (PARITY_UPDATE=1)
 
-npm run rebuild:cli        # the isolated rebuild runtime (help | phase | dashboard | worker | explain)
-npm run rebuild:dashboard  # reserved — lands with the 1g-spine BFF
+npm run cli               # the runtime CLI (help | phase | dashboard | worker | explain | storage | ocr)
+npm run dashboard         # the BFF on port 3938 (dashboard:prod — see D189, the prod mode is unbuilt)
+npm run web               # the vite dev server on port 5174, proxying /api to the BFF
+npm run web:build         # production bundle into dist/dashboard (test:parity builds this itself)
 
 npm run build:manifest     # regenerate src/domain/workflow/generated-build-manifest.ts
 ```
@@ -131,8 +133,9 @@ red gate, not a silent drift.
 
 The gate family is deliberately plain (`typecheck`/`lint`/`test:coverage`, D191 — `test:coverage` is
 a strict superset of the earlier `test`+`test:architecture` pair and measured faster); the old
-`*:rebuild` names retired with D93. The **runtime** commands stay `rebuild:`-prefixed on purpose —
-see "Operational isolation" below.
+`*:rebuild` names retired with D93 and the `rebuild:` runtime prefix with D247 (2026-08-20) — this is
+its own repository, so its commands are plain `cli` / `dashboard` / `web`. See "Operational
+isolation" below for what still MUST differ from the legacy checkout.
 
 ## What lives where
 
@@ -233,10 +236,11 @@ pins what must differ, and `operational-isolation.test.ts` proves it:
 | backend / frontend port   | 3838 / 5173                                      | 3938 / 5174                                                  |
 | process locks             | `.tracker/daemons`                               | `.tracker-rebuild/locks`                                     |
 | browser profile / session | `.auth` / `hrauto-legacy`                        | `.auth` / `hrauto-rebuild` (D216 — roots are repo-relative and never collide; the SESSION namespace is the distinct half) |
-| launch commands           | `dashboard`, `dashboard:prod`, `dashboard:watch` | `rebuild:dashboard`, `rebuild:dashboard:prod`, `rebuild:cli` |
+| launch commands           | `dashboard`, `dashboard:prod`, `dashboard:watch` | `dashboard`, `dashboard:prod`, `cli` (D247 — names may coincide; each must be byte-exactly its declared script) |
 
-The runtime command names stay distinct across both repos so a muscle-memory `npm run dashboard` in
-the wrong checkout can never start the wrong runtime. Isolation values reach the runtime through one
+Command NAMES are not an isolation resource (D247): a muscle-memory `npm run dashboard` in the wrong
+checkout starts that checkout's dashboard on its own port under its own roots and locks, which the
+rows above make legible and harmless. Isolation values reach the runtime through one
 exported direct-`const` `defineRuntimeIsolation` call that a composition root invokes at top level —
 an identifier mention, or a call inside an uninvoked function, is not proof.
 

@@ -365,7 +365,7 @@ browser-reachable and drops `node:crypto`/`node:path` for `sha256Hex` and a two-
 
 ### D143 — `explain run` and the receipt are one derivation
 
-`rebuild:cli explain run <traceId|runId> [--json]` resolves either identity and prints §2.5's
+`cli explain run <traceId|runId> [--json]` resolves either identity and prints §2.5's
 sections in §2.5's order. For a settled run it derives the SAME receipt the dashboard serves, so a
 terminal explanation and a terminal receipt cannot disagree. Every section an operator could misread
 as "nothing happened" says why instead. `--bundle` **refuses**: exporting a diagnostic package

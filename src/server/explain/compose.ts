@@ -32,7 +32,7 @@ export interface ExplainComposeInput {
   readonly clock?: Clock;
 }
 
-const SUBJECT_HELP = "usage: rebuild:cli explain run <traceId|runId> [--json] [--bundle <dir>]";
+const SUBJECT_HELP = "usage: cli explain run <traceId|runId> [--json] [--bundle <dir>]";
 
 export function composeExplainRuntime(input: ExplainComposeInput): string {
   const [subject, identity, ...flags] = input.args;

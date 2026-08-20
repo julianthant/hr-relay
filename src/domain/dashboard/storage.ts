@@ -1,6 +1,6 @@
 /**
  * The storage doctor wire (doc 03 §2.5, 2i-D): the read-only recovery report
- * the Settings surface and `rebuild:cli storage doctor` both render.
+ * the Settings surface and `cli storage doctor` both render.
  *
  * This is a browser-safe PROJECTION of `src/infra/sqlite/recovery-contracts.ts`
  * — the infra schemas pin literals (application id, current schema version)

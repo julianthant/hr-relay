@@ -347,18 +347,17 @@ function validateDistinctResources(
   if (contract.legacy.frontendPort === contract.rebuild.frontendPort) {
     addViolation(output, "runtime-binding", repoRoot, contractFile, "frontendPort must differ between the two runtimes");
   }
-  const names = [...Object.keys(contract.legacy.commands), ...Object.keys(contract.rebuild.commands)];
-  if (new Set(names).size !== names.length) {
-    addViolation(output, "runtime-binding", repoRoot, contractFile, "runtime command names must be distinct across both runtimes");
-  }
+  // D247: command NAMES are not an isolation resource; each declared command
+  // is still audited byte-exactly against its own checkout's scripts.
   return output;
 }
 
 /**
  * Audits THIS repo's rebuild runtime binding plus the cross-runtime resource
  * distinctness the machine still needs. `legacyScripts` is the legacy repo's
- * own `package.json` scripts map — the launch commands must stay distinct and
- * exact on both sides, which is only checkable with both in hand.
+ * own `package.json` scripts map — the declared launch commands must stay
+ * exact on both sides (D247: exact, not distinct), which is only checkable with
+ * both in hand.
  */
 export function auditOperationalIsolation(
   repoRoot: string,

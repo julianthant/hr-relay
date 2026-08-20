@@ -167,7 +167,7 @@ describe("Phase 1f Person Lookup task implementations", () => {
         // The normalization service store (D165) lands before any descriptor
         // consumes it.
         "normalization/read-contact-advice",
-        // Route 1 of D151; a peer of the `rebuild:cli ocr` routes, not a
+        // Route 1 of D151; a peer of the `cli ocr` routes, not a
         // privileged path.
         "ocr/extract-form-page",
         // The roster service store (D163) lands before any descriptor consumes it.

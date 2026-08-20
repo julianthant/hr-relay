@@ -8,7 +8,7 @@
  * whose arm resolves an empty file set: it reads as coverage and cannot fail.
  *
  * The fix is a build stamp. `ensureParityBundle` builds through the repo's own
- * `rebuild:dashboard:web:build` script whenever the stamp does not match, and
+ * `web:build` script whenever the stamp does not match, and
  * every server that serves the bundle calls `assertParityBundleIsCurrent`
  * first, so a stale or hand-edited `dist/dashboard` FAILS LOUD instead of being
  * served. The stamp binds two digests:
@@ -33,7 +33,7 @@ export const PARITY_REPO_ROOT = resolve(import.meta.dirname, "../../..");
 export const PARITY_DIST_DIR = join(PARITY_REPO_ROOT, "dist", "dashboard");
 
 /** The repo's own build script; the lane never reimplements it. */
-export const PARITY_BUILD_SCRIPT = "rebuild:dashboard:web:build";
+export const PARITY_BUILD_SCRIPT = "web:build";
 
 /** Written into the built bundle, and excluded from the output digest. */
 export const PARITY_BUNDLE_STAMP_FILE = "parity-build-stamp.json";

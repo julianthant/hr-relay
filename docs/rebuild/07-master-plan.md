@@ -617,7 +617,7 @@ protocol is unchanged by it.
     snapshot its stopped-system proof is derived from. Measured numbers: doc 03 §2.5 D181.
 - **NAMED GAP carried out of Phase 2, not met-by-silence (2j, D189): the production BFF serves no
   frontend bytes.** `http-server.ts` has no static handler and `api.ts` 404s every unrouted path, so
-  `npm run rebuild:dashboard:prod` names a mode the runtime never parses and **2i-F's token-scoped
+  `npm run dashboard:prod` names a mode the runtime never parses and **2i-F's token-scoped
   phone capture surface has no delivery path in production** — `/capture.html` is allow-listed by
   the Host gate and nothing serves it. Nothing else regresses: the operator's working path has
   always been the Vite dev server on 5174 beside the BFF on 3938. It is deferred deliberately —

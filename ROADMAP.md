@@ -379,7 +379,7 @@ built unless you ask.
 | X — what you'd want to do | Y — what's deferred | Decision | Comes due |
 |---|---|---|---|
 | Photograph a paper form on your phone → it becomes an OCR-backed run (legacy: QR + ngrok capture) | Capture→workflow binding (`CAPTURE_INTAKE_BINDINGS` is deliberately empty — neither current workflow can honestly derive its input from a photo) | D174/D175 | Orders 3–4 (ocr pipeline, oath-signature, emergency-contact) — a test asserting the empty map fails the day a binding lands |
-| Use the phone page in production / run the dashboard without the dev server | BFF static byte serving + tunnel launcher (`rebuild:dashboard:prod` names a mode nothing parses) | **D189** | First migration needing the phone in production; explicitly named a **cutover blocker** |
+| Use the phone page in production / run the dashboard without the dev server | BFF static byte serving + tunnel launcher (`dashboard:prod` names a mode nothing parses) | **D189** | First migration needing the phone in production; explicitly named a **cutover blocker** |
 | See a capture-started run on the queue instantly | `run.queued` span from projector-enqueued runs | 2i-F note | Same day the capture binding lands ("close this first") |
 | Edit a workflow's presentation/policy without a code change (legacy: n8n-style graph editor) | Workflow Explorer **edit half** (Phase B) | D186 | The **second** production workflow whose policy an operator wants to change — an editor shaped by a sample of one would be wrong |
 | Get a record-sanity-check advisory panel (legacy had one; run summary and selector suggestion are **retired**, D192 — the receipt/explain surface and the deterministic catalog already cover them) | The record-sanity-check advisory arm — deterministic schema/rule issues stay authoritative, model issues are separately-labelled suggestions | D178/D192 | Order 8 (separations) — renders as prose beside the doc 09 §14 ALWAYS-GATE identity approval |
@@ -446,12 +446,12 @@ new-kronos, old-kronos, sharepoint — declaration-only in the rebuild).
 ## 7 · Verify any of this yourself
 
 ```bash
-npm run rebuild:cli phase        # completedThrough 2j · active 3-workflow-migration
+npm run cli phase        # completedThrough 2j · active 3-workflow-migration
 npm run typecheck && npm run lint && npm run test:coverage   # the per-commit gate (D191)
 npm run test                     # 1998 across 209 files (verified green 2026-08-16)
 npm run test:architecture        # the 61-guard suite — available for a targeted run
 npm run test:parity              # 147/147 in ASSERT mode
-npm run rebuild:cli storage doctor
+npm run cli storage doctor
 git log --oneline master         # D194–D221 landed 2026-08-12 → 2026-08-15, never pushed
 ```
 
