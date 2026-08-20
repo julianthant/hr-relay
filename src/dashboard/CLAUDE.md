@@ -43,3 +43,21 @@ npm run web         # the vite dev server (port 5174) proxying /api to the BFF
 npm run web:build   # production bundle into dist/dashboard (the parity lane builds this itself)
 npm run test:parity # doc 13 §7 visual/a11y parity lane
 ```
+
+## Lessons learned
+
+- **2026-08-20: a fact the browser bundle already carries does not need a wire, and booking one as
+  "unserved" invents backend work nobody owes (D251).** Three run-modal rows sat on the detail-audit
+  ledger as wire gaps — the workflow's own sentence, its active-run policy, and the reason an
+  unstartable workflow is not offered. All three were already reachable: `surfaces/run-start.tsx`
+  composes its catalogue from `WORKFLOW_DESCRIPTORS`, and `summary`, `enqueue` and `surfaces.inputRun`
+  are plain data on `AnyWorkflowDescriptor`. Serving them a second time over the bootstrap would give
+  one surface two sources for one value, which doc 13 §8.2 already forbids. The unstartable reason was
+  worse than unserved: `dashboard-app.tsx` had been composing it since the picker landed and the
+  surface dropped it, under a comment claiming the tree served none — **a false deferral comment is
+  the same defect as a missing feed, and it is the harder one to find, because it tells the next
+  reader not to look.** Two rules travel. Before booking a wire row, check whether the descriptor
+  bundle answers it. And when a demo control has no server that would honour it — the demo's
+  `Active-run policy` select against a `descriptor.enqueue` the planner reads with no per-start
+  override — draw the FACT read-only in the control's slot rather than the control: an operator choice
+  the server ignores is a wrong value about what is being started.
