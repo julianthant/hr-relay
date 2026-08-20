@@ -351,6 +351,77 @@ export const BulkRunCommandRequestSchema = z.strictObject({
   mode: z.enum(["all-or-none", "best-effort"]),
 });
 
+/**
+ * D235 — what ONE target's child command settled as. A bulk request is N real
+ * CAS-bound transitions, so it answers with N outcomes and never with a count.
+ *
+ * The vocabulary is the single-command vocabulary, deliberately: `conflict`
+ * carries the server's `currentVersion` because that is the only number that
+ * tells an operator to refresh, and `refused` carries the SAME
+ * `CommandRejectionCode` a single `POST /api/v1/commands` would have answered
+ * with. A fourth arm, `errored`, exists because a child can raise a structured
+ * error the kernel does not type (a broken journal, an inconsistent authority);
+ * collapsing that into `refused` would put a code nobody computed onto a real
+ * HR record, and dropping it would hide the fact that the targets after it were
+ * never attempted.
+ */
+export const BulkRunCommandOutcomeSchema = z.discriminatedUnion("outcome", [
+  z.strictObject({
+    outcome: z.literal("applied"),
+    runId: RunIdSchema,
+    /** the CHILD command's own id — derived, so a re-delivered bulk replays it */
+    commandId: CommandIdSchema,
+    /** true when the child was already journaled and the kernel replayed it */
+    replayed: z.boolean(),
+    detail: z.string().min(1),
+  }),
+  z.strictObject({
+    outcome: z.literal("conflict"),
+    runId: RunIdSchema,
+    commandId: CommandIdSchema,
+    currentVersion: PositiveIntSchema,
+    detail: z.string().min(1),
+  }),
+  z.strictObject({
+    outcome: z.literal("refused"),
+    runId: RunIdSchema,
+    commandId: CommandIdSchema,
+    code: CommandRejectionCodeSchema,
+    detail: z.string().min(1),
+  }),
+  z.strictObject({
+    outcome: z.literal("errored"),
+    runId: RunIdSchema,
+    commandId: CommandIdSchema,
+    detail: z.string().min(1),
+  }),
+]);
+
+/**
+ * D235 — the bulk response. `vector` is the complete per-run result; `refused`
+ * is a whole-request refusal that reached no target at all (a malformed
+ * request, an empty target set, a mode this runtime does not execute).
+ *
+ * `requestedCount` is on the wire rather than derived from `results.length`
+ * precisely so a stopped run — an `errored` child ends the pass — is legible:
+ * `results.length < requestedCount` means the remainder was NOT attempted, and
+ * the surface says so instead of implying the vector is whole.
+ */
+export const BulkRunCommandResponseSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("vector"),
+    bulkCommandId: CommandIdSchema,
+    type: z.enum(["retry", "cancel", "bump"]),
+    requestedCount: PositiveIntSchema,
+    results: z.array(BulkRunCommandOutcomeSchema).min(1),
+  }),
+  z.strictObject({
+    state: z.literal("refused"),
+    code: CommandRejectionCodeSchema,
+    message: z.string().min(1),
+  }),
+]);
+
 export const CommandFamilySpecSchema = z.strictObject({
   family: CommandFamilySchema,
   actions: z.array(CommandActionSchema).min(1),
@@ -403,3 +474,6 @@ export type CommandRequest = z.infer<typeof CommandRequestSchema>;
 export type CommandResult = z.infer<typeof CommandResultSchema>;
 export type CommandAuditRecord = z.infer<typeof CommandAuditRecordSchema>;
 export type RunDisplayName = z.infer<typeof RunDisplayNameSchema>;
+export type BulkRunCommandRequest = z.infer<typeof BulkRunCommandRequestSchema>;
+export type BulkRunCommandOutcome = z.infer<typeof BulkRunCommandOutcomeSchema>;
+export type BulkRunCommandResponse = z.infer<typeof BulkRunCommandResponseSchema>;

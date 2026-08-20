@@ -115,14 +115,10 @@ archived runs"**.
 
 ---
 
-## The bulk band's refusal copy states a false reason
+## ~~The bulk band's refusal copy states a false reason~~ — CLOSED 2026-08-19 (D235)
 
-**Recorded:** 2026-08-19 · **Status:** diagnosed — trivially fixable, actively misleading ·
-**Owning doc:** doc 03
-
-- `src/dashboard/surfaces/queue-toolbar.tsx:194` tells the operator *"No command is served for a
-  queue row yet, so nothing can be applied to a selection,"* and the file header (`:32-40`) asserts
-  `QueueSurfaceWire` has no `actions` field. Both were true on 2026-08-14 and are now false:
-  `domain/dashboard/projection.ts:206` has the field and `run-queue-projection.ts:1054` populates it.
-- The selection UI (checkboxes, select-all, count) works; only the bulk ACTIONS were never rewired.
-  The honest current reason is "no bulk arm is built", not "no row command exists".
+The false copy is gone because the thing it apologized for now exists: the bulk strip composes
+Cancel/Retry from the intersection of the selection's own served `actions[]`, warns first, and the
+result-vector band reports run by run. Normative text: doc 03 §"D235 — a bulk command is N children
+and one vector". Server: `POST /api/v1/commands/bulk`, N derived-id children through the one command
+path. Pinned by `tests/unit/dashboard/bulk-dispatch.test.ts` and `bff-flow.test.ts`'s D235 case.

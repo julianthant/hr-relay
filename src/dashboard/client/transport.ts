@@ -65,6 +65,9 @@ export function createDashboardTransport(input: Readonly<{
   const baseUrl = input.baseUrl.replace(/\/$/, "");
   const fetchImpl: FetchLike = input.fetchImpl ?? ((url, init) => fetch(url, init));
 
+  /** The two mutation doors whose refusals are typed BODIES, not wire errors. */
+  const COMMAND_PATHS: ReadonlySet<string> = new Set(["/api/v1/commands", "/api/v1/commands/bulk"]);
+
   const send = async (path: string, init?: RequestInit): Promise<JsonResponse> => {
     let response: Response;
     try {
@@ -85,8 +88,10 @@ export function createDashboardTransport(input: Readonly<{
     async requestJson(path: string, init?: RequestInit): Promise<unknown> {
       const response = await send(path, init);
       // Command results legitimately ride 409/422 with a typed body; every
-      // other non-2xx is the wire-error contract.
-      if (!response.ok && path !== "/api/v1/commands") throw httpError(response.status, response.body);
+      // other non-2xx is the wire-error contract. The bulk door (D235) is on
+      // the same footing for the same reason: its whole-request refusal rides
+      // 422 with the vocabulary the operator has to read.
+      if (!response.ok && !COMMAND_PATHS.has(path)) throw httpError(response.status, response.body);
       return response.body;
     },
 

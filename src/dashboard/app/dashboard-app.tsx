@@ -41,6 +41,7 @@ import { defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel-mod
 import { QueuePanel, type QueueFilterScope, type QueueViewState } from "../surfaces/queue.js";
 import {
   attentionRunIds,
+  queueRowTitle,
   visibleRunIds,
   type QueueSortKey,
   type QueueSurfaceWire,
@@ -50,7 +51,18 @@ import { RenameRunDialog, type PendingRename } from "../surfaces/run-identity.js
 import { composeCommandRequest, type CommandAction } from "./command-dispatch.js";
 import { useGlobalKeys } from "./global-keys.js";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/status-model.js";
-import { QueueToolbar } from "../surfaces/queue-toolbar.js";
+import {
+  ConfirmBulkCommandDialog,
+  QueueToolbar,
+  type PendingBulkCommand,
+} from "../surfaces/queue-toolbar.js";
+import {
+  bulkSubjectsOf,
+  composeBulkRunCommand,
+  planBulkVerbs,
+  type BulkBatchOutcome,
+  type BulkVerbPlan,
+} from "./bulk-dispatch.js";
 import { RunStartButton, RunStartSurfaces, type RunStartWorkflow } from "../surfaces/run-start.js";
 import {
   SessionPanel,
@@ -315,6 +327,14 @@ function LoadedApp({
   const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null);
   /** the run whose name is being edited (D233); `null` while the dialog is shut */
   const [pendingRename, setPendingRename] = useState<PendingRename | null>(null);
+  /**
+   * D235's two pieces of bulk state. The batch waiting on the warn-first
+   * confirm, and the LAST batch's whole answer — which stays on screen until it
+   * is dismissed, because a partial result that auto-dismisses is a partial
+   * result nobody read.
+   */
+  const [pendingBulk, setPendingBulk] = useState<PendingBulkCommand | null>(null);
+  const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(null);
   const client = useDashboardClient();
   const { toast } = useToasts();
 
@@ -496,6 +516,30 @@ function LoadedApp({
   );
 
   /**
+   * D235 — WHAT THE SELECTION CAN DO, from the rows' OWN served descriptors.
+   *
+   * The rows are taken from `surfaces` and not from `bulkIds` alone: an id in
+   * the selection whose row has left the day (a filter changed, the day rolled)
+   * has no served `actions[]`, so nothing may be sent for it, and it silently
+   * drops out of every plan rather than being sent against a version nobody
+   * currently serves.
+   */
+  const bulkPlans = useMemo(() => {
+    if (!selectMode || bulkIds.size === 0) return [];
+    const rows = surfaces
+      .filter((surface) => bulkIds.has(String(surface.runId)))
+      .map((surface) => ({
+        runId: String(surface.runId),
+        // The SAME `displayName ?? title` fold the row itself draws, shared
+        // rather than repeated: a confirm dialog naming a run something other
+        // than the row above it is a dialog about a different run.
+        title: queueRowTitle(surface),
+        actions: surface.actions,
+      }));
+    return planBulkVerbs(rows);
+  }, [selectMode, bulkIds, surfaces]);
+
+  /**
    * THE ONE PLACE A SERVED CONTROL BECOMES A COMMAND (R8 finding 4, R5 finding
    * 8). Every surface hands back the descriptor and its target; nothing below
    * this line knows what a command envelope is.
@@ -561,6 +605,56 @@ function LoadedApp({
       );
     },
     [boot.actor.id, client, sections, toast],
+  );
+
+  /**
+   * D235 — THE ONE PLACE A BULK PLAN BECOMES A POST, and the mirror of
+   * `dispatchCommand` one level up: `composeBulkRunCommand` may REFUSE (an
+   * empty eligible set is the honest one), and a refusal is reported rather
+   * than swallowed.
+   *
+   * What it does NOT do is collapse the answer. `conflict` and `refused` are
+   * per-run values here exactly as they are per-command above, and every one of
+   * them goes into the band — the toast says only that the batch has answered,
+   * because a toast cannot carry a vector and doc 03 §2.4 forbids reducing one
+   * to a word.
+   */
+  const dispatchBulk = useCallback(
+    (plan: BulkVerbPlan): void => {
+      const composed = composeBulkRunCommand(plan, { actorId: boot.actor.id, source: "queue" });
+      if (composed.state === "refused") {
+        toast({ tone: "danger", title: "Nothing was sent", description: composed.reason });
+        return;
+      }
+      const subjects = bulkSubjectsOf(plan);
+      client.executeBulkCommand(composed.request).then(
+        (response) => {
+          setBulkOutcome({ plan, subjects, response });
+          if (response.state === "refused") {
+            toast({ tone: "danger", title: "Nothing was recorded", description: response.message });
+            return;
+          }
+          const applied = response.results.filter((entry) => entry.outcome === "applied").length;
+          // The toast POINTS AT the band; it never states the outcome, because
+          // "3 of 4 applied" read alone is the summary this surface exists to
+          // refuse. The band below it holds every run's own answer.
+          toast({
+            tone: applied === response.results.length && applied === response.requestedCount ? "success" : "danger",
+            title: `${plan.label} — ${String(response.results.length)} of ${String(response.requestedCount)} answered`,
+            description: "Each run's own outcome is listed under the selection bar.",
+          });
+          setDetailNonce((nonce) => nonce + 1);
+        },
+        (caught: unknown) => {
+          toast({
+            tone: "danger",
+            title: "Nothing was recorded",
+            description: caught instanceof Error ? caught.message : String(caught),
+          });
+        },
+      );
+    },
+    [boot.actor.id, client, toast],
   );
 
   /**
@@ -953,6 +1047,11 @@ function LoadedApp({
             visibleIds={selectableIds}
             onSelectAll={() => onBulkIds(new Set(selectableIds))}
             onClearSelection={() => onBulkIds(new Set())}
+            bulkPlans={bulkPlans}
+            onBulk={(plan) => setPendingBulk({ plan })}
+            bulkOutcome={bulkOutcome}
+            onDismissBulkOutcome={() => setBulkOutcome(null)}
+            onSelectRun={selectRun}
             leading={
               <WorkflowPanelToggle
                 mode={panelMode.mode}
@@ -1191,6 +1290,20 @@ function LoadedApp({
         onConfirm={(confirmed, name) => {
           setPendingRename(null);
           dispatchCommand(confirmed.action, confirmed.target, { renameAnswer: name });
+        }}
+      />
+
+      {/* A BATCH WARNS FIRST (D235). The single-row confirm routes on a
+          server-authored `confirm` block; a batch has no such block to route on
+          — its blast radius is a fact about the SELECTION — so every bulk press
+          asks, without exception, and the sentence names the count and states
+          that each row is its own CAS-bound transition. */}
+      <ConfirmBulkCommandDialog
+        pending={pendingBulk}
+        onCancel={() => setPendingBulk(null)}
+        onConfirm={(confirmed) => {
+          setPendingBulk(null);
+          dispatchBulk(confirmed.plan);
         }}
       />
     </div>

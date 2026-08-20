@@ -26,12 +26,30 @@
  * No transport concern reaches the kernel: this service takes the already
  * schema-recognized command envelope as `unknown` and the kernel does its own
  * exhaustive parse.
+ *
+ * 5. D235's BULK arm, which is this same path executed N times. A bulk request
+ *    is N real CAS-bound transitions and it is composed as N child commands —
+ *    NOT as one transaction spanning every target, and not as a second command
+ *    path. Two consequences fall out and both are the point: a child's outcome
+ *    is settled by the SAME kernel arm a single press would have reached, so
+ *    the refusal vocabulary cannot fork; and a retry in the batch gets its
+ *    `run.queued` span from step 4 above, which is the reason the loop runs
+ *    through this service and never through the kernel directly.
  */
 import { z } from "zod";
 import { workflowPlanning, type AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import type { Clock } from "../../../domain/clock.js";
-import { CommandRequestSchema, type CommandResult } from "../../../domain/commands.js";
+import {
+  BulkRunCommandRequestSchema,
+  BulkRunCommandResponseSchema,
+  CommandRequestSchema,
+  type BulkRunCommandOutcome,
+  type BulkRunCommandResponse,
+  type CommandResult,
+} from "../../../domain/commands.js";
+import { deriveStableUuid } from "../../../domain/identifiers.js";
+import { CommandIdSchema } from "../../../domain/ids.js";
 import type { IntakePlanManifest } from "../../../domain/intake/manifest.js";
 import type { IntakeSession } from "../../../domain/intake/session.js";
 import { sha256Hex } from "../../../domain/sha256.js";
@@ -41,6 +59,7 @@ import type { CommandKernel } from "../../../core/command-kernel.js";
 import { runSpanPath } from "../../../core/span-emitter.js";
 import type { SpanJsonlWriter } from "../../../infra/events/span-jsonl-writer.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
+import { errorText } from "../support.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
@@ -58,6 +77,27 @@ export interface DashboardCommandServiceDeps {
 
 export interface DashboardCommandService {
   execute(input: unknown): CommandResult;
+  /**
+   * D235: `BulkRunCommandRequest` in, the complete per-run vector out. It never
+   * throws for a target's own outcome — a refusal, a conflict and an untyped
+   * error are all VALUES the operator has to read — and it never answers with a
+   * count.
+   */
+  executeBulk(input: unknown): BulkRunCommandResponse;
+}
+
+/**
+ * D235: a child command's id is DERIVED from the bulk id and the run it names,
+ * so re-delivering one bulk request replays exactly the same N children rather
+ * than filing N new ones. `ids.uuid()` would satisfy the type and break that
+ * sentence — D174's lesson, one family over.
+ */
+const BULK_CHILD_COMMAND_NAMESPACE = "hrauto:bulk-run-child-command:v1";
+
+export function bulkChildCommandId(bulkCommandId: string, runId: string): z.infer<typeof CommandIdSchema> {
+  // Parsed rather than asserted: a derivation that stopped producing UUID shape
+  // would otherwise reach the kernel's journal as a key nothing can look up.
+  return CommandIdSchema.parse(deriveStableUuid(BULK_CHILD_COMMAND_NAMESPACE, `${bulkCommandId}\0${runId}`));
 }
 
 /**
@@ -74,8 +114,7 @@ const SPANLESS_RUN_TYPES = new Set([
 ]);
 
 export function createDashboardCommandService(deps: DashboardCommandServiceDeps): DashboardCommandService {
-  return Object.freeze({
-    execute(input: unknown): CommandResult {
+  function executeOne(input: unknown): CommandResult {
       const result = deps.kernel.execute(input);
       if (result.state !== "applied") return result;
       // The kernel already validated the request exhaustively; this re-parse
@@ -268,6 +307,120 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
         deps.projection.refreshRun(request.target.runId);
       }
       return result;
+  }
+
+  return Object.freeze({
+    execute: executeOne,
+
+    /**
+     * D235's loop. Every refusal below reaches NO target — it is a statement
+     * about the request, not about a run — and every per-target answer is a
+     * vector entry, because doc 03 §2.4 forbids collapsing a partial result
+     * into "Done".
+     */
+    executeBulk(input: unknown): BulkRunCommandResponse {
+      const parsed = BulkRunCommandRequestSchema.safeParse(input);
+      if (!parsed.success) {
+        // An empty target set lands HERE (`targets` is `.min(1)`), which is the
+        // named refusal a zero-eligible selection must get. Answering "applied
+        // to 0 runs" would be a bulk command that did nothing and said nothing.
+        return BulkRunCommandResponseSchema.parse({
+          state: "refused",
+          code: "schema-mismatch",
+          message: `the bulk request does not parse: ${z.prettifyError(parsed.error)}`,
+        });
+      }
+      const request = parsed.data;
+
+      if (request.mode !== "best-effort") {
+        /*
+         * D235: `all-or-none` is schema-recognized and this runtime does not
+         * execute it. One command is one authority transaction here, and a mode
+         * that promises "one transaction or none" across N independent runs
+         * cannot be honoured by a loop — so it refuses by name rather than
+         * running best-effort under an all-or-none label, which would be the
+         * surface lying about atomicity it never had. The owner and the trigger
+         * are named in doc 03's bulk section.
+         */
+        return BulkRunCommandResponseSchema.parse({
+          state: "refused",
+          code: "capability-unavailable",
+          message: `bulk mode "${request.mode}" is schema-recognized and unexecuted: one command is one authority `
+            + "transaction, so an all-or-none batch would need a kernel arm that spans N commands. Nothing was "
+            + "attempted; re-send the batch as best-effort to receive the per-run vector",
+        });
+      }
+
+      const runIds = request.targets.map(({ runId }) => runId);
+      if (new Set(runIds).size !== runIds.length) {
+        // Two targets naming one run derive ONE child command id, so the second
+        // would replay the first and be reported as applied-by-replay for a
+        // transition it never made. Refuse the request instead.
+        return BulkRunCommandResponseSchema.parse({
+          state: "refused",
+          code: "schema-mismatch",
+          message: "the bulk request names the same run more than once; a run appears at most once in a batch",
+        });
+      }
+
+      const results: BulkRunCommandOutcome[] = [];
+      for (const target of request.targets) {
+        const commandId = bulkChildCommandId(request.bulkCommandId, target.runId);
+        const child = {
+          commandId,
+          requestedAt: request.requestedAt,
+          requestedBy: request.requestedBy,
+          source: request.source,
+          ...(request.reason === undefined ? {} : { reason: request.reason }),
+          family: "run" as const,
+          type: request.type,
+          target,
+        };
+        let result: CommandResult;
+        try {
+          result = executeOne(child);
+        } catch (error) {
+          /*
+           * An untyped throw is the authority or this service reporting that it
+           * cannot answer, not a run refusing. It is REPORTED per run — the
+           * message verbatim, never a substituted code — and the pass STOPS:
+           * issuing further writes into a system that just failed to answer is
+           * the opposite of fail-loud. `requestedCount` on the response is what
+           * makes the untried remainder visible.
+           */
+          results.push({ outcome: "errored", runId: target.runId, commandId, detail: errorText(error) });
+          break;
+        }
+        results.push(
+          result.state === "conflict"
+            ? {
+              outcome: "conflict",
+              runId: target.runId,
+              commandId,
+              currentVersion: result.currentVersion,
+              detail: result.message,
+            }
+            : result.state === "rejected"
+              ? { outcome: "refused", runId: target.runId, commandId, code: result.code, detail: result.message }
+              : {
+                outcome: "applied",
+                runId: target.runId,
+                commandId,
+                replayed: result.state === "already-applied",
+                detail: result.state === "already-applied"
+                  ? `${request.type} had already been recorded for this run under the same batch`
+                  : `${request.type} recorded`,
+              },
+        );
+      }
+
+      return BulkRunCommandResponseSchema.parse({
+        state: "vector",
+        bulkCommandId: request.bulkCommandId,
+        type: request.type,
+        requestedCount: request.targets.length,
+        results,
+      });
     },
   });
 }
