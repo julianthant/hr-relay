@@ -1399,6 +1399,48 @@ As-built contract:
   were never dropped by a filter — they never arrived, and the reader is the wrong place to repair
   an ingest gap).
 
+#### D255 — a `span.ended` binds to an OPEN entry, and one producer still owes its execution identity (2026-08-20)
+
+**The fold rule.** A task `span.ended` binds to the LAST entry at `(attempt, spanPath)` whose
+`endedAt` is absent; when every entry at that identity is already closed (or none exists) the close
+appends a new entry with no start, which is the same arm that already carried "a restart closed a
+span an earlier process opened". It never rewrites a measured span's end.
+
+The rule matters only when a producer emits one `(attempt, spanPath)` twice, and the first-match
+binding it replaces did not undercount there — it FABRICATED. The first entry kept its own
+`startedAt` and took the second execution's `endedAt`, so the step's `durationSec` covered both
+executions **and everything between them** — a gate park is hours — while the second entry stayed
+open and was dropped as unmeasured. B4a recorded this as a low-priority undercount behind the new
+`pipeline[].executions` counter; it is the opposite kind of error, which is why it was fixed rather
+than deferred. `tests/unit/server/run-queue-projection.test.ts` pins it, writing the duplicate
+straight to the stream because the JSONL writer's own identity guard refuses a re-open in-process.
+
+**Which producer can do that — and it is not the one the record named.** The record attributed the
+duplicate to a requeue re-executing a node at the same span path. That has been impossible since
+**D214**: `taskSpanPath` is `<trace>/<node>#<claimGeneration>.<taskAttempt>`, so two executions of
+one node inside one attempt already differ. The reachable producer is the **write sequencer's beat
+spans** (`emitTaskSpan`, `src/core/write-sequencer.ts`), whose path is `<trace>/<node>/<beat>` with
+no claim generation and no task attempt — D214's identity fix never reached it. Two consequences,
+both DEFERRED here with their trigger rather than fixed blind:
+
+- A transaction node executed twice inside one attempt would first hit the writer's own
+  `opens exactly once per identity` refusal **in-process** — a thrown worker, not a display quirk —
+  and only across processes reach the fold at all. Tracing the executor, that state is currently
+  unreachable: the transaction arm has no retry loop, and a node with a checkpoint replays without
+  emitting spans, so a transaction node executes at most once per attempt.
+- `nodeIdOfTaskSpanPath` reads a node id as "everything before the last `#` of the last segment",
+  and a beat path has no `#` at all, so beat spans attribute to NO node: they draw no pipeline chip
+  and their `executionsByNode` bucket (keyed by the beat name) is never read. Harmless today, and
+  the reason a naive `#<gen>` suffix is the wrong repair — it would attribute the span to a node
+  called `prepare`.
+
+**The trigger that ends the deferral:** the first transaction node that can execute twice within one
+run attempt (an `always-rerun` transaction node downstream of a gate, or a doc-09 §4 recovery that
+re-enters the sequencer under the same attempt), or the first requirement that a beat span attribute
+to its node on the timeline. The fix then is D214's, applied at the producer: compose the beat path
+UNDER the node's own span path (`<nodeSpanPath>/<beat>`), which needs the executor to hand the
+sequencer the node span path it already computed.
+
 ### 2.4 One command protocol with strict target families
 
 The dashboard, CLI, recovery code, workflow editor, notification inbox, gate resolvers, and capture

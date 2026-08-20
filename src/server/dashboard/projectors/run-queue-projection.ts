@@ -672,11 +672,33 @@ export class RunQueueProjection {
     // span.ended
     if (event.kind === "task") {
       const row = this.#row(event.runId, event.t);
-      let span = row.taskSpans.find((candidate) =>
-        candidate.attempt === event.attempt && candidate.spanPath === event.spanPath);
+      /**
+       * D255 — a close binds to the LAST STILL-OPEN entry at this identity,
+       * never to the first entry at its key. The two differ only when a
+       * producer emits the same `(attempt, spanPath)` twice, and where that
+       * happens the first-match rule does not undercount, it FABRICATES: entry
+       * one keeps its own `startedAt` and takes execution two's `endedAt`, so
+       * the chip reports a duration spanning both executions and everything
+       * between them (a gate park is hours), while execution two's entry stays
+       * open and is dropped as unmeasured. Binding to an open entry keeps each
+       * execution a fact about ITSELF — D123/D214's rule, applied at the fold.
+       */
+      let span: z.infer<typeof TaskSpanFoldSchema> | undefined;
+      for (let index = row.taskSpans.length - 1; index >= 0; index -= 1) {
+        const candidate = row.taskSpans[index];
+        if (candidate === undefined) continue;
+        if (candidate.attempt !== event.attempt || candidate.spanPath !== event.spanPath) continue;
+        if (candidate.endedAt !== undefined) continue;
+        span = candidate;
+        break;
+      }
       if (span === undefined) {
         // A restart may close a span an earlier process opened; the open time
         // is genuinely unknown and stays absent rather than being invented.
+        // The same arm carries a close whose identity is already CLOSED here:
+        // a second measured execution is appended rather than overwriting the
+        // first, because rewriting a measured span's end is the fabrication
+        // above by another route.
         span = {
           attempt: event.attempt,
           spanPath: event.spanPath,

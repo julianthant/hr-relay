@@ -3,7 +3,9 @@
 Records about the BFF's span-fold/projection layer — cases where a served surface
 disagrees with what the on-disk streams and authority actually hold.
 
-One open record (below): the requeue span-fold duplicate.
+No open record demands work. Both records below carry a dated decision: the `span.patched` channel
+was RETIRED (D254) and the span-fold duplicate was FIXED at the fold (D255), with its one remaining
+half — the write sequencer's beat-span identity — deferred against a named trigger.
 
 _(The 2026-08-14 "`span.patched` has a declared vocabulary and no emitter" record was CLOSED
 2026-08-20 by **D254**, an operator ruling: the channel is retired rather than built. The
@@ -59,22 +61,47 @@ on making a dead channel live, when the one surface that genuinely needed a valu
 title, and later the Context rail — had already been served from the CHECKPOINT, which is the
 record the executor really writes. So the channel went and the readers stayed on checkpoints.
 
-## A requeue duplicates a task-span entry at the same fold key
+## ~~A requeue duplicates a task-span entry at the same fold key~~ FIXED (fold) · one half DEFERRED
 
-**Recorded:** 2026-08-19 (found by the B4a verification pass) · **Status:** diagnosed ·
-**Owning doc:** doc 03 §2.3 · **Priority:** very low (not a wrong-value hazard)
+**Recorded:** 2026-08-19 (found by the B4a verification pass) · **Status:** the fold half is FIXED
+2026-08-20 by **D255**; the producer half is DEFERRED with a named trigger · **Owning doc:**
+doc 03 §2.3
 
-**Symptom.** The task-span fold keys by `(attempt, spanPath)`
-(`src/server/dashboard/projectors/run-queue-projection.ts` ~:638) and a `span.started`
-unconditionally pushes a new entry (~:600). A REQUEUE — claim-generation bump with the attempt
-unchanged — re-executes a node at the same span path, so the second `span.started` appends a
-duplicate entry while the matching `span.ended` binds to the first.
+**The original symptom, and the part of it that was wrong.** The record said the fold keys by
+`(attempt, spanPath)`, that a `span.started` unconditionally pushes, and that a REQUEUE re-executes
+a node at the same span path so the second start duplicates while the close binds to the first. The
+first two are true. **The third is falsified at HEAD:** `taskSpanPath` has been
+`<trace>/<node>#<claimGeneration>.<taskAttempt>` since **D214** (2026-08-14, five days before this
+record), so two executions of one node inside one attempt already differ in the path. Nothing the
+run executor emits can collide.
 
-**Consequence.** The new `pipeline[].executions` counter (B4a, D230 batch) would honestly report 2,
-but `durationSec` sums only the closed entry — an undercount, never a fabricated value (unmeasured
-intervals are dropped, never zeroed). Pre-existing shape, made visible by the new field.
+**And the consequence was the wrong sign.** The record called it an undercount and "not a
+wrong-value hazard". With first-match binding, entry one keeps its own `startedAt` and takes
+execution two's `endedAt` — so the chip reports a duration spanning both executions **and the idle
+gap between them**, which for a gate park is hours, while execution two stays open and is dropped.
+That is a fabricated measurement, not a missing one, which is why it was fixed rather than deferred.
 
-**What a fix involves.** Either fold the requeued execution into the full span identity the
-executor already carries (the D123 lesson: a folded span is a fact about ONE execution), or bind
-`span.ended` to the LAST open entry at its key. Any unit touching the fold key must know
-`executions`/`durationSec` now depend on it.
+**Fixed (D255).** A close now binds to the LAST STILL-OPEN entry at its identity, and appends a new
+entry when every entry there is already closed, so a measured span's end is never rewritten. Pinned
+by `tests/unit/server/run-queue-projection.test.ts` ("binds a close to the LAST OPEN entry"), which
+writes the duplicate straight to the stream because the JSONL writer's own identity guard refuses a
+re-open in-process — and which fails against the old binding.
+
+**Still open, precisely attributed.** The one producer that CAN emit a repeated
+`(attempt, spanPath)` is the write sequencer's beat spans — `emitTaskSpan`,
+`src/core/write-sequencer.ts`, path `<trace>/<node>/<beat>` with no claim generation and no task
+attempt. D214's identity fix never reached it.
+
+- **Reachability today: none traced.** The transaction arm of the executor has no retry loop, and a
+  node with a checkpoint replays without emitting spans, so a transaction node executes at most once
+  per run attempt.
+- **Where it would land first:** not the chip. A same-process repeat throws at the writer's
+  `opens exactly once per identity` guard — a dead worker. The fold is the cross-process face.
+- **Trigger:** the first transaction node that can execute twice inside one attempt (an
+  `always-rerun` transaction node downstream of a gate; a doc-09 §4 recovery re-entering the
+  sequencer under the same attempt), or the first requirement that a beat span attribute to its node
+  on the timeline.
+- **Shape of the repair, decided in advance:** `<nodeSpanPath>/<beat>` — the beat span under the
+  node's own path, which needs the executor to hand the sequencer the node span path it already
+  computes. NOT a `#<generation>` suffix: `nodeIdOfTaskSpanPath` reads everything before the last
+  `#` of the last segment, so that would attribute the span to a node called `prepare`.

@@ -1321,4 +1321,48 @@ describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
     // branch, which the count/pipeline cases above already walk.
     assert.deepEqual(pipeline.map((step) => step.id).sort(), ["cross-verify", "searching"]);
   });
+
+  /**
+   * D255 — the same node executed twice at ONE span path. The executor cannot
+   * produce this since D214 (`taskSpanPath` carries the claim generation), and
+   * the JSONL writer's own identity guard refuses a re-open in-process, which
+   * is why this case is written straight to the stream the way a second OS
+   * process would. What it pins is the FOLD's rule, not a producer's: a close
+   * binds to a still-OPEN entry, so each execution keeps its own interval. The
+   * first-match rule this replaces reported one 11 s span (start of execution
+   * one to end of execution two, the idle gap included) and dropped the other.
+   */
+  it("binds a close to the LAST OPEN entry at its identity — two executions at one span path stay two facts", () => {
+    const w = world();
+    queuedEventOf(w, { seed: 1 });
+    w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "running", ...ORDINAL_CLAIM }, claimGeneration: 1, version: 2 }));
+    claimEventOf(w, 1);
+    const file = join(w.stateRoot, "spans", `person-lookup-${DAY}.jsonl`);
+    const base = {
+      workflow: "person-lookup", pid: 778, runId: uuidOf(1), attempt: 1,
+      traceId: traceOf(1), spanPath: `${traceOf(1)}/searching#1.1`, parentSpanPath: traceOf(1),
+    };
+    const line = (event: Record<string, unknown>): void => {
+      appendFileSync(file, `${JSON.stringify(event)}\n`);
+    };
+    line({ ...base, t: "span.started", kind: "task", ts: instantOffsetOf(0, 1_000), name: "searching" });
+    line({ ...base, t: "span.ended", kind: "task", ts: instantOffsetOf(0, 5_000), outcome: "done" });
+    line({ ...base, t: "span.started", kind: "task", ts: instantOffsetOf(0, 9_000), name: "searching" });
+    line({ ...base, t: "span.ended", kind: "task", ts: instantOffsetOf(0, 12_000), outcome: "done" });
+
+    w.projection.ingestFromDisk();
+
+    const fold = w.projection.runFold(uuidOf(1));
+    assert.equal(fold?.taskSpans.length, 2);
+    assert.deepEqual(fold?.taskSpans.map((span) => [span.startedAt, span.endedAt]), [
+      [instantOffsetOf(0, 1_000), instantOffsetOf(0, 5_000)],
+      [instantOffsetOf(0, 9_000), instantOffsetOf(0, 12_000)],
+    ]);
+    const searching = w.projection.buildDashboardDayWire(DAY).queueSurfaces[0].pipeline
+      .find((step) => step.id === "searching");
+    // 4 s + 3 s — the two executions, never the 11 s between the first start
+    // and the second end.
+    assert.equal(searching?.durationSec, 7);
+    assert.equal(searching?.executions, 2);
+  });
 });
