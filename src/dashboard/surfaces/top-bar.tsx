@@ -67,6 +67,7 @@ import type { NotificationWireSchema } from "../../domain/dashboard/projection.j
 
 
 import { systemClock } from "../../domain/clock.js";
+import { settleCommandResult } from "../app/command-result.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DemoShortcutsLegend } from "./shortcuts.js";
 import { DaySearchControl } from "./day-search.js";
@@ -635,7 +636,12 @@ export function NotificationBell({
         ? { payload: { until: new Date(systemClock.nowMs() + 3_600_000).toISOString() } }
         : {}),
     }).then((result) => {
-      if (result.state === "rejected") setCommandError(result.message);
+      // D253 — a notification row carries its own `revision`, so a bell action
+      // races the fold that marks the row unread again. Branching on `rejected`
+      // alone swallowed that CAS refusal: the control did nothing and said
+      // nothing, which reads as a broken button rather than a stale view.
+      const settlement = settleCommandResult(result);
+      if (settlement.kind === "refused") setCommandError(settlement.problem);
     }, (caught: unknown) => {
       setCommandError(caught instanceof Error ? caught.message : String(caught));
     });

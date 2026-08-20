@@ -785,6 +785,51 @@ staged value never becomes the checkpoint a ledger row reads from, and an unconf
 §4.1's park section, which already serves it. A second badge in the rail would be a second authority
 for one fact.
 
+#### D253 — a refused command that looks like a save (2026-08-20)
+
+`CommandResultSchema` has carried three arms since the kernel's first command, and **two of them
+are refusals**: `rejected` (a kernel refusal with a code) and `conflict` (a CAS refusal carrying the
+server's `currentVersion`). Two browser surfaces branched on `rejected` alone.
+
+- The Context rail's Data save fell through to its SUCCESS path on a conflict: it closed the editor,
+  cleared the drafts and called `onSaved()`, for a correction the kernel never applied. That is a
+  false "submitted" on the surface whose job is telling the operator what happened, and it is
+  reachable by ordinary use — the run's version moves whenever a worker claims it or the day stream
+  folds a span under an open panel, which is the exact race doc 03 D19's live lock exists to warn
+  about.
+- The notification bell's mark-read / mark-unread / snooze swallowed the same arm in silence. A
+  notification row carries its own `revision`, and the D134 fold advances it on every publish, so a
+  bell action races a fold that is designed to happen — and the control did nothing and said nothing,
+  which reads as a broken button rather than a stale view.
+
+Neither surface wrote a fallback. **An unhandled union arm IS the fallback** — the most dangerous
+kind this program has, because nothing in the source says a decision was made.
+
+`src/dashboard/app/command-result.ts` is the ONE fold: `settleCommandResult` switches over the
+discriminant (so TypeScript refuses a fourth arm nothing handles) and answers `applied` or
+`refused`. The two refusals stay DISTINGUISHABLE, because the operator does different things about
+them: a `conflict` gets the server's own sentence plus its `currentVersion`, which is the only number
+that tells you to refresh, and never the words "try again" — a re-send of the same envelope carries
+the same stale `expectedVersion` and would be refused identically. A `rejected` carries the kernel's
+sentence unchanged; the fold never rewrites a refusal it did not compute. Drafts survive a refusal
+on both surfaces.
+
+`command-result-exhaustive.test.ts` (guard inventory) holds the rule for every module under
+`src/dashboard/**`: naming one refusal arm without the other fails. Naming both in one condition —
+including the negated early-return form `archive.tsx` uses — is exhaustive and clean. The fold and
+the client transport are exempt: the transport's job is to PARSE the union, not to act on it. A
+checked-in violating fixture carries the exact shipped shape, so a walker that resolved nothing
+cannot report the tree clean.
+
+**What is NOT built, and is recorded rather than deferred.** The demo's per-field CAS re-offer
+(`DemoContextRail.tsx:699-749`) shows the server's current value for each patched field so the
+operator can re-decide field by field. `executeEditCheckpoint` refuses at the RUN's version and
+re-reads no field, so serving that would change what the kernel RETURNS — each patched leaf's
+server-current value projected out of the refusing transaction — which is a write-safety decision,
+not a wire projection. The trigger is named: the first change to `executeEditCheckpoint`'s refusal
+payload. Until then the rail states the version and sends the operator back to a reopened run, which
+is a true sentence about a stale basis rather than a partial re-offer.
+
 ---
 
 ## 6. Delivery sequence mapped to doc 07

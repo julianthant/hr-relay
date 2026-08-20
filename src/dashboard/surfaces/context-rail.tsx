@@ -96,6 +96,7 @@ import {
 } from "../ds/ui.js";
 
 
+import { settleCommandResult } from "../app/command-result.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { fmtClock, plural } from "./format.js";
 import { SystemChip } from "./system-chip.js";
@@ -578,10 +579,14 @@ function DataSection({
       payload: { patches },
     }).then((result) => {
       setSaving(false);
-      if (result.state === "rejected") {
-        // The kernel's own sentence, verbatim — it names what moved and what
-        // to do; drafts stay so the operator can retry after reloading.
-        setProblem(result.message);
+      // D253 — BOTH refusal arms, through the one exhaustive fold. Branching on
+      // `rejected` alone let a CAS `conflict` fall through to the success path
+      // below: the editor closed, the drafts were discarded and the rail
+      // reported a correction saved that the kernel had refused. The drafts
+      // stay on a refusal so the operator can retry after reopening the run.
+      const settlement = settleCommandResult(result);
+      if (settlement.kind === "refused") {
+        setProblem(settlement.problem);
         return;
       }
       onExpandedChange(false);
