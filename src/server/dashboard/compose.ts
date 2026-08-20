@@ -40,7 +40,8 @@ import {
   WORKFLOW_MODULES,
   readPendingImplBindings,
 } from "../../control/workflow-registry.js";
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../base/workflow.js";
+import { descriptorRuntimeNodes, runtimeNodeLabel, type AnyWorkflowDescriptor } from "../../base/workflow.js";
+import { reachableCommits, resolveFreshnessBound } from "../../domain/workflow/checkpoint.js";
 import { createCommandKernel, type WorkerRuntimeExecutor, type WriteResolutionExecutor } from "../../core/command-kernel.js";
 import { createPhase1WorkerRuntimeExecutor, type WorkerProcessSupervisor } from "../../core/worker-loop.js";
 import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
@@ -96,8 +97,13 @@ import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-s
 import { optionalSecretFamily, providerModelChain } from "../../domain/secrets.js";
 import type { AdvisoryQueryDeps } from "./queries/advisory.js";
 import { createArchiveSnapshotSource, type ArchiveQueryDeps } from "./queries/archive.js";
-import type { RunDetailQueryDeps, RunDetailWriteContractView } from "./queries/run-detail.js";
+import type {
+  RunDetailDataOriginView,
+  RunDetailQueryDeps,
+  RunDetailWriteContractView,
+} from "./queries/run-detail.js";
 import { describeProofShape } from "../../validation/proof-shape.js";
+import type { RegisteredTaskStore } from "../../base/store.js";
 
 
 /**
@@ -147,6 +153,90 @@ function writeContractViewsOf(descriptor: AnyWorkflowDescriptor): readonly RunDe
       completionKind: completion.kind,
       proofSchemaHash: deriveSchemaHash(completion.proofSchema, "output"),
       proof: describeProofShape(completion.proofSchema),
+    }];
+  });
+}
+
+/**
+ * D252 — every node that can produce a Data-section value, with the four facts
+ * the rail's origin line draws: the step's label, whether its task READS or
+ * WRITES, the system it runs against, and the reuse bound its own contract
+ * declares per field.
+ *
+ * Nothing here is inferred. `dir` is the node's task `effect` (doc 01's own
+ * word for what a contract does to the world) — the rail's header comment used
+ * to record direction as unservable because "nothing durable says whether a
+ * recorded field was read or written", which is true of the CHECKPOINT ROW and
+ * false of the descriptor that wrote it. `system` comes from the module's own
+ * store list, the same binding the explorer's node panel reads, and a headless
+ * store contributes none rather than a fabricated label. The bound is resolved
+ * through `resolveFreshnessBound`, which is the function `auditCheckpointFreshness`
+ * itself calls, and `feeds` through `reachableCommits` for the same reason —
+ * the sentence the operator reads is the rule the executor applies.
+ *
+ * Only the field paths a Data entry can actually carry are resolved, which is
+ * exactly `details[].source` ∪ `capabilities.editData.fields`: a bound for a
+ * path no surface serves is a fact nobody reads.
+ */
+export function dataOriginViewsOf(module: {
+  readonly descriptor: AnyWorkflowDescriptor;
+  readonly stores: readonly RegisteredTaskStore[];
+}): readonly RunDetailDataOriginView[] {
+  const { descriptor } = module;
+  const systemByTaskId = new Map<string, string>();
+  for (const store of module.stores) {
+    if (store.kind !== "browser") continue;
+    for (const task of Object.values(store.tasks)) {
+      systemByTaskId.set(String(task.contract.id), String(store.driver.system));
+    }
+  }
+  const nodes = descriptorRuntimeNodes(descriptor);
+  const commitNodeIds = new Set(
+    nodes.filter((node) => node.kind === "transaction").map((node) => String(node.id)),
+  );
+  const editData = descriptor.capabilities?.editData;
+  const declaredPaths = new Map<string, Set<string>>();
+  const declare = (nodeId: string, fieldPath: string): void => {
+    const existing = declaredPaths.get(nodeId);
+    if (existing === undefined) declaredPaths.set(nodeId, new Set([fieldPath]));
+    else existing.add(fieldPath);
+  };
+  for (const detail of descriptor.details) declare(String(detail.source.nodeId), detail.source.fieldPath);
+  if (typeof editData === "object") {
+    for (const field of editData.fields) declare(String(field.nodeId), field.fieldPath);
+  }
+
+  return nodes.flatMap((node) => {
+    if (node.kind !== "task" && node.kind !== "transaction") return [];
+    const contract = node.kind === "task" ? node.uses : node.commit.uses;
+    const paths = declaredPaths.get(String(node.id));
+    const feeds = reachableCommits(nodes, node.id, commitNodeIds).map((sink) => {
+      const target = nodes.find((candidate) => String(candidate.id) === String(sink.nodeId));
+      return {
+        nodeId: String(sink.nodeId),
+        label: target === undefined ? String(sink.nodeId) : runtimeNodeLabel(target),
+      };
+    });
+    return [{
+      nodeId: String(node.id),
+      step: runtimeNodeLabel(node),
+      dir: contract.effect === "read" ? "read" as const : "write" as const,
+      ...(systemByTaskId.has(String(contract.id))
+        ? { system: systemByTaskId.get(String(contract.id)) }
+        : {}),
+      ...(contract.effect === "read" && paths !== undefined
+        ? {
+          freshness: [...paths].sort().map((fieldPath) => {
+            const bound = resolveFreshnessBound(contract.freshness, fieldPath);
+            return {
+              fieldPath,
+              maxAge: Number.isFinite(bound.maxAgeMs) ? bound.maxAgeMs : "unbounded" as const,
+              override: bound.override,
+            };
+          }),
+        }
+        : {}),
+      feeds,
     }];
   });
 }
@@ -505,12 +595,18 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
        * descriptor's identity.
        */
       resolve: (workflowId) => {
-        const descriptor = DESCRIPTORS.find((candidate) => candidate.id === workflowId);
-        if (descriptor === undefined) return undefined;
+        // D252 reads the MODULE, not the descriptor alone: a task's system is
+        // the store's, and `src/workflows/<id>/descriptor.ts` may not reach a
+        // store (D106). The tuple is the same one every other registry derives
+        // from, so there is no second list to keep in step.
+        const module = WORKFLOW_MODULES.find((candidate) => candidate.descriptor.id === workflowId);
+        if (module === undefined) return undefined;
+        const { descriptor } = module;
         return {
           ...descriptor,
           gateNodes: gateNodeViewsOf(descriptor),
           writeContracts: writeContractViewsOf(descriptor),
+          dataOrigins: dataOriginViewsOf(module),
         };
       },
     },

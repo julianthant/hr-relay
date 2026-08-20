@@ -86,6 +86,83 @@ export function useContextRail(threeColumn: boolean): ContextRailState {
   return { open, collapsed: !open && threeColumn, setOpen };
 }
 
+/* ── D252: the ledger's two levels, and the reuse bound ─────────────────── */
+
+/**
+ * One LEVEL-1 group of the ledger: the step that recorded the values under it.
+ *
+ * The demo's ledger is two levels — a sub-step heading with its fields beneath
+ * — and it is the heading that makes an eight-row ledger read as "three things
+ * this run did" rather than eight unrelated lines. The grouping is by the
+ * SERVED `origin.nodeId`, never by the label, because two steps may record a
+ * field of the same name and merging them would attribute one step's read to
+ * another.
+ *
+ * Order is the order the entries arrived in, which is the descriptor's own
+ * detail order — a sort here would be a second opinion about what matters.
+ * Entries the build cannot attribute (no field identity, so no step) collect
+ * into ONE trailing group with no heading: they are real recorded values and
+ * inventing a step name for them is the fabrication this rail refuses.
+ */
+export interface ContextDataGroup {
+  /** `undefined` for the unattributed trailing group. */
+  readonly origin: NonNullable<ContextDataEntry["origin"]> | undefined;
+  readonly rows: readonly Readonly<{ entry: ContextDataEntry; index: number }>[];
+}
+
+export function groupEntriesByStep(
+  entries: readonly ContextDataEntry[],
+): readonly ContextDataGroup[] {
+  const groups: { origin: ContextDataEntry["origin"]; rows: { entry: ContextDataEntry; index: number }[] }[] = [];
+  const byNode = new Map<string, { origin: ContextDataEntry["origin"]; rows: { entry: ContextDataEntry; index: number }[] }>();
+  let unattributed: { origin: undefined; rows: { entry: ContextDataEntry; index: number }[] } | undefined;
+  entries.forEach((entry, index) => {
+    if (entry.origin === undefined) {
+      if (unattributed === undefined) {
+        unattributed = { origin: undefined, rows: [] };
+        groups.push(unattributed);
+      }
+      unattributed.rows.push({ entry, index });
+      return;
+    }
+    const existing = byNode.get(entry.origin.nodeId);
+    if (existing !== undefined) {
+      existing.rows.push({ entry, index });
+      return;
+    }
+    const created = { origin: entry.origin, rows: [{ entry, index }] };
+    byNode.set(entry.origin.nodeId, created);
+    groups.push(created);
+  });
+  return groups;
+}
+
+/**
+ * The reuse bound, said as a sentence — or `undefined` when this build cannot
+ * honestly say one.
+ *
+ * The rule is the executor's, not a presentation choice: `auditCheckpointFreshness`
+ * skips a checkpoint whose facts reach NO scheduled commit, so a bound with an
+ * empty `feeds` set can never refuse anything and printing an age limit beside
+ * it would state a constraint that does not exist. An `unbounded` limit is the
+ * same absence from the other side — there is no age at which this value stops
+ * being reusable.
+ */
+export function freshnessNoteOf(entry: ContextDataEntry): string | undefined {
+  const { freshness } = entry;
+  if (freshness === undefined) return undefined;
+  if (freshness.maxAge === "unbounded" || freshness.feeds.length === 0) return undefined;
+  const minutes = Math.floor(freshness.maxAge / 60_000);
+  const age = minutes >= 1
+    ? `${String(minutes)} min`
+    : `${String(Math.floor(freshness.maxAge / 1000))} s`;
+  const writes = freshness.feeds.map((sink) => sink.label).join(", ");
+  const stale = freshness.override === "audited"
+    ? "Reusing an older reading takes a recorded reason."
+    : "An older reading must be re-read — no override can authorize it.";
+  return `Reusable for ${age} before ${writes}. ${stale}`;
+}
+
 export type EditableScalar = string | number | boolean;
 
 export type EditPolicy =

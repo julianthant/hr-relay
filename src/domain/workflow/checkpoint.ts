@@ -320,8 +320,12 @@ function forwardEdges(nodes: readonly RuntimeFlowNode[]): ReadonlyMap<string, re
  * over the STATIC graph — no proxy execution, no data-dependent narrowing —
  * because a walk that under-approximates is exactly how a stale fact reaches a
  * live write.
+ *
+ * Exported for D252: the Data rail states the same "this value feeds these
+ * writes" fact the freshness audit decides on, and a second walk beside this
+ * one could disagree with the rule the executor actually applies.
  */
-function reachableCommits(
+export function reachableCommits(
   nodes: readonly RuntimeFlowNode[],
   from: NodeId,
   scheduled: ReadonlySet<string>,
@@ -354,6 +358,25 @@ function freshnessLimitMs(policy: FreshnessPolicy, path: string): number {
 function overrideAllowed(policy: FreshnessPolicy, path: string): boolean {
   const rule = policy.byField?.find((entry) => entry.path === path);
   return (rule?.override ?? policy.defaultOverride) === "audited";
+}
+
+/**
+ * The bound ONE field is recorded under — `byField` beats the default, and an
+ * unstated override policy is `forbidden`, which is the fail-closed reading
+ * `overrideAllowed` already applies (only the literal `audited` opens it).
+ *
+ * Exported for D252 so the Data rail prints the bound this module ENFORCES.
+ * A surface that re-read `byField` itself would be a second copy of the
+ * precedence rule, and the two could disagree about which value bites.
+ */
+export function resolveFreshnessBound(
+  policy: FreshnessPolicy,
+  path: string,
+): { readonly maxAgeMs: number; readonly override: "forbidden" | "audited" } {
+  return {
+    maxAgeMs: freshnessLimitMs(policy, path),
+    override: overrideAllowed(policy, path) ? "audited" : "forbidden",
+  };
 }
 
 export interface ReplayedCheckpoint {

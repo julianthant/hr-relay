@@ -20,29 +20,48 @@
  *    `editableEntryOf` was already reading and discarding. `corrected` is
  *    drawn from `correctedAt`; `derived` from `source`; a `live` read is the
  *    unmarked default, because a badge on every row is a badge on none.
- *  - **DIRECTION is still absent.** Nothing durable says whether a recorded
- *    field was read or written, and a direction arrow this surface guessed
- *    would be a claim about whether a run CHANGED the world — the most
- *    expensive thing in this product to get wrong. It stays undrawn.
- *  - **The originating system is still absent**, and so is the demo's
- *    `refreshed` badge, which means "this changed on the server since you
- *    looked" and needs the superseded reading beside the current one. This
- *    wire carries one value per entry, so there is nothing to compare.
+ *  - **DIRECTION, the STEP and the SYSTEM are served (D252)**, and the
+ *    sentence they replace is worth keeping because it was half right. It read
+ *    "nothing durable says whether a recorded field was read or written", which
+ *    is TRUE of the checkpoint row and FALSE of the descriptor that produced
+ *    it: the node that recorded a value declares a task contract, and that
+ *    contract's `effect` is doc 01's own word for what it does to the world.
+ *    So `dir` is a DECLARATION, not the guess the old comment refused — and a
+ *    guess is still refused, which is why an entry with no field identity
+ *    draws no arrow rather than a defaulted `read`. `system` comes from the
+ *    store that implements the task; a headless store owns none, and the chip
+ *    is then absent rather than labelled "internal".
+ *  - **The reuse bound is served (D252)** where it can BITE: an entry's own
+ *    freshness limit, the override policy, and the write nodes the value can
+ *    reach. A bound that reaches no write refuses nothing (the executor's own
+ *    walk skips it), so no sentence is printed for one.
+ *  - **The demo's `refreshed` badge is still absent** — it means "this changed
+ *    on the server since you looked" and needs the superseded reading beside
+ *    the current one. This wire carries one value per entry, so there is
+ *    nothing to compare. The demo's `staged` / `unconfirmed` badges are absent
+ *    for a structural reason, not a wire gap: a `prepare` contract is
+ *    `checkpoint: "in-memory-only"` so a staged value never becomes the
+ *    checkpoint a ledger row is read from, and an unconfirmed write is a
+ *    `parked-write` run whose transaction node has no checkpoint at all — its
+ *    honest surface is doc 09 §4.1's park section, which serves it.
  *
  * An absent axis draws NOTHING — never a placeholder, never a dash, and never
  * a plausible default.
  *
  * What survives is the ratified SHAPE: the stacked label-over-value row bound
  * by a rail (the rail is what makes an eight-row ledger read as eight things
- * and not sixteen — that job is layout, not direction, so it stays in the
- * neutral ink), the section order, the collapse affordance and its persisted
- * preference, and the spine that still says what it is hiding.
+ * and not sixteen — that job is layout first, so an unattributable row still
+ * gets its rail, in neutral ink), the section order, the collapse affordance
+ * and its persisted preference, and the spine that still says what it is
+ * hiding.
  *
  * Values arrive redacted BY THE SERVER. `valueRedacted` renders verbatim: this
  * surface never re-derives, re-formats or unmasks one.
  */
 import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Database,
   History,
   Info,
@@ -79,8 +98,11 @@ import {
 
 import { useDashboardClient } from "../state/client-context.js";
 import { fmtClock, plural } from "./format.js";
+import { SystemChip } from "./system-chip.js";
 import {
   editPolicyFor,
+  freshnessNoteOf,
+  groupEntriesByStep,
   liveLockReasonOf,
   type ContextDataEntry,
   type ContextDataPayload,
@@ -238,13 +260,69 @@ const LEDGER_LABEL_CLASS = cn(
   "min-w-0 flex-1 truncate font-medium text-[color:var(--ds-fg-secondary)]",
 );
 
+/**
+ * D252 — the direction of ONE value, said twice: a colour AND an arrow.
+ *
+ * The colour is the point. Direction carried by a glyph alone means a ledger
+ * of eight reads and one write looks like nine of the same thing, and the one
+ * line that changed the world is the hardest to find; `--ds-read-*` /
+ * `--ds-write-*` are the two-tone axis, and the RAIL is what makes it
+ * scannable down a column. The arrow stays because colour is never the only
+ * differentiator — it is the arrow that survives forced-colors and a
+ * colour-blind operator, and the `sr-only` word that survives no colour at all.
+ *
+ * `dir === undefined` keeps the neutral rail: an entry the build cannot
+ * attribute has no direction, and defaulting one to `read` would be a claim
+ * that the run did not change anything.
+ */
+function DirectionRail({ dir }: { dir: "read" | "write" | undefined }) {
+  if (dir === undefined) {
+    return (
+      <span
+        aria-hidden
+        className={cn(
+          "w-[var(--ds-border-w-emphasis)] shrink-0 self-stretch rounded-[var(--ds-radius-pill)]",
+          "bg-[var(--ds-border-strong)]",
+        )}
+      />
+    );
+  }
+  const read = dir === "read";
+  const Icon = read ? ArrowDownToLine : ArrowUpFromLine;
+  return (
+    <span className="flex shrink-0 gap-[var(--ds-space-tight)] self-stretch">
+      <span
+        aria-hidden
+        className={cn(
+          "w-[var(--ds-border-w-emphasis)] shrink-0 self-stretch rounded-[var(--ds-radius-pill)]",
+          read ? "bg-[var(--ds-read-mark)]" : "bg-[var(--ds-write-mark)]",
+        )}
+      />
+      {/* On the LABEL line, not centred across the pair — a glyph floating in
+          the gutter between two lines belongs to neither. */}
+      <Icon
+        aria-hidden
+        className={cn(
+          dsIcon.sm,
+          "mt-[var(--ds-space-hair)] shrink-0",
+          read ? "text-[color:var(--ds-read-fg)]" : "text-[color:var(--ds-write-fg)]",
+        )}
+      />
+      <span className="sr-only">{read ? "read" : "written"}</span>
+    </span>
+  );
+}
+
 function LedgerRow({
   label,
+  dir,
   fieldId,
   marks,
   children,
 }: {
   label: string;
+  /** D252 — the producing task's declared effect; absent draws neutral ink. */
+  dir?: "read" | "write";
   /**
    * The id of the input this row's label names, when the row has one.
    *
@@ -266,16 +344,10 @@ function LedgerRow({
   return (
     <div className="flex gap-[var(--ds-space-snug)] py-[var(--ds-space-snug)]">
       {/* The rail spans BOTH lines, which is the whole reason it is a rail and
-          not a dot: it binds a label to the value printed underneath it. It is
-          NEUTRAL ink — the read/write pair colours a direction, and this wire
-          does not carry one. */}
-      <span
-        aria-hidden
-        className={cn(
-          "w-[var(--ds-border-w-emphasis)] shrink-0 self-stretch rounded-[var(--ds-radius-pill)]",
-          "bg-[var(--ds-border-strong)]",
-        )}
-      />
+          not a dot: it binds a label to the value printed underneath it. Since
+          D252 it also carries the DIRECTION — neutral ink only where the build
+          cannot attribute the value. */}
+      <DirectionRail dir={dir} />
       <div className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-hair)]">
         {/* The LABEL gives up width to the marks, never the other way round:
             the marks are already one word each and a truncated badge is
@@ -571,67 +643,96 @@ function DataSection({
               it (demo `DemoContextRail.tsx:665-680`, operator 2026-07-27:
               "remove these tags in data"). See the rail floor below for where
               this codebase had put it back. */}
-          <div className="flex flex-col">
-            {policies.map(({ entry, policy }, index) => {
-              const fieldId = `${fieldIdBase}-${String(index)}`;
-              const isDirty = policy.kind === "editable"
-                && dirty.some(({ policy: dirtyPolicy }) => fieldKeyOf(dirtyPolicy) === fieldKeyOf(policy));
-              return (
-                <LedgerRow
-                  key={`${entry.label}:${String(index)}`}
-                  label={entry.label}
-                  {...(policy.kind === "editable" ? { fieldId } : {})}
-                  marks={
-                    <>
-                      {/* A WORD, not just the amber fill on the field below it
-                          (R6 f.2) — the fill is the fast signal and the word is
-                          the one that survives a colour-blind operator or a
-                          forced-colors mode. */}
-                      {isDirty && (
-                        <Badge
-                          tone="warning"
-                          className="shrink-0"
-                          title="You changed this value. It is not saved yet."
-                        >
-                          changed
-                        </Badge>
-                      )}
-                      <ProvenanceMarks entry={entry} />
-                    </>
-                  }
-                >
-                  {policy.kind === "locked" ? (
-                    <LockedValue value={entry.valueRedacted} reason={policy.reason} />
-                  ) : (
-                    <>
-                      {/* Focus is what raises the wide surface: the rail widens
-                          before the first keystroke, not after it. React's
-                          onFocus bubbles, so the wrapper hears the input's
-                          focus without ValueField growing a prop. */}
-                      <span className="flex min-w-0 flex-col" onFocus={enterEditing}>
-                        <ValueField
-                          id={fieldId}
-                          value={draftTextOf(drafts, policy)}
-                          dirty={isDirty}
-                          onChange={(next) => {
-                            setDrafts((current) => ({ ...current, [fieldKeyOf(policy)]: next }));
-                          }}
-                        />
-                      </span>
-                      {policy.pending !== undefined && (
-                        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-                          {/* CLOCKED, never the raw instant (R6 f.22) — this is
-                              a sentence an operator reads. */}
-                          Corrected {fmtClock(policy.pending.correctedAt)} — applies when the run
-                          resumes; the run recorded {String(policy.recorded)}.
-                        </span>
-                      )}
-                    </>
+          {/* LEVEL 1 — the STEP that recorded the values under it (R6 f.1,
+              D252). It is what makes an eight-row ledger read as "three things
+              this run did", and it is only drawn where the build can name the
+              step: the unattributed group has no heading rather than a made-up
+              one. The system chip rides the heading, not each row — every
+              value a step recorded came from the same place, and repeating it
+              per row is the redundancy this rail keeps removing. */}
+          {groupEntriesByStep(payload.entries).map((group) => (
+            <div className="flex flex-col" key={group.origin?.nodeId ?? "unattributed"}>
+              {group.origin !== undefined && (
+                <div className="flex min-w-0 items-baseline gap-[var(--ds-space-tight)] pt-[var(--ds-space-snug)]">
+                  <SectionLabel className="min-w-0 truncate">{group.origin.step}</SectionLabel>
+                  {group.origin.system !== undefined && (
+                    <SystemChip system={group.origin.system} className="mr-0 shrink-0" />
                   )}
-                </LedgerRow>
-              );
-            })}
-          </div>
+                </div>
+              )}
+              {group.rows.map(({ entry, index }) => {
+                const policy = policies[index]?.policy;
+                if (policy === undefined) return null;
+                const fieldId = `${fieldIdBase}-${String(index)}`;
+                const isDirty = policy.kind === "editable"
+                  && dirty.some(({ policy: dirtyPolicy }) => fieldKeyOf(dirtyPolicy) === fieldKeyOf(policy));
+                const freshness = freshnessNoteOf(entry);
+                return (
+                  <LedgerRow
+                    key={`${entry.label}:${String(index)}`}
+                    label={entry.label}
+                    {...(entry.origin === undefined ? {} : { dir: entry.origin.dir })}
+                    {...(policy.kind === "editable" ? { fieldId } : {})}
+                    marks={
+                      <>
+                        {/* A WORD, not just the amber fill on the field below it
+                            (R6 f.2) — the fill is the fast signal and the word is
+                            the one that survives a colour-blind operator or a
+                            forced-colors mode. */}
+                        {isDirty && (
+                          <Badge
+                            tone="warning"
+                            className="shrink-0"
+                            title="You changed this value. It is not saved yet."
+                          >
+                            changed
+                          </Badge>
+                        )}
+                        <ProvenanceMarks entry={entry} />
+                      </>
+                    }
+                  >
+                    {policy.kind === "locked" ? (
+                      <LockedValue value={entry.valueRedacted} reason={policy.reason} />
+                    ) : (
+                      <>
+                        {/* Focus is what raises the wide surface: the rail widens
+                            before the first keystroke, not after it. React's
+                            onFocus bubbles, so the wrapper hears the input's
+                            focus without ValueField growing a prop. */}
+                        <span className="flex min-w-0 flex-col" onFocus={enterEditing}>
+                          <ValueField
+                            id={fieldId}
+                            value={draftTextOf(drafts, policy)}
+                            dirty={isDirty}
+                            onChange={(next) => {
+                              setDrafts((current) => ({ ...current, [fieldKeyOf(policy)]: next }));
+                            }}
+                          />
+                        </span>
+                        {policy.pending !== undefined && (
+                          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+                            {/* CLOCKED, never the raw instant (R6 f.22) — this is
+                                a sentence an operator reads. */}
+                            Corrected {fmtClock(policy.pending.correctedAt)} — applies when the run
+                            resumes; the run recorded {String(policy.recorded)}.
+                          </span>
+                        )}
+                      </>
+                    )}
+                    {/* D252 — the REUSE bound, under the value it bounds. It
+                        appears only where the executor's own walk would enforce
+                        it: a finite limit whose facts reach a write. */}
+                    {freshness !== undefined && (
+                      <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+                        {freshness}
+                      </span>
+                    )}
+                  </LedgerRow>
+                );
+              })}
+            </div>
+          ))}
 
           {problem !== null && (
             <span role="alert" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>

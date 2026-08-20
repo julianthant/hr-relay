@@ -732,6 +732,59 @@ left saying "to declare" reads as backend work nobody has scheduled.
   per-method `note` goes with them — with one method it would be a second sentence about the same
   thing the summary already says.
 
+#### D252 — a ledger value names its STEP, its DIRECTION and the bound it is held under (2026-08-20)
+
+The Context rail's Data section served a label, a redacted value, an edit policy and (W2) an
+observation clock. The demo's ledger draws four more axes, and the rail's own header comment
+recorded the two hardest as unservable: *"nothing durable says whether a recorded field was read or
+written"*, and *"the originating system is still absent"*. **Both sentences are true of the
+`run_checkpoints` ROW and false of the descriptor that produced it**, which is the same
+false-deferral shape D251 found on the picker one surface over — a comment that tells the next
+reader not to look.
+
+`ContextDataSectionSchema.entries[]` therefore grows two OPTIONAL blocks, read forward (D133):
+
+- **`origin`** — `{ nodeId, step, dir, system? }`. `dir` is the producing node's task **`effect`**:
+  a `task` node runs a `read` contract and a `transaction` node's sink is a `commit`, and `effect`
+  is doc 01's own word for what a contract does to the world. It is a DECLARATION, never an
+  inference from the value — an entry with no field identity (a key recorded under an earlier
+  descriptor) draws neutral ink and no arrow, because defaulting to `read` would be a claim that
+  the run changed nothing. `system` is the driver system of the store that implements the task; a
+  headless store owns none and the field is then absent rather than labelled.
+- **`freshness`** — `{ maxAge, override, feeds[] }`, the reuse bound of doc 02 §5.5. `maxAge` and
+  `override` are resolved through **`resolveFreshnessBound`**, the function `auditCheckpointFreshness`
+  itself calls, so the sentence an operator reads and the rule the executor enforces are one
+  declaration rather than two. `feeds` is `reachableCommits` over the static graph. An unbounded
+  policy travels as the word `unbounded`, because `JSON.stringify(Infinity)` is `null` and a
+  deliberate bound would arrive as a missing one.
+
+The schema **refuses a `freshness` block with no `origin`**: a bound is the producing step's
+declaration, and one served without a step to attribute it to is an unowned constraint on screen.
+
+Where the derivation lives is the second half of the decision. `RunDetailDescriptorView` grows
+`dataOrigins`, composed at the root beside `gateNodes` and `writeContracts` for the reason those
+two state — `src/server/dashboard/queries/` never reaches the descriptor builders, and this view
+additionally needs the MODULE, because a task's system belongs to its store and a descriptor may
+not reach one (D106). Only the field paths a Data entry can carry are resolved
+(`details[].source` ∪ `capabilities.editData.fields`): a bound for a path no surface serves is a
+fact nobody reads.
+
+**What the rail draws.** Level 1 is the STEP, grouped by `origin.nodeId` and never by label — two
+steps may record a field of the same name, and merging them would attribute one step's read to
+another. The system chip rides the heading, not each row. The row rail carries the direction as a
+colour with an arrow and an `sr-only` word beside it, since colour is never the only differentiator.
+The bound prints under the value it bounds, and **only where it can bite**: `auditCheckpointFreshness`
+skips a checkpoint whose facts reach no commit, so an empty `feeds` set prints nothing rather than
+an age limit that refuses nothing.
+
+**What is still not drawn, and why it is not a wire gap.** The demo's `refreshed` badge needs the
+superseded reading beside the current one and this wire carries one value per entry. `staged` and
+`unconfirmed` are structural absences: a `prepare` contract is `checkpoint: "in-memory-only"`, so a
+staged value never becomes the checkpoint a ledger row reads from, and an unconfirmed write is a
+`parked-write` run whose transaction node has no checkpoint at all — its honest surface is doc 09
+§4.1's park section, which already serves it. A second badge in the rail would be a second authority
+for one fact.
+
 ---
 
 ## 6. Delivery sequence mapped to doc 07
