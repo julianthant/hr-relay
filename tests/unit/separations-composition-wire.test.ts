@@ -30,6 +30,7 @@ import {
 import type { IdentityEvidencePacket } from "../../src/domain/separations/identity-evidence.js";
 import { SeparationWritePlanSchema } from "../../src/domain/separations/write-plan.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
+import { parseInputRunText, toRawSubmission } from "../../src/domain/workflow/ingress.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { buildRunSection, type RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail.js";
 import { planStart } from "../../src/services/start/plan.js";
@@ -50,8 +51,12 @@ const EID = "10873698";
 const RUN_ID = uuidOf(1);
 const GATE_NOW = "2026-08-14T18:00:00.000Z";
 
+/**
+ * D261: `actionId` left the ingress — the graph's head node resolves it — so a
+ * separations submission is the ONE number an operator types plus the constant
+ * the start surface contributes.
+ */
 const SUBMISSION = Object.freeze({
-  actionId: "6a7a33b2ac106d428b3217e0",
   documentNumber: "4510",
   timekeeperName: "Julian Zaw",
 });
@@ -98,7 +103,11 @@ function plan(submissions: readonly unknown[], dryRun = false) {
 
 describe("separations — start planning through the existing service", () => {
   it("plans one item per document, and refuses a submission the ingress does not admit", () => {
-    const planned = plan([SUBMISSION, { documentNumber: "4510" }]);
+    // The refused half is now the SHAPE the surface no longer sends: a
+    // submission still carrying D261's retired `actionId` is refused by the
+    // strict input schema rather than quietly ignored, which is what keeps a
+    // stale caller from starting a run under a contract it does not hold.
+    const planned = plan([SUBMISSION, { ...SUBMISSION, actionId: "6a7a33b2ac106d428b3217e0" }]);
     assert.equal(planned.planned.length, 1);
     assert.equal(planned.planned[0]?.matchKey, "separations:4510");
     assert.equal(
@@ -108,7 +117,41 @@ describe("separations — start planning through the existing service", () => {
     // The refusal retains the operator's EXACT raw submission (D109), so the
     // thing they typed is still readable beside the reason it was refused.
     assert.equal(planned.refused.length, 1);
-    assert.deepEqual(planned.refused[0]?.rawInput, { documentNumber: "4510" });
+    assert.deepEqual(planned.refused[0]?.rawInput, {
+      ...SUBMISSION,
+      actionId: "6a7a33b2ac106d428b3217e0",
+    });
+  });
+
+  /**
+   * D261's door, end to end through the ingress the modal actually uses: the
+   * operator types ONE number and the plan is a real, schema-satisfying
+   * separations run — the claim D260 measured as unavailable.
+   */
+  it("plans a run from typed text alone, which is the whole point of D261", () => {
+    const surface = separationsDescriptor.surfaces.inputRun;
+    assert.ok(surface, "separations declares a typed-text start surface");
+    const entries = parseInputRunText(surface.parser, "4502; 4510");
+    assert.equal(entries.length, 2);
+    const planned = plan(entries.map((entry) => toRawSubmission(entry)));
+    assert.equal(planned.refused.length, 0);
+    assert.deepEqual(planned.planned.map(({ matchKey }) => matchKey), [
+      "separations:4502",
+      "separations:4510",
+    ]);
+    // The constant rode along on every entry — one typed value, one baked one.
+    assert.deepEqual(toRawSubmission(entries[0]), {
+      documentNumber: "4502",
+      timekeeperName: "Julian Zaw",
+    });
+  });
+
+  it("refuses typed text that is not a document number, and starts nothing", () => {
+    const surface = separationsDescriptor.surfaces.inputRun;
+    assert.ok(surface);
+    // No `otherwise` arm: the box refuses as a WHOLE rather than starting the
+    // good half of a paste, which is what `inputRunParserLabel` promises.
+    assert.throws(() => parseInputRunText(surface.parser, "4502; Cramia, Dreitho"), /matched no parser rule/u);
   });
 
   it("gives an explicit re-read its OWN item, which is §'the re-run wall' item 2's whole point", () => {
