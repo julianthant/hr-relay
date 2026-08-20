@@ -626,6 +626,11 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.entries[].edit.reason", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.entries[].edit.value", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.entries[].label", origin: "repository-authored" },
+  // D252 — a step's display name and a commit node's, both `runtimeNodeLabel`
+  // over an authored `label` or the task contract's own `title`. Repository
+  // source in every arm: the fallback is the node ID, which is authored too.
+  { surface: "wire/run-detail-section", path: "payload.entries[].origin.step", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.entries[].freshness.feeds[].label", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.entries[].valueRedacted", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.members[].label", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.message", origin: "repository-authored" },
@@ -1077,6 +1082,11 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/archived-run-detail", path: "sections.value.data.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.data.value.editing.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].label", origin: "repository-authored" },
+  // D252 — a step's display name and a commit node's, both `runtimeNodeLabel`
+  // over an authored `label` or the task contract's own `title`. Repository
+  // source in every arm: the fallback is the node ID, which is authored too.
+  { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].origin.step", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].freshness.feeds[].label", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].valueRedacted", origin: "captured-hr-value" },
   { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].edit.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].edit.value", origin: "captured-hr-value" },
