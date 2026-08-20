@@ -1844,7 +1844,11 @@ These are correctness and recoverability requirements, not production-scale cere
 ## 8. Base capability inventory (webpage-ready)
 
 The following is the canonical list Claude may use to build an explanatory webpage. It describes
-what the **base** implements before workflow-specific leaf behavior is migrated:
+what the **base** implements before workflow-specific leaf behavior is migrated.
+
+**Read it as as-built EXCEPT where an item names its own gap in brackets** — re-checked against the
+code 2026-08-20, and eleven items now carry one. An item with no bracket is a capability an operator
+can reach today.
 
 1. Strict runtime-validated domain types and branded ids.
 2. Read / prepare / commit task effects with typed inputs, outputs, errors, freshness, provenance,
@@ -1875,18 +1879,27 @@ what the **base** implements before workflow-specific leaf behavior is migrated:
     tail-anchor tamper evidence is deferred until multi-user.
 19. Content-addressed immutable artifacts and idempotent outbox-based mutable projections.
 20. Append-only span/note streams and server-side queue/timeline/session projections.
-21. Durable actor-keyed typed notifications with read/unread state and optional snooze.
+21. Durable actor-keyed typed notifications with read/unread state and optional snooze
+    **[no OS delivery exists; two of seven triggers have a producer — §6.3]**.
 22. Structured failure records and automatic redacted diagnostic bundles.
 23. Per-run evidence receipts showing inputs, observations, decisions, actions, verification,
     output, reuse, and uncertainty.
-24. `explain run`/`explain failure` CLI/API and portable diagnostic export.
-25. Registered scenario corpus with wrong-page/wrong-subject/crash/control/storage cases.
+24. `explain run` CLI/API **[`explain failure` is not built, and `--bundle` portable export
+    REFUSES rather than exporting a package it cannot complete — §2.1, §2.5]**.
+25. Registered scenario corpus with wrong-page/wrong-subject/crash/control/storage cases
+    **[sixteen executable scenarios audited both ways; §3.2's full coverage policy is not proved,
+    and the tiers move to ref guards-and-tests under R10]**.
 26. Bug-fix rule requiring a linked regression scenario or explicit evidence exception.
-27. Structured active/superseded/retired knowledge records instead of append-only lessons.
-28. AI FixRecord ledger linking code changes, failures, scenarios, evidence, and commits.
-29. Read-only workflow explorer overlaying descriptor design and live execution on the same graph.
-30. Constrained, versioned editing of closed presentation and operational-policy fields in Phase-2
-    tail 2i; graph/composition changes remain source-authored code changes.
+27. Structured active/superseded/retired knowledge records instead of append-only lessons
+    **[table, admission audit and projection built; nothing in the running system writes or reads
+    them — §4.1]**.
+28. AI FixRecord ledger linking code changes, failures, scenarios, evidence, and commits
+    **[same — the store exists, no surface reaches it]**.
+29. Read-only workflow explorer over the descriptor design **[the LIVE-EXECUTION overlay is a named
+    exclusion, not a slip: run facts stay on the run-detail timeline — §5.7]**.
+30. Constrained, versioned editing of closed presentation and operational-policy fields
+    **[DEFERRED out of Phase 2 by D186 with a named trigger — §5.3; nothing partial was built]**;
+    graph/composition changes remain source-authored code changes.
 31. Operator-defined spreadsheet mappings keyed by stable target-field path (not just concept),
     with projection fingerprints, duplicate-safe source columns, per-cell schema errors, and saved
     layout maps.
@@ -1905,11 +1918,13 @@ what the **base** implements before workflow-specific leaf behavior is migrated:
     legacy/native generation or gradual production flip.
 39. Immutable intake admission manifests and hash-diffed reruns showing every valid, rejected, and
     explicitly excluded source row.
-40. Guided new-workflow scaffolding with task/schema search and a generated missing-obligations list.
+40. Guided new-workflow scaffolding with task/schema search and a generated missing-obligations list
+    **[not built; no scaffold command exists — §5.5]**.
 41. Loopback-only single-operator control runtime, with only the short-lived token-scoped mobile
     capture ingress exception; no RBAC/team/HA/remote operator deployment machinery in the base.
-42. Generated UI and active-knowledge catalogs plus exact source links for operator/Codex/Claude
-    reference—generated views are never a competing authority.
+42. Generated UI catalog plus exact source links for operator/Codex/Claude reference — generated
+    views are never a competing authority **[the ACTIVE-KNOWLEDGE catalog's generator has no caller,
+    so no `KNOWLEDGE.md` exists — §4.1]**.
 43. Durable restart-safe mobile capture sessions with immutable photo refs, idempotent ordering,
     retryable bundle outbox, and atomic PDF→intake/OCR handoff.
 44. Typed contact/address normalization that distinguishes unchanged, ambiguous, and provider-
@@ -1917,14 +1932,17 @@ what the **base** implements before workflow-specific leaf behavior is migrated:
 45. Closed provider capabilities for OCR/geocoding/AI, with narrowed injected clients, infra-only
     SDK/network adapters, timeout/abort/concurrency/rate/cost budgets, preflight, evidence, and
     produced/unavailable/invalid outcomes—remote I/O cannot hide in an import.
-46. Optional schema-bounded AI triage/sanity/selector/summary assistance over redacted structured
-    evidence; it has no command, identity, registry-write, completion, or mutation authority.
+46. Optional schema-bounded AI **triage** assistance over redacted structured evidence, with no
+    command, identity, registry-write, completion or mutation authority **[the sanity-check, selector
+    and summary adapters are RETIRED, not pending — D192 and the 2026-08-18 ruling, §4.4.2]**.
 47. Machine-checked legacy capability disposition so every old service/route/UI/CLI/tool is native,
     replaced, retired in the target, or visibly blocking cutover; it never authorizes old-source deletion.
 48. One exhaustive runtime-dependency inventory covering every browser system, provider,
     endpoint, env/config/secret consumer, and preflight check in both directions.
-49. One typed environment doctor powering startup, Settings health, workflow preflight, and
-    `test-login`, with exact blocking capability and remediation instead of scattered checks.
+49. One typed environment doctor **[the storage/authority half powers startup and Settings health
+    and was drilled at 2j (D181); the workflow-preflight RUNNER and `test-login` are not built, and
+    `apply-settings` is the kernel's one `PHASE1_DEFERRED` arm — `command-kernel.ts:141-148`, so
+    Settings reads and nothing there saves. `{#cross-cutting}` / `{#def-settings}` own the rest]**.
 
 ### What is better than the old codebase
 
@@ -1945,23 +1963,31 @@ what the **base** implements before workflow-specific leaf behavior is migrated:
 
 ## 9. Mechanical guards
 
-Ref guards-and-tests registers the following:
+Ref guards-and-tests owns the register; this is the row set that answers for THIS doc, checked
+against `docs/rebuild/guard-inventory.json` and `tests/unit/architecture/` on 2026-08-20. Ten guards
+name `reference/operator-trust.md` as an owner, nine of them `active`.
 
-- canonical UI ids/search terms unique; every task-used element/state/observation resolves;
-- raw `Page`/`Locator` imports and `page.` calls restricted to driver/session infrastructure;
-- subject-scoped browser tasks have registered authoritative observations and mismatch scenarios;
-- strict runtime schemas parse all UI registry, scenario, knowledge, fix, evidence, failure, and
-  diagnostic manifests;
-- no persisted free-form `Record<string, unknown>`/`Record<string, JsonValue>` outside an explicit
-  opaque diagnostic payload that is never used for decisions;
-- every non-trivial fix references a registered regression scenario/evidence exception;
-- generated active knowledge contains no superseded/retired/unverified records;
-- workflow editor drafts cannot name unregistered tasks/fields/policies and cannot modify active
-  run snapshots;
-- diagnostic redaction fixtures prove restricted example values never appear in exported bundles;
-- durable notifications derive from server events and dedupe/lifecycle transitions are replay-safe.
+| the rule this doc states | the guard that holds it | status |
+|---|---|---|
+| canonical UI ids and search terms unique; every task-used element/state/observation resolves; catalogs byte-fresh and recipe-free; legacy candidate ids cannot enter a runtime catalog | `semantic-ui-registry` | active — **but it audits ucpath · crm · new-kronos only; Kuali's own audit functions exist and are never called (§1.7)** |
+| raw `Page`/`Locator`, `getBy*`, `evaluate`, `$` and frame access confined to the driver/session owners and `src/infra/browser/**` | `task-driver-boundary` | active (AST **and** transitive import graph) |
+| subject-scoped browser tasks have registered authoritative observations and mismatch scenarios | `subject-before-fence` (ref write-safety) for the ORDER, `ucpath-person-org-strict` for that one store's read discipline | active — **no general per-store guard exists; the rule is enforced by the sequencer at runtime and by one store's own suite** |
+| strict runtime schemas parse every UI-registry, scenario, knowledge, fix, evidence, failure and diagnostic boundary; no persisted open `Record` outside the opaque diagnostic attachment | `strict-boundary-schemas` (ref guards-and-tests) | active — recursive, including union and lazy members |
+| a receipt is strict at every level, carries a source and instant per fact, and refuses `verified-done` for non-verified confidence, an unresolved mandatory obligation, any warning or a failure id — each proven by a violating fixture; redaction is DECLARED | `evidence-receipt` | active |
+| every non-trivial fix links a registered regression scenario or a stated evidence exception; generated active knowledge shows no superseded/retired/unverified record; admission is audited inside the insert transaction | `knowledge-fix-integrity` | active |
+| a notification is a durable record FIRST and a delivery second — a delivery that throws leaves the row unread with count and version untouched | `notification-durability` | active (the load-bearing arm injects a throwing delivery) |
+| the explorer round-trips from the REAL registries in both directions, and no edit path exists | `workflow-editor-compile-integrity` | active **at Phase A only** — its inventory entry states it carries no Phase-B arms and gains them in the commit that builds them (§5.3) |
+| every registered workflow serves the descriptor's own `summary` and every node its own `purpose`, compared byte-for-byte against the declaration | `explorer-prose-declared` | active (D229) |
+| the advisory closure's value-import graph reaches no authority writer | `ai-advisory-no-authority` | active (D178) |
+| every declared runtime dependency has a preflight scenario exercising its FAILURE, not merely its presence | `preflight-coverage` | **planned** — re-owned by D188; activates with the first migration that adds a preflight runner (§3.1) |
 
----
+Two rules this section used to claim that no guard holds, stated rather than dropped. **Diagnostic
+redaction fixtures**: `redaction-surface-scan` (D183, owned by ref guards-and-tests) is the 2j sweep
+that proves no classified value reaches a wire, durable row, ledger file, notification or provider
+unreviewed, and `evidence-receipt` holds the declared-classification half — but there is no fixture
+asserting that a restricted EXAMPLE value cannot appear in an exported bundle, because §2.5's
+`--bundle` export does not exist to be scanned. **Workflow-editor drafts cannot modify active run
+snapshots**: unenforceable and unnecessary today for the same reason — there is no draft.
 
 ## 10. Explicit residuals
 
