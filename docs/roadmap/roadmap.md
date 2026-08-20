@@ -435,12 +435,12 @@ log:
 status: planned
 date: R10 · 2026-08-20
 size: L
-doc: 03c §Testing tiers · ref:guards-and-tests
+doc: 03c §Testing tiers · ref:guards-and-tests §10
 
 > The no-dry-run tests — unit, architecture guards, ONE honest structural fixture scenario per workflow, dashboard feature scenarios, parity — run per commit, per workflow update, and all of them on a dashboard update. Every test that must RUN a workflow is built on a LIVE dry run of it, declared as a scenario with checkpoints asserted over authority, subject-parameterized against a canary registry (sensitive values outside git, referenced by label; a missing subject reports `blocked`, never `failed`), with dashboard conditions attachable and the result recorded durably. The end-to-end tier is an agent-operated run of MANY dry-run scenarios in parallel. Coverage floor 80 %.
 
 builds:
-- [ ] DOCS the spec — `reference/guards-and-tests` rewritten: tiers, layout, naming, run policy, subject registry, durable results (R10)
+- [x] DOCS the spec — `reference/guards-and-tests` §10 rewritten: tiers, layout, naming, run policy, subject registry, durable results (R10, dc2901de)
 - [ ] BE T1 layout — one structural fixture scenario per workflow + its dry-run scenario manifest (checkpoints + subject labels), the pretending scenarios rewritten
 - [ ] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard`
 - [ ] BE T3 dashboard conditions attachable to a dry-run scenario — the first: separations §9.22 as a file
@@ -451,6 +451,9 @@ builds:
 needs:
 - dash-defaults
 - fact: a named canary subject per workflow the dry-run scenarios run against (03b's registry first)
+
+log:
+- 2026-08-20 | docs-cohesion ref guards-and-tests | §10 written as-built against vitest.config.ts, run-executor/write-sequencer, tests/scenario, tests/parity and separations §9.22 (dc2901de); §7's stub lane verified NEVER PORTED → history; measured 84.23/82.15/84.74/71.76 · left: 5.2b–5.2d
 
 ### Separations — order 8, the first migration {#order-8}
 status: planned
@@ -652,7 +655,7 @@ phase: Phase 3 · continued
 status: planned
 when: next | undated — order, not calendar
 chip: 12 workflows · order by risk / reuse
-doc: 03c §Phase summary · 03c §Recommended migration order (by risk / complexity / reuse) · 04 §Phase summary
+doc: 03c §Phase summary · 03c §Recommended migration order (by risk / complexity / reuse) · 04 §Phase summary · ref:guards-and-tests §10
 open: yes
 
 > Doc 03c §Recommended migration order's risk-proof ordering, kept as-is after the separations entry (order 8 is the migration in flight, under Phase 3 above): reads populate the stores, the OCR service unblocks four consumers, write-heavy lands last. **No workflow after separations is named yet.** Each owes the 12-item §b questionnaire before building, a live dry run, (for writes) a controlled commit on a target you approve — and its own **Dashboard · wire** task on top of the defaults. **Store reality:** only ucpath, crm, kuali, new-kronos have real drivers today; onbase, servicenow, i9, old-kronos, sharepoint are 3-line session declarations with zero tasks.
