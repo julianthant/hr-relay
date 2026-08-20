@@ -47,6 +47,30 @@ npm run test:parity # doc 13 §7 visual/a11y parity lane
 
 ## Lessons learned
 
+- **2026-08-20: a fetched value is a fact about the MOMENT it was fetched, and three surfaces here
+  read one as if it were standing (D256/D257 and §9.22 item 3).** The first time this dashboard was
+  driven against a real composed run, all three of its defects were the same mistake: the right KIND
+  of fact, read from the wrong INSTANCE of it. `boot.serverClock.now` is the instant one bootstrap
+  fetch happened at, and every live elapsed computed against it, so the whole screen's clock stopped
+  at page load — a parked run read `0s` for two minutes, because the tab predated the run and
+  `elapsedSecondsBetween`'s clamp turned a negative difference into a plausible zero. The run-detail
+  wire is the run as of the last thing the operator clicked, and nothing re-read it from the day
+  stream, so an open panel said `Queued` beside a row saying `Done · took 8m 20s` and never offered
+  the receipt. And `boot.descriptorHash` is the whole descriptor SET's hash, compared against ONE
+  run's `contractFingerprint`, so the "shape moved" hazard was on for every run ever drawn. Three
+  rules travel. **A page's now must be DERIVED, not received**: keep the server's instant as the
+  authority and add the browser's monotonic time since it arrived (`state/served-clock.ts`) — one
+  hook, called once, passed down, because a component reading its own `Date.now()` puts a second
+  clock on one screen. **A surface that renders a live thing needs a live key**: the day stream
+  already carries every run's `rowRevision`, so following it is a dependency, not a poll. And
+  **before comparing two hashes, check they are the same kind of hash** — this one could never be
+  equal, and a warning that can never NOT fire trains the eye past the one that matters. Two habits
+  that made the fixes safe are worth copying: the parity lane pins the OTHER half of the clock
+  (`installFrozenMonotonic` + `assertMonotonicFrozen` in `tests/parity/helpers/app-driver.ts`), so a
+  ticking elapsed renders exactly the fixture's served instant and no reference moved; and every
+  decision landed as a pure exported fold (`deriveServedNow`, `planRunDetailFollow`,
+  `classifyRunShape`) because this tree renders no React in the unit lane, so anything left inside a
+  component is pinned only by a screenshot.
 - **2026-08-20: a `.then()` that handles one refusal arm calls the other one success (D253).** Two
   surfaces here — the Context rail's Data save and the notification bell — branched on
   `result.state === "rejected"` and let the CAS `conflict` arm fall through to the code that runs on

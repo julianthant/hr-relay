@@ -902,6 +902,14 @@ As-built contract:
   the fixture's served instant, i.e. byte-identical to what every existing reference was captured
   against. `assertMonotonicFrozen` proves the page adopted it by reading the clock twice across
   real wall time: D187's rule, applied to a clock instead of a theme.
+- **Measured, not asserted (2026-08-20).** The whole assert lane was run against the corpus as it
+  stands: **139 captures fail and 12 behaviour cases pass**. Every capture was ALREADY failing
+  before this change — the corpus is stale from wave 2 itself, since each reference's stamped
+  `descriptorHash` predates D226–D255 and the queue rows now carry D230's `#N` ordinal — and that
+  re-freeze is Track B's, deliberately not performed here. What matters is what the drift is MADE
+  of: across **678 diverging lines, not one is an elapsed**. Every `18m 0s`, `21m 0s`, `45m 0s` in
+  the corpus reads back byte-identical through the ticking clock, which is the freeze doing exactly
+  what it claims — and it is the strongest evidence available until the corpus is re-frozen.
 
 ### The open run-detail panel FOLLOWS its run (D257)
 
