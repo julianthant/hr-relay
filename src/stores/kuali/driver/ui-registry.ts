@@ -50,6 +50,14 @@ import {
   UiVerificationSchema,
 } from "../../../domain/ui/contracts.js";
 import {
+  KUALI_ACTION_LIST_DOCUMENT_LINK,
+  KUALI_ACTION_LIST_MATCHED_NUMBER,
+  KUALI_ACTION_LIST_READY,
+  KUALI_ACTION_LIST_SCREEN,
+  KUALI_ACTION_LIST_SEARCH_GO_BUTTON,
+  KUALI_ACTION_LIST_SEARCH_INPUT,
+} from "../../../domain/ui/kuali-action-list.js";
+import {
   KUALI_RRSS_DISPLAYED_EID,
   KUALI_RRSS_DISPLAYED_TIMEKEEPER,
   KUALI_RRSS_DOCUMENT_READY,
@@ -119,9 +127,33 @@ const READ_SURFACE_SCENARIO = "ui/kuali-separation-document-read-surface";
  */
 const FINALIZATION_SURFACE_SCENARIO = "ui/kuali-rrss-finalization-write-surface";
 
+/**
+ * D261's Action-List resolve surface. It carries its OWN evidence pair and its
+ * own verification date because it is a different SCREEN, live-verified on
+ * 2026-08-20 — folding it into the document surface's manifest would have to
+ * lie about one of the two dates.
+ *
+ * What that pass measured, on the real Action List of space
+ * `5e47518b90adda9474c14adb`: a direct `goto` to `…/actions` rendered the
+ * search box in **1 100 ms**; `textbox "Search"` resolved to exactly ONE node
+ * and `button "GO"` to exactly one; the unfiltered list held three documents
+ * publishing SIX bare-number links (each row publishes its number in both
+ * `Document #` and `Document Title`); and filtering to `4502` left exactly two
+ * links, both carrying
+ * `/build/space/5e47518b90adda9474c14adb/actions/6a766ae6f0549046f7f0dc06` —
+ * the action id separations §9.18/§9.22 had recorded by hand.
+ */
+const ACTION_LIST_VERIFIED_AT = "2026-08-20";
+const ACTION_LIST_FIXTURE_EVIDENCE = "evidence/ui/kuali/action-list.fixture.json";
+const ACTION_LIST_LIVE_EVIDENCE = "evidence/ui/kuali/action-list.live.json";
+const ACTION_LIST_SCENARIO = "ui/kuali-action-list-resolve-surface";
+
 const EID_PORT_KEY = "separationForm.eid()";
 const TIMEKEEPER_PORT_KEY = "timekeeperTasks.timekeeperName()";
 const SAVE_PORT_KEY = "save.navbarSaveButton()";
+const ACTION_LIST_SEARCH_PORT_KEY = "actionList.searchInput()";
+const ACTION_LIST_GO_PORT_KEY = "actionList.searchGoButton()";
+const ACTION_LIST_DOC_LINK_PORT_KEY = "actionList.docLink()";
 
 const VERIFIED_AT = "2026-08-04";
 const READ_VERIFIED_AT = "2026-08-14";
@@ -148,17 +180,43 @@ const LegacySelectorProvenanceSchema = z.strictObject({
  * refs change on every reload, and the Save neighbourhood makes a fuzzy match
  * dangerous.
  */
-export const KualiLocatorRecipeSchema = z.strictObject({
-  kind: z.literal("role-exact-name"),
-  role: z.enum(["textbox", "button", "combobox", "checkbox", "radio"]),
-  name: z.string().min(1),
-  exact: z.literal(true),
-});
+export const KualiLocatorRecipeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("role-exact-name"),
+    role: z.enum(["textbox", "button", "combobox", "checkbox", "radio"]),
+    name: z.string().min(1),
+    exact: z.literal(true),
+  }),
+  /**
+   * The Action-List document link (D261). Its accessible name IS the value the
+   * caller is resolving for, so the recipe cannot carry a literal name — it
+   * carries the SHAPE of the value and the resolver supplies the number,
+   * matched ANCHORED (`^\s*<n>\s*$`).
+   *
+   * Anchoring is the whole safety argument, ported verbatim from legacy's own
+   * comment (`actionList.docLink()`): Kuali's Action-List search is
+   * SUBSTRING-based, so filtering for `414` returns 4140–4149, and an unanchored
+   * name match would open a neighbouring person's separation. There is no
+   * `.first()` and no fallback anywhere behind this recipe; two links for one
+   * document is the ordinary row and TWO DIFFERENT action ids is a refusal.
+   */
+  z.strictObject({
+    kind: z.literal("role-anchored-value-name"),
+    role: z.literal("link"),
+    valueKind: z.literal("document-number"),
+  }),
+]);
 export type KualiLocatorRecipe = z.infer<typeof KualiLocatorRecipeSchema>;
 
 export const KualiStateEvidenceRuleSchema = z.discriminatedUnion("kind", [
   /** `…/build/space/<space>/actions/<actionId>` — which redirects to `…/view`. */
   z.strictObject({ kind: z.literal("action-view-url"), space: z.string().regex(/^[0-9a-f]{24}$/u) }),
+  /**
+   * `…/build/space/<space>/actions` — the Action List's OWN route (D261).
+   * Live-verified 2026-08-20: a direct `goto` renders the list's search box in
+   * 1.1 s, so the legacy menu click (`actionList.menuItem()`) is not ported.
+   */
+  z.strictObject({ kind: z.literal("action-list-url"), space: z.string().regex(/^[0-9a-f]{24}$/u) }),
   /** The level-1 heading is the document number; it is how we prove identity. */
   z.strictObject({ kind: z.literal("document-number-heading"), level: z.literal(1) }),
   /**
@@ -192,6 +250,18 @@ export const KualiObservationRecipeSchema = z.discriminatedUnion("kind", [
     kind: z.literal("document-title-form-name"),
     trim: z.literal(true),
     valueType: z.literal("form-type"),
+  }),
+  /**
+   * The Action-List row's own document number (D261) — the link's accessible
+   * name, which the anchored recipe already proved equals the number the run
+   * asked for. It is read off a LINK, not a form control, which is why it needs
+   * its own recipe kind rather than reusing `input-value`.
+   */
+  z.strictObject({
+    kind: z.literal("action-list-matched-link-name"),
+    element: ElementIdSchema,
+    trim: z.literal(true),
+    valueType: z.literal("document-number"),
   }),
 ]);
 
@@ -319,6 +389,17 @@ function finalizationVerification(legacyKey: string) {
   };
 }
 
+/** D261's Action-List surface, against its own 2026-08-20 evidence pair. */
+function actionListVerification(legacyKey: string) {
+  return {
+    verifiedAt: DateOnlySchema.parse(ACTION_LIST_VERIFIED_AT),
+    fixtureEvidenceRef: ACTION_LIST_FIXTURE_EVIDENCE,
+    liveReadOnlyEvidenceRef: ACTION_LIST_LIVE_EVIDENCE,
+    scenarios: [ScenarioIdSchema.parse(ACTION_LIST_SCENARIO)],
+    portMapRows: [{ system: "kuali" as const, legacyKey }],
+  };
+}
+
 /**
  * One read-surface element: a legacy port, live re-verified 2026-08-12 to
  * resolve to EXACTLY ONE node on real documents 4510 / 4502 / 4495.
@@ -361,6 +442,14 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       searchTerms: ["kuali rrss separation request document screen"],
       sensitivity: "restricted",
       verification: verification(IDENTITY_SCENARIO, EID_PORT_KEY),
+    },
+    {
+      id: KUALI_ACTION_LIST_SCREEN,
+      system: "kuali",
+      label: "Kuali Build Action List",
+      searchTerms: ["kuali build action list screen"],
+      sensitivity: "restricted",
+      verification: actionListVerification(ACTION_LIST_SEARCH_PORT_KEY),
     },
   ],
   elements: [
@@ -413,6 +502,69 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
         + ".or(role button Save exact); the rebuild keeps ONLY the exact role+name branch because the live "
         + "2026-08-04 DOM has exactly one button \"Save\" adjacent to \"Send Back\" and \"Mark Complete\", "
         + "and a has-text fallback around workflow-advancing buttons is an unacceptable write risk",
+      ),
+      supersedes: [],
+    },
+    /* ── D261's Action-List resolve surface (live-verified 2026-08-20) ────── */
+    {
+      id: KUALI_ACTION_LIST_SEARCH_INPUT,
+      system: "kuali",
+      screen: KUALI_ACTION_LIST_SCREEN,
+      label: "Action List search box",
+      searchTerms: ["kuali action list search box filter document number"],
+      role: "field",
+      effect: "observe",
+      sensitivity: "public",
+      locator: { kind: "role-exact-name", role: "textbox", name: "Search", exact: true },
+      requiredStates: [KUALI_ACTION_LIST_READY],
+      verification: actionListVerification(ACTION_LIST_SEARCH_PORT_KEY),
+      provenance: provenance(
+        ACTION_LIST_SEARCH_PORT_KEY,
+        67,
+        "legacy scopes the recipe to `.kp-input-group:has(.kp-input-button-right)` because a SECOND "
+        + "textbox named \"Search\" (the global nav box) existed when it was written 2026-06-17; this "
+        + "registry has no CSS arm and the live 2026-08-20 Action List renders EXACTLY ONE "
+        + "`textbox \"Search\"` (the nav control is now `Search apps`), so the port keeps the role+name "
+        + "branch and lets `exactlyOne` refuse any other count — a refusal names the ambiguity, while a "
+        + "CSS scope would silently pick one of two boxes",
+      ),
+      supersedes: [],
+    },
+    {
+      id: KUALI_ACTION_LIST_SEARCH_GO_BUTTON,
+      system: "kuali",
+      screen: KUALI_ACTION_LIST_SCREEN,
+      label: "Action List search GO button",
+      searchTerms: ["kuali action list search go submit button"],
+      role: "button",
+      effect: "observe",
+      sensitivity: "public",
+      locator: { kind: "role-exact-name", role: "button", name: "GO", exact: true },
+      requiredStates: [KUALI_ACTION_LIST_READY],
+      verification: actionListVerification(ACTION_LIST_GO_PORT_KEY),
+      provenance: provenance(ACTION_LIST_GO_PORT_KEY, 79),
+      supersedes: [],
+    },
+    {
+      id: KUALI_ACTION_LIST_DOCUMENT_LINK,
+      system: "kuali",
+      screen: KUALI_ACTION_LIST_SCREEN,
+      label: "Action List document link for one document number",
+      searchTerms: ["kuali action list document link exact anchored number"],
+      role: "link",
+      effect: "observe",
+      sensitivity: "public",
+      locator: { kind: "role-anchored-value-name", role: "link", valueKind: "document-number" },
+      requiredStates: [KUALI_ACTION_LIST_READY],
+      verification: actionListVerification(ACTION_LIST_DOC_LINK_PORT_KEY),
+      provenance: provenance(
+        ACTION_LIST_DOC_LINK_PORT_KEY,
+        33,
+        "legacy CLICKS this link to open the document and reads the resulting URL; the rebuild reads its "
+        + "`href` instead, which is the same fact one navigation cheaper and strictly read-only — "
+        + "live-verified 2026-08-20, doc 4502's two links both carrying "
+        + "`/build/space/5e47518b90adda9474c14adb/actions/6a766ae6f0549046f7f0dc06`. The anchored "
+        + "accessible-name match is ported verbatim and is the safety half",
       ),
       supersedes: [],
     },
@@ -568,6 +720,32 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
   ],
   states: [
     {
+      id: KUALI_ACTION_LIST_READY,
+      system: "kuali",
+      screen: KUALI_ACTION_LIST_SCREEN,
+      label: "Action List loaded and filterable",
+      searchTerms: ["kuali action list ready state"],
+      sensitivity: "restricted",
+      /**
+       * The list's OWN route plus its own two controls. Legacy proves the same
+       * fact by waiting for the search box after clicking the menu item
+       * (`navigate.ts:60-64` — *"UI chrome that renders as soon as the list view
+       * mounts, independent of whether any documents are pending"*), which is
+       * exactly why an EMPTY Action List still reaches this state: a document
+       * nobody is holding an action on is a real answer, not a broken page.
+       */
+      evidence: [
+        { kind: "action-list-url", space: KUALI_RRSS_SPACE_ID },
+        { kind: "element", element: KUALI_ACTION_LIST_SEARCH_INPUT },
+        { kind: "element", element: KUALI_ACTION_LIST_SEARCH_GO_BUTTON },
+      ],
+      // A direct `goto` rendered the search box in 1 100 ms live 2026-08-20 on a
+      // warm profile; 30 s is the budget every other ready state in this store
+      // carries and leaves ~27x headroom for a cold SPA boot.
+      timeoutMs: 30_000,
+      verification: actionListVerification(ACTION_LIST_SEARCH_PORT_KEY),
+    },
+    {
       id: KUALI_RRSS_DOCUMENT_READY,
       system: "kuali",
       screen: KUALI_RRSS_DOCUMENT_SCREEN,
@@ -660,6 +838,29 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
     },
   ],
   observations: [
+    {
+      id: KUALI_ACTION_LIST_MATCHED_NUMBER,
+      system: "kuali",
+      screen: KUALI_ACTION_LIST_SCREEN,
+      label: "Action List matched document number",
+      searchTerms: ["authoritative kuali action list matched document number"],
+      sensitivity: "public",
+      valueType: "document-number",
+      read: {
+        kind: "action-list-matched-link-name",
+        element: KUALI_ACTION_LIST_DOCUMENT_LINK,
+        trim: true,
+        valueType: "document-number",
+      },
+      /**
+       * The ARTIFACT subject of the resolve read (D261). The run names a
+       * document and DISCOVERS its action, so the subject is proved by the
+       * LINK'S OWN accessible name — anchored, so a substring neighbour cannot
+       * satisfy it — and never by the id it is about to return.
+       */
+      authoritativeFor: ["subject"],
+      verification: actionListVerification(ACTION_LIST_DOC_LINK_PORT_KEY),
+    },
     {
       id: KUALI_RRSS_DISPLAYED_EID,
       system: "kuali",
@@ -804,6 +1005,31 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       liveReadOnlyEvidenceRef: READ_LIVE_EVIDENCE,
       assertions: ["recipe-resolves"],
     },
+    {
+      id: ACTION_LIST_SCENARIO,
+      kind: "ui-verification",
+      title: "The Kuali Action List resolves one document number to exactly one action",
+      system: "kuali",
+      semanticIds: [
+        KUALI_ACTION_LIST_SCREEN,
+        KUALI_ACTION_LIST_SEARCH_INPUT,
+        KUALI_ACTION_LIST_SEARCH_GO_BUTTON,
+        KUALI_ACTION_LIST_DOCUMENT_LINK,
+        KUALI_ACTION_LIST_READY,
+        KUALI_ACTION_LIST_MATCHED_NUMBER,
+      ],
+      fixtureEvidenceRef: ACTION_LIST_FIXTURE_EVIDENCE,
+      liveReadOnlyEvidenceRef: ACTION_LIST_LIVE_EVIDENCE,
+      /**
+       * `exactly-one-visible` is deliberately NOT claimed for the document
+       * link: a row publishes its number in both `Document #` and
+       * `Document Title`, so TWO matched links is the ordinary live rendering
+       * (measured 2026-08-20). The invariant this surface actually holds is one
+       * DISTINCT action id, which `classifyKualiActionResolution` owns and
+       * `tests/unit/kuali-action-resolution.test.ts` pins.
+       */
+      assertions: ["recipe-resolves"],
+    },
   ],
 }));
 
@@ -851,8 +1077,15 @@ export function auditKualiUiRegistry(registryInput: unknown = KUALI_UI_REGISTRY)
       issues.push(`${element.id} may not claim the external-commit effect`);
     }
     // Kuali's Save neighbourhood is the whole reason this registry is exact.
-    if (element.locator.role === "button" && !element.locator.exact) {
+    if (element.locator.kind === "role-exact-name"
+      && element.locator.role === "button" && !element.locator.exact) {
       issues.push(`${element.id} button recipe must be an exact-name match`);
+    }
+    // D261: the anchored arm exists for ONE element. Anywhere else it would be
+    // a name match nobody supplied a value for.
+    if (element.locator.kind === "role-anchored-value-name"
+      && element.id !== KUALI_ACTION_LIST_DOCUMENT_LINK) {
+      issues.push(`${element.id} may not use the anchored Action-List link recipe`);
     }
   }
   for (const state of registry.states) {
@@ -863,7 +1096,9 @@ export function auditKualiUiRegistry(registryInput: unknown = KUALI_UI_REGISTRY)
     }
   }
   for (const observation of registry.observations) {
-    if (observation.read.kind === "input-value" && !elements.has(observation.read.element)) {
+    if ((observation.read.kind === "input-value"
+      || observation.read.kind === "action-list-matched-link-name")
+      && !elements.has(observation.read.element)) {
       issues.push(`${observation.id} reads an unknown Kuali element`);
     }
   }
@@ -886,9 +1121,19 @@ export function auditKualiUiRegistry(registryInput: unknown = KUALI_UI_REGISTRY)
   if (personSubjects.length !== 1) {
     issues.push("Kuali must expose exactly one person subject-authoritative observation for the write binding");
   }
+  /**
+   * **D261 narrows this rule once more, on the argument that already narrowed
+   * it: PER SCREEN.** The Action-List resolve reads a document identity too —
+   * off a link's anchored accessible name rather than off a document's level-1
+   * heading — and those are genuinely different bindings on genuinely different
+   * pages. What must stay unambiguous is which observation is THE document
+   * identity *of a screen*; two on one screen is the ambiguity this rule exists
+   * for, and one each on two screens is not.
+   */
   const documentSubjects = subjectObservations.filter(({ valueType }) => valueType === "document-number");
-  if (documentSubjects.length > 1) {
-    issues.push("Kuali must expose at most one document subject-authoritative observation");
+  const documentSubjectScreens = documentSubjects.map(({ screen }) => screen);
+  if (new Set(documentSubjectScreens).size !== documentSubjectScreens.length) {
+    issues.push("Kuali must expose at most one document subject-authoritative observation per screen");
   }
   if (subjectObservations.length !== personSubjects.length + documentSubjects.length) {
     issues.push("a Kuali subject-authoritative observation must be a person or a document identity");

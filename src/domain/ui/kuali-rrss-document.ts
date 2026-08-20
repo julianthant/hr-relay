@@ -46,6 +46,7 @@ import {
   KualiDocumentNumberSchema,
   KualiTimekeeperNameSchema,
 } from "./kuali-document-identity.js";
+import { ReadActionListForDocumentOperationSchema } from "./kuali-action-list.js";
 import { ReadSeparationDocumentOperationSchema } from "./kuali-separation-document.js";
 import {
   ReadSavedSeparationFinalizationOperationSchema,
@@ -178,6 +179,16 @@ const ReadObservationOperationSchema = z.custom<(
 ) => Promise<string>>((value) => typeof value === "function");
 
 /**
+ * The Action-List read (D261), declared HERE for the same reason as the two
+ * families below it: a second `DriverDeclaration` for one store is exactly what
+ * `task-driver-boundary` forbids, so a sibling task family extends this surface
+ * rather than minting its own. Its schemas live in `kuali-action-list.ts`
+ * because the Action List is a different SCREEN from the document — not because
+ * it is a different driver.
+ */
+const ReadActionListForDocumentOperation = ReadActionListForDocumentOperationSchema;
+
+/**
  * The separation-document read (2i chunk 2). It is declared HERE, on the one
  * driver declaration the whole store binds, because a second
  * `DriverDeclaration` for the same store is exactly what the task/driver
@@ -216,6 +227,7 @@ const CommitOperationSchema = z.custom<(
 export const KualiRrssDocumentDriverSchema = z.strictObject({
   system: z.literal("kuali"),
   read: ReadObservationOperationSchema,
+  readActionListForDocument: ReadActionListForDocumentOperation,
   openDocument: OpenDocumentOperationSchema,
   readSeparationDocument: ReadSeparationDocumentOperation,
   stageTimekeeperName: StageTimekeeperOperationSchema,

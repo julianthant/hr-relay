@@ -1176,9 +1176,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/action-list.doc-link"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.action-list.document-link",
+      "evidence": {
+        "verifiedAt": "2026-08-20",
+        "fixtureEvidenceRef": "evidence/ui/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/action-list.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1217,9 +1222,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/action-list.search-input"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.action-list.search-input",
+      "evidence": {
+        "verifiedAt": "2026-08-20",
+        "fixtureEvidenceRef": "evidence/ui/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/action-list.live.json"
+      }
     },
     {
       "system": "kuali",
@@ -1237,9 +1247,14 @@
       "sourceBlob": "1c55c7d307891e07951ca38a89548418bdc23f49",
       "catalogPath": "src/systems/kuali/SELECTORS.md",
       "catalogBlob": "9a152606c127a186fc9fd9b40d9c1744d7027932",
-      "disposition": "candidate",
-      "semanticKind": "unclassified",
-      "candidateId": "candidate:kuali/action-list.search-go-button"
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.action-list.search-go-button",
+      "evidence": {
+        "verifiedAt": "2026-08-20",
+        "fixtureEvidenceRef": "evidence/ui/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/action-list.live.json"
+      }
     },
     {
       "system": "kuali",
