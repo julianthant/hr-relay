@@ -1991,13 +1991,39 @@ snapshots**: unenforceable and unnecessary today for the same reason — there i
 
 ## 10. Explicit residuals
 
-- Locator/page-state correctness still ultimately depends on live system behavior. The registry
-  makes evidence, ownership, and reuse explicit; it cannot make a stale live verification current.
-- Some pages expose no authoritative subject identity. A subject-scoped write on such a page cannot
-  auto-commit; it must gain a verified cross-page observation/proof or park for typed operator
-  confirmation. “The search succeeded” is not sufficient evidence.
-- A constrained visual editor cannot express every complex workflow. Falling back to reviewed code
-  is expected, not a failure of the model.
-- Diagnostic screenshots may contain unavoidable HR context. Capture-time redaction/minimization
-  reduces exposure but cannot promise perfect visual redaction; restricted bundles remain local and
-  short-lived unless pinned.
+Re-checked item by item against the code on 2026-08-20. Each row is **closed** (the mechanism
+exists — the residual was a gap and is not one now), **open** with the node that owns it, or
+**standing** (a true fact about the world that no build closes). Four items this pass found have no
+node at all; they are listed under the table and reported to the plan rather than quietly adopted.
+
+| residual | verdict | who owns it |
+|---|---|---|
+| Locator/page-state correctness ultimately depends on live system behaviour; the registry cannot make a stale live verification current | **standing** — and the registry's job is to make staleness VISIBLE, which it does: every element, state and observation carries `verifiedAt` plus both evidence refs at the same weight as its id (§1.2, §5.8) | every migration's live re-verification (`{#migrations}` and each `order-N`). D150 retired legacy change accounting on exactly this argument: a selector checked against the live system beats one diffed against legacy's copy |
+| Some pages expose no authoritative subject identity, so a subject-scoped write there cannot auto-commit — it must gain a verified cross-page observation or park for typed operator confirmation | **closed as a mechanism** (the fact about those pages stands): the park and the `operator-confirmed-absent` settlement arm are built and were exercised live — D128's controlled commit parked `unknown` with zero checkpoint, ledger and terminal rows | ref write-safety §4.1 owns the arm; nothing is owed here |
+| A constrained visual editor cannot express every complex workflow; falling back to reviewed code is expected | **open, and moot until an editor exists** — D186 deferred Phase B entire, so there is no partial editor and no half-authority (§5.3). §5.4's code-change brief is part of the deferred half | `{#def-explorer-edit}`, trigger named: the SECOND production workflow whose policy an operator wants to change without a code change |
+| Diagnostic screenshots may carry unavoidable HR context; capture-time redaction cannot promise perfect VISUAL redaction | **standing** — only a screenshot may stay `restricted`; every other attachment arm is redacted text, and a never-exportable key surviving as `allowed` fails the capture (§2.2.1) | this doc; no build closes it |
+| …“restricted bundles remain local and **short-lived** unless pinned” | **CORRECTED — the second half was false.** They are local. They are not short-lived: the sweep is built, tested, and has no caller, so no bundle has ever been purged on this machine (§2.2) | `{#def-retention}`, status `never` — D193 dispositioned scheduling AND the content-store refcount as `wont-build-unless-asked` |
+| `explain failure <fingerprint>` (§2.1, §4.2) | **open** — the indexed column and `listByFingerprint` exist; the command does not | **unowned** (see below) |
+| The knowledge/fix store has no writer, no reader and no surface; §4.3's audit needs a `version` field nobody has ratified (§4.1, §4.3) | **open** — table, admission audit and projection are built and unit-tested; nothing in the running system reaches them | `{#track-a}`'s close-out line (“regression scenarios, knowledge records, capability dispositions”) |
+| Five of seven notification event kinds have no producer, leaving four trigger arms unreachable (§6.3) | **open** | the notification square on `{#sep-dash}` and each `Dashboard · wire` set for `failed` / `subject-mismatch` / `write-parked`; `repeating` and `verified-done` are **unowned** |
+| A rerun's FIELD-LEVEL diff against the prior run (§2.4) | **open** — per-fact `reuse` rows and `retryOf` exist; nothing compares two receipts | `{#def-search-export}`, where a corpus of runs to compare first becomes reachable |
+| `preflight-coverage` is `planned`; nothing executes the preflight fault manifests (§3.1) | **open** | `{#cross-cutting}` — D188 re-owned it; it activates with the first migration that adds a preflight runner |
+| §3.2's minimum coverage policy is not proved in full (the audit is over graph-derived points, not a contract's error enum) | **open** | `{#test-tiers}` (R10), spec `ref guards-and-tests §Testing tiers` |
+
+**Four residuals no node names — reported, not adopted.** This doc may not mint a node, so each is
+stated here and carried to the plan.
+
+1. **Kuali's registry audit functions are never called.** `auditKualiUiRegistry` and
+   `auditKualiUiEvidenceBindings` hold real rules and no test invokes them, so
+   `semantic-ui-registry`'s structural audit covers three of the four stores (§1.7). One call site
+   closes it.
+2. **`explain failure <fingerprint>` has no owner.** It is a CLI capability rather than a workflow
+   close-out; the nearest home is `{#cross-cutting}`'s non-workflow capability inventory, which does
+   not list it today.
+3. **No OS delivery channel exists at all.** `OsNotificationDelivery` is an interface with no
+   production implementation, so every publish settles `no-channel` and the `ping` channel names an
+   intent (§6.3). D138's guarantee holds — the row IS the alert — but "the operator missed the
+   toast" describes a toast that cannot be shown.
+4. **`explain run`'s notifications absence reason went stale at D262** and can now tell an operator
+   *"this run has none"* about a run that has a `gate-opened` row (§2.5). A one-line reason string on
+   a trust surface, where a reader has no way to know it is old.
