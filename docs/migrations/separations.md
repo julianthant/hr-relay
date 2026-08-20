@@ -5284,3 +5284,149 @@ counter pin's failure output is the wedge in one line:
 - **§9.20 item 7's cold-profile New Kronos observation** is untouched and still open; it is a
   different finding that happened to sit in the same window.
 - **The parity lane**, unchanged: no dashboard bytes moved in this pass.
+
+---
+
+### 9.22 The Track C connection proof — the REAL dashboard driven against a REAL composed dry run, 2026-08-20
+
+Wave 2's dashboard work (B1–B8, D226–D255) had been proved by unit, architecture and scenario gates
+and by nothing that connected the two halves. This pass is that connection: a fresh BFF and vite
+booted from the working tree at `d68f228`, a composed `separations` DRY run planned and started
+through the real ingress, the identity gate approved **through the dashboard's own ceremony**, and
+every surface claim paired with an independent read of authority (`sqlite3 .tracker-rebuild/state.db`)
+or of the wire the BFF actually served. Nothing was fixed here; four defects and two operational
+findings are RECORDED below, with their evidence, for the owners named.
+
+**Every run was `dryRun: true`.** No UCPath transaction was staged or submitted, no Kuali `Save` /
+`Send Back` / `Mark Complete` was clicked, `submitDocumentV2` was never issued, and the one approval
+was taken through this system's own command endpoint, which is our gate rather than an HR write.
+
+**Nothing was written, anywhere.** Asserted against authority after the pass, not from logs:
+`write_intents` **2**, `write_attempts` **3**, `durable_outbox` **2** — byte-for-byte §9.17's and
+§9.20's counts, all of them 2026-08-04's Phase-2 controlled commit on Kuali doc **4489**, newest
+intent `2026-08-04T17:08:48.805Z`. `run_checkpoints` holds **zero** rows for `clear-pending`,
+`file-termination`, `finalize-kuali` or `receipt` across every run this database has ever held.
+
+#### 1. The fresh-BFF check, and the runs
+
+`npm run dashboard` (D247's launcher — one command, BFF on 3938 plus vite on 5174) was started only
+after the 06:28 pair inheriting the pre-wave-2 tree was killed, because §9.16 §5's stale-singleton
+lesson is what makes this whole pass meaningful. `GET /api/v1/explorer` then served all eight
+workflow `contractFingerprint`s, every one of them present in
+`src/domain/workflow/generated-build-manifest.ts`, and `npm run build:manifest:check` reported the
+manifest current. `separations` served **`59830cf6…`**, which is the fingerprint the start plan bound
+and the fingerprint every run below carries.
+
+| Run | Trace | Attempt | `runNumber` | Outcome | Wall |
+|---|---|---|---|---|---|
+| `fd7b7a71` | `sp-080612-fd7b` | **7** | 8 | `failed` — UCPath Duo refusal (item 5a) | 36 s |
+| `21ed4aa0` | `sp-081003-21ed` | **8** | 9 | `failed` — New Kronos login refusal (item 5b) | 1 m 2 s |
+| `e1b8ae3e` | `sp-081217-e1b8` | **9** | 10 | **`done`** at the preview terminal | 8 m 20 s (incl. 6 m parked) |
+
+All three are item `c9837287` (`separations:4502`, Cramia, Dreitho / EID 10001754). The first was
+started through the real `POST /api/v1/start-plans` → `POST /api/v1/commands` pair; **the second and
+third were started from the queue row's own `Run again` control**, so D221's item-scoped attempt was
+exercised twice more through the UI: 6 → 7 → 8 → 9, each the item's next unspent attempt, no
+collision and no refusal. The 2026-08-19 checkpoints did NOT replay (`2c9cb58e…` ≠ `59830cf6…`), so
+run 1 re-read everything live; runs 2 and 3 replayed what their predecessors had written.
+
+#### 2. What the UI claimed, and what authority said
+
+| Surface | UI claim | Paired authority / wire fact | Verdict |
+|---|---|---|---|
+| Run modal, B3/D250/D251 rows | `Examples` (One EID · An EID and a name), the parser prose *"An employee ID is eight digits beginning 10…"*, the `How this run is shaped` summary, `Active-run policy — Refuses the start while a run for the same subject is unfinished` | `person-lookup` descriptor `surfaces.inputRun`; `enqueue: "reject-active"` | **MET** |
+| Run modal, Separation | listed under **7 not startable** with *"This workflow declares no typed-input surface, so this dialog has no box for it."* | `src/workflows/separations/descriptor.ts` `surfaces: {}` — deliberate, with its reason in the descriptor | **MET as declared** (item 4) |
+| Run modal, D241 taxonomy | `Kuali Timekeeper Annotation` under **Test equipment**; the six separation harnesses carry *", a proving harness of Separation"* | the served taxonomy `role`/`categoryId` | **MET** |
+| Queue row, D230 | `#8` / `#9` / `#10` with title *"Run #N of this workflow"* | `tasks.run_number` = 8 / 9 / 10 | **MET** |
+| Queue row, D232 | `dry run` chip, *"Dry run — this rehearsal reads the systems and writes nothing."* | `envelope.dryRun = true` on all three | **MET** |
+| Queue row, B4b | `attempt 9`, trace `sp-081217-e1b8`, `Kuali action 6a766ae6…`, `Review` → `Done`, `took 8m 20s` | `tasks.attempt`, `envelope.traceId`, the day wire's `subtitle`/`status`/`endedAt` | **MET** |
+| Gate ceremony, B1/D226 | dialog **Approve this identity**; *What disagrees* FIRST with the honest empty state (*"Every compared field agreed. That is not the same as being the right person — it is the absence of a reason to doubt it."*), then *What agrees* (4 comparisons verbatim), *Approvable candidates*, *What this approval authorizes* (D211's block: template `UC_INVOL_TERM`, reason `Appointment Expired`, empl record 0, effective 04/01/2026, LDW 03/31/2026, dept `000412 - Housing/Dining/Hospitality`, title `STDT 3 (004920)`, timekeeper `Julian Zaw`, both dates, `Pay codes not counted: Farmworkers Day`) | `GET /api/v1/runs/:id/identity-gate` — same four comparisons, same plan block | **MET** |
+| Ceremony chip line | `packet a6768671fb58… · ceremony one-click · parked 8:13 AM`, footer `rev 22` | wire `evidenceDigest a6768671fb58…`, `approvalShape "one-click"` (server-computed), `parkedAt 15:13:15.339Z`, `expectedVersion 22` | **MET** |
+| The approval itself | one click on `Approve` | `checkpoint_payloads` key `e1b8ae3e…:identity-approval` — `decision approved`, `resolvedBy local-operator`, `resolvedAt 2026-08-20T15:19:19.644Z`, `eid 10001754`, `chosenFrom checked`, `evidenceDigest a6768671fb58…` **identical to the digest the dialog printed**, `expectedVersion 22` | **MET** |
+| Decision record, D237 | `identity-approval · decision Approved · 8:19 AM` / *"Approved by local-operator · 8:19 AM"* | the same `gate_results` row | **MET** |
+| Outcome bar, D238 | `dry run · partial · 8:20 AM`, icon `Done with warnings` | wire `outcome {state: terminal, result: "partial", rehearsal: true, completedAt 15:20:37.718Z}` — a rehearsal never wears `verified-done` | **MET** |
+| Receipt tab | `receipt 8c4bf82e-414c-541a-85ce-d122a87eb397`, Input / Observations sections, redacted (`timekeeperName` → `Zaw`, EID → `4118`) | `evidence_receipts` row `8c4bf82e…` — `result partial`, `confidence unknown`, `output []`, 19 verifications, one load-bearing `DRY_RUN_PREVIEW` warning naming the probe at `15:20:37.714Z`, `descriptorFingerprint` the run's own `59830cf6…` (D199) | **MET** |
+| Terminal result | — | `run_results` bound to the PREVIEW schema `86cd007a59d4ae67…` — §9.17's exact hash — `kind: dry-run-preview`, `externalCommit: none`, `clear-pending` settled `already-present` off a `live-probe` at `15:20:37.714Z` | **MET** |
+| Zero writes | — | counts above | **MET** |
+
+#### 3. Four defects this pass found, none of them fixed here
+
+**(1) A REPLAYED node is indistinguishable from a node that never ran, on every surface that folds
+spans.** Run `e1b8ae3e` replayed eleven checkpoints written by its two predecessors and executed four
+nodes live, then resumed past the gate and executed three more. Replayed nodes emit no spans by
+design, and the queue projection folds spans — so the queue row's pipeline chips and the run-shape
+rail both report `document`, `plan`, `termination-type`, `name-search`, `subject`, `job-summary`,
+`employment` and `department-option` as **`pending`**, on a run that has finished. Read at the
+category level (D225) it is worse: `Kuali extraction — pending`, `Job summary — pending`, and
+`Identity check — pending, took 0s` on the very category whose gate the operator personally approved
+one minute earlier. Confirmed at the WIRE, not the client: `GET /api/v1/runs/:id` serves
+`steps[0].state = "pending"` after the run is terminal. The honest word for a replayed node is not
+`pending`; the projection cannot currently say it at all, because the only evidence it reads is the
+one thing replay deliberately does not produce. *(D218's shape one level in: a projection is only as
+complete as the channel it folds.)*
+
+**(2) Every live elapsed on the dashboard is frozen at page load.** `useBootstrap` fetches once
+(`useEffect` keyed on `client`), and `boot.serverClock.now` is the ONLY instant the queue row's
+in-flight timer, the gate-age pill, the session card and the worker card compute against. Proved by
+double reading: the parked run showed **`0s`** for over two minutes (the tab had loaded at 15:03:32,
+BEFORE the run started at 15:12:17, so the difference is negative and clamps), and a plain reload at
+15:15:15 made the same row jump to **`2m 54s`** — exactly `bootstrapInstant − startedAt`, and still
+frozen from there. A terminal row is unaffected (`endedAt − startedAt` is two served instants, D124),
+so this is invisible to every settled run and wrong on every run you are actually watching.
+
+**(3) The `wf <hash>` shape-hazard chip is structurally always on.** `RunProvenanceBar` computes
+`shapeMoved = surface.descriptorHash !== currentDescriptorHash`, where `surface.descriptorHash` is
+the RUN's one-workflow `contractFingerprint` (`run-queue-projection.ts:1305`, `queued.contractFingerprint`)
+and `currentDescriptorHash` is the bootstrap's `descriptorSetHash` — the hash of the whole eight-workflow
+SET. Two different kinds of value, never equal. So a run enqueued sixty seconds ago under the current
+descriptor renders the amber hazard *"Ran under Separation shape 59830cf6; runs are served by 76a28eef
+now. The run's SHAPE moved, so these are not comparable — a retry would replay retired code."* — and
+it did, on all three runs of this pass, whose fingerprint `59830cf6…` is byte-identical to the one the
+explorer serves for `separations` and the build manifest holds. This is D179's `staleApp` defect
+inverted: a warning that could never fire is bad, and a warning that can never NOT fire is worse,
+because it trains the eye past the one chip that would announce a genuinely retired shape.
+
+**(4) The open run-detail panel does not follow its run.** `useRunDetail` refetches only when `runId`
+or `detailNonce` changes, and `detailNonce` is bumped ONLY by a dispatched command or an applied Data
+edit — never by the SSE day stream. So after the gate approval bumped it, the panel froze on the wire
+as of that instant and stayed there while the run resumed, ran three more nodes and terminalized:
+with the queue row beside it reading **Done · took 8m 20s** and the BFF serving `status: "done"`, the
+panel's header still read **`Queued` / "run is queued"** and its tablist still offered only `Logs`.
+Because `receipt` enters `availableSections` only at terminal, **the evidence receipt is unreachable
+from a panel you had open** — the surface whose whole job is to explain a run does not notice the run
+finishing. A reload fixes it; per the e2e rule, a workaround is a finding.
+
+#### 4. The connection gap the pass could not close: Separation has no start door
+
+The dispatch's step 2 — *plan doc 4502 through the run modal* — cannot be performed, and the modal
+says so honestly: `Separation` sits under **7 not startable** with *"This workflow declares no
+typed-input surface, so this dialog has no box for it."* That is the descriptor's own ratified
+decision (`surfaces: {}`, with its reason written in place: the paste-a-line parser splits ONE token
+per item and this ingress is three correlated values, so a parser would have to invent the two it did
+not receive). `person-lookup` is therefore the ONLY workflow with a UI start door, and every
+separations run in this pass was started either through the raw start-plan/command pair or through a
+finished row's `Run again`. **This is recorded as a gap in the operator story, not as a defect**: the
+flagship workflow of Phase 3 cannot be started from the dashboard at all, and `Run again` only works
+once some other path has produced a first run. The owner is doc 13 / the run-start surface, and the
+question it owes an answer to is what a three-field structured ingress looks like in this dialog.
+
+#### 5. Two operational findings — both burned profiles, both cleared by deletion
+
+**(a) UCPath, run 1.** The very first run died in 36 s with D243's new refusal, verbatim on the queue
+row: *"Duo REFUSED the WebAuthn assertion and rendered its terminal 'canceled or timed out' screen …
+it is a Duo Autopilot signCount regression … Check the extension's stored signCount before touching
+`timeouts.duoApprovalSeconds` or `timeouts.sessionAcquireMs`"*. That message is §9.21's fix doing
+exactly its job — **9.5 s of naming the cause instead of 60 s of burning a bound** — and the state it
+named is §9.21 §4's sticky burn: D243 prevents the FIRST refusal, and a profile burned before the fix
+stays burned. Deleting `.auth/hrauto-rebuild/separations-worker-1/ucpath-prod-9e62a0611bb3` cleared
+it, and the cold profile logged in on the next run.
+
+**(b) New Kronos, run 2.** The next run died at the next system with §9.20 item 7's message word for
+word — *"the observed URL is not the UKG Dimensions (WFD) application; the ForgeRock sign-on host
+shares the mykronos.com domain and is refused here"* — on a profile one day old. Deleting
+`new-kronos-prod-9e62a0611bb3` cleared it too. So the answer to §9.21's *"CRM, Kuali, New Kronos and
+ServiceNow were not re-tested"* is now partly in: **New Kronos wedges the same way, and presents as a
+landing-verification refusal rather than a Duo one**, because its Duo ceremony fails upstream of the
+WFD landing. Kuali was never affected in this pass and logged in on every run. Both remediations are
+still operator-level directory deletions.
+
