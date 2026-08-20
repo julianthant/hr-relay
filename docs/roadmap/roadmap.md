@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
 asOf: 2026-08-20
-head: 81bf48d
+head: bf41158
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from the phase docs `docs/rebuild/00`–`05` (§Phases at a glance below, `03c`'s migration order, `00`'s size model)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
@@ -276,17 +276,27 @@ doc: 03a §Phase summary · ref:frontend-backend-integration §5 · ref:frontend
 
 > Built ONCE so a migration only wires it: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity, explorer. Track B finished the surfaces with separations as the forcing function; Track C is proving the connection against a real run; Track D hardens the stack before cutover. A workflow's own "Dashboard · wire" task sits under that workflow and reads this node as its prerequisite.
 
+builds:
+- [ ] BE the per-run stream topics — five of six declared TopicKeys have no producer, so run detail, logs, review, people and artifact updates arrive by re-read, not by patch (ref frontend-backend-integration §3.5)
+- [ ] FE the Session Panel's six unbuilt controls — plan/spawn/pause/resume/refresh/reopen have kernel arms and no button; only Stop is composed
+- [ ] BOTH the Review panel kind and the Group People page — both §5 matrix rows have no surface and both section arms are declared-unserved (D184)
+- [ ] PROOF the parity corpus reaches Settings and the Session Panel — neither is routable from the lane's AppRoute; keyboard and reduced-motion exist in ONE theme
+- [ ] BE producers for the five declared notification triggers that have none — run-failed · subject-mismatch · write-parked · repeating-failure · verified-done (audit C4)
+- [ ] BE the `operation` run shape is minted by SOME enqueue path — today every path stamps `single`, so §9's group model (member well, rollup, containment) is presentation over fixtures (audit C2)
+
 needs:
 - p2-2i
 
 log:
 - 2026-08-20 | docs-cohesion step 5.0 | `duo-lease` · `parallel-runs` · `observed-logs` drawn under this node (R11/R12 and the operator's observed-logs ruling), each with its own section in doc 03a · left: 5.3a builds the lease, 5.3b the pool and the session view
 - 2026-08-20 | docs-cohesion 03a | doc 03a written to the phase-doc contract — every surface verified against `src/dashboard/**` and `src/server/dashboard/**`, four of nine exit criteria MET; two honest gaps recorded rather than assumed built: the run-detail Review and People bodies have no producer (`availableSections` cannot return them) and belong to the OCR and group migrations
+- 2026-08-20 | docs-cohesion frontend-backend-integration | ref frontend-backend-integration rewritten as-built; §5.1 split into seven wire squares (5.1.1 run modal … 5.1.7 intake/capture/Edit Data), each separately citable and tagged; §1.1 and §5 gained a Built column · left: the per-run stream topics, the Review and People panel kinds, six Session-Panel controls
+- 2026-08-20 | docs-cohesion dashboard-surfaces audit | 109 sections classified (49 done · 32 needs-attention · 15 to-build · 8 superseded · 5 reference); C1–C4 booked as builds: lines; rewrite split into 5.1b/c/d
 
 #### Track B · dashboard completion {#track-b}
 status: done
 chip: B1–B8 all landed · 08-19 → 20
-doc: 03a §Track B · dashboard completion · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §10.2 · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.3 · ref:write-safety §14.11 · ref:operator-trust §5.9
+doc: 03a §Track B · dashboard completion · ref:frontend-backend-integration §3.2 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §10.2 · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.3 · ref:write-safety §14.11 · ref:operator-trust §5.9
 
 > Separations as the forcing function; the findings ledger swept to zero-or-decided — the definition of "frontend done".
 
@@ -329,7 +339,7 @@ log:
 status: planned
 date: D264 · audit 2026-08-20
 chip: ratified 2026-08-20 (D264) · D1–D5 planned · D6–D10 proposed
-doc: 03a §Track D · dashboard hardening, pre-cutover budgets · ref:frontend-backend-integration §4 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §7.4
+doc: 03a §Track D · dashboard hardening, pre-cutover budgets · ref:frontend-backend-integration §2 · ref:frontend-backend-integration §4 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §7.4
 
 > From the 2026-08-20 architecture audit (`docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Eleven ordered moves, none a rewrite, sequenced after Track C and before the next workflow leans on the dashboard. **Ruled by D264:** the track sits here under the dashboard defaults; D1–D5 are planned; D6–D10 stay proposed behind one named trigger; and §3.5 is answered — the descriptor registry LEAVES the browser bundle as row D11, amending D251. D4 and D5 double as the FIRST measurement of ref frontend-backend-integration §7.4's performance budgets, whose recorded numbers become the non-regression gates for every later workflow.
 
@@ -355,6 +365,7 @@ note: D6–D10 are the maintainability slice and carry ONE trigger — they star
 log:
 - 2026-08-20 | docs-cohesion step 4a | ratified by D264 — D1–D5 planned, D6–D10 proposed, D11 added (77a0be76)
 - 2026-08-20 | docs-cohesion 03a | every one of the eleven rows re-verified UNLANDED at HEAD rather than carried on the audit's say-so, with the file:line of each finding recorded in doc 03a's Track D table (no exported `deriveRunStatus`, two `TASK_OUTCOME` vocabularies, two `panelKindOf` copies, `settleCommandResult` imported by two surfaces, zero `React.memo`, `WORKFLOW_DESCRIPTORS` at `dashboard-app.tsx:25`)
+- 2026-08-20 | docs-cohesion frontend-backend-integration | all eleven rows tick in ONE place — ref frontend-backend-integration §7.4's status block, with a per-row map of where each lands; §7.4 records that NOTHING in src/ or tests/ measures any budget it names
 
 #### Duo ceremony lease — one login at a time per credential {#duo-lease}
 status: planned
@@ -408,6 +419,7 @@ doc: 03a §Observed logs — the log carries what the page said · ref:dashboard
 > The log stream quotes the facts each task RECORDED — the provenance points: field, value, system, observed-at — redacted by the declared evidence classification, and never a second scrape. A transaction node's beats stream their observations while the step is still running, so the operator watches the page's own words rather than a step name. The log emission path and the log structure are rebuilt around recorded observations; the scope may widen when the operator reviews phase 3a.
 
 builds:
+- [ ] BE the notes stream gets a production emitter — `emitNote` is composed and never called; `.tracker-rebuild/notes/` does not exist, while the Logs section re-reads it per request and a failed run opens on it (audit C1)
 - [ ] BE provenance points emitted on the span at record time, redacted by declaration (an unclassified leaf fails loud)
 - [ ] BE transaction beats stream their observations (probe → stage → fence → click → read-back)
 - [ ] FE the log panel renders observed rows per step, in the Context rail's vocabulary
@@ -591,7 +603,7 @@ needs:
 #### Dashboard · wire separations {#sep-dash}
 status: active
 chip: 9 of 9 wired — every square filled (D262 closed the last)
-doc: 03b §Dashboard · wire separations · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9 · ref:write-safety §14.11
+doc: 03b §Dashboard · wire separations · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.4 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9 · ref:write-safety §14.11
 
 > What the generic surfaces learned about separations, and the two separations-specific things no default covers (the ALWAYS-GATE's ceremonies, the three commit contracts' ledger lines). Built with Track B as the forcing function, so most squares are already filled; the empty ones are wires not yet run — not sloppy surfaces.
 
@@ -633,7 +645,7 @@ doc: 03b §Smaller operator calls open · ref:dashboard-surfaces §9 · 03c §No
 
 ## session: 2026-08-20 | docs-cohesion step 5.0 | doc: on every node; test-tiers · duo-lease · parallel-runs · observed-logs drawn (R10–R12)
 
-## today: 2026-08-20 · HEAD 81bf48d · separations 8 / 9 · Tracks B+C DONE · parity re-frozen 151/151 · the three commits wait for 08-28
+## today: 2026-08-20 · HEAD bf41158 · separations 8 / 9 · Tracks B+C DONE · docs rewrite batch 1 merged (03a · frontend-backend-integration · dashboard-surfaces audit) · the three commits wait for 08-28
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued
@@ -648,7 +660,7 @@ open: yes
 needs:
 - phase-3
 
-note: **Legacy capability register:** 48 open · 20 replaced · 7 native · 3 retired — cutover requires zero open. Every entry advances to native / replaced / retired at its order's migration.
+note: **Legacy capability register:** 47 open · 20 replaced · 7 native · 4 retired — cutover requires zero open. Every entry advances to native / replaced / retired at its order's migration.
 ### Order 0 · person-lookup {#order-0}
 status: done
 size: M
@@ -662,7 +674,7 @@ builds:
 #### Dashboard · wire person-lookup {#order-0-dash}
 status: done
 chip: the Phase 1 slice
-doc: 03c §Dashboard · wire person-lookup · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §6.3
+doc: 03c §Dashboard · wire person-lookup · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §6.3
 
 > The first wiring, done in 1i-spine and proven live by D74: the typed Start Run surface, the queue row, run detail + receipt, the Context rail — all four parity surfaces from one projection.
 
@@ -696,7 +708,7 @@ needs:
 #### Dashboard · wire Search + Match · i9-lookup {#order-1-dash}
 status: planned
 chip: inherits the defaults — wiring only
-doc: 03c §Dashboard · wire Search + Match · i9-lookup · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
+doc: 03c §Dashboard · wire Search + Match · i9-lookup · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
 
 > What the generic surfaces must learn about person-lookup's two modes and i9-lookup: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
 
@@ -731,7 +743,7 @@ needs:
 #### Dashboard · wire the downloads {#order-2-dash}
 status: planned
 chip: inherits the defaults — wiring only
-doc: 03c §Dashboard · wire the downloads · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §3.6 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
+doc: 03c §Dashboard · wire the downloads · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:frontend-backend-integration §3.6 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
 
 > What the generic surfaces must learn about crm-doc-download · sharepoint-download · old-kronos-reports: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
 
@@ -767,7 +779,7 @@ needs:
 #### Dashboard · wire the OCR pipeline {#order-3-dash}
 status: planned
 chip: inherits the defaults — wiring only
-doc: 03c §Dashboard · wire the OCR pipeline · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:data-intake-and-edit-data §4.3 · ref:dashboard-surfaces §9 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
+doc: 03c §Dashboard · wire the OCR pipeline · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:frontend-backend-integration §5.1.7 · ref:data-intake-and-edit-data §4.3 · ref:dashboard-surfaces §9 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
 
 > What the generic surfaces must learn about the OCR pipeline workflow: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
 
@@ -779,6 +791,7 @@ builds:
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] BOTH OCR review UI — expanded page ↔ extracted-text pair, approve / reject / retry page, one atomic correction list
 - [ ] WIRE review/approve commands + progressive record patches over the SSE stream
+- [ ] BOTH the OCR Review panel body — `review` is declared in TAB_ORDER but `availableSections` can never return it (03a finding)
 - [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
 
 needs:
@@ -804,7 +817,7 @@ needs:
 #### Dashboard · wire oath-signature · emergency-contact {#order-4-dash}
 status: planned
 chip: inherits the defaults — wiring only
-doc: 03c §Dashboard · wire oath-signature · emergency-contact · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:write-safety §14.11 · ref:dashboard-surfaces §9 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
+doc: 03c §Dashboard · wire oath-signature · emergency-contact · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.4 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:write-safety §14.11 · ref:dashboard-surfaces §9 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
 
 > What the generic surfaces must learn about oath-signature and emergency-contact: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
 
@@ -816,6 +829,7 @@ builds:
 - [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] FE Group People — paged members + rollup + containment over real operation members
+- [ ] BOTH the group People panel body — declared, never servable (03a finding)
 - [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
 
 needs:
@@ -842,7 +856,7 @@ needs:
 #### Dashboard · wire i9-check {#order-5-dash}
 status: planned
 chip: inherits the defaults — wiring only
-doc: 03c §Dashboard · wire i9-check · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:data-intake-and-edit-data §4.1 · ref:dashboard-surfaces §9 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
+doc: 03c §Dashboard · wire i9-check · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:data-intake-and-edit-data §4.1 · ref:dashboard-surfaces §9 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
 
 > What the generic surfaces must learn about i9-check: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
 
@@ -879,7 +893,7 @@ needs:
 #### Dashboard · wire work-study · kronos-pay-rule {#order-6-dash}
 status: planned
 chip: inherits the defaults — wiring only
-doc: 03c §Dashboard · wire work-study · kronos-pay-rule · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:data-intake-and-edit-data §2.8 · ref:dashboard-surfaces §11 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
+doc: 03c §Dashboard · wire work-study · kronos-pay-rule · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:data-intake-and-edit-data §2.8 · ref:dashboard-surfaces §11 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
 
 > What the generic surfaces must learn about work-study and kronos-pay-rule: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
 
@@ -917,7 +931,7 @@ needs:
 #### Dashboard · wire oath-upload · onbase {#order-7-dash}
 status: planned
 chip: inherits the defaults — wiring only
-doc: 03c §Dashboard · wire oath-upload · onbase · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:operator-trust §2.3 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
+doc: 03c §Dashboard · wire oath-upload · onbase · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:operator-trust §2.3 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
 
 > What the generic surfaces must learn about oath-upload and onbase: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
 
@@ -954,7 +968,7 @@ needs:
 #### Dashboard · wire onboarding {#order-9-dash}
 status: planned
 chip: inherits the defaults — wiring only
-doc: 03c §Dashboard · wire onboarding · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:data-intake-and-edit-data §4 · ref:write-safety §14.11 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
+doc: 03c §Dashboard · wire onboarding · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.4 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:frontend-backend-integration §5.1.7 · ref:data-intake-and-edit-data §4 · ref:write-safety §14.11 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §10.1 · ref:dashboard-surfaces §10.2 · ref:operator-trust §5.9
 
 > What the generic surfaces must learn about onboarding: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
 
@@ -1014,6 +1028,14 @@ doc: 04 §Run the dashboard without the dev server / use the phone page in produ
 
 > BFF static bytes + `capture.html` + the ngrok launcher + a guard arm that the file handler serves nothing outside the capture allow-list to a phone origin. D189 / D175; "production" here means LOCAL (D193).
 
+builds:
+- [ ] BE the BFF static handler — port the parity fixture's traversal-checked, content-typed serveStatic; every unrouted path 404s today
+- [ ] BE `--prod` parsed by `startRebuildRuntime` — the flag is read by nothing, so `npm run dashboard:prod` is byte-identical to `npm run cli -- dashboard`
+- [ ] BE `/capture.html` delivered, so 2i-F's token-scoped phone surface is reachable from a phone
+- [ ] BE the on-demand ngrok tunnel launcher (D175)
+- [ ] BE the guard arm — a phone-origin request may be served nothing outside the capture allow-list
+- [ ] BE wire or delete the INERT capture-ingress host gate: `deps.capturePhoneHost` is never supplied, so the middleware compiles and can never fire (also Track D row D2)
+
 needs:
 - order-3
 
@@ -1042,6 +1064,11 @@ doc: 04 §Edit settings in the dashboard · ref:clock-config-secrets §3 · ref:
 
 > The `apply-settings` command family — rebuild settings are read-only, "nothing here pretends to save" (D169/D184). Phase 3 milestone, no single trigger; listed under cross-cutting above.
 
+builds:
+- [ ] BE `apply-settings` stops answering `capability-unavailable` — the kernel's ONE `PHASE1_DEFERRED` arm; family, target and atomic N-leaf payload are already contracted
+- [ ] BE the preflight/doctor service `buildBootstrap` composes none of — `FrontendBootstrapWireSchema#preflight` is declared-unserved (D184), so the stethoscope popover never mounts
+- [ ] FE the Settings write path and the doctor-rerun command control
+
 needs:
 - cross-cutting
 
@@ -1059,6 +1086,11 @@ status: planned
 doc: 04 §Search runs across dates / view screenshots / export Excel · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §2.2
 
 > No search module, artifact-bytes route or export writers in the BFF yet — capability register open; shaped against a real run corpus.
+
+builds:
+- [ ] BE the artifact-bytes route — the ref/resource schemas are complete and nothing serves bytes; it also unblocks the `captures` run-detail section and the screenshot gallery
+- [ ] BOTH the cross-date run search route + surface — the Top Bar filters the served day only (`legacy-route-search`)
+- [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164); the Activity CSV (D240) is the only export served
 
 needs:
 - cross-cutting
