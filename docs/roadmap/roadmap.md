@@ -1,12 +1,12 @@
 # HR Rebuild Roadmap
-<!-- `docs/rebuild/14-roadmap.md` is the plan as written, in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (doc 07 §0.1) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
+<!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (doc 07 §0.1) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
 asOf: 2026-08-20
 head: 8eb77ab
-eyebrow: hr-automation-rebuild · the plan · source: docs/rebuild/14-roadmap.md
+eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from `docs/rebuild/07-master-plan.md` (§2 phases, §3.3 order, §3.7 sizes)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
 source: `docs/plans/2026-08-20-dashboard-architecture-audit.md` (Track D) · doc 07 wins on any disagreement
-footer: Generated from `docs/rebuild/14-roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; `/custom-update-plan` keeps plan, site and owning docs in step. The normative plan is `docs/rebuild/07-master-plan.md`; the decision changelog `docs/rebuild/04-reconciliation.md`. Sizes are relative build sizes (doc 07 §3.7), not calendar.
+footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; `/custom-update-plan` keeps plan, site and owning docs in step. The normative plan is `docs/rebuild/07-master-plan.md`; the decision changelog `docs/rebuild/04-reconciliation.md`. Sizes are relative build sizes (doc 07 §3.7), not calendar.
 > The ground-up rebuild of UCSD's UCPath HR automation, as a tree. **Phases 0–2 are complete** — the platform is built and proven; **Phase 3** migrates the 13 remaining legacy workflows one at a time and entered at **separations**; legacy stays the sole production authority until one all-at-once cutover. Every box shows what it **builds** (by layer, filled when built) and what it **needs** — select one for detail, hover to light up what it unlocks.
 
 tiles:
@@ -25,7 +25,7 @@ status: done
 when: 2026-07-31 | seeded from legacy @5879004
 size: M
 chip: complete
-doc: 07 §2 · 07 §3 · 00
+doc: 00
 open: no
 
 > Docs 00–13 reconciled through Round 12 (D1–D94); testing policy ratified; the all-at-once cutover (D89/D93) and the two-repo model ratified; the separations identity gate designed here, not at order 8 (D77).
@@ -37,13 +37,13 @@ builds:
 - [x] DOCS size model + MUST / SHOULD / LATER delivery tiers (D76)
 - [x] DOCS two-repo coexistence + one cutover (D88–D94)
 
-### ALWAYS-GATE identity approval
+### ALWAYS-GATE identity approval {#phase0-always-gate}
 status: done
 date: D77 · doc 09 §14
 
 > Manual approval on every separation, both types, no auto-approve-on-match — the control that defends against the `T002173685` wrong-person incident, pulled forward from order 8.
 
-### Size model + delivery tiers
+### Size model + delivery tiers {#phase0-size-model}
 status: done
 date: D76 · doc 07 §3.7
 
@@ -229,7 +229,7 @@ builds:
 needs:
 - p2-2i
 
-### Left Phase 2 by explicit disposition
+### Left Phase 2 by explicit disposition {#phase2-dispositions}
 status: never
 
 > Workflow Explorer EDIT half — D186, trigger: the *second* production workflow whose policy you want to change · BFF serves no frontend bytes / no `dashboard:prod` — D189, builds at the first phone-consuming migration (orders 3–4), confirmed 2026-08-12.
@@ -933,6 +933,80 @@ chip: ideas, not a hosted future
 > Package the local app ("web app → real app"); a cooperation / multi-user mode built on top of solo (D193).
 
 <!-- roadmap:end -->
+
+---
+
+## Governance (the plan's own rules)
+
+_Lifted from `docs/rebuild/07-master-plan.md` §0 on 2026-08-20 (cohesion step 3a) — verbatim except
+where a name moved: the design docs are now cited by slug under `docs/rebuild/reference/`, and the
+plan's own numbers are the phase docs `docs/rebuild/00`–`05` (the number IS the phase; phase 3 is
+three docs, `03a`/`03b`/`03c`). Doc 07's own §0 stays in place until step 3b dissolves that file
+whole._
+
+### The one-plan rule
+
+Per charter §"One master plan": the owning design docs (now `reference/task-contract`,
+`reference/workflow-model`, `reference/dashboard-surfaces`, `reference/decisions`,
+`reference/execution-and-sessions`, `reference/data-intake-and-edit-data`, and
+`reference/write-safety` through `reference/frontend-backend-integration`) are the binding detail;
+THE PLAN — this file, the tree, plus the phase docs `docs/rebuild/00`–`05` — is the authoritative
+build order. No second plan, no per-workflow "alt plan," no execution doc that re-sequences
+phases. Per-workflow *migration plan docs* (Phase 3+) are **children** of this plan — they answer the §b questionnaire (doc 07 §3.4,
+which step 3b moves into `doc 03c`) and record what a workflow reuses/adds; they never re-order the
+program.
+
+**D263 (2026-08-20) — the plan has a machine-readable form, and it is bound to the docs both ways.**
+`docs/roadmap/roadmap.md`, written in the roadmap notation
+(`.claude/skills/custom-update-plan/SKILL.md` §Notation), is that form and the operator tracking view;
+`docs/roadmap/index.html` is GENERATED from it by `npm run roadmap` and is never hand-edited. It is a
+second VIEW of this plan, never a second plan — **the plan's prose wins on any disagreement**, and the
+disagreement is CAUGHT rather than argued, because the binding is two-way and mechanical: every node
+carries a `doc:` line naming the sections that own its contracts, every doc
+section that describes a node carries `<!-- roadmap: <id> -->` under its heading, and the
+`roadmap-doc-binding` guard refuses a ref or a tag that resolves to nothing — so a rename on either
+side fails the gate instead of rotting. Three rules bind the tree itself. A `builds:` box is `[x]`
+**only** for what is landed at HEAD, with its commit or D-number cited in the line — never pre-marked.
+The tree never invents scope: an unplanned feature is a finding for `docs/findings/`, not a roadmap
+line. And session work is RECORDED where it happened — append-only per-node `log:` blocks plus one
+`## session:` spine marker per working session, written through `/custom-update-plan`'s `session`
+class, so the next agent reads a node's own history rather than re-deriving it from `git log`.
+
+### D1 ownership map — the quick index (concept → owning doc)
+
+Every concept has exactly one owner (`reference/decisions` D1). Reference the owner; never redefine.
+The rows below are the same map 07 §0.2 carried, re-pointed to the shelf's new names.
+
+| Concept | Owner |
+|---|---|
+| Task contract (`defineTaskContract`/`defineTask`), contract/impl split (D3), task-namespace grammar + closed `SystemId` union (D2), error taxonomy, three effects/dry-run mechanics, retry, decoration, system/service stores + pure workflow mini-stores, session providers + login signature, `stores/common/` leaf homes | **`reference/task-contract`** (was doc 01) |
+| Workflow builder API (single), descriptor shape, `RunEnvelope`, run-state machine incl. gates/parks (D5), checkpoint/resume + freshness walk (D8), label precedence (D16) | **`reference/workflow-model`** (was doc 02) |
+| Span/event wire schema (D10), notes stream, storage layout, SQLite projection role (D14), SSE wire shapes, completion (fan-out/approval) union (D11), cross-repo runtime boundary + one-time import rules (D88/D89/D93), the ONE run/queue projection every count reads (D81), run versioning + archive-on-bump (D80), run display names (D83) | **`reference/dashboard-surfaces`** (was doc 03) |
+| Binding cross-doc reconciliation (D1–D118, through 2026-08-02 Round 18) | **`reference/decisions`** (was doc 04) |
+| One-item workers, queue dispatch/backpressure, explicit browser-session boundaries + driver leases, speed/sleep-tax contract, page/subject-isolation invariant | **`reference/execution-and-sessions`** (was doc 05) |
+| Data-service systems: CSV/PDF extraction, typed contact/address normalization, roster matching, durable mobile capture, operator column mapping, immutable intake manifest/rerun, Edit Data checkpoint UI | **`reference/data-intake-and-edit-data`** (was doc 06) |
+| Cross-cutting gap findings memo (owns nothing — a design input) | **`reference/foundation-gap-audit`** (was doc 08) |
+| Write-safety contract, permanent-key intents, typed proof, atomic outboxes/recovery, serialized anchored ledger | **`reference/write-safety`** (was doc 09) |
+| Guard/test architecture suite: ratchet port map, safety guards, descriptor-coverage crosswalk, guard-of-guards manifest, TDD tiers, stub + live lanes | **`reference/guards-and-tests`** (was doc 10) |
+| The Clock (sole time source), config resolver (env>settings>default), per-run prod/test instance (D6-adjacent), fiscal-year rollover, secrets accessor, environment/preflight registry | **`reference/clock-config-secrets`** (was doc 11) |
+| Semantic UI vocabulary + typed drivers, failures/diagnostic bundles/evidence receipts, scenario corpus, structured knowledge/fix history, durable trust/explain surfaces, workflow explorer/editor, local-first seams/safety floor, base capability inventory | **`reference/operator-trust`** (was doc 12) |
+| Production dashboard composition boundary: bootstrap/day/detail resources, one typed client, cursor-based SSE, product command-family coverage, surface-to-authority matrix, visual-parity harness | **`reference/frontend-backend-integration`** (was doc 13) |
+
+The operator's vision and the non-negotiables stay `reference/charter` (was doc 00). The PLAN half —
+phases, tasks, exit criteria, the migration order, the deferrals and the cutover — is this file plus
+the phase docs under `docs/rebuild/`, one per tree phase: `00-design-the-foundation` ·
+`01-build-the-spine` · `02-prove-writes-build-the-tails` · `03a-finish-the-dashboard` ·
+`03b-finish-separations` · `03c-migrate-the-remaining-workflows` · `04-close-the-deferrals` ·
+`05-cut-over`.
+
+### Standing rule — each completed phase documents itself
+
+Charter §"One master plan": *the foundation's documentation is part of the foundation.* When a phase
+completes, its owning docs are updated to describe **as-built** reality (not just design intent), and
+this plan's phase table is checked off. A phase is not "done" until its doc delta is written. New
+sub-systems get new docs or amend existing ones; stale prose is corrected, never layered. Per D263
+(above) a phase's close-out also ticks its node in `docs/roadmap/roadmap.md` and leaves a `log:`
+line there naming what landed and what is left.
 
 ---
 

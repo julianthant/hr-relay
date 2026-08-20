@@ -1,7 +1,7 @@
 import type { Layer, Status } from "./schema.js";
 
 /**
- * The plan notation: `docs/rebuild/14-roadmap.md` → the `Roadmap` shape.
+ * The plan notation: `docs/roadmap/roadmap.md` → the `Roadmap` shape.
  *
  * Side-effect-free on purpose — `parsePlan` is a pure `string → unknown`, so
  * `scripts/generate-roadmap.ts` (which owns the readFile / render / write /
@@ -48,7 +48,7 @@ import type { Layer, Status } from "./schema.js";
  * fails loud with its line number.
  */
 
-export const PLAN_SOURCE_PATH = "docs/rebuild/14-roadmap.md";
+export const PLAN_SOURCE_PATH = "docs/roadmap/roadmap.md";
 
 const BOX_STATUS: Record<string, Status> = { x: "done", " ": "planned", "~": "active", "?": "proposed", "-": "never", "!": "you" };
 const LAYER_TOKEN: Record<string, Layer> = { FE: "frontend", BE: "backend", BOTH: "both", WIRE: "wiring", DOCS: "docs", PROOF: "proof" };

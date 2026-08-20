@@ -426,7 +426,7 @@
       "local": { "comments": "run-produced" }
     },
     {
-      "ref": "doc:docs/rebuild/06-data-intake-and-edit-data.md",
+      "ref": "doc:docs/rebuild/reference/data-intake-and-edit-data.md",
       "kind": "owning-doc",
       "canonical": { "address2": "address2" },
       "local": {},

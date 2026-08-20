@@ -19,7 +19,7 @@ import {
 
 /**
  * `npm run roadmap` — render `docs/roadmap/index.html` from the plan itself:
- * `docs/rebuild/14-roadmap.md`, written in the roadmap notation (documented in
+ * `docs/roadmap/roadmap.md`, written in the roadmap notation (documented in
  * `scripts/roadmap/parse-plan.ts`, which owns the grammar; `scripts/roadmap/schema.ts`
  * owns the shape it parses into).
  *
@@ -199,9 +199,10 @@ function renderNotes(notes: string[] | undefined): string {
  * The node's binding to the plan SSOT, as a muted line under the drawer title.
  * The site is ONE static file with no server behind it, so a ref is not a link
  * — it is a `title` naming the file on disk, which is what a reader needs to
- * open it. The glob stands in for the doc's slug on purpose: this renderer is
- * pure, and reading `docs/rebuild/` to resolve `13` → `13-frontend-backend-
- * integration.md` would put I/O in a function whose whole job is formatting.
+ * open it. `NN` is a phase doc `00`–`05` under `docs/rebuild/`; the glob stands
+ * in for its slug on purpose: this renderer is pure, and reading the directory
+ * to resolve `01` → `01-build-the-spine.md` would put I/O in a function whose
+ * whole job is formatting.
  */
 function renderDocs(docs: DocRef[] | undefined): string {
   if (docs === undefined || docs.length === 0) return "";

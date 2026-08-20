@@ -88,24 +88,40 @@ on uncertain outcomes; production provider pools and consumers remain Phase 2h.
 
 ## Before you start
 
-**`docs/rebuild/` is the plan SSOT — read it, do not re-derive it.**
+**The plan is the SSOT — read it, do not re-derive it.** It has three parts: the **tree** at
+`docs/roadmap/roadmap.md` (the machine-readable plan + the site's source + the governance rules), the
+**phase docs** `docs/rebuild/00`–`05` (actionable: one per phase, the number IS the phase), and the
+**specs** in `docs/rebuild/reference/` (not actionable; cited by slug).
 
-- `docs/rebuild/07-master-plan.md` — phases, work items, exit criteria. §4 owns the two-repo model.
-- `docs/rebuild/04-reconciliation.md` — the decision changelog (D1–D211; **D131 is a retired gap —
-  never reuse it**). A **pointer index**, not a
-  spec: it tells you which doc owns a contract. Never implement from it.
-- `00-charter` · `01-task-contract` · `02-workflow-model` · `03-tracker-dashboard` ·
-  `05-execution-parallelism` · `06-data-intake` · `08-foundation-gap-audit` · `09-write-safety` ·
-  `10-guard-test-architecture` · `11-clock-config-secrets` · `12-operator-trust` ·
-  `13-frontend-backend-integration` — each owns its contracts; `14-roadmap` is the plan as
-  written (what is done / what is next, in the roadmap notation) and the roadmap site's single
-  source — it owns no contract, and doc 07 wins on any disagreement.
+- `docs/roadmap/roadmap.md` — the plan as written, in the roadmap notation (headings = nodes,
+  `builds:`/`needs:`/`doc:` lines); `docs/roadmap/index.html` is GENERATED from it by
+  `npm run roadmap`. After `roadmap:end` its **Governance** section owns the one-plan rule, the D1
+  ownership map and D263.
+- The **phase docs** under `docs/rebuild/` — tasks, what is done and what is left, exit criteria, and
+  the decisions that phase ratified. `00-design-the-foundation` · `01-build-the-spine` ·
+  `02-prove-writes-build-the-tails` · `03a-finish-the-dashboard` · `03b-finish-separations` ·
+  `03c-migrate-the-remaining-workflows` · `04-close-the-deferrals` · `05-cut-over`. Phase 3 is three
+  docs (3a/3b/3c); in prose **`doc NN`** means one of these.
+- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D264; **D131 is a retired gap —
+  never reuse it**). A **pointer index**, not a spec: it tells you which doc owns a contract. Never
+  implement from it.
+- `docs/rebuild/reference/` — the contracts, each doc owning its own; in prose **`ref <slug>`**:
+  `charter` (the operator's vision + the non-negotiables) · `task-contract` (tasks, stores, drivers) ·
+  `workflow-model` (the builder, descriptors, the run state machine) · `dashboard-surfaces` (spans,
+  the ONE projection, every surface) · `execution-and-sessions` (workers, queues, browser sessions) ·
+  `data-intake-and-edit-data` (extraction, OCR, intake, Edit Data) · `write-safety` (the write
+  sequencer, intents, the ALWAYS-GATE) · `guards-and-tests` (the guard/test architecture) ·
+  `clock-config-secrets` (clock, config resolver, secrets) · `operator-trust` (failures, receipts,
+  knowledge, the explorer) · `frontend-backend-integration` (the BFF, the wire, the parity lane) ·
+  `foundation-gap-audit` (frozen — a design input, owns nothing).
+- `docs/rebuild/07-master-plan.md` — the old master plan, being dissolved into the phase docs
+  (cohesion step 3b). Until it lands in `reviews/`, doc 07 §0/§3 still wins on any disagreement.
 - `docs/rebuild/guard-inventory.json` — the reviewed guard manifest. `tests/unit/architecture/`
   must match it exactly, both directions.
 - `docs/rebuild/reviews/` — history. Superseded by the owning docs wherever they differ.
 
 **A decision is not ratified until it lands in its owning doc, in the same commit that records it.**
-Doc 04 gets a one-line pointer; the owner gets the normative text.
+`reference/decisions.md` gets a one-line pointer; the owner gets the normative text.
 
 ## Commands
 
@@ -127,7 +143,7 @@ npm run web               # the vite dev server alone, proxying /api to a BFF yo
 npm run web:build         # production bundle into dist/dashboard (test:parity builds this itself)
 
 npm run build:manifest     # regenerate src/domain/workflow/generated-build-manifest.ts
-npm run roadmap            # render docs/roadmap/index.html from docs/rebuild/14-roadmap.md (the plan, in the roadmap notation)
+npm run roadmap            # render docs/roadmap/index.html from docs/roadmap/roadmap.md (the plan, in the roadmap notation)
 npm run roadmap:check      # fail if the committed site is stale
 ```
 
@@ -153,9 +169,9 @@ isolation" below for what still MUST differ from the legacy checkout.
 | `tests/unit/architecture/`         | the guard suite; every file registered in `docs/rebuild/guard-inventory.json`                                                                       |
 | `tests/scenario/`                  | executable scenarios; each reports the coverage points it walked, and `scenario-coverage` audits that corpus against the graph                      |
 | `config/`                          | `legacy-change-accounting.json`, `legacy-capabilities.json`, `legacy-test-disposition.json`, `runtime-isolation.json`, `pending-impl-bindings.json` |
-| `docs/rebuild/`                    | the plan SSOT — kept at this exact path so every cross-doc link still resolves                                                                      |
-| `docs/rebuild/14-roadmap.md`       | the plan as written — what is done / what is next, in the roadmap notation (`.claude/skills/custom-update-plan/SKILL.md` §Notation); the roadmap site's single source; doc 07 wins on any disagreement |
-| `docs/roadmap/`                    | the roadmap SITE: `index.html` is GENERATED by `npm run roadmap` from `docs/rebuild/14-roadmap.md`; update plan + site together with `/custom-update-plan` |
+| `docs/rebuild/`                    | the plan SSOT: the phase docs `00`–`05` (actionable, one per phase — `03a`/`03b`/`03c` are phase 3), `reference/` (the contract specs, cited by slug), `reviews/` (history), `guard-inventory.json` |
+| `docs/roadmap/roadmap.md`          | the plan as written — the tree: what is done / what is next, in the roadmap notation (`.claude/skills/custom-update-plan/SKILL.md` §Notation), plus the Governance prose after `roadmap:end`; the site's single source |
+| `docs/roadmap/index.html`          | the roadmap SITE — GENERATED by `npm run roadmap` from `docs/roadmap/roadmap.md`, never hand-edited; update plan + site together with `/custom-update-plan` |
 | `STORES.md`                        | DERIVED store catalog (every store, every task, reuse notes for REUSE/CUSTOMIZE/BUILD decisions); regenerate at slice boundaries — code wins on any disagreement |
 | `duo-autopilot/`                   | the Duo MFA WebAuthn extension (vendored; credentials are gitignored)                                                                               |
 
