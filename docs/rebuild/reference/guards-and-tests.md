@@ -1,313 +1,45 @@
-# 10 — Guard & Test Architecture SSOT (the rebuild repo)
+# 10 — Guards & Tests: the test suite and the guard umbrella
 
-Status: **Phase 1c guard acceptance completed 2026-08-01; Phase 1b guard foundation implemented
-2026-07-31; revised 2026-07-22 after the
-whole-plan/legacy-code review; amended 2026-07-31 (Round 10), Round 11 (D93, standalone rebuild
-repo), and Round 12 (D94, commit-centred accounting closure).** The reviewed guard
-inventory, D58/D90/disposition manifests, semantic legacy-lint ratchet, operational-isolation
-contract, and rebuild lint/test/coverage launchers now exist. Whole-`src` source-scanning arms are
-active and non-vacuous; later owner roots still activate atomically with their first file. This document covers strict
-schemas, semantic UI/driver boundaries, subject binding, queue commands/delegation,
-evidence/scenarios, notifications, and authority-store recovery in addition to the existing rebuild
-safety promises. **Round 10 amends §3.13** to replace frozen-tree enforcement with strict runtime
-isolation + legacy-change accounting (D88/D90), and **§3.14** now carries the ratified coverage,
-branch, suite-size, and legacy-preservation policy (D91). **Round 11 (D93) splits the two worlds
-into two repositories**, which RETIRES the guard families that simulated that split inside one tree
-(§3.13) and re-addresses every surviving arm to the rebuild repo's plain `src/`, `tests/`, and
-`config/` roots and its plain `typecheck`/`lint`/`test`/`test:architecture` script family.
-Continuous lift/scoped-flip guard families remain rejected; an optional versioned one-time importer
-has its own offline fixture. **Amended 2026-07-30 (Round 9):** executor-lane overlap/capacity guards
-are replaced by the one-active-item-per-worker, N-worker overlap, and authored
-fresh-session-boundary guards (D87).
-**Amended 2026-08-02 (Round 18):** the Phase-1f guard-activation boundary now covers atomic planned
-start, minimal failure/result authority, provenance collection, exact config-keyed session reuse,
-recovery-before-requeue, full beat ⑦, exhaustive command dispatch, and generic provider admission.
+Status: **as-built through 2026-08-20, and normative for the testing tiers R10 ratifies.** Every
+guard named here is checked against `docs/rebuild/guard-inventory.json` and
+`tests/unit/architecture/` at HEAD, never against this document's own earlier prose (D252). At HEAD
+the tree carries **75 inventory entries — 65 active, 8 retired, 2 planned**, exactly 65 files under
+`tests/unit/architecture/`, nine executable ratchet arms in
+`tests/unit/architecture/helpers/ratchet-arms.ts`, 16 scenario files under `tests/scenario/`, 139
+parity reference triples, and a measured `test:coverage` of **84.23 % lines / 82.15 % statements /
+84.74 % functions / 71.76 % branches** (18,920 / 23,029 statements). §10 is the new normative half:
+`tests/` is organized by **what a test needs**, and every test that must RUN a workflow is a live
+dry-run scenario.
+
+**Where to start.** §10 if you are writing tests or adding a workflow. §5.1 if you are adding or
+retiring a guard. §2 and §3 for what each guard actually holds. §11 is the phase-by-phase activation
+ledger — history, kept because "which guard activated when, and what was deliberately NOT activated"
+is the record that stops a planned guard being reported as green.
 
 Owns gap-audit (`08`) BLOCKER #2: ratchet port map, safety guards, descriptor projection coverage,
-guard inventory, TDD topology, and stub/live lanes.
+guard inventory, TDD topology, the testing tiers, and the live lane.
 
 ## Ownership header (D1)
 
 | | |
 |---|---|
-| **This doc OWNS** | The test/guard suite: ratchet inventory, strict-boundary/driver/subject/control/delegation/storage guards, transaction/write/outbox/provenance/artifact safety guards, descriptor projection coverage, accidental-shrink meta-test, TDD tiers, scenario/stub/live lanes. |
-| **Imports (never redefines)** | Task contract / `effect` / `example` / `fakeCtx` / mutation primitive / dry-run overloads — **ref task-contract**. Descriptor shape + `descriptor-coverage.test.ts` §1.4 + run-state/checkpoint/delegation — **ref workflow-model**. Span/event schema + command protocol + storage recovery + notifications + completion and the cross-repo runtime/cutover boundary — **ref dashboard-surfaces**. Worker/session/sleep-budget guards — **ref execution-and-sessions**. Receipt/idempotency/fence/subject contract — **ref write-safety**. Clock/config/secrets single-source — **ref clock-config-secrets**. Semantic UI registry, scenarios, evidence, knowledge/fix records, editor projections — **ref operator-trust**. |
+| **This doc OWNS** | The test/guard suite: ratchet inventory, strict-boundary/driver/subject/control/delegation/storage guards, transaction/write/outbox/provenance/artifact safety guards, descriptor projection coverage, accidental-shrink meta-test, **the testing tiers and the `tests/` layout (§10)**, the subject registry, the dry-run scenario contract, and the live lane. |
+| **Imports (never redefines)** | Task contract / `effect` / `example` / `fakeCtx` / mutation primitive / dry-run overloads — **ref task-contract**. Descriptor shape + `descriptor-coverage.test.ts` §1.4 + run-state/checkpoint/delegation — **ref workflow-model**. Span/event schema + command protocol + storage recovery + notifications + completion and the cross-repo runtime/cutover boundary — **ref dashboard-surfaces**. Worker/session/sleep-budget guards, the worker pool and the Duo ceremony lease — **ref execution-and-sessions**. Receipt/idempotency/fence/subject contract and the dry-run beat order — **ref write-safety**. Clock/config/secrets single-source — **ref clock-config-secrets**. Semantic UI registry, scenarios, evidence, knowledge/fix records, editor projections — **ref operator-trust**. The visual/a11y parity lane's own contract — **ref frontend-backend-integration §7**. |
 | **Charter bindings** | "Same quality umbrella from day one"; "fail loud"; §1a fill/submit split is the dry-run safety model. Descriptor SSOT replaces parity lists in the rebuild repo; the legacy repo's own guard tests remain through initial cutover. |
 
-**One-sentence thesis.** The umbrella is only real if ONE place owns *how* every doc's per-§ guard
-promise actually lands in the rebuild repo's `tests/unit/architecture/`, ports the 23 existing
-ratchets onto the rebuild `src/`, replaces the need for parallel rebuild parity lists with
-descriptor projection coverage, leaves the legacy repo's guards intact through initial cutover, and
-adds the cross-cutting safety suite: dry-run composition, transaction pairing, typed write safety,
-permanent-key dedupe, atomic outbox/ledger projection, field provenance, and stable identity.
-
----
-
-## Phase 1b as-built guard delta (2026-07-31)
-
-The rebuild guard lane is no longer a pre-tree promise. The reviewed manifest discovers every
-architecture test recursively and runs active whole-`src` arms over real source; typecheck, ESLint,
-unit/architecture tests, coverage floors, operational isolation, strict boundaries, clock/config/
-secret single-source rules, runtime dependency/environment closure, redaction, and D94 legacy
-change accounting all execute from the rebuild repo's plain gate family. Every active arm resolves
-a non-empty file set, and each ratchet still proves itself against a violating fixture.
-
-`fail-loud-catch-default` now uses the TypeScript AST across every executable statement in a catch
-block and in both expression- and block-bodied Promise `.catch` handlers. Logging or branching
-before a bare-default return/assignment/initializer no longer bypasses it. Pure adversarial fixtures
-pin multi-statement handlers, nesting, comments/strings, and safe propagating or distinguishable
-non-default returns. No allowlist was added. Guards belonging to later absent roots remain planned;
-their future contracts are not reported as implemented by 1b.
-
----
-
-## Phase 1c Stage A as-built guard delta (2026-07-31)
-
-The existing `strict-boundary-schemas.test.ts` catalog now registers every Stage-A durable/wire
-schema and exercises every command, proof, probe, settlement, intent/attempt, notification,
-gate-result, ledger, and outbox union arm. Its recursive unknown-key mutation now covers the new
-nested objects as well as malformed IDs/timestamps and schema-bound canonical values. No new
-architecture guard file was needed, so the guard inventory is unchanged rather than padded with a
-duplicate guard.
-
-Focused unit/adversarial tests pin D95 family closure, priority/version bump separation, strict
-rename normalization, immutable manifest freezing, generic gate schema hashes, notification
-routing, dry-run-impossible ledger payloads, erased proof rejection, and the rule that pre-window,
-single, ambiguous, unknown, present, or inconsistent negative observations cannot unlock retry.
-Storage/recovery, command-handler single-path, write-sequencer ordering, atomic-transaction crash
-injection, and projector tests remain later Phase-1c/1f work; Stage A does not mark them green.
-
----
-
-## Phase 1c Stage B as-built guard delta (2026-07-31)
-
-Stage B extends the existing `strict-boundary-schemas.test.ts` catalog with the adapter options,
-metadata/inspection, immutable-insert disposition, and strict SQLite storage-record shells. It also
-adds focused unit proof in `sqlite-authority-database.test.ts` for exact table classification and
-pragmas, the exact committed-v1 → v2 migration fixture, existing-file/version/migration-marker/
-schema/lock failure, foreign keys, idempotent commands, permanent committed/`observed-present`
-write keys, every registered authority repository mutator, savepoint-isolated caught nested
-fence/commit failures, empty/rollback generation accounting, and projection upsert/clear. A separate static
-unit test, `sqlite-authority-boundary.test.ts`, proves that only the private adapter imports or names
-`DatabaseSync` and that its public entrypoint exposes no raw connection or SQL escape hatch.
-
-The planned `storage-recovery` guard remains planned and unchanged in
-`docs/rebuild/guard-inventory.json`. Its contract also owns backup/checksum/manifest verification,
-degraded boot, restore drills, and projection rebuild after restore; none of those Stage-C concerns
-exist yet, so activating that umbrella now would overclaim recovery. Phase 1c remains incomplete,
-as do command-handler single-path, write-sequencer crash injection, workers, projectors, browser,
-HTTP/UI, and live lanes.
-
----
-
-## Phase 1c Stage C as-built guard delta (2026-08-01)
-
-Stage C activates the existing `storage-recovery` inventory arm and gives it a non-empty focused
-architecture suite over real temporary SQLite databases and the official native online-backup API.
-The suite pins successful self-inspected copies and manifests, request coalescing plus the bounded
-generation follow-up, backup interruption cleanup, byte/manifest tampering, corrupt/truncated/
-foreign/newer/foreign-key/invariant-invalid degraded boot, all four mutation refusals, exact doctor
-counts and candidate ordering, and stopped-proof restore with suspect-file preservation and
-projection-only rebuild verification. Every authority record is strict-schema parsed during copy
-inspection; JSON-valid/schema-invalid command, write-intent, and opaque-family corruption fixtures
-make backup, boot/doctor, and restore fail closed. Restore proof fixtures cover stale, replayed,
-runtime/process-generation-mismatched, forged, and active-process states and prove refusal before
-suspect/staging mutation. The suite also exercises exact-candidate rejection, projection-rebuild
-failure, and atomic-swap failure.
-
-Static boundary proof keeps `DatabaseSync` and `node:sqlite` private to the adapter, requires the
-official backup symbol, and bans `VACUUM INTO` and filesystem-copy backup fallbacks. The strict
-boundary catalog registers every new recovery config, durable record, report, health-cause, and
-union arm. This activation covers storage recovery only; command-handler single-path,
-write-sequencer crash injection, workers, projectors, browser, HTTP/UI, and live lanes remain open
-Stage-D or later work, so Phase 1c is still incomplete.
-
----
-
-## Phase 1c Stage D as-built guard delta (2026-08-01)
-
-Stage D activates exactly three previously planned inventory entries in the same commit as their
-implementations and focused suites:
-
-- `permanent-key-dedupe` exercises sequential and independently opened competing SQLite
-  connections, committed and `observed-present` permanence, the observed-present zero-attempt/
-  zero-write-outbox rule, and natural-key/digest/binding-digest mismatch refusal.
-- `recovery-negative-proof-settlement` crosses the exact propagation and read-spacing boundaries
-  with an injected manual Clock and proves that early, single, duplicated, malformed, future,
-  out-of-order, wrong-key/query/source/source-state, present, ambiguous, unknown, and operator-only
-  evidence never grants retry authority.
-- `atomic-write-outbox` validates the successful intent+attempt+ledger+terminal-span transaction,
-  injects failure after every storage step and proves total rollback plus unchanged authority
-  generation, rejects cross-outbox trace disagreement and subject-bound/unscoped ledger-evidence
-  mismatch, and statically pins the narrow repository/no-standalone-insert surface.
-
-The strict-boundary catalog also covers the new natural-key, generic-outcome, fence, permanent-key
-resolution, atomic-input, storage-step, and commit-report schemas and recursively rejects unknown
-keys. Hardened Stage-D acceptance evidence is: focused guard/catalog 24/24, full unit+architecture
-187/187, architecture 99/99, typecheck and zero-warning lint green, and coverage at 87.99%
-statements, 76.86% branches, 92.23% functions, and 90.75% lines. The remaining command-handler, worker,
-browser/driver, sequencer/projector, HTTP/UI, scenario, and live-lane guards remain planned; none was
-activated to make Phase 1c look broader than it is.
-
-These results complete **Phase 1c**. They do not complete Phase 1, whose next item is 1d and whose
-exit remains the live Person Lookup spine proof.
-
-## Phase 1d guard-activation boundary (ratified 2026-08-01)
-
-Phase 1d activates only guards whose real seam exists: port provenance, semantic UI registry and
-safe catalog freshness, task/driver boundary, effect-contract/example/error/freshness/provenance/
-subject/capability/store/provider/artifact/no-`any` boundaries, and OnBase-only exclusivity. Each
-active arm has a violating canary and a non-empty production target. Runtime descriptor/worker/
-fence-ordering guards remain planned for 1e/1f; provider admission/budget guards remain planned for
-1f; production provider-pool/consumer guards remain planned for 2h. A planned guard is never made
-active merely to make 1d look broader than its implementation.
-
-The selector port inventory is a strict checked-in architecture-lane input pinned to one clean
-legacy commit plus exact source/catalog paths and blob ids. Candidate rows contain provenance and
-search intent only—never locator strings, captured values, screenshots, secrets, or fallback
-recipes—and cannot enter the runtime registry/catalog without D98's fixture **and** live-read-only
-evidence. UI scenario refs resolve through D99's strict UI-owned verification corpus using the
-canonical `ScenarioId` grammar and a global uniqueness audit.
-
-### Phase 1d Stage A as-built — selector provenance snapshot (2026-08-01)
-
-`config/ports/legacy-selector-port-map.json` now records all **406** legacy catalog keys exactly
-once at legacy commit `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc`: CRM 12, I-9 41, Kuali
-22, New Kronos 54, Old Kronos 23, OnBase 28, ServiceNow 11, SharePoint 10, and UCPath 205.
-Every system pins the exact selector-source and generated-catalog path plus SHA-1 Git blob; every
-row carries non-empty search intent, source line, and the same exact blob provenance. A candidate's
-path-derived `candidateId` is explicitly an **unclassified, non-authoritative proposal**, never an
-`ElementId`. The strict union permits only `candidate|ported|driver-internal|not-porting`;
-`ported` alone carries a classified canonical id and requires D98's dual evidence. Stage B later
-classified the reviewed Person Org operation plus the Phase-1f CRM Person Lookup rows: **387**
-candidates remain, **18** rows are ported, and the PeopleSoft content frame is driver-internal.
-The legacy generic `personOrgSummary.viewAllLink()` row is the sole contextual one-to-many port:
-its closed, evidence-bound contexts map to the exact search-results and Employment Instances
-toggles, while flattened canonical ids and contexts remain globally unique.
-
-The active `legacy-selector-port-provenance` guard regenerates the safe inventory from the pinned
-commit in the architecture lane, compares it byte-for-structure, and rejects omissions, duplicates,
-stale blobs, invented keys, canonical-id collisions, evidence-free port claims, and unknown recipe/
-capture fields. Its violating canaries prove those arms fail. Runtime code never reads across the
-repository boundary and the snapshot contains no locator strings, captured values, screenshots,
-secrets, or fallback recipes.
-
-The Phase-1f CRM expansion promotes exactly five additional rows: search result rows/cells/name
-link, the verified Visualforce `th` label-following-value recipe, and onboarding-history rows. Each
-is bound to sanitized deterministic and fresh read-only live evidence dated 2026-08-02. The
-broader record fallbacks, nth-row convenience selector, section navigation, and history button
-remain candidates because the Person Lookup path neither needs nor has fresh proof for them.
-
-### Phase 1d Stage B as-built — semantic registry + typed driver seed (2026-08-01)
-
-The server-only registries are `src/stores/ucpath/driver/ui-registry.ts` and
-`src/stores/crm/driver/ui-registry.ts`. UCPath publishes two screens, fourteen elements, four page
-states, and two observations; CRM publishes three screens, five elements, four page states, and one
-observation. Raw selector recipes remain private to the driver roots. Task and workflow import
-graphs reach only schema-first driver declarations and session-provider leaves, while the raw
-Playwright interpreters own the selector-backed Person Lookup operations. No commit method or
-external-write capability exists on either read-only driver; the concrete worker browser/session
-factory remains a later Phase-1f integration step.
-
-`npm run ui:catalog` generates a **35-entry** `generated/ui-catalog.json` plus per-system UCPath and
-CRM `UI-CATALOG.md` files; `npm run selector:search -- "<intent>"` searches only that safe
-projection. The outputs omit locator/state/read recipes and captured values. Both CLIs take an
-explicit path — `ui:catalog -- --out-root <path>` and `selector:search -- --catalog <path>` — and
-`ui:catalog` publishes through an atomic rename, because **no test may rewrite a tracked projection
-in place.** Test files run in parallel forks over ONE working tree, so an in-place regenerate is
-visible to every concurrent reader (`ui-registry`, `semantic-ui-registry`) and, worse, silently
-heals a genuinely stale checkout mid-run. The behavioural CLI fixtures therefore generate into a
-temp root and pin the checkout's bytes as unchanged from first import to last case. Checked-in fixture and
-sanitized live/read-only manifests bind every published fact to exact port rows, record
-`externalWriteAttempted:false`, and retain no captured HR values. UCPath additionally records the
-two zero-match legacy accessible-name recipes and the fail-loud View All pagination proofs; CRM
-records exact search/empty, displayed-EID, and history-transition evidence.
-
-The active `semantic-ui-registry` and `task-driver-boundary` guards have violating canaries. They
-enforce registry uniqueness, same-system dependency resolution, collision-free search terms,
-global/non-vacuous UI scenarios, dual evidence, candidate exclusion, catalog byte freshness, and
-raw Playwright confinement. UI catalog/evidence/scenario schemas are also in the recursive strict
-boundary catalog.
-
-### Phase 1d Stage C as-built — sealed task contracts and contexts (2026-08-01)
-
-The bundle-safe contract core now seals `read|prepare|commit` definitions only after runtime
-validation of effect/verb, strict schemas, canonical examples, error taxonomy, freshness,
-provenance, subject, and typed write-safety metadata. The active `task-contract-sealing` guard scans
-the real contract source family, rejects server/Playwright imports and direct seal forgery, and has
-a violating fixture. Its checked type fixture proves undeclared error codes, `z.any()` outputs, and
-read-context mutation access fail `tsc`. Freshness/provenance/subject/effect schemas are registered
-in the recursive strict-boundary catalog. Browser execution, store/session binding, and mutation
-token mint/validation remain absent, so their 1f guards stay planned.
-
-### Phase 1d Stage D as-built — bounded stores, sessions, providers, and artifacts (2026-08-01)
-
-`task-store-boundaries` now proves the closed nine-browser-system declaration set, exact
-driver/session/store matching, fail-loud unwired login placeholders, OnBase-only exclusivity, and
-the compile-time effect/access plus provider-client narrowing fixtures. The store registry exact
-matches implementations to its contract corpus and exercises the contract reference resolver for
-every registered task; synthetic unit tests prove missing scenarios and missing/mismatched corpus
-tasks fail loud.
-
-`artifact-effect-boundary` pins the path-free content-addressed ref, rebuild-only non-symlinked
-root, temp→fsync→atomic-rename durability sequence, crash-boundary recovery, and byte-identical
-idempotency; its AST canary rejects direct mutable filesystem access from task/workflow
-implementations.
-`provider-capability-boundary` confines raw network/provider modules and adapter implementations to
-`infra/providers`, pins exact capability client narrowing, and has a direct-network/forged-adapter
-canary. The recursive strict-boundary catalog now includes session, retry, artifact, provider, and
-artifact-root schemas. These active guards cover only the real 1d interfaces/declarations,
-artifact writer, and provider deterministic fakes: 1f admission/budget/worker/session-runtime
-guards and 2h production provider-pool/consumer guards remain planned.
-
----
-
-## Phase 1f guard-activation boundary (ratified 2026-08-02)
-
-Phase 1f must activate guards against the real executor/command/session/provider targets in the
-same commits as those targets. The acceptance set is non-vacuous and fail-both-ways:
-
-- start planning preserves exact raw and canonical representations plus both schema hashes, and
-  crash/conflict injection proves plan consumption + active-run policy + every run insert are one
-  transaction;
-- every failed task/run resolves a persisted ref operator-trust `FailureRecord`, every successful run resolves
-  exactly one schema-bound terminal result, and neither can be reconstructed from display events.
-  Crash injection covers authorization plus failure/result/outbox/run writes; recovery uses
-  NULL-safe bidirectional invariants and direct partial-settlement fixtures. Initial success rejects
-  hand-built schema-valid records without the descriptor-factory seal, rereads exact checkpoint
-  rows, and pins each conditional not-run dependency to its authored reason. Exact replay proves the
-  original expected version and claim from durable authorization rather than trusting terminal state;
-- the executor supplies a real `recordData` collector and rejects missing/contradictory `live`
-  provenance before checkpoint/result persistence while derived fields retain the oldest complete
-  upstream provenance;
-- worker-session reuse requires exact worker/system/resolved-instance/config-fingerprint identity,
-  verified-neutral reset is distinct from explicit `session:"fresh"`, and config/fresh-boundary
-  fixtures prove close-before-replace;
-- expired-claim fixtures containing an `attempting` write intent enter recovery before any ordinary
-  requeue/claim, including an authority-unavailable refusal case;
-- beat ⑦ crash injection spans intent+attempt, transaction checkpoint, ledger and terminal outboxes,
-  any required receipt ref, and run transition in one outer authority transaction;
-- one exhaustive dispatcher handles every command union arm: Phase-1 arms execute through their
-  authority service, while later arms return typed `capability-unavailable` with zero mutation;
-- generic provider admission enforces the immutable snapshot's abort/timeout/concurrency/rate/
-  daily-use/cost limits before every adapter call; exhaustion performs zero remote calls and holds
-  no sleeping worker. Production pool/consumer coverage remains 2h.
-
-The activated D112 guard walks every `src/**` import and each task's transitive local import graph:
-raw network/vendor modules and adapter implementations remain under `infra/providers/**`; task and
-store graphs cannot reach those adapters; only `core/provider-admission.ts` constructs the admitted
-client or consumes the adapter interface. It audits the closed capability/config mapping in both
-directions, pins one deterministic harness surface, proves denial/timeout/abort never fall through
-to remote I/O or worker sleep, and fails if a production provider module or consumer appears before
-Phase 2h. Durable tests pin exact fixed-window edges, restart/lease behavior, independent-connection
-races, conservative cost accounting, replay/divergence, settlement uncertainty, and v9 recovery.
-
-No existing Phase-1c four-row atomic-outbox test may stand in for the full beat-⑦ fixture, and no
-schema-only command-family test may stand in for exhaustive runtime dispatch.
+**One-sentence thesis.** ONE place owns *how* every doc's per-§ guard promise lands in
+`tests/unit/architecture/`, what each of the nine ported ratchet arms scans, why descriptor
+projection coverage replaces parallel parity lists, and — since R10 — **what a test needs in order to
+run**, because that is the only split that tells an agent which suites a change must re-run.
 
 ---
 
 ## 1. The suite today — what the rebuild repo inherits (grounded inventory)
+
+**This section is a dated inventory of what the LEGACY repo had at the split**, kept because §2's
+port map is meaningless without it. What the rebuild repo actually carries is §5.1 (the registered
+set at HEAD) and §2's as-built block (the nine executable arms). Nothing here is a claim about this
+tree.
 
 In the legacy repo, `npm run test:architecture` runs `tests/unit/architecture/**` (dot reporter).
 23 guard files today, in four mechanism families. Under D93 the rebuild repo stands up its own
@@ -339,6 +71,8 @@ Allowlist discipline (verbatim, ported): every survivor is read-in-context with 
 a new occurrence fails immediately and needs the same review, never a silent add.
 
 ### 1.1 Measured pre-rebuild gate baseline (refreshed 2026-07-31)
+
+<!-- roadmap: p1-base -->
 
 This baseline was executed in the **legacy repo**, after the full plan reread, with a clean worktree
 and no rebuild tree present:
@@ -376,6 +110,16 @@ that `npm run lint:tests` passes.
 ---
 
 ## 2. Ratchet port map
+
+<!-- roadmap: p1-base -->
+
+<!-- roadmap-status: p1-base -->
+- [x] the nine ratchet arms exist and are executable — each run over the real tree AND its own violating fixture by `guard-manifest` (§2.1, `tests/unit/architecture/helpers/ratchet-arms.ts`)
+- [x] the reviewed guard inventory is the machine SSOT and matches `tests/unit/architecture/` by `deepEqual`, both directions (§5)
+- [x] zero per-file allowlists — the legacy `Record<file,{count,reason}>` shape did not travel
+- [ ] two port-map invariants are held by nothing named: `cancel-mechanism` (one-mechanism cancel) and `tracker-row-emission` (no arm bans an `appendFileSync` to the event JSONL outside the emitter) — §2.1 and §5.1's open list
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `helpers/ratchet-arms.ts`, `guard-manifest.test.ts` and `guard-inventory.json` at HEAD — 9 arms, 75 entries (65 active / 8 retired / 2 planned); left: the two unheld invariants, written down rather than implied
+<!-- /roadmap-status -->
 
 Each existing guard's fate. **Every fail-loud ratchet must cover the rebuild tree from day one**
 (charter): ported grep-ratchets are re-homed into the rebuild repo's own suite scanning its `src/**`,
@@ -417,7 +161,51 @@ therefore rebuild-repo-relative, and the old absent-tree activation semantics re
 | `inline-selectors-workflows` — the DRIVER half | **SCOPE DECISION, 2026-08-14** | see the note below the table: the arm stays `/tasks/`-scoped, and the driver-side invariant is relocated to a declared anchor table rather than widened into a ratchet that would fire on the registry interpreters. |
 | — | **NEW** | `descriptor-coverage`, `strict-boundary-schemas`, `semantic-ui-registry`, `task-driver-boundary`, `subject-before-fence`, `scenario-coverage`, `control-command-single-path`, `authority-target-no-fallback`, `delegation-manifest`, `storage-recovery`, `notification-durability`, `evidence-receipt`, `knowledge-fix-integrity`, `workflow-editor-compile-integrity`, `legacy-capability-disposition`, `capture-durability-and-scope`, `ai-advisory-no-authority`, `preflight-coverage`, `dry-run-composition-submit-free`, `transaction-pairing`, `write-safety-contract`, `commit-routes-through-mutation`, `no-positional-identity`, atomic-outbox/ledger guards, `clock-single-source`. |
 
+#### 2.1 As-built — the nine arms that landed, and the fates that did not
+
+**Nine arms exist, and they are executable.** `tests/unit/architecture/helpers/ratchet-arms.ts`
+declares exactly the set `guard-inventory.json`'s `rebuildRatchetActivation.requiredGuardNames`
+names, and `guard-manifest.test.ts` runs each one twice — once over the real tree (where an `active`
+arm resolving an empty file set FAILS) and once over a per-arm violating fixture materialized into a
+fresh temp root (where the arm must report `active`, resolve files, and produce a violation matching
+that fixture's expected pattern). A dead arm therefore cannot stand in for enforcement:
+
+| arm | roots it scans | what it forbids |
+|---|---|---|
+| `fail-loud-catch-default` | `src` | a `catch` block (or a promise `.catch`) that returns/assigns/initializes a bare default — `null`, `true`, `false`, `undefined`, `0`, `""`, `[]`, `{}` — instead of propagating |
+| `nullish-literal-data-fallback` | `src`, minus `src/dashboard/` | `??` whose left root is a data-shaped identifier (`data`, `row`, `input`, `item`, `entry`, `record`, `payload`, `fields`, `opts`, `args`) and whose right side is a literal string, `0` or `true` |
+| `wait-for-timeout-allowlist` | `src/stores` | any `.waitForTimeout(...)` call |
+| `inline-selectors-workflows` | `src/stores`, files whose path contains `/tasks/` | raw `page.locator/getByRole/getByText/getByLabel/getByTestId/frameLocator` calls and raw `Page`/`Locator` type references in a task impl |
+| `evaluate-named-fn` | `src/stores` | a NAMED function expression passed to `.evaluate()`/`.evaluateAll()` (`__name` still throws live) |
+| `import-cycles` | `src` | any cycle among relatively-resolved source modules; there is no `ALLOWED_CYCLES` set |
+| `control-layering` | `src` | a lower layer value-importing a higher one, over the fixed map `domain(0) < {infra, services, systems, stores}(1) < core(2) < {control, workflows, server}(3)` |
+| `code-conventions` | `src` | a raw control byte, a non-kebab filename outside `src/dashboard/`, a `.tsx` outside `src/dashboard/`, `export default`, any `console.*` |
+| `frontend-tailwind-compliance` | `src/dashboard` | a palette colour utility or raw hex, an `<img>` without `alt`/`loading`, `@keyframes`, a raw `animation:`, an arbitrary `animate-[…]`, an unguarded `animate-spin/pulse/ping/bounce`, an arbitrary `z-[…]` outside `dsLayer`, `flex-shrink-0` |
+
+**There is no per-file allowlist in any of them.** The table above is the whole rule; the legacy
+`Record<file,{count,reason}>` shape did not travel, which is the strongest possible reading of "zero
+allowlist for new rebuild code" and is why §8 row 1's residual risk is smaller here than the entry
+describes.
+
+**Seven port-map fates did NOT land as named guards, and saying so is the point of this block.**
+None of `cancel-mechanism`, `delegate-to-usage`, `delegate-to-all-impl-callers`,
+`workflow-boundaries`, `tracker-row-emission`, `deletion-tombstones` or `dashboard-security-boundary`
+exists in `tests/`, in `src/`, or in the inventory; `i9-check-import-guard` generalized into
+`descriptor-coverage` as the table says, and `origin-workflow-banned` was dropped because the lineage
+field it banned does not exist here. Where each invariant is held today, verified against the tree:
+
+| port-map fate | as-built |
+|---|---|
+| `delegate-to-usage` / `delegate-to-all-impl-callers` | held by `delegation-manifest` — child runs exist only as typed descriptor nodes with declared cardinality/join/failure/cancel policies |
+| `workflow-boundaries` | held structurally by `descriptor-coverage`'s bundle-safety walk (a descriptor's value-import closure may leave `src/domain/`, `src/base/`, `src/validation/` only) plus the `control-layering` arm |
+| `deletion-tombstones` | held by `archive-invariants` and the v13 archive tables, which abort `UPDATE` and `DELETE` **in SQL** |
+| `dashboard-security-boundary` | split across `operational-isolation` (ports, roots, locks, profiles), `dashboard-wire-boundary` (no Node built-in reachable from the bundle) and `capture-durability-and-scope` (fail-closed phone route enumeration) |
+| `cancel-mechanism` | **NOT held by a named guard.** `control-command-single-path` proves authority is mutated only through the D67 command family, which makes a second cancel path unable to reach authority — but nothing asserts one-mechanism directly. Open; see §5.1's open list. |
+| `tracker-row-emission` | **NOT held by a named guard.** The typed span-emit path is the only writer in practice (D218 deleted the `onEvent` hook), and `code-conventions` bans `console.*`, but no arm bans an `appendFileSync` to the event JSONL outside the emitter. Open; see §5.1's open list. |
+
 #### The driver half of `inline-selectors` — a scope decision, not an oversight
+
+<!-- roadmap: p1-authority -->
 
 **Decided 2026-08-14.** The row above wants "driver selector literals must belong to the canonical UI
 registry entry they implement", and the obvious way to get it is to widen the arm's `select` from
@@ -447,13 +235,41 @@ an authored literal — at which point the driver directory becomes enforceable 
 
 ---
 
-## 3. The NEW safety guards (don't exist today, even in spec)
+## 3. The safety guards
 
-No architecture guard references `dryRun` today; the entire dry-run safety model rests on it. Each
-guard below keys off a **closed union** (the contract `effect`, the sealed mutation-primitive
+<!-- roadmap: p1-authority -->
+
+<!-- roadmap-status: p1-authority -->
+- [x] the safety-guard core is active: strict boundary schemas, the semantic UI registry, the task/driver boundary, canonical-input snapshot, selector port provenance, `descriptor-coverage` (§3.8, §4)
+- [x] `no-positional-identity`, `transaction-pairing`, `permanent-key-dedupe`, `recovery-negative-proof-settlement`, `atomic-write-outbox` all active with violating fixtures
+- [x] D71's type proof exists as `tests/types/{task-contracts,flow-graph}.typecheck.ts` inside the one `tsc` program — a 21-node real-scale graph plus `@ts-expect-error` controls (§3.12 as-built)
+- [ ] D71's BUDGET half is unmeasured — nothing runs `tsc --extendedDiagnostics` against that graph, so the 5 s / 1 GiB acceptance value is unenforced (§3.12)
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the 65 active inventory entries and `tests/types/`; left: the type-budget measurement, and §3.1/§3.6's retirements are recorded in the sections themselves
+<!-- /roadmap-status -->
+
+Each guard below keys off a **closed union** (the contract `effect`, the sealed mutation-primitive
 registry, the descriptor node list) — never a text heuristic — so it cannot false-positive on prose.
+The subsections were written as a specification and are kept in their original numbering because
+other docs cite them; each now states **as-built** what actually enforces it at HEAD, and three of
+them (§3.1, §3.6, §3.9's `authority-target-no-fallback`) record a guard **retired by D188** because
+a stronger executable check already held the invariant. A retirement is an inventory entry naming
+the successor, never a silent shrink (§5).
 
-### 3.1 `dry-run-composition-submit-free.test.ts` — charter §1a as a static invariant
+### 3.1 `dry-run-composition-submit-free` — charter §1a as a static invariant (RETIRED by D188)
+
+<!-- roadmap: p2-proof -->
+
+**RETIRED 2026-08-09 (D188), replaced by `write-safety-contract` plus the executable
+`kuali-timekeeper-annotation/dry-run-preview` scenario.** The retirement is recorded in
+`guard-inventory.json` with that successor named. The argument is the one this program applies
+everywhere: the retired guard would have inspected a *composition* for a missing call, while the
+successor asserts **durable absence** — zero `write_intents`, zero `write_attempts`, zero
+`durable_outbox`, zero fence — over the real sequencer and a real database. A run that wrote nothing
+is a stronger fact than a graph that contains no commit node. §10.4 makes that assertion the
+standing shape of every dry-run scenario rather than one workflow's fixture.
+
+The normative text below is unchanged and still describes what a dry-run composition must be; what
+moved is only which file proves it.
 
 **Thesis: a workflow's dry-run composition provably contains NO reachable submit — the dangerous
 action is *absent by construction*, not skipped by a branch.**
@@ -469,6 +285,8 @@ proof. The live lane asserts prepare spans/preview evidence exist while commit s
 
 ### 3.2 `transaction-pairing.test.ts` — prepare and commit share one lease scope
 
+<!-- roadmap: p1-authority -->
+
 **Thesis: every real submit has a paired fill; you cannot compose a submit whose fill is absent.**
 
 Every prepare contract appears only in `transaction.prepare`; every commit only in
@@ -483,6 +301,14 @@ positive, expiry or a lost fence CAS discards staged state with zero clicks, and
 occurs between prepare and commit.
 
 ### 3.3 `write-safety-contract.test.ts` — completion union + fenced, evidence-qualified recovery (HOSTS ref write-safety's guard)
+
+<!-- roadmap: p1-kernel -->
+
+<!-- roadmap-status: p1-kernel -->
+- [x] `write-safety-contract` is active and now also carries the retired `dry-run-composition-submit-free`'s invariant, asserted as DURABLE ABSENCE over a real database rather than as a missing call in a composition (D188)
+- [x] `control-command-single-path` proves the dispatcher is exhaustive across family AND action; `command-result-exhaustive` (D253) adds the refusal-arm half
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `guard-inventory.json` and §11's Phase 1f boundary; left: nothing in this doc's scope
+<!-- /roadmap-status -->
 
 **Thesis:** every `effect:"commit"` contract has write safety; no escape hatch. Every completion
 arm—receipt/save/upload—has a nontrivial `proofSchema`, normal-output extractor, recovery-probe
@@ -515,6 +341,8 @@ outcome but asserts zero write-ledger outboxes, so observation cannot masquerade
 
 ### 3.4 `no-positional-identity.test.ts` — items/checkpoints keyed by stable id, never index
 
+<!-- roadmap: p1-authority -->
+
 **Thesis (the docs-1/2 invariant): identity is a stable key, never an array position.** A row keyed
 by index silently binds the wrong person when the list reorders — the class of the real wrong-person
 incident. Guard: ban `members[<int>]` / `items[<int>]` / `checkpoints[<int>]`-style positional lookups
@@ -523,6 +351,14 @@ using the index as the persisted key is not). Structurally reinforces ref workfl
 logical key (D9) and ref dashboard-surfaces's `(runId, attempt, spanPath)` span identity (D10) — both are id-keyed.
 
 ### 3.5 `unverifiableByPage` requires an allowlist + reason (D22 — closes the verify escape hatch)
+
+<!-- roadmap: order-7 -->
+
+<!-- roadmap-status: order-7 -->
+- [x] the `unverifiableByPage` escape hatch is enforced at CONTRACT SEAL time — `src/domain/contracts/base.ts:406-416` against `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY`, proved by a fixture contract (§3.5 as-built)
+- [ ] the reviewed policy table is EMPTY, so the reverse arm (a stale row whose contract dropped the flag) has nothing to find and nothing audits it — OnBase's migration is what makes it necessary
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `src/domain/contracts/write-safety.ts:130` (`contracts: []`) and `tests/unit/task-contracts.test.ts:296`
+<!-- /roadmap-status -->
 
 Ref write-safety's `upload-verify.unverifiableByPage` is the one place a commit contract may declare "this page
 genuinely cannot prove landing" and fall to always-park. Left unguarded it is a silent escape from
@@ -533,7 +369,38 @@ new `unverifiableByPage` with no argued entry fails, and a stale entry whose con
 flag fails the reverse. "We can't verify this write" becomes a reviewed, enumerated decision, never a
 quiet default — today only OnBase is a candidate, and it must earn its line.
 
-### 3.6 `commit-routes-through-mutation.ts` (D22 — closes the fence-bypass overclaim)
+**AS-BUILT 2026-08-20 — the enforcement point is the contract SEALER, and the allowlist is empty.**
+`defineTaskContract` refuses at seal time (`src/domain/contracts/base.ts:406-416`): an
+`upload-verify` completion carrying `unverifiableByPage` must appear in
+`REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` (`src/domain/contracts/write-safety.ts:130`) **with the same
+reason string**, and its `operatorAttestationExample` must parse the completion's own proof schema
+into an `operator-attestation` arm. `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY.contracts` is `[]` — no
+shipped contract claims the flag — so the arm is proved by a fixture contract in
+`tests/unit/task-contracts.test.ts:296` rather than by a production subject. Sealing is strictly
+stronger than a ratchet here, because a scan can be out-scoped and a seal cannot: the contract does
+not exist unless the check passed. What a seal cannot see is the reverse direction §3.5 asks for — a
+policy row whose contract has dropped the flag — and nothing audits that today, because an empty
+table has no stale rows to find. The first entry is what makes that arm necessary; it lands with
+`order-7`'s OnBase migration.
+
+### 3.6 `commit-routes-through-mutation` (D22 — closes the fence-bypass overclaim) (RETIRED by D188)
+
+<!-- roadmap: p2-proof -->
+
+<!-- roadmap-status: p2-proof -->
+- [x] the controlled-commit proof is RECORDED, not re-runnable — `reference/write-safety.md` §Phase-2 controlled-commit as-built is the citation, and re-running it would be a second real HR write (§10.1)
+- [x] `commit-routes-through-mutation` RETIRED by D188 → `task-driver-boundary`, which refuses a `commit` outside a capability-validating store driver against a violating fixture, over a WeakSet-unforgeable capability (D127)
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory's retired set and `src/base/mutation-capability.ts`; each workflow still owes its own controlled-commit proof at its migration
+<!-- /roadmap-status -->
+
+**RETIRED 2026-08-09 (D188), replaced by `task-driver-boundary`.** That guard already refuses a
+`commit` implementation outside a capability-validating store driver, **against a violating
+fixture**, over a `MutationCapability` that is runtime-unforgeable by module-private WeakSet (D127) —
+so the routing is a type-and-runtime fact rather than an import-graph inference. The mint boundary
+itself is held by `write-sequencer.ts` being the only permitted minting caller
+(`src/base/mutation-capability.ts`), which `task-driver-boundary` and `driver-lease-boundary`
+allowlist by exact path. The text below stays as the statement of the invariant.
+
 
 Ref write-safety's fence-before-click is only "unbypassable" if every real submit actually goes through the
 sealed `stores/common/mutation.ts` primitive, which requires the open-intent capability. A leaf
@@ -547,6 +414,20 @@ clicks additionally require the one fenced choke point. Together they make ref w
 
 ### 3.7 `artifact-effect-boundary.test.ts` — downloads are immutable; mutable files are projections
 
+<!-- roadmap: p2-2h -->
+<!-- roadmap: order-2 -->
+
+<!-- roadmap-status: p2-2h -->
+- [x] `artifact-effect-boundary` is active: the path-free content-addressed ref, the temp→fsync→atomic-rename sequence, crash-boundary recovery, byte-identical idempotency, and an AST canary against direct mutable filesystem access from a task impl
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory; the download-bearing workflows that will exercise it are `order-2`
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: order-2 -->
+- [x] the guard the download workflows land on already exists — `artifact-effect-boundary` (§3.7), so a browser download is structurally immutable before the first of them is written
+- [ ] the T1 pair for each of `crm-doc-download` / `sharepoint-download` / `old-kronos-reports` (§10.11)
+> 2026-08-20 | docs-cohesion ref guards-and-tests | guard side verified against the inventory; the migration's own tests are §10.11's checklist, unwritten
+<!-- /roadmap-status -->
+
 Read contracts that materialize bytes must declare `artifacts:"content-addressed"`; only the kernel
 writer may be reachable from their impl import graph. Direct filesystem write/append imports in task
 impls fail, and workflow mini-stores cannot declare artifacts. Descriptor artifact projections are
@@ -557,6 +438,9 @@ projection acknowledgement. This keeps i9's workbook update from being mislabele
 read while still permitting replay-safe browser downloads.
 
 ### 3.8 Strict schemas + semantic driver/UI registry
+
+<!-- roadmap: p1-base -->
+<!-- roadmap: p1-authority -->
 
 - **`strict-boundary-schemas.test.ts`.** Enumerate every external/durable boundary export (workflow
   input/result, task input/output, run envelope, checkpoint, command, event/note, SSE wire,
@@ -583,6 +467,15 @@ read while still permitting replay-safe browser downloads.
 
 ### 3.9 Subject binding, control commands, and delegation
 
+<!-- roadmap: p1-kernel -->
+<!-- roadmap: order-4 -->
+
+<!-- roadmap-status: order-4 -->
+- [x] `delegation-manifest` is active and carries the retired `delegate-to-usage` / `delegate-to-all-impl-callers` invariants (§2.1): stable edge/item ids, concrete schemas, explicit cardinality/join/failure/cancel/retry policies, an atomic immutable manifest
+- [ ] the T1 pair for the delegating workflow, whose structural scenario must walk the fan-out at each declared cardinality (§10.11 step 2)
+> 2026-08-20 | docs-cohesion ref guards-and-tests | guard side verified against the inventory; no landed descriptor delegates yet, so the scenario matrix has no production subject
+<!-- /roadmap-status -->
+
 - **`subject-before-fence.test.ts`.** Every prepare/commit contract has compatible subject specs;
   every write observation resolves to a driver operation. A transaction trace must order
   prepare-end < fresh subject-match < fence-commit < mutation-call on the same lease/run/attempt.
@@ -604,8 +497,13 @@ read while still permitting replay-safe browser downloads.
   start/worker-browser/run/gate/write-resolution actions execute, `run/edit-checkpoint` and every
   later family/action return `rejected:capability-unavailable` with zero authority-generation
   advance, and an unhandled/throwing “not implemented” arm fails the guard.
-- **`authority-target-no-fallback.test.ts`.** Cancel/cascade/retry/bump resolve exact targets and
-  dependency trees from SQLite. Fixtures make the DB unavailable/inconsistent and pass tempting
+- **`authority-target-no-fallback` — RETIRED 2026-08-09 (D188), replaced by `storage-recovery`.**
+  The invariant is unchanged and is held one layer down: `open` REFUSES an existing-but-empty file by
+  name, read-only inspect refuses any non-exact schema, and the corrupt / truncated / newer /
+  foreign-key-invalid / invariant-invalid / record-invalid family all degrade **read-only with zero
+  bytes written**. A caller cannot be handed a fallback root because an unusable database is never
+  opened as a usable one. The original text: cancel/cascade/retry/bump resolve exact targets and
+  dependency trees from SQLite; fixtures make the DB unavailable/inconsistent and pass tempting
   caller-visible roots; the expected result is zero transitions + typed error, never a fallback.
 - **`delegation-manifest.test.ts`.** Every child-run has stable edge/item ids, concrete input/result
   schemas, explicit cardinality/join/failure/cancel/retry/visibility policies, and an atomic immutable
@@ -613,6 +511,15 @@ read while still permitting replay-safe browser downloads.
   all-settled, cascade/independent cancel, child retry, parent resume, and two distinct edges.
 
 ### 3.10 Trust surfaces: storage recovery, scenarios, evidence, and notifications
+
+<!-- roadmap: p2-2j -->
+<!-- roadmap: p2-2g -->
+
+<!-- roadmap-status: p2-2g -->
+- [x] the trust-surface guards are active: `migration-history-immutability`, `storage-recovery`, `scenario-coverage`, `evidence-receipt`, `notification-durability`, `knowledge-fix-integrity`, `workflow-editor-compile-integrity`
+- [x] D185's corpus-layout audit closes the direction the registered-set audits were blind to — a file of neither kind, an unregistered claim, a manifest row nothing executes (§3.10 as-built)
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `guard-inventory.json` and `src/domain/workflow/scenario-execution.ts`; §10.9 extends the same audit across the per-workflow folders
+<!-- /roadmap-status -->
 
 - **`migration-history-immutability.test.ts`.** Every released authority migration is pinned by a
   literal SHA-256 over its version and length-framed ordered statement bytes. The pinned version
@@ -727,6 +634,28 @@ read while still permitting replay-safe browser downloads.
 
 ### 3.11 Old-capability closure, mobile capture, and advisory AI
 
+<!-- roadmap: p2-2i -->
+<!-- roadmap: cross-cutting -->
+<!-- roadmap: def-sanity-check -->
+
+<!-- roadmap-status: p2-2i -->
+- [x] `capture-durability-and-scope` and `ai-advisory-no-authority` are active; `redaction-surface-scan` (D183) is the one sweep over every egress class (§3.15)
+- [ ] `preflight-coverage` stays PLANNED with D188's real trigger — the first migration that adds a preflight runner; the declaration side is held by `runtime-dependency-coverage`, the executed-fault corpus is not
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory's two planned entries
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: cross-cutting -->
+- [x] `legacy-capability-disposition` audits the inventory five ways and derives the completed set by INVOKING the real `phase` command, so closing a tail arms the next sweep (§3.11 as-built, D184)
+- [ ] 50 entries remain genuinely `open`, each re-milestoned to `phase-3-workflow-migration` with the reason in the entry; `cutoverRequiresZeroOpen` is what they gate
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against §3.11's as-built record; the entry-by-entry state lives in `config/legacy-capabilities.json`, not here
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: def-sanity-check -->
+- [x] the advisory guard exists — `ai-advisory-no-authority` proves an advisory module cannot reach command, gate resolution, workflow state, UI-registry writes, subject matching, completion confidence or a mutation capability
+- [ ] D192's re-disposition of `legacy-tool-ops-sanity-check-record` is still open in the capability inventory (§3.11 as-built)
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory; the panel itself is a deferral, not a guard gap
+<!-- /roadmap-status -->
+
 - **`legacy-capability-disposition.test.ts`.** Doc 03c §Non-workflow capability closure inventory's strict inventory covers every old
   workflow directory, `services/*` module, route file/endpoint family, top-level dashboard component
   family, CLI subcommand/ops script, exporter/codegen/maintenance/dev tool exactly once. New legacy
@@ -748,7 +677,12 @@ read while still permitting replay-safe browser downloads.
   subject matching, completion confidence, or mutation capability. Fixtures inject missing keys,
   quota exhaustion, provider errors, malformed output, and prompt injection text; deterministic
   evidence/rules remain unchanged and no empty result is interpreted as “safe” or “no issue.”
-- **`preflight-coverage.test.ts`.** Every descriptor-derived secret/system/feature prerequisite and
+- **`preflight-coverage` — PLANNED, and honestly so.** D188 re-owned it from the meaningless
+  `phase-1-or-later` to *the first migration that adds a preflight runner*: the declaration side is
+  already held (`runtime-dependency-coverage` audits the closed secret/config/endpoint registries in
+  both directions), the executed-fault corpus is not, and there is no preflight runner in `src/` for
+  it to cover. It stays `planned` in the inventory with that trigger. Its contract:
+  every descriptor-derived secret/system/feature prerequisite and
   every blocking runtime capability resolves to one registered preflight check; every check has a
   consumer and scenario. Dashboard boot, workflow enqueue, Settings health, CLI doctor, and
   `test-login` project the same report contract. Fixtures prove optional-feature failure cannot
@@ -770,6 +704,14 @@ read while still permitting replay-safe browser downloads.
   an unregistered `process.env` read, and a stale registry entry all fail with the exact owner.
 
 #### 3.11 as-built — the capability-closure sweep (D184, 2026-08-09, 2j)
+
+<!-- roadmap: operator-calls -->
+
+<!-- roadmap-status: operator-calls -->
+- [x] D184's sweep is done and its rule holds: a wrong `native` claim is worse than an honest `open`, so a family whose operator-visible half did not land stays open and says what is missing
+- [ ] D192's re-disposition is the doc-side item still open here
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against §3.11 as-built; the other two calls in this node belong to `reference/dashboard-surfaces` and the migration record
+<!-- /roadmap-status -->
 
 The normative text above is unchanged. What follows is what actually landed, and what the guard
 had been failing to hold until it did.
@@ -890,7 +832,74 @@ module). Both are now reconciled both ways: every allowlisted path must be a git
 and every `ProviderId` carries either a reviewed adapter-module list whose paths exist or a
 reviewed declared-without-adapter reason.
 
+### 3.12 D71 executable contract/type-budget suite
+
+<!-- roadmap: p1-authority -->
+
+The Phase-0 disposable spike is converted—not copied blindly—into committed tests against the real
+Phase-1 exports:
+
+- `contract-inference.test-d.ts` pins literal error-code inference, effect-specific required fields,
+  prepare/commit illegality as standalone tasks, wrong child input/result rejection, undeclared
+  provider-client rejection, duplicate node ids, and no erased `any`/`unknown` target. Every
+  intentional failure uses `@ts-expect-error` plus a neighboring positive control so a weakened API
+  that merely stops checking causes the suite to fail.
+- `workflow-real-scale.test-d.ts` builds a representative 15–25-node graph containing every node
+  kind and real schema transforms. On the Phase-0 baseline machine its isolated
+  `tsc --extendedDiagnostics` check must stay below 5 seconds and 1 GiB; the measured values are
+  recorded as test output. The simplified 40-node 0.68s/~212MB feasibility result is context, not
+  the acceptance value.
+- Runtime tests pin ingress-transform-once/canonical-revalidate-many, unknown-key rejection,
+  command-family arm separation, two target paths sharing one canonical concept, proof-union
+  rejection, and D69 settlement where a pre-window observation contributes zero votes.
+- The SQLite feasibility cases live in `storage-recovery.test.ts`: permanent key conflict, atomic
+  intent+outbox commit/rollback, foreign-key integrity, authority-generation behavior, native
+  online backup, and read-only self-verification.
+
+These tests land immediately before or with the real contract they exercise. A standalone scratch
+file outside the repository is never a Phase-1 gate and is deleted after its findings are captured.
+
+**AS-BUILT 2026-08-20 — the suite exists under two different filenames, and it is inside the one
+`tsc` program rather than a separate type-test runner.** There is no `*.test-d.ts` in this tree and
+no `vitest typecheck` project; the proof lives in `tests/types/`, which `tsconfig.json` includes, so
+`npm run typecheck` IS the runner and a weakened API fails the ordinary gate:
+
+- `tests/types/task-contracts.typecheck.ts` (121 lines) is D71's `contract-inference` half — a
+  `@ts-expect-error` per illegal shape (a service driver in a browser task context, an undeclared
+  provider client, a read context reaching a mutation) with a neighbouring positive control, so an
+  API that merely stops checking fails the build. Three architecture guards read this file as their
+  fixture rather than restating it: `task-store-boundaries.test.ts:62`,
+  `provider-capability-boundary.test.ts:181`, `task-contract-sealing.test.ts:141`.
+- `tests/types/flow-graph.typecheck.ts` (619 lines) is the `workflow-real-scale` half: a
+  representative **21-node** graph exercising every builder transform — read steps, a prepare/commit
+  transaction pair, an output-dependent branch, fork/join, typed child runs at both cardinalities and
+  both await modes, operator/children/external gates, decorations and a terminal result — with the
+  negative controls that catch a transform eroding to `any`/`unknown`/`RuntimeFlowNode`.
+
+The one part of D71 that is NOT as-built is its BUDGET: nothing measures the isolated
+`tsc --extendedDiagnostics` time and memory of that graph, so the "under 5 s and 1 GiB on the
+Phase-0 baseline machine" acceptance value is unenforced. It is the same shape as §10.1's
+performance budgets — a number nobody measures is a number nobody can fail — and it is listed as
+open rather than quietly dropped.
+
+
 ### 3.13 Round-8 guards (2026-07-26) — the decisions that need mechanical teeth
+
+<!-- roadmap: p1-spine -->
+<!-- roadmap: dash-defaults -->
+
+<!-- roadmap-status: p1-spine -->
+- [x] the four round-8 guards landed: `one-projection-counts` (D81), `identity-gate-before-commit` (D77), `archive-invariants` (D80), and the isolation pair `operational-isolation` + `test-runtime-root-isolation`
+- [x] `runtime-isolation`'s cross-tree half is RETIRED by D93 and `legacy-change-accounting` by D150 — both with successors named in the inventory, never a silent shrink
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory's retired set; the D94 accounting narrative moved to `history/superseded/2026-08-20-guards-and-tests-legacy-change-accounting.md`
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: dash-defaults -->
+- [x] `one-projection-counts` holds D81: no count reachable from a surface path originates outside the single run/queue projection payload
+- [x] `wire-connectivity` audits FOUR joints, not three — section arms, command keys, routes ↔ client, and the wire MIRRORS of durable vocabularies (`guard-inventory.json` corrected 2026-08-20)
+- [ ] T2 dashboard feature scenarios per feature, and the `scenario-dashboard` project that collects them (§10.9, §10.12) — spec only
+> 2026-08-20 | docs-cohesion ref guards-and-tests | the guard side is verified against `wire-connectivity.test.ts`; the test file's own header comment still says "Three joints" and is reported for the code unit
+<!-- /roadmap-status -->
 
 Four ratified decisions are worthless as prose. Each gets a guard, and each guard is listed in the
 §5.1 registered set.
@@ -973,34 +982,9 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   carried — a ported selector or page-state fact going stale after legacy fixed it — moves to **live
   re-verification at each workflow's migration**, which §3 already requires and which is strictly
   stronger than a diff against legacy's copy. `legacy-selector-port-provenance` is untouched: it
-  reads a FIXED commit's blobs. What follows records what the retired guard did.
-
-  **`legacy-change-accounting` survived D93 and became the program's only drift detector (D94).** The
-  guard lane resolves `HRAUTO_LEGACY_REPO`, defaulting to sibling `../hr-automation`, and fails loud
-  if it is absent or not a Git checkout (ratified F1). Mixed-root inventories qualify legacy paths
-  with `legacy:` while single-root legacy manifests remain unprefixed (F2; ref clock-config-secrets §6). The explicit
-  Phase-0 commit is verified as an ancestor of legacy `HEAD`; its file/history authority is read
-  directly from `git ls-tree -r <baselineCommit> -- src tests` rather than resurrecting the retired
-  preservation cache (F3).
-
-  Schema v2 is **commit-centred**: enumerate `baseline..HEAD` in `git rev-list --reverse` order for
-  legacy `src/` and `tests/`, and require exactly one record for every `(commit,path)` pair. Each
-  record pins the named commit's first parent, change kind, SHA-256 of the parent blob (null only for
-  add), SHA-256 of the commit blob (null only for delete), affected capability ids, non-empty impact
-  rationale, and ids from a closed rebuild-recheck/evidence catalog. Repeated edits and reverts are
-  therefore visible even when the final tree diff cancels them. Unknown/missing commits, paths,
-  stale hashes, open/unknown evidence, and duplicate records fail.
-
-  A reviewed exact/prefix impact map is an independent minimum: each record's capability ids must
-  be a superset, with justified extras allowed (F4). Shared daemon runtime/docs/tests affect
-  `legacy-cli-daemon` plus every workflow registered through the daemon; OCR provider/environment
-  changes affect `legacy-service-ocr`, the OCR hub and all OCR-backed consumers/delegates. The
-  legacy `src/`/`tests/` worktree must be clean, including staged and untracked state: **commit the
-  legacy change first, then account that named commit**. Dirty work intentionally makes rebuild
-  guards red; in particular, a staged deletion cannot disappear from a working-tree file walk.
-  Deletion is modeled (`afterSha256: null`) so it is detected, then rejected through initial
-  cutover. The legacy diagnostic ratchet still rejects new/replaced test-lint fingerprints; rebuild
-  source/tests retain their zero-debt gates.
+  reads a FIXED commit's blobs. `config/legacy-change-accounting.json` stays in the tree as a frozen
+  historical record and is never extended. What the guard enforced while it existed is preserved at
+  `docs/rebuild/history/superseded/2026-08-20-guards-and-tests-legacy-change-accounting.md`.
 
 **Two live-compatibility guard families remain rejected (D88).** Continuous real-tracker replay
 and a runtime legacy wire-schema adapter would legitimize the forbidden live lift/proxy. If an
@@ -1010,6 +994,16 @@ quarantine counts, and no importer dependency from a production composition root
 explicit replacement in the guard inventory, not a silent shrink.
 
 ### 3.14 Testing standard (D85) — what replaces the e2e ritual
+
+<!-- roadmap: p2-2j -->
+
+<!-- roadmap-status: p2-2j -->
+- [x] D190 closed the safety-critical floor (70.08 % → 99.43 % on `run-queue-projection.ts`) and D191 made `test:coverage` the per-commit gate
+- [x] `redaction-surface-scan` (D183) and the D188 inventory re-disposition landed — six placeholder `planned` guards became four retirements with successors and two kept with real triggers
+- [ ] D91's BRANCH half is UNMET and its Phase-2-exit trigger has passed: `coverage.thresholds` configures lines/statements/functions only, so branches are report-only at a measured 71.76 % global (§3.14 as-built, §10.10)
+- [ ] D85's parts 2 and 3 never landed — there is no `cli test workflow <id> --dry-run` and no `TestTargetRegistry`; §10.5 and §10.9 are where they get built
+> 2026-08-20 | docs-cohesion ref guards-and-tests | measured at HEAD: 84.23 % lines / 82.15 % statements / 84.74 % functions / 71.76 % branches; verified against `vitest.config.ts` and `src/cli.ts`
+<!-- /roadmap-status -->
 
 The operator asked for a better standard than the `custom-hr-e2e-test` skill ritual. The ratified
 answer has four parts, and they are *kernel behavior*, not a skill:
@@ -1030,6 +1024,19 @@ Three habits from the old ritual are kept and promoted into kernel behavior: **"
 finding"** (a step that needed manual help is recorded, not smoothed over), **double-entry ground
 truth** (a UI assertion is paired with an independent source), and the **append-only issue ledger**.
 
+**AS-BUILT 2026-08-20 — two of D85's four parts landed, one landed under a different name, and one
+never existed. R10's §10 is where the gap closes, so the state is recorded here rather than left to
+be discovered.**
+
+| D85 part | as-built |
+|---|---|
+| 1 · the scenario corpus is the everyday lane | **LANDED.** 16 files under `tests/scenario/`, audited three ways by `scenario-coverage` (§3.10) — claims vs. graph, references vs. executions, and D185's corpus-directory layout. |
+| 2 · structural dry-run through the real kernel | **LANDED as a mechanism, NOT as `cli test workflow <id> --dry-run`.** `src/cli.ts` has no run-starting subcommand at all; the only production entry point that can set `envelope.dryRun` is the dashboard's `Dry run` checkbox (`src/dashboard/surfaces/run-start.tsx:996`) through `submitStartPlan`, refused by `src/services/start/plan.ts:168` as `dry-run-unsupported` when the descriptor does not support it. Everything else that sets the flag is a test fixture. §10.9 specifies the missing CLI. |
+| 3 · a typed `TestTargetRegistry` | **NEVER BUILT.** No registry of test employees, fixture files or authorized sacrificial documents exists in `src/` or `config/`. Every live proof this program has run named its subject in a session transcript or a migration record — exactly what D85 said not to do; `docs/migrations/separations.md` §9.16 records a canary (doc 4524) that had disappeared by the next pass, which is the failure mode. §10.5 is this part, built as `config/test-subjects.json`. |
+| 4 · positive no-write proof from an empty write-intent ledger | **LANDED and used.** `docs/migrations/separations.md` §9.22 asserts the row counts against authority after a composed live dry run — `write_intents` 2, `write_attempts` 3, `durable_outbox` 2, byte-for-byte the pre-pass counts, and zero `run_checkpoints` for any transaction-side node. §10.4 makes that assertion the standing shape rather than a hand-run pass. |
+
+The three kept habits are the topology R10's T4 tier formalises (§10.8).
+
 **D91 coverage/sizing/preservation policy (ratified 2026-07-31).** The rebuild repo's
 `test:coverage` measures its authored `src/` code with the reviewed exclusions in the testing-system
 plan. Lines,
@@ -1040,7 +1047,22 @@ tests and Vitest projects remain runnable through initial cutover; neither test 
 projects may be removed without a later explicit operator-ratified retirement. New/touched legacy
 diagnostics are governed by §1.1; rebuild tests are zero-debt from their first file.
 
+**AS-BUILT 2026-08-20 — the branch half of D91 is UNMET, and its trigger has passed.** Phase 2 closed
+2026-08-09. `vitest.config.ts`'s `REBUILD_COVERAGE_FLOORS` declares
+`branches: { phase1ReportOnly: true, phase2Global: 50, phase2SafetyCritical: 70 }`, but the
+`coverage.thresholds` block configures **lines, statements and functions only** — no `branches` key,
+global or per-glob. So branches are still report-only past the exit that was supposed to harden
+them, and nothing fails when they fall. The measurement at HEAD is **71.76 % global** (9,320 /
+12,987), comfortably over D91's 50 % global floor, so adopting the global half costs nothing today;
+the 70 % safety-critical half needs a per-glob measurement first. The suite-size report at HEAD:
+**unit 154 files / 49,398 lines · scenario 16 files / 6,023 lines · architecture 65 files / 19,320
+lines**, printed by `scripts/suite-size.ts`, which `test:coverage` chains and `gate-coverage` pins as
+still chained (never as still passing — see D190 below for why that distinction is the whole
+lesson).
+
 #### D190 — the safety-critical coverage floor as-built (2j, 2026-08-09)
+
+<!-- roadmap: p2-2j -->
 
 **The floor above was RED and had been red for a whole tail.** `npm run test:coverage` failed the
 `src/**/*projection*.ts` safety-critical threshold from D180 (2i-G) until this decision closed it:
@@ -1097,6 +1119,14 @@ slipped in behind a coverage fix.
 
 #### D191 — the recommendation is adopted: `test:coverage` becomes the per-commit gate (operator decision, 2026-08-12)
 
+<!-- roadmap: phase-3 -->
+
+<!-- roadmap-status: phase-3 -->
+- [x] the per-commit gate is `typecheck && lint && test:coverage` (D191) — a strict superset of the old `test` + `test:architecture` pair, measured faster (28.2 s vs ≈39 s)
+- [ ] the gate gains nothing new from R10: T1 structural and T2 are inside `test:coverage`, and every dry-run tier is deliberately outside it (§10.9)
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `package.json` and `CLAUDE.md`'s After-changes section
+<!-- /roadmap-status -->
+
 **The measurement above is now the rule.** The operator adopted the D190 recommendation as written:
 the per-commit gate family is `npm run typecheck && npm run lint && npm run test:coverage`,
 REPLACING the separate `npm run test && npm run test:architecture` pair. `test:coverage` runs every
@@ -1110,32 +1140,9 @@ objection D190 raised — a mid-slice commit can honestly dip a coverage floor �
 the operator's to accept case by case; nothing here waives a floor, it only moves WHEN the floor is
 checked, from "the slice will check at the end" (the assumption that just failed) to every commit.
 
-### 3.12 D71 executable contract/type-budget suite
-
-The Phase-0 disposable spike is converted—not copied blindly—into committed tests against the real
-Phase-1 exports:
-
-- `contract-inference.test-d.ts` pins literal error-code inference, effect-specific required fields,
-  prepare/commit illegality as standalone tasks, wrong child input/result rejection, undeclared
-  provider-client rejection, duplicate node ids, and no erased `any`/`unknown` target. Every
-  intentional failure uses `@ts-expect-error` plus a neighboring positive control so a weakened API
-  that merely stops checking causes the suite to fail.
-- `workflow-real-scale.test-d.ts` builds a representative 15–25-node graph containing every node
-  kind and real schema transforms. On the Phase-0 baseline machine its isolated
-  `tsc --extendedDiagnostics` check must stay below 5 seconds and 1 GiB; the measured values are
-  recorded as test output. The simplified 40-node 0.68s/~212MB feasibility result is context, not
-  the acceptance value.
-- Runtime tests pin ingress-transform-once/canonical-revalidate-many, unknown-key rejection,
-  command-family arm separation, two target paths sharing one canonical concept, proof-union
-  rejection, and D69 settlement where a pre-window observation contributes zero votes.
-- The SQLite feasibility cases live in `storage-recovery.test.ts`: permanent key conflict, atomic
-  intent+outbox commit/rollback, foreign-key integrity, authority-generation behavior, native
-  online backup, and read-only self-verification.
-
-These tests land immediately before or with the real contract they exercise. A standalone scratch
-file outside the repository is never a Phase-1 gate and is deleted after its findings are captured.
-
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
+
+<!-- roadmap: p2-2j -->
 
 Ref clock-config-secrets §6 already says redaction is schema-owned and that "tests seed canary passwords, cookies,
 storage state, SSNs, DOBs, and private keys and scan every produced note/failure/screenshot
@@ -1237,6 +1244,8 @@ in both directions, the surfaces those guards each see one at a time.
 
 ## 4. `descriptor-coverage.test.ts` — the ONE rebuild guard replacing parity-list design
 
+<!-- roadmap: p1-authority -->
+
 Owned by **ref workflow-model §1.4**; this doc owns the **crosswalk** (which legacy invariants it replaces in
 the rebuild repo, while the legacy repo's own guard files remain through initial cutover) and the
 **exhaustiveness argument**. A table-driven test over the core composition-root registry and its
@@ -1280,6 +1289,8 @@ exceptions. The explicit projection matrix above and source-surface inventory ar
 
 ## 5. The guard-of-guards manifest — accidental shrink protection, not an undeletable law
 
+<!-- roadmap: p1-base -->
+
 Rot vector: a guard file is deleted, renamed, or dropped from the `test:architecture` glob, and
 nobody notices the umbrella shrank. Extends the existing `gate-coverage` meta-guard.
 
@@ -1301,10 +1312,13 @@ set. The test asserts:
    family (`typecheck`, `lint --max-warnings 0`);
 7. ESLint's CLI target and the matching `eslint.config.js` typed rule block both include the rebuild
    `src/` and `tests/`;
-8. D70's scope split survives the repo split: the rebuild repo's source/test lint is zero-debt
-   strict, and in the LEGACY repo ordinary source lint is green while the legacy-test ratchet
-   consumes the reviewed fingerprint manifest rather than ignoring failures or comparing only a
-   total count. The `*:rebuild` script names are retired by D93.
+8. D70's scope split survives the repo split, and **as-built the rebuild half is enforced as a
+   BAN**: `gate-coverage.test.ts` asserts that no script in this `package.json` matches
+   `legacy-tests-ratchet` or `:rebuild`, and that `lint` carries `--max-warnings 0` over each of the
+   three authored roots (`src`, `tests`, `scripts`) with `--no-error-on-unmatched-pattern` forbidden
+   anywhere. The legacy repo's own obligation (ordinary source lint green; its test ratchet
+   consuming the reviewed fingerprint manifest rather than ignoring failures or comparing a total
+   count) is a LEGACY-repo rule this tree no longer reads — D150 retired the cross-repo accounting.
 9. **The visual-parity lane is held to the same standard as a guard arm (D132).** `npm run
    test:parity` (ref frontend-backend-integration §7, owner) is outside the vitest projects, so §5's file-set audit cannot see
    it; `parity-reference-authority.test.ts` covers it from inside the architecture suite instead. It
@@ -1349,67 +1363,97 @@ makes no stronger mechanical claim.
 
 ### 5.1 The full registered set — where every doc's guards converge
 
-The inventory is the one machine-readable place the umbrella is enumerated. Each doc owns its guards'
-contracts; the manifest owns that they exist and stay wired. The set (contract-owner in parens):
+<!-- roadmap: p1-base -->
 
-- **Ported/extended ratchets (this doc, §2):** `fail-loud-catch-default`, `nullish-literal-data-fallback`,
-  `wait-for-timeout-allowlist`, `inline-selectors-workflows` (+ systems base), `evaluate-named-fn`,
-  `import-cycles`, `control-layering` (+ layer matrix), `code-conventions`, `cancel-mechanism`,
-  `delegate-to-usage`, `delegate-to-all-impl-callers`, `workflow-boundaries`, `tracker-row-emission`,
-  `deletion-tombstones`, `dashboard-security-boundary`, `frontend-tailwind-compliance`.
-- **New safety guards:** `dry-run-composition-submit-free`,
-  `transaction-pairing`, `write-safety-contract` (typed proof on every union arm + the
-  `unverifiableByPage` allowlist), `commit-routes-through-mutation`, atomic-write-outbox,
-  permanent-key sequential/concurrent dedupe, recovery-negative-proof-settlement,
-  ledger-projector ordering/idempotence/recovery,
-  `no-positional-identity`, `edit-data-field-policy`, canonical-input-snapshot (raw + parsed +
-  ingress/canonical schema hashes; resume validates but never reapplies defaults/transforms),
-  `strict-boundary-schemas`,
-  `semantic-ui-registry`, `task-driver-boundary`, `subject-before-fence`,
-  `control-command-single-path`, `authority-target-no-fallback`, `delegation-manifest`,
-  `storage-recovery`, `scenario-coverage`, `evidence-receipt`, `notification-durability`,
-  `knowledge-fix-integrity`, `workflow-editor-compile-integrity`, `legacy-capability-disposition`,
-  `capture-durability-and-scope`, `ai-advisory-no-authority`, `provider-capability-boundary`,
-  `runtime-dependency-coverage`, `preflight-coverage`, and `authentication-proof-not-url`
-  (ref execution-and-sessions §4.1: no login recipe concludes authentication from a URL or returns a `LoginResult`
-  outside `defineVerifiedLoginRecipe`; every landed browser-system binding supplies a verifier
-  rather than an `isAuthenticatedUrl` predicate; the neutral reset asserts through the same
-  `assertAuthenticatedApplication`).
-- **Descriptor SSOT (ref workflow-model):** `descriptor-coverage` — replaces `archetype-coverage`,
-  `runtime-policy-coverage`, `instance-labels-coverage`, `queue-row-kind-coverage`, `i9-check-import-guard`.
-- **Task-store guards (ref task-contract):** pairing, reachability, bundle-safety, `example`-parse, freshness,
-  verb↔effect, `KnownTaskId` stringly-dispatch ratchet, `z.record` output ban, auth-boilerplate ban,
-  copied-selector provenance/isolation/change-accounting, undeclared-error-code type-test, commit-capability boundary,
-  declared-secret reachability (every `requireSecret` name appears in its contract and descriptor union),
-  provenance-policy coverage (pure/service/workflow transforms cannot declare live observation without
-  an allowlisted authoritative source operation; derived outputs retain oldest input provenance),
-  canonical-output-no-any, content-addressed-artifact boundary (direct mutable filesystem writes in
-  task impls fail; workflow mini-stores cannot declare artifacts), provider-capability declaration/
-  injection boundary.
-- **Event/dashboard guards (ref dashboard-surfaces):** dashboard-component purity (no `workflow ===`), client
-  re-projection import-boundary, identity-on-patch throw, undeclared-vocabulary emit-validation,
-  sealed-completion (`defineFormSpec`, + oath-upload & verify pinned to NO `CompletionProgram`),
-  runtime-isolation, one-time-import offline/idempotency coverage,
-  notes-not-a-data-channel, non-recursive wire type-test,
-  immutable-backup/version/idempotency/quarantine-count import fixture, command idempotency/scoped-CAS/enqueue policies,
-  authority target fail-closed behavior, durable notification delivery, SQLite backup/restore
-  drill, native projection/fixture parity.
-- **Local artifact projector guards (refs dashboard-surfaces/data-intake-and-edit-data):** stable non-positional outbox key, checkpoint+
-  outbox atomicity, duplicate-delivery idempotence, single projector per sink, workbook head-hash
-  conflict parks without overwrite, and blocking projection ack before terminal done.
-- **Parallelism guards (ref execution-and-sessions):** driver-lease/raw-Page boundary, subject observation ordering,
-  per-contract sleep budget, single-flight
-  login, onbase-`exclusive` lease, `newPage(` ratchet, fan-out-starvation, authored fresh-session-boundary coverage,
-  bounded task/transaction deadline, worker teardown soak, multi-worker overlap.
-- **Meta (this doc):** `gate-coverage`, `guard-manifest`, `runtime-isolation`,
-  `legacy-change-accounting`, `legacy-preservation`, and `legacy-test-lint-debt-ratchet`.
+The inventory is the one machine-readable place the umbrella is enumerated. Each doc owns its
+guards' contracts; the manifest owns that they exist and stay wired. **This list is the as-built set
+at HEAD, read from `docs/rebuild/guard-inventory.json` — 75 entries: 65 `active`, 8 `retired`, 2
+`planned`** — not an aspiration. `guard-manifest.test.ts` compares the active `file` list against a
+recursive walk of `tests/unit/architecture/` with `deepEqual`, which is bidirectional by
+construction and has one consequence worth stating outright: **a retired or planned guard's
+`.test.ts` file must not exist on disk**, or the walk finds a file the inventory does not claim.
+
+**The nine ratchet arms (§2.1) are not inventory entries.** They are named in
+`rebuildRatchetActivation.requiredGuardNames` and executed by `guard-manifest` itself, each against
+the real tree and against its own violating fixture.
+
+**Active, by owning contract:**
+
+- **Meta — the guard-of-guards and the gates (this doc, §5):** `guard-manifest`, `gate-coverage`,
+  `parity-reference-authority` (item 9), `roadmap-doc-binding` (D263 — the plan ↔ docs binding),
+  `config-snapshot-generations` (item 10), `migration-history-immutability`,
+  `operational-isolation`, `test-runtime-root-isolation`.
+- **Descriptor and contract SSOT (ref workflow-model §1.4, ref task-contract):** `descriptor-coverage`,
+  `task-contract-sealing`, `task-store-boundaries`, `task-driver-boundary`, `semantic-ui-registry`,
+  `canonical-input-snapshot`, `strict-boundary-schemas`, `intake-canonical-field-registry`,
+  `intake-mapping-boundary`, `edit-data-field-policy`, `ucpath-person-org-strict`,
+  `ocr-producer-parity`, `explorer-prose-declared`.
+- **Write safety (ref write-safety):** `write-safety-contract` (the completion union plus the
+  `unverifiableByPage` reading of §3.5), `transaction-pairing`, `subject-before-fence`,
+  `identity-gate-before-commit`, `permanent-key-dedupe`, `recovery-negative-proof-settlement`,
+  `atomic-write-outbox`, `ledger-projector`, `no-positional-identity`, `artifact-effect-boundary`.
+- **Execution, sessions and providers (ref execution-and-sessions):** `driver-lease-boundary`,
+  `fresh-session-boundary`, `single-flight-login`, `authentication-proof-not-url` (D120 — no login
+  recipe concludes authentication from a URL, and every landed browser-system binding supplies a
+  content verifier), `multi-worker-overlap`, `worker-teardown-soak`, `bounded-task-deadline`,
+  `provider-capability-boundary`.
+- **Authority, commands and the archive:** `storage-recovery` (which since D188 also carries the
+  retired `authority-target-no-fallback`'s invariant), `control-command-single-path`,
+  `delegation-manifest`, `command-result-exhaustive` (D253 — a dashboard module naming one refusal
+  arm without the other), `archive-invariants`.
+- **Dashboard and the wire (ref dashboard-surfaces, ref frontend-backend-integration):**
+  `dashboard-wire-boundary` (no Node built-in reachable from the bundle entry),
+  `dashboard-refresh-boundary` (doc 13 §8.14 — a surface module exports components only),
+  `wire-connectivity` (the four joints), `one-projection-counts`.
+- **Trust surfaces (ref operator-trust):** `evidence-receipt`, `notification-durability`,
+  `knowledge-fix-integrity`, `workflow-editor-compile-integrity`, `capture-durability-and-scope`,
+  `ai-advisory-no-authority`, `redaction-surface-scan` (§3.15), `scenario-coverage` (§3.10, and the
+  guard §10 extends).
+- **Clock, config and secrets (ref clock-config-secrets):** `clock-single-source`,
+  `manual-clock-test-only`, `secrets-single-source`, `no-secret-values-in-logs`.
+- **Legacy-facing inventories (audited as DATA, never linked at runtime):**
+  `legacy-selector-port-provenance` (406 keys pinned to one legacy commit's blobs),
+  `legacy-capability-disposition` (§3.11), `legacy-test-disposition`,
+  `runtime-environment-coverage`, `runtime-dependency-coverage`.
+
+**Planned — two, each with a trigger that names a commit somebody will write (D188):**
+`preflight-coverage` (activates with the first migration that adds a preflight runner) and
+`one-time-import-offline` (activates with the cutover data migration, doc 05 §Exit criteria).
+
+**Retired — eight, each naming its successor in the inventory:** `runtime-isolation` → `operational-isolation`
+(D93), `rebuild-gates` → `gate-coverage` (D93), `legacy-preservation` → nothing, deliberately (D93),
+`legacy-change-accounting` → live re-verification at each migration (D150), and D188's four:
+`authority-target-no-fallback` → `storage-recovery`, `commit-routes-through-mutation` →
+`task-driver-boundary`, `dry-run-composition-submit-free` → `write-safety-contract` plus the
+executable `kuali-timekeeper-annotation/dry-run-preview`, `sleep-budget` → the `wait-for-timeout`
+arm plus `bounded-task-deadline`. `guard-manifest` holds a retirement to a real standard: `retiredBy`
+must match `/^D\d+$/`, the `invariant` must be longer than 40 characters (a retirement has to explain
+where the invariant went), and `replacementRequired` stays `true`.
+
+**Open — an invariant §2's port map named and nothing holds by name.** Two, and they are listed
+here rather than left implicit: **`cancel-mechanism`** (one-mechanism cancel; `control-command-single-path`
+makes a second path unable to reach authority but nothing asserts uniqueness) and
+**`tracker-row-emission`** (no arm bans an `appendFileSync` to the event JSONL outside the span
+emitter, though D218 deleted the in-process `onEvent` hook that was the other half of the risk).
+Neither is a silent gap any more; each is a candidate the next guard-touching slice can close or
+argue away in an inventory entry.
 
 A guard added to any doc that never lands in the inventory fails the manifest — so a doc's §guards
-promise cannot quietly stay a promise.
+promise cannot quietly stay a promise. The manifest still **cannot** prevent a deliberate
+coordinated edit deleting both a guard and its entry; no self-owned test can (§5's closing
+paragraph).
 
 ---
 
 ## 6. TDD topology for the rebuild repo — four tiers, each an owned home
+
+<!-- roadmap: phase-1 -->
+
+<!-- roadmap-status: phase-1 -->
+- [x] the four-tier write order is as-built and unchanged: pure-logic unit → contract/type → architecture ratchets → the scenario tiers (§6)
+- [x] tier 4's name is corrected — there is no stub lane to pair with the live one (§7), so the tier is §10's scenario tiers
+> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `tests/scenario/helpers/pure-walk.ts` and the absence of any stub wiring in `src/`
+<!-- /roadmap-status -->
 
 "Same quality umbrella, made concrete." A new task or workflow is built **test-first** against these:
 
@@ -1427,47 +1471,65 @@ promise cannot quietly stay a promise.
    (so a mis-declared read can't branch on dry-run — ref task-contract §2.3). **Fixtures come from `example`**
    (D3): the mandatory canonical output is the single reusable fixture — stubs, unit tests, and the
    dashboard preview all consume it, so it can't drift.
-3. **Architecture ratchets** — §2's ported grep-ratchets + §3–§5's new guards, each glob covering
-   the rebuild `src/**` with a zero-allowlist for new code and shrink-only for ported leaves.
-4. **E2e stub lane + live lane** — §7.
+3. **Architecture ratchets** — §2.1's nine executable arms + §3–§5's guards. Each arm scans the
+   roots §2.1 names with **no allowlist at all**, and each is proved against a violating fixture by
+   `guard-manifest`.
+4. **The scenario tiers** — §10. A workflow gets ONE structural scenario over the pure graph walk
+   (no browser) and ONE live dry-run scenario (`dryRun=true`, real systems, durable-absence
+   assertions); a dashboard feature gets a feature scenario plus its parity references. §7 explains
+   why there is no stub lane between tiers 3 and 4.
 
 Write order for a new task (red→green): write the contract (`example` fails to parse → red) → write
 the impl `run` typed against the contract → pure-logic unit test with `fakeCtx` (red → green) →
 register in the store index (reachability guard green) → add the node to a descriptor
 (descriptor-coverage green) → if it commits, add typed proof+probe (write-safety green) and its prepare
-pair (pairing green).
+pair (pairing green) → claim the graph paths the new node created in
+`tests/scenario/.../coverage-claims` and walk them in the workflow's structural scenario
+(scenario-coverage green) → extend the workflow's dry-run scenario manifest with the node it now
+reaches (§10.11).
 
 ---
 
-## 7. Stub + live lanes on the new kernel
+## 7. The live lane (the stub lane was never ported)
 
-**Stub lane (`HRAUTO_E2E_STUBS=1`).** Today `maybeWrapE2EStub` clones a `RegisteredWorkflow`, sets
-`systems: []`, and walks the real step list with a hand-written `StepDataFn` per workflow
-(`stub-workflows.ts`), honoring file-based **hold gates** (park a run mid-step) and one-shot **fail
-gates** (`E2EScriptedFailError` → terminal `failed` + Retry). Migration:
+**There is no stub lane, and this section says so rather than describing one.** The legacy
+`HRAUTO_E2E_STUBS=1` mechanism — `maybeWrapE2EStub` cloning a `RegisteredWorkflow`, a hand-written
+`StepDataFn` per workflow in `stub-workflows.ts`, file-based hold and fail gates — did not travel,
+and the D3 plan to derive it from each contract's `example` was never built. Verified against the
+tree on 2026-08-20: zero occurrences of `maybeWrapE2EStub`, `StepDataFn` or `stub-workflows` in
+`src/`, `tests/`, `scripts/` or `config/`; `HRAUTO_E2E_STUBS` appears only as inventory metadata in
+`src/domain/runtime-environment.ts` naming the legacy paths, with no `process.env` read anywhere;
+and although `defineTaskContract` requires an `example` and parses it through its own `output` schema
+at seal time (`src/domain/contracts/base.ts:474`), **no runtime module reads `.example`** to stand in
+for a task's output. The migration plan is preserved at
+`docs/rebuild/history/superseded/2026-08-20-guards-and-tests-stub-lane.md`.
 
-- **Minimal happy path becomes derived** (D3): the executor runs each descriptor's `nodes`, and each task's
-  stub output is its contract's `example` (schema-parsed) instead of a hand-written `StepDataFn`. The
-  hand-maintained per-workflow scripts disappear — the stub map is a descriptor projection
-  (descriptor-coverage #(stub) covers it), so it can't drift from the real steps.
-- **What `example` cannot express lives in the registered scenario corpus** (ref operator-trust): failure,
-  cancel, subject mismatch, proof unknown, gate, delegation, retry, and parallel overlap are strict
-  `ScenarioManifest`s with deterministic fixture drivers and timed control events. The existing
-  file-based hold/fail-gate mechanism (`e2e-gates/`) remains an implementation primitive, not an
-  unindexed parallel list. Ref execution-and-sessions §7's multi-worker scenario holds two workers simultaneously
-  and asserts distinct worker ids plus span overlap (`maxConcurrentWorkers ≥ 2`).
-- **Span-emitting workflows**: the stub daemon emits the same span/note events (ref dashboard-surfaces) a real run
-  would, so native projection/BFF contracts and seeded dashboard fixtures are exercised without a
-  browser. `oath-upload`-style real-handler-with-stubbed-legs cases port as test seams.
+**What took its place is stronger, and it is why the absence is not a gap.** A stub lane exists to
+run a graph without touching a real system. This tree does that two ways instead, both against the
+real kernel:
 
-**Live lane (`tests/live/`, opt-in, never CI).** Ports as-is: real Chromium, real UCSD SSO, Duo
-cleared hands-off by the enrolled WebAuthn credential (charter §9 — no phone step). Its safety
-boundary is unchanged and is now *structural*: **`dryRun=true` = the submit task is not in the
-   composition** (§3.1), so a live dry-run reads the real path and proves no commit span, fence,
-   intent, or mutation call exists, with no possibility of an irreversible write — the write-safety contract (ref write-safety) only
-ever engages on a real submit, which a dry-run composition doesn't contain. The dashboard headless
-`playwright-cli` verification loop (root CLAUDE.md "Verifying dashboard changes") is unchanged: seed
-a synthetic tracker dir → boot the real new-server dashboard → drive + assert on the a11y snapshot.
+- **the pure graph walk** — `tests/scenario/helpers/pure-walk.ts`'s `walkDescriptor` executes a
+  descriptor's bind / `when` / choose / gate-resolve / delegation-plan-join / terminal-derive path
+  against caller-supplied node outputs, re-parsing every value through its owning schema, and reports
+  the coverage points it actually walked. That is §10.3's structural scenario: no browser, no stub
+  map to drift, and the walk cannot pass on a value the runtime would reject.
+- **the live dry run** — `envelope.dryRun=true` through the production start plan, which reads the
+  real systems and writes nothing. That is §10.4, and it is what a stub lane could never give: a
+  stub proves the graph agrees with the fixtures, a dry run proves the graph agrees with UCPath.
+
+**Live lane.** Real Chromium, real UCSD SSO, Duo cleared hands-off by the enrolled WebAuthn
+credential (charter §9 — no phone step). Its safety boundary is `envelope.dryRun` — a durable field
+on `RunEnvelopeSchema` (`src/domain/run/envelope.ts:79`, D6's only home), set once at enqueue and
+never recomputed — and the boundary is enforced in two independent places: `services/start/plan.ts`
+refuses `dry-run-unsupported` before a run exists when the descriptor does not derive
+`supportsDryRun`, and `write-sequencer.ts`'s `executeDryRun` mints no `MutationCapability` and calls
+no `commit`, so there is no code path from a dry run to a fence. `executeTransaction` called with
+`dryRun` refuses loudly rather than quietly previewing. What a dry run does write, and what it must
+not, is §10.4's checkpoint manifest.
+
+The dashboard headless `playwright-cli` verification loop is unchanged and is a separate lane again:
+seed a fixture BFF → boot the real bundle → drive → assert on the a11y snapshot. Its frozen form is
+the parity corpus (§10.1).
 
 ---
 
@@ -1477,7 +1539,7 @@ a synthetic tracker dir → boot the real new-server dashboard → drive + asser
 |---|---|---|
 | 1 | **Allowlists grow unchecked** — every failure "fixed" by an allowlist add | Each entry needs a one-line `reason` (ported discipline); the fail-both-ways ratchet fails on a *stale over-count* too, so a shrunk violation forces the entry down; periodic review is a lesson, not a guard — honest residual risk, mitigated by zero-allowlist for *new* rebuild code. |
 | 2 | **A guard is deleted or dropped from the glob** | inventory catches accidental deletion/orphaning; coordinated removal requires a checked decision record and review—honest non-mechanical boundary (§5) |
-| 3 | **A ported ratchet quietly narrows to a subtree** in the rebuild repo | Manifest check #5: every port-set arm must keep a whole-tree `src/**` glob token and a registered executable scanner. |
+| 3 | **A ported ratchet quietly narrows to a subtree** in the rebuild repo | Manifest check #5, as-built: every arm in `requiredGuardNames` is EXECUTED against the real tree and must resolve a non-empty file set while `active`, and then executed again against its own violating fixture in a temp root where it must both activate and fire. An arm narrowed to nothing fails the first half; an arm whose detection rotted fails the second. Note the arms are scoped by `roots` per §2.1 (four of the nine scan `src/stores` or `src/dashboard` deliberately) — the check is non-emptiness and fixture-firing, not a literal `src/**` token. |
 | 4 | **The rebuild tree escapes coverage or an empty family passes vacuously** | Each target family activates atomically with its first file; every active arm asserts a non-empty file set. Missing paths/unmatched ESLint patterns fail rather than skip, and CLI+config coverage are both pinned. |
 | 5 | **A new parity/hand-list registry reappears** | explicit projection inventory/coverage is primary; ≥3-id heuristic is secondary only |
 | 6 | **The composition/pairing guard false-positives on prose** | both key off closed unions and graph nodes; one-click writes use a no-op prepare, not an escape hatch |
@@ -1486,12 +1548,28 @@ a synthetic tracker dir → boot the real new-server dashboard → drive + asser
 | 9 | **The write-safety guard regresses to demanding a flat `receipt`** (would wrongly reject Kuali/OnBase) | §3.3 walks ref write-safety's `completion` UNION (`receipt\|save-verify\|upload-verify`, D22): save-verify/upload-verify pass with a typed `ProbeVerdict` read-back and NO confirmation number; a type-level test pins that demanding `receipt` of a save-verify contract is itself a guard bug. The `unverifiableByPage` allowlist (§3.5) and the mutation-primitive fence-routing ratchet (§3.6) each fail-both-ways, so the verify escape hatch and the fence bypass can't quietly re-open. |
 | 10 | **A broad path exemption leaks into a nested rebuild directory** | `code-conventions` matches normalized repo-relative roots/segments, never `includes(prefix)`; a fixture proves `src/x/scripts/y.ts` is not exempt merely because `/scripts/` appears inside it. |
 | 11 | **A schema guard checks only top-level objects while nested records stay open** | schema walker recursively inspects object/union/lazy members and mutation-tests unknown keys at every nested object boundary |
-| 12 | **A scenario exists on disk but no lane ever executes it** | scenario runner emits coverage by scenario id + required assertion ids; manifest guard fails orphaned, referenced-but-unexecuted, or stale-contract-fingerprint scenarios |
+| 12 | **A scenario exists on disk but no lane ever executes it** | `scenario-coverage` audits three directions (§3.10 as-built): claims vs. derived graph points, production references vs. observed `it(...)` executions, and D185's corpus-DIRECTORY layout — a file of neither kind, a graph scenario claiming nothing, an id declared in a file its manifest row does not name, and a manifest row nothing executes are each refused BY NAME, each with a negative control that moves exactly one thing in the real corpus. §10.9 extends the same audit across the per-workflow folders. |
+| 14 | **A test tier exists in the spec and nothing runs it** | §10.9's run policy names, per tier, the `npm run` script that executes it and the commit class that must re-run it; `gate-coverage` pins that `test:coverage` still carries `--coverage` and still chains `suite-size.ts`. D190 is the standing lesson that registration is not execution — the safety-critical floor was RED for a whole tail while `gate-coverage` correctly reported the lane still registered. A tier whose script nobody chains is the same defect one level up, which is why §10.9 states the script AND the trigger. |
 | 13 | **A recovery test “restores” only rebuildable projections** | restore drill asserts exact hashes/counts for non-rebuildable authority families and deliberately wipes projection tables before replay; swapping the roles makes the fixture fail |
 
 ---
 
 ## 9. Worked example — adding one new submit-bearing workflow
+
+<!-- roadmap: order-8 -->
+<!-- roadmap: migrations -->
+
+<!-- roadmap-status: order-8 -->
+- [x] the worked example is as-built for the guard half — every RED it names is a guard that exists at HEAD
+- [ ] its steps 6 and 7 (the T1 pair, the canary subject, the recorded live dry run) describe machinery §10 specifies and nothing yet builds
+> 2026-08-20 | docs-cohesion ref guards-and-tests | §9 rewritten to name the test steps a migration owes; left: the code units behind §10
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: migrations -->
+- [x] the per-workflow guard loop is unchanged and every guard it fires is active
+- [ ] the per-workflow TEST loop (§10.11's seven steps) is spec-only: no `tests/scenario/workflows/<id>/` folders, no `config/test-subjects.json`, no `dry_run_scenario_results` table, no `cli dry-run-scenario`
+> 2026-08-20 | docs-cohesion ref guards-and-tests | §10.11 is written for the agent doing a migration and 03c's 7-step loop cites it; left: the four code units
+<!-- /roadmap-status -->
 
 Scenario: a new `badge-reissue` workflow that fills and submits a UCPath form. Red→green, and what
 must be registered:
@@ -1526,8 +1604,753 @@ must be registered:
    from the descriptor/contract scenario ids. No `INSTANCE_LABELS`/`SUBJECT_TO_KIND`/icon-map edits—those lists no
    longer exist. **Guard-manifest**: unchanged (no new guard *file*), but if this workflow needed a
    bespoke guard, it must be added to the inventory or the manifest test fails.
-6. **Live proof.** A live dry-run asserts prepare preview exists and no commit span/intent exists;
-   the transactional Phase-2 proof also crash-injects after a controlled commit and validates recovery.
+6. **Tests, per §10.11.** ONE `tests/scenario/workflows/badge-reissue/structural.scenario.test.ts`
+   walking the graph over `walkDescriptor` and claiming every point `deriveGraphCoveragePoints`
+   derives from the new transaction node (`dry-run`, `subject-mismatch`, `committed`,
+   `already-present`) — `scenario-coverage` is RED until every one is claimed and walked. ONE
+   `dry-run.scenario.ts` beside it: the checkpoint manifest (§10.4) plus the canary subject LABEL
+   this workflow runs against, registered in `config/test-subjects.json` with its value outside git.
+   If the migration also wires a dashboard surface, its T3 combined pair (§10.7).
+7. **Live proof.** `npm run cli -- dry-run-scenario badge-reissue --subject <label>` runs the
+   manifest against the real systems with `dryRun=true` and asserts the durable rows over authority:
+   the nodes reached, the checkpoints written, zero `write_intents` / `write_attempts` /
+   `durable_outbox`, and a terminal `dry-run-preview` result whose `externalCommit` is `none`. The
+   result is recorded durably (§10.4) and the dated line it writes into the migration record is what
+   the tree's `PROOF` tick cites. The transactional proof also crash-injects after a controlled
+   commit and validates recovery.
 
 Net: the safety suite plus descriptor projection coverage replace synchronized hand-edits and parity
 guards—one contract change, and the compiler plus ratchets force the rest.
+
+
+## 10. The test family, and the split by what a test needs (R10)
+
+<!-- roadmap: test-tiers -->
+
+<!-- roadmap-status: test-tiers -->
+- [x] DOCS the spec — §10 rewritten as-built with the tiers, layout, naming, run policy, subject registry, durable result and the two checklists (this commit)
+- [ ] BE T1 layout — `tests/scenario/workflows/<workflow-id>/` with ONE structural scenario per workflow and its `dry-run.scenario.ts` manifest; the pretending scenarios rewritten (§10.3, §10.4)
+- [ ] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard` (§10.12)
+- [ ] BE T3 dashboard conditions attachable to a dry-run scenario — the first: separations §9.22 as a file (§10.7)
+- [ ] BE the subject registry (`config/test-subjects.json`, values via `src/domain/secrets.ts`) + the durable `dry_run_scenario_results` row + `cli dry-run-scenario` (§10.5, §10.6)
+- [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded — needs `{#parallel-runs}` and `{#duo-lease}` first (§10.8)
+- [ ] BE coverage floor 80/80/80 global, with D91's 50 % global branch gate adopted alongside it (§10.10)
+> 2026-08-20 | docs-cohesion ref guards-and-tests | the spec is written against the code (`vitest.config.ts`, `src/core/run-executor.ts`, `src/core/write-sequencer.ts`, `tests/scenario/**`, `tests/parity/**`, `docs/migrations/separations.md` §9.22); left: the four code units 5.2b–5.2d. Two as-built findings recorded rather than assumed: `TransactionDryRunPreviewSchema`'s `mismatch` subject arm is unreachable, and a real subject's EID is hardcoded across seven tracked files
+<!-- /roadmap-status -->
+
+This section is normative and it is the one an agent writing tests reads first. **R10's rule:
+`tests/` is organized by what a test NEEDS in order to run**, because that is the only split that
+answers the question every change actually asks — *which suites must I re-run?* A split by subject
+(“the separations tests”) cannot answer it; a split by mechanism (“unit vs integration”) cannot
+either. A split by need can: a test that needs nothing but the tree runs on every commit, and a test
+that must RUN a workflow needs a browser, a real system and a real subject, so it runs when somebody
+asks for it and its result is recorded.
+
+### 10.1 The test family, as built
+
+Nine members. Folder, runner, when it runs, what it may touch, what it proves — verified against the
+tree at 2026-08-20.
+
+| family | folder | runner | when | may touch | proves |
+|---|---|---|---|---|---|
+| **unit** | `tests/unit/**` (154 files / 49,398 lines, architecture excluded) | vitest project `unit` | every commit | pure functions, fake ctx, temp dirs, its own SQLite files under a temp root — **never** a real runtime root (`test-runtime-root-isolation`) | one module's decision logic, against its own schemas |
+| **architecture guards** | `tests/unit/architecture/**` (65 files / 19,320 lines) | vitest project `unit` (the glob contains it); `npm run test:architecture` for a targeted run | every commit | the tree as DATA — source text, ASTs, the registries, `package.json`, `tsconfig.json`, the legacy repo read-only | that a rule holds everywhere, and — through `guard-manifest` — that each of the nine arms still fires against a violating fixture |
+| **fixture scenarios** | `tests/scenario/*.scenario.test.ts` (15) | vitest project `scenario` | every commit | `walkDescriptor` over a real descriptor with caller-supplied node outputs; fake stores; no browser | that ONE declared graph path binds, refuses and terminates as authored, and that the coverage points it claims are the ones it walked |
+| **integration walks** | `tests/scenario/*.walk.test.ts` (1) | vitest project `scenario` | every commit | ONE real authority database and the production read models | the JOINS only composition can falsify; it claims no coverage point and carries no manifest row (D185) |
+| **dashboard unit tests** | `tests/unit/dashboard/**` (25 files) | vitest project `unit` | every commit | the extracted `*-model.ts` halves — folds, vocabularies, command composition; **no DOM** (this tree has no DOM test environment) | that a surface's pure half computes what the surface claims |
+| **parity** | `tests/parity/**` — 3 specs, 13 helpers, **139 reference triples** (`.png` + `.a11y.yml` + `.meta.json`) over 27 scenarios × 2 themes × 3 viewports (+ the phone surface's own viewport) | `npm run test:parity` (Playwright, OUTSIDE vitest and outside coverage) | on a dashboard change, and before a slice closes | the built bundle over an ephemeral fixture BFF and an ephemeral seeded BFF; never ports 3938/5174 | that the rendered surface has not moved: both halves of every pair are ASSERTED (D132), the pixel allowance is `maxDiffPixels: 0` (D145), and `dual-adapter.spec.ts` compares the a11y SKELETON — role and depth, every literal dropped — between the fixture adapter and the real projection over real HTTP/SSE, which is what makes a fixture-built reference worth storing |
+| **performance budgets** | — | — | — | — | **NOTHING IS MEASURED.** Doc 13 §7.4's budgets and D71's `tsc --extendedDiagnostics` ceiling (§3.12) are both written down and neither has a runner. Stated here rather than implied by silence: this family is a name with no member. |
+| **the recovery drill** | inside `storage-recovery.test.ts` | vitest project `unit` | every commit | temporary SQLite databases and the official `node:sqlite` online-backup API | that a corrupted authority database restores from the newest verified backup, rebuilds projections ONLY, and that D181's stopped-system proof is derivable from real runtime-lock files |
+| **the controlled-commit proof** | `docs/rebuild/reference/write-safety.md` §Phase-2 controlled-commit as-built | **recorded, never re-run** | once, 2026-08-04 | a real Kuali document | that the write kernel fences, commits, verifies by reload read-back and refuses a replay in 2 ms. A recorded proof is evidence; re-running it would be a second real HR write, so it is cited, not executed. Each workflow still owes its own §3.2 controlled-commit proof at its migration. |
+| **live selector re-verification** | no folder — a pre-authorized act at each migration | `playwright-cli`, by the agent | at every workflow's migration | real pages, read-only (`snapshot`) | that a ported selector still resolves. D150 retired the cross-repo accounting in favour of exactly this, because a selector checked against the live system beats one diffed against legacy's copy of it. |
+
+### 10.2 The split: no-dry-run tests and dry-run tests
+
+**A no-dry-run test needs nothing but this tree.** Unit, architecture guards, structural fixture
+scenarios, dashboard feature scenarios, parity. They are deterministic, they touch no external
+system, and they are cheap enough that the only sane policy is to run them.
+
+**When they run:**
+
+- **every commit** — `npm run typecheck && npm run lint && npm run test:coverage` (D191). That is
+  every no-dry-run test except parity, which is a Playwright lane outside the vitest projects.
+- **a change to ONE workflow** — that workflow's structural scenario, plus everything the gate
+  already runs. The guards are global by construction, so "only this workflow's tests" is never the
+  whole answer; it is the *additional* thing the author must think about.
+- **a change to the DASHBOARD** — **all** workflows' structural scenarios AND every dashboard
+  feature scenario AND `npm run test:parity`. The asymmetry is deliberate and is the D218/D253
+  lesson: a dashboard change is a change to the surface every workflow is read through, so scoping
+  it to "the surface I touched" is how a projection defect reaches production while every gate
+  stays green.
+
+**A dry-run test needs a browser, the real systems, and a real subject.** Every test that must RUN a
+workflow is one, and it is built on a **live dry run** — `envelope.dryRun=true` — never on a
+simulation. There is no stub lane to run a workflow against (§7), and that is the right outcome: a
+simulated run proves the graph agrees with the fixtures, while a dry run proves it agrees with
+UCPath. These tests are **not** in the per-commit gate. They are invoked deliberately, they can be
+`blocked` rather than `failed`, and their results are recorded durably so a green they produced last
+week is still citable this week.
+
+**The four tiers, named once so the rest of this section can use the names:**
+
+| tier | what it is | needs a dry run | runner |
+|---|---|---|---|
+| **T1** | per workflow: ONE structural scenario + ONE dry-run scenario | the second half only | `test:coverage` / `cli dry-run-scenario` |
+| **T2** | per dashboard feature: a feature scenario over the real projection, plus its parity references | no | `test:coverage` / `test:parity` |
+| **T3** | a dashboard CONDITION attached to a dry-run scenario — drive the real ceremony while the run is parked, assert the timeline while it is running, read the receipt after it settles | yes | `test:combined` |
+| **T4** | the agent-operated end-to-end tier: MANY dry-run scenarios in parallel | yes | `test:e2e` |
+
+### 10.3 T1a — the ONE honest structural scenario per workflow
+
+**One file per workflow, and it may not pretend.** `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts`
+walks the descriptor's declared paths through `walkDescriptor` (`tests/scenario/helpers/pure-walk.ts`)
+against caller-supplied node outputs, re-parsing every value through its owning schema, and claims
+the coverage points it walked. It proves three things and no others:
+
+1. **the graph binds** — every node's `dependsOn` resolves, every branch case is reachable, every
+   gate opens and resolves, every delegation fans out at each declared cardinality;
+2. **the refusals refuse** — the paths where the workflow must stop (an ambiguous grid, a subject
+   mismatch, a missing dependency, an unresolvable option) throw by name;
+3. **idempotency** — a replayed node reuses its stored output rather than re-executing.
+
+**What it may NOT claim.** A structural scenario runs over fake stores, so a value it feeds a node
+is a value the author chose. It may therefore never assert anything about the WORLD — that a
+particular EID has one active job, that a document number resolves, that a page renders a field.
+Those are dry-run facts. The current corpus violates this in one specific way that R10 exists to
+fix: the identity-check scenarios hardcode a pair of employee ids, and one of them is a **real
+subject** — the same id, with a name beside it, is in `docs/migrations/separations.md` §1 — reused
+across seven tracked files. The value is not a secret in the credential sense, but it is a real
+person's identifier committed to git and reused as though it carried meaning, which is exactly the
+"fixture scenario that pretends" R10 names. The rewrite replaces it with a schema-shaped
+**synthetic** id that no live system would resolve, and the real subject moves into the registry
+(§10.5) where the dry-run scenario reads it by LABEL.
+
+**Consolidation.** Where a workflow has several `*.scenario.test.ts` files today, they fold into the
+one structural file if what they assert is graph shape, and into the workflow's dry-run scenario if
+what they assert is world shape. A path that is neither — an assertion about a store's parsing, say
+— was never a scenario and belongs in `tests/unit/`.
+
+### 10.4 T1b — the dry-run scenario, and its checkpoint manifest
+
+**A dry-run scenario is a declarative manifest plus a runner, not a test file.**
+`tests/scenario/workflows/<workflow-id>/dry-run.scenario.ts` exports a manifest; nothing in the
+vitest projects imports it, because running it starts a browser. It is executed by
+`npm run cli -- dry-run-scenario <workflow> --subject <label>`.
+
+**What the manifest declares.** This is `docs/migrations/separations.md` §9.22's hand-run
+double-entry, as a file — the pass that proved Track C, written down so it can be re-run instead of
+re-typed:
+
+- **`nodes`** — the node ids the run must reach, in order, and the ones it must NOT reach. A run that
+  stops early fails naming the node it stopped at; a run that reaches a node the manifest excludes
+  fails just as loudly, because "it did more than expected" is the interesting half.
+- **`checkpoints`** — for each node that owns one, the `run_checkpoints` row that must exist, keyed
+  the way authority keys it: `(workflow, item, node, attempt, claimGeneration?)` (D214/D221). The
+  assertion is over the DATABASE, never over a log line or a span.
+- **`gateResults`** — for a gated workflow, the `gate_results` row: which gate, which decision leaf,
+  which `resolvedBy` (D202/D203/D204). A dry run takes a REAL approval through the real command
+  endpoint — `envelope.dryRun` does not skip the gate — so this row is real evidence.
+- **`writeIntents: 0`** — and `write_attempts: 0` and `durable_outbox: 0`, asserted as exact counts
+  against authority BEFORE and AFTER, unchanged. This is D85 part 4 and §9.22's opening assertion:
+  **no intent row means no fence, means no click.** It is the positive no-write proof, and it is
+  stated as a delta rather than an absolute because the database legitimately holds rows from
+  earlier real proofs.
+- **`receipt`** — the shape `buildRunEvidenceReceipt` must derive: `result` and `confidence`
+  (a rehearsal derives `partial` / `unknown`, never `verified` — D237/D238's refinement makes the
+  forbidden pair unrepresentable), the verification row per node, and every declared cross-source
+  obligation's verdict.
+- **`terminal`** — the preview terminal. A dry run does reach a durable terminal state, and the
+  manifest says which: run lifecycle **`done`**, `run_results` bound to
+  `RunDryRunPreviewResultSchema`'s OWN schema hash (deliberately never the descriptor's declared
+  result hash, so a preview can never be read as a completed workflow), `kind: "dry-run-preview"`,
+  `externalCommit: "none"`, `stoppedAtNodeId` equal to the descriptor's derived `dryRun.stopsAt`.
+- **`preview.outcome`** — which arm the transaction settled to, and why. `already-present` when
+  beat ①'s durable lookup or live probe settles first — with `proofSource` naming which — and
+  `would-prepare` when the real run would have fenced. D215's rule holds both ways: a preview that
+  staged nothing spells no staged page and emits `subject: "not-observed"` on its
+  `transaction.previewed` span; a preview that staged reports the prepare output's schema hash and
+  the observed subject.
+
+**Three facts about what a dry run actually does, because a manifest that assumes the wrong ones is
+worse than none** (verified in `src/core/write-sequencer.ts` and `src/core/run-executor.ts`):
+
+1. **Task, branch and gate nodes are unaffected.** They execute, checkpoint and park exactly as in a
+   real run. Only the transaction node branches on `envelope.dryRun`, and it ends the run.
+2. **A dry run DOES write.** Spans for every executed node plus one `transaction.previewed`;
+   `run_checkpoints` for every upstream task node; a real `gate_results` row if it parks and is
+   approved; and a real terminal settlement through `terminalizeSuccess` — `run_results`,
+   `run_terminal_outbox`, `run_terminal_authorizations`, and the D110/D114 seal. What it never
+   writes is the write-safety family. A manifest that asserts "a dry run writes nothing" would be
+   false and would fail on its first run.
+3. **`executeDryRun` mirrors the real beat order deliberately** (D215): the durable-intent lookup,
+   then the live probe, and only then the staged rehearsal — the real `prepare` task and the real
+   subject observation against a live driver, with no fence minted and no `commit` invoked. A
+   rehearsal that skipped beat ① would fail on the ordinary subject, which is the common case.
+
+**One as-built defect this manifest will surface, recorded here rather than left to be discovered.**
+`TransactionDryRunPreviewSchema`'s `subject: { state: "mismatch" }` arm is **unreachable**:
+`executeDryRun` wraps any binding-proof failure — including a genuine subject mismatch, which
+`buildBindingProof` always throws — into a generic error, so the run terminalizes `failed` instead of
+previewing a refusal (`src/core/write-sequencer.ts:1873-1892`). `state: "mismatch"` is constructed
+nowhere in `src/` or `tests/`. This is the D237 shape — a wire arm keyed on a value nothing produces
+— and it is fail-closed rather than dangerous, so it is an honest open item, not a blocker: a
+mismatch subject label is a legitimate manifest case and today it must expect `failed`, with the
+reason named, until the arm is either reached or removed.
+
+### 10.5 The subject registry — labels in the repo, values outside it
+
+A dry-run scenario is **subject-parameterized**. It never names a person; it names a LABEL, and the
+registry resolves it.
+
+- **`config/test-subjects.json`** — the labels. Per entry: `label`, `workflow`, `kind` (what the
+  subject is FOR — `ordinary`, `already-present`, `no-active-job`, `ambiguous-name`,
+  `subject-mismatch`, …), `availability` (`available` · `consumed` · `gone` · `unknown`) with the
+  date it was last observed, the doc or migration section that records what it is, and — only where
+  the value is genuinely not sensitive (a Kuali document number, a sacrificial document id) — the
+  value itself. This is D85 part 3's `TestTargetRegistry`, finally built, and it carries the usage
+  rules D85 asked for: read-only vs write-allowed-if-restored, the cleanup obligation, the owner.
+- **`.env`, through `src/domain/secrets.ts`** — the sensitive values. An EID is a real person's
+  identifier; it belongs in the one module permitted to read a credential from `process.env`
+  (`secrets-single-source.test.ts` enforces that it is the only one), and it must never be
+  interpolated into a message (`no-secret-values-in-logs.test.ts` enforces the other half).
+- **A missing subject reports `blocked: needs <label>`, never `failed`.** This is the load-bearing
+  rule. A canary is a live thing and it decays: `docs/migrations/separations.md` §9.16 records doc
+  4524 — the best-mapped Kuali candidate — having its action COMPLETED between two passes, after
+  which the read task that made it a candidate could no longer read it, and §9.16 records clearing a
+  pending transaction deleting the only witness for another arm. A suite that reports `failed`
+  when a person left the university teaches its readers to ignore red. `blocked` says *this test did
+  not run and here is the label it needs*, which is a sentence somebody can act on.
+- **`availability` is a claim with a date, and the runner checks it.** A subject marked `available`
+  that the run cannot resolve is a registry defect and fails BY NAME with the label and the date;
+  a subject marked `gone` is `blocked` before a browser starts.
+
+### 10.6 The durable result — what a `PROOF` tick is allowed to cite
+
+**A dry-run scenario's result is recorded, in two places, and the tree cites the second.**
+
+- **`dry_run_scenario_results`** — an authority row (a schema bump owns it). Per run: the scenario
+  id, the workflow, the subject LABEL (never its value), the manifest digest, the run id and trace
+  id it executed as, the verdict (`met` · `blocked` · `failed`), the per-assertion outcomes, the
+  measured wall time, and the instant. It is insert-only for the same reason every other evidence
+  table is: a result that can be rewritten is not evidence. The row is what makes a green from last
+  week citable this week.
+- **a dated line in the workflow's migration record** (`docs/migrations/<workflow>.md`) — one line
+  per run, naming the date, the subject label, the verdict and the durable row. **This is what the
+  tree's `PROOF` tick cites.** A `- [x] PROOF` line on a migration node with no such line behind it
+  is an unsupported claim, and the reviewer's question is always the same one: *which recorded run?*
+
+The manifest digest matters: a scenario whose manifest changed after a recorded result is a
+different assertion wearing the same name, so the row keeps the digest and a later reader can see
+that the green predates the change (D199's shape — a durable record is stamped with a fact about
+ITSELF).
+
+### 10.7 T3 — dashboard conditions attached to a dry-run scenario
+
+A **combined** test is a dashboard assertion made against a REAL run, while that run is in a state
+only a real run reaches. It lives at
+`tests/scenario/combined/<dashboard-feature>+<workflow>.combined.test.ts` and it attaches to a
+dry-run scenario rather than duplicating it — the workflow runs once; the dashboard conditions ride
+along at the moments the manifest declares.
+
+Three attachment points, because they are the three states worth catching:
+
+- **while PARKED** — drive the real ceremony through the real command endpoint. The gate dialog's
+  packet, its disconfirming-evidence-first ordering, the server-computed `approvalShape`, the
+  digest an approval binds to (D211), and the CAS `conflict` arm that D253 found unhandled.
+- **while RUNNING** — assert the timeline follows. The projector's fold is fed by an offset-aware
+  disk tail across processes (D218), so "the worker wrote a span and the dashboard shows it" is a
+  cross-process claim that no unit test can make.
+- **after it SETTLES** — read the receipt, the outcome bar, the archive row. D238's rule is the one
+  to catch here: a rehearsal wears `partial` / `rehearsal`, never `verified-done`.
+
+**The first combined pair is separations × the run lifecycle**, and it is §9.22 as a file: plan →
+start → gate ceremony → resume → preview terminal → archive, every UI claim paired with the
+authority or wire fact that independently supports it. §9.22's own table — `| Surface | UI claim |
+Paired authority / wire fact | Verdict |` — is the assertion shape; the file is that table made
+executable.
+
+### 10.8 T4 — the agent-operated parallel end-to-end tier
+
+**T4 is MANY dry-run scenarios running at once, operated by an agent, and it is the only tier that
+tests the platform rather than a workflow.** Its subject is concurrency: N runs across DIFFERENT
+workflows, and — the harder half — **two runs of the SAME workflow at once**.
+
+**It needs two things this tree does not have yet, and it may not be scheduled before them.**
+
+- **`{#parallel-runs}`** (R11) — a session is a dashboard-started group of N runs; every workflow
+  follows the same browser-profile recipe but each worker owns its own profile INSTANCE, because
+  Chromium locks a profile directory and doc 05 partitions on
+  `(worker, system, instance, configFingerprint)`. Today there is one worker process per workflow;
+  the pool is the build. Workers coordinate through AUTHORITY only — run claims, session leases,
+  write fences, the concurrency matrix — never peer messaging.
+- **`{#duo-lease}`** (R12) — a durable per-credential ceremony lease serializing every Duo ceremony
+  across all workers and systems. D243's hazard is not hypothetical and it is exactly what parallel
+  cold starts trigger: Duo's WebAuthn signature counter is per CREDENTIAL and Duo Autopilot's copy is
+  per BROWSER PROFILE, so N cold profiles racing one credential is how a profile gets BURNED — and a
+  burned profile stays refused across later logins, so the fix must prevent the first refusal rather
+  than recover from it. Running T4 before the lease exists is running the experiment that breaks the
+  credential.
+
+**What T4 may and may not touch.** Every run is `dryRun=true` — the tier never performs a real
+write, and the runner refuses a scenario whose descriptor does not derive `supportsDryRun`. It uses
+registry subjects only, and it may not consume a `write-allowed-if-restored` target (that is the
+controlled-commit proof's business, and that proof is recorded, not re-run — §10.1). Every run's
+subject label is distinct where the workflow's fence is subject-keyed, because two concurrent runs
+on one permanent key is a *deliberate* test that belongs in a manifest case with its expected
+refusal, not an accident of scheduling.
+
+**How an agent operates it** — the topology is `/custom-e2e-verify`'s, specialized here rather than
+restated:
+
+- **one driver, many read-only verifiers.** Exactly one agent owns the browser and the dashboard.
+  Verifier agents read artifacts and read-only endpoints — spans, the authority database, the
+  `dry_run_scenario_results` rows, the run-detail wire — and never touch the app. The driver finishes
+  driving, waits, then triages. A single end-of-run auditor does the cross-cutting reconciliation,
+  because splitting cross-cutting checks across agents lets an inconsistency fall between them.
+- **double-entry ground truth.** Every UI assertion is paired with an independent source. The
+  dashboard is itself under test, so a green screen proves nothing alone.
+- **a workaround is a finding.** The driver acts only as an operator could. The moment it reaches
+  for something no button offers, that is the defect — file it, take the minimum manual step, and
+  stamp the affected assertion conditional. "It worked after I poked it" is the bug, not the
+  all-clear.
+- **an append-only issue ledger.** One JSONL object per line, never edited by an agent that did not
+  write it: `id`, `kind` (`finding` · `corroboration` · `pass`), `foundBy`, `area`, a `dedupKey`
+  naming the SYMPTOM and never the cause, `severity`, `title`, at least one evidence path, `status`.
+- **red→green promotion.** A confirmed finding is promoted to a deterministic regression test in the
+  LOWEST layer that can hold it — a unit test if a unit test can, a structural scenario if it must, a
+  manifest case only if nothing cheaper reaches it. An unpinned fix will be rediscovered by the next
+  expensive run, so it does not count as fixed.
+
+### 10.9 Layout, naming, projects, and the run policy
+
+**The layout.** Everything else in this section is a rule about one of these paths.
+
+```
+tests/
+  unit/                                     unchanged — one module's decision logic, fake ctx, no browser
+    architecture/                           unchanged — the 65 guards + helpers/ + fixtures/
+    dashboard/                              unchanged — the surfaces' extracted *-model.ts halves
+  scenario/
+    helpers/                                pure-walk, coverage-claims, the fake stores
+    workflows/<workflow-id>/
+      structural.scenario.test.ts           T1a — ONE per workflow, no browser, claims coverage points
+      dry-run.scenario.ts                   T1b — the checkpoint manifest + the subject labels (NOT a vitest file)
+    dashboard/<feature>/*.scenario.test.ts  T2 — a feature over the real projection, no browser
+    combined/<feature>+<workflow>.combined.test.ts   T3 — dashboard conditions on a live dry run
+    *.walk.test.ts                          the integration walks — unchanged, still slice-crossing joins
+  e2e/
+    <journey>.e2e.spec.ts                   T4 — a journey = N dry-run scenarios in parallel
+    runner/                                 the operator harness, the issue ledger, the report
+  parity/                                   unchanged
+  fixtures/                                 shared fixture DATA any tier may import (not test files)
+  CLAUDE.md                                 the map: the tiers in one page, pointing here
+```
+
+**Naming, and why each one is load-bearing.** `*.scenario.test.ts` is a vitest file the `scenario`
+project collects; `dry-run.scenario.ts` deliberately lacks `.test.` so no project can collect it —
+a manifest that vitest picked up would start a browser inside the per-commit gate.
+`*.combined.test.ts` and `*.e2e.spec.ts` are separately collected so `test:coverage` can exclude
+them by GLOB rather than by discipline. `*.walk.test.ts` keeps D185's meaning exactly: a walk claims
+no coverage point and the manifest's `file` regex refuses a walk path outright.
+
+**Vitest projects.** Five, replacing today's two (`unit`, `scenario`):
+
+| project | include | in `test:coverage` |
+|---|---|---|
+| `unit` | `tests/unit/**/*.test.ts` (architecture inside it) | yes |
+| `architecture` | `tests/unit/architecture/**/*.test.ts` | yes — as today, a re-run of a subset, kept so `test:architecture` stays a one-word targeted run |
+| `scenario-workflows` | `tests/scenario/workflows/**/*.scenario.test.ts` + `tests/scenario/*.walk.test.ts` | yes |
+| `scenario-dashboard` | `tests/scenario/dashboard/**/*.scenario.test.ts` | yes |
+| `combined` | `tests/scenario/combined/**/*.combined.test.ts` | **no** — needs a dry run |
+
+`tests/e2e/**` is outside the vitest projects entirely, like `tests/parity/**`, and both are excluded
+from coverage instrumentation.
+
+**Scripts, and the trigger for each.** The script is half the rule; the trigger is the other half,
+and D190's lesson is that a lane nobody chains is a lane that cannot fail.
+
+| script | runs | trigger |
+|---|---|---|
+| `npm run typecheck && npm run lint && npm run test:coverage` | unit + architecture + T1 structural + T2 + the walks, with the floors | **every commit** (D191) |
+| `npm run test:parity` | the 139 reference triples + the dual-adapter comparison | every dashboard change; before a slice closes |
+| `npm run cli -- dry-run-scenario <workflow> --subject <label>` | ONE T1b manifest against the real systems | at a workflow's migration; whenever its graph or its transaction node changes; to refresh a stale recorded result |
+| `npm run test:combined` | T3, against a live dry run | when a dashboard surface a workflow depends on changes, and at that workflow's migration |
+| `npm run test:e2e` | T4, agent-operated | deliberately, after `{#parallel-runs}` and `{#duo-lease}` land; before cutover |
+
+**The `scenario-coverage` audit is kept exactly as built and extended across the new folders.**
+Every scenario declares the coverage points it walked — an `it` title whose head (before `" — "`)
+parses as a `ScenarioId` IS a claim, which is the corpus's own convention made mechanical — and
+`auditScenarioCorpusLayout` closes both directions by NAME: a file of neither kind, a graph scenario
+that claims nothing, an empty file, a duplicate listing, an unregistered id, an id declared in a file
+its manifest row does not name, a manifest row nothing executes, a manifest row naming an absent
+file, and a walk that claims a graph path. The audit is pure over an injected listing, so the move to
+`workflows/<id>/` changes the listing and nothing else; each refusal keeps its negative control,
+which moves exactly one thing in the REAL corpus. A typo stays slug-shaped and therefore stays a
+claim and FAILS — reclassifying an unrecognised id as prose is precisely how
+`person-lookup/ucpath-drill-subject-mismatch` executed unregistered until D185.
+
+**`tests/CLAUDE.md`** is one page and states: the five tiers and what each needs; the folder map
+above; which script runs which tier and when; the rule that a dry-run scenario is never collected by
+vitest; the `blocked`-not-`failed` rule; and a pointer here for everything normative. It is a map,
+not a second spec — a second spec is a second opinion that can drift (D252).
+
+### 10.10 Coverage floors — 80/80/80 global
+
+**The floor follows the measurement, and the measurement is at HEAD:** `npm run test:coverage`
+reports **84.23 % lines (17,419 / 20,680) · 82.15 % statements (18,920 / 23,029) · 84.74 % functions
+(3,793 / 4,476) · 71.76 % branches (9,320 / 12,987)**.
+
+The global floors move **60 → 80** for lines, statements and functions. Nothing else changes: the
+safety-critical per-glob floors stay at 80, the reviewed exclusion list is untouched (its SHA-256 is
+pinned in `guard-inventory.json`, so changing it is a visible act), and
+`guard-inventory.json`'s `coveragePolicy.minimumFloors.global` moves with it — `guard-manifest`
+asserts the configured floors are `>=` the inventory's, so raising one without the other is caught.
+
+Two things this deliberately does not do. It does **not** raise the safety-critical floor, which is
+already met at 97 %+ after D190 and whose value is that it is per-glob. And it does **not** invent a
+branch floor: D91's branch half is UNMET and its Phase-2-exit trigger has passed (§3.14 as-built), so
+the honest move is the one D91 already specifies — adopt the **50 % global** branch gate that the
+measured 71.76 % already clears — and defer the 70 % safety-critical half until it is measured
+per-glob. Raising a floor above a number nobody has measured is the mirror image of D145's
+uncalibrated allowance.
+
+### 10.11 Checklist — how a NEW workflow adds its tests
+
+For the agent doing a migration. The 7-step loop in doc 03c cites this list; every item is a gate
+that goes RED before it goes green.
+
+1. **Create `tests/scenario/workflows/<workflow-id>/`.** Two files, no more.
+2. **`structural.scenario.test.ts`** — walk every declared path through `walkDescriptor` and claim
+   every coverage point `deriveGraphCoveragePoints` derives from the descriptor. `scenario-coverage`
+   is RED until each is claimed AND walked, and RED again if you claim one you did not walk. Assert
+   graph shape, refusals and idempotency; assert **nothing about the world**, and use synthetic
+   subject values that no live system would resolve (§10.3).
+3. **`dry-run.scenario.ts`** — the checkpoint manifest of §10.4: nodes reached and nodes excluded,
+   the `run_checkpoints` rows, the `gate_results` row if it gates, `write_intents`/`write_attempts`/
+   `durable_outbox` deltas of ZERO, the receipt shape, the preview terminal, and the transaction
+   arm with its `proofSource`. Declare one case per subject KIND the workflow must handle.
+4. **Register the canary subjects** in `config/test-subjects.json` — a label per case, its kind, its
+   availability with today's date, and the doc section that records what it is. Sensitive values go
+   to `.env` and are read only through `src/domain/secrets.ts`. A label with no value available makes
+   the case `blocked`, never `failed`.
+5. **Run it live:** `npm run cli -- dry-run-scenario <workflow> --subject <label>`, once per case.
+   Record the result — the `dry_run_scenario_results` row is automatic; the dated line in
+   `docs/migrations/<workflow>.md` is yours to write, and it is what the tree's `PROOF` tick cites.
+6. **Which T3 pairs it must add.** One per dashboard surface this workflow is the FIRST to exercise
+   in a new way: a gate ceremony if it is the first gated workflow of its shape, a parked-write panel
+   if it can park, a member/group view if it fans out, an archive/receipt read if its receipt has an
+   arm no other workflow produces. If every surface it touches already has a combined pair against
+   another workflow, it adds none — the pair tests the SURFACE, and a second workflow through the
+   same surface is a duplicate, which is worse than absence (D185's rule about walks).
+7. **Tick the tree.** The workflow's `order-N` node carries `- [ ] PROOF T1 scenario tests for
+   <workflow> (+ its T3 pair)`; it goes `[x]` only with the commit AND the recorded run cited.
+
+### 10.12 Checklist — how a NEW dashboard feature adds its tests
+
+1. **`tests/scenario/dashboard/<feature>/<name>.scenario.test.ts`** — drive the feature through the
+   REAL projection and the real command service over a real authority database, not through the
+   component. The surfaces' pure halves are already covered by `tests/unit/dashboard/`; what a
+   feature scenario adds is the seam — a command's effect on authority, a projection's response to a
+   transition, a refusal arm reaching the surface. Both CommandResult refusal arms (`rejected` AND
+   the CAS `conflict`) must be exercised, or `command-result-exhaustive` will tell you (D253).
+2. **Parity references** — add the feature's states to `tests/parity/`'s state list and freeze them
+   with `npm run test:parity:update`, the ONE switch that refreshes the pixel and semantic halves
+   together (D132). Then **look at the screenshots**: D187's two-pixel run-detail panel passed a
+   dozen green gates and two deliberate reference reviews because the a11y half reported every word
+   of a column nobody could see. A reference corpus nobody looks at records defects instead of
+   catching them.
+3. **Re-run everything.** A dashboard change re-runs ALL workflows' structural scenarios and ALL
+   dashboard feature scenarios (§10.2), plus `test:parity`.
+4. **If the feature changes what an operator does to a RUN**, it needs a T3 pair (§10.7), not just a
+   T2: a control that looks right against a fixture and 422s against a real run is the exact defect
+   `wire-connectivity` and D253 were each written after.
+5. **Tick the tree.** Each migration's `Dashboard · wire <workflow>` sub-task carries `- [ ] PROOF T2
+   dashboard scenario for the wired surfaces`.
+
+
+---
+
+## 11. Guard activation, phase by phase — the as-built ledger
+
+History, and deliberately kept. Each block below records which guards a phase ACTIVATED, in the same
+commit as their targets, and — the half that matters — which it did **not**, so a planned guard could
+never be reported as green to make a phase look broader than its implementation. They were the first
+265 lines of this document until 2026-08-20; they moved here so the doc opens with its contract. No
+text inside them was edited: they say what was true on their own dates, and §5.1 says what is true
+now.
+
+### Phase 1b as-built guard delta (2026-07-31)
+
+<!-- roadmap: p1-base -->
+
+The rebuild guard lane is no longer a pre-tree promise. The reviewed manifest discovers every
+architecture test recursively and runs active whole-`src` arms over real source; typecheck, ESLint,
+unit/architecture tests, coverage floors, operational isolation, strict boundaries, clock/config/
+secret single-source rules, runtime dependency/environment closure, redaction, and D94 legacy
+change accounting all execute from the rebuild repo's plain gate family. Every active arm resolves
+a non-empty file set, and each ratchet still proves itself against a violating fixture.
+
+`fail-loud-catch-default` now uses the TypeScript AST across every executable statement in a catch
+block and in both expression- and block-bodied Promise `.catch` handlers. Logging or branching
+before a bare-default return/assignment/initializer no longer bypasses it. Pure adversarial fixtures
+pin multi-statement handlers, nesting, comments/strings, and safe propagating or distinguishable
+non-default returns. No allowlist was added. Guards belonging to later absent roots remain planned;
+their future contracts are not reported as implemented by 1b.
+
+---
+
+### Phase 1c Stage A as-built guard delta (2026-07-31)
+
+<!-- roadmap: p1-authority -->
+
+The existing `strict-boundary-schemas.test.ts` catalog now registers every Stage-A durable/wire
+schema and exercises every command, proof, probe, settlement, intent/attempt, notification,
+gate-result, ledger, and outbox union arm. Its recursive unknown-key mutation now covers the new
+nested objects as well as malformed IDs/timestamps and schema-bound canonical values. No new
+architecture guard file was needed, so the guard inventory is unchanged rather than padded with a
+duplicate guard.
+
+Focused unit/adversarial tests pin D95 family closure, priority/version bump separation, strict
+rename normalization, immutable manifest freezing, generic gate schema hashes, notification
+routing, dry-run-impossible ledger payloads, erased proof rejection, and the rule that pre-window,
+single, ambiguous, unknown, present, or inconsistent negative observations cannot unlock retry.
+Storage/recovery, command-handler single-path, write-sequencer ordering, atomic-transaction crash
+injection, and projector tests remain later Phase-1c/1f work; Stage A does not mark them green.
+
+---
+
+### Phase 1c Stage B as-built guard delta (2026-07-31)
+
+<!-- roadmap: p1-authority -->
+
+Stage B extends the existing `strict-boundary-schemas.test.ts` catalog with the adapter options,
+metadata/inspection, immutable-insert disposition, and strict SQLite storage-record shells. It also
+adds focused unit proof in `sqlite-authority-database.test.ts` for exact table classification and
+pragmas, the exact committed-v1 → v2 migration fixture, existing-file/version/migration-marker/
+schema/lock failure, foreign keys, idempotent commands, permanent committed/`observed-present`
+write keys, every registered authority repository mutator, savepoint-isolated caught nested
+fence/commit failures, empty/rollback generation accounting, and projection upsert/clear. A separate static
+unit test, `sqlite-authority-boundary.test.ts`, proves that only the private adapter imports or names
+`DatabaseSync` and that its public entrypoint exposes no raw connection or SQL escape hatch.
+
+The planned `storage-recovery` guard remains planned and unchanged in
+`docs/rebuild/guard-inventory.json`. Its contract also owns backup/checksum/manifest verification,
+degraded boot, restore drills, and projection rebuild after restore; none of those Stage-C concerns
+exist yet, so activating that umbrella now would overclaim recovery. Phase 1c remains incomplete,
+as do command-handler single-path, write-sequencer crash injection, workers, projectors, browser,
+HTTP/UI, and live lanes.
+
+---
+
+### Phase 1c Stage C as-built guard delta (2026-08-01)
+
+<!-- roadmap: p1-authority -->
+
+Stage C activates the existing `storage-recovery` inventory arm and gives it a non-empty focused
+architecture suite over real temporary SQLite databases and the official native online-backup API.
+The suite pins successful self-inspected copies and manifests, request coalescing plus the bounded
+generation follow-up, backup interruption cleanup, byte/manifest tampering, corrupt/truncated/
+foreign/newer/foreign-key/invariant-invalid degraded boot, all four mutation refusals, exact doctor
+counts and candidate ordering, and stopped-proof restore with suspect-file preservation and
+projection-only rebuild verification. Every authority record is strict-schema parsed during copy
+inspection; JSON-valid/schema-invalid command, write-intent, and opaque-family corruption fixtures
+make backup, boot/doctor, and restore fail closed. Restore proof fixtures cover stale, replayed,
+runtime/process-generation-mismatched, forged, and active-process states and prove refusal before
+suspect/staging mutation. The suite also exercises exact-candidate rejection, projection-rebuild
+failure, and atomic-swap failure.
+
+Static boundary proof keeps `DatabaseSync` and `node:sqlite` private to the adapter, requires the
+official backup symbol, and bans `VACUUM INTO` and filesystem-copy backup fallbacks. The strict
+boundary catalog registers every new recovery config, durable record, report, health-cause, and
+union arm. This activation covers storage recovery only; command-handler single-path,
+write-sequencer crash injection, workers, projectors, browser, HTTP/UI, and live lanes remain open
+Stage-D or later work, so Phase 1c is still incomplete.
+
+---
+
+### Phase 1c Stage D as-built guard delta (2026-08-01)
+
+<!-- roadmap: p1-authority -->
+
+Stage D activates exactly three previously planned inventory entries in the same commit as their
+implementations and focused suites:
+
+- `permanent-key-dedupe` exercises sequential and independently opened competing SQLite
+  connections, committed and `observed-present` permanence, the observed-present zero-attempt/
+  zero-write-outbox rule, and natural-key/digest/binding-digest mismatch refusal.
+- `recovery-negative-proof-settlement` crosses the exact propagation and read-spacing boundaries
+  with an injected manual Clock and proves that early, single, duplicated, malformed, future,
+  out-of-order, wrong-key/query/source/source-state, present, ambiguous, unknown, and operator-only
+  evidence never grants retry authority.
+- `atomic-write-outbox` validates the successful intent+attempt+ledger+terminal-span transaction,
+  injects failure after every storage step and proves total rollback plus unchanged authority
+  generation, rejects cross-outbox trace disagreement and subject-bound/unscoped ledger-evidence
+  mismatch, and statically pins the narrow repository/no-standalone-insert surface.
+
+The strict-boundary catalog also covers the new natural-key, generic-outcome, fence, permanent-key
+resolution, atomic-input, storage-step, and commit-report schemas and recursively rejects unknown
+keys. Hardened Stage-D acceptance evidence is: focused guard/catalog 24/24, full unit+architecture
+187/187, architecture 99/99, typecheck and zero-warning lint green, and coverage at 87.99%
+statements, 76.86% branches, 92.23% functions, and 90.75% lines. The remaining command-handler, worker,
+browser/driver, sequencer/projector, HTTP/UI, scenario, and live-lane guards remain planned; none was
+activated to make Phase 1c look broader than it is.
+
+These results complete **Phase 1c**. They do not complete Phase 1, whose next item is 1d and whose
+exit remains the live Person Lookup spine proof.
+
+### Phase 1d guard-activation boundary (ratified 2026-08-01)
+
+<!-- roadmap: p1-authority -->
+
+Phase 1d activates only guards whose real seam exists: port provenance, semantic UI registry and
+safe catalog freshness, task/driver boundary, effect-contract/example/error/freshness/provenance/
+subject/capability/store/provider/artifact/no-`any` boundaries, and OnBase-only exclusivity. Each
+active arm has a violating canary and a non-empty production target. Runtime descriptor/worker/
+fence-ordering guards remain planned for 1e/1f; provider admission/budget guards remain planned for
+1f; production provider-pool/consumer guards remain planned for 2h. A planned guard is never made
+active merely to make 1d look broader than its implementation.
+
+The selector port inventory is a strict checked-in architecture-lane input pinned to one clean
+legacy commit plus exact source/catalog paths and blob ids. Candidate rows contain provenance and
+search intent only—never locator strings, captured values, screenshots, secrets, or fallback
+recipes—and cannot enter the runtime registry/catalog without D98's fixture **and** live-read-only
+evidence. UI scenario refs resolve through D99's strict UI-owned verification corpus using the
+canonical `ScenarioId` grammar and a global uniqueness audit.
+
+#### Phase 1d Stage A as-built — selector provenance snapshot (2026-08-01)
+
+`config/ports/legacy-selector-port-map.json` now records all **406** legacy catalog keys exactly
+once at legacy commit `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc`: CRM 12, I-9 41, Kuali
+22, New Kronos 54, Old Kronos 23, OnBase 28, ServiceNow 11, SharePoint 10, and UCPath 205.
+Every system pins the exact selector-source and generated-catalog path plus SHA-1 Git blob; every
+row carries non-empty search intent, source line, and the same exact blob provenance. A candidate's
+path-derived `candidateId` is explicitly an **unclassified, non-authoritative proposal**, never an
+`ElementId`. The strict union permits only `candidate|ported|driver-internal|not-porting`;
+`ported` alone carries a classified canonical id and requires D98's dual evidence. Stage B later
+classified the reviewed Person Org operation plus the Phase-1f CRM Person Lookup rows: **387**
+candidates remain, **18** rows are ported, and the PeopleSoft content frame is driver-internal.
+The legacy generic `personOrgSummary.viewAllLink()` row is the sole contextual one-to-many port:
+its closed, evidence-bound contexts map to the exact search-results and Employment Instances
+toggles, while flattened canonical ids and contexts remain globally unique.
+
+The active `legacy-selector-port-provenance` guard regenerates the safe inventory from the pinned
+commit in the architecture lane, compares it byte-for-structure, and rejects omissions, duplicates,
+stale blobs, invented keys, canonical-id collisions, evidence-free port claims, and unknown recipe/
+capture fields. Its violating canaries prove those arms fail. Runtime code never reads across the
+repository boundary and the snapshot contains no locator strings, captured values, screenshots,
+secrets, or fallback recipes.
+
+The Phase-1f CRM expansion promotes exactly five additional rows: search result rows/cells/name
+link, the verified Visualforce `th` label-following-value recipe, and onboarding-history rows. Each
+is bound to sanitized deterministic and fresh read-only live evidence dated 2026-08-02. The
+broader record fallbacks, nth-row convenience selector, section navigation, and history button
+remain candidates because the Person Lookup path neither needs nor has fresh proof for them.
+
+#### Phase 1d Stage B as-built — semantic registry + typed driver seed (2026-08-01)
+
+The server-only registries are `src/stores/ucpath/driver/ui-registry.ts` and
+`src/stores/crm/driver/ui-registry.ts`. UCPath publishes two screens, fourteen elements, four page
+states, and two observations; CRM publishes three screens, five elements, four page states, and one
+observation. Raw selector recipes remain private to the driver roots. Task and workflow import
+graphs reach only schema-first driver declarations and session-provider leaves, while the raw
+Playwright interpreters own the selector-backed Person Lookup operations. No commit method or
+external-write capability exists on either read-only driver; the concrete worker browser/session
+factory remains a later Phase-1f integration step.
+
+`npm run ui:catalog` generates a **35-entry** `generated/ui-catalog.json` plus per-system UCPath and
+CRM `UI-CATALOG.md` files; `npm run selector:search -- "<intent>"` searches only that safe
+projection. The outputs omit locator/state/read recipes and captured values. Both CLIs take an
+explicit path — `ui:catalog -- --out-root <path>` and `selector:search -- --catalog <path>` — and
+`ui:catalog` publishes through an atomic rename, because **no test may rewrite a tracked projection
+in place.** Test files run in parallel forks over ONE working tree, so an in-place regenerate is
+visible to every concurrent reader (`ui-registry`, `semantic-ui-registry`) and, worse, silently
+heals a genuinely stale checkout mid-run. The behavioural CLI fixtures therefore generate into a
+temp root and pin the checkout's bytes as unchanged from first import to last case. Checked-in fixture and
+sanitized live/read-only manifests bind every published fact to exact port rows, record
+`externalWriteAttempted:false`, and retain no captured HR values. UCPath additionally records the
+two zero-match legacy accessible-name recipes and the fail-loud View All pagination proofs; CRM
+records exact search/empty, displayed-EID, and history-transition evidence.
+
+The active `semantic-ui-registry` and `task-driver-boundary` guards have violating canaries. They
+enforce registry uniqueness, same-system dependency resolution, collision-free search terms,
+global/non-vacuous UI scenarios, dual evidence, candidate exclusion, catalog byte freshness, and
+raw Playwright confinement. UI catalog/evidence/scenario schemas are also in the recursive strict
+boundary catalog.
+
+#### Phase 1d Stage C as-built — sealed task contracts and contexts (2026-08-01)
+
+The bundle-safe contract core now seals `read|prepare|commit` definitions only after runtime
+validation of effect/verb, strict schemas, canonical examples, error taxonomy, freshness,
+provenance, subject, and typed write-safety metadata. The active `task-contract-sealing` guard scans
+the real contract source family, rejects server/Playwright imports and direct seal forgery, and has
+a violating fixture. Its checked type fixture proves undeclared error codes, `z.any()` outputs, and
+read-context mutation access fail `tsc`. Freshness/provenance/subject/effect schemas are registered
+in the recursive strict-boundary catalog. Browser execution, store/session binding, and mutation
+token mint/validation remain absent, so their 1f guards stay planned.
+
+#### Phase 1d Stage D as-built — bounded stores, sessions, providers, and artifacts (2026-08-01)
+
+`task-store-boundaries` now proves the closed nine-browser-system declaration set, exact
+driver/session/store matching, fail-loud unwired login placeholders, OnBase-only exclusivity, and
+the compile-time effect/access plus provider-client narrowing fixtures. The store registry exact
+matches implementations to its contract corpus and exercises the contract reference resolver for
+every registered task; synthetic unit tests prove missing scenarios and missing/mismatched corpus
+tasks fail loud.
+
+`artifact-effect-boundary` pins the path-free content-addressed ref, rebuild-only non-symlinked
+root, temp→fsync→atomic-rename durability sequence, crash-boundary recovery, and byte-identical
+idempotency; its AST canary rejects direct mutable filesystem access from task/workflow
+implementations.
+`provider-capability-boundary` confines raw network/provider modules and adapter implementations to
+`infra/providers`, pins exact capability client narrowing, and has a direct-network/forged-adapter
+canary. The recursive strict-boundary catalog now includes session, retry, artifact, provider, and
+artifact-root schemas. These active guards cover only the real 1d interfaces/declarations,
+artifact writer, and provider deterministic fakes: 1f admission/budget/worker/session-runtime
+guards and 2h production provider-pool/consumer guards remain planned.
+
+---
+
+### Phase 1f guard-activation boundary (ratified 2026-08-02)
+
+<!-- roadmap: p1-kernel -->
+
+Phase 1f must activate guards against the real executor/command/session/provider targets in the
+same commits as those targets. The acceptance set is non-vacuous and fail-both-ways:
+
+- start planning preserves exact raw and canonical representations plus both schema hashes, and
+  crash/conflict injection proves plan consumption + active-run policy + every run insert are one
+  transaction;
+- every failed task/run resolves a persisted ref operator-trust `FailureRecord`, every successful run resolves
+  exactly one schema-bound terminal result, and neither can be reconstructed from display events.
+  Crash injection covers authorization plus failure/result/outbox/run writes; recovery uses
+  NULL-safe bidirectional invariants and direct partial-settlement fixtures. Initial success rejects
+  hand-built schema-valid records without the descriptor-factory seal, rereads exact checkpoint
+  rows, and pins each conditional not-run dependency to its authored reason. Exact replay proves the
+  original expected version and claim from durable authorization rather than trusting terminal state;
+- the executor supplies a real `recordData` collector and rejects missing/contradictory `live`
+  provenance before checkpoint/result persistence while derived fields retain the oldest complete
+  upstream provenance;
+- worker-session reuse requires exact worker/system/resolved-instance/config-fingerprint identity,
+  verified-neutral reset is distinct from explicit `session:"fresh"`, and config/fresh-boundary
+  fixtures prove close-before-replace;
+- expired-claim fixtures containing an `attempting` write intent enter recovery before any ordinary
+  requeue/claim, including an authority-unavailable refusal case;
+- beat ⑦ crash injection spans intent+attempt, transaction checkpoint, ledger and terminal outboxes,
+  any required receipt ref, and run transition in one outer authority transaction;
+- one exhaustive dispatcher handles every command union arm: Phase-1 arms execute through their
+  authority service, while later arms return typed `capability-unavailable` with zero mutation;
+- generic provider admission enforces the immutable snapshot's abort/timeout/concurrency/rate/
+  daily-use/cost limits before every adapter call; exhaustion performs zero remote calls and holds
+  no sleeping worker. Production pool/consumer coverage remains 2h.
+
+The activated D112 guard walks every `src/**` import and each task's transitive local import graph:
+raw network/vendor modules and adapter implementations remain under `infra/providers/**`; task and
+store graphs cannot reach those adapters; only `core/provider-admission.ts` constructs the admitted
+client or consumes the adapter interface. It audits the closed capability/config mapping in both
+directions, pins one deterministic harness surface, proves denial/timeout/abort never fall through
+to remote I/O or worker sleep, and fails if a production provider module or consumer appears before
+Phase 2h. Durable tests pin exact fixed-window edges, restart/lease behavior, independent-connection
+races, conservative cost accounting, replay/divergence, settlement uncertainty, and v9 recovery.
+
+No existing Phase-1c four-row atomic-outbox test may stand in for the full beat-⑦ fixture, and no
+schema-only command-family test may stand in for exhaustive runtime dispatch.
