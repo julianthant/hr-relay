@@ -5430,3 +5430,144 @@ landing-verification refusal rather than a Duo one**, because its Duo ceremony f
 WFD landing. Kuali was never affected in this pass and logged in on every run. Both remediations are
 still operator-level directory deletions.
 
+#### 6. The archive could not be reached — and the reason is one 2026-08-14 run
+
+`Archive` renders (read-only badge, both views, filters, retention) with the honest empty state *"A
+run reaches the archive only when its workflow's version bumps."* `Versions & bumps` renders the
+registry with D242's short codes (`pl` `kt` `sk` `sd` `si` `st` `sf` `sp`), each workflow's version,
+archivable and not-terminal counts, and the standing refusal banner for `kuali-timekeeper-annotation`'s
+two non-terminal runs. A **minor** bump scoped to `separations` alone was authored through the dialog
+(kind, *What moved*, *Why*, commit — all required except the commit) and planned: plan `ee462c79`,
+**19 would be archived · 0 would block**, stored in `version_plans`.
+
+**`Apply the bump` was REFUSED, and the surface said so correctly** — *"Nothing was archived. Every
+prior-version run is still exactly where it was"*, with the plan left `planned` (D179's own rule for a
+refused apply, working). Reproduced directly against the endpoint, the server's answer is:
+
+> `POST /api/v1/commands` → `{"state":"error","code":"SCHEMA_INVALID",`
+> `"message":"✖ timeline note ids must be unique\n  → at timeline.events","retryable":false}`
+
+**Root cause, found by scanning all 19 candidates.** Exactly ONE — run
+`00419600-ef68-4e7d-8528-4705ad462bf5` / `sp-080639-0041`, enqueued 2026-08-14T15:06:55Z — carries a
+duplicate `noteId` in its projected timeline, and `GET /api/v1/runs/00419600…` answers **HTTP 400**
+with the same message: its detail panel cannot be opened at all. The spans on disk say why:
+`.tracker-rebuild/spans/separations-2026-08-14.jsonl` holds **two** `span.started` and **two**
+`span.ended` at the identical `(attempt 1, spanPath sp-080639-0041/timecard-search#1)` — a **pre-D214**
+gate resume re-executing the `always-rerun` `timecard-search` node, both executions emitting the same
+span path. D214 gave the CHECKPOINT key its `claimGeneration`; the SPAN path never got the same
+treatment, and D123's `(runId, attempt, spanPath)` note identity therefore derives one id for two
+events on every run written before D214 landed. Those rows are durable history and cannot be rewritten.
+
+**Two consequences, and the second is the expensive one.** A pre-D214 run is permanently unreadable on
+the run-detail surface. And because a bump is ONE atomic act over every prior-version run, and the
+archive freezes the record through that same projection, **a single unreadable run blocks the archive
+for the entire workflow, forever** — there is no per-run skip, and skipping would be wrong anyway
+(D179's whole claim is that the archive holds the bytes the operator last saw). The fix owed is a
+read-forward note identity, in the shape D214 already used: an absent generation appends nothing, so
+every readable row keeps its id.
+
+**What this costs the exit criteria.** §3.2's per-archived-run storage delta is **NOT MEASURED and not
+measurable today**: `archived_runs` is still **0**, `version_bump_applications` **0**, and the
+database is byte-identical across the attempt (3 530 752 bytes / 862 pages before and after, WAL
+checkpointed both times). B5's five frozen tabs, `Export` on an archived detail, and the D242 short
+code ON AN ARCHIVED ROW are unverified for the same reason — though the short code itself is verified
+twice over on the surfaces that do render (the bump registry and the activity table).
+
+#### 7. Activity, Explorer, and the D252 rail
+
+**Activity report — verified.** Aug 1–20: **50 runs**, 12 finished (6 read back · 3 with warnings · 3
+unread), 0 still open, error rate 70% (35 of 50). By-workflow grouped by category with D242 codes;
+`sp Separation 22` pairs exactly with
+`SELECT COUNT(*) FROM tasks WHERE workflow='separations' AND created_at>='2026-08-01'` = **22**, and
+the by-day table's `2026-08-20 · 3 · 6%` is this pass's three runs. **D236's ledger block renders**
+beside the totals with the honest empty state — *"No ledger entries. Nothing in this report's reach
+filed anything into a real HR system"* — and `ledger_projections` / `ledger_partitions` are both **0**,
+so the empty state is a fact rather than a placeholder. `Export` serves the CSV with its rules INSIDE
+it (D239): the window, the terminal-only error-rate rule, the still-open exclusion, the archived-once
+rule, the unread-vs-read-back rule, the Who-sampling rule, and the write-ledger's second-authority
+paragraph, all before the first total.
+
+**Explorer — verified through two independent readings.** The surface renders `Separation` with its
+six proving harnesses each labelled *"a proving harness of Separation"*, and the parity corpus's own
+diff (item 8) names the rest against the frozen 2j references: `Operations` → **`Test equipment`**
+(D241), the field-census table's `Contract · System · Declared` → **`Field · System · Recorded`**
+(D227/D229), node counts moving from `4 reads` to `30 reads` and `2 writes` to `4 writes` as the
+census counts fields rather than contracts, and the `when` prose moving from *"the descriptor's own
+when() predicate holds"* to **"the run's input field `includeCrmDates` is true"** (D228).
+
+**D252's rail rows — NOT VERIFIABLE on this workflow, and that is a descriptor fact.** The context
+rail's step / direction / freshness rows are drawn per data-ledger ENTRY, and entries come from
+`descriptor.capabilities.editData.fields` (`run-detail.ts` `contextData`). `separations` declares no
+`capabilities` block at all — deliberately, as a safety property written into the descriptor — so the
+rail correctly answers `editing: locked · "this workflow declares no correctable fields"` with
+`entries: []`. **`person-lookup` is the only descriptor in the tree that declares `editData`**, so
+D252 is exercisable only there, and this pass did not run it. Recorded as unverified with its reason
+rather than claimed.
+
+#### 8. The parity corpus, classified — the operator's input for one deliberate re-freeze
+
+`npm run test:parity` in ASSERT mode: **139 failed, 12 passed (4.3 m)**. Nothing was re-frozen and no
+reference file was touched. The twelve passes are the dual-adapter structural specs, which read the
+a11y tree without storing it.
+
+**One thing has to be said before the counts.** `captureParityPair` asserts the a11y snapshot FIRST
+and throws before `toHaveScreenshot` runs — by design, and the design is right (*"no pixel comparison
+result should stand in for a semantic one"*). The consequence for THIS review is that **the pixel half
+of all 139 failures is UNMEASURED**: `test-results/` holds zero `-actual.png` and zero `-diff.png`.
+So the dispatch's class (a) *"pixels/a11y same"* cannot be answered from this run for any reference;
+what CAN be answered is metadata-only versus semantic drift, which is the same question one layer in.
+
+| Class | Count | What it is |
+|---|---|---|
+| **(a) metadata-only** — the `# descriptorHash` header line and nothing else | **6** | the five phone-capture references (`capture-empty` `capture-failed` `capture-photos` `capture-reorder` `capture-sent`, all `paper-ink phone-390x844`) and `run-parked-write--graphite-warm--1440x900--resolve-absent` |
+| **(b) CONTENT drift** — the a11y tree itself moved | **129** | listed by cause below |
+| **(c) NO STORED REFERENCE** — a state the corpus has never photographed | **4** | `run-open-gate…gate-choose`, `…gate-reject`, `…gate-refused`, `run-member-gate…gate-type-eid` — **D226's three identity-approval ceremonies and the refusal arm**, exactly the surface this pass drove live |
+
+Every one of the 139 also carries the `# descriptorHash` line moving `964e299f…` → `c3c7b2c5…`, because
+the whole descriptor set moved; that alone is why the six in class (a) fail.
+
+**Class (b), by cause — one line each, with the decision that caused it:**
+
+| Refs | Reference → actual | Decision |
+|---|---|---|
+| 66 | `9:20 AM pl-094040-0040 …` → `9:20 AM **#40** pl-094040-0040 …` (the run-ordinal chip enters every queue row's text) | **D230/D231** (B4a queue-row wire), rendered by **B4b** |
+| 30 | `Sessions 1 running 1 waiting 1 idle 1 paused 1 failed 2 workers need attention` → `1 running 1 starting 2 idle 1 failed 1 worker need attention` | **D248** — the worker card IS the lease, so `waiting`/`paused` are gone and `starting` is real |
+| 12 | Explorer `text: Operations` → `text: Test equipment` | **D241** |
+| 12 | Explorer census `row/columnheader "Contract · System · Declared"` → `"Field · System · Recorded"` | **D227/D229** |
+| 12 | Archive rows `EID 10873698 · Person Lookup v1` → `EID 10873698 · pl v1` | **D242** |
+| 6 | Archive detail header gains `· code pl` | **D242** |
+| 6 | Archive detail `tablist "Archived run detail"` → `button "Export"` ahead of it | **B5 / D223** |
+| 6 | Explorer `Person Lookup v1 4 nodes · 4 reads` → `· 30 reads`; `Kuali Timekeeper Annotation … 2 writes` → `4 writes` | **D227** (the census counts FIELDS, not contracts) |
+| 6 | `runs when the descriptor's own when() predicate holds` → `runs when the run's input field includeCrmDates is true` | **D228** |
+| 6 | Activity: `button "Export"` enters ahead of the totals, and the *"2 counted in neither the error rate nor the outcome totals"* line is GONE | **D239 / D240** |
+| 6 | Start-run modal: the bare `Entries — separated by ";"` textbox is now preceded by the descriptor's prose and `Examples · One EID · An EID and a name`, and `How this run is shaped` moves | **D250/D251** (B3) |
+| 2 | queue-day loses `Storage has no restore point …` and `button "Storage health"` | **D222** — the banner became a `storage-degraded` notification |
+| 1 | parked-write `alert: This build cannot record a present write` → `textbox "Empl id (required)"`, `must match ^10\d{6}$`, `Effective date (required)` | **D245/D246** |
+
+Every row above is a decision this wave ratified, and every one is the surface doing what its decision
+says. **Nothing in class (b) looks like an unintended regression** — which is the finding, not a
+formality: the three defects §9.22 item 3 records (frozen elapsed, the always-on shape hazard, the
+stale detail panel) do NOT appear here, because the corpus photographs fixture states rather than a
+live clock, a live descriptor set, or a run that finishes while you watch. **The parity lane cannot
+see any of the four defects this pass found**, and that is the honest reason a connection proof exists
+beside it.
+
+The recommended act after the operator reviews the table above is ONE deliberate
+`npm run test:parity:update`, which re-freezes all 139 and MINTS the four class (c) references —
+after which the gate ceremonies D226 built are photographed for the first time.
+
+#### What is honestly NOT RUN
+
+- **Every real write**, unchanged from §9.17/§9.20. The composed graph has still never entered a
+  transaction node's commit arm.
+- **The gate REJECTION arm.** `Reject — this is not the right person` was rendered and never clicked;
+  `identity-approval-rejected` has still never been taken live.
+- **The `would-prepare` preview arm**, unchanged: only `already-present` has ever settled live.
+- **The archive**, for item 6's reason — five frozen tabs, `Export` on an archived detail, the
+  archived row's short code, the archive-invariants property against a real row, and §3.2's per-run
+  storage delta are all unmeasured.
+- **D252's rail rows**, for item 7's reason: no separations run can produce a ledger entry.
+- **The pixel half of the parity corpus**, for item 8's reason.
+- **`person-lookup` end to end.** Only its start-modal surface was exercised; no live person-lookup
+  run was made.
+
