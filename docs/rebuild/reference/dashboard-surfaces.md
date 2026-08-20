@@ -2211,68 +2211,81 @@ button's word stays in the surface; the server says which run, never what to cal
 
 ## 3. Descriptor fields this layer consumes (shape owned by ref workflow-model)
 
-**Ref workflow-model owns the `WorkflowDescriptor` shape and builder** (D1). This section does not define a
-descriptor interface; it names the fields this layer *reads*, and the fields it *contributes* for
-ref workflow-model to adopt. The tracker enforces its half at the emit boundary: **emitting a task span whose
-`name` is not a descriptor step key, a gate not in the descriptor's gate list, or a verdict not in its
-verdict map, throws at emit time.** (The fourth clause — a patch key not in the detail-field list —
-retired with `span.patched` itself; D254.)
+<!-- roadmap: p1-authority -->
+
+_Its checklist is the `p1-authority` status block under §2._
+
+**`ref workflow-model` owns the `WorkflowDescriptor` shape and its builder** (D1). This section does
+not define a descriptor interface; it names the fields this layer READS, and the fields it
+CONTRIBUTED for that descriptor to adopt. Both lists are checked against
+`src/base/workflow.ts`'s `WorkflowDescriptor` / `AnyWorkflowDescriptor` and
+`src/domain/workflow/presentation.ts`.
+
+**How the vocabulary is actually enforced, which is not how this section used to say.** The claim
+here was that *"emitting a task span whose `name` is not a descriptor step key, a gate not in the
+descriptor's gate list, or a verdict not in its verdict map, throws at emit time"*. No such check
+exists: `createSpanJsonlWriter` enforces identity write-once and nothing else, and the kernel's port
+types `name` as a non-empty string and `gate` as a `GateId`. What holds the vocabulary is
+STRUCTURAL and stronger than a name check would be — the executor never spells a span name or path,
+it composes both from the graph node it is executing (`taskSpanPath(traceId, node.id, …)` and
+`labelOf(node)`, `src/core/run-executor.ts`), so an undeclared step or gate is unrepresentable
+rather than rejected. The one arm with no enforcement at all is `verdicts`, because there is no
+`verdict` field on any span to check (§1.1). Two things follow for a reader: a task span's `name` is
+the node's **label**, not its key — the key is in the span path — and the retired fourth clause (a
+patch key ∈ the detail-field list) went with `span.patched` itself (D254).
 
 ### 3.1 Read from ref workflow-model's descriptor
-`id`, `code` (2-char trace prefix), `label`, `icon`, `category`, `surface.shape` /
-`surface.resolveShape`,
-`inputSubject`, graph-node keys/labels, `surfaces`, `details` (as a DECLARATION — D254), `actions`, `presets`, `identity`,
-`presentation`, `coordinator`, `completionConsumes`, `artifactProjections`, `enqueue`, `scenarios`,
-version/fingerprint, and
-override layering. There is no second `archetype` declaration.
+
+`id`, `version`, `contractFingerprint`, `code` (the 2-char trace prefix), `label`, `sessionLabel`,
+`icon`, `category`, `surface.shape` / `surface.resolveShape`, `inputSubject`, `nodes` (their keys,
+labels and kinds), `surfaces`, `capabilities`, `details` (as a DECLARATION — D254), `actions`,
+`enqueue`, `presets`, `identity`, `presentation`, `coordinator`, `completionConsumes`,
+`artifactProjections`, `scenarios`, and the version/fingerprint pair. There is no second
+`archetype` declaration.
+
+Three more the factory DERIVES and this layer reads, none of which was in this list before
+2026-08-20:
+
+- **`timeline`** — D225's categorical run-detail shape: the declared categories normalized with
+  their member labels, or one category per node by default. Always present and always exhaustive,
+  because a partial declaration would leave nodes silently uncategorized on the surface whose job is
+  to show the run's shape.
+- **`subjectProjection`** — where a RUN resolves the subject's name, if it ever does
+  (`{nodeId, fieldPath}`). It is what lets the queue's `title` be replaced once from the run's own
+  reads instead of staying the composed start title (§1.2).
+- **`steps`, `gates`, `summary` and `nodePurposes`** — derived projections of the graph:
+  `deriveSteps` and `deriveGates` (`src/base/workflow.ts`) fold the runtime nodes into
+  `StepProjection[]` (`nodeId`, `label`, `kind`, `taskId?`, `conditional`) and
+  `GateProjectionDefinition[]` (`nodeId`, `label`, `statusKey?`, `resolvedBy`), and D229's prose
+  pair is derived exhaustively for the Explorer.
 
 ### 3.2 Contributed by this doc, adopted into ref workflow-model's descriptor
-These are plain-data fields; ref workflow-model's descriptor carries them, this doc defines their semantics:
 
-```ts
-steps display rules: readonly StepDisplayRule[]               // computeOcrPipelineView's fold/hide
-gates: readonly GateProjectionDefinition[]                    // descriptor-derived from gate nodes
-verdicts: readonly VerdictDefinition[]
-//  ^ REPLACES statusExtensions (review #5 / D1): person-lookup's `notFound` becomes
-//    { key:"not-found", label:"Not found", tone:"warning" } over span.ended.verdict; the
-//    identity-approval badge (§5.4) becomes a gate statusKey. The statusExtensions function
-//    registry does not exist in the rebuild repo.
-details: readonly DetailProjectionSpec<Nodes>[]
-//  ^ D254: no longer a patch-key validation set (the channel it validated is retired). It is a
-//    DECLARATION of this workflow's display-safe data leaves, read by the evidence receipt's
-//    mandatory-leaf set, by the run-detail data-origin bound, and by the Explorer's field census.
-//    It projects no VALUE onto any surface — the Context rail reads checkpoints (D252).
-capabilities: WorkflowCapabilities
-completion?: CompletionProgram                                // §4 — OCR-backed workflows only
-enqueue / actions / scenarios / presets / identity / presentation / coordinator /
-completionConsumes / artifactProjections
-// artifact projection specs name an exact producing node+field, sink id, stable key fields,
-// blocking policy, and canonical record schema; the client receives status only, never sink paths
-```
+These are plain-data fields; the descriptor carries them and this doc defines their semantics. What
+they became is not what this section proposed, and the differences are the useful part:
 
-The bundle-safe artifact spec is a closed infrastructure contract, not an arbitrary callback:
+| proposed here | as-built | note |
+|---|---|---|
+| `steps display rules: readonly StepDisplayRule[]` | **not built by that name.** `StepProjection[]` is DERIVED from the graph, and the fold/hide question D225 answers is the `timeline` category projection | a per-workflow display-rule list would be a second, authored answer to a question the graph already answers |
+| `gates: readonly GateProjectionDefinition[]` | **built, and derived rather than authored** (`presentation.ts`, `deriveGates`) — `statusKey` is the optional per-gate status this section promised | a descriptor cannot declare a gate the graph does not contain |
+| `verdicts: readonly VerdictDefinition[]` | **declared and validated, never keyed.** `VerdictDefinition` (`key`, `label`, `tone`, `tag?`) is authored, uniqueness-checked at `build()` and served to the Explorer — and no span carries a `verdict`, so nothing maps one onto a status (§1.1, §1.3) | the `statusExtensions` function registry it replaced does not exist here, which was the point |
+| `details: readonly DetailProjectionSpec<Nodes>[]` | **built, meaning restated by D254.** No longer a patch-key validation set: a DECLARATION of this workflow's display-safe data leaves, read by the evidence receipt's mandatory-leaf set, by the run-detail data-origin bound, and by the Explorer's field census. It projects no VALUE onto any surface — the Context rail reads checkpoints (D252) | a stale comment in `src/domain/workflow/presentation.ts` still describes it as the `SpanPatched` key set; the code is right and the comment is not |
+| `capabilities: WorkflowCapabilities` | **built** — `review`, `editData`, `delegationDisplay?` | |
+| `completion?: CompletionProgram` | **built and sealed** (§4) — and declared by no descriptor yet | |
+| `enqueue` / `actions` / `scenarios` / `presets` / `identity` / `presentation` / `coordinator` / `completionConsumes` | **all built** | |
+| `artifactProjections` + the `ArtifactSinkId` registry | **built end to end and unused.** `ArtifactSinkIdSchema` is the one-member enum `["xlsx-retention"]`, the sink exists (`src/infra/artifacts/xlsx-retention-sink.ts`) behind an exhaustive projector with a per-sink lock, and the executor reads the specs per node — and **no descriptor declares one**, so the projector is composed nowhere and its only caller is a test | its first consumer is i9's retention workbook, at migration order 5 |
 
-```ts
-export type ArtifactSinkId = "xlsx-retention"; // extend with a sink implementation + guard fixture
-export interface DurableArtifactProjectionSpec<RecordSchema extends z.ZodType> {
-  id: string;
-  source: { nodeId: string; fieldPath: string };
-  record: CanonicalJsonSchema<RecordSchema>;
-  keyFields: readonly [string, ...string[]];
-  sink: ArtifactSinkId;
-  blocking: true;
-}
-```
+The artifact spec is a closed infrastructure contract, not an arbitrary callback: a spec names an
+exact producing node and field path, a canonical record schema, its stable key fields, one
+`ArtifactSinkId` and `blocking: true`. The builder factory receives the exact node accumulator and
+constrains `nodeId`, `fieldPath` and `keyFields` to real paths in that node's output schema.
+`blocking: false`, a free-form sink id, positional keys and function-valued projectors are not
+legal, and sink implementations live in one exhaustive registry owned by infrastructure —
+deliberately a sink-KIND registry, never keyed by workflow.
 
-The builder factory receives the exact node accumulator and constrains `nodeId`, `fieldPath`, and
-`keyFields` to real paths in that node's output/record schema; the broad wire form above is runtime
-only. `blocking:false`, a free-form sink id, positional keys, and function-valued projectors are not
-legal. Sink implementations live in one exhaustive `Record<ArtifactSinkId,Projector>` owned by
-infrastructure—deliberately a sink-kind registry, never keyed by workflow.
-
-Every hand-maintained parallel list in today's dashboard (icons, INSTANCE_LABELS, step-label
-switches, stub map) becomes a projection of the descriptor set with a coverage guard — that
-mechanism and its guard are ref workflow-model's (§1.3/§1.4 there).
+Every hand-maintained parallel list the legacy dashboard carries (icons, `INSTANCE_LABELS`,
+step-label switches, the stub map) becomes a projection of the descriptor set with a coverage guard
+— that mechanism and its guard are `ref workflow-model`'s.
 
 ---
 
