@@ -310,6 +310,40 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-19: a counter kept per WRITER cannot describe a resource shared by many writers — and the
+  code that knew this had already written the reason down, one function away (D243/D244).** The
+  "browser-profile wedge" recorded twice as an unexplained operational finding (separations §9.17
+  item 5, §9.20 item 6) — a worker's UCPath profile where every acquisition burned the full 60 s
+  `sessionAcquireMs` bound while a cold profile logged in in under 20 s — was never about the profile.
+  Duo's WebAuthn signature counter is per CREDENTIAL, one credential covers every UCSD system, and Duo
+  Autopilot's copy lives in `chrome.storage.local`, which is per BROWSER PROFILE — while doc 05 §1
+  partitions profiles per `(worker, system, instance, configFingerprint)`. So N writers shared one
+  server-side counter and none could see another's copy. `autoImportPackagedCredential` had said why
+  that matters since the extension's first day (*"a unix timestamp is monotonic across fresh browser
+  profiles"*) and stamped a cold profile's counter to `now`; the SIGN path advanced by `+ 1`, as if the
+  counter were private to one profile. **A cold profile therefore JUMPS the shared counter to now while
+  a warm one creeps by one, and a warm profile stamped earlier can never catch up** — it is behind by
+  however much wall clock elapsed between the two stamps, and it gains one per login. The fix is to
+  compute the presented value from the source every writer shares: `max(stored + 1, nowSec)`. Three
+  things generalize. **A rejected assertion does not merely fail, it BURNS the profile**: once Duo saw
+  one cloned-key signal, that profile stayed refused across three further logins presenting counters
+  more than a thousand AHEAD, and only a freshly created profile recovered (18.94 s, `PS_TOKEN` proved
+  — the credential was never damaged), which is why "delete the directory" was the only remediation
+  anyone ever found and why the fix must prevent the first refusal rather than recover from it.
+  **A tighter reproduction is not yet a cause**: §9.20's narrowing ("a profile one Duo ceremony old
+  wedges on its next acquisition") was falsified by the very first instrumented run — three
+  consecutive successes where it predicted a wedge — and the bisection that settled it moved ONE
+  variable (the stored counter) in both directions on one profile. And **the failure the operator was
+  shown could not have been the failure that happened**: the landing bound is `duoApprovalSeconds`
+  (180 s) inside an acquisition envelope of 60 s, so the envelope always fires first and
+  `describeStalledLanding` — the function whose whole job is explaining a stalled Duo login — is
+  unreachable at the shipped defaults, handing over D125's message naming Duo hand-approval. Doc 05
+  §4.1's rule answers it from the other side: authentication is decided by CONTENT and so is its
+  REFUSAL — Duo renders *"canceled or timed out"* about a second after the assertion, so the wait
+  observes that and refuses in 9.52 s naming the real cause, with a negative control keeping a
+  merely-slow prompt on the old message. The pin lives in this repo's own gate rather than the
+  extension's offline lane (D244): `duo-autopilot/` is a hard runtime dependency, and a rule pinned
+  where `npm run test:coverage` cannot see it is a rule no per-commit gate checks.
 - **2026-08-18: an alert lane that lives inside the thing it reports on cannot report that thing's
   death — and machinery with zero producers is a surface doing another surface's job (D222).** The
   durable notification inbox, its dedupe fold and the bell existed since 2g/2i-B with NO production
