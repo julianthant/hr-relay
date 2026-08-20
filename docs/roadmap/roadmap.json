@@ -2,7 +2,7 @@
   "meta": {
     "title": "HR Rebuild Roadmap",
     "asOf": "2026-08-20",
-    "head": "ce53e35",
+    "head": "5f6713f",
     "eyebrow": "hr-automation-rebuild · derived view · single source: docs/roadmap/roadmap.json",
     "lede": "The ground-up rebuild of UCSD's UCPath HR automation, as a timeline and a dependency tree. **Phases 0–2 are complete** — the platform is built and proven. **Phase 3** migrates the 13 remaining legacy workflows one at a time and entered at **separations**. Legacy stays the sole production authority until one all-at-once cutover. Every node lists what it **builds** and what it **needs**; the tree at the bottom shows what unlocks what.",
     "sources": [
@@ -33,8 +33,8 @@
     },
     {
       "label": "Decisions",
-      "value": "D1–D255",
-      "sub": "D131 retired, never reused",
+      "value": "D1–D259",
+      "sub": "D256/D257/D260 in flight in a sibling wave · D131 retired, never reused",
       "hot": false
     },
     {
@@ -967,11 +967,21 @@
               "chip": {
                 "text": "in progress — §9.22 written today"
               },
-              "desc": "One pass: the REAL dashboard drives a REAL composed separations dry run — plan → start → gate parks → approve through the B1 ceremony → resume → preview terminal → archive — every UI assertion paired against a direct authority-database check. Closes with the ONE deliberate parity re-freeze. Re-runs over the real commits as Track A's final evidence.",
+              "desc": "One pass: the REAL dashboard drives a REAL composed separations dry run — plan → start → gate parks → approve through the B1 ceremony → resume → preview terminal → archive — every UI assertion paired against a direct authority-database check. Closes with the ONE deliberate parity re-freeze. Re-runs over the real commits as Track A's final evidence. Already found and fixed two projection defects on the real run (D258/D259).",
               "features": [
                 {
                   "text": "`docs/migrations/separations.md` §9.22 — items 1–8 recorded",
                   "layer": "proof",
+                  "status": "done"
+                },
+                {
+                  "text": "D258 a timeline event id carries its occurrence ordinal, read forward — the one pre-D214 run that was refusing every archive reads again",
+                  "layer": "backend",
+                  "status": "done"
+                },
+                {
+                  "text": "D259 a replayed step is its own timeline arm (`replayed`, with `replayedFrom`), never `pending`",
+                  "layer": "both",
                   "status": "done"
                 },
                 {
@@ -1079,7 +1089,7 @@
     },
     {
       "kind": "today",
-      "text": "2026-08-20 · HEAD ce53e35 · separations 7 / 9 · dashboard at \"frontend done\""
+      "text": "2026-08-20 · HEAD 5f6713f · separations 7 / 9 · dashboard at \"frontend done\" · Track C live"
     },
     {
       "kind": "phase",
