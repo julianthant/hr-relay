@@ -48,6 +48,7 @@ here with a header naming the doc that now answers it.
 
 | file | date | what it was | what superseded it |
 |---|---|---|---|
+| `2026-08-20-frontend-backend-integration-1.3.md` | 2026-07-30 | was `reference/frontend-backend-integration.md` §1.3 — the audit's list of integration requirements the reference specs did not yet carry (bootstrap document, resumable subscription, panel-kind projection, start/enqueue contracts, command families, Review patches, one count family, archive snapshots, capture metadata, contextual command results) | `reference/frontend-backend-integration.md` §3 / §5 / §5.1, whose sections now carry each item as built or as a named absence; the file's own tail table maps item → section |
 | `2026-08-20-master-plan-dissolved.md` | 2026-08-20 | `docs/rebuild/07-master-plan.md` exactly as it stood at commit `8bd97c2f`, preserved when step 3b distributed it | the phase docs `00`–`05` and `docs/roadmap/roadmap.md` §Governance; the file's own header carries the 35-row § → destination table (`ce5d87fa`). Still named as the `owner` of the planned `one-time-import-offline` entry in `guard-inventory.json`, whose invariant already points at `doc 05 §Exit criteria` |
 
 ## How to add to history
