@@ -10,7 +10,8 @@
 import { useEffect, useState } from "react";
 import type { RunDetailSectionResponse, RunDetailWire } from "../../domain/dashboard/run-detail.js";
 import { DashboardClientError } from "../client/index.js";
-import type { PanelSections, PanelTab } from "../surfaces/log-panel.js";
+import type { PanelSections } from "../surfaces/log-panel.js";
+import type { PanelTab } from "../surfaces/log-panel-model.js";
 import { useDashboardClient } from "../state/client-context.js";
 
 const CONTEXT_SECTIONS = ["context-data", "context-evidence", "context-attempts"] as const;

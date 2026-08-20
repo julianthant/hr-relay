@@ -107,32 +107,15 @@ import {
 import { DashboardClientError } from "../client/errors.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
-import { dsStatusOf, statusText, type QueueStatus } from "./status.js";
-import { dayLabel, fmtClock, plural } from "./format.js";
+import { dsStatusOf, statusText, type QueueStatus } from "./status-model.js";
+import { fmtClock, plural } from "./format.js";
+import {
+  activityRangeLabel,
+  activityRangeValue,
+  parseActivityRange,
+} from "./activity-model.js";
 
-/** `from..to`, the one shape the URL carries. */
-export function parseActivityRange(value: string, today: string): { from: string; to: string } {
-  const [from, to] = value.split("..");
-  const valid = (candidate: string | undefined): candidate is string =>
-    candidate !== undefined && /^\d{4}-\d{2}-\d{2}$/u.test(candidate);
-  if (valid(from) && valid(to) && from <= to) return { from, to };
-  // The default is the current month to date — a range the operator can widen,
-  // never a silently different one than the link said.
-  return { from: `${today.slice(0, 7)}-01`, to: today };
-}
-
-export function activityRangeValue(range: { from: string; to: string }): string {
-  return `${range.from}..${range.to}`;
-}
-
-/**
- * The span's own label — the demo's `ReportSpan.label`, derived here from the
- * two bounds the wire requires (D180: both bounds are named, never defaulted).
- * A one-day range reads as the day, exactly as the demo's single-day span does.
- */
-export function activityRangeLabel(from: string, to: string): string {
-  return from === to ? dayLabel(from) : `${dayLabel(from)} – ${dayLabel(to)}`;
-}
+/* the range vocabulary lives in `activity-model.ts` — see the note there */
 
 function ms(value: number): string {
   if (value < 1000) return `${String(value)}ms`;

@@ -51,8 +51,8 @@ import {
   dsSurface,
   dsText,
 } from "../ds/ui.js";
-import { toolbarControl } from "./shell.js";
-import { QUEUE_SORTS, type QueueSortKey } from "./queue.js";
+import { toolbarControl } from "./shell-model.js";
+import { QUEUE_SORTS, type QueueSortKey } from "./queue-model.js";
 
 export function QueueToolbar({
   sort,

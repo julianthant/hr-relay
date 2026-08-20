@@ -15,7 +15,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { sortQueueBand, visibleRunIds } from "../../../src/dashboard/surfaces/queue.js";
+import { sortQueueBand, visibleRunIds } from "../../../src/dashboard/surfaces/queue-model.js";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);

@@ -90,41 +90,39 @@ import type {
   RunDetailWireSchema,
 } from "../../domain/dashboard/run-detail.js";
 import { timelineEventDuration } from "../../domain/dashboard/run-detail.js";
-import type { RunDetailSectionSchema } from "../../domain/dashboard/primitives.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import type { IdentityGatePayload } from "../app/identity-ceremony.js";
 import {
   IdentityApproveDialog,
-  identityGateArm,
   type IdentityApproveTarget,
 } from "./identity-approve.js";
+import { identityGateArm } from "./identity-approve-model.js";
 import { BannerActions, OutcomeActionButton, type DashboardActionHandler } from "./actions.js";
 import {
   InlineParkedWrite,
   ParkResolveDialog,
-  parkResolutionArm,
   type ParkResolveTarget,
   type ParkedWritePayload,
 } from "./park-resolve.js";
-import {
-  ContextRail,
-  ContextRailSpine,
-  useContextRail,
-  type ContextSections,
-} from "./context-rail.js";
+import { parkResolutionArm } from "./park-resolve-model.js";
+import { ContextRail, ContextRailSpine } from "./context-rail.js";
+import { useContextRail, type ContextSections } from "./context-rail-model.js";
 import { elapsedSecondsBetween, fmtClock, fmtElapsed, plural } from "./format.js";
 import { ReceiptView, type ReceiptSectionPayload } from "./receipt.js";
 import { RunProvenanceBar, type QueueSurfaceWire } from "./run-identity.js";
 import { FailureDetailBody } from "./trust.js";
 import { FailureAdvisoryPanel } from "./advisory.js";
 import type { CapabilityAvailabilitySchema } from "../../domain/absence.js";
-import { dsStatusOf, outcomeDsStatusOf } from "./status.js";
+import { dsStatusOf, outcomeDsStatusOf } from "./status-model.js";
+import { DETAIL_THREE_COLUMN_PX } from "./layout-metrics.js";
+import { defaultTabFor, tabsFor, type PanelTab } from "./log-panel-model.js";
+
+export type { PanelTab };
 
 type CapabilityAvailability = z.infer<typeof CapabilityAvailabilitySchema>;
 
 type RunDetailWire = z.infer<typeof RunDetailWireSchema>;
 type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;
-type RunDetailSection = z.infer<typeof RunDetailSectionSchema>;
 type TimelineEvent = RunDetailWire["timeline"]["events"][number];
 type NotePage = Extract<RunDetailSectionResponse, { section: "logs" }>["payload"];
 type FailurePayload = Extract<RunDetailSectionResponse, { section: "failure" }>["payload"];
@@ -138,43 +136,9 @@ type FailurePayload = Extract<RunDetailSectionResponse, { section: "failure" }>[
  */
 export type { IdentityGatePayload };
 
-/**
- * THE DETAIL REGION'S TWO BREAKPOINTS, IN COLUMN PIXELS (doc 03 §Shell).
- *
- * > "A consequence worth pinning: inside the detail region, a layout switch
- * > keys on the COLUMN, not the window."
- *
- * The region used to switch on `min-[1280px]:` / `min-[1480px]:`, which is the
- * WINDOW — and the window is the one measurement that does not describe this
- * box. The shell spends `--ds-w-side-panel` (376px) on the queue plus three
- * `--ds-shell-inset` gaps (12px each) before this column starts, and the
- * workflow panel takes 200px more whenever it is docked as a sidebar. So the
- * same 1280px window hands this region 868px with the panel floating and 668px
- * with it docked — and a viewport query fires at the wrong moment in both
- * directions. Measured, on the fixture corpus, before the change:
- *
- * | window | floating | sidebar | old centre, docked |
- * |---|---|---|---|
- * | 1280 | 868 | 668 | **280px** — three columns forced into a two-column box |
- * | 1480 | 1068 | 868 | shape split beside a 480px centre |
- *
- * Both numbers are the OLD window thresholds translated through that constant
- * 412px of shell, so the rendered arrangement at the default (floating) panel
- * mode is unchanged at every reference viewport: 1280 − 412 = 868, and
- * 1480 − 412 = 1068.
- *
- * These are the JS half of the split. The CSS half is the literal
- * `@min-[868px]/detail:` / `@min-[1068px]/detail:` in this file's class
- * strings, because Tailwind cannot see through an identifier — and
- * `tests/unit/dashboard/detail-region-breakpoints.test.ts` pins the two halves
- * to each other, since a threshold that drifts between them is a region whose
- * component choice and column arrangement disagree.
- */
-export const DETAIL_THREE_COLUMN_PX = 868;
-export const DETAIL_SHAPE_BESIDE_PX = 1068;
+/* the two region thresholds live in `layout-metrics.ts` — see the note there */
 
-/** The tab set this slice can draw. Review and People are advertised, not assumed. */
-export type PanelTab = "review" | "people" | "logs" | "receipt";
+/* the tab vocabulary lives in `log-panel-model.ts` — see the note there */
 
 /** Every section the panel is handed, keyed by the wire's own section name. */
 export interface PanelSections extends ContextSections {
@@ -214,35 +178,7 @@ const TAB_META: Record<PanelTab, { label: string; icon: typeof ScrollText }> = {
   receipt: { label: "Receipt", icon: Receipt },
 };
 
-/**
- * The tabs are SERVED, never fixed at four and never decided from a workflow.
- * `availableSections` is the descriptor's own answer, and the ORDER is doc 13
- * §3.3's fixed composition: `Review · Logs · Receipt` / `People · Logs ·
- * Receipt` / `Logs · Receipt`. A section the wire does not advertise draws no
- * tab — a dead tab that opens an empty panel is worse than an absent one.
- */
-const TAB_ORDER: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
-
-export function tabsFor(detail: RunDetailWire): PanelTab[] {
-  const advertised = new Set<RunDetailSection>(detail.availableSections);
-  return TAB_ORDER.filter((tab) => advertised.has(tab));
-}
-
-/**
- * A failed run opens on the LOGS, ahead of every other default: its record now
- * lives in the stream at the line it died on, and moving the record off the
- * panel top must never put it behind a tab. Otherwise a run that has finished
- * opens on its receipt — the answer — and a run still working opens on its
- * stream.
- */
-export function defaultTabFor(detail: RunDetailWire): PanelTab {
-  const available = tabsFor(detail);
-  const pick = (...preferred: PanelTab[]): PanelTab =>
-    preferred.find((tab) => available.includes(tab)) ?? available[0] ?? "logs";
-  if (detail.outcome.state === "terminal" && detail.outcome.result === "failed") return pick("logs");
-  if (detail.outcome.state === "terminal") return pick("receipt", "logs");
-  return pick("logs", "receipt");
-}
+/* the tab fold lives in `log-panel-model.ts` — see the note there */
 
 // ---------------------------------------------------------------------------
 // timeline

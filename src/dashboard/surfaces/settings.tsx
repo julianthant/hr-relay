@@ -14,11 +14,11 @@
 import { useState } from "react";
 import { Settings as SettingsIcon } from "lucide-react";
 import type { z } from "zod";
-import type {
-  SettingsSectionPrimitiveSchema,
-  StorageHealthSummaryWireSchema,
-} from "../../domain/dashboard/bootstrap.js";
+import type { SettingsSectionPrimitiveSchema } from "../../domain/dashboard/bootstrap.js";
 import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
+import { storageNeedsAttention, type StorageHealthSummary } from "./settings-model.js";
+
+export type { StorageHealthSummary };
 import {
   Banner,
   Button,
@@ -38,7 +38,7 @@ import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { fmtClock, plural } from "./format.js";
 
-export type StorageHealthSummary = z.infer<typeof StorageHealthSummaryWireSchema>;
+/* whether the storage summary owes the operator attention lives in `settings-model.ts` — see the note there */
 export type SettingsSection = z.infer<typeof SettingsSectionPrimitiveSchema>;
 
 /** The at-rest indicator tones; the words themselves render beside the dots. */
@@ -50,11 +50,6 @@ function backupStatusOf(backup: StorageHealthSummary["backup"]): DsStatus {
   if (backup === "current") return "verifiedDone";
   if (backup === "stale") return "waiting";
   return "failed";
-}
-
-/** True when the top-bar gear should carry the attention dot. */
-export function storageNeedsAttention(storage: StorageHealthSummary): boolean {
-  return storage.authority !== "healthy" || storage.backup !== "current";
 }
 
 /**

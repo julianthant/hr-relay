@@ -25,7 +25,6 @@
  * serves identities and refusals, so that is what renders.
  */
 import { Check, CheckCircle2, FlaskConical, TriangleAlert } from "lucide-react";
-import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import {
   Badge,
@@ -49,26 +48,20 @@ import {
   dsIcon,
   dsText,
 } from "../ds/ui.js";
-import type { SystemInstancePrimitiveSchema } from "../../domain/dashboard/bootstrap.js";
 import type { CommandResult } from "../../domain/commands.js";
 import type { SurfaceField } from "../../domain/workflow/ingress.js";
 import type { StartPlanResponse } from "../client/index.js";
-import { SYSTEM_LABEL, type BrowserSystemId } from "./system-chip.js";
+import { SYSTEM_LABEL, type BrowserSystemId } from "./system-chip-model.js";
+import {
+  testSystemsOf,
+  type InstanceChoice,
+  type SystemInstance,
+  type SystemInstancePrimitive,
+} from "./run-start-kit-model.js";
 
-export type SystemInstancePrimitive = z.infer<typeof SystemInstancePrimitiveSchema>;
-export type SystemInstance = "prod" | "test";
-/** exactly the shape `StartPlanSubmission.requestedInstance` takes */
-export type InstanceChoice = Partial<Record<BrowserSystemId, SystemInstance>>;
+export type { InstanceChoice, SystemInstance, SystemInstancePrimitive };
 
-/** the systems this choice sends to a TEST instance — the badge every row will carry */
-export function testSystemsOf(
-  systems: readonly SystemInstancePrimitive[],
-  choice: InstanceChoice,
-): BrowserSystemId[] {
-  return systems
-    .map(({ system }) => system)
-    .filter((system) => choice[system] === "test");
-}
+/* the instance choice, and the systems it sends to a TEST instance lives in `run-start-kit-model.ts` — see the note there */
 
 // ---------------------------------------------------------------------------
 // Instance selector — production vs test, per system

@@ -89,10 +89,9 @@ import {
   StageRail,
   StartChoiceControl,
   StartFlagControl,
-  testSystemsOf,
-  type InstanceChoice,
-  type SystemInstancePrimitive,
 } from "./run-start-kit.js";
+import { type InstanceChoice, type SystemInstancePrimitive } from "./run-start-kit-model.js";
+import { testSystemsOf } from "./run-start-kit-model.js";
 
 /** the surface id this command family is audited under (doc 13 §3.4) */
 const SOURCE_SURFACE = "run-start";

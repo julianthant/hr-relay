@@ -11,7 +11,7 @@ import {
   liveLockReasonOf,
   type ContextDataEntry,
   type ContextDataPayload,
-} from "../../../src/dashboard/surfaces/context-rail.js";
+} from "../../../src/dashboard/surfaces/context-rail-model.js";
 
 const EDITABLE_ENTRY = {
   label: "Invited on",

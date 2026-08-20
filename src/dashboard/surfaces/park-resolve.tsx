@@ -63,6 +63,7 @@ import {
 } from "../ds/ui.js";
 import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import { parkResolutionArm } from "./park-resolve-model.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { BannerActions, ParkResolutions, type DashboardActionHandler } from "./actions.js";
 import { fmtClock } from "./format.js";
@@ -76,13 +77,7 @@ export type ParkedWritePayload = Extract<
 /** The command half of a served descriptor — the only kind this surface takes. */
 type CommandAction = Extract<ActionDescriptorWire, { kind: "command" }>;
 
-/** Which typed resolution a descriptor names. Nothing else may open this dialog. */
-export function parkResolutionArm(action: ActionDescriptorWire): "present" | "absent" | undefined {
-  if (action.kind !== "command") return undefined;
-  if (action.command === "resolve-write-present") return "present";
-  if (action.command === "resolve-write-absent") return "absent";
-  return undefined;
-}
+/* which resolution a served park command names lives in `park-resolve-model.ts` — see the note there */
 
 /**
  * The digest, cut for the eye and never for the record.

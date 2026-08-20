@@ -54,9 +54,7 @@ import {
   RotateCcw,
   Save,
 } from "lucide-react";
-import type { z } from "zod";
 import { systemClock } from "../../domain/clock.js";
-import { readEnumPreference, writePreference } from "../lib/preference-storage.js";
 import { cn } from "../lib/utils.js";
 import {
   Badge,
@@ -77,148 +75,46 @@ import {
   dsIcon,
   dsText,
 } from "../ds/ui.js";
-import type {
-  ContextSummaryWireSchema,
-  RunDetailSectionResponseSchema,
-} from "../../domain/dashboard/run-detail.js";
+
+
 import { useDashboardClient } from "../state/client-context.js";
 import { fmtClock, plural } from "./format.js";
+import {
+  editPolicyFor,
+  liveLockReasonOf,
+  type ContextDataEntry,
+  type ContextDataPayload,
+  type ContextRailState,
+  type ContextSectionKind,
+  type ContextSectionPayload,
+  type ContextSections,
+  type ContextSummary,
+  type EditPolicy,
+  type EditableScalar,
+} from "./context-rail-model.js";
 
-type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;
-export type ContextSummary = z.infer<typeof ContextSummaryWireSchema>;
+export type {
+  ContextDataEntry,
+  ContextDataPayload,
+  ContextRailState,
+  ContextSectionKind,
+  ContextSectionPayload,
+  ContextSections,
+  ContextSummary,
+  EditPolicy,
+};
 
-/** The three context sections this rail renders, exactly as the wire names them. */
-export type ContextSectionKind = "context-data" | "context-evidence" | "context-attempts";
-export type ContextSectionPayload = Extract<
-  RunDetailSectionResponse,
-  { section: ContextSectionKind }
->["payload"];
-
-/** The Data section's own payload — the one that carries the edit policy (2i-C). */
-export type ContextDataPayload = Extract<
-  RunDetailSectionResponse,
-  { section: "context-data" }
->["payload"];
-export type ContextDataEntry = ContextDataPayload["entries"][number];
+/* the rail's wire types live in `context-rail-model.ts` — see the note there */
 
 function isDataPayload(payload: ContextSectionPayload): payload is ContextDataPayload {
   return "editing" in payload;
 }
 
-/** What the rail is handed: whichever context sections the run advertised. */
-export type ContextSections = Partial<Record<ContextSectionKind, ContextSectionPayload>>;
-
 // ---------------------------------------------------------------------------
 // open / collapsed, persisted
 // ---------------------------------------------------------------------------
 
-const RAIL_STORAGE_KEY = "hrauto-rebuild.context-rail";
-
-/** The documented default for a rail nobody has expressed a preference about. */
-const RAIL_DEFAULT: RailPreference = "open";
-
-type RailPreference = "open" | "closed";
-
-const RAIL_PREFERENCES: readonly RailPreference[] = ["open", "closed"];
-
-function readStoredRailOpen(): boolean {
-  // `readEnumPreference` keeps "nothing stored", "storage refused" and "stored
-  // something we do not recognise" apart internally and lands all three on the
-  // named default above — rather than a catch block inventing `true`.
-  return readEnumPreference(RAIL_STORAGE_KEY, RAIL_PREFERENCES, RAIL_DEFAULT) === "open";
-}
-
-export interface ContextRailState {
-  open: boolean;
-  collapsed: boolean;
-  setOpen: (open: boolean) => void;
-}
-
-/**
- * `threeColumn` is the REGION's own answer, handed down by the layout owner —
- * it was a `matchMedia("(min-width: 1280px)")` here, and that was the window.
- *
- * Collapsing is a three-column affordance: below the threshold the region is a
- * scrolling stack, and a spine there would hide the data behind a control that
- * gives back 34px of a column that no longer exists — so the stored preference
- * is simply not applied. The threshold that decides it has to be the same one
- * the columns switch on, and that one is now the COLUMN's width (doc 03
- * §Shell), which only the element that owns the box can measure. Asking the
- * window from here reintroduced the exact disagreement: with the workflow
- * panel docked at a 1280px window this hook said "three columns" while the
- * region had 668px and was drawing a stack.
- */
-export function useContextRail(threeColumn: boolean): ContextRailState {
-  const [open, setOpenState] = useState(readStoredRailOpen);
-  const setOpen = useCallback((next: boolean) => {
-    setOpenState(next);
-    // The write's outcome is returned, not thrown away: an unwritable store
-    // loses the preference for next time, which is not a reason to refuse the
-    // operator this one — but it is a distinguishable outcome, not a silence.
-    void writePreference(RAIL_STORAGE_KEY, next ? "open" : "closed");
-  }, []);
-  return { open, collapsed: !open && threeColumn, setOpen };
-}
-
-// ---------------------------------------------------------------------------
-// the edit policy (doc 03 D19, doc 06 §6 — 2i-C)
-// ---------------------------------------------------------------------------
-
-type EditableScalar = string | number | boolean;
-
-export type EditPolicy =
-  | {
-    kind: "editable";
-    nodeId: string;
-    fieldPath: string;
-    recorded: EditableScalar;
-    pending: { value: EditableScalar; correctedAt: string } | undefined;
-  }
-  | { kind: "locked"; reason: string };
-
-/**
- * Doc 03 D19's unlock rule, with the reason ALWAYS shown: a row is editable
- * only when its own field policy, the run-level policy the server computed at
- * fetch, and the LIVE stream all agree — and whichever one disagrees supplies
- * the exact sentence the operator reads on the lock. The most specific reason
- * wins: a field's own lock explains that field; the run-level and live locks
- * apply to every row alike.
- */
-export function editPolicyFor(
-  entry: ContextDataEntry,
-  editing: ContextDataPayload["editing"],
-  liveLockReason: string | undefined,
-): EditPolicy {
-  if (entry.edit.state === "locked") return { kind: "locked", reason: entry.edit.reason };
-  if (editing.state === "locked") return { kind: "locked", reason: editing.reason };
-  if (liveLockReason !== undefined) return { kind: "locked", reason: liveLockReason };
-  return {
-    kind: "editable",
-    nodeId: entry.edit.nodeId,
-    fieldPath: entry.edit.fieldPath,
-    recorded: entry.edit.value,
-    pending: entry.edit.pendingCorrection.state === "pending"
-      ? {
-        value: entry.edit.pendingCorrection.value,
-        correctedAt: entry.edit.pendingCorrection.correctedAt,
-      }
-      : undefined,
-  };
-}
-
-/**
- * The doc 03 D19 staleness signal, read off the live day stream: the section
- * was served editable at fetch, and the queue row's status is the one live
- * fact that says the run has since been claimed or settled. The kernel's CAS
- * is the authority either way — this exists so the operator learns BEFORE
- * pressing Save, not from the rejection.
- */
-export function liveLockReasonOf(liveStatus: string | undefined): string | undefined {
-  if (liveStatus === undefined) return undefined;
-  if (liveStatus === "queued" || liveStatus === "awaiting-approval") return undefined;
-  return `The run is now ${liveStatus} — it moved while this data was open, so these values may be `
-    + "stale. Reopen the run to edit.";
-}
+/* the rail's open state, and the edit policy, live in `context-rail-model.ts` — see the note there */
 
 /** Parse an operator draft back into the RECORDED scalar's own type. */
 function parseDraft(

@@ -22,7 +22,7 @@ import { describe, expect, it } from "vitest";
 import {
   DETAIL_SHAPE_BESIDE_PX,
   DETAIL_THREE_COLUMN_PX,
-} from "../../../src/dashboard/surfaces/log-panel.js";
+} from "../../../src/dashboard/surfaces/layout-metrics.js";
 
 const SOURCE = resolve(import.meta.dirname, "../../../src/dashboard/surfaces/log-panel.tsx");
 

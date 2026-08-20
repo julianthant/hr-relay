@@ -32,24 +32,24 @@ import { useDashboardDay } from "../state/use-dashboard-day.js";
 import { useRunDetail } from "../state/use-run-detail.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
 import { ActivityReport } from "../surfaces/activity.js";
-import { ARCHIVE_INDEX, ArchiveWorkspace } from "../surfaces/archive.js";
+import { ArchiveWorkspace } from "../surfaces/archive.js";
+import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
 import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { UiCatalogWorkspace } from "../surfaces/ui-catalog.js";
-import { LogPanel, defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel.js";
+import { LogPanel } from "../surfaces/log-panel.js";
+import { defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel-model.js";
+import { QueuePanel, type QueueFilterScope, type QueueViewState } from "../surfaces/queue.js";
 import {
-  QueuePanel,
   attentionRunIds,
   visibleRunIds,
-  type QueueFilterScope,
   type QueueSortKey,
   type QueueSurfaceWire,
-  type QueueViewState,
-} from "../surfaces/queue.js";
+} from "../surfaces/queue-model.js";
 import { ConfirmCommandDialog, type ActionTarget, type PendingCommand } from "../surfaces/actions.js";
 import { RenameRunDialog, type PendingRename } from "../surfaces/run-identity.js";
 import { composeCommandRequest, type CommandAction } from "./command-dispatch.js";
 import { useGlobalKeys } from "./global-keys.js";
-import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/status.js";
+import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/status-model.js";
 import { QueueToolbar } from "../surfaces/queue-toolbar.js";
 import { RunStartButton, RunStartSurfaces, type RunStartWorkflow } from "../surfaces/run-start.js";
 import {
@@ -58,14 +58,17 @@ import {
   WorkflowPanelToggle,
   WorkflowSidebar,
   WorkflowWindow,
+} from "../surfaces/shell.js";
+import {
   activeCount,
   parseWorkflows,
   useWorkflowPanelMode,
   workflowStatusCounts,
   type StatusBucket,
-} from "../surfaces/shell.js";
+} from "../surfaces/shell-model.js";
 import { StorageBanner } from "../surfaces/settings.js";
-import { TopBar, serverLocalDay, type ShellView } from "../surfaces/top-bar.js";
+import { TopBar } from "../surfaces/top-bar.js";
+import { serverLocalDay, type ShellView } from "../surfaces/top-bar-model.js";
 import { usePanelSections } from "./use-panel-sections.js";
 import {
   canGoBack,

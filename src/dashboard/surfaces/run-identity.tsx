@@ -34,6 +34,7 @@ import { FlaskConical, Info, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
+import { shortFingerprint } from "./run-identity-model.js";
 import {
   BulletList,
   Button,
@@ -64,12 +65,7 @@ import { runTiming } from "./format.js";
 
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 
-const FINGERPRINT_PREFIX = 8;
-
-/** the served fingerprint, at chip length — the full hash stays in the ⓘ */
-export function shortFingerprint(fingerprint: string): string {
-  return fingerprint.slice(0, FINGERPRINT_PREFIX);
-}
+/* the fingerprint cut for the eye lives in `run-identity-model.ts` — see the note there */
 
 /**
  * The run's provenance, in the Log Panel's bottom bar.

@@ -20,7 +20,7 @@ import {
   explorerGraphTotals,
   nodeBindings,
   writeSystems,
-} from "../../../src/dashboard/surfaces/explorer.js";
+} from "../../../src/dashboard/surfaces/explorer-model.js";
 import {
   activeTakeover,
   parseRoute,

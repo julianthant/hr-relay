@@ -27,9 +27,7 @@
  * each is a fixed map over a closed served enum or a display-only subtraction
  * of two served instants — never a second opinion about what a run IS.
  */
-import { useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import type { z } from "zod";
 import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Info } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
@@ -50,7 +48,6 @@ import {
 } from "../ds/ui.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import { isTerminalQueueStatus } from "../../domain/dashboard/projection.js";
-import type { QueueSurfaceWireSchema } from "../../domain/dashboard/projection.js";
 import {
   FooterActions,
   OutcomeActionButton,
@@ -58,21 +55,33 @@ import {
   type DashboardActionHandler,
 } from "./actions.js";
 import { dayLabel, elapsedSecondsBetween, fmtClock, fmtElapsed, plural, runTiming } from "./format.js";
+import { StatusBadge } from "./status.js";
 import {
   PROPOSED_STATUS,
-  StatusBadge,
   dsStatusOf,
   statusAccessibleName,
   statusText,
   type ProposedStatus,
-} from "./status.js";
-
-export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
-type MemberSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "member" }>;
-type OperationSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "operation" }>;
-type PipelineStep = QueueSurfaceWire["pipeline"][number];
-/** One delegated child this row waits on and does NOT count (D231). */
-export type LinkedRunWire = QueueSurfaceWire["linkedRuns"][number];
+} from "./status-model.js";
+import type { QueueSortKey } from "./queue-model.js";
+import { MEMBER_WELL_LINES } from "./layout-metrics.js";
+import {
+  BAND_LABEL,
+  BAND_ORDER,
+  type LinkedRunWire,
+  type MemberSurfaceWire,
+  type OperationSurfaceWire,
+  type PipelineStep,
+  type QueueSurfaceWire,
+  bandOf,
+  canViewAllMembers,
+  orderMembers,
+  partition,
+  queueRowTitle,
+  queueRowTitleTooltip,
+  sortQueueBand,
+  useAttentionAnnounce,
+} from "./queue-model.js";
 
 /* ── the queue's client-owned view state (doc 13 §4) ─────────────────────── */
 
@@ -149,135 +158,8 @@ export type QueueActionsOf = (surface: QueueSurfaceWire) => readonly ActionDescr
 
 const NO_ACTIONS: QueueActionsOf = () => [];
 
-/* ── bands ───────────────────────────────────────────────────────────────── */
-
-export type QueueBandKey = "attention" | "active" | "queued" | "finished";
-
-const BAND_LABEL: Record<QueueBandKey, string> = {
-  attention: "Needs you",
-  active: "Active",
-  queued: "Queued",
-  /** narrowed to `Finished` off today's partition — see `isToday` below */
-  finished: "Finished today",
-};
-
-/**
- * A fixed map from the closed ds status vocabulary to a visual band — the same
- * class of pure presentation as mapping a status to an icon. It reorders what
- * the operator sees; it never reclassifies what a run is, and the band's own
- * number is the count of rows drawn in it, not a claim about the day's totals
- * (those are the Status Bar's, from the one projection — D81).
- */
-function bandOf(status: ProposedStatus): QueueBandKey {
-  if (status === "waiting" || status === "parked") return "attention";
-  if (status === "running") return "active";
-  if (status === "queued") return "queued";
-  return "finished";
-}
-
-const BAND_ORDER: QueueBandKey[] = ["attention", "active", "queued", "finished"];
-
-/* ── ordering inside a band ──────────────────────────────────────────────── */
-
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * `demo-data.ts` `DEMO_SORTS` / `sortDemoRows` / `SORT_STATUS_RANK`.
- *
- * All four are PRESENTATIONS the operator asked for by name, and the control on
- * the toolbar is what makes the reorder visible. They reorder WITHIN a band and
- * never across one: a band is what a run's status means, and no sort may move a
- * row out of the group that says a human is blocking.
- *
- * `attention` used to pass the array straight through with a note claiming it
- * ordered "what needs you, then what broke, then the rest" — a sentence about
- * an order the server does not produce, on the control that is the default
- * (R3 finding 1). It now ranks by status the way the demo does, newest first
- * inside a rank. That is presentation over a served enum, not a second opinion
- * about what a run IS: no row changes band, no count moves.
- */
-export type QueueSortKey = "attention" | "newest" | "oldest" | "longest";
-
-export const QUEUE_SORTS: readonly { key: QueueSortKey; label: string; note: string }[] = [
-  { key: "attention", label: "Attention first", note: "What needs you, then what broke, then everything else — the default." },
-  { key: "newest", label: "Newest first", note: "Most recently started at the top of each band." },
-  { key: "oldest", label: "Oldest first", note: "The rows that have been sitting the longest, first in each band." },
-  { key: "longest", label: "Longest running", note: "Biggest elapsed or recorded duration first — where the time is going." },
-];
-
-/**
- * The `attention` order, copied VALUE FOR VALUE from the demo's
- * `SORT_STATUS_RANK` (`demo-data.ts:4259-4268`).
- *
- * It is not the band order and must not be re-derived from it: `failed` sorts
- * second here while its band is `finished`, which is the whole point — inside
- * the finished band a failure comes before a clean done.
- */
-const SORT_STATUS_RANK: Record<ProposedStatus, number> = {
-  waiting: 0,
-  failed: 1,
-  parked: 2,
-  running: 3,
-  queued: 4,
-  doneWarnings: 5,
-  verifiedDone: 6,
-  cancelled: 7,
-};
-
-/**
- * How long a row has been working: recorded when it ended, live while it runs.
- * `endedAt` is the served union (D124), so a terminal row whose end instant is
- * genuinely unknown counts as its elapsed-to-now rather than being ranked as
- * zero — and nothing here substitutes `now` for a missing END on a row the
- * server said is still in flight.
- */
-function elapsedMs(surface: QueueSurfaceWire, nowIso: string): number {
-  const started = Date.parse(surface.startedAt);
-  const ended = surface.endedAt.state === "present" ? Date.parse(surface.endedAt.value) : Date.parse(nowIso);
-  return Math.max(0, ended - started);
-}
-
-/**
- * What this row is CALLED — the operator's own name for the run when they have
- * given it one, and otherwise the server's (doc 03 §1.2).
- *
- * The server serves the two separately on purpose: `title` says what the system
- * thinks the run is about (the start-input title, replaced by the subject's
- * name once the run resolves one) and `displayName` is the operator's override.
- * Folding them on the server would make the tooltip below unwritable, because
- * no surface could then tell a renamed row from a system-titled one.
- */
-export function queueRowTitle(surface: QueueSurfaceWire): string {
-  return surface.displayName.state === "present" ? surface.displayName.value : surface.title;
-}
-
-/**
- * The renamed row's tooltip: it names the SUBJECT the operator renamed away
- * from, so the run's own identity is one hover away rather than gone. A row
- * that was never renamed carries no tooltip at all — a title explaining itself
- * is noise on every row in the queue.
- */
-function queueRowTitleTooltip(surface: QueueSurfaceWire): string | undefined {
-  return surface.displayName.state === "present"
-    ? `Named by you — subject is ${surface.title}`
-    : undefined;
-}
-
-export function sortQueueBand(
-  rows: readonly QueueSurfaceWire[],
-  key: QueueSortKey,
-  nowIso: string,
-): readonly QueueSurfaceWire[] {
-  const born = (surface: QueueSurfaceWire): number => Date.parse(surface.startedAt);
-  const rank = (surface: QueueSurfaceWire): number => SORT_STATUS_RANK[dsStatusOf(surface.status)];
-  return [...rows].sort((a, b) => {
-    if (key === "newest") return born(b) - born(a);
-    if (key === "oldest") return born(a) - born(b);
-    if (key === "longest") return elapsedMs(b, nowIso) - elapsedMs(a, nowIso);
-    // `attention` — rank, then newest first inside a rank, exactly as the demo
-    // composes it (`rank(a) - rank(b) || born(b) - born(a)`).
-    return rank(a) - rank(b) || born(b) - born(a);
-  });
-}
+/* the band ordering and its sort vocabulary live in `queue-model.ts` — see the note there */
+export type { QueueSortKey };
 
 /* ── small row pieces ────────────────────────────────────────────────────── */
 
@@ -765,65 +647,6 @@ function RowFooterLine({
   );
 }
 
-/* ── the attention transition ────────────────────────────────────────────── */
-
-/** how long the settle lasts — one `move`, then still */
-const ATTENTION_ANNOUNCE_MS = 900;
-
-/**
- * THE ATTENTION TRANSITION — the one status change this product animates.
- *
- * DESIGN.md says never animate status churn, and it is right: this dashboard
- * updates constantly, and if everything that changes also moves it is
- * unreadable exactly when it is busiest. Elapsed timers, counts, background
- * settling and self-initiated re-sorts all stay perfectly still.
- *
- * A run CROSSING INTO `Waiting on you` or `Failed` is different in kind. Those
- * are the two states allowed to shout; a run entering one has stopped being
- * background and become work, and the moment it happens is the moment the
- * operator is looking somewhere else. It fires on the EDGE, never on the state
- * — a row already waiting when you scrolled to it does nothing — never on
- * mount, once, and only for those two statuses.
- *
- * Implemented once, here. Do not re-derive it at a second call site.
- */
-export function useAttentionAnnounce(status: ProposedStatus): boolean {
-  const attention = status === "waiting" || status === "failed";
-  const previous = useRef<ProposedStatus | null>(null);
-  const [announcing, setAnnouncing] = useState(false);
-
-  useEffect(() => {
-    const was = previous.current;
-    previous.current = status;
-    // First sight of a row is not a transition. Mounting into an attention
-    // status is how EVERY row on a busy panel would announce itself on paint.
-    if (was === null || was === status) return;
-    if (!attention) return;
-    setAnnouncing(true);
-    const timer = window.setTimeout(() => setAnnouncing(false), ATTENTION_ANNOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [attention, status]);
-
-  return announcing;
-}
-
-/* ── the member well ─────────────────────────────────────────────────────── */
-
-/**
- * The two well shapes, as LINE COUNTS. `--ds-h-member-well` /
- * `--ds-h-member-well-open` are these same two numbers as pixels. Labels stay
- * word-only ("Expand" / "Collapse") so the disclosure does not restate a count
- * the chrome already carries. Exported so a test can pin the two against each
- * other rather than against a hand-typed literal in a string.
- */
-export const MEMBER_WELL_LINES = 5;
-export const MEMBER_WELL_OPEN_LINES = 20;
-
-/** A dedicated roster view accompanies every member set that can expand. */
-export function canViewAllMembers(memberCount: number): boolean {
-  return memberCount > MEMBER_WELL_LINES;
-}
-
 /**
  * The member line's column template.
  *
@@ -1022,43 +845,6 @@ const disclosureLink = cn(
   dsMotion.fast,
   "text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]",
 );
-
-/**
- * Members sort attention-first and keep the same one-line tracks (DESIGN.md:
- * "Member status changes order and ink, never row shape"). Within a tier the
- * SERVER's order is preserved — the client never re-sorts a projection.
- *
- * The VALUES are the demo's `MEMBER_ATTENTION_RANK`
- * (`demo-data.ts:4388-4397`), copied rather than re-derived: a member that
- * finished WITH WARNINGS ranks with `parked` at 2, because a warning is
- * something to look at, and `cancelled` sinks BELOW a clean done at 5/6 — a
- * member nobody ran is the least interesting line in the well, and the rebuild
- * had those two inverted (R3 finding 13).
- *
- * The TIEBREAK stays the rebuild's: the member's index in the served array, so
- * two members of the same status keep the projection's order. The demo falls
- * back to its fixture id, which is not an order any server produces.
- */
-const MEMBER_TIER: Record<ProposedStatus, number> = {
-  failed: 0,
-  waiting: 1,
-  doneWarnings: 2,
-  parked: 2,
-  running: 3,
-  queued: 4,
-  cancelled: 5,
-  verifiedDone: 6,
-};
-
-function orderMembers(members: readonly MemberSurfaceWire[]): MemberSurfaceWire[] {
-  return [...members]
-    .map((surface, index) => ({ surface, index }))
-    .sort((a, b) => {
-      const tier = MEMBER_TIER[dsStatusOf(a.surface.status)] - MEMBER_TIER[dsStatusOf(b.surface.status)];
-      return tier !== 0 ? tier : a.index - b.index;
-    })
-    .map(({ surface }) => surface);
-}
 
 function GroupMemberList({
   surface,
@@ -1656,38 +1442,6 @@ export function QueueRow({
   );
 }
 
-/* ── the panel ───────────────────────────────────────────────────────────── */
-
-/**
- * Members are contained by their operation and are drawn INSIDE it, so a member
- * surface is never also a top-level row. Containment is read from the served
- * `memberRunIds` / `lineage`, never re-decided here.
- */
-function partition(surfaces: readonly QueueSurfaceWire[]): {
-  top: QueueSurfaceWire[];
-  membersOf: Map<string, MemberSurfaceWire[]>;
-} {
-  const byRunId = new Map<string, MemberSurfaceWire>();
-  for (const surface of surfaces) {
-    if (surface.surfaceKind === "member") byRunId.set(surface.runId, surface);
-  }
-  const claimed = new Set<string>();
-  const membersOf = new Map<string, MemberSurfaceWire[]>();
-  for (const surface of surfaces) {
-    if (surface.surfaceKind !== "operation") continue;
-    const members: MemberSurfaceWire[] = [];
-    for (const runId of surface.memberRunIds) {
-      const member = byRunId.get(runId);
-      if (member === undefined) continue;
-      members.push(member);
-      claimed.add(runId);
-    }
-    membersOf.set(surface.runId, members);
-  }
-  const top = surfaces.filter((surface) => !claimed.has(surface.runId));
-  return { top, membersOf };
-}
-
 /**
  * The active filter, as the empty state must SAY it.
  *
@@ -1926,49 +1680,3 @@ export function QueuePanel({
   );
 }
 
-/**
- * The j/k traversal order for the current view — the SAME order the eye sees,
- * members included, so a keyboard walk and a scroll agree.
- */
-export function visibleRunIds(
-  surfaces: readonly QueueSurfaceWire[],
-  sort: QueueSortKey = "attention",
-  nowIso: string = new Date(0).toISOString(),
-): string[] {
-  const { top, membersOf } = partition(surfaces);
-  const ids: string[] = [];
-  for (const key of BAND_ORDER) {
-    const band = sortQueueBand(
-      top.filter((surface) => bandOf(dsStatusOf(surface.status)) === key),
-      sort,
-      nowIso,
-    );
-    for (const surface of band) {
-      ids.push(surface.runId);
-      for (const member of orderMembers(membersOf.get(surface.runId) ?? [])) ids.push(member.runId);
-    }
-  }
-  return ids;
-}
-
-/**
- * The rows that need the operator, in the order they are DRAWN — the `n`
- * binding's target (`app/global-keys.ts`).
- *
- * It filters `visibleRunIds` by the same `bandOf` the NEEDS YOU band header
- * draws from, so the key and the band physically cannot disagree about what
- * needs attention. A member of an attention band's group is in the list at its
- * own drawn position, which is where the eye finds it.
- */
-export function attentionRunIds(
-  surfaces: readonly QueueSurfaceWire[],
-  sort: QueueSortKey = "attention",
-  nowIso: string = new Date(0).toISOString(),
-): string[] {
-  const attention = new Set<string>(
-    surfaces
-      .filter((surface) => bandOf(dsStatusOf(surface.status)) === "attention")
-      .map((surface) => String(surface.runId)),
-  );
-  return visibleRunIds(surfaces, sort, nowIso).filter((runId) => attention.has(runId));
-}

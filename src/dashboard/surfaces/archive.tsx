@@ -159,13 +159,11 @@ import { DashboardClientError } from "../client/errors.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
 import { elapsedSecondsBetween, fmtClock, fmtElapsed, fmtInstantDay, plural } from "./format.js";
-import { dsStatusOf } from "./status.js";
+import { dsStatusOf } from "./status-model.js";
 import { FailureDetailBody, ReceiptEvidenceBody } from "./trust.js";
+import { ARCHIVE_INDEX, archivedRunTouchedTest } from "./archive-model.js";
 
 const SOURCE_SURFACE = "archive";
-
-/** The index sentinel: `?archive=` with no run id is the ledger itself. */
-export const ARCHIVE_INDEX = "";
 
 type ArchiveView = "runs" | "versions";
 type ArchiveTab = "summary" | "logs" | "data" | "people" | "evidence";
@@ -242,14 +240,7 @@ function queryIsFiltered(query: ArchiveQuery): boolean {
     || query.instance !== "all";
 }
 
-/**
- * Whether this archived run touched a TEST instance of any system. The fact is
- * the frozen row's own `resolvedInstances`, copied onto the index entry when
- * the archive projects — never inferred from a workflow id or a title.
- */
-export function archivedRunTouchedTest(entry: ArchiveEntryWire): boolean {
-  return entry.resolvedInstances.some((resolved) => resolved.instance === "test");
-}
+/* the test-instance predicate lives in `archive-model.ts` — see the note there */
 
 /** The systems whose TEST instance this run resolved, for the hazard's title. */
 function testInstanceSystems(entry: ArchiveEntryWire): readonly string[] {
@@ -1854,7 +1845,6 @@ function ChangeRecordBody({ record }: { record: ArchiveSweepWire["changeRecord"]
     </div>
   );
 }
-
 
 /** What the operator clicked Bump on, carried into the authoring dialog. */
 interface BumpAuthoring {

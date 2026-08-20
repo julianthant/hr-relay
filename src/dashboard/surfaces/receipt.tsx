@@ -23,7 +23,7 @@ import { Banner, DS_STATUS, EmptyState, MetaLine, SectionLabel, dsIcon, dsText }
 import { ReceiptEvidenceBody } from "./trust.js";
 import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
 import { fmtClock } from "./format.js";
-import type { OutcomeWire, TerminalOutcomeResult } from "./status.js";
+import type { OutcomeWire, TerminalOutcomeResult } from "./status-model.js";
 
 type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;
 export type ReceiptSectionPayload = Extract<RunDetailSectionResponse, { section: "receipt" }>["payload"];

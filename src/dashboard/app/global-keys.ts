@@ -39,8 +39,8 @@
  */
 import { useEffect } from "react";
 import { openContextMenuFor, useDsModalOpen } from "../ds/ui.js";
-import type { PanelTab } from "../surfaces/log-panel.js";
-import type { WorkflowPanelMode } from "../surfaces/shell.js";
+import type { PanelTab } from "../surfaces/log-panel-model.js";
+import type { WorkflowPanelMode } from "../surfaces/shell-model.js";
 
 export interface GlobalKeyBindings {
   /** `r` — the run-start dialog is workflow-global, so this needs no scope */

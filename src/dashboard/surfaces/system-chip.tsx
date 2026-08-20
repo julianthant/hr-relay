@@ -9,28 +9,16 @@
  * `toUpperCase()` would render `NEW-KRONOS` for a closed id whose operator
  * name is two words.
  */
-import { z } from "zod";
 import { cn } from "../lib/utils.js";
 import { dsClip, dsRadius, dsText } from "../ds/ui.js";
-import { BrowserSystemIdSchema } from "../../domain/ids.js";
+import { SYSTEM_LABEL, type BrowserSystemId } from "./system-chip-model.js";
 
-export type BrowserSystemId = z.infer<typeof BrowserSystemIdSchema>;
+export type { BrowserSystemId };
 
 const SYSTEM_CHIP =
   "border border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-recess-fg)]";
 
-/** Closed presentation labels for the closed system enum. */
-export const SYSTEM_LABEL: Record<BrowserSystemId, string> = {
-  ucpath: "UCPATH",
-  crm: "CRM",
-  onbase: "ONBASE",
-  kuali: "KUALI",
-  servicenow: "SERVICENOW",
-  i9: "I9",
-  "new-kronos": "NEW KRONOS",
-  "old-kronos": "OLD KRONOS",
-  sharepoint: "SHAREPOINT",
-};
+/* the label map lives in `system-chip-model.ts` — see the note there */
 
 /**
  * The dense system marker used inside a stream or a ledger row — the same atom

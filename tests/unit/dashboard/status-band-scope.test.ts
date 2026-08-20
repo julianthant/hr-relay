@@ -22,7 +22,7 @@ import {
   statusCount,
   totalCount,
   workflowStatusCounts,
-} from "../../../src/dashboard/surfaces/shell.js";
+} from "../../../src/dashboard/surfaces/shell-model.js";
 
 /**
  * Two workflows on one day, with deliberately different shapes — PARSED through

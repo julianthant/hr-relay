@@ -14,117 +14,20 @@
  * treatment — the demo's receipt notes it is the one verdict with no status
  * chip of its own, and the amber tint plus warnings word is its honest chip.
  */
-import type { ComponentType, SVGProps } from "react";
-import type { z } from "zod";
 import { cn } from "../lib/utils.js";
-import {
-  DS_STATUS,
-  StatusPill,
-  dsStatusAccessibleName,
-  dsStatusText,
-  dsText,
-  type DsStatus,
-} from "../ds/ui.js";
-import type { QueueStatusSchema } from "../../domain/dashboard/projection.js";
-import type { OutcomeWireSchema } from "../../domain/dashboard/run-detail.js";
+import { StatusPill, dsText } from "../ds/ui.js";
+import type {
+  OutcomeWire,
+  ProposedStatus,
+  QueueStatus,
+  TerminalOutcomeResult,
+} from "./status-model.js";
 
-export type QueueStatus = z.infer<typeof QueueStatusSchema>;
-export type OutcomeWire = z.infer<typeof OutcomeWireSchema>;
-export type TerminalOutcomeResult = Extract<OutcomeWire, { state: "terminal" }>["result"];
+export type { OutcomeWire, ProposedStatus, QueueStatus, TerminalOutcomeResult };
 
-/** The fixed wire→ds status mapping — exhaustive over the closed wire enum. */
-const WIRE_DS_STATUS: Record<QueueStatus, DsStatus> = {
-  queued: "queued",
-  running: "running",
-  blocked: "parked",
-  "awaiting-approval": "waiting",
-  done: "verifiedDone",
-  failed: "failed",
-  cancelled: "cancelled",
-  partial: "doneWarnings",
-};
+/* the wire types, the wire→ds maps, the two naming functions and the folded
+   status record all live in `status-model.ts` — see the note there */
 
-export function dsStatusOf(status: QueueStatus): DsStatus {
-  return WIRE_DS_STATUS[status];
-}
-
-/** The fixed terminal-outcome→ds mapping (doc 03 D22: verified-done renders as Done). */
-const OUTCOME_DS_STATUS: Record<TerminalOutcomeResult, DsStatus> = {
-  "verified-done": "verifiedDone",
-  "done-with-warnings": "doneWarnings",
-  failed: "failed",
-  cancelled: "cancelled",
-  partial: "doneWarnings",
-};
-
-export function outcomeDsStatusOf(result: TerminalOutcomeResult): DsStatus {
-  return OUTCOME_DS_STATUS[result];
-}
-
-export type ProposedStatus = DsStatus;
-
-interface ProposedStatusSpec {
-  label: string;
-  /**
-   * The name an `aria-label` must use. Equals `label` for six of the eight
-   * statuses; `doneWarnings` announces `Done with warnings` so it cannot
-   * collide with `verifiedDone`, whose visible word is also `Done` (D22,
-   * amended 2026-08-04). Never render this — it is the non-visual channel.
-   */
-  accessibleLabel: string;
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
-  /**
-   * Color alone — for a parent that wraps icon + text. Never put `iconClass`
-   * on that parent: it includes Running's rotation utility and would orbit the
-   * digit around the glyph.
-   */
-  soloTone: string;
-  /**
-   * The icon's class when it is rendered ALONE on a panel surface (a row's
-   * leading glyph), spin included. Not the in-chip tone — see `soloTone`.
-   */
-  iconClass: string;
-  /** what this status means for the operator */
-  meaning: string;
-}
-
-export const PROPOSED_STATUS: Record<ProposedStatus, ProposedStatusSpec> = Object.fromEntries(
-  (Object.keys(DS_STATUS) as ProposedStatus[]).map((status) => {
-    const spec = DS_STATUS[status];
-    return [
-      status,
-      {
-        label: spec.label,
-        accessibleLabel: dsStatusAccessibleName(status),
-        icon: spec.icon,
-        soloTone: spec.soloTone,
-        iconClass: cn(spec.soloTone, spec.spin && "animate-spin motion-reduce:animate-none"),
-        meaning: spec.meaning,
-      },
-    ];
-  }),
-) as Record<ProposedStatus, ProposedStatusSpec>;
-
-/**
- * A collapsed row must say how OLD the decision is, not just that there is one.
- * "Waiting on you" is a state; "Waiting on you · 10m" is a priority — it is the
- * difference between a queue you scan and a queue you triage.
- */
-export function statusText(status: ProposedStatus, age?: string): string {
-  return dsStatusText(status, age);
-}
-
-/**
- * The same status as a screen reader must hear it. Every `aria-label` (and
- * every `title` that stands in for one) names a status through THIS function;
- * `statusText` stays the visible word. The two differ only for `doneWarnings`,
- * which shares the visible word `Done` with `verifiedDone` and is separated on
- * screen by hue plus its `△ n` count chip — neither of which an assistive
- * technology can read.
- */
-export function statusAccessibleName(status: ProposedStatus, age?: string): string {
-  return dsStatusAccessibleName(status, age);
-}
 
 /**
  * The row-level status chip. A thin wrapper over the one ratified `StatusPill`

@@ -71,7 +71,7 @@ import {
   useDsEnterTransition,
   useToasts,
 } from "../ds/ui.js";
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import { identityGateArm } from "./identity-approve-model.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { composeCommandRequest, type CommandAction } from "../app/command-dispatch.js";
 import {
@@ -86,17 +86,7 @@ import {
 } from "../app/identity-ceremony.js";
 import { fmtClock } from "./format.js";
 
-/**
- * Which typed resolution a served descriptor names. Nothing else may open this
- * dialog — the wire's own `superRefine` already pins every action on this
- * section to a `resolve-gate` at the run's exact version, so an action that
- * names no resolution is a descriptor that changed shape under a surface
- * mid-flight, not a control to guess at.
- */
-export function identityGateArm(action: ActionDescriptorWire): "approved" | "rejected" | undefined {
-  if (action.kind !== "command" || action.command !== "resolve-gate") return undefined;
-  return action.resolution;
-}
+/* which arm a served gate command resolves lives in `identity-approve-model.ts` — see the note there */
 
 export interface IdentityApproveTarget {
   readonly gate: IdentityGateAvailable;
