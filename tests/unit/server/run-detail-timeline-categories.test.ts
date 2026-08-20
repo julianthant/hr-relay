@@ -23,13 +23,16 @@ import { defineTaskContract } from "../../../src/domain/contracts/base.js";
 import { ScenarioIdSchema, taskId } from "../../../src/domain/ids.js";
 import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
+import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
 import type { RunDetailDescriptorView } from "../../../src/server/dashboard/queries/run-detail.js";
 import { HASH_A } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   claimEventOf,
+  instantOffsetOf,
   makeWorld,
   queuedEventOf,
+  runRecordOf,
   traceOf,
   uuidOf,
   type DashboardWorld,
@@ -322,5 +325,170 @@ describe("D225 — the served categorical steps", () => {
     const detail = detailOf(w);
     assert.equal(detail.timeline.steps, undefined);
     assert.equal(detail.timeline.events.length, 1);
+  });
+});
+
+/* ── 3. D259 — the REPLAYED arm ──────────────────────────────────────────── */
+
+/**
+ * A replayed node emits no spans, by design (doc 02 §5.3), and this timeline
+ * folds spans — so replay was invisible to it and every replayed step came out
+ * `pending` on a run that had finished. Track C watched
+ * `Identity check — pending, took 0s` on the very gate the operator had
+ * approved a minute earlier (separations §9.22 item 3).
+ *
+ * The reader moves and nothing fabricates a span: the stored checkpoint is what
+ * says the step's fact is on file. Every arm below is one of the three
+ * conditions that keep the claim true.
+ */
+function checkpointOf(
+  w: DashboardWorld,
+  input: Readonly<{ nodeId: string; runSeed: number; attempt?: number; claimGeneration?: number }>,
+): void {
+  w.authority.putCheckpoint(RunCheckpointRecordSchema.parse({
+    workflowId: "person-lookup",
+    itemId: uuidOf(1 + 5000),
+    nodeId: input.nodeId,
+    attempt: input.attempt ?? 8,
+    ...(input.claimGeneration === undefined ? {} : { claimGeneration: input.claimGeneration }),
+    runId: uuidOf(input.runSeed),
+    output: { schemaHash: HASH_A, value: { value: "on file" } },
+    descriptorVersion: 1,
+    contractFingerprint: HASH_A,
+    implFingerprint: HASH_A,
+    provenance: [],
+    writtenAt: instantOffsetOf(0, 1_000),
+  }));
+}
+
+function terminal(w: DashboardWorld, outcome: "done" | "failed"): void {
+  w.authority.put(runRecordOf({
+    seed: 1,
+    lifecycle: {
+      state: "terminal",
+      outcome,
+      endedAt: instantOffsetOf(0, 90_000),
+      ...(outcome === "failed" ? { failureId: uuidOf(9001) } : {}),
+    },
+  }));
+}
+
+describe("D259 — a replayed node is not a node that never ran", () => {
+  it("renders a no-span node with an earlier run's checkpoint as REPLAYED", () => {
+    const w = world();
+    seedRun(w);
+    ranFor(w, "comparison", 3_000);
+    checkpointOf(w, { nodeId: "timecard", runSeed: 2, attempt: 8, claimGeneration: 2 });
+    terminal(w, "done");
+
+    const kronos = detailOf(w, CATEGORIES).timeline.steps?.find((step) => step.label === "Kronos timecard");
+    assert.equal(kronos?.state, "replayed");
+    // NEVER `took 0s`: a replay emits no span, so nothing measured it.
+    assert.equal(kronos?.durationSec, undefined);
+    assert.deepEqual(kronos?.members, [{
+      label: "Timecard",
+      state: "replayed",
+      replayedFrom: { attempt: 8, claimGeneration: 2 },
+    }]);
+  });
+
+  it("omits the claim generation a PRE-D214 row does not carry, rather than fabricating 1", () => {
+    const w = world();
+    seedRun(w);
+    ranFor(w, "comparison", 3_000);
+    checkpointOf(w, { nodeId: "timecard", runSeed: 2, attempt: 3 });
+    terminal(w, "done");
+
+    const kronos = detailOf(w, CATEGORIES).timeline.steps?.find((step) => step.label === "Kronos timecard");
+    assert.deepEqual(kronos?.members.at(0)?.replayedFrom, { attempt: 3 });
+  });
+
+  it("leaves a node with NEITHER span nor checkpoint exactly as it was", () => {
+    const w = world();
+    seedRun(w);
+    ranFor(w, "comparison", 3_000);
+    terminal(w, "done");
+
+    const kronos = detailOf(w, CATEGORIES).timeline.steps?.find((step) => step.label === "Kronos timecard");
+    assert.equal(kronos?.state, "pending");
+    assert.equal(kronos?.members.at(0)?.replayedFrom, undefined);
+  });
+
+  it("leaves a node that EXECUTED exactly as it was, checkpoint or not", () => {
+    const w = world();
+    seedRun(w);
+    ranFor(w, "timecard", 5_000);
+    checkpointOf(w, { nodeId: "timecard", runSeed: 2 });
+    terminal(w, "done");
+
+    const kronos = detailOf(w, CATEGORIES).timeline.steps?.find((step) => step.label === "Kronos timecard");
+    assert.equal(kronos?.state, "done");
+    assert.equal(kronos?.durationSec, 5);
+    assert.equal(kronos?.members.at(0)?.replayedFrom, undefined);
+  });
+
+  it("REFUSES the claim on a run that stopped elsewhere — a failed run never reached the node", () => {
+    // The load-bearing refusal. Only a terminal `done` run visited every node,
+    // so only there does "no span" rule out "the run stopped before this".
+    const w = world();
+    seedRun(w);
+    ranFor(w, "comparison", 3_000, "failed");
+    checkpointOf(w, { nodeId: "timecard", runSeed: 2 });
+    terminal(w, "failed");
+
+    const kronos = detailOf(w, CATEGORIES).timeline.steps?.find((step) => step.label === "Kronos timecard");
+    assert.equal(kronos?.state, "pending");
+  });
+
+  it("REFUSES the claim on a checkpoint THIS run wrote — that is an execution, not a replay", () => {
+    const w = world();
+    seedRun(w);
+    ranFor(w, "comparison", 3_000);
+    checkpointOf(w, { nodeId: "timecard", runSeed: 1 });
+    terminal(w, "done");
+
+    assert.equal(
+      detailOf(w, CATEGORIES).timeline.steps?.find((step) => step.label === "Kronos timecard")?.state,
+      "pending",
+    );
+  });
+
+  it("folds a category whose members MIXED replay and execution as done", () => {
+    // A category where something executed is a category that ran; the member
+    // list keeps the whole picture either way.
+    const w = world();
+    seedRun(w);
+    ranFor(w, "plan", 2_000);
+    checkpointOf(w, { nodeId: "document", runSeed: 2 });
+    terminal(w, "done");
+
+    const extraction = detailOf(w, CATEGORIES).timeline.steps?.[0];
+    assert.equal(extraction?.state, "done");
+    assert.deepEqual(extraction?.members.map((member) => member.state), ["replayed", "done"]);
+    // And the category's number is still only what was MEASURED.
+    assert.equal(extraction?.durationSec, 2);
+  });
+
+  it("keeps a settled GATE reading `done`, because its own durable record says so", () => {
+    // A gate never replays across runs (`replay-gate` reads this run's own
+    // `gate_results` row), so the gate arm is untouched by this decision.
+    const w = world();
+    seedRun(w);
+    ranFor(w, "comparison", 3_000);
+    w.writer.emit({
+      t: "gate.opened", ts: w.clock.now().toISOString(), workflow: "person-lookup",
+      runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1), gate: "identity-approval",
+    });
+    w.writer.emit({
+      t: "gate.resolved", ts: w.clock.now().toISOString(), workflow: "person-lookup",
+      runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1), gate: "identity-approval",
+      resolutionKey: "resolved", resultHash: HASH_A,
+    });
+    checkpointOf(w, { nodeId: "identity-approval", runSeed: 2 });
+    terminal(w, "done");
+
+    const identity = detailOf(w, CATEGORIES).timeline.steps?.find((step) => step.label === "Identity check");
+    assert.equal(identity?.state, "done");
+    assert.deepEqual(identity?.members.map((member) => member.state), ["done", "done"]);
   });
 });

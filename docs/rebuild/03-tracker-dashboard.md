@@ -694,6 +694,58 @@ reference records the per-event fallback. That is a corpus gap with an owner (D1
 a reference nobody takes is a defect nobody catches), and it closes with Track B's fixture work and
 its one deliberate re-freeze, not with a second re-freeze here.
 
+#### D259 — a REPLAYED step is its own arm, and it is never `pending` (2026-08-20)
+
+**The defect.** A replayed node emits no spans, by design (doc 02 §5.3 — "replayed nodes emit no
+spans" is the executor's structural replay policy), and this timeline folds spans. So a step whose
+checkpoint the run replayed had nothing to render and came out **`pending`**. Track C's connection
+proof watched a finished run report `Kuali extraction — pending`, `Job summary — pending` and
+`Identity check — pending, took 0s` — the last one on the very category whose gate the operator had
+personally approved a minute earlier — with `GET /api/v1/runs/:id` serving `steps[0].state =
+"pending"` after the run was terminal (separations §9.22 item 3). `pending` means *this has not
+happened yet*, which is false twice over: it did happen, and its result is the one the run consumed.
+
+**The fix is D144's shape — the reader moves, and nothing fabricates a span.** `TimelineStepWire.state`
+and its members gain a `replayed` arm, and a replayed member carries `replayedFrom` — the stored
+checkpoint's own `attempt` (D221's item attempt) and, when the row names one, its `claimGeneration`
+(D214's execution). A pre-D214 row names no generation, so the wire omits it rather than fabricating
+`1`. A replayed member carries **no duration**: a replay emits no span, so nothing measured it, and
+`0` would read as "it ran instantly" — the `took 0s` this decision exists to delete. The schema
+refuses both halves of the pairing (a `replayed` member with no source, a source on any other state)
+and refuses a measured replay.
+
+**Three conditions, each closing a way the claim could be false.** A step is `replayed` when it has
+no task span AND:
+
+1. **the run is terminal `done`** — only then did the executor visit every node, so "no span" cannot
+   also mean "the run stopped before reaching it". A failed or cancelled run keeps `pending`, because
+   nodes after the stop genuinely never ran while a prior run's checkpoints sit under them;
+2. **a checkpoint exists at `(workflow, itemId, nodeId)`** — the SAME item-scoped read the executor's
+   own planner makes (doc 02 §5.7);
+3. **a DIFFERENT run wrote it** — a row this run wrote is evidence the node executed HERE.
+
+A category is `replayed` only when EVERY member replayed; one member that executed makes it `done`,
+and the member disclosure carries the breakdown. A settled gate is untouched: a gate never replays
+across runs (`replay-gate` reads this run's own `gate_results` row), so it still reads `done` from
+its durable record.
+
+**On screen:** the hollow ring and outlined bar `skipped` uses — nothing happened HERE — in the
+verified-done hue, because the fact is settled; the word `replayed` where a measured step prints its
+duration; and the member line names `attempt N`. Hue is never the distinguisher: shape and word are.
+
+**Two residuals, stated rather than hidden.** A node this run's branch excluded — or whose declared
+`when` was false — while an EARLIER run of the same item executed it also lands in the replayed arm,
+because the executor's replay/skip decision is durable nowhere this projection reads; the trigger
+that closes it is D114's terminal `not-run` reasons reaching this query. And a node whose checkpoint
+THIS run wrote but whose spans are gone (a pruned stream) stays `pending`; "executed, span not
+folded" is a different honest arm and this build does not claim it.
+
+**Rejected:** emitting a span for a replayed node (it would make the executor's own replay policy
+untrue, and a synthetic span is exactly the fabrication D144 refused); inferring reach from the
+declared timeline order (a declared category order is author-controlled presentation, not a
+topological one); and leaving the fold alone and explaining `pending` in a tooltip (the wrong word is
+what the operator reads at a glance).
+
 ---
 
 ### D234 — the queue's model is runs and archived runs (2026-08-19)
@@ -1440,6 +1492,43 @@ re-enters the sequencer under the same attempt), or the first requirement that a
 to its node on the timeline. The fix then is D214's, applied at the producer: compose the beat path
 UNDER the node's own span path (`<nodeSpanPath>/<beat>`), which needs the executor to hand the
 sequencer the node span path it already computed.
+
+#### D258 — the timeline event id carries the OCCURRENCE ordinal, read forward (2026-08-20)
+
+**The rule.** A timeline event's `noteId` is `deterministicUuid("timeline:<runId>:<seed>")` where the
+seed is the event's whole span identity (`task:<attempt>:<spanPath>`, or the gate's own
+open/resolved seed). From D258 the seed carries the **occurrence ordinal at that seed within this
+run**: the first occurrence appends nothing, and the *n*-th appends `~<n>`. Ordinals are assigned
+over the sorted event list, so the earlier execution is always the one that keeps the base id.
+
+**Read forward exactly as D214's key is.** An ordinal of 1 appends nothing, so every id this
+projection has ever derived — and every id an archived `RunDetailWire` froze — stays byte-identical.
+Nothing on disk is rewritten: a span line is durable history (§2.3), and the repair belongs at the
+fold, never at the stream.
+
+**What it fixes, and why it was expensive.** Run `00419600-ef68-4e7d-8528-4705ad462bf5` /
+`sp-080639-0041` (2026-08-14) holds **two** `span.started` and **two** `span.ended` at the identical
+`(attempt 1, sp-080639-0041/timecard-search#1)` — a **pre-D214** gate resume re-executing an
+`always-rerun` node, both executions emitting the same span path because the path did not yet carry
+the claim generation. D255 made the FOLD keep them apart; the id mint still derived one id for both,
+so `RunDetailWireSchema`'s `timeline note ids must be unique` refused the whole wire and that run's
+detail answered **HTTP 400**. Because a version bump is one atomic act over every prior-version run
+and the archive freezes the record through this same projection, ONE unreadable run refused
+`apply-version-bump` with `SCHEMA_INVALID` for the entire workflow — **zero runs could archive, and
+there is no per-run skip** (skipping would contradict D179's claim that the archive holds the bytes
+the operator last saw). Separations §9.22 item 6 is the record; `run-detail-timeline-collision`
+seeds exactly that shape — two full start/end pairs at one identity, written by the production JSONL
+writer from two processes because its identity guard refuses a re-open in-process — and pins that
+the detail parses, the ids are distinct, both executions render with their OWN measurements, and the
+archive snapshot derives. Re-folded from the real 2026-08-14 lines and the real authority row, that
+run now serves **14 events / 14 distinct ids**, its two `Timecard Search` executions measured
+separately at 30.18 s and 30.48 s.
+
+**Rejected:** rewriting or de-duplicating the stream (durable history, and the second execution
+really happened); a random or content-hashed id (an id that moves per serve breaks the client's
+React seed and every frozen archived record); and making the wire's uniqueness refinement advisory
+(the refinement is what caught this — a projection serving two rows under one id is the collision
+D123 exists to prevent).
 
 ### 2.4 One command protocol with strict target families
 

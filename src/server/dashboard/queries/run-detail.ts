@@ -455,10 +455,65 @@ function foldCategoryState(states: readonly TimelineStepState[], runTerminal: bo
   if (states.includes("active")) return "active";
   if (states.includes("cancelled")) return "cancelled";
   if (states.every((state) => state === "pending")) return "pending";
-  if (states.every((state) => state === "done" || state === "skipped")) {
-    return states.includes("done") ? "done" : "skipped";
+  if (states.every((state) => state === "replayed")) return "replayed";
+  // D259 — a category where something executed is a category that RAN; a
+  // replayed member is settled work, so it never holds the fold back. Only a
+  // category whose members ALL replayed is `replayed`, and the member list
+  // carries the breakdown in every mixed case.
+  if (states.every((state) => state === "done" || state === "skipped" || state === "replayed")) {
+    return states.includes("done") ? "done" : states.includes("replayed") ? "replayed" : "skipped";
   }
   return runTerminal ? "pending" : "active";
+}
+
+/**
+ * D259 — WHERE a node with no span of its own got its fact, or why this build
+ * refuses to say.
+ *
+ * A replayed node emits no spans by design (doc 02 §5.3) and this timeline
+ * folds spans, so replay is invisible to it — which is how a terminal run
+ * rendered `Identity check — pending, took 0s` one minute after the operator
+ * approved that very gate (separations §9.22 item 3). The reader moves, exactly
+ * as D144/D203/D204 moved it: the stored checkpoint is read, and NOTHING
+ * fabricates a span.
+ *
+ * Three conditions, and each closes a way the claim could be false:
+ *
+ * 1. **The run is terminal `done`.** Only then did the executor visit every
+ *    node, so "no span" cannot mean "the run stopped before reaching it". A
+ *    failed or cancelled run keeps `pending` for exactly that reason: nodes
+ *    after the stop never ran, and prior-run checkpoints sit under them.
+ * 2. **A checkpoint exists at `(workflow, itemId, nodeId)`** — the SAME
+ *    item-scoped read the executor's planner itself makes (doc 02 §5.7).
+ * 3. **A DIFFERENT run wrote it.** A row this run wrote is evidence the node
+ *    executed HERE, so calling that a replay would be a second wrong word; the
+ *    honest arm for "executed, span not folded" (a pruned stream) is a
+ *    different one, and this build does not claim it.
+ *
+ * Residual, stated rather than hidden: a node this run's branch excluded — or
+ * whose declared `when` was false — while an EARLIER run of the same item did
+ * execute it also lands here, because the executor's replay/skip decision is
+ * durable nowhere this projection reads. The trigger that closes it is the
+ * terminal result's own `not-run` reasons (D114) reaching this query.
+ */
+function replaySourceOf(
+  deps: RunDetailQueryDeps,
+  authority: RunRecord,
+  nodeId: string,
+): { attempt: number; claimGeneration?: number } | undefined {
+  const { lifecycle } = authority;
+  if (lifecycle.state !== "terminal" || lifecycle.outcome !== "done") return undefined;
+  const stored = deps.authority.latestCheckpoint(
+    authority.envelope.workflow,
+    authority.envelope.itemId,
+    nodeId,
+  );
+  if (stored === undefined) return undefined;
+  if (stored.runId === authority.envelope.runId) return undefined;
+  return {
+    attempt: stored.attempt,
+    ...(stored.claimGeneration === undefined ? {} : { claimGeneration: stored.claimGeneration }),
+  };
 }
 
 /**
@@ -472,6 +527,7 @@ function buildTimelineSteps(
   timeline: NonNullable<RunDetailDescriptorView["timeline"]>,
   row: RunFoldRecord,
   runTerminal: boolean,
+  replaySource: (nodeId: string) => { attempt: number; claimGeneration?: number } | undefined,
 ): TimelineStepWire[] {
   type SpanFold = RunFoldRecord["taskSpans"][number];
   const spansByNode = new Map<string, SpanFold[]>();
@@ -484,7 +540,11 @@ function buildTimelineSteps(
   }
 
   const memberOf = (node: Readonly<{ id: string; label: string }>): {
-    label: string; state: TimelineStepState; durationMs?: number; executions: number;
+    label: string;
+    state: TimelineStepState;
+    durationMs?: number;
+    executions: number;
+    replayedFrom?: { attempt: number; claimGeneration?: number };
   } => {
     const executions = spansByNode.get(node.id) ?? [];
     if (executions.length === 0) {
@@ -494,6 +554,13 @@ function buildTimelineSteps(
       }
       if (row.resolvedGates.some((gate) => gate.gate === node.id)) {
         return { label: node.label, state: "done", executions: 0 };
+      }
+      // D259 — no span of its own, and a stored fact this run replayed. The
+      // arm is `replayed`, never `pending`, and it carries no duration: a
+      // replay emits no span, so nothing measured it.
+      const replayedFrom = replaySource(node.id);
+      if (replayedFrom !== undefined) {
+        return { label: node.label, state: "replayed", executions: 0, replayedFrom };
       }
       return { label: node.label, state: "pending", executions: 0 };
     }
@@ -529,6 +596,7 @@ function buildTimelineSteps(
         label: member.label,
         state: member.state,
         ...(member.durationMs === undefined ? {} : { durationSec: Math.round(member.durationMs / 1000) }),
+        ...(member.replayedFrom === undefined ? {} : { replayedFrom: member.replayedFrom }),
       })),
     };
   });
@@ -589,6 +657,38 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
     timelineEvents.push({ at: gate.resolvedAt, label: `gate:${gate.gate}`, state: "done", notRun: gateNotRun, durationMs: gateDuration, seed: `gate-resolved:${gate.gate}:${gate.resolvedAt}` });
   }
   timelineEvents.sort((a, b) => a.at.localeCompare(b.at) || a.seed.localeCompare(b.seed));
+  /**
+   * D258 — the OCCURRENCE ordinal, appended read-forward.
+   *
+   * `seed` is the whole span identity this build can emit — and a run written
+   * before D214 taught the span path its claim generation can hold two
+   * executions of one node at ONE `(attempt, spanPath)`: a gate park and its
+   * resume are two executions inside one attempt, and an `always-rerun` node
+   * re-executes across that boundary by design. Those lines are durable
+   * history and are never rewritten (doc 03 §2.3), so the id is disambiguated
+   * at the FOLD: the first execution at a seed keeps the id it has always had,
+   * and each further one appends `~<n>`. Read forward exactly as D214's own
+   * key is — an ordinal of 1 appends nothing, so every id this projection has
+   * ever derived stays byte-identical — while the second and later executions
+   * become the two distinct rows they truly were, instead of one duplicate id
+   * that `RunDetailWireSchema` refuses and that took the whole workflow's
+   * archive down with it (separations §9.22 item 6).
+   */
+  const seedOccurrences = new Map<string, number>();
+  const timelineWire = timelineEvents.map((event, index) => {
+    const occurrence = (seedOccurrences.get(event.seed) ?? 0) + 1;
+    seedOccurrences.set(event.seed, occurrence);
+    const seed = occurrence === 1 ? event.seed : `${event.seed}~${String(occurrence)}`;
+    return {
+      noteId: deterministicUuid(`timeline:${runId}:${seed}`),
+      sequence: index,
+      at: event.at,
+      label: event.label,
+      state: event.state,
+      notRun: event.notRun,
+      durationMs: event.durationMs,
+    };
+  });
 
   const openGate = row.openGates.at(-1);
   const lastResolved = row.resolvedGates.at(-1);
@@ -666,21 +766,20 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
       attempt: row.attempt,
     },
     timeline: {
-      events: timelineEvents.map((event, index) => ({
-        noteId: deterministicUuid(`timeline:${runId}:${event.seed}`),
-        sequence: index,
-        at: event.at,
-        label: event.label,
-        state: event.state,
-        notRun: event.notRun,
-        durationMs: event.durationMs,
-      })),
+      events: timelineWire,
       // D225: absent only when no registered descriptor can say what the
       // graph's shape is (a replayed historical workflow) — the client then
       // keeps the per-event strip, exactly as it does for pre-D225 archives.
       ...(descriptorView?.timeline === undefined
         ? {}
-        : { steps: buildTimelineSteps(descriptorView.timeline, row, authority.lifecycle.state === "terminal") }),
+        : {
+          steps: buildTimelineSteps(
+            descriptorView.timeline,
+            row,
+            authority.lifecycle.state === "terminal",
+            (nodeId) => replaySourceOf(deps, authority, nodeId),
+          ),
+        }),
     },
     gate,
     outcome,

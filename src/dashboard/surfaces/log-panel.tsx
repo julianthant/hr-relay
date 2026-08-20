@@ -229,6 +229,24 @@ const EVENT_TONE: Record<TimelineEvent["state"], { dot: string; bar: string; tex
   },
 };
 
+/**
+ * D259 — REPLAYED draws neither `done`'s solid bar nor `pending`'s empty one.
+ *
+ * The step's fact is settled, so it takes the verified-done hue; nothing
+ * happened in THIS run, so it keeps the hollow ring and outlined bar — the
+ * "nothing happened here" shape `skipped` uses — and the word beneath the bar
+ * says `replayed` where a measured step prints its duration. Hue is never the
+ * distinguisher: shape and word are.
+ */
+const STEP_TONE: Record<TimelineStep["state"], { dot: string; bar: string; text: string }> = {
+  ...EVENT_TONE,
+  replayed: {
+    dot: "border border-[color:var(--ds-status-verified-done-mark)] bg-transparent",
+    bar: "border border-[color:var(--ds-status-verified-done-mark)] bg-transparent",
+    text: "text-[color:var(--ds-fg-muted)]",
+  },
+};
+
 /** The one sentence a skipped step is allowed to say about itself. */
 const NOT_RUN_PHRASE: Record<"condition-false" | "branch-not-selected", string> = {
   "condition-false": "its condition was false",
@@ -266,10 +284,26 @@ function timelineEventLabel(event: TimelineEvent): string {
  * panel still never invents one.
  */
 type TimelineStep = NonNullable<RunDetailWire["timeline"]["steps"]>[number];
+type TimelineStepMember = TimelineStep["members"][number];
+
+/** The one sentence a replayed member is allowed to say about where it came from. */
+function replaySourceText(source: NonNullable<TimelineStepMember["replayedFrom"]>): string {
+  const execution = source.claimGeneration === undefined ? "" : `, execution ${String(source.claimGeneration)}`;
+  return `attempt ${String(source.attempt)}${execution}`;
+}
 
 function stepAriaLabel(step: TimelineStep, openedAt?: string): string {
   if (step.state === "blocked" && openedAt !== undefined) {
     return `${step.label} — waiting on you since ${fmtClock(openedAt)}`;
+  }
+  if (step.state === "replayed") {
+    // Never "took 0s": a replay emits no span, so nothing measured it, and the
+    // run did not do this work — it read what an earlier attempt recorded.
+    const sources = step.members
+      .map((member) => member.replayedFrom)
+      .filter((source): source is NonNullable<TimelineStepMember["replayedFrom"]> => source !== undefined)
+      .map(replaySourceText);
+    return `${step.label} — replayed from ${[...new Set(sources)].join(" and ")}; this run recorded no execution of its own`;
   }
   const duration = step.durationSec === undefined ? "" : `, took ${fmtElapsed(step.durationSec)}`;
   const executions = step.executions === undefined ? "" : `, a step in it ran ${String(step.executions)} times`;
@@ -291,9 +325,10 @@ function StepStrip({ steps, gate }: { steps: readonly TimelineStep[]; gate: RunD
   return (
     <div className="flex items-stretch gap-[var(--ds-space-hair)]">
       {steps.map((step, index) => {
-        const tone = EVENT_TONE[step.state];
+        const tone = STEP_TONE[step.state];
         const blocked = step.state === "blocked";
         const skipped = step.state === "skipped";
+        const replayed = step.state === "replayed";
         const anchorRight = steps.length > 2 && index >= steps.length - 2;
         return (
           <div key={step.label} className="group relative min-w-0 flex-1 basis-0">
@@ -332,9 +367,11 @@ function StepStrip({ steps, gate }: { steps: readonly TimelineStep[]; gate: RunD
               >
                 {blocked && openedAt !== undefined
                   ? `since ${fmtClock(openedAt)}`
-                  : step.durationSec !== undefined
-                    ? fmtElapsed(step.durationSec)
-                    : ""}
+                  : replayed
+                    ? "replayed"
+                    : step.durationSec !== undefined
+                      ? fmtElapsed(step.durationSec)
+                      : ""}
               </span>
               {step.executions !== undefined && (
                 <span className={cn(dsText.micro, dsText.nums, "shrink-0 font-bold text-[color:var(--ds-status-waiting-fg)]")}>
@@ -357,9 +394,10 @@ function StepStrip({ steps, gate }: { steps: readonly TimelineStep[]; gate: RunD
                 {step.members.map((member) => (
                   <li key={member.label} className={cn(dsText.micro, "flex items-baseline justify-between gap-2 text-[color:var(--ds-fg-muted)]")}>
                     <span className={cn(dsClip.text)}>{member.label}</span>
-                    <span className={cn(dsText.nums, "shrink-0", EVENT_TONE[member.state].text)}>
+                    <span className={cn(dsText.nums, "shrink-0", STEP_TONE[member.state].text)}>
                       {member.state}
                       {member.durationSec !== undefined ? ` · ${fmtElapsed(member.durationSec)}` : ""}
+                      {member.replayedFrom === undefined ? "" : ` · ${replaySourceText(member.replayedFrom)}`}
                     </span>
                   </li>
                 ))}

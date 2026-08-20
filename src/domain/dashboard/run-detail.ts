@@ -140,7 +140,28 @@ export const TimelineEventWireSchema = z.strictObject({
     });
   }
 });
-const TimelineStepStateSchema = z.enum(["pending", "active", "done", "failed", "blocked", "cancelled", "skipped"]);
+/**
+ * `replayed` is its own arm, and it is NOT a flavour of `pending` (D259).
+ *
+ * A node whose checkpoint this run replayed emits NO spans, by design (doc 02
+ * §5.3), and the timeline folds spans — so a step that replayed had nothing to
+ * render and came out `pending` on a run that had already finished. `pending`
+ * means *this has not happened yet*, which is false twice over on a terminal
+ * run: it did happen, and the fact it produced is the one the run consumed.
+ */
+const TimelineStepStateSchema = z.enum(["pending", "active", "done", "failed", "blocked", "cancelled", "skipped", "replayed"]);
+
+/**
+ * WHERE a replayed step's stored fact came from — the checkpoint row's own
+ * identity, never a derived one. `attempt` is the item's attempt that wrote it
+ * (D221) and `claimGeneration` is WHICH execution of that attempt (D214),
+ * absent for a row written before D214 because that row names none and a
+ * fabricated `1` would be a claim nobody recorded.
+ */
+export const TimelineReplaySourceSchema = z.strictObject({
+  attempt: z.number().int().positive(),
+  claimGeneration: z.number().int().positive().optional(),
+});
 
 /**
  * ONE member node's contribution to a categorical step (D225) — served so the
@@ -152,6 +173,26 @@ export const TimelineStepMemberWireSchema = z.strictObject({
   state: TimelineStepStateSchema,
   /** Sum of this node's measured execution durations; absent when none measured. */
   durationSec: z.number().int().nonnegative().optional(),
+  /** D259 — present exactly when this member replayed; see the refinement. */
+  replayedFrom: TimelineReplaySourceSchema.optional(),
+}).superRefine((member, context) => {
+  if ((member.state === "replayed") !== (member.replayedFrom !== undefined)) {
+    context.addIssue({
+      code: "custom",
+      path: ["replayedFrom"],
+      message: `a replayed member names the checkpoint it replayed and nothing else may: state ${member.state}`,
+    });
+  }
+  if (member.state === "replayed" && member.durationSec !== undefined) {
+    // A replayed node emitted no span, so nothing measured it. `0` would read
+    // as "it ran instantly", which is the `took 0s` this decision exists to
+    // delete from the surface.
+    context.addIssue({
+      code: "custom",
+      path: ["durationSec"],
+      message: "a replayed member has no measurement; a replay emits no span to measure",
+    });
+  }
 });
 
 /**
@@ -163,6 +204,10 @@ export const TimelineStepMemberWireSchema = z.strictObject({
  * marker when any member ran more than once (a gate park/resume re-running an
  * `always-rerun` node is the ordinary cause), so a re-execution folds into its
  * category instead of drawing a duplicate segment.
+ *
+ * A category is `replayed` (D259) only when EVERY member replayed; one member
+ * that executed makes the category `done`, and the member list carries the
+ * breakdown either way.
  */
 export const TimelineStepWireSchema = z.strictObject({
   label: z.string().min(1),
