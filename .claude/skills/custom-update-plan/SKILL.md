@@ -135,11 +135,31 @@ Rules that keep the tree honest:
 
 Also bump `asOf:` and `head:` (the HEAD you are updating FROM), the `## today:` line, and any tile the change moves.
 
+### The doc-side status block
+
+The other half of the binding carries its own checklist. Immediately under a tagged section's prose (one block per node id per doc):
+
+```
+<!-- roadmap-status: sep-1 -->
+- [x] the virtualized timecard read terminates on range coverage (D205, 2026-08-13)
+- [ ] the Kronos controlled commit — waits for 08-28
+> 2026-08-20 | docs-cohesion 05-separations | verified against src/stores/kronos/…; left: the commit proof
+<!-- /roadmap-status -->
+```
+
+Lines are `- [x| |~|?|-|!] text` (the same boxes as `builds:`, **no layer tag** — these are the doc's own checklist, not the plan's) and `> YYYY-MM-DD | session | note`. Blank lines are allowed; anything else in the block fails the render by line number. An EMPTY block is legal and renders as "not yet assessed" — say it rather than leaving the section silent.
+
+- **One block per node per doc.** A second block for the same id in the same file is refused; a tag may sit on any section, the block belongs to the one that owns the work.
+- **`[x]` only for what is landed at HEAD**, with its commit or D-number in the line's own text — the same bar as a `builds:` box.
+- **Notes are append-only**, like `log:` lines: correct a wrong one with a new one.
+- **`npm run roadmap -- --check` goes stale when a doc's status moves**, because the drawer renders these blocks ("From the docs", with a per-phase roll-up). Ticking a box in a doc and not regenerating fails the gate — which is the point.
+
 ## Step 1b — the `session` class (end-of-session procedure)
 
 Run this when a working session is ending — yours or a subagent's you are closing out. It is the whole class; the steps below replace nothing above, they order it.
 
 1. **Tick what LANDED.** For every node you touched this session, flip `builds:` boxes — `[x]` **only** for what is landed at HEAD, with the commit hash or D-number cited in the line's own text. A thing that is written but uncommitted, or committed on a branch that is not merged, is not `[x]`.
+1b. **Tick the status blocks of the doc sections you worked**, and leave a `>` note — same bar as a `builds:` box (`[x]` only at HEAD, commit/D cited), notes append-only.
 2. **One `log:` line per touched node**, appended to that node's `log:` block (create the block if the node has none):
    `- YYYY-MM-DD | <session> | what landed (commit) · what is left`
    The `<session>` name is the slug somebody can find later — the plan or handoff slug, or the dispatch unit (`docs-cohesion step 2b`, `separations 6c`, `track-d ratified`). Say what is LEFT as well as what landed; a line that only celebrates is a line the next agent cannot use.

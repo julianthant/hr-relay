@@ -2,10 +2,13 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import { PLAN_SOURCE_PATH, parsePlan } from "./roadmap/parse-plan.js";
+import { bindDocsToPlan, scanDocs, type DocBindingIndex, type NodeDocBinding } from "./roadmap/scan-docs.js";
 import {
   RoadmapSchema,
   type Chip,
+  type DocHeading,
   type DocRef,
+  type DocStatusBlock,
   type Feature,
   type Item,
   type Layer,
@@ -29,9 +32,16 @@ import {
  * the prerequisite links. The phase docs `docs/rebuild/00`–`05` stay normative;
  * the `/custom-update-plan` skill edits plan + site + owning docs together.
  *
+ * The page also renders the DOC side of the binding: every
+ * `<!-- roadmap: <id> -->` tag and `<!-- roadmap-status: <id> -->` block the
+ * rebuild docs carry (`scripts/roadmap/scan-docs.ts`) shows up in that node's
+ * drawer under "From the docs". So `--check` covers the docs too — ticking a
+ * status box in a doc makes the committed html stale, exactly as editing the
+ * plan does, and `npm run roadmap` is the one way to re-render either.
+ *
  *   npm run roadmap            # regenerate docs/roadmap/index.html
- *   npm run roadmap -- --check # fail if the committed html is stale
- *   npm run roadmap -- --json  # print the parsed plan (schema-validated) as JSON
+ *   npm run roadmap -- --check # fail if the committed html is stale (plan OR docs moved)
+ *   npm run roadmap -- --json  # print the parsed plan + doc bindings (schema-validated) as JSON
  */
 
 // ─── inline markup: escape first, then `code`, **bold**, auto D-numbers ────
@@ -229,10 +239,130 @@ function renderLog(log: LogEntry[] | undefined): string {
   return `<div class="slog"><div class="dl">Session log</div><ul>${items}</ul></div>`;
 }
 
+// ─── the doc side: what the rebuild docs say about this node ───────────────
+
+/**
+ * A node's doc checklist, rolled up. `sections` counts only blocks that carry
+ * at least one item — an empty block is a section nobody has assessed yet, and
+ * counting it would report progress against a denominator of nothing.
+ * `firstOpen` is the first not-done item in reading order (this node's docs,
+ * then each child's in turn): the honest answer to "where do I start".
+ */
+interface DocProgress {
+  done: number;
+  total: number;
+  sections: number;
+  firstOpen: { text: string; doc: string } | undefined;
+}
+
+const NO_DOC_PROGRESS: DocProgress = { done: 0, total: 0, sections: 0, firstOpen: undefined };
+
+/** One row of "From the docs": everything ONE document says about this node. */
+interface DocSectionRow {
+  doc: string;
+  headings: DocHeading[];
+  block: DocStatusBlock | undefined;
+}
+
+/**
+ * One row per document, sorted by path so the page is a pure function of the
+ * scan. A doc may tag the node from more than one section (the tags carry the
+ * headings, joined) while the format allows it only ONE status block, which is
+ * why the block is a single slot and the headings are a list.
+ */
+function docSectionRows(binding: NodeDocBinding | undefined): DocSectionRow[] {
+  if (binding === undefined) return [];
+  const rows = new Map<string, DocSectionRow>();
+  const rowFor = (doc: string): DocSectionRow => {
+    const existing = rows.get(doc);
+    if (existing !== undefined) return existing;
+    const fresh: DocSectionRow = { doc, headings: [], block: undefined };
+    rows.set(doc, fresh);
+    return fresh;
+  };
+  for (const tag of binding.tags) rowFor(tag.doc).headings.push(tag.heading);
+  for (const block of binding.statuses) {
+    const row = rowFor(block.doc);
+    if (row.headings.length === 0) row.headings.push(block.heading);
+    row.block = block;
+  }
+  return [...rows.values()].sort((a, b) => (a.doc < b.doc ? -1 : a.doc > b.doc ? 1 : 0));
+}
+
+function ownDocProgress(rows: DocSectionRow[]): DocProgress {
+  let done = 0;
+  let total = 0;
+  let sections = 0;
+  let firstOpen: DocProgress["firstOpen"];
+  for (const row of rows) {
+    const items = row.block?.items ?? [];
+    if (items.length > 0) sections += 1;
+    for (const item of items) {
+      total += 1;
+      if (item.box === "done") done += 1;
+      else if (firstOpen === undefined) firstOpen = { text: item.text, doc: row.doc };
+    }
+  }
+  return { done, total, sections, firstOpen };
+}
+
+function mergeDocProgress(a: DocProgress, b: DocProgress): DocProgress {
+  return {
+    done: a.done + b.done,
+    total: a.total + b.total,
+    sections: a.sections + b.sections,
+    firstOpen: a.firstOpen ?? b.firstOpen,
+  };
+}
+
+function docHeadingLabel(heading: DocHeading): string {
+  return heading.section === undefined ? inline(heading.text) : `§${escapeHtml(heading.section)} ${inline(heading.text)}`;
+}
+
+/**
+ * "From the docs": per document, the section that names this node and that
+ * section's own checklist — ticks muted once done, notes newest-first like the
+ * session log. A tagged section whose block is empty says so IN WORDS: "not yet
+ * assessed" is a different fact from "nothing to do", and the drawer must not
+ * make them look alike. A node no doc names renders nothing at all — that gap
+ * is the `roadmap-doc-binding` guard's to report, not the page's.
+ */
+function renderFromDocs(rows: DocSectionRow[], rollup: DocProgress | undefined): string {
+  if (rows.length === 0 && rollup === undefined) return "";
+  const roll = rollup === undefined
+    ? ""
+    : `<p class="droll">docs: <b>${String(rollup.done)} of ${String(rollup.total)}</b> items done across ${String(rollup.sections)} section${rollup.sections === 1 ? "" : "s"}${
+        rollup.firstOpen === undefined
+          ? ""
+          : ` · first open: ${inline(rollup.firstOpen.text)} <span class="dpath">${escapeHtml(rollup.firstOpen.doc)}</span>`
+      }</p>`;
+  const body = rows
+    .map((row) => {
+      const head = `<div class="dsh"><span class="dpath">${escapeHtml(row.doc)}</span> ${row.headings.map(docHeadingLabel).join(" · ")}</div>`;
+      const items = row.block?.items ?? [];
+      const notes = row.block?.notes ?? [];
+      if (items.length === 0 && notes.length === 0) return `<div class="dsec">${head}<p class="dna">not yet assessed</p></div>`;
+      const ticks = items.length === 0
+        ? ""
+        : `<div class="feat"><ul>${items.map((item) => `<li class="${item.box}"><i class="fm ${item.box}"></i>${inline(item.text)}</li>`).join("")}</ul></div>`;
+      const ordered = [...notes].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+      const log = ordered.length === 0
+        ? ""
+        : `<div class="slog"><ul>${ordered
+            .map((note) => `<li><span class="sd">${escapeHtml(note.date)}</span> · <span class="ss">${escapeHtml(note.session)}</span> — ${inline(note.text)}</li>`)
+            .join("")}</ul></div>`;
+      return `<div class="dsec">${head}${ticks}${log}</div>`;
+    })
+    .join("");
+  return `<div class="fdocs"><div class="dl">From the docs</div>${roll}${body}</div>`;
+}
+
 // ─── the tree: every phase is a root on the time spine; its items branch right ─
 
 interface TreeNode {
   key: string;
+  /** The node's DECLARED `{#id}`, where it has one — `key` may be a synthesised positional key, and a doc binds ids. */
+  nodeId: string | undefined;
   kind: "phase" | "item" | "flag";
   status: Status;
   title: string;
@@ -244,6 +374,9 @@ interface TreeNode {
   features: ResolvedFeature[];
   requires: Requirement[];
   detail: string;
+  /** "From the docs", filled by `attachDocs` once the subtree exists — a roll-up needs its children. */
+  docHtml: string;
+  docProgress: DocProgress;
   children: TreeNode[];
   depth: number;
   x: number;
@@ -284,6 +417,7 @@ function buildItemNode(item: Item, parentKey: string, index: number, registry: M
   ].join("");
   return {
     key,
+    nodeId: item.id,
     kind: "item",
     status: item.status,
     title: item.title,
@@ -295,6 +429,8 @@ function buildItemNode(item: Item, parentKey: string, index: number, registry: M
     features,
     requires: item.requires ?? [],
     detail,
+    docHtml: "",
+    docProgress: NO_DOC_PROGRESS,
     children: (item.items ?? []).map((child, i) => buildItemNode(child, key, i, registry)),
     depth: 0, x: 0, y: 0, w: NODE_W, h: NODE_H, rowCenter: 0,
   };
@@ -312,6 +448,7 @@ function buildPhaseNode(node: PhaseNode, registry: Map<string, Registered>): Tre
   ].join("");
   return {
     key: node.id,
+    nodeId: node.id,
     kind: "phase",
     status: node.status,
     title: node.title,
@@ -323,9 +460,28 @@ function buildPhaseNode(node: PhaseNode, registry: Map<string, Registered>): Tre
     features,
     requires: node.requires ?? [],
     detail,
+    docHtml: "",
+    docProgress: NO_DOC_PROGRESS,
     children: node.items.map((item, i) => buildItemNode(item, node.id, i, registry)),
     depth: 0, x: 0, y: 0, w: NODE_W, h: PHASE_H, rowCenter: 0,
   };
+}
+
+/**
+ * Hang the docs' own status on the tree, bottom-up: every node's `docProgress`
+ * covers its WHOLE SUBTREE (a phase's count is its tasks' counts, which is the
+ * only reading that answers "how much of this phase have the docs closed"), and
+ * a node with children also prints the roll-up line. Mutates in place like the
+ * layout pass does, and for the same reason: a roll-up is a fact about a node
+ * AND its descendants, so it cannot be computed while the node is being built.
+ */
+function attachDocs(node: TreeNode, docs: DocBindingIndex): DocProgress {
+  const rows = docSectionRows(node.nodeId === undefined ? undefined : docs.get(node.nodeId));
+  let progress = ownDocProgress(rows);
+  for (const child of node.children) progress = mergeDocProgress(progress, attachDocs(child, docs));
+  node.docProgress = progress;
+  node.docHtml = renderFromDocs(rows, node.children.length > 0 && progress.total > 0 ? progress : undefined);
+  return progress;
 }
 
 /** Stack a node's descendants beneath it, indented and narrowed one step per level; returns the y below the last one. */
@@ -441,7 +597,7 @@ interface Band {
   session?: string;
 }
 
-function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { svg: string; data: Record<string, { title: string; html: string; requires: string[]; unlocks: string[]; parent: string | null; children: string[] }> } {
+function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>, docs: DocBindingIndex): { svg: string; data: Record<string, { title: string; html: string; requires: string[]; unlocks: string[]; parent: string | null; children: string[] }> } {
   const roots: TreeNode[] = [];
   const bands: Band[] = [];
   let cursor = PAD;
@@ -450,6 +606,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
   for (const node of roadmap.spine) {
     if (node.kind === "phase") {
       const root = buildPhaseNode(node, registry);
+      attachDocs(root, docs);
       const bandHeight = layoutPhase(root, cursor);
       roots.push(root);
       cursor += bandHeight + BAND_GAP;
@@ -581,7 +738,15 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
         ? `<text class="pc ${node.chip.tone ?? node.status}" x="${N(node.x + 12)}" y="${N(node.y + node.h - 11)}">${escapeHtml(node.chip.text.replace(/\*\*/g, "").toUpperCase())}</text>`
         : "";
       const phaseBar = isPhase ? "" : squares + more + info;
-      return `<a class="${cls}" href="#${node.key}" data-key="${node.key}" aria-label="${escapeHtml(`${node.title} — ${node.status}`)}"><g><rect class="bx" x="${N(node.x)}" y="${N(node.y)}" width="${N(node.w)}" height="${N(node.h)}" rx="${isPhase ? "10" : "8"}"/>${eyebrow}${dot}<text class="tt" x="${N(node.x + 26)}" y="${N(titleY)}">${title}</text>${phaseBar}${isPhase ? chip : right}</g></a>`;
+      // the doc-progress tick: a hairline along the card's bottom edge, below
+      // both the layer squares and the meta line, so it adds a reading without
+      // taking any room. Absent when no doc has assessed this node's subtree.
+      const doc = node.docProgress;
+      const tickW = node.w - 24;
+      const tick = doc.total === 0
+        ? ""
+        : `<rect class="dpt" x="${N(node.x + 12)}" y="${N(node.y + node.h - 4)}" width="${N(tickW)}" height="2" rx="1"/><rect class="dpt on" x="${N(node.x + 12)}" y="${N(node.y + node.h - 4)}" width="${N((tickW * doc.done) / doc.total)}" height="2" rx="1"/>`;
+      return `<a class="${cls}" href="#${node.key}" data-key="${node.key}" aria-label="${escapeHtml(`${node.title} — ${node.status}`)}"><g><rect class="bx" x="${N(node.x)}" y="${N(node.y)}" width="${N(node.w)}" height="${N(node.h)}" rx="${isPhase ? "10" : "8"}"/>${eyebrow}${dot}<text class="tt" x="${N(node.x + 26)}" y="${N(titleY)}">${title}</text>${phaseBar}${isPhase ? chip : right}${tick}</g></a>`;
     })
     .join("");
 
@@ -593,12 +758,15 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
   for (const node of all) {
     const entry = registry.get(node.key);
     const chip = node.chip !== undefined && node.chip.text.toLowerCase() === node.status ? undefined : node.chip;
-    const header = `<div class="dh"><span class="chip ${node.status}">${node.status === "you" ? "needs you" : node.status}</span>${renderChip(chip, node.status)}${node.size === undefined ? "" : `<span class="size">${node.size}</span>`}${node.eyebrow === undefined ? "" : `<span class="eb2">${inline(node.eyebrow)}${node.kind === "phase" && node.whenSecondary !== undefined ? ` · ${inline(node.whenSecondary)}` : ""}</span>`}</div>`;
+    const docn = node.docProgress.total === 0
+      ? ""
+      : `<span class="docn" title="doc checklist items done — this node and everything under it">${String(node.docProgress.done)}/${String(node.docProgress.total)} docs</span>`;
+    const header = `<div class="dh"><span class="chip ${node.status}">${node.status === "you" ? "needs you" : node.status}</span>${renderChip(chip, node.status)}${node.size === undefined ? "" : `<span class="size">${node.size}</span>`}${docn}${node.eyebrow === undefined ? "" : `<span class="eb2">${inline(node.eyebrow)}${node.kind === "phase" && node.whenSecondary !== undefined ? ` · ${inline(node.whenSecondary)}` : ""}</span>`}</div>`;
     data[node.key] = {
       title: node.title,
-      // title → chip/status line → doc: refs → summary → builds → needs →
-      // unlocks → table → notes → session log (the last six are `detail`)
-      html: header + renderDocs(node.docs) + node.detail,
+      // title → chip/status + n/m docs → doc: refs → summary → builds → needs
+      // → unlocks → table → notes → session log (`detail`) → from the docs
+      html: header + renderDocs(node.docs) + node.detail + node.docHtml,
       requires: node.requires.flatMap((r) => (r.kind === "node" ? [r.ref] : [])),
       unlocks: entry?.unlocks ?? [],
       parent: parentOf.get(node.key) ?? null,
@@ -708,11 +876,13 @@ const CSS = String.raw`
   .tree .planned.avail .bx{stroke:var(--fg-2);stroke-width:2}
   .tree .phase .bx{stroke-width:2}
   .tree .nd.sel .bx{stroke:var(--accent);stroke-width:3;stroke-dasharray:none;filter:drop-shadow(0 0 6px var(--accent-quiet))}
-  .tree .nd.dim .bx,.tree .nd.dim text,.tree .nd.dim .st,.tree .nd.dim .fq{opacity:.35}
+  .tree .nd.dim .bx,.tree .nd.dim text,.tree .nd.dim .st,.tree .nd.dim .fq,.tree .nd.dim .dpt{opacity:.35}
   .tree .fq{fill:var(--card);stroke:var(--fg-4);stroke-width:1.2}
   .tree .fq.frontend{stroke:var(--info-mark)} .tree .fq.both{stroke:var(--accent)} .tree .fq.wiring{stroke:var(--warn-mark)} .tree .fq.backend{stroke:var(--fg-3)} .tree .fq.docs,.tree .fq.proof{stroke:var(--fg-4)}
   .tree .fq.done{fill:var(--fg-3)} .tree .fq.frontend.done{fill:var(--info-mark)} .tree .fq.both.done{fill:var(--accent)} .tree .fq.wiring.done{fill:var(--warn-mark)} .tree .fq.backend.done{fill:var(--fg-3)} .tree .fq.docs.done,.tree .fq.proof.done{fill:var(--fg-4)}
   .tree .fq-more{fill:var(--fg-3);font-family:var(--mono);font-size:9px}
+  /* the doc-progress tick: a hairline, muted in both themes — it must read as a hint, never as a second status */
+  .tree .dpt{fill:var(--line-strong)} .tree .dpt.on{fill:var(--fg-3)}
   .tree .flag rect{fill:var(--well);stroke:var(--line)} .tree .flag circle{fill:var(--ok-mark)} .tree .flag text{fill:var(--fg-2);font-size:11.5px}
   /* a session is a working day, not a ratified milestone: hollow dot, dashed pill, its own eyebrow */
   .tree .sess rect{fill:transparent;stroke:var(--line-strong);stroke-dasharray:4 3} .tree .sess circle{fill:var(--card);stroke:var(--fg-3);stroke-width:2}
@@ -753,6 +923,16 @@ const CSS = String.raw`
   .slog li{color:var(--fg-2);font-size:12.5px;padding-left:9px;border-left:2px solid var(--line)}
   .slog .sd{font-family:var(--mono);font-size:11px;color:var(--fg-3);font-variant-numeric:tabular-nums}
   .slog .ss{font-family:var(--mono);font-size:11px;color:var(--accent)}
+  /* ─ from the docs: the doc sections' own checklists ─ */
+  .docn{font-family:var(--mono);font-size:10.5px;color:var(--fg-3);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+  .droll{margin:0 0 2px;font-size:12.5px;color:var(--fg-2)} .droll b{color:var(--fg);font-weight:600}
+  .fdocs .dsec{margin-top:9px;padding-left:9px;border-left:2px solid var(--line)}
+  .fdocs .dsh{font-family:var(--mono);font-size:10.5px;line-height:1.6;color:var(--fg-3);overflow-wrap:anywhere}
+  .fdocs .dsh code{font-size:1em;background:none;padding:0}
+  .fdocs .dpath{color:var(--fg-4)}
+  .fdocs .feat{margin-top:3px} .fdocs .feat li{font-size:12.5px} .fdocs .feat li.done{color:var(--fg-4)}
+  .fdocs .slog{margin-top:6px} .fdocs .slog li{border-left:none;padding-left:0}
+  .fdocs .dna{margin:2px 0 0;font-size:12px;color:var(--fg-4);font-style:italic}
   .note{margin:10px 0 0;padding:9px 12px;border-radius:8px;background:var(--well);border:1px solid var(--line);font-size:12.5px;color:var(--fg-2)}
   .note.you{border-color:var(--warn-mark);background:var(--warn-quiet)} .note.you b{color:var(--warn)}
   footer{padding:5px 16px;border-top:1px solid var(--line);font-size:11px;color:var(--fg-3);background:var(--card);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -846,9 +1026,9 @@ const JS = String.raw`
 })();
 `;
 
-function renderPage(roadmap: Roadmap): string {
+function renderPage(roadmap: Roadmap, docs: DocBindingIndex): string {
   const registry = collectRegistry(roadmap);
-  const { svg, data } = renderCanvas(roadmap, registry);
+  const { svg, data } = renderCanvas(roadmap, registry, docs);
   const tiles = roadmap.tiles
     .map((t) => `<div class="tile${t.hot ? " hot" : ""}"><div class="k">${inline(t.label)}</div><div class="v">${inline(t.value)}</div>${t.sub === undefined ? "" : `<div class="s">${inline(t.sub)}</div>`}</div>`)
     .join("");
@@ -905,11 +1085,13 @@ if (argv.length > 1 || (argv.length === 1 && argv[0] !== "--check" && argv[0] !=
 }
 const raw: unknown = parsePlan(await readFile(SOURCE, "utf8"));
 const roadmap = RoadmapSchema.parse(raw);
-const html = renderPage(roadmap);
+const docs = bindDocsToPlan(roadmap, await scanDocs(ROOT));
+const html = renderPage(roadmap, docs);
 
 if (argv[0] === "--json") {
-  // the parsed plan, for inspection and for tools that want the structure without the page
-  process.stdout.write(`${JSON.stringify(roadmap, null, 2)}\n`);
+  // the parsed plan plus the docs' side of the binding, for inspection and for
+  // tools that want the structure without the page
+  process.stdout.write(`${JSON.stringify({ ...roadmap, docs: Object.fromEntries(docs) }, null, 2)}\n`);
 } else if (argv[0] === "--check") {
   const committed = await readFile(TARGET, "utf8").catch(() => "");
   if (committed !== html) {
