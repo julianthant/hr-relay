@@ -583,6 +583,21 @@ receives a local filesystem path and never guesses capture aspect ratio.
 Pure presentation helpers may map a closed enum to an icon, token, tab order, or explanatory copy.
 They may not decide whether a run is safe, complete, startable, reviewable, or actionable.
 
+**D264 (2026-08-20) — the descriptor registry leaves the browser bundle, amending D251.** The
+`workflow metadata/start methods/system instances` row above names `descriptor/config projection`
+as the owner and §0.1 says the frontend renders finished read models; the run modal does neither.
+`dashboard-app.tsx:25` imports `WORKFLOW_DESCRIPTORS` and `:516` joins it by `descriptor.id`
+against the bootstrap's own workflow list for exactly three fields — `summary`, `enqueue` and
+`surfaces.inputRun` (the typed-input surface carrying D250's declared examples); the picker's other
+rows (`label`, `categoryId`, `role`, `code`) are served already. **Those three are therefore SERVED
+over `FrontendBootstrapWire` and the frontend drops the registry import** — Track D row D11
+(`docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.5). D251's reasoning, that the bundle
+already carries them so a wire would be a second source (§8.2), is superseded on its own premise:
+the import is what makes the bundle a source, and a projection with no registry beside it is ONE
+source. D251's other findings stand. Until D11 lands the import — 49 modules, 22 % of the bundle's
+module closure, for three plain fields — is a KNOWN divergence from this table, named here rather
+than left for the next reader to discover.
+
 ---
 
 ## 5. Surface-to-backend wiring matrix
@@ -1250,6 +1265,17 @@ Budgets are measured on the local production build with a realistic large fixtur
 
 Concrete latency/size thresholds are recorded from the first Person Lookup vertical slice rather
 than invented in planning; they then become non-regression gates for later workflows.
+
+**D264 (2026-08-20) — Track D's D4/D5 supply the first numbers, and the numbers become the gates.**
+The thresholds this section defers to the first Person Lookup slice were never recorded: that slice
+shipped and nothing measured it. Track D's **D4** (patch-splice without a whole-day re-parse, `memo`
+on the three hot panels) and **D5** (bounded read scans) are the FIRST measurement, taken on the
+local production build against a seeded **1,240-row / 108-member** fixture — legacy's real volume —
+and the recorded numbers become the non-regression gates named above. Rows D1–D5 are `planned`;
+D6–D10 — the maintainability slice, including the virtualized list this section's virtualize-or-page
+bullet owes — stay `proposed` behind one named trigger: **before the second migration's
+`Dashboard · wire` task starts.** Ordering, evidence and per-row scope:
+`docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.3, §5.
 
 ---
 

@@ -180,6 +180,15 @@ maintainability slice and can be dispatched as independent worktree units after 
 
 ## 6 · What needs YOU
 
+**Ratified 2026-08-20 → D264** (doc 13 §4 + §7.4; `docs/rebuild/04-reconciliation.md` round 87;
+plan node `{#track-d}` in `docs/rebuild/14-roadmap.md`). The operator ruled all three:
+**(1) placement** — Track D under `{#dash-defaults}` after Track C, which is done, so the
+fold-into-Track-C alternative expired; **(2) §3.5** — `WORKFLOW_DESCRIPTORS` MOVES out of the
+bundle, bootstrap serves the three start-surface fields and the frontend drops the registry import,
+filed as new row **D11** amending D251; **(3) scope** — **D1–D5 `planned`**, D6–D10 `proposed`
+behind one named trigger: before the second migration's `Dashboard · wire` task starts.
+
+
 1. **Ratify the placement** — Track D in the 2026-08-18 plan, after Track C, before the next
    workflow's dashboard consumption. (Alternative: fold D1–D5 into Track C's close-out and defer
    D6–D10 to a named later trigger. I recommend the former; D6–D10 are exactly the kind of work that

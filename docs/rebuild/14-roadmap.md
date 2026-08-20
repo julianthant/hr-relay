@@ -250,7 +250,7 @@ needs:
 
 ### Dashboard defaults — the generic surfaces every workflow inherits {#dash-defaults}
 status: active
-chip: B landed · C proving · D proposed
+chip: B+C done · D ratified (D264)
 size: L
 
 > Built ONCE so a migration only wires it: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity, explorer. Track B finished the surfaces with separations as the forcing function; Track C is proving the connection against a real run; Track D hardens the stack before cutover. A workflow's own "Dashboard · wire" task sits under that workflow and reads this node as its prerequisite.
@@ -292,26 +292,30 @@ builds:
 needs:
 - track-b
 #### Track D · dashboard hardening, pre-cutover budgets {#track-d}
-status: proposed
-chip: proposed 2026-08-20 — awaiting your ruling
+status: planned
+date: D264 · audit 2026-08-20
+chip: ratified 2026-08-20 (D264) · D1–D5 planned · D6–D10 proposed
 
-> From today's architecture audit (`docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Ten ordered moves, none a rewrite; sequenced after Track C, before the next workflow leans on the dashboard. Doubles as the first measurement of doc 13 §7.4's performance budgets — a cutover exit criterion.
+> From the 2026-08-20 architecture audit (`docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Eleven ordered moves, none a rewrite, sequenced after Track C and before the next workflow leans on the dashboard. **Ruled by D264:** the track sits here under the dashboard defaults; D1–D5 are planned; D6–D10 stay proposed behind one named trigger; and §3.5 is answered — the descriptor registry LEAVES the browser bundle as row D11, amending D251. D4 and D5 double as the FIRST measurement of doc 13 §7.4's performance budgets, whose recorded numbers become the non-regression gates for every later workflow.
 
 builds:
-- [?] BE D1 one status/outcome derivation (the detail panel drops two arms the queue has)
-- [?] BOTH D2 hygiene: dead hooks/exports, typed 404, the inert phone-host gate, the D253 sentence
-- [?] FE D3 every command settlement through `settleCommandResult`
-- [?] FE D4 patch-splice without re-parsing the whole day + `memo`; record §7.4's first numbers
-- [?] BE D5 bound the read scans (member preview, notes corpus, duplicate receipt reads)
-- [?] FE D6 `useResource` in `state/`
-- [?] FE D7 split `LoadedApp`
-- [?] BOTH D8 models for intake / archive / log-panel; one task-span fold
-- [?] FE D9 virtualized list primitive
-- [?] WIRE D10 one CAS transport
+- [ ] BE D1 one status/outcome derivation — exported `deriveRunStatus`, ONE `TASK_OUTCOME` vocabulary, ONE `panelKindOf`; the detail panel stops disagreeing with the queue row (closes C1/C2, part of M3)
+- [ ] BOTH D2 hygiene — dead hooks and exports deleted, a typed not-found error instead of message-sniffing, the inert phone-host gate wired or deleted with its D189 note, `testSystemsOf`/`plural`/`shortHash` unified, the D253 sentence corrected (closes C3/C4/M7/M8)
+- [ ] FE D3 every command settlement folds through `settleCommandResult` — 7 sites still enumerate both refusal arms by hand (closes C5)
+- [ ] BOTH D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; then MEASURED against a seeded 1,240-row / 108-member fixture and recorded as doc 13 §7.4's first numbers (closes P1)
+- [ ] BE D5 bound the read scans — the member preview slices ids before joining, one receipt read per row, the notes reader scoped by workflow and day range, the archive freeze reads the corpus once; measured and recorded (closes P2/P3/P4)
+- [?] FE D6 `useResource` in `state/` over `async-resource.ts` — the nine hand-copied fetch effects migrate and `state/` becomes what doc 13 §2 says it is (closes M2)
+- [?] FE D7 split `LoadedApp` along its own seams — `useDayRoute`/`useRunDetailState`/`useBulkSelection` into `app/*-model.ts`, the five takeover layouts into `app/takeovers.tsx` (closes M1)
+- [?] BOTH D8 models for intake / archive / log-panel, the versioning half of `archive.tsx` split out, and ONE `foldTaskExecutions(row)` for pipeline / timeline / archive (closes M3/M5/M6)
+- [?] FE D9 a virtualized list primitive in `ds/`, adopted by queue / logs / archive, then re-measured (closes P5)
+- [?] BOTH D10 one CAS transport — `expectedVersion` in the body everywhere, the `intake.prepare` double-parse dropped (closes M4)
+- [ ] BOTH D11 the descriptor registry LEAVES the bundle — bootstrap serves the three start-surface fields the modal reads (`summary`, `enqueue`, `surfaces.inputRun`) and `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import (amends D251; doc 13 §4)
 
 needs:
 - track-c
-- you: rule placement, the descriptor-bundle question (§3.5), and scope (D1–D3 / D1–D5 / all)
+- fact(met): operator ruling 2026-08-20 — D1–D5 planned, D6–D10 proposed, §3.5 → move (D264)
+
+note: D6–D10 are the maintainability slice and carry ONE trigger — they start before the second migration's `Dashboard · wire` task does, and until then they stay proposed; once D1–D5 land they can be dispatched as independent worktree units.
 ### Separations — order 8, the first migration {#order-8}
 status: planned
 size: XL

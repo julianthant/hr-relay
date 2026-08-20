@@ -259,6 +259,8 @@ assertion paired against a direct authority-database check so the UI can't be ma
 homework. Close with the ONE deliberate parity re-freeze. When you name the canary, the same pass
 re-runs over the real commits as Track A's final evidence.
 
+### Track D — dashboard hardening, pre-cutover budgets — ratified 2026-08-20 (D264), see the audit plan (`docs/plans/2026-08-20-dashboard-architecture-audit.md`)
+
 ---
 
 ## 7 · Needed from YOU — the decisions, in detail
