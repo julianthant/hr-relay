@@ -205,8 +205,17 @@ export interface ArchivedRunDerivationInput {
   readonly drift: readonly VersionDriftReason[];
   readonly archivedBy: string;
   readonly archivedAt: string;
-  /** The workflow's label as the registry serves it NOW, frozen into the record. */
+  /**
+   * The workflow's label and SHORT CODE as the registry serves them NOW, frozen
+   * into the record (D179, D242).
+   *
+   * They are ONE lookup's two answers and the caller must pass them that way:
+   * `undefined` on both means the descriptor is no longer registered, and the
+   * record's own refinement refuses a half-resolved pair rather than freezing a
+   * label beside a blank code.
+   */
   readonly workflowLabel: string | undefined;
+  readonly workflowCode: string | undefined;
 }
 
 export function deriveArchivedRunRecord(input: ArchivedRunDerivationInput): ArchivedRunRecord {
@@ -244,6 +253,9 @@ export function deriveArchivedRunRecord(input: ArchivedRunDerivationInput): Arch
     workflowLabel: input.workflowLabel === undefined
       ? { state: "absent", reason: `${run.envelope.workflow} was already unregistered when this run was archived` }
       : { state: "present", value: input.workflowLabel },
+    workflowCode: input.workflowCode === undefined
+      ? { state: "absent", reason: `${run.envelope.workflow} was already unregistered when this run was archived` }
+      : { state: "present", value: input.workflowCode },
     traceId: run.envelope.traceId,
     archivedIdentity: {
       workflowId: run.envelope.workflow,

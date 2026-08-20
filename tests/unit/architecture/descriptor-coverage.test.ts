@@ -24,23 +24,35 @@ import {
   INTAKE_PROJECTIONS,
   SERVER_REGISTRY,
   WORKFLOW_MODULES,
+  WORKFLOW_IDS_BY_CODE,
   WORKFLOW_ROLES,
   auditImplBindings,
+  auditWorkflowCodes,
   auditWorkflowModuleBindings,
   auditWorkflowModuleRoles,
   intakeProjectionRegistry,
   readPendingImplBindings,
+  workflowCodeRegistry,
   workflowRoleRegistry,
 } from "../../../src/control/workflow-registry.js";
 import { flow } from "../../../src/base/flow.js";
 import { defineWorkflowDescriptor, workflowProjections } from "../../../src/base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { CANONICAL_FIELDS } from "../../../src/domain/fields/registry.js";
-import { BrowserSystemIdSchema, FingerprintSchema, TaskIdSchema } from "../../../src/domain/ids.js";
+import {
+  BrowserSystemIdSchema,
+  FingerprintSchema,
+  TaskIdSchema,
+  TraceIdSchema,
+} from "../../../src/domain/ids.js";
 import { defineIntakeProjection } from "../../../src/domain/intake/projection.js";
 import { BUILD_MANIFEST, BUILD_MANIFEST_PATH } from "../../../src/domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
-import { ICON_NAMES, STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
+import {
+  ICON_NAMES,
+  STANDARD_WORKFLOW_ACTIONS,
+  WorkflowCodeSchema,
+} from "../../../src/domain/workflow/presentation.js";
 import {
   WorkflowModuleRoleSchema,
   defineWorkflowRole,
@@ -179,6 +191,49 @@ describe("descriptor coverage", () => {
       /which is not a registered workflow/,
     );
     assert.doesNotThrow(() => workflowRoleRegistry(WORKFLOW_MODULES));
+  });
+
+  /**
+   * The SHORT CODE, and the one cross-descriptor fact about it (doc 02 §1.1,
+   * D242). Well-formedness is the factory's — it refuses a bad code where the
+   * code is authored — so what is left here is uniqueness, which no descriptor
+   * can check about itself, plus the composed fact that makes uniqueness
+   * matter: the code is the leading segment of every trace id this program
+   * mints, so two workflows sharing one would make a stored identifier name
+   * two things.
+   */
+  it("declares one unique short code per workflow, and every code composes a legal trace id", () => {
+    assert.deepEqual(auditWorkflowCodes(DESCRIPTORS), []);
+    for (const descriptor of DESCRIPTORS) {
+      assert.ok(
+        WorkflowCodeSchema.safeParse(descriptor.code).success,
+        `${String(descriptor.id)} declares code ${descriptor.code}, which is not two to four lowercase letters`,
+      );
+      // The second consumer, executed rather than described: a code the trace
+      // schema would refuse is a code that cannot start a run.
+      assert.ok(
+        TraceIdSchema.safeParse(`${descriptor.code}-000619-4ebf`).success,
+        `${String(descriptor.id)}'s code cannot compose a trace id`,
+      );
+    }
+    assert.deepEqual(
+      Object.values(WORKFLOW_IDS_BY_CODE).sort(),
+      DESCRIPTORS.map((descriptor) => String(descriptor.id)).sort(),
+    );
+
+    // The negative arm runs the real audit against a colliding corpus, because
+    // a check that only ever sees the passing registry cannot fail.
+    const [first, second] = DESCRIPTORS;
+    if (first === undefined || second === undefined) {
+      throw new Error("the code fixtures require at least two registered workflows");
+    }
+    const collided = DESCRIPTORS.map((descriptor) =>
+      descriptor === second ? { ...descriptor, code: first.code } : descriptor);
+    const violations = auditWorkflowCodes(collided);
+    assert.match(violations.join("\n"), /a short code names exactly one workflow/);
+    assert.match(violations.join("\n"), new RegExp(String(second.id)));
+    assert.throws(() => workflowCodeRegistry(collided), /a short code names exactly one workflow/);
+    assert.doesNotThrow(() => workflowCodeRegistry(DESCRIPTORS));
   });
 
   it("resolves every contract's placement, example, freshness, and provenance", () => {

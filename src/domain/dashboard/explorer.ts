@@ -41,6 +41,7 @@ import { SecretNameSchema } from "../secret-names.js";
 import { UiCatalogEntrySchema } from "../ui/contracts.js";
 import { NodeConditionSchema } from "../workflow/node-condition.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
+import { WorkflowCodeSchema } from "../workflow/presentation.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 
 /**
@@ -430,7 +431,7 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
   label: z.string().min(1),
   /** D229 — the descriptor's own sentence about what this workflow does. */
   summary: ExplorerProseWireSchema,
-  code: z.string().min(1),
+  code: WorkflowCodeSchema,
   icon: z.string().min(1),
   category: z.string().min(1),
   /**

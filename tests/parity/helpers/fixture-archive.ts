@@ -131,7 +131,7 @@ const ARCHIVED_DETAIL = {
 
 export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.parse({
   wireVersion: 1,
-  archiveSchemaGeneration: 1,
+  archiveSchemaGeneration: 3,
   generatedAt: at(120),
   currentAppVersion: FIXTURE_APP_VERSION,
   entries: [{
@@ -139,6 +139,7 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
     traceId: "pl-090400-aa11",
     workflowId: "person-lookup",
     workflowLabel: "Person Lookup",
+    workflowCode: { state: "present", value: "pl" },
     title: "EID 10873698",
     status: "done",
     archivedIdentity: { workflowId: "person-lookup", descriptorVersion: 1, contractFingerprint: PRIOR_HASH },
@@ -182,6 +183,7 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
   versionState: [{
     workflowId: "person-lookup",
     workflowLabel: "Person Lookup",
+    workflowCode: "pl",
     current: { workflowId: "person-lookup", descriptorVersion: 2, contractFingerprint: FIXTURE_DESCRIPTOR_HASH },
     archivable: 0,
     // The load-bearing half of the corpus: a parked write that a bump must
@@ -233,7 +235,8 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
 });
 
 /**
- * D223's frozen sections, at archive schema generation 2 — the payloads the
+ * D223's frozen sections, carried by a generation-3 record (D242 added the
+ * frozen short code beside the frozen label) — the payloads the
  * five tabs render. The corpus photographs the range on purpose: log lines at
  * two levels, data entries dated by both a live and a derived observation, a
  * member row, an attempt history with a REAL retry in it (attempt 1 failed a
@@ -348,11 +351,12 @@ const ARCHIVED_SECTIONS = {
 
 export const FIXTURE_ARCHIVED_RUN: ArchivedRunDetailWire = ArchivedRunDetailWireSchema.parse({
   wireVersion: 1,
-  archiveSchemaGeneration: 2,
+  archiveSchemaGeneration: 3,
   runId: ARCHIVED_RUN_ID,
   applicationId: SWEEP_ID,
   workflowId: "person-lookup",
   workflowLabel: "Person Lookup",
+  workflowCode: { state: "present", value: "pl" },
   archivedIdentity: { workflowId: "person-lookup", descriptorVersion: 1, contractFingerprint: PRIOR_HASH },
   appVersion: { state: "present", value: "0.0.9" },
   drift: ["descriptor-version", "contract-fingerprint"],
@@ -411,7 +415,7 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
   workflows: [
     {
       workflowId: "person-lookup",
-      registration: { state: "registered", label: "Person Lookup", categoryId: "people" },
+      registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "people" },
       runs: 9,
       completion: { readBack: 5, warnings: 1, warningsUnknown: 0 },
       failed: 1, cancelled: 0, partial: 0, open: 2,

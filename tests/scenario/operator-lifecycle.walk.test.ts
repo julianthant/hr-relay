@@ -701,6 +701,7 @@ describe("the operator lifecycle, across slices", () => {
       descriptors: [{
         id: String(INTAKE_V2.id),
         label: INTAKE_V2.label,
+        code: INTAKE_V2.code,
         version: INTAKE_V2.version,
         contractFingerprint: INTAKE_V2.contractFingerprint,
       }],

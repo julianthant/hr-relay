@@ -32,6 +32,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentatio
 import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { buildArchiveIndex, buildArchivedRunDetail } from "../../src/server/dashboard/queries/archive.js";
+import { ArchivedRunRecordSchema } from "../../src/domain/archive/model.js";
 import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
 import { createLedgerProjector } from "../../src/infra/ledger/index.js";
 import { UcpathCreateTermination } from "../../src/domain/contracts/ucpath/create-termination.js";
@@ -40,7 +41,12 @@ import type { ArchiveRunSnapshot } from "../../src/services/archive/archive-serv
 import { planStart } from "../../src/services/start/plan.js";
 import { HASH_A, HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
-import { ARCHIVED_RUN, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "./fixtures/archive-fixtures.js";
+import {
+  ARCHIVED_RUN,
+  ARCHIVED_RUN_WITH_SECTIONS,
+  VERSION_BUMP_APPLICATION,
+  VERSION_PLAN_ROW,
+} from "./fixtures/archive-fixtures.js";
 import { ledgerCommitFixture } from "./fixtures/ledger-projection-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 
@@ -534,6 +540,61 @@ describe("the D80 archive model", () => {
       detail.sections.state === "absent" ? detail.sections.reason : "",
       /schema generation 1, which predates D223/u,
     );
+
+    // The SAME rule for D242's frozen short code, one generation later. The
+    // record holds no code, the wire says so and names its generation, and
+    // nothing derives one from the trace id's `pl-` prefix — which would look
+    // right and be wrong for a run planned under a code since changed.
+    assert.equal(stored?.workflowCode, undefined);
+    assert.equal(detail.workflowCode.state, "absent");
+    assert.match(
+      detail.workflowCode.state === "absent" ? detail.workflowCode.reason : "",
+      /schema generation 1, which predates D242's frozen workflow short code/u,
+    );
+  });
+
+  /**
+   * The generation-3 writer rules (D242), asserted at the schema rather than
+   * through a sweep: a WRITER may not adopt the read-forward shape, and the
+   * label and the code come from ONE registry lookup so they cannot disagree
+   * about whether the descriptor resolved.
+   */
+  it("refuses an archived record whose frozen code and generation disagree, in both directions", () => {
+    const generation3 = {
+      ...ARCHIVED_RUN,
+      archiveSchemaGeneration: 3,
+      sections: ARCHIVED_RUN_WITH_SECTIONS.sections,
+      workflowCode: { state: "present" as const, value: "pl" },
+    };
+    assert.equal(ArchivedRunRecordSchema.safeParse(generation3).success, true);
+
+    // A generation-3 record that names no code would be indistinguishable from
+    // one written before codes were frozen.
+    const { workflowCode: _dropped, ...codeless } = generation3;
+    const refusedCodeless = ArchivedRunRecordSchema.safeParse(codeless);
+    assert.equal(refusedCodeless.success, false);
+    assert.match(
+      JSON.stringify(refusedCodeless.error?.issues ?? []),
+      /must carry the workflow's frozen short code/u,
+    );
+
+    // And the other direction: a record claiming an older generation cannot
+    // carry bytes that generation never had.
+    const refusedEarly = ArchivedRunRecordSchema.safeParse({ ...ARCHIVED_RUN, workflowCode: generation3.workflowCode });
+    assert.equal(refusedEarly.success, false);
+    assert.match(
+      JSON.stringify(refusedEarly.error?.issues ?? []),
+      /predates D242's frozen short code/u,
+    );
+
+    // Half-resolved: a label present beside an absent code describes a
+    // registry lookup that both succeeded and failed.
+    const refusedSplit = ArchivedRunRecordSchema.safeParse({
+      ...generation3,
+      workflowCode: { state: "absent", reason: "person-lookup was already unregistered when this run was archived" },
+    });
+    assert.equal(refusedSplit.success, false);
+    assert.match(JSON.stringify(refusedSplit.error?.issues ?? []), /present or absent together/u);
   });
 
   it("archives a run that FILED a ledger line, and resolves it back from the archive", () => {

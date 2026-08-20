@@ -29,6 +29,46 @@ export const WorkflowCategorySchema = z.enum([
 ]);
 export type WorkflowCategory = z.infer<typeof WorkflowCategorySchema>;
 
+/**
+ * The workflow's SHORT CODE — the operator-facing handle that fits in a column
+ * (doc 02 §1.1, D242).
+ *
+ * It has exactly ONE declaration site (the descriptor) and two consumers, and
+ * that is the whole point of this schema existing in `presentation.ts` rather
+ * than as three regexes in three files:
+ *
+ *  - `deriveTraceId` composes `<code>-<HHMMSS>-<runId4>`, so the code is
+ *    already stamped on every run, span, note and ledger line this program has
+ *    ever written; and
+ *  - the archive index, the Activity per-workflow table and the version
+ *    registry print it beside the label, because at 800 rows `Separation
+ *    Documents v1` costs the name column real width and `sd v1` does not.
+ *
+ * Those two were built five months apart and the second one nearly minted a
+ * SECOND code, which would have given one workflow two short names — the
+ * operator reading `sd-141203-9a1c` in a log and `sep v1` in the archive would
+ * have had nothing telling them the two name the same thing. One declaration,
+ * two readers.
+ *
+ * Two to four LOWERCASE LETTERS. Letters only, because a code sits directly in
+ * front of a digit run in every trace id and `s1-000619-4ebf` reads as one
+ * opaque blob rather than a workflow followed by a time. Two is enough for
+ * everything registered today; four is the room a later collision needs, and
+ * widening the bound now costs nothing while widening it after a stored trace
+ * id exists costs a reader that must accept both shapes forever.
+ *
+ * UNIQUENESS is NOT checkable here — one code cannot see its siblings — and it
+ * is not optional either: two workflows sharing `sd` would make a trace prefix
+ * ambiguous and an archive row lie about which workflow it belongs to. The
+ * composition root refuses a duplicate at load (`auditWorkflowCodes`), which is
+ * the one place the whole registry is in scope.
+ */
+export const WorkflowCodeSchema = z.string().regex(
+  /^[a-z]{2,4}$/,
+  "workflow code must be two to four lowercase letters",
+);
+export type WorkflowCode = z.infer<typeof WorkflowCodeSchema>;
+
 /** What a run is *about* — drives the subject column and the delegation subject. */
 export const InputSubjectSchema = z.enum(["eid", "name", "email", "document", "none"]);
 export type InputSubject = z.infer<typeof InputSubjectSchema>;

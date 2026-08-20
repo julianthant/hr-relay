@@ -2991,6 +2991,27 @@ the rail's level instead: attention reaches the operator through the Status Bar'
 `Needs you` total and the notification inbox, neither of which is rail-scoped. Counts, labels,
 registration and §3.2 obligations are all unmoved from D219.
 
+**Amended again (D241, 2026-08-19): a proving workflow heads `Test equipment`, not an HR
+category.** D220 removed the proving workflow from the rail and left it where it was everywhere
+else — so `kuali-timekeeper-annotation` still headed the Run Modal's picker and the Explorer under
+**Operations**, beside daily work, which is what the operator was asking about (*"a crash test
+dummy is not a workflow … maybe it belongs in a different category, perhaps in test"*). A
+descriptor's `category` answers *which HR area does this touch*; for a workflow that exists to
+prove the write kernel that is the wrong question with a plausible answer, and a plausible wrong
+answer is worse than none. So the ONE grouping rule reads the module's ROLE for these entries and
+not their category: an entry whose role is `proving` groups under the heading **`Test equipment`**,
+appended after every listed and unlisted category, on every surface that lists it. It appears
+exactly once — it is lifted out of the category pass, never duplicated into it — and the group
+DROPS when nothing proving is served, exactly as an empty category does. The rail is unchanged in
+behaviour: it already filters to `standalone` + `composition`, so the new group arrives empty there
+and drops. The picker's AUTO-PICK set narrows to the same pair on the same argument (D219's "a
+dialog that opens on a step the operator did not ask for" holds one level out: it must not open on
+test equipment either); the workflow stays startable from its own panel and from the picker's
+`Test equipment` group, because a proof nobody can re-run is not a standing proof. The heading
+lives in `dashboard/surfaces/workflow-category.ts` beside the category order and the nesting rule —
+a rail-side or picker-side id list is exactly the workflow-specific customization the role model
+exists to avoid.
+
 **One composed action bar** replaces the two stacked bars above the queue. The status filters are
 one *group* inside it, not a band of their own; the two composites (`All` / `Needs you`) are a
 segmented control — a different shape for a different kind of thing — and a **zero-count status
@@ -3186,6 +3207,22 @@ workflow LABEL is frozen into the record too: resolving it at read time would be
 on the archived path, and falling back to the id would substitute a plausible value for one nobody
 recorded. Evidence is pointers only — the content-addressed bytes, the checkpoints and the ledger
 lines all stay exactly where they are.
+
+**The workflow's SHORT CODE is frozen beside the label (D242, generation 3).** The index row's
+leading identity token is `<code> v<N>` — `sd v1`, not `Separation Documents v1` — because at 800
+rows a full label costs the name column real width and the code costs four characters; the whole
+label moves to the row's `title`, so nothing is lost, it moves to the hover. Every argument the
+frozen label makes applies unchanged, and one more: `traceId.slice(0, indexOf("-"))` looks like a
+free derivation and is silently wrong for exactly the case a frozen field exists for — a run
+planned under a code the workflow has since changed. Both facts come from ONE registry lookup at
+sweep time, so the record refuses a half-resolved pair (a label present beside an absent code) and
+the sweep passes both from a single `resolve`. Two absences reach the wire and each keeps its own
+sentence: a record written before generation 3 holds no code at all, and a record swept after its
+workflow was unregistered says so itself. A row whose code is absent falls back to its LABEL, which
+is a real name the record holds, and puts the reason in the title — never a derived code. The
+version registry and the Activity per-workflow table print the CURRENT registry's code beside the
+label; the Activity CSV gives it its own column rather than gluing it onto the label, because a
+spreadsheet sorts and filters columns. The code itself is doc 02 §1.1.1's.
 
 **The three arms, and where each refusal is computed:**
 

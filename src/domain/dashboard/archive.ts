@@ -29,6 +29,8 @@ import { ArchiveRetentionWireSchema } from "../archive/retention.js";
 import { ArchivedRunSectionsSchema } from "../archive/sections.js";
 import { ResolvedLedgerLineWireSchema } from "../archive/ledger-resolution.js";
 import { SemverSchema, VersionScopeSchema } from "../commands.js";
+import { WorkflowCodeSchema } from "../workflow/presentation.js";
+
 import {
   ActorIdSchema,
   FingerprintSchema,
@@ -44,12 +46,31 @@ import { QueueStatusSchema, QueueSurfaceWireSchema, ResolvedInstanceSchema } fro
 import { FailureDetailWireSchema, RunDetailWireSchema } from "./run-detail.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
 
+/**
+ * The archived run's FROZEN short code, as a listing surface reads it
+ * (doc 02 §1.1.1, D242).
+ *
+ * It is an absence union and the label beside it is a plain string, which is
+ * not an inconsistency: a label that was never frozen degrades to the workflow
+ * ID, which is a real name the operator can act on, while a code has no such
+ * fallback. `separations-kuali-read` in the code column would be neither short
+ * nor a code, and `traceId.slice(0, indexOf("-"))` would be a derivation that
+ * is silently wrong for the one case the frozen field exists for — a run
+ * planned under a code the workflow has since changed. So an absent code says
+ * WHY, and the row renders its version tag without one.
+ */
+const ArchivedWorkflowCodeWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), value: WorkflowCodeSchema }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+
 /** One row of the Archive index — enough to list and filter, never to act. */
 export const ArchiveEntryWireSchema = z.strictObject({
   runId: RunIdSchema,
   traceId: TraceIdSchema,
   workflowId: WorkflowIdSchema,
   workflowLabel: z.string().min(1),
+  workflowCode: ArchivedWorkflowCodeWireSchema,
   title: z.string().min(1),
   status: QueueStatusSchema,
   archivedIdentity: WorkflowVersionIdentitySchema,
@@ -114,6 +135,12 @@ export type ArchiveSweepWire = z.infer<typeof ArchiveSweepWireSchema>;
 export const WorkflowVersionStateWireSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   workflowLabel: z.string().min(1),
+  /**
+   * The registry's CURRENT code (D242). Plain, not an absence union: this row
+   * is re-derived per request from a registered descriptor, so there is no
+   * state in which it exists without one.
+   */
+  workflowCode: WorkflowCodeSchema,
   current: WorkflowVersionIdentitySchema,
   /** Terminal prior-version runs — the ones a bump would archive. */
   archivable: z.number().int().nonnegative(),
@@ -179,6 +206,7 @@ export const ArchivedRunDetailWireSchema = z.strictObject({
   applicationId: VersionBumpApplicationIdSchema,
   workflowId: WorkflowIdSchema,
   workflowLabel: z.string().min(1),
+  workflowCode: ArchivedWorkflowCodeWireSchema,
   archivedIdentity: WorkflowVersionIdentitySchema,
   appVersion: ArchivedAppVersionSchema,
   drift: z.array(VersionDriftReasonSchema).min(1),

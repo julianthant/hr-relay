@@ -64,40 +64,57 @@ harness and declares `plan: not-composed`" — but that fact is not projected to
 
 ## `kuali-timekeeper-annotation` sits in the rail as a main workflow, but is a proving workflow
 
-**Recorded:** 2026-08-14 · **Status:** triaged — ratified as **D220** the same day (doc 02
-§1.2.1 gains the `proving` arm; doc 03 §Shell's rail amendment drops `chunk-harness` and
-`proving` entries; implemented in `module-role.ts`, the kuali-timekeeper module, and
-`buildWorkflowRailGroups`) · **Owning docs:** doc 02 §1.2.1, doc 03 §Shell
+**Recorded:** 2026-08-14 · **Status:** RESOLVED 2026-08-19 — closed in two halves, both
+ratified and implemented · **Owning docs:** doc 02 §1.2.1, doc 03 §Shell
 
-The rail now lists main workflows only (compositions + standalones; chunk harnesses are
-dropped — operator call amending D219's first rail presentation, see `shell.tsx`
-`buildWorkflowRailGroups`). That leaves `kuali-timekeeper-annotation` visible under
-OPERATIONS, and the operator asked what it is for: it is the Phase-2 controlled-transaction
-proof workflow (D135) — a kernel-proving surface, not daily HR work — but its served role is
-`standalone`, which is what the rail keys on.
+The disposition this record asked for was *"a third role arm served on the wire and dropped by
+the rail"*, and that is what landed — twice, because the first pass answered only the rail.
 
-D219's role model has no arm for "proving workflow WITHOUT a composition" (`chunk-harness`
-requires naming the composition it proves). Disposition needed: either a third role arm
-(e.g. `proving-standalone`) served on the wire and dropped by the rail alongside harnesses,
-or the operator keeps it visible deliberately. A rail-side hardcoded id list is not an
-option — that is exactly the workflow-specific customization the role model exists to avoid.
+- **D220 (2026-08-14, `0e62aab`)** added `{ kind: "proving" }` to the module role union (no
+  `of`: there is nothing for it to be a step of), declared it on the kuali-timekeeper module,
+  and made `buildWorkflowRailGroups` drop every `chunk-harness` and `proving` entry plus any
+  category thereby emptied.
+- **D241 (2026-08-19)** closed the half D220 left: the workflow was still headed under
+  **Operations** in the Run Modal's picker and the Explorer, beside daily HR work, which is
+  what the operator was actually looking at (*"a crash test dummy is not a workflow … maybe it
+  belongs in a different category, perhaps in test"*). The ONE grouping rule now reads the
+  module's ROLE for these entries, not their `category`: a `proving` workflow groups under
+  **`Test equipment`**, appended last, on every surface that lists one. It is lifted out of the
+  category pass rather than added beside it, so it can never appear twice; the group drops when
+  nothing proving is served. The picker's auto-pick set narrowed to `standalone` + `composition`
+  on the same argument. No id list anywhere — the fact is the module's declared role, exactly as
+  this record required.
+
+The workflow stays REGISTERED and startable, from its own panel and from the picker's
+`Test equipment` group: a standing safe re-proof of the write machinery nobody can run is not a
+standing proof.
 
 ## Workflow short code
 
-**Recorded:** 2026-08-14 · **Status:** triaged 2026-08-14 — deferred to the workflow-taxonomy
-question this file owns · moved here from [archive.md](archive.md) 2026-08-19 when that file was
-cleared to zero (Track B5). It was always a taxonomy question wearing an archive record's
-clothes: a short code is a descriptor PRESENTATION attribute several surfaces want, so it is
-decided once here and then frozen into archived records like the label already is (D179 freezes
-the label precisely so the archive never resolves a descriptor).
+**Recorded:** 2026-08-14 · **Status:** RESOLVED 2026-08-19 — ratified as **D242** and
+implemented the same day · **Owning docs:** doc 02 §1.1.1 (the code), doc 03 §10.2 (the frozen
+archive field and the surfaces)
 
-- **Symptom:** an archive list row reads `EID 10873698 · Person Lookup v1` where the demo reads
-  `Tomás Rivera · pl v3.0`, and the version registry has no code column. At 800 rows the long
-  label costs the name column real width. The Activity per-workflow table records the same need.
-- **Demo element:** `run.workflowCode` on the row's name cell, in the sweep header's
-  `bumpNameLabel`, and as the registry table's leading token.
-- **Missing wire field:** no short code exists anywhere in the rebuild — not on the descriptor,
-  not on the wire. `workflowId` (`separations-kuali-read`) is the only short-ish handle and it is
-  not short.
-- **Where it would come from:** a descriptor field, decided here alongside the rest of the
-  taxonomy, then frozen into the archived record.
+**This record's central claim was wrong, and finding that out is what shaped the fix.** It said
+*"no short code exists anywhere in the rebuild — not on the descriptor, not on the wire."* Both
+halves were false: `WorkflowDescriptor.code` has existed since Phase 1 and
+`WorkflowBootstrapPrimitiveSchema.code` has served it since 1g-spine. It was invisible because
+its ONLY consumer was `deriveTraceId`, which composes `<code>-<HHMMSS>-<runId4>` — so the code
+was already stamped on every run row, span, note line and ledger entry this program has written,
+including `pl-000619-4ebf` in the project CLAUDE.md.
+
+So D242 is a UNIFICATION, not a new field. Minting a display code beside the trace code would
+have given one workflow two short names, and an operator reading `sd-141203-9a1c` in a log and
+`sep v1` in the archive would have had nothing telling them the two name the same thing —
+`explain run <traceId>` (doc 12 §2.5) is a real lookup path. What landed:
+
+- `WorkflowCodeSchema` is the ONE definition, bound by the descriptor factory, the bootstrap
+  wire and the explorer wire; widened from exactly-two alphanumerics to 2–4 lowercase LETTERS.
+- Uniqueness is refused at the composition root (`auditWorkflowCodes`), the one place the whole
+  registry is in scope.
+- The archive FREEZES it at generation 3 beside the label, read-forward per D133.
+- Consumed by the archive index row (`<code> v<N>`), the archived detail header, the version
+  registry, the Activity per-workflow table and the Activity CSV (its own column).
+
+Every existing code was KEPT (`pl`, `sp`, `sd`, `si`, `st`, `sf`, `sk`, `kt`) — see D242's row
+in doc 04 for why renaming would cost more than it buys.

@@ -8,6 +8,7 @@ import {
   WorkflowIdSchema,
 } from "../ids.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
+import { WorkflowCodeSchema } from "../workflow/presentation.js";
 import {
   AppVersionSchema,
   DashboardWireVersionSchema,
@@ -79,7 +80,7 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
  */
 export const WorkflowBootstrapPrimitiveSchema = z.strictObject({
   id: WorkflowIdSchema,
-  code: z.string().regex(/^[a-z0-9]{2}$/),
+  code: WorkflowCodeSchema,
   label: z.string().min(1),
   categoryId: z.string().regex(/^[a-z][a-z0-9-]*$/),
   descriptorFingerprint: FingerprintSchema,

@@ -917,8 +917,9 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   // that heading from the id, and the display label + order are the
   // frontend's (`dashboard/surfaces/workflow-category.ts`).
   { surface: "wire/bootstrap", path: "workflows[].availability.reason", origin: "repository-authored" },
-  // `workflows[].code` needs no row: it is regex-constrained to two chars at
-  // the wire boundary, so the scan does not read it as a free-text leaf.
+  // `workflows[].code` needs no row on ANY surface: `WorkflowCodeSchema`
+  // constrains it to two-to-four lowercase letters at the wire boundary
+  // (D242), so the scan does not read it as a free-text leaf.
   { surface: "wire/bootstrap", path: "workflows[].label", origin: "repository-authored" },
 
   { surface: "wire/activity-report", path: "categories[].category.reason", origin: "repository-authored" },
@@ -965,7 +966,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
   { surface: "wire/workflow-explorer", path: "workflows[].actions[]", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].category", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].code", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].edges[].label", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].enqueue", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].icon", origin: "repository-authored" },
@@ -1029,6 +1029,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/archive-index", path: "entries[].endedAt.reason", origin: "repository-authored" },
   { surface: "wire/archive-index", path: "entries[].title", origin: "captured-hr-value" },
   { surface: "wire/archive-index", path: "entries[].workflowLabel", origin: "repository-authored" },
+  { surface: "wire/archive-index", path: "entries[].workflowCode.reason", origin: "repository-authored" },
   { surface: "wire/archive-index", path: "plans[].blockers[].title", origin: "captured-hr-value" },
   { surface: "wire/archive-index", path: "plans[].candidates[].title", origin: "captured-hr-value" },
   { surface: "wire/archive-index", path: "versionState[].blockers[].title", origin: "captured-hr-value" },
@@ -1046,6 +1047,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
    * which is a closed set this repository owns — not a value any external
    * system supplied.
    */
+  { surface: "wire/archived-run-detail", path: "workflowCode.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.logs.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.logs.value.notes[].message", origin: "external-text" },

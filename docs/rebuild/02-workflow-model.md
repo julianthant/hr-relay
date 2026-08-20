@@ -501,7 +501,8 @@ export interface WorkflowDescriptor<
   version: number;
   /** Build-derived from version + graph + schemas + projection fields; stamped on every run. */
   contractFingerprint: Fingerprint;
-  code: string;                        // "pl" — 2-char trace prefix, unique (guarded)
+  code: WorkflowCode;                  // "pl" — the SHORT CODE (§1.1.1, D242): 2–4 lowercase
+                                       // letters, unique across the registry (guarded)
   label: string;                       // "Person Lookup"
   sessionLabel?: string;               // terminal-drawer label when ≠ label (separations → "Kuali")
   icon: IconName;
@@ -575,6 +576,49 @@ build/CI regenerates and fails on diff. Thus a bind/identity/derive logic edit c
 compatibility even when its output zod schema does not, while identical source in another checkout
 gets the same hash.
 
+### 1.1.1 The short code — ONE declaration, two consumers (D242)
+
+`code` is the workflow's operator-facing short handle: **two to four lowercase letters**, declared
+on the descriptor, **unique across the registry**. `WorkflowCodeSchema`
+(`src/domain/workflow/presentation.ts`) is its ONE definition; the descriptor factory, the bootstrap
+wire and the explorer wire all bind that schema, so the shapes cannot fork.
+
+**Letters only.** A code sits immediately in front of a digit run in every trace id, and
+`s1-000619-4ebf` reads as one opaque blob rather than a workflow followed by a time. Two characters
+covers everything registered today; four is the room a later collision needs, and the bound is
+widened NOW because widening it once a stored trace id exists means every reader must accept both
+shapes forever.
+
+**Uniqueness is enforced at the composition root**, not at the descriptor — one descriptor cannot
+see its siblings. `auditWorkflowCodes` / `workflowCodeRegistry`
+(`src/control/workflow-registry.ts`) refuse a duplicate at LOAD, in the same shape
+`workflowRoleRegistry` refuses a dangling role (§1.2.1), and the same audit is what §1.4 item 1
+runs — the throw and the guard can never disagree about what a violation is. Two workflows sharing
+`sd` would make `sd-141203-9a1c` name two different things and make an archive row lie about whose
+work it is; neither failure throws anything, so neither is discoverable after the fact.
+
+**The two consumers, stated so a third one does not mint a second code.**
+
+1. **Identity** — `deriveTraceId` composes `<code>-<HHMMSS>-<runId4>` (§5.8), so the code is already
+   stamped on every run, span, note line and ledger entry this program has ever written.
+2. **Presentation** — the archive index row, the Activity per-workflow table and the version
+   registry print it beside the label (doc 03 §10.2, doc 03 §10.3). At 800 rows
+   `Separation Documents v1` costs the name column real width and `sd v1` does not.
+
+These were built five months apart, and the second nearly minted a separate "display code" — which
+would have given one workflow two short names, with nothing telling an operator that `sd-141203-9a1c`
+in a log and `sep v1` in the archive name the same thing. Any further consumer reads THIS field.
+
+**`TraceIdSchema` is deliberately wider than `WorkflowCodeSchema`** (`[a-z0-9]{2,4}` against
+`[a-z]{2,4}`). It parses durable stored ids, so it is a reader, and a reader narrowed to the
+writer's current rule refuses history the moment that rule moves; two-character alphanumeric codes
+were legal before D242. The writer stays strict at its own declaration site, which is where a new
+code is chosen and a wrong one can still be refused (D133's read-forward discipline).
+
+**A code is frozen into an archived record beside the label** — see doc 03 §10.2 and
+`ArchivedRunContent.workflowCode`. Resolving it from the live registry when the Archive renders
+would be a descriptor read on the archived path, which is exactly what charter §25 forbids.
+
 ### 1.2 The bundle crossing
 
 ```
@@ -627,7 +671,12 @@ composition. `kuali-timekeeper-annotation` is the type specimen: it exists to ca
 controlled-transaction proof and stays registered and startable because a kernel change may need
 that proof re-run. It deliberately carries no `of` — there is nothing for it to be a step of, and
 `chunk-harness` would force it to name a composition it does not prove. Presentation is doc 03's
-(§Shell, D220 amendment): the rail drops it alongside harnesses; the picker and the Explorer keep it.
+(§Shell, D220 and D241 amendments): the rail drops it alongside harnesses, and the surfaces that
+still list it — the picker and the Explorer — group it by this ROLE under `Test equipment` rather
+than under the HR `category` its descriptor declares. That override is stated here because it is
+the one place a role outranks a category: a proving workflow's category answers *which HR area does
+this touch*, which is the wrong question about equipment, and `operations` is not false enough to
+be noticed (D241).
 
 **Why the module and not the descriptor** is D170's argument verbatim: taxonomy is presentation and
 server bookkeeping, not part of a run's contract identity — a run of `separations-kuali-finalization`
@@ -674,7 +723,8 @@ per the standing R2 D17/D18 split.
 The rebuild repo's `tests/unit/architecture/descriptor-coverage.test.ts` — a single table-driven test over
 `DESCRIPTORS`:
 
-1. ids unique; codes unique + 2 chars; `icon` ∈ `ICON_NAMES`.
+1. ids unique; codes unique + well-formed per §1.1.1, and every code composes a legal trace id;
+   `icon` ∈ `ICON_NAMES`.
 2. Each `WORKFLOW_MODULES` entry has one descriptor+loader and one declared `role` (§1.2.1);
    every `chunk-harness.of` resolves to a registered module whose role is `composition`; derived
    registry keys === derived descriptor ids (both directions). No second workflow-id literal list

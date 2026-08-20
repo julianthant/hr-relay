@@ -56,6 +56,31 @@ import {
 
 /** The frozen log page's own shape — one place, so the loop and the parse agree. */
 type FrozenNotePage = z.infer<typeof NotePageSchema>;
+
+/**
+ * The archived run's frozen short code, for the index row and the detail
+ * (D242). ONE implementation, because the two must never disagree about what
+ * a record holds.
+ *
+ * Two absences reach here and they are DIFFERENT facts, so each keeps its own
+ * sentence: the record predates generation 3 and holds no code at all, or the
+ * sweep ran when the workflow was already unregistered and the record says so
+ * itself. Neither is filled in — deriving one from the trace id's prefix would
+ * look right and be wrong for a run planned under a code the workflow has
+ * since changed, which is the only case a frozen field is for.
+ */
+function archivedWorkflowCode(
+  record: Readonly<{
+    archiveSchemaGeneration: number;
+    workflowCode?: { state: "present"; value: string } | { state: "absent"; reason: string };
+  }>,
+): { state: "present"; value: string } | { state: "absent"; reason: string } {
+  return record.workflowCode ?? {
+    state: "absent",
+    reason: `this record was archived at schema generation ${String(record.archiveSchemaGeneration)}, `
+      + "which predates D242's frozen workflow short code; no code was recorded for this run",
+  };
+}
 import type { RunFoldRecord } from "../projectors/run-queue-projection.js";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "./run-detail.js";
 
@@ -75,7 +100,14 @@ export interface ArchiveQueryDeps {
    * "a dashboard update bumps the effective version of EVERY workflow".
    */
   readonly descriptors: {
-    list(): readonly Readonly<{ id: string; label: string; version: number; contractFingerprint: string }>[];
+    list(): readonly Readonly<{
+      id: string;
+      label: string;
+      /** the SHORT CODE the version registry prints beside the label (D242) */
+      code: string;
+      version: number;
+      contractFingerprint: string;
+    }>[];
   };
   /**
    * Resolves an archived run's ledger pointers against the LIVE ledger. It is
@@ -108,6 +140,7 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
       return {
         workflowId: descriptor.id,
         workflowLabel: descriptor.label,
+        workflowCode: descriptor.code,
         current: {
           workflowId: descriptor.id,
           descriptorVersion: descriptor.version,
@@ -131,6 +164,7 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
         workflowLabel: record.workflowLabel.state === "present"
           ? record.workflowLabel.value
           : record.workflowId,
+        workflowCode: archivedWorkflowCode(record),
         title: record.row.title,
         status: record.row.status,
         archivedIdentity: record.archivedIdentity,
@@ -225,6 +259,7 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
       workflowLabel: record.workflowLabel.state === "present"
         ? record.workflowLabel.value
         : record.workflowId,
+      workflowCode: archivedWorkflowCode(record),
       archivedIdentity: record.archivedIdentity,
       appVersion: record.appVersion,
       drift: record.drift,

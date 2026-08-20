@@ -19,6 +19,8 @@ import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-
 export interface ArchiveSeamDescriptor {
   readonly id: string;
   readonly label: string;
+  /** the short code the version registry prints beside the label (D242) */
+  readonly code: string;
   readonly version: number;
   readonly contractFingerprint: string;
 }
