@@ -675,6 +675,29 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.parkedMessage", origin: "external-text" },
 
   /*
+   * D245's proof contract. Every leaf here is DERIVED FROM A SCHEMA THIS
+   * REPOSITORY DECLARES — `describeProofShape` walks a commit contract's own
+   * `completion.proofSchema` — so none of it can carry a person's data: the
+   * bytes are literal discriminators, regex sources, and enum option lists that
+   * a contract author typed into `src/domain/contracts/**`.
+   *
+   * `reason` is the same authorship one level over. It is composed by
+   * `parkedWriteProofContract` from the workflow id, the intent's task id, and
+   * the describer's own refusal sentence — all repository-authored — and its
+   * whole job is to name what this build cannot describe, which is a fact about
+   * the build rather than about the run's subject.
+   *
+   * The thing to check on any future edit is exactly that provenance: if a
+   * describer ever carried a zod `.default()`, an example, or an error message
+   * built from parsed DATA, these stop being repository-authored and this table
+   * has to say so.
+   */
+  { surface: "wire/run-detail-section", path: "payload.proofContract.fields[].options[]", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.proofContract.fields[].pattern", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.proofContract.fields[].value", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.proofContract.reason", origin: "repository-authored" },
+
+  /*
    * The identity-approval gate section (doc 09 §14.4, separations chunk 3).
    *
    * This is the one loopback payload that carries a person's identity in the

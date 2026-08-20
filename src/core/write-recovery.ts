@@ -63,6 +63,7 @@ import {
   BUILD_MANIFEST,
   resolveTaskImplFingerprint,
 } from "../domain/workflow/build-manifest.js";
+import { rejectCommandRequest } from "./command-kernel.js";
 import type {
   WriteResolutionContext,
   WriteResolutionExecutor,
@@ -478,13 +479,40 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
       const completion = commitContract.writeSafety.completion;
       const proofSchemaHash = deriveSchemaHash(completion.proofSchema, "output");
       const payload = context.command.payload;
+      /*
+       * D245 — BOTH proof checks are typed REJECTIONS, not throws.
+       *
+       * An operator now composes this payload from the field list the
+       * parked-write section serves, so "the proof does not fit" is an ordinary
+       * answer-level mistake rather than an inconsistent store: the client's own
+       * check cannot see a `.refine()`, and the served schema can move between
+       * the serve and the send. Thrown, it reached the dialog through the arm
+       * reserved for "the server never answered" — with no code to quote and a
+       * sentence about transport. `executeResolveGate` has answered
+       * `schema-mismatch` for the identical situation one command over since the
+       * gate landed; this matches it, and the refusal unwinds the whole
+       * transaction exactly as the throw did, so nothing durable moves either
+       * way.
+       */
       if (payload.proof.schemaHash !== proofSchemaHash) {
-        throw new Error(
+        rejectCommandRequest(
+          context.command,
+          "schema-mismatch",
           `confirmed-present proof is bound to schema ${payload.proof.schemaHash.slice(0, 12)}…, but `
-          + `${commitContract.id} requires ${proofSchemaHash.slice(0, 12)}…; the resolution changes nothing`,
+          + `${commitContract.id} requires ${proofSchemaHash.slice(0, 12)}…; the resolution changes nothing. `
+          + "Reload the run — this build serves the schema the proof form composes against.",
         );
       }
-      const proof = completion.proofSchema.parse(payload.proof.value);
+      const parsedProof = completion.proofSchema.safeParse(payload.proof.value);
+      if (!parsedProof.success) {
+        rejectCommandRequest(
+          context.command,
+          "schema-mismatch",
+          `confirmed-present proof does not parse through ${commitContract.id}'s completion proof schema: `
+          + `${parsedProof.error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ")}`,
+        );
+      }
+      const proof: unknown = parsedProof.data;
       const outputRaw: unknown = Reflect.apply(completion.outputFromProof, undefined, [proof]);
       const outputValue = JsonValueSchema.parse(commitContract.output.parse(outputRaw));
 

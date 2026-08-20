@@ -309,12 +309,19 @@ test.describe("panel dismissed", () => {
  * reviewed once, by whoever wrote it.
  *
  * Both arms, because they are not two skins of one screen. `absent` carries the
- * evidence note the kernel requires and is genuinely sendable; `present` carries
- * a REFUSAL, because its payload needs a proof bound to the commit contract's
- * own schema and this wire serves no proof schema identity — so the surface
- * offers it disabled with its reason rather than a control that does nothing.
+ * evidence note the kernel requires; `present` carries that note AND the typed
+ * PROOF FORM the section's `proofContract` describes — one control per
+ * operator-supplied leaf of the commit contract's own completion proof schema,
+ * with the literals the schema pins shown as chips rather than offered as
+ * boxes (D245).
  *
- * One viewport and one theme apiece: these are about the copy and the refusal,
+ * **These two references were re-photographed for D245 and the change is the
+ * point.** Until then the `present` arm was a REFUSAL — the wire served no
+ * proof schema identity, so the surface offered the control disabled with its
+ * reason — and the corpus was recording a defect rather than catching one
+ * (D187's lesson, from the side where the defect finally got fixed).
+ *
+ * One viewport and one theme apiece: these are about the copy and the controls,
  * which are the same pixels at every width.
  */
 test.describe("park resolutions", () => {

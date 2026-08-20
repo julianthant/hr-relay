@@ -96,7 +96,8 @@ import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-s
 import { optionalSecretFamily, providerModelChain } from "../../domain/secrets.js";
 import type { AdvisoryQueryDeps } from "./queries/advisory.js";
 import { createArchiveSnapshotSource, type ArchiveQueryDeps } from "./queries/archive.js";
-import type { RunDetailQueryDeps } from "./queries/run-detail.js";
+import type { RunDetailQueryDeps, RunDetailWriteContractView } from "./queries/run-detail.js";
+import { describeProofShape } from "../../validation/proof-shape.js";
 
 
 /**
@@ -123,6 +124,31 @@ function gateNodeViewsOf(descriptor: AnyWorkflowDescriptor): readonly Readonly<{
       }]
       : []
   ));
+}
+
+/**
+ * The transaction nodes of a descriptor, in the shape the parked-write
+ * section's proof form reads (D245, doc 09 §4.1).
+ *
+ * `proofSchemaHash` is `deriveSchemaHash(completion.proofSchema, "output")` —
+ * byte for byte the value `resolvePresent` compares an incoming
+ * `proof.schemaHash` against — and `proof` is that same schema described as a
+ * field list, or the named reason this build cannot describe it. Both are
+ * derived HERE for the reason stated on `gateNodeViewsOf`: the queries never
+ * reach the descriptor builders, and a query that re-walked a proof schema
+ * would be a second copy of the contract's identity.
+ */
+function writeContractViewsOf(descriptor: AnyWorkflowDescriptor): readonly RunDetailWriteContractView[] {
+  return descriptorRuntimeNodes(descriptor).flatMap((node) => {
+    if (node.kind !== "transaction") return [];
+    const completion = node.commit.uses.writeSafety.completion;
+    return [{
+      commitTaskId: String(node.commit.uses.id),
+      completionKind: completion.kind,
+      proofSchemaHash: deriveSchemaHash(completion.proofSchema, "output"),
+      proof: describeProofShape(completion.proofSchema),
+    }];
+  });
 }
 
 export interface DashboardRuntime {
@@ -479,7 +505,11 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       resolve: (workflowId) => {
         const descriptor = DESCRIPTORS.find((candidate) => candidate.id === workflowId);
         if (descriptor === undefined) return undefined;
-        return { ...descriptor, gateNodes: gateNodeViewsOf(descriptor) };
+        return {
+          ...descriptor,
+          gateNodes: gateNodeViewsOf(descriptor),
+          writeContracts: writeContractViewsOf(descriptor),
+        };
       },
     },
     // D140/D142: the receipt and failure sections serve CONTENT through the

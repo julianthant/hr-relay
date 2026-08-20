@@ -610,6 +610,89 @@ export const ParkedWriteSubjectWireSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
+/* ── the completion proof contract (doc 09 §4.1, D245) ───────────────────── */
+
+/**
+ * One leaf of the proof a confirmed-present resolution carries, addressed by
+ * the dot path it occupies in the proof value.
+ *
+ * The server derives these from the commit contract's own
+ * `writeSafety.completion.proofSchema` (`describeProofShape`); nothing here is
+ * authored. A `fixed` leaf is NOT an operator input — it is a literal the
+ * schema pins, and a form that let a person type it would be offering a choice
+ * the schema does not have.
+ */
+export const ProofFieldWireSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("fixed"),
+    path: ContractFieldPathSchema,
+    value: z.union([z.string(), z.number(), z.boolean()]),
+  }),
+  z.strictObject({
+    kind: z.literal("text"),
+    path: ContractFieldPathSchema,
+    minLength: z.number().int().nonnegative().optional(),
+    maxLength: z.number().int().positive().optional(),
+    /** The regex SOURCE — a client cannot be handed a zod schema. */
+    pattern: z.string().min(1).optional(),
+    format: z.literal("iso-datetime").optional(),
+    /**
+     * The leaf carries a `.refine()`, which no wire can transport. The surface
+     * says the server checks more than the box does rather than implying its
+     * own green tick is the verdict; the kernel's parse is the authority.
+     */
+    serverOnlyRules: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal("choice"),
+    path: ContractFieldPathSchema,
+    options: z.array(z.string().min(1)).min(1),
+  }),
+  z.strictObject({
+    kind: z.literal("integer"),
+    path: ContractFieldPathSchema,
+    minimum: z.number().int().optional(),
+    maximum: z.number().int().optional(),
+  }),
+  z.strictObject({ kind: z.literal("boolean"), path: ContractFieldPathSchema }),
+]);
+export type ProofFieldWire = z.infer<typeof ProofFieldWireSchema>;
+
+/**
+ * WHAT A CONFIRMED-PRESENT RESOLUTION MUST CARRY (D245).
+ *
+ * `resolvePresent` refuses any proof whose `schemaHash` is not the commit
+ * contract's own and then parses the value through that exact schema. Serving
+ * neither half is why the present arm was unreachable from every surface in the
+ * build: a client could compose neither, and minting a plausible `schemaHash`
+ * to make a button clickable is the fabricated constant this program exists to
+ * refuse.
+ *
+ * The `unavailable` arm is a REASON, never an empty form. A parked write whose
+ * workflow is no longer registered, whose transaction node no longer commits
+ * this task, or whose proof schema this build cannot describe still gets its
+ * panel and still gets the confirmed-ABSENT arm — what it does not get is a
+ * form that would compose something the kernel will not accept.
+ */
+export const ProofContractWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("served"),
+    /** The commit contract the proof belongs to, for the operator's record. */
+    commitTaskId: TaskIdSchema,
+    /**
+     * How this write WOULD have proved itself unattended. It is context the
+     * operator needs: `save-verify` means a reload read-back is the only
+     * landing proof, which is exactly what they are standing in for.
+     */
+    completionKind: z.enum(["receipt", "save-verify", "upload-verify"]),
+    /** The exact value the resolution's `proof.schemaHash` must equal. */
+    schemaHash: FingerprintSchema,
+    fields: z.array(ProofFieldWireSchema).min(1),
+  }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+]);
+export type ProofContractWire = z.infer<typeof ProofContractWireSchema>;
+
 /**
  * The parked-write section (doc 09 §4.1, doc 13 §3.3/§8.5).
  *
@@ -657,6 +740,14 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
    */
   parkedMessage: z.string().min(1),
   subject: ParkedWriteSubjectWireSchema,
+  /**
+   * D245 — what a confirmed-PRESENT resolution has to carry, derived from the
+   * commit contract this intent names. Before it, the present arm was drawn
+   * disabled on every parked run in the build (`proof-contract-unserved`), so
+   * a write that DID land could only be recorded as absent — a durable lie —
+   * or left parked forever.
+   */
+  proofContract: ProofContractWireSchema,
   /**
    * Doc 13 §8.5: an interactive control exists only because the SERVER
    * described it. Both typed resolutions are always served for a parked run —

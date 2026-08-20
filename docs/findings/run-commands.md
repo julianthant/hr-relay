@@ -23,43 +23,44 @@ typed `never`, so a fourth shape is both a compile error and a runtime refusal. 
 - ~~Three of the four approval ceremonies refuse on click~~ — closed. All four now compose:
   one-click, choose-a-candidate (no default selected), type-the-EID, and reject with a reason.
 
-Three records remain open below, with two more RESOLVED blocks among them (D233, D234) sitting
-where the records they closed were.
+ZERO records remain open. Every block below is a RESOLVED record kept for its argument
+(D226 the gate ceremonies; D233 the presentation CAS; D234 the retired hide/unhide pair and
+`executeBump`'s CAS; D235 the bulk strip and its once-false refusal copy; D245/D246 the
+parked-write pair).
 
 ---
 
-## `resolve-write-present` is refused in the UI and points at a CLI path that does not exist
+## RESOLVED 2026-08-20 — the parked write gets a way IN and keeps its way OUT (D245, D246)
 
-**Recorded:** 2026-08-19 · **Status:** diagnosed · **Owning doc:** doc 09 §4.1
+Both parked-write records are struck. Normative text: **doc 09 §4.1** for both; doc 04 round 75.
 
-- **Symptom:** the parked-write surface hard-blocks the *present* arm
-  (`src/dashboard/surfaces/park-resolve.tsx:422`, `submit()` guards `if (arm !== "absent") return`
-  at `:444`) with code `proof-contract-unserved`, and tells the operator to *"resolve this write
-  from the CLI"* (`:285`). **The CLI has no such command.** `npm run cli` supports
-  `help | phase | dashboard | worker | explain | ocr | storage`; there is no run-mutation
-  subcommand at all, and `POST /api/v1/commands` is the only mutation door in the system.
-- **Consequence:** a fenced write that DID land can be recorded as absent (wrong, and durable) or
-  left parked forever. The one honest exit is unbuilt and the error copy misdirects.
-- **Two fixes, either order:** serve the proof contract so the present arm can be composed, and/or
-  correct the copy to name the real path. The copy fix is a one-liner and should not wait.
-
----
-
-## Cancelling a parked-write run strands the intent with no exit
-
-**Recorded:** 2026-08-19 · **Status:** diagnosed · **Owning doc:** doc 09 §4.1
-
-- **Symptom:** `executeCancel` (`src/core/command-kernel.ts:642`) has no `parked-write` branch — by
-  design, because doc 09:939 says cancel "cannot alter the intent" and there is deliberately no
-  force-done endpoint. The operator IS warned in the confirm copy
-  (`queue-row-actions.ts:171-176`). But after the cancel the run is `terminal/cancelled`, and
-  `buildParkedWritePayload` throws unless `lifecycle.state === "parked-write"`
-  (`queries/run-detail.ts:900`) — so the section stops being served and **both resolutions become
-  unreachable from the UI**.
-- **The rule is right; the trap is the ordering.** Either the resolutions must stay reachable for a
-  cancelled-but-parked run, or cancel must refuse while an intent is `attempting`/`parked` and say
-  so. Today the operator can reach a state the surface cannot describe.
-
+- ~~`resolve-write-present` is refused in the UI and points at a CLI path that does not exist~~ —
+  closed by **D245**, and the fix is the harder half the record named rather than the copy
+  one-liner. The section now serves a `proofContract`: the commit task, the completion kind, the
+  exact `schemaHash` a resolution must echo, and the proof schema DESCRIBED as an ordered list of
+  typed fields (`src/validation/proof-shape.ts`), from which `park-resolve.tsx` renders a real form
+  and composes a schema-bound value. Both halves are derived by the composition root beside
+  `gateNodes`, on that view's own rule that a BFF query may not recompute a contract's identity.
+  Three things are worth carrying forward. **A free-text JSON box was never on the table** — a proof
+  is schema-bound by construction, so a shape this build cannot describe answers with a NAMED
+  `unavailable` reason and leaves the confirmed-ABSENT arm reachable, rather than letting the client
+  invent one. **The form pre-fills nothing**, because the run holds what it TRIED to write and
+  offering that back is §14.6's rubber-stamping shape one control over. And **a proof that does not
+  fit is now a typed `rejected`/`schema-mismatch`** instead of a throw the dialog could only report
+  as a transport failure. The load-bearing test is a round trip over every REGISTERED commit
+  contract — example output → the kernel's own `proofFromOutput` → the strings an operator would
+  type → the composer → byte-equal to the proof and parsing through the real schema — so a fifth
+  commit contract cannot land with an undescribable proof and a quietly disabled button.
+- ~~Cancelling a parked-write run strands the intent with no exit~~ — closed by **D246**, taking the
+  record's SECOND option: cancel is refused while any run in the cascade holds an `attempting` or
+  `parked` intent. The first option (keep the resolutions reachable for a cancelled-but-parked run)
+  is a contradiction rather than a wire change — `resolvePresent` settles through beat ⑦ with a
+  `resume-queued` transition and `resolveAbsent` calls `runs.resume`, both illegal on a terminal
+  run, so it would mean either resuming a cancelled run or letting a COMMITTED real write land on a
+  run recorded as cancelled. `attempting` is refused too and is the worse case: that run is not
+  `parked-write`, so no section describes the intent at all. The confirm copy told the operator the
+  wrong half of the hazard (that the outcome would stay unknown, never that it would stay
+  unanswerable) and now states the refusal and the order to take.
 ---
 
 ## RESOLVED 2026-08-19 — the presentation CAS hole, and the rename control behind it (D233)

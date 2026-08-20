@@ -28,6 +28,7 @@ import {
   buildRunDetail,
   buildRunSection,
   type RunDetailQueryDeps,
+  type RunDetailWriteContractView,
 } from "../../../src/server/dashboard/queries/run-detail.js";
 import {
   IDEMPOTENCY_KEY,
@@ -107,14 +108,35 @@ const PARKED_LIFECYCLE = {
   message: PARK_MESSAGE,
 } as const;
 
-function depsOf(w: DashboardWorld): RunDetailQueryDeps {
+/**
+ * D245's descriptor view: what the composition root derives from a workflow's
+ * transaction nodes. `resolve: () => undefined` is the default here on purpose
+ * — the section must render, and the confirmed-ABSENT arm must stay reachable,
+ * for a run whose workflow this build no longer registers.
+ */
+function depsOf(w: DashboardWorld, writeContracts?: RunDetailWriteContractView[]): RunDetailQueryDeps {
   return {
     stateRoot: w.stateRoot,
     projection: w.projection,
     authority: w.authority,
-    descriptors: { resolve: () => undefined },
+    descriptors: {
+      resolve: () => (writeContracts === undefined ? undefined : { details: [], writeContracts }),
+    },
   };
 }
+
+const DESCRIBED_TERMINATION_PROOF: RunDetailWriteContractView = {
+  commitTaskId: "ucpath/terminate-person",
+  completionKind: "save-verify",
+  proofSchemaHash: "c".repeat(64),
+  proof: {
+    state: "described",
+    fields: [
+      { kind: "fixed", path: "kind", value: "ucpath-termination" },
+      { kind: "text", path: "transactionId", pattern: "^T\\d{6,}$", serverOnlyRules: false },
+    ],
+  },
+};
 
 /** Seed a run in the given lifecycle, with the intent authority holds for it. */
 function seed(
@@ -130,8 +152,8 @@ function seed(
   if (intent !== null) w.authority.putWriteIntent(intent);
 }
 
-function parkedSection(w: DashboardWorld) {
-  const response = buildRunSection(depsOf(w), RUN_ID, "parked-write");
+function parkedSection(w: DashboardWorld, writeContracts?: RunDetailWriteContractView[]) {
+  const response = buildRunSection(depsOf(w, writeContracts), RUN_ID, "parked-write");
   if (response.section !== "parked-write") throw new Error("wrong section");
   return response.payload;
 }
@@ -204,6 +226,70 @@ describe("the parked-write run-detail section (doc 09 §4.1)", () => {
     // durable schema's own regex is what bounds it.
     assert.ok(serialized.includes('"displaySuffix":"1234"'));
     assert.ok(!serialized.includes("ucpathPassword"));
+  });
+
+  /**
+   * D245 — the record this closes: `resolve-write-present` was refused by every
+   * surface because the wire served neither the proof's schema hash nor its
+   * shape. Every arm here answers with a REASON rather than an empty form; a
+   * fabricated hash to make a button clickable is the constant this program
+   * exists to refuse.
+   */
+  describe("the served proof contract", () => {
+    it("serves the composition root's derived hash and field list verbatim", () => {
+      const w = world();
+      seed(w);
+      const contract = parkedSection(w, [DESCRIBED_TERMINATION_PROOF]).proofContract;
+      assert.equal(contract.state, "served");
+      if (contract.state !== "served") throw new Error("unreachable");
+      assert.equal(contract.commitTaskId, "ucpath/terminate-person");
+      assert.equal(contract.completionKind, "save-verify");
+      // The EXACT value `resolvePresent` compares `proof.schemaHash` against —
+      // re-derived nowhere, so the surface cannot echo back a schema this build
+      // does not have.
+      assert.equal(contract.schemaHash, "c".repeat(64));
+      assert.deepEqual(contract.fields.map((field) => field.path), ["kind", "transactionId"]);
+    });
+
+    it("names the missing descriptor rather than serving a form for a workflow it cannot describe", () => {
+      const w = world();
+      seed(w);
+      const contract = parkedSection(w).proofContract;
+      assert.equal(contract.state, "unavailable");
+      if (contract.state !== "unavailable") throw new Error("unreachable");
+      assert.match(contract.reason, /person-lookup/);
+      assert.match(contract.reason, /no registered descriptor/);
+      // The ABSENT arm is untouched: a build that cannot describe the proof can
+      // still record what the operator saw was NOT there.
+      assert.ok(parkedSection(w).actions.some((action) =>
+        action.kind === "command" && action.command === "resolve-write-absent"));
+    });
+
+    it("names the missing transaction node when no contract commits this task", () => {
+      const w = world();
+      seed(w);
+      const contract = parkedSection(w, [{
+        ...DESCRIBED_TERMINATION_PROOF,
+        commitTaskId: "ucpath/some-other-commit",
+      }]).proofContract;
+      assert.equal(contract.state, "unavailable");
+      if (contract.state !== "unavailable") throw new Error("unreachable");
+      assert.match(contract.reason, /ucpath\/terminate-person/);
+      assert.match(contract.reason, /transaction-node/);
+    });
+
+    it("passes an undescribable proof's own reason through instead of guessing a shape", () => {
+      const w = world();
+      seed(w);
+      const contract = parkedSection(w, [{
+        ...DESCRIBED_TERMINATION_PROOF,
+        proof: { state: "undescribable", reason: 'proof field "rows" is a zod "array"' },
+      }]).proofContract;
+      assert.equal(contract.state, "unavailable");
+      if (contract.state !== "unavailable") throw new Error("unreachable");
+      assert.match(contract.reason, /is a zod "array"/);
+      assert.match(contract.reason, /will guess at a shape/);
+    });
   });
 
   it("serves both typed resolutions, targeted at this exact intent generation", () => {

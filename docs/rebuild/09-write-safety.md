@@ -940,6 +940,86 @@ Cancel or Hide may change the run/presentation but cannot alter the intent. Ther
 done” or “retry anyway” endpoint. Every resolution emits an audited note and is covered by strict
 command schema, stale-generation, and double-click tests.
 
+**The confirmed-present arm serves its PROOF CONTRACT, so an operator can compose one (D245,
+2026-08-20).** `resolvePresent` refuses any proof whose `schemaHash` is not the commit contract's
+`deriveSchemaHash(completion.proofSchema, "output")` and then parses the value through that exact
+schema — and the parked-write section served **neither the hash nor the shape**, so no client could
+compose either half. The arm was drawn disabled on every parked run in the build
+(`proof-contract-unserved`), which left exactly two exits for a write that DID land: record it
+**absent**, which is a durable lie that authorizes a second real submit, or leave it parked forever.
+The surface's copy also pointed at a CLI resolution path that has never existed; `POST
+/api/v1/commands` is the only mutation door in this system.
+
+- **The section now carries `proofContract`.** Its `served` arm names the commit task, the
+  completion kind, the exact `schemaHash` a resolution must echo, and the proof schema DESCRIBED as
+  an ordered list of typed fields (`describeProofShape`, `src/validation/proof-shape.ts`) — literals
+  the schema pins, constrained strings with their own pattern, closed option lists, integers with
+  their bounds, booleans, addressed by dot path through one level of nested object.
+- **Derived, never authored, and derived ONCE.** Both the hash and the field list come from the
+  composition root's descriptor view beside `gateNodes`, for the reason that view already states:
+  the BFF queries never reach the descriptor builders, and a query that recomputed a schema hash
+  would be a second copy of the contract's identity.
+- **A shape this build cannot describe is a NAMED `unavailable` reason, never a half-form and never
+  a free-text JSON box.** A proof is schema-bound by construction; a blob the client shapes itself is
+  a client authoring a durable record about a real HR transaction. Unregistered workflow, no
+  transaction node committing this task, or an undescribable schema each answer with the reason and
+  leave the confirmed-ABSENT arm reachable.
+- **The form pre-fills NOTHING.** The run holds what it TRIED to write; offering that back as the
+  proof would turn an attestation about a live HR system into a click-through of the system's own
+  guess, which is §14.6's rubber-stamping shape one control over.
+- **What the operator does NOT assert.** A proof schema's literal `source` (`reload-read-back`,
+  `ss-smart-hr-detail-read`) states which page shape the FIELDS come from and is pinned by the
+  contract, so it is served `fixed` and is not offered as an input. Who vouched for the reading is
+  recorded one level up, where it belongs: `buildCommittedSettlement` stamps
+  `proofSource: "operator-attestation"` on the transaction outcome and on the ledger entry, and the
+  operator's `evidenceNote` is retained in the command journal with the request.
+- **Both halves refuse, and only one of them is authoritative.** The surface refuses early over the
+  constraints a wire can carry, per field, naming the contract's own pattern or option list; the
+  kernel refuses finally. A leaf carrying a `.refine()` cannot be transported, so it is served
+  `serverOnlyRules: true` and the surface says the server checks more than the box does rather than
+  implying its own tick is the verdict.
+- **A proof that does not fit is a typed `rejected`/`schema-mismatch`, not a throw.** Now that an
+  operator composes the payload, "the proof does not fit" is an ordinary answer-level mistake:
+  thrown, it reached the dialog through the arm reserved for *"the server never answered"*, with no
+  code to quote. `executeResolveGate` has answered `schema-mismatch` for the identical situation one
+  command over since the gate landed. The rejection unwinds the whole authority transaction exactly
+  as the throw did — nothing durable moves either way.
+
+**Cancel is REFUSED while a fenced write is unresolved (D246, 2026-08-20).** "Cannot alter the
+intent" is true and was not the whole rule. A cancelled run is terminal;
+`executeWriteResolution` refuses every lifecycle that is not `parked-write`, and the parked-write
+section is served on exactly that lifecycle — so the instant a cancel landed, **both typed
+resolutions became unreachable** and the durable record read "this run is over" about a real HR
+transaction nobody had settled. Cancel was not leaving the intent alone; it was orphaning it. The
+kernel therefore rejects `cancel` (`invalid-state`) when any run in the cancel's cascade holds a
+write intent whose status is `attempting` or `parked`, naming the run, the system, the intent id,
+its generation, its status and this subsection, and cancelling **nothing**. The refusal lifts the
+moment the write is answered: resolve present or absent, then cancel.
+
+- **Both unresolved statuses are refused, and `attempting` is the worse of the two.** A `parked`
+  intent at least has a surface that describes it. An `attempting` one belongs to a run that is not
+  `parked-write` at all, so no parked-write section is served for it and a cancel there would strand
+  an intent nothing on screen even mentions.
+- **The scan covers the whole cascade, not the named run.** A cancelled parent whose delegated child
+  holds a fenced write orphans that write identically, and doc 03 §2.4 already rules that a tree the
+  kernel cannot cancel coherently cancels nothing.
+- **The rejected alternative, and why.** The other exit — keep both resolutions reachable for a
+  cancelled-but-parked run — is not a wire change but a contradiction: `resolvePresent` settles
+  through beat ⑦ with a `resume-queued` transition and `resolveAbsent` calls `runs.resume`, and both
+  are illegal on a terminal run. Making them legal would mean resuming a cancelled run, against doc
+  03 §2.4's own "a cancelled run is never resumed, only run again" and against the confirm copy the
+  operator agreed to; splitting intent settlement from the run transition instead would let a
+  *committed* real HR write land on a run recorded as cancelled, which is a worse record than the one
+  this defect produces. Ordering the two acts costs the operator one extra step and keeps every
+  durable statement true.
+- **This does not make a parked run uncancellable.** Where D136 refuses a resolution because the
+  semantic surface moved, its own answer already applies: restore the semantics or re-plan the run.
+  A build that cannot resolve a parked write is a build to repair, not a run to quietly close over.
+- **Ordering note, stated rather than hidden.** `resolve-write-absent` resumes the run to `queued`,
+  so an operator who confirms absence and then wants the run cancelled cancels the queued run — a
+  worker may claim it first, and that is the ordinary queue race, not a new one. What is no longer
+  possible is settling the RUN while its write stays unanswered.
+
 **Resolvability binds to the semantic surface, not to the contract closure (D136, 2026-08-04).**
 A parked write is the one state in this system deliberately built to survive *across* time and code
 change: it waits for a human to go look in the target system, and humans are slow. Binding its
