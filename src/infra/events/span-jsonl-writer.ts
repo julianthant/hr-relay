@@ -13,9 +13,11 @@
  *   earlier process may legitimately be ENDED here after a restart, so a
  *   close without a locally-seen open is allowed — refusing it would make
  *   every recovery emit-path throw.)
- * - **`span.patched` keys.** An identity key is refused by the schema itself;
- *   a key the workflow's descriptor `details` list does not declare throws
- *   with the offending key and workflow named.
+ * D254 retired the `span.patched` arm from the wire union, and with it this
+ * writer's declared-detail-key enforcement and its `declaredDetails` dep: the
+ * channel had no production emitter, so the enforcement guarded a shape
+ * nothing could write. A `span.patched` event now fails
+ * `SpanEventWireSchema.parse` here, before any byte reaches disk.
  *
  * This writer feeds NO projection (D218). The run/queue projection consumes
  * the stream FROM DISK with an offset-aware tailer, because the emitting
@@ -36,11 +38,6 @@ export interface SpanJsonlWriterDeps {
   readonly clock: Clock;
   /** The writer owns the process-level field (doc 03 §1.1); injectable for tests. */
   readonly pid?: number;
-  /**
-   * The workflow's declared patchable detail keys. Returning `undefined`
-   * means the workflow is unknown here — a patch for it fails loud.
-   */
-  readonly declaredDetails: (workflow: string) => ReadonlySet<string> | undefined;
 }
 
 export interface SpanJsonlWriter {
@@ -85,20 +82,6 @@ export function createSpanJsonlWriter(deps: SpanJsonlWriterDeps): SpanJsonlWrite
         throw new Error(`span ${key} was already ended; a span closes exactly once per identity`);
       }
       ended.add(key);
-      return;
-    }
-    if (event.t === "span.patched") {
-      const declared = deps.declaredDetails(event.workflow);
-      if (declared === undefined) {
-        throw new Error(`span.patched for unknown workflow ${event.workflow}; no descriptor declares its details`);
-      }
-      for (const update of event.updates) {
-        if (!declared.has(update.key)) {
-          throw new Error(
-            `span.patched key ${update.key} is not declared in ${event.workflow}'s details list; declare it or drop the patch`,
-          );
-        }
-      }
     }
   }
 

@@ -507,15 +507,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     projectionStore: database,
   });
 
-  const spanWriter = createSpanJsonlWriter({
-    stateRoot,
-    clock,
-    declaredDetails: (workflow) => {
-      const descriptor = descriptors.resolve(workflow);
-      if (descriptor === undefined) return undefined;
-      return new Set(descriptor.details.map((detail) => detail.key));
-    },
-  });
+  const spanWriter = createSpanJsonlWriter({ stateRoot, clock });
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock });
 
   // D86: spans/notes prune at 30 days, applied at boot before the fold so the

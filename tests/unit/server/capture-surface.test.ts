@@ -223,10 +223,6 @@ function surface(options: SurfaceOptions = {}): Surface {
     stateRoot,
     clock,
     pid: 4242,
-    declaredDetails: (workflow) => {
-      const descriptor = descriptors.resolve(workflow);
-      return descriptor === undefined ? undefined : new Set(descriptor.details.map(({ key }) => key));
-    },
     // D218: no in-process hook — the command service ticks the disk tail.
   });
 

@@ -20,7 +20,6 @@ import {
   makeWorld,
   queuedEventOf,
   runRecordOf,
-  traceOf,
   uuidOf,
   type DashboardWorld,
 } from "./helpers/dashboard-harness.js";
@@ -129,19 +128,18 @@ describe("context-data edit projection (2i-C)", () => {
     }
   });
 
-  it("folds a detail and its editData declaration into ONE row — display from the fold, identity from the spec", () => {
+  /**
+   * D254 — this case used to fold a `span.patched` detail and join it to the
+   * editData declaration. The channel is retired (zero production emitters),
+   * so what it pins now is the rail's WHOLE membership rule: a row exists iff
+   * a declared-correctable field has a stored checkpoint, and a declared
+   * `details` spec on its own contributes nothing. The `details` block below
+   * is deliberately present and deliberately inert — a re-added details-fed
+   * path would fail the second half.
+   */
+  it("serves editData fields from the checkpoint, and a declared detail alone serves NO row (D254)", () => {
     const w = world();
     queuedEventOf(w, { seed: 1 });
-    w.writer.emit({
-      t: "span.patched",
-      ts: w.clock.now().toISOString(),
-      workflow: "person-lookup",
-      runId: uuidOf(1),
-      attempt: 1,
-      traceId: traceOf(1),
-      spanPath: traceOf(1),
-      updates: [{ key: "selection-status", value: "resolved" }],
-    });
     w.authority.put(runRecordOf({ seed: 1, version: 2 }));
     w.authority.putCheckpoint(RunCheckpointRecordSchema.parse({
       workflowId: "person-lookup",
@@ -171,21 +169,19 @@ describe("context-data edit projection (2i-C)", () => {
       },
     };
     const payload = contextData(w, covering);
-    assert.equal(payload.entries.length, 1, "the detail and the editData field are the same leaf — one row");
+    assert.equal(payload.entries.length, 1, "one declared-correctable leaf with one checkpoint — one row");
     const selection = payload.entries[0];
     assert.ok(selection);
     assert.equal(selection.label, "Selection");
+    // The value is READ from the checkpoint, which is the only producer left.
     assert.equal(selection.valueRedacted, "resolved");
     assert.equal(selection.edit.state, "editable");
 
-    // Same world, a view that does NOT declare the field: locked with the reason.
+    // Same world, same declared detail, no editData field list: no rows at
+    // all. Before D254 this served a locked "not declared correctable" row
+    // fed by the fold — a row production could never actually render.
     const notDeclared = contextData(w, { ...covering, capabilities: { editData: true } });
-    const locked = notDeclared.entries[0];
-    assert.ok(locked);
-    assert.equal(locked.edit.state, "locked");
-    if (locked.edit.state === "locked") {
-      assert.match(locked.edit.reason, /not declared correctable/u);
-    }
+    assert.deepEqual(notDeclared.entries, []);
   });
 
   it("locks the run-level policy while a worker holds the claim — field identity stays served", () => {
@@ -360,51 +356,13 @@ describe("context-data edit projection (2i-C)", () => {
       assert.equal(completed.observedAt, OBSERVED_AT);
     });
 
-    it("dates a row the workflow does not declare correctable — it still has a field identity", () => {
-      const w = world();
-      queuedEventOf(w, { seed: 1 });
-      w.writer.emit({
-        t: "span.patched",
-        ts: w.clock.now().toISOString(),
-        workflow: "person-lookup",
-        runId: uuidOf(1),
-        attempt: 1,
-        traceId: traceOf(1),
-        spanPath: traceOf(1),
-        updates: [{ key: "selection-status", value: "resolved" }],
-      });
-      w.authority.put(runRecordOf({ seed: 1, version: 2 }));
-      w.authority.putCheckpoint(RunCheckpointRecordSchema.parse({
-        workflowId: "person-lookup",
-        itemId: uuidOf(5001),
-        nodeId: "searching",
-        attempt: 1,
-        claimGeneration: 1,
-        runId: uuidOf(1),
-        output: { schemaHash: HASH_A, value: { selection: { status: "resolved" } } },
-        descriptorVersion: 1,
-        contractFingerprint: HASH_A,
-        implFingerprint: HASH_B,
-        provenance: [
-          { path: "selection.status", source: "live", observedAt: OBSERVED_AT, originalObservedAt: OBSERVED_AT },
-        ],
-        writtenAt: NOW,
-      }));
-
-      const payload = contextData(w, {
-        details: [{
-          key: "selection-status",
-          label: "Selection",
-          source: { nodeId: "searching", fieldPath: "selection.status" },
-        }],
-        capabilities: { editData: true },
-      });
-      const selection = payload.entries[0];
-      assert.ok(selection);
-      assert.equal(selection.edit.state, "locked");
-      assert.equal(selection.observedAt, OBSERVED_AT);
-      assert.equal(selection.source, "live");
-    });
+    // D254 retired the case that stood here: "dates a row the workflow does
+    // not declare correctable". Its subject was a `descriptor.details` spec
+    // whose leaf is NOT an editData field, which only ever became a row by way
+    // of the retired `span.patched` fold — so the state it asserted is now
+    // unreachable rather than merely untested. Its surviving half is the case
+    // above, "dates a LOCKED row too": a lock the rail can still reach (an
+    // absent leaf) is dated exactly like an editable row.
 
     it("serves no clock at all when the checkpoint recorded no covering point (D133)", () => {
       const w = world();
@@ -480,50 +438,14 @@ describe("context-data edit projection (2i-C)", () => {
       assert.equal(entries.find((entry) => entry.label === "Completed on")?.freshness, undefined);
     });
 
-    it("attributes a step with NO stored checkpoint — the lock makes the question more pressing, not less", () => {
-      const w = world();
-      queuedEventOf(w, { seed: 1 });
-      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
-      // The fold carries the detail; authority carries NO checkpoint, so the
-      // entry takes the "no stored checkpoint yet" arm — and the origin is
-      // still the descriptor's to state.
-      w.writer.emit({
-        t: "span.patched",
-        ts: w.clock.now().toISOString(),
-        workflow: "person-lookup",
-        runId: uuidOf(1),
-        attempt: 1,
-        traceId: traceOf(1),
-        spanPath: traceOf(1),
-        updates: [{ key: "selection-status", value: "resolved" }],
-      });
-      const payload = contextData(w, {
-        details: [{
-          key: "selection-status",
-          label: "Selection",
-          source: { nodeId: "searching", fieldPath: "selection.status" },
-        }],
-        capabilities: {
-          editData: { fields: [{ nodeId: "searching", fieldPath: "selection.status", label: "Selection" }] },
-        },
-        dataOrigins: [{
-          nodeId: "searching",
-          step: "Search UCPath",
-          dir: "read",
-          system: "ucpath",
-          freshness: [],
-          feeds: [],
-        }],
-      });
-      const selection = payload.entries[0];
-      assert.equal(selection?.edit.state, "locked");
-      assert.match(
-        selection?.edit.state === "locked" ? selection.edit.reason : "",
-        /has no stored checkpoint yet/u,
-      );
-      assert.equal(selection?.origin?.step, "Search UCPath");
-      assert.equal(selection?.freshness, undefined);
-    });
+    // D254 retired the case that stood here: "attributes a step with NO stored
+    // checkpoint". D252 had already ruled that the Data section lists what the
+    // run TOUCHED, so such a field is not a row — but the retired detail fold
+    // could still manufacture one, reaching `editableEntryOf` with nothing
+    // behind it and serving a "has no stored checkpoint yet" lock. With the
+    // fold gone the caller resolves the checkpoint before it builds an entry,
+    // so the arm is unrepresentable; the rule itself stays pinned by "omits a
+    // declared field whose step never recorded".
 
     it("serves NEITHER when the build has no origin for the node (read forward, D133)", () => {
       const w = world();

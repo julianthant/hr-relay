@@ -64,12 +64,7 @@ describe("span JSONL writer", () => {
   it("appends one strict pid-stamped line per event and feeds NO projector — the fold reads disk (D218)", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createSpanJsonlWriter({
-      stateRoot: root,
-      clock,
-      pid: 4242,
-      declaredDetails: () => new Set(["resolvedName"]),
-    });
+    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 4242 });
     writer.emit(queuedEvent(clock));
     writer.emit({
       t: "run.claimed", ts: clock.now().toISOString(), workflow: "person-lookup",
@@ -86,7 +81,7 @@ describe("span JSONL writer", () => {
   it("partitions append-at-now: a midnight-crossing writer starts a new day file", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1, declaredDetails: () => new Set() });
+    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
     writer.emit(queuedEvent(clock));
     clock.advanceWall(24 * 60 * 60 * 1000);
     writer.emit({
@@ -99,7 +94,7 @@ describe("span JSONL writer", () => {
   it("throws on a second run.queued, a re-open, and a re-end for the same identity", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1, declaredDetails: () => new Set() });
+    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
     writer.emit(queuedEvent(clock));
     assert.throws(() => writer.emit(queuedEvent(clock)), /write-once/);
     const task = {
@@ -121,26 +116,26 @@ describe("span JSONL writer", () => {
     });
   });
 
-  it("throws at emit for an undeclared patch key, an unknown workflow, and an identity key", () => {
+  /**
+   * D254 — the writer's declared-detail-key enforcement retired WITH the
+   * `span.patched` arm it guarded. What replaces it is the stronger statement:
+   * the event does not parse at all, so no detail line can reach disk under
+   * any key. The disk assertion is the load-bearing half — a schema that
+   * refused after the append would still have written history nobody can fold.
+   */
+  it("refuses a span.patched event outright and writes nothing (D254 retirement)", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createSpanJsonlWriter({
-      stateRoot: root,
-      clock,
-      pid: 1,
-      declaredDetails: (workflow) => (workflow === "person-lookup" ? new Set(["resolvedName"]) : undefined),
-    });
-    const patch = (key: string, workflow = "person-lookup"): Record<string, unknown> => ({
-      t: "span.patched", ts: clock.now().toISOString(), workflow,
+    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
+    writer.emit(queuedEvent(clock));
+    const patch = (key: string): Record<string, unknown> => ({
+      t: "span.patched", ts: clock.now().toISOString(), workflow: "person-lookup",
       runId: RUN_ID, attempt: 1, traceId: TRACE, spanPath: TRACE, updates: [{ key, value: "x" }],
     });
-    writer.emit(patch("resolvedName"));
-    assert.throws(() => writer.emit(patch("undeclaredKey")), /not declared in person-lookup/);
-    assert.throws(() => writer.emit(patch("resolvedName", "mystery-flow")), /unknown workflow mystery-flow/);
-    assert.throws(() => writer.emit(patch("traceId")), /write-once|Invalid/);
-    // Nothing after the declared patch landed: refused events never touch disk.
+    assert.throws(() => writer.emit(patch("resolvedName")));
+    assert.throws(() => writer.emit(patch("traceId")));
     const patched = readEventStreamLines(root, "spans").filter((line) => line.text.includes("span.patched"));
-    assert.equal(patched.length, 1);
+    assert.equal(patched.length, 0);
   });
 });
 

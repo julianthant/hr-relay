@@ -584,11 +584,11 @@ wrong for the ninth is not a mechanism, it is a coin toss with good odds. `input
 unaffected and answers a different question — what KIND of thing a run is about, versus where this
 graph settles that thing's name.
 
-The read is a checkpoint and not a folded `span.patched` detail, for a reason worth writing down: the
-detail channel has a declared vocabulary and **no emitter in this build**, so a title sourced from
-`row.details` would be a title that never changes. The checkpoint is the record the identity chunk
-actually writes. It is also the ONE stored node output a queue row reads — everything else on the row
-is fold ⊕ authority.
+The read is a checkpoint and not a folded detail, for a reason worth writing down: the `span.patched`
+detail channel had a declared vocabulary and **no emitter**, so a title sourced from `row.details`
+would have been a title that never changes — and that observation is what eventually retired the
+channel outright (D254, above). The checkpoint is the record the identity chunk actually writes. It is
+also the ONE stored node output a queue row reads — everything else on the row is fold ⊕ authority.
 
 A declared leaf that resolves to a NON-STRING or a blank string **throws**, naming the workflow, the
 node, the path and what was found. It is the one arm that does not degrade gracefully, on purpose: it
@@ -977,15 +977,9 @@ export type SpanStarted =
       t: "span.started"; kind: "task"; name: string; system?: string;
     });
 
-/**
- * Durable KV updates on the owning RUN (detail fields, resolved names, record snapshots).
- * Patch keys MUST be declared in the descriptor's `details` list (§3.3) — an undeclared key
- * throws at emit. Identity attrs can never ride a patch (§6 guard 4).
- */
-export interface SpanPatched extends Base, RunSpanRef {
-  t: "span.patched";
-  updates: readonly [DetailUpdateWire, ...DetailUpdateWire[]];
-}
+// `SpanPatched` — durable KV updates on the owning run — stood here until D254 RETIRED it.
+// See the D254 block below §1.1; the arm is gone from `src/events/types.ts`, from the writer,
+// and from the fold.
 
 /** Fresh subject observation. The raw identifier is retained only in the encrypted/local
  * authority record when required; this stream carries a redacted value + comparison outcome. */
@@ -1028,6 +1022,57 @@ instants, unbranded ids, non-canonical JSON, `NaN`, and invalid state combinatio
 cast into the model. An optional offline historical importer owns its own explicit-version parse and
 visible quarantine contract; it is not a runtime boundary.
 
+#### D254 — the `span.patched` detail channel is RETIRED (2026-08-20, operator ruling)
+
+**`span.patched` is removed from the span vocabulary.** It carried a declared per-workflow key set
+(`descriptor.details`) and folded into a `row.details` map the run-detail Context rail read. It had
+**zero production emitters, in the strongest available sense**: the kernel's `SpanEmitter` port
+(`src/core/span-emitter.ts`) never carried the arm, so no code path in `src/` could produce one; the
+only producers that ever existed were test fixtures; and `.tracker-rebuild/spans` — every real run
+this program has ever executed — holds no such line. Every surface fed by the channel therefore
+rendered its empty state permanently, through every green gate, since 1g-spine. The gap was recorded
+in `docs/findings/dashboard-projection.md` on 2026-08-14 (found while building the subject title,
+which reads a CHECKPOINT for exactly this reason — §1.2 above).
+
+**The ruling is to remove, not to build.** An arm nothing can emit is not "unused", it is
+unreachable, and leaving a declared vocabulary arm in place makes the wire claim a capability the
+runtime does not have. Retiring is reversible and honest; building the emitter is work nobody asked
+for. What was removed, end to end:
+
+| Site | What went |
+|---|---|
+| `src/events/types.ts` | the `SpanPatchedSchema` arm, `DetailUpdateWireSchema`, its key schema, `SPAN_IDENTITY_ATTRIBUTE_KEYS` (whose only reader was the patch key refusal), and the now-unused JSON value schema |
+| `src/infra/events/span-jsonl-writer.ts` | the declared-key enforcement branch and the `declaredDetails` dep it needed — a `span.patched` line now fails `SpanEventWireSchema.parse` before any byte reaches disk |
+| `src/server/dashboard/compose.ts`, `src/server/worker/compose.ts` | the two `declaredDetails` injections |
+| `src/server/dashboard/projectors/run-queue-projection.ts` | the fold arm and the `details` field of `RunFoldRecord` (a rebuildable projection — the fold schema hash moves and the tail re-folds from disk; nothing durable holds this shape) |
+| `src/server/dashboard/queries/run-detail.ts` | the `row.details` loop in the Context-rail payload, the `details` member of `RunDetailDescriptorView`, and `editableEntryOf`'s `display` argument and checkpoint-less arm |
+
+**`descriptor.details` STAYS, with its meaning restated.** It is no longer a patch-key vocabulary; it
+is a DECLARATION with three real readers — the evidence receipt's mandatory-leaf set
+(`src/core/evidence-receipt.ts`), the run-detail data-origin bound (`dataOriginViewsOf`, whose
+resolved path set is `details[].source` ∪ `capabilities.editData.fields`), and the Explorer's field
+census. Removing it would have been the over-correction: three live consumers, one dead one.
+
+**What the Context rail lists is now exactly one rule.** A row exists iff a `capabilities.editData`
+field has a stored checkpoint — D252's "the Data section lists values the run TOUCHED", made
+structural rather than defended by a guard clause. Two consequences are deliberate. A declared
+`details` spec that is not a correctable field contributes NO row (before this it contributed one
+only in a fixture); and `editableEntryOf` takes the checkpoint as a parameter, so "there is a stored
+checkpoint" is stated in the type instead of re-derived and re-answered.
+
+**The named alternative, and why it was not taken.** Declared details could be served from
+checkpoints the way D252 serves correctable fields — the same `latestCheckpoint` read is one line
+away. That is a BUILD (it decides which declared leaves belong on an operator surface, their order
+and their labels), and the surface's membership was decided by D252 two days earlier. **The trigger
+that re-opens it:** an operator asking for a declared, non-correctable value on the run-detail rail.
+The answer then is a checkpoint read, never a re-added event arm — the channel's defect was never its
+shape, it was that nothing wrote it.
+
+**Reading a historical line.** A `span.patched` line would now be refused BY NAME by the tail, which
+degrades the projection and schedules the guarded rebuild (D218). That is the correct answer and
+costs nothing, because no such line exists: the retirement was verified against the real state root,
+not merely against the source tree.
+
 **Notes** (high-volume annotations — log lines, screenshots, per-action records, data points) are a
 parallel stream, not span events. Same `SpanRef` addressing, so a note attributes to its exact task
 attempt or worker/browser lifetime:
@@ -1062,7 +1107,7 @@ per selected run. Timeline *folds* read spans only; per-action drill-down reads 
 
 | Surface | Today | Projection of |
 |---|---|---|
-| Queue row | latest TrackerEntry snapshot | run span: `run.queued` attrs (immutable identity) ⊕ folded `span.patched` ⊕ open gates ⊕ `span.ended` |
+| Queue row | latest TrackerEntry snapshot | run span: `run.queued` attrs (immutable identity) ⊕ open gates ⊕ `span.ended` (⊕ folded `span.patched` until D254 retired that channel) |
 | Status badge | status + sentinel step + statusExtensions | run span state machine: queued→pending, claimed+open→running, open gate→gate status (e.g. `approval` open ⇒ needsReview), ended→outcome verbatim |
 | Step pipeline | registered steps + `step` string + reconstructed durations | descriptor.steps ⊕ task spans (a task span IS the duration; a cancelled run's reached step = last open task span — no sentinel recovery) |
 | Timeline / log panel | rows + logs + filtered session events (pid heuristics) | run span tree's notes ⊕ the owning worker span's lifecycle events selected **by `workerId`** (recorded at `run.claimed`) — the instance-name/pid/time-window attribution class of bugs is structurally dead |
@@ -1353,6 +1398,48 @@ As-built contract:
   mirror of the same in-memory rows); and tolerating an empty fold in `buildRunDetail` (the events
   were never dropped by a filter — they never arrived, and the reader is the wrong place to repair
   an ingest gap).
+
+#### D255 — a `span.ended` binds to an OPEN entry, and one producer still owes its execution identity (2026-08-20)
+
+**The fold rule.** A task `span.ended` binds to the LAST entry at `(attempt, spanPath)` whose
+`endedAt` is absent; when every entry at that identity is already closed (or none exists) the close
+appends a new entry with no start, which is the same arm that already carried "a restart closed a
+span an earlier process opened". It never rewrites a measured span's end.
+
+The rule matters only when a producer emits one `(attempt, spanPath)` twice, and the first-match
+binding it replaces did not undercount there — it FABRICATED. The first entry kept its own
+`startedAt` and took the second execution's `endedAt`, so the step's `durationSec` covered both
+executions **and everything between them** — a gate park is hours — while the second entry stayed
+open and was dropped as unmeasured. B4a recorded this as a low-priority undercount behind the new
+`pipeline[].executions` counter; it is the opposite kind of error, which is why it was fixed rather
+than deferred. `tests/unit/server/run-queue-projection.test.ts` pins it, writing the duplicate
+straight to the stream because the JSONL writer's own identity guard refuses a re-open in-process.
+
+**Which producer can do that — and it is not the one the record named.** The record attributed the
+duplicate to a requeue re-executing a node at the same span path. That has been impossible since
+**D214**: `taskSpanPath` is `<trace>/<node>#<claimGeneration>.<taskAttempt>`, so two executions of
+one node inside one attempt already differ. The reachable producer is the **write sequencer's beat
+spans** (`emitTaskSpan`, `src/core/write-sequencer.ts`), whose path is `<trace>/<node>/<beat>` with
+no claim generation and no task attempt — D214's identity fix never reached it. Two consequences,
+both DEFERRED here with their trigger rather than fixed blind:
+
+- A transaction node executed twice inside one attempt would first hit the writer's own
+  `opens exactly once per identity` refusal **in-process** — a thrown worker, not a display quirk —
+  and only across processes reach the fold at all. Tracing the executor, that state is currently
+  unreachable: the transaction arm has no retry loop, and a node with a checkpoint replays without
+  emitting spans, so a transaction node executes at most once per attempt.
+- `nodeIdOfTaskSpanPath` reads a node id as "everything before the last `#` of the last segment",
+  and a beat path has no `#` at all, so beat spans attribute to NO node: they draw no pipeline chip
+  and their `executionsByNode` bucket (keyed by the beat name) is never read. Harmless today, and
+  the reason a naive `#<gen>` suffix is the wrong repair — it would attribute the span to a node
+  called `prepare`.
+
+**The trigger that ends the deferral:** the first transaction node that can execute twice within one
+run attempt (an `always-rerun` transaction node downstream of a gate, or a doc-09 §4 recovery that
+re-enters the sequencer under the same attempt), or the first requirement that a beat span attribute
+to its node on the timeline. The fix then is D214's, applied at the producer: compose the beat path
+UNDER the node's own span path (`<nodeSpanPath>/<beat>`), which needs the executor to hand the
+sequencer the node span path it already computed.
 
 ### 2.4 One command protocol with strict target families
 
@@ -1780,13 +1867,14 @@ unchanged; Settings remains the page that explains either state.
 **Doc 02 owns the `WorkflowDescriptor` shape and builder** (D1). This section does not define a
 descriptor interface; it names the fields this layer *reads*, and the fields it *contributes* for
 doc 02 to adopt. The tracker enforces its half at the emit boundary: **emitting a task span whose
-`name` is not a descriptor step key, a gate not in the descriptor's gate list, a verdict not in its
-verdict map, or a patch key not in its detail-field list, throws at emit time.**
+`name` is not a descriptor step key, a gate not in the descriptor's gate list, or a verdict not in its
+verdict map, throws at emit time.** (The fourth clause — a patch key not in the detail-field list —
+retired with `span.patched` itself; D254.)
 
 ### 3.1 Read from doc 02's descriptor
 `id`, `code` (2-char trace prefix), `label`, `icon`, `category`, `surface.shape` /
 `surface.resolveShape`,
-`inputSubject`, graph-node keys/labels, `surfaces`, `details`, `actions`, `presets`, `identity`,
+`inputSubject`, graph-node keys/labels, `surfaces`, `details` (as a DECLARATION — D254), `actions`, `presets`, `identity`,
 `presentation`, `coordinator`, `completionConsumes`, `artifactProjections`, `enqueue`, `scenarios`,
 version/fingerprint, and
 override layering. There is no second `archetype` declaration.
@@ -1803,8 +1891,10 @@ verdicts: readonly VerdictDefinition[]
 //    identity-approval badge (§5.4) becomes a gate statusKey. The statusExtensions function
 //    registry does not exist in the rebuild repo.
 details: readonly DetailProjectionSpec<Nodes>[]
-//  ^ the SpanPatched validation set (review #11): every patch key must be declared here.
-//    Successor of today's detailFields incl. the "declared but never populated" warn.
+//  ^ D254: no longer a patch-key validation set (the channel it validated is retired). It is a
+//    DECLARATION of this workflow's display-safe data leaves, read by the evidence receipt's
+//    mandatory-leaf set, by the run-detail data-origin bound, and by the Explorer's field census.
+//    It projects no VALUE onto any surface — the Context rail reads checkpoints (D252).
 capabilities: WorkflowCapabilities
 completion?: CompletionProgram                                // §4 — OCR-backed workflows only
 enqueue / actions / scenarios / presets / identity / presentation / coordinator /
@@ -2197,7 +2287,7 @@ sentinels and read-time reclassification. The lift decodes each exactly once:
 | `running` + `step="wait-approval"` / `"wait-signatures"` (oath-upload waits) | `gate.opened("await-approval")` / `gate.opened("await-signatures")` (§4.5 gates) |
 | operation coordinator rows (display-only, stamped at prepare) & i9 `data.displayOnly==="true"` members | `run.queued { displayOnly: true }` (+ `span.ended` for the failed members) — **NO fabricated `run.claimed`, NO worker span** (review #9); actions project Hide only |
 | session events | worker/browser spans keyed by (instance, pid) — the pid heuristics live here and ONLY here |
-| data diffs on re-emits | `span.patched` (identity keys excluded — a legacy re-stamp folds into details, never identity) |
+| data diffs on re-emits | **no successor event — D254 retired `span.patched`.** The lift's own reason for the row (a legacy re-stamp must fold into details, never identity) is satisfied structurally instead: no arm but `run.queued` names an identity attribute, so a re-stamp has nowhere to land |
 | anything else — invalid archetype or unknown status/step | **quarantine (§5.1), never throw, never a silent default** |
 
 **Pinned by versioned real-tracker fixtures (D12):** a test corpus of copied real `.tracker`
@@ -2268,8 +2358,8 @@ its own milestones with no parity deadline coupling.
 | 1 | Per-component status/icon/label maps reappear (a new `STATUS_CONFIG` branching on workflow) | Architecture test: the rebuild repo's `src/dashboard` components may not contain `workflow ===` comparisons or workflow-id string literals (allowlist: the registry plumbing file only) |
 | 2 | Client-side re-projection creeps back (someone recomputes status from spans in React) | Raw `SpanEvent`/`Note` types are not exported from the client lib; the SPA's server-types module exposes only `*Wire` types. Import-boundary guard fails on `src/events/types` imported under `dashboard/` |
 | 3 | Silent projection fallbacks (`?? "running"`, catch→default) violating fail-loud | The `fail-loud-catch-default` + `nullish-literal-data-fallback` ratchets are ported into the rebuild repo and cover its `src/` from day one (charter: same quality umbrella). Projection code has zero allowlist entries |
-| 4 | Re-stamp culture returns via `span.patched` clobbering identity | Projector folds patches into a `details` namespace only; identity attrs (`shape`, `subjectKind`, `parentRunId`, `traceId`, `itemId`) are read exclusively from `run.queued`. A patch carrying an identity key OR an undeclared detail key **throws at emit**. Unit-pinned |
-| 5 | Undeclared vocabulary (ad-hoc gate names, step keys, verdicts, patch keys) | Emit-time validation against the descriptor (task name ∈ steps, gate ∈ gates, verdict ∈ verdicts, patch key ∈ details) — throws. Coverage test walks every descriptor and asserts the sets are non-empty where capabilities require them |
+| 4 | Re-stamp culture returns via a KV patch clobbering identity | **Structural since D254:** there is no patch arm. Identity attrs (`shape`, `subjectKind`, `parentRunId`, `traceId`, `itemId`) are named by `run.queued` and by no other arm of the strict union, so a re-stamp does not parse. `span-events.test.ts` keeps the negative control — every `span.patched` shape is refused by the wire |
+| 5 | Undeclared vocabulary (ad-hoc gate names, step keys, verdicts) | Emit-time validation against the descriptor (task name ∈ steps, gate ∈ gates, verdict ∈ verdicts) — throws. Coverage test walks every descriptor and asserts the sets are non-empty where capabilities require them. The fourth arm — patch key ∈ `details` — retired with the channel it validated (D254) |
 | 6 | A runtime crosses the isolation boundary and creates two sources of authority | Separate repos share no module graph, build, or process, so a legacy↔rebuild runtime edge is structurally impossible (D93 retires the D88 bidirectional-ban guards that policed it in one tree). What is still gated is the one-machine collision surface: state/artifact roots, ports, locks, and browser profiles/sessions are distinct, and cutover tests prove only one launcher accepts production work |
 | 7 | Open spans leak on crash and show "running" forever | Projection derives `interrupted` for an open run span whose worker pid is dead AND a newer run for the same itemId started (mirrors `readRunsForId` exactly — pending/running only, non-newest only); worker liveness rides SQLite heartbeats as today. No fabricated durations |
 | 8 | The completion union grows a fourth ad-hoc arm as an object literal side-channel | Programs constructible only via `defineFormSpec` (sealed brand, §4.2); spec-to-spec imports banned by guard; `extendFormSpec` is the sole composition path and re-validates. The two declared non-arms (oath-upload, verify — §4.5/§4.6) are pinned by tests asserting they have NO CompletionProgram |
@@ -2315,7 +2405,6 @@ Span ids shown in doc 02's path grammar; `attempt` omitted where 1.
 //    "fields":[{"key":"page","value":"1"},{"key":"tier","value":"1"}]}
 {"t":"span.ended","spanPath":"os-141002-11ab/ocr#1","outcome":"done"}
 {"t":"span.started","kind":"task","name":"person-lookup","spanPath":"os-141002-11ab/person-lookup#1"}
-{"t":"span.patched","spanPath":"os-141002-11ab","updates":[{"key":"records","value":[/* preview records v2 */]}]}
 {"t":"span.ended","spanPath":"os-141002-11ab/person-lookup#1","outcome":"done"}
 {"t":"gate.opened","spanPath":"os-141002-11ab","gate":"approval"}   // parked — NOT a fake "running" step
 ```

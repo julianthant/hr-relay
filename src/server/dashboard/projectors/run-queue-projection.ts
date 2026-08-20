@@ -113,7 +113,6 @@ const RunFoldRecordSchema = z.strictObject({
   claimedBy: z.string().min(1).optional(),
   requeues: z.number().int().nonnegative(),
   taskSpans: z.array(TaskSpanFoldSchema),
-  details: z.record(z.string(), z.unknown()),
   openGates: z.array(z.strictObject({ gate: z.string().min(1), openedAt: z.iso.datetime({ offset: true }) })),
   resolvedGates: z.array(z.strictObject({
     gate: z.string().min(1),
@@ -212,11 +211,12 @@ export interface RunQueueProjectionDeps {
      * row derives from a stored node output: the subject's display name, at the
      * leaf the descriptor declares (doc 03 §1.2, `run-subject-title.ts`).
      *
-     * It is read here rather than folded from a span because no producer emits
-     * one — the `span.patched` detail channel has a declared vocabulary and no
-     * emitter in this build, so a title that read `row.details` would be a title
-     * that never changes. The checkpoint is the record the identity chunk
-     * actually writes.
+     * It is read here rather than folded from a span because the fold has no
+     * such fact to offer: D254 retired the `span.patched` detail channel — a
+     * declared vocabulary with zero production emitters — so `row.details` no
+     * longer exists in either direction. The checkpoint is the record the
+     * identity chunk actually writes, and the only stored node output this row
+     * reads.
      */
     latestCheckpoint(
       workflowId: string,
@@ -553,7 +553,6 @@ export class RunQueueProjection {
         attempt: event.attempt,
         requeues: 0,
         taskSpans: [],
-        details: {},
         openGates: [],
         resolvedGates: [],
         memberRunIds: [],
@@ -598,14 +597,6 @@ export class RunQueueProjection {
       row.lastEventAt = event.ts;
       row.eventCount += 1;
       return { runIds: [event.runId], workerChanged: worker !== undefined };
-    }
-
-    if (event.t === "span.patched") {
-      const row = this.#row(event.runId, event.t);
-      for (const update of event.updates) row.details[update.key] = update.value;
-      row.lastEventAt = event.ts;
-      row.eventCount += 1;
-      return { runIds: [event.runId], workerChanged: false };
     }
 
     if (event.t === "gate.opened") {
@@ -681,11 +672,33 @@ export class RunQueueProjection {
     // span.ended
     if (event.kind === "task") {
       const row = this.#row(event.runId, event.t);
-      let span = row.taskSpans.find((candidate) =>
-        candidate.attempt === event.attempt && candidate.spanPath === event.spanPath);
+      /**
+       * D255 — a close binds to the LAST STILL-OPEN entry at this identity,
+       * never to the first entry at its key. The two differ only when a
+       * producer emits the same `(attempt, spanPath)` twice, and where that
+       * happens the first-match rule does not undercount, it FABRICATES: entry
+       * one keeps its own `startedAt` and takes execution two's `endedAt`, so
+       * the chip reports a duration spanning both executions and everything
+       * between them (a gate park is hours), while execution two's entry stays
+       * open and is dropped as unmeasured. Binding to an open entry keeps each
+       * execution a fact about ITSELF — D123/D214's rule, applied at the fold.
+       */
+      let span: z.infer<typeof TaskSpanFoldSchema> | undefined;
+      for (let index = row.taskSpans.length - 1; index >= 0; index -= 1) {
+        const candidate = row.taskSpans[index];
+        if (candidate === undefined) continue;
+        if (candidate.attempt !== event.attempt || candidate.spanPath !== event.spanPath) continue;
+        if (candidate.endedAt !== undefined) continue;
+        span = candidate;
+        break;
+      }
       if (span === undefined) {
         // A restart may close a span an earlier process opened; the open time
         // is genuinely unknown and stays absent rather than being invented.
+        // The same arm carries a close whose identity is already CLOSED here:
+        // a second measured execution is appended rather than overwriting the
+        // first, because rewriting a measured span's end is the fabrication
+        // above by another route.
         span = {
           attempt: event.attempt,
           spanPath: event.spanPath,

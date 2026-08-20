@@ -12,9 +12,19 @@
  *
  * Identity (doc 03 §1.1): run/task spans are `(runId, attempt, spanPath)`;
  * worker/browser spans are `(workerId, spanPath)`. Identity attributes are
- * written exactly once, by `run.queued` — `span.patched` can never carry one
- * (schema-refused here; the writer additionally refuses undeclared detail
- * keys against the descriptor's `details` list).
+ * written exactly once, by `run.queued`, and no arm of this union can restate
+ * one: every other event is a `strictObject` that does not name them.
+ *
+ * D254 (2026-08-20, operator ruling) — the `span.patched` detail channel is
+ * RETIRED from this union. It carried a declared per-workflow key vocabulary
+ * and had ZERO production emitters: the kernel's `SpanEmitter`
+ * (`src/core/span-emitter.ts`) never had the arm, so nothing in `src/` could
+ * produce one, and `.tracker-rebuild/spans` holds no such line. A vocabulary
+ * arm nothing can emit is not "unused", it is unreachable — and it made every
+ * surface fed by it render its empty state permanently while every gate stayed
+ * green. Removing it is reversible and honest; building the emitter was work
+ * nobody asked for. A `span.patched` line therefore now fails the union BY
+ * NAME, which is the correct answer for a shape this repository never wrote.
  *
  * Deliberately absent from this 1g slice (each is a later owning slice, not a
  * forgotten arm): `subject.observed` (emitted by the write-sequencer /
@@ -36,10 +46,6 @@ const Hex64Schema = z.string().regex(HEX64_PATTERN, "must be SHA-256 hex");
 const IsoInstantSchema = z.iso.datetime({ offset: true });
 const PositiveIntSchema = z.number().int().positive();
 const SpanPathSchema = z.string().min(1);
-
-type JsonValue = string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue };
-const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(JsonValueSchema), z.record(z.string(), JsonValueSchema)]));
 
 /** The closed browser-system vocabulary; pinned against `src/domain/ids.ts`. */
 export const SpanBrowserSystemSchema = z.enum([
@@ -85,25 +91,6 @@ const WorkerSpanIdentityFields = {
   spanPath: SpanPathSchema,
   parentSpanPath: SpanPathSchema.optional(),
 } as const;
-
-/**
- * Every attribute `run.queued` stamps, plus the span identity fields. These
- * are write-once: a `span.patched` update naming one of them throws at emit —
- * the whole re-stamp bug class (doc 03 §1.3) is unrepresentable.
- */
-export const SPAN_IDENTITY_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
-  "runId", "attempt", "traceId", "spanPath", "parentSpanPath", "workflow", "pid", "ts", "t", "kind",
-  "itemId", "parentRunId", "shape", "priority", "dryRun", "retryOf", "actorId", "title", "subtitle",
-  "descriptorVersion", "contractFingerprint", "resolvedInstance", "configFingerprint", "configSnapshotId",
-]);
-
-const DetailKeySchema = z.string().regex(/^[a-z][A-Za-z0-9-]*$/, "detail key must be kebab- or lowerCamel-case")
-  .refine((key) => !SPAN_IDENTITY_ATTRIBUTE_KEYS.has(key), "identity attributes are write-once and can never ride a patch");
-
-export const DetailUpdateWireSchema = z.strictObject({
-  key: DetailKeySchema,
-  value: JsonValueSchema,
-});
 
 /**
  * Run is born at ENQUEUE (doc 03 §1.1). Carries the queue row's immutable
@@ -164,18 +151,6 @@ const WorkerSpanStartedSchema = z.strictObject({
   ...WorkerSpanIdentityFields,
   name: z.string().min(1),
   system: SpanBrowserSystemSchema.optional(),
-});
-
-/**
- * Durable KV updates on the owning RUN. Patch keys MUST be declared in the
- * descriptor's `details` list — the writer throws on an undeclared key, and
- * the schema itself refuses identity keys.
- */
-const SpanPatchedSchema = z.strictObject({
-  t: z.literal("span.patched"),
-  ...BaseFields,
-  ...RunSpanIdentityFields,
-  updates: z.array(DetailUpdateWireSchema).min(1),
 });
 
 const GateOpenedSchema = z.strictObject({
@@ -273,7 +248,6 @@ export const SpanEventWireSchema = z.union([
   RunRequeuedSchema,
   TaskSpanStartedSchema,
   WorkerSpanStartedSchema,
-  SpanPatchedSchema,
   GateOpenedSchema,
   GateResolvedSchema,
   TransactionPreviewedSchema,

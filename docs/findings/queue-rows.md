@@ -61,12 +61,20 @@ pass above served seven fields and drew none of them; this pass is the consumpti
 drawing is not what they were waiting for. The `subtitle` record is a semantic mismatch in what an
 existing field is FILLED with, which no amount of rendering settles.
 
+**Swept 2026-08-20 (B8).** Every producer claim above was re-verified at HEAD — each of those six
+names appears in `src/` zero times, or once inside a comment explaining its own absence — and each
+record's `Status:` line now states its disposition and its trigger. The `subtitle` record is
+dispositioned WON'T-FIX as stated: the mismatch is not a defect, because D109 retains
+`title`/`subtitle` as the exact operator-authored text the confirmation surface showed. Four records
+stay open, each against a commit somebody will write.
+
 ---
 
 ## `reviewRunId` has no model to serve from (the linked-run CHIP is done)
 
-**Recorded:** 2026-08-14 · **Updated:** 2026-08-19 · **Status:** `linkedRuns[]` is SERVED **and
-DRAWN**; only `reviewRunId` is left, and it has no producer · **Owning doc:** doc 03 §9 D6, D10, D13
+**Recorded:** 2026-08-14 · **Updated:** 2026-08-19 · **Status:** OPEN — `linkedRuns[]` is SERVED
+**and DRAWN**; only `reviewRunId` is left and it has NO PRODUCER, blocked on the trigger named below
+(re-verified 2026-08-20: `grep -r reviewRunId src` → 0 hits) · **Owning doc:** doc 03 §9 D6, D10, D13
 
 **Symptom.** Nearly every demo row carries a full-width chip under the title routing to a
 related run — `Oath Upload · running ↗`, `OCR Review · done ↗` — which is how a linked child
@@ -103,9 +111,10 @@ unrelated rows.
 
 ## No extracted-people count (the FACT CHIPS are done)
 
-**Recorded:** 2026-08-14 · **Updated:** 2026-08-19 · **Status:** `facts[]` is SERVED **and DRAWN**
-in the demo's `FactChipView` shape; only `extractedCount` is left, and it has no producer ·
-**Owning doc:** doc 03 §9 D7
+**Recorded:** 2026-08-14 · **Updated:** 2026-08-19 · **Status:** OPEN — `facts[]` is SERVED **and
+DRAWN** in the demo's `FactChipView` shape; only `extractedCount` is left and it has NO PRODUCER,
+blocked on the trigger named below (re-verified 2026-08-20: no `peopleCount`/`extractedCount`
+anywhere in `src/`) · **Owning doc:** doc 03 §9 D7
 
 **Symptom.** A demo row's chip band carries the run's own so-what — `signed 2:24 PM` on a
 finished oath, `6 people` on a packet still at OCR review (which is D7, ratified: *"a packet
@@ -135,7 +144,27 @@ result leaf.
 
 ## `subtitle` carries a prose run note, not an external identifier
 
-**Recorded:** 2026-08-14 · **Status:** recorded · **Owning doc:** doc 03 §1.2
+**Recorded:** 2026-08-14 · **Status:** DISPOSITIONED 2026-08-20 (B8 sweep) — **won't-fix as
+stated; the identifier half is tracked by the member-identity record below** · **Owning doc:**
+doc 03 §1.2
+
+**The disposition, and why it needs no new decision.** The record asks for `subtitle` to hold a
+short external identifier, the way the demo's third footer segment does. That is refused on a rule
+this tree already carries: **D109 retains `title`/`subtitle` as the exact text the confirmation
+surface showed**, so the value is operator-AUTHORED, and re-purposing the slot would silently
+discard what somebody typed — D233's rename lesson (*"applying yesterday's over today's discards
+somebody's edit"*) one field over. The prose note is not a wrong value in the wrong place; it is the
+right value in a slot the demo used for something else.
+
+The half that IS a real gap — an external identifier for a run — is not this field, and it is
+already recorded with its trigger under *"Member identity, group nouns and the rejected count"*
+below: serving one needs a declared `identifierProjection` beside `subjectProjection`, proven
+against the producing node's output schema, and no descriptor declares one. **That is the trigger
+for the identifier; there is no trigger for this record, because nothing is waiting on a producer.**
+
+The presentation question the record held open ("does a three-line prose note belong in a queue
+footer at all") was answered by the wrap fix below and by DESIGN.md's footer rule — facts wrap, they
+never truncate. Nothing further is owed.
 
 **Symptom.** The demo's footer subtitle slot holds a short external identifier — an EID
 (`10620118`) or a document id (`os-142012-b410`) — which is why it sits inline between the
@@ -160,8 +189,10 @@ queue footer at all is the backend question this record holds open.
 
 ## Priority and preset on a queue row (inherited by the archive)
 
-**Recorded:** 2026-08-19 · **Status:** recorded · moved here from
-[archive.md](archive.md) when that file was cleared to zero (Track B5).
+**Recorded:** 2026-08-19 · **Status:** OPEN — the `priority` half LANDED and DRAWN 2026-08-19;
+`preset` has NO PRODUCER at any layer, blocked on the trigger named below (re-verified 2026-08-20:
+no descriptor declares `presets`) · moved here from [archive.md](archive.md) when that file was
+cleared to zero (Track B5).
 
 **Updated 2026-08-19 — the PRIORITY half is landed AND DRAWN; `preset` has no producer at any
 layer.** `QueueBaseFields.priority` is served from the run envelope (D95's `bump` target) with no
@@ -194,7 +225,9 @@ wire — and until the first descriptor declares a preset there is nothing for t
 
 ## Member identity, group nouns and the rejected count — no producer, deliberately not served
 
-**Recorded:** 2026-08-19 · **Status:** recorded · **Owning doc:** doc 03 §9, doc 13 §3.2
+**Recorded:** 2026-08-19 · **Status:** OPEN — three deliberate non-servings, each blocked on a
+named producer-trigger below (re-verified 2026-08-20: `memberEid`/`groupNoun`/`rejectedCount` appear
+nowhere in `src/` but in one comment explaining the absence) · **Owning doc:** doc 03 §9, doc 13 §3.2
 
 Three fields from the wire-hookup ledger's `QueueBaseFields` batch were assessed while serving the
 rest (D230/D231) and deliberately NOT added, because each would be a wire arm nothing in this tree
