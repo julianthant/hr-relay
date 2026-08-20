@@ -42,6 +42,18 @@ schema-versioned diagnostic attachment that no workflow, command, projection, or
 
 ## 0. Why this is foundation work, not dashboard polish
 
+<!-- roadmap: phase-1 -->
+
+<!-- roadmap-status: phase-1 -->
+- [x] a stable operator vocabulary instead of TypeScript property paths — four branded ids, 120 catalog entries (§1.1, §1.7)
+- [x] tasks cannot reach a raw `Page` — `task-driver-boundary`, AST plus transitive import graph (§1.4)
+- [x] a failed run persists a structured record rather than a message — Phase 1f's durable `FailureRecord` (§2.1)
+- [x] a `done` run carries a receipt of inputs, observations, decisions, actions, verification, reuse and uncertainty (D141, §2.3)
+- [x] the explorer answered “documentation or editing surface” — read-only, edit half deferred behind a named trigger (D176/D186)
+- [ ] lessons still accumulate as prose: the structured store is built and nothing writes to it (§4.1)
+> 2026-08-20 | docs-cohesion operator-trust | verified each of §0's six drift problems against the code; five are closed by the base, the sixth (lessons → knowledge records) is blocked on a caller, not on a schema
+<!-- /roadmap-status -->
+
 The old codebase already contains many correct selectors, identity checks, screenshots, lessons,
 and queue actions, but they are difficult to reuse consistently:
 
@@ -69,7 +81,22 @@ meant to remove.
 
 ## 1. Canonical UI vocabulary and typed system drivers
 
+<!-- roadmap: p1-authority -->
+
+<!-- roadmap-status: p1-authority -->
+- [x] four branded semantic ids, imported and never redeclared (D101) — `src/domain/ids.ts:43-46`
+- [x] four per-store server-only registries; locator recipes never leave the server (§1.2, §1.7)
+- [x] typed drivers, raw Playwright confined to the driver/session owners — `task-driver-boundary`
+- [x] verification is conjunctive (D98/D99) and a staging anchor carries `exactly-one-editable` (D208)
+- [x] the generated catalog is the ONE projection and throws when stale (§1.3, D177)
+- [ ] `semantic-ui-registry` never calls Kuali's own audit functions — three stores of four (§1.7)
+- [ ] D208 rule 1 is an authoring obligation, not a machine check; its trigger is a second exception (§1.6)
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/ui/**, src/stores/*/driver/ui-registry.ts, generated/ui-catalog.json and tests/unit/architecture/{semantic-ui-registry,task-driver-boundary}.test.ts; left: the Kuali audit call site and D208's second exception
+<!-- /roadmap-status -->
+
 ### 1.1 Four identifiers with one job each
+
+<!-- roadmap: p1-authority -->
 
 ```ts
 export type ElementId = Brand<string, "ElementId">;          // "ucpath.smart-hr.save-submit"
@@ -101,6 +128,8 @@ attempt)`, which is what lets §2.3.2 re-derive one run's receipt to the same by
 there would have made determinism impossible.
 
 ### 1.2 Registry record
+
+<!-- roadmap: p1-authority -->
 
 ```ts
 // Server-only definition under stores/<system>/driver/. Client/task code receives generated ids and
@@ -192,6 +221,9 @@ blobs by `legacy-selector-port-provenance`, so legacy moving on cannot invalidat
 
 ### 1.3 One canonical catalog for the operator and AI tools
 
+<!-- roadmap: p1-authority -->
+<!-- roadmap: p2-2i -->
+
 The build generates a **safe projection** at `generated/ui-catalog.json` and one per-system
 `UI-CATALOG.md` from the server registry. Each entry includes canonical id, label, search terms,
 screen/state, role/effect, verified date plus fixture/live evidence refs, sensitivity classification, tasks that use it,
@@ -230,6 +262,8 @@ example, added by D261 (2026-08-20): "the Kuali Action List row for this documen
 `src/domain/ui/kuali-action-list.ts:44-60`.
 
 ### 1.4 Tasks do not receive raw `Page`
+
+<!-- roadmap: p1-authority -->
 
 Raw Playwright access is confined to `stores/<system>/driver/**`, worker-owned session
 infrastructure, and the registry interpreter. Browser task contexts receive a typed driver:
@@ -286,6 +320,8 @@ is improved incrementally only after its fixtures/live checks exist.
 
 ### 1.5 Registry separation—no “one giant task store” ambiguity
 
+<!-- roadmap: p1-authority -->
+
 | Concern | Canonical owner | Reuse meaning |
 |---|---|---|
 | Business/system operation (“search Person Org”, “fill termination”) | System task store (ref task-contract) | Compose the proven operation in workflows |
@@ -299,6 +335,8 @@ The workflow mini-store prevents repeated pure transformation code. A workflow n
 an informal substitute for another.
 
 ### 1.6 Verification evidence is conjunctive, and a staging anchor needs the stronger arm
+
+<!-- roadmap: p1-authority -->
 
 _Ratified 2026-08-01 as the Phase-1d UI seam (D98 · D99 · D101), amended 2026-08-14 (D208).
 The four rulings amend §1.2's `verification` block and what §1.3 may project; they are stated
@@ -358,6 +396,8 @@ here rather than in a dated block at the top of the file._
 
 ### 1.7 As-built — what the four registries hold today
 
+<!-- roadmap: p1-authority -->
+
 _Counted from the committed `generated/ui-catalog.json` on 2026-08-20; the catalog is the projection,
 so these are the facts the operator and an AI can actually resolve._
 
@@ -393,6 +433,27 @@ site in the guard; until it lands, §9's first row is narrower than it sounds.
 ---
 
 ## 2. Trust evidence: what happened, why the result is credible, and what remains uncertain
+
+<!-- roadmap: p1-base -->
+<!-- roadmap: p2-2g -->
+
+<!-- roadmap-status: p1-base -->
+- [x] strict schemas for failures, redacted bundles, receipts, scenario manifests, preflight scenarios and knowledge/fix records (Phase 1b, 2026-07-31)
+- [x] every top-level evidence row in the strict boundary catalog, exercised against recursive unknown-key injection — `strict-boundary-schemas`
+- [x] receipt invariants refuse false verified completion and unresolved mandatory evidence — in the schema's own `superRefine`, and again as a SQL CHECK
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/trust/**, src/infra/sqlite/migrations.ts; the 1b claim is exactly the schema half and this section now says which tables came later (D134)
+<!-- /roadmap-status -->
+<!-- roadmap-status: p2-2g -->
+- [x] schema v10's five durable tables plus the indexed `failures.fingerprint` (D134)
+- [x] automatic redacted diagnostic capture, two-phase, persisted inside the terminal transaction (D137)
+- [x] the durable actor-keyed inbox — the row commits before any delivery, and a repeat FOLDS (D134/D138)
+- [x] knowledge and fix admission audited INSIDE the insert transaction (D139)
+- [x] the receipt DERIVED from authority rather than minted at settlement (D140–D143)
+- [ ] `explain failure <fingerprint>` is not built (§2.1, §4.2)
+- [ ] the knowledge projection has no caller, so no `KNOWLEDGE.md` exists (§4.1)
+- [ ] the retention sweep has no caller (§2.2) — `{#def-retention}`, `never` by D193
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/core/{evidence-receipt,diagnostic-capture}.ts, src/services/{notifications,trust}/**, src/infra/sqlite/migrations.ts; left: the three unreachable halves above, each named in its own section
+<!-- /roadmap-status -->
 
 **The schemas landed first, then the tables.** Phase 1b (2026-07-31) built the strict
 boundary; schema v10 (D134, 2026-08-04) built the durable tables the rest of this section
@@ -433,6 +494,15 @@ projections — all three land below in D140–D143, which is where the `evidenc
 **active**. `notification-durability` and `knowledge-fix-integrity` activate with D138/D139 below.
 
 ### 2.1 Durable `FailureRecord`
+
+<!-- roadmap: p1-kernel -->
+
+<!-- roadmap-status: p1-kernel -->
+- [x] the exact strict `FailureRecord` in non-rebuildable authority for every failed task/run, its `failureId` associated atomically with the failure transition (Phase 1f)
+- [x] four invariants live in the schema, not in a test: one primary cause, `transient` agreeing with it, no present-but-empty block, and `attempting`/`unknown` requiring a commit action
+- [x] the whitelist wire (D142) — a field added to the durable record reaches no surface until someone classifies it
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/trust/failure.ts:72-103 and the run-detail failure section; the interface printed here was three fields out of date and now matches
+<!-- /roadmap-status -->
 
 A failed task/run persists a structured failure; `span.ended.error?: string` alone is retired.
 
@@ -482,6 +552,8 @@ and named again in §4.2 where the doc used to describe it in the present tense.
 
 #### 2.1.1 The failure section serves content through a whitelist schema (D142)
 
+<!-- roadmap: p2-2g -->
+
 `FailureDetailWireSchema` names every field it projects off the durable `FailureRecord`. That is doc
 11's "unclassified fields drop" applied structurally: a field added to the durable record later
 reaches no surface until someone decides how it is classified, rather than relying on a filter
@@ -496,6 +568,18 @@ them. Because the receipt now rides the run-detail wire, `src/domain/redaction.t
 browser-reachable and drops `node:crypto`/`node:path` for `sha256Hex` and a two-separator basename.
 
 ### 2.2 Automatic diagnostic bundle
+
+<!-- roadmap: p2-2g -->
+<!-- roadmap: def-retention -->
+<!-- roadmap: def-search-export -->
+
+<!-- roadmap-status: def-retention -->
+- [ ] scheduling the sweep — it is built and tested and nothing calls it, so no bundle has ever been purged here
+- [ ] the content-store reference count that would let the reported unreferenced bytes be reclaimed
+- [x] D193 dispositioned BOTH `wont-build-unless-asked`, and the operator's reasoning is recorded in §2.2.1
+- [!] the node's own title names a “14/8/5 schedule” that no constant in this tree implements — the shipped number is 30 days from the bundle's own capture instant (§2.2)
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/trust/diagnostic-capture.ts:44 and src/services/trust/diagnostic-retention.ts:45-85; left: the node title, which this doc cannot change
+<!-- /roadmap-status -->
 
 On an unexpected state, task failure, subject mismatch, recovery park, or operator-requested
 snapshot, the kernel captures one bounded bundle:
@@ -536,6 +620,8 @@ bundle's own capture instant — with no tiering by kind, sensitivity or age. Ci
 the phrase.
 
 #### 2.2.1 As-built — a bundle is captured at the trigger, redacted at capture, and bound to its failure (D137)
+
+<!-- roadmap: p2-2g -->
 
 The trigger set is **closed and is the sentence §2.2 opens with**: unexpected state, task failure, subject
 mismatch, recovery park, operator-requested snapshot. Each maps one-to-one onto a stored
@@ -606,6 +692,17 @@ and duplicating it into an exportable artifact widens the blast radius for nothi
 
 ### 2.3 `RunEvidenceReceipt`
 
+<!-- roadmap: p2-2g -->
+<!-- roadmap: sep-6c -->
+<!-- roadmap: order-7-dash -->
+<!-- roadmap: observed-logs -->
+
+<!-- roadmap-status: sep-6c -->
+- [x] a previewed run's receipt derives `partial` with `unknown` confidence, so `verified-done` is structurally unreachable for a preview (§2.3.7, D215/D238)
+- [x] the envelope's `dryRun` and the terminal preview result must AGREE or the derivation throws
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/core/evidence-receipt.ts:707-761; the preview terminal's receipt shape is as chunk 6c recorded it
+<!-- /roadmap-status -->
+
 Every terminal run—success, failure, cancellation, or partial outcome—has a server-derived receipt:
 
 Every `EvidenceFact`, `DecisionEvidence`, `ActionEvidence`, `VerificationEvidence`, `ReuseEvidence`,
@@ -657,6 +754,8 @@ stands, else `verified`; `result` then reads off the terminal outcome and that c
 
 #### 2.3.1 Evidence classification and cross-source obligations are DECLARED (D140)
 
+<!-- roadmap: p2-2g -->
+
 `src/domain/trust/evidence-classification.ts` binds every leaf of every workflow input, task output,
 and workflow result to one ref clock-config-secrets §6 classification plus one permitted transform. Three rules make
 it enforcement rather than decoration:
@@ -688,6 +787,8 @@ absent — the comparison never silently shrinks to one side and calls that agre
 
 #### 2.3.2 The receipt is a pure function of authority, derived and then pinned (D141)
 
+<!-- roadmap: p2-2g -->
+
 The receipt is **not** written inside the terminal settlement transaction. Two reasons, in order of
 weight. First, authority must never depend on a projection to terminalize: a receipt-shaped problem
 must not be able to block or unwind a settlement of a real HR transaction. Second, the runs this
@@ -710,6 +811,15 @@ closed is a correct outcome, not an unresolved one; treating it as unresolved wo
 correct run with a skipped node to `partial`.
 
 #### 2.3.3 The receipt binds to the surfaces its derivation consumes, not to the descriptor's closure (D199)
+
+<!-- roadmap: sep-2 -->
+
+<!-- roadmap-status: sep-2 -->
+- [x] the receipt binds to the SURFACES its derivation consumes, not to the descriptor's 31-file closure (D199)
+- [x] `declared-evidence` takes the stored receipt row as its baseline — the only check that can see a declaration living outside the closure
+- [x] no waiver arm: chunk 2's five split three re-derived byte-identically, two frozen by design
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/core/receipt-derivation-binding.ts; the six-row check table matches the code
+<!-- /roadmap-status -->
 
 **D141's "re-deriving one run yields the same bytes" was true only within one commit.**
 `buildRunEvidenceReceipt` stamped `descriptorFingerprint` from the CURRENT build's
@@ -769,6 +879,15 @@ Owned by `src/core/receipt-derivation-binding.ts`; pinned by
 `tests/unit/receipt-derivation-binding.test.ts` and the `evidence-receipt` guard.
 
 #### 2.3.4 A gate's evidence is a `gate_results` row, so the approver reaches the receipt (D204)
+
+<!-- roadmap: sep-3 -->
+
+<!-- roadmap-status: sep-3 -->
+- [x] a gate's durable evidence is its `gate_results` row, so the approver reaches the receipt (D204)
+- [x] the decision arm is DECLARED per `(workflow, gate)`; an undeclared gate and an unlisted arm value both fail loud
+- [x] redaction extends by a `gate-result` scope rather than a hole; the operator's reasoning is shown, not redacted
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/core/evidence-receipt.ts and src/domain/trust/gate-decisions.ts
+<!-- /roadmap-status -->
 
 > **`gate_results` is a repository name, not a table.** `authority.gateResults` stores its records in
 > `checkpoint_payloads` keyed `<runId>:<gateId>` (`src/infra/sqlite/authority-database.ts`). This
@@ -837,6 +956,8 @@ the graph, and an undeclared arm value as negative controls.
 
 #### 2.3.5 A settled gate's panel names the verdict, the approver and the instant (D237)
 
+<!-- roadmap: track-b -->
+
 **Ratified 2026-08-19.** D202 put the approver into authority, D203 taught the kernel to read a
 `gate_results` row as a dependency's evidence, and D204 taught the RECEIPT the same thing. The
 **panel** was never taught it. `run-detail`'s `resolved` gate arm was keyed on the span stream's
@@ -881,6 +1002,8 @@ over `src/domain/trust/gate-decisions.ts`; pinned by
 
 #### 2.3.6 A transaction node IS a terminal dependency — the named gap, closed by D144
 
+<!-- roadmap: p2-2g -->
+
 **Closed 2026-08-04 (D144, ref write-safety §3.1).** The gap was real: the sequencer stored a transaction
 checkpoint under the durable `TransactionOutcome` schema hash while the descriptor factory's
 terminal `build` demanded the COMMIT CONTRACT's output schema hash, and the interpreter never
@@ -891,6 +1014,8 @@ comes from the real `buildRunResult`, and `tests/unit/transaction-terminal-depen
 drives a queued Kuali run through the real interpreter to `done` and derives its receipt.
 
 #### 2.3.7 A DRY RUN is a rehearsal, and the label is derived from the verdict (D215/D238)
+
+<!-- roadmap: track-b -->
 
 **Ratified 2026-08-19.** `done → verified-done` used to be mechanical, so a preview that wrote
 nothing wore the label reserved for an independently verified real completion — while its own
@@ -917,6 +1042,16 @@ operator-facing sentence is only as pinned as the parity corpus unless it is ext
 
 ### 2.4 Rerun transparency
 
+<!-- roadmap: p2-2g -->
+<!-- roadmap: def-search-export -->
+
+<!-- roadmap-status: def-search-export -->
+- [ ] the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (§2.4)
+- [ ] the screenshot gallery and the artifact-bytes route the diagnostic store would serve (§2.2)
+- [x] the per-fact half exists today: `retryOf` plus `reuse` rows carrying `ageMs` and the bound they were judged against
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/trust/evidence.ts:97-103 and src/core/command-kernel.ts:623; left: the comparison, which needs a run corpus to be worth shaping
+<!-- /roadmap-status -->
+
 A retry/rerun receipt links to the prior run and shows a field-level diff:
 
 - input changed vs unchanged;
@@ -941,6 +1076,8 @@ The operator can open both receipts; the system does not diff them. Owned by `{#
 which is where a corpus of runs to compare first becomes reachable.
 
 ### 2.5 `explain run`
+
+<!-- roadmap: p2-2g -->
 
 One CLI/API command is the canonical debug entry point:
 
@@ -973,6 +1110,8 @@ than fixed, because this pass changes documents and not code.
 
 #### 2.5.1 `explain run` and the receipt are one derivation (D143)
 
+<!-- roadmap: p2-2g -->
+
 `cli explain run <traceId|runId> [--json]` resolves either identity and prints §2.5's
 sections in §2.5's order. For a settled run it derives the SAME receipt the dashboard serves, so a
 terminal explanation and a terminal receipt cannot disagree. Every section an operator could misread
@@ -984,7 +1123,19 @@ cannot tell.
 
 ## 3. Scenario corpus: workflows improve safely as new cases are discovered
 
+<!-- roadmap: p2-2j -->
+
+<!-- roadmap-status: p2-2j -->
+- [x] the executable corpus and `scenario-coverage`, audited in BOTH directions, plus D185's corpus-layout audit
+- [ ] `ScenarioManifest`'s preflight fault set has no runner and `preflight-coverage` stays `planned` (D188)
+- [ ] §3.2's coverage policy is not proved in full — the audit is over graph-derived points, not a contract's error enum
+- [ ] the tier layout moves to `ref guards-and-tests §Testing tiers` under R10; this section keeps what a scenario IS
+> 2026-08-20 | docs-cohesion operator-trust | verified against tests/scenario/** (16 files), tests/unit/architecture/scenario-coverage.test.ts and guard-inventory.json; left: the runner and the tier move
+<!-- /roadmap-status -->
+
 ### 3.1 `example` is not a scenario
+
+<!-- roadmap: p2-2j -->
 
 Ref task-contract's contract `example` remains the canonical happy-path output used for type checks and cheap
 stubs. A scenario includes inputs, page/data fixtures, timing/failure injection, expected actions,
@@ -1033,6 +1184,16 @@ this section read as though the manifest gates the suite. It does not.
 
 ### 3.2 Minimum scenario coverage
 
+<!-- roadmap: p2-2j -->
+<!-- roadmap: track-a -->
+
+<!-- roadmap-status: track-a -->
+- [ ] regression scenarios for separations' close-out
+- [ ] knowledge records for separations — blocked on a CALLER, not on a schema: the store, the admission audit and the projection are built and unreachable (§4.1)
+- [ ] capability dispositions
+> 2026-08-20 | docs-cohesion operator-trust | verified the three doc-side close-out obligations against the code; all three open, and the knowledge half needs one composition-root wire rather than a design
+<!-- /roadmap-status -->
+
 - Every task: happy path, every declared business absence/error code, schema-invalid input/output.
 - Every browser task: expected page state, unexpected page state, selector missing, cancellation,
   and subject mismatch for subject-scoped tasks.
@@ -1062,6 +1223,8 @@ tracked as `{#test-tiers}`. This section keeps the operator-trust half (what a s
 
 ### 3.3 Unexpected states become data, never fallbacks
 
+<!-- roadmap: phase-1 -->
+
 If a page does not match a declared `PageStateId`, the driver returns/throws `UnexpectedPageState`
 with captured evidence and parks/fails according to the descriptor. It does not try an unlabeled
 fallback selector and continue. The diagnostic bundle makes the new state observable; when the
@@ -1079,7 +1242,12 @@ test plus live evidence. A failure fingerprint may not be marked resolved with o
 
 ## 4. Structured knowledge and AI-assisted fix history
 
+<!-- roadmap: p2-2g -->
+<!-- roadmap: track-a -->
+
 ### 4.1 LESSONS are migration input, not the new authority
+
+<!-- roadmap: p2-2g -->
 
 The plan does **not** move `LESSONS.md` wholesale into each rebuilt store. During a store/workflow
 migration, each relevant old lesson is triaged into one of three destinations:
@@ -1129,6 +1297,8 @@ them. Owned by `{#track-a}`'s close-out, which is where the first migration's kn
 
 ### 4.2 `FixRecord`—what Codex/Claude changed and how it was proven
 
+<!-- roadmap: p2-2g -->
+
 ```ts
 export interface FixRecord {
   id: FixId;
@@ -1157,6 +1327,8 @@ still passes — **is not built** (§2.1). The indexed `fix_records.failure_fing
 
 ### 4.3 Maintenance and search
 
+<!-- roadmap: p2-2g -->
+
 - New record creation checks for matching scope/symptom/element/scenario before adding; suspected
   duplicates require an explicit supersedes/related link.
 - A scheduled/manual audit validates referenced ids/files/scenarios/commits and marks stale records
@@ -1173,6 +1345,16 @@ BFF route and no surface over knowledge or fix records at all. Both remainders b
 plain reason that the table is empty.
 
 ### 4.4 Optional AI assistance reads the evidence; it never becomes the evidence
+
+<!-- roadmap: p2-2i -->
+<!-- roadmap: def-sanity-check -->
+
+<!-- roadmap-status: def-sanity-check -->
+- [x] the operator RULED on it: 2026-08-18, no AI feature — the §14.2 gate packet's server-computed `comparisons` array IS the sanity check (§4.4.2)
+- [x] `config/legacy-capabilities.json` carries `legacy-tool-ops-sanity-check-record` as `retired`, machine-checked by `legacy-capability-disposition`
+- [!] the tree still shows this node `planned` with `you: re-disposition D192`; the doc and the capability register both say RETIRED, and only the orchestrator may move a node
+> 2026-08-20 | docs-cohesion operator-trust | verified against config/legacy-capabilities.json and src/domain/dashboard/advisory.ts (AdvisorySurfaceIdSchema is still the D178 two-value shape); left: the node's own status
+<!-- /roadmap-status -->
 
 The old `services/llm` capabilities are explicitly dispositioned rather than disappearing behind a
 proxy. Shared provider/key/rate-limit clients move under infra because OCR and contact normalization
@@ -1198,6 +1380,8 @@ registry entry, or call the command/mutation services.
   is not used as the join key.
 
 #### 4.4.1 As-built — the prompt, the answer schema, and the zero-authority edge (D178)
+
+<!-- roadmap: p2-2i -->
 
 **What a prompt is made of, and what it is NOT.** `src/domain/trust/advisory.ts` assembles every
 prompt from the subject record's LEAVES, each pushed through the ONE `redactValue` implementation
@@ -1298,6 +1482,9 @@ production adapter takes its `fetch` by injection precisely so these can exist.
 
 #### 4.4.2 The three producerless adapters get their dispositions (D192, closed 2026-08-18)
 
+<!-- roadmap: p2-2i -->
+<!-- roadmap: def-sanity-check -->
+
 dispositions.**
 
 - **Run summary → RETIRED.** `RunEvidenceReceipt` (D141/D144) is already the run's structured,
@@ -1326,6 +1513,8 @@ dispositions.**
 (D184) validates the shapes.
 
 ### 4.5 As-built — knowledge is admitted before it is inserted, and supersession is expressed forward (D139)
+
+<!-- roadmap: p2-2g -->
 
 The knowledge/fix tables are insert-only (D134), so a duplicate that lands cannot be retracted.
 Admission is therefore audited INSIDE the insert transaction. Two ACTIVE records may not claim the
@@ -1361,7 +1550,21 @@ active-knowledge rules.
 
 ## 5. Workflow explorer/editor—staged hybrid, one graph
 
+<!-- roadmap: p2-2i -->
+<!-- roadmap: def-explorer-edit -->
+
 ### 5.1 Decision
+
+<!-- roadmap: p2-2i -->
+<!-- roadmap: def-explorer-edit -->
+
+<!-- roadmap-status: def-explorer-edit -->
+- [ ] Phase B's closed editable subset — presentation, notification preference, allowlisted policy values (§5.3)
+- [ ] the compile/apply protocol: strict versioned override, temp+fsync+atomic-replace, stale-base refusal, code-change brief (§5.4)
+- [ ] the new-workflow authoring path (§5.5), folded into this node by the operator on 2026-08-20 rather than given its own
+- [x] the trigger is named and checkable: the SECOND production workflow whose policy an operator wants to change without a code change (D186)
+> 2026-08-20 | docs-cohesion operator-trust | verified NOTHING of the edit half exists — no draft union, no apply path, no compile route, no scaffold command in src/cli.ts; the deferral is whole, not partial
+<!-- /roadmap-status -->
 
 Build a **read-only workflow explorer in Phase-2 tail 2i**, with closed presentation/policy editing
 alongside it after graph, validation, versioning, and evidence are proven. A free-form visual
@@ -1369,6 +1572,8 @@ programmer and DSL/codegen are rejected: graph/composition, arbitrary code, sele
 write-proof logic remain reviewed source work.
 
 ### 5.2 Phase A—read-only explorer (Phase-2 tail 2i)
+
+<!-- roadmap: p2-2i -->
 
 The explorer is a projection of the exact descriptor and live span/checkpoint data—not a mined or
 parallel graph. It shows:
@@ -1393,6 +1598,16 @@ amend this one; they keep their own numbers because the tree's `{#p2-2i}` and `{
 cite them.
 
 ### 5.3 Phase B—safe edits only
+
+<!-- roadmap: def-explorer-edit -->
+<!-- roadmap: phase2-dispositions -->
+
+<!-- roadmap-status: phase2-dispositions -->
+- [x] the Workflow Explorer's EDIT half left Phase 2 by explicit disposition, on D79a's own argument one level down (D186)
+- [x] nothing partial was built: no draft union, no half-authority, no config path that can reach a descriptor
+- [x] `workflow-editor-compile-integrity` is `active` with Phase-A arms only, and its inventory entry says so in as many words
+> 2026-08-20 | docs-cohesion operator-trust | verified against tests/unit/architecture/workflow-editor-compile-integrity.test.ts and guard-inventory.json; the deferral is a decision with a trigger, not a slip
+<!-- /roadmap-status -->
 
 > **DEFERRED OUT OF PHASE 2 — D186 (2j, 2026-08-09).** Phase B is **not built**, and this is a
 > decision rather than a slip. The argument is D79a's own, one level down: an editor exists to
@@ -1432,6 +1647,8 @@ and failed obligations.
 
 ### 5.4 Compile/apply protocol
 
+<!-- roadmap: def-explorer-edit -->
+
 Every edit is a draft with a base descriptor version/fingerprint. “Validate” runs the same builder,
 schema, graph, guard, and scenario checks as source-authored descriptors. “Generate patch” produces:
 
@@ -1463,6 +1680,8 @@ not a design to implement._
 
 ### 5.5 New-workflow authoring path
 
+<!-- roadmap: def-explorer-edit -->
+
 > **NOT BUILT, and folded into the same deferral as §5.3.** No scaffold flow, CLI command or
 > generator exists: `src/cli.ts` registers `dashboard`, `worker`, `explain`, `ocr` and `storage` and
 > nothing else, and a repo-wide search for a scaffold/authoring path returns nothing. The section
@@ -1492,6 +1711,8 @@ then becomes selectable by workflows; this is the “fix once, reuse everywhere�
 
 ### 5.6 What happens to the old workflow modifier
 
+<!-- roadmap: def-explorer-edit -->
+
 Its useful presentation editing and operation mining are port inventory. The preserved legacy
 modifier stays inside the legacy repo; with no shared module graph (D93) it cannot be proxied or
 imported. The new read-only explorer replaces mined operations with descriptor tasks and
@@ -1500,6 +1721,18 @@ same descriptor projection. Generated `config/workflow-design/*.md` files are no
 authority; the descriptor and validated draft history are.
 
 ### 5.7 Phase A as-built — the explorer is a projection, and it proves it (2026-08-09, D176)
+
+<!-- roadmap: p2-2i -->
+
+<!-- roadmap-status: p2-2i -->
+- [x] the explorer is a projection of the ONE composition root, guarded in both directions over the REAL registry (D176)
+- [x] source links RESOLVE against a real listing; a miss is `unresolved` carrying the path it tried
+- [x] the UI catalog surface serves the COMMITTED artifact and refuses a stale one (D177)
+- [x] the node panel is a derived FIELD census (D227) and the descriptor's own prose is declared and guarded (D229)
+- [ ] the live-run overlay stays EXCLUDED by decision — run facts belong to the run-detail timeline
+- [ ] scenario coverage CLAIMS stay in the executable corpus by decision, not for want of a wire
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/server/dashboard/queries/explorer.ts and src/dashboard/surfaces/explorer.tsx; both exclusions are still deliberate and still true
+<!-- /roadmap-status -->
 
 Phase A landed in 2i-G. §5.2's list is served, with two named exclusions below.
 
@@ -1574,6 +1807,8 @@ throughout: no edit affordances anywhere.
 
 ### 5.8 The generated UI catalog gets a surface, and it serves the COMMITTED artifact (2026-08-09, D177)
 
+<!-- roadmap: p2-2i -->
+
 §1.3's catalog was reachable only from `npm run selector:search` and two markdown projections. It
 now has a read-only surface, and two rules make it trustworthy.
 
@@ -1591,6 +1826,23 @@ stale live verification current, so every row carries its `verifiedAt` and both 
 same weight as its id — never folded into a disclosure a hurried reader skips.
 
 ### 5.9 The node panel is a FIELD table, and its census is derived (2026-08-19, D227)
+
+<!-- roadmap: track-b -->
+<!-- roadmap: sep-dash -->
+<!-- roadmap: order-1-dash -->
+<!-- roadmap: order-2-dash -->
+<!-- roadmap: order-3-dash -->
+<!-- roadmap: order-4-dash -->
+<!-- roadmap: order-5-dash -->
+<!-- roadmap: order-6-dash -->
+<!-- roadmap: order-7-dash -->
+<!-- roadmap: order-9-dash -->
+
+<!-- roadmap-status: track-b -->
+- [x] B6 — the node panel is a FIELD table whose census projects the contract's own zod shape (D227)
+- [x] B2's derivation half — a settled gate names verdict, approver and instant from the durable row (D237), and a dry run reads `rehearsal`, never `verified-done` (D238)
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/validation/contract-boundary.ts, src/server/dashboard/queries/run-detail.ts and src/domain/trust/gate-decisions.ts; every wire square that cites this section reads the same derivation
+<!-- /roadmap-status -->
 
 §5.7's presentation delta recorded that the ported node panel listed TASK ARMS where the operator's
 demo lists contract FIELDS, and that the header counted arms with the ⓘ saying so. That gap is
@@ -1667,6 +1919,8 @@ reported twice. The demo's third segment (`1 file`) stays absent for the reason 
 
 ## 6. Notifications—durable, event-derived, and actionable
 
+<!-- roadmap: p2-2g -->
+
 The notification wire is owned by ref dashboard-surfaces; this section defines operator behavior. Notifications
 are produced server-side from durable state/event transitions, never solely from a React effect.
 They survive dashboard reloads and dedupe by stable fingerprint.
@@ -1690,6 +1944,8 @@ That list is the POLICY. §6.3 says which of it a producer actually fires today,
 seven.
 
 ### 6.1 The fold is an UPDATE, and that is not a weakened ledger (D134)
+
+<!-- roadmap: p2-2g -->
 
 A repeated identical trigger folds into the **one row** its `(actorId, dedupeFingerprint)` already
 owns: `count` increments, `lastSeenAt` advances, `status` returns to `unread` (a repeat is news
@@ -1715,6 +1971,8 @@ notification fold is available to the ledger, and nothing in the ledger is mutab
 
 ### 6.2 The durable row is committed BEFORE any delivery, and a failed toast changes nothing (D138)
 
+<!-- roadmap: p2-2g -->
+
 `publish` settles create-or-fold in one authority transaction and only then attempts OS delivery.
 A delivery that throws is **reported and never written back**: status, count, and version are
 untouched, so the operator who missed the toast still finds an unread item — that, not the toast, is
@@ -1737,6 +1995,16 @@ suppresses delivery only: it never flips status, and marking read never clears a
 ---
 
 ### 6.3 As-built — the closed vocabulary, the two publishers, and the five arms with no producer
+
+<!-- roadmap: p2-2g -->
+<!-- roadmap: sep-dash -->
+
+<!-- roadmap-status: sep-dash -->
+- [x] the notification square — `gate-park.ts` publishes `gate-opened` for a run parked at a gate, on transitions only (D262)
+- [ ] `failed`, `subject-mismatch` and `write-parked` have no producer, so the square is filled for the GATE arm alone (§6.3)
+- [!] there is no OS delivery implementation in the tree, so every publish settles `no-channel` — the durable row is the whole alert
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/services/notifications/{gate-park,storage-health,inbox}.ts and src/server/dashboard/compose.ts; left: four unreachable trigger arms and the delivery channel
+<!-- /roadmap-status -->
 
 **The vocabulary is closed twice over.** `NotificationTriggerSchema`
 (`src/domain/notifications.ts:12-19`) has six arms — `failed`, `gate-waiting`, `write-parked`,
@@ -1787,6 +2055,15 @@ notification family does not currently produce the `conflict` arm, and the bell 
 and let the other fall through to success.
 
 ## 7. Local-FIRST scope, the multi-user seams, and the retained safety floor
+
+<!-- roadmap: later-unplanned -->
+
+<!-- roadmap-status: later-unplanned -->
+- [x] the four seams are built and carry one constant local operator: actor attribution, one identity checkpoint, credential-set-keyed sessions, per-actor notification state
+- [x] D193 reaffirmed solo, local, never hosted — no slice designs for multi-user and none may claim scope in its name
+- [x] the one loopback exception is the operator-started, token-scoped mobile capture ingress
+> 2026-08-20 | docs-cohesion operator-trust | verified the seams are load-bearing in code (the inbox is actor-keyed, commands carry `actor`); nothing here proposes work, which is the point of the node
+<!-- /roadmap-status -->
 
 **Amended 2026-07-23 (D75).** The operator intends to open this tool to other people later and
 wants that to be *configuration, not a second rebuild*. So the scope statement is no longer
@@ -1842,6 +2119,16 @@ These are correctness and recoverability requirements, not production-scale cere
 ---
 
 ## 8. Base capability inventory (webpage-ready)
+
+<!-- roadmap: cross-cutting -->
+
+<!-- roadmap-status: cross-cutting -->
+- [x] eleven of the 49 inventory rows now name their own gap in brackets rather than reading as shipped
+- [ ] `apply-settings` is the kernel's ONE `PHASE1_DEFERRED` arm (`command-kernel.ts:141-148`) — Settings reads and nothing there saves
+- [ ] `test-login` and the workflow-preflight RUNNER are unbuilt; the storage/authority half of the doctor is real and was drilled at 2j (D181)
+- [ ] the cross-date search module, the artifact-bytes route and the export writers are unbuilt (rows 24, 42)
+> 2026-08-20 | docs-cohesion operator-trust | re-checked the inventory against the code row by row; the eleven bracketed rows are the whole delta, and each names the section that owns it
+<!-- /roadmap-status -->
 
 The following is the canonical list Claude may use to build an explanatory webpage. It describes
 what the **base** implements before workflow-specific leaf behavior is migrated.
@@ -1990,6 +2277,15 @@ asserting that a restricted EXAMPLE value cannot appear in an exported bundle, b
 snapshots**: unenforceable and unnecessary today for the same reason — there is no draft.
 
 ## 10. Explicit residuals
+
+<!-- roadmap: operator-calls -->
+
+<!-- roadmap-status: operator-calls -->
+- [x] every residual re-checked against the code and classified closed / open / standing, with the owning node named (§10)
+- [x] one residual was FALSE as written — restricted bundles are local but not short-lived, because nothing purges them
+- [!] four residuals have NO node: the uncalled Kuali registry audits, `explain failure`, the absent OS delivery channel, and `explain run`'s notifications reason, stale since D262
+> 2026-08-20 | docs-cohesion operator-trust | the four unowned items are reported to the plan, not adopted here — this doc may not mint a node
+<!-- /roadmap-status -->
 
 Re-checked item by item against the code on 2026-08-20. Each row is **closed** (the mechanism
 exists — the residual was a gap and is not one now), **open** with the node that owns it, or
