@@ -18,6 +18,7 @@ import {
   ENTRY_PATTERN_NOUNS,
   InputParserSpecSchema,
   InputRunSurfaceSchema,
+  type InputRunExample,
   inputRunParserLabel,
   inputRunSeparatorLabel,
   inputRunValueNoun,
@@ -137,7 +138,7 @@ describe("a declared input-run example (D250)", () => {
     [{ emplId: "10800000", keepNonHdh: false }, { note: "note", keepNonHdh: false }],
   );
 
-  const descriptorWith = (examples: unknown) =>
+  const descriptorWith = (examples: InputRunExample[] | undefined) =>
     () => defineWorkflowDescriptor({
       id: "example-fixture",
       version: 1,
