@@ -64,8 +64,8 @@ import {
   TransactionDryRunPreviewSchema,
   TransactionOutcomeSchema,
 } from "../domain/write-safety-primitives.js";
-import { WorkflowSurfacesSchema } from "../domain/workflow/ingress.js";
-import type { WorkflowSurfaces } from "../domain/workflow/ingress.js";
+import { WorkflowSurfacesSchema, parseInputRunText, toRawSubmission } from "../domain/workflow/ingress.js";
+import type { InputRunSurface, WorkflowSurfaces } from "../domain/workflow/ingress.js";
 import {
   ArtifactSinkIdSchema,
   DetailProjectionSpecRuntimeSchema,
@@ -873,6 +873,46 @@ function assertNodeFieldPath(
   else assertSchemaOwnsPath(schema, fieldPath, `${id}: ${owner}`);
 }
 
+/**
+ * D250 — an example is a button that types for the operator, so it must be
+ * TYPEABLE, and this is the only place that can prove it.
+ *
+ * Both halves are the run's own path, run at build time: the surface's own
+ * parser (which is what the box does on every keystroke) and the workflow's own
+ * input schema (which is what `planStart` parses each submission with, at
+ * `services/start/plan.ts`'s one and only ingress parse). An example that clears
+ * both cannot fill the box with something the plan will refuse; an example that
+ * clears neither is a lie about what this workflow accepts, and a lie a guard
+ * can catch is not one worth shipping.
+ */
+function assertInputRunExamples(id: string, input: z.ZodType, inputRun: InputRunSurface): void {
+  const examples = inputRun.examples;
+  if (examples === undefined) return;
+  assertUnique(id, "input-run example keys", examples.map((example) => example.key));
+  for (const example of examples) {
+    const entries = (() => {
+      try {
+        return parseInputRunText(inputRun.parser, example.text);
+      } catch (error) {
+        throw new Error(
+          `${id}: input-run example "${example.key}" does not parse under this surface's own parser: `
+          + (error instanceof Error ? error.message : String(error)),
+          { cause: error },
+        );
+      }
+    })();
+    for (const entry of entries) {
+      const parsed = input.safeParse(toRawSubmission(entry));
+      if (!parsed.success) {
+        throw new Error(
+          `${id}: input-run example "${example.key}" entry ${String(entry.index + 1)} ("${entry.sourceText}") `
+          + `is refused by this workflow's own input schema: ${parsed.error.message}`,
+        );
+      }
+    }
+  }
+}
+
 function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSurfaces): void {
   const inputRun = surfaces.inputRun;
   if (inputRun !== undefined) {
@@ -882,6 +922,7 @@ function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSur
     for (const constant of inputRun.parser.constants ?? []) {
       assertSchemaOffersPath(input, constant.field, `${id}: input-run parser constant`);
     }
+    assertInputRunExamples(id, input, inputRun);
   }
   const uploadRun = surfaces.uploadRun;
   if (uploadRun !== undefined) {

@@ -30,11 +30,16 @@
  * on a bootstrap start-capability projection. That was wrong — R8 finding 12.)
  *
  * Deferred with their owning slices, and omitted rather than faked: the upload,
- * capture, spreadsheet and bare start methods and their peer-method tabs (2h),
- * the per-workflow REASON each unstartable workflow is refused for, the
- * capability note under the workflow heading, presets, preflight/doctor
- * results, per-system host lines, and the active-run enqueue-policy select (the
- * policy is a descriptor declaration in this tree, not an operator choice).
+ * capture, spreadsheet and bare start methods (2h), presets, preflight/doctor
+ * results, and per-system host lines.
+ *
+ * **The peer-method TABS are not deferred, they are not applicable** (D251).
+ * The demo renders them only at `methods.length > 1`, and this tree has one
+ * method kind — `WorkflowSurfaces.uploadRun` is declared by no registered
+ * workflow — so no tabs IS the demo-faithful rendering of one method, and a tab
+ * strip over a set of one would be D186's sample-of-one. The demo's per-method
+ * `note` goes with them: with one method it would be a second sentence about
+ * the same thing `summary` already says.
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Keyboard, Layers, Play, Search, SlidersHorizontal } from "lucide-react";
@@ -49,6 +54,7 @@ import {
   DialogFooter,
   EmptyState,
   Field,
+  LockedValue,
   MetaLine,
   SectionLabel,
   Select,
@@ -64,13 +70,16 @@ import {
 import { systemClock } from "../../domain/clock.js";
 import type { CommandResult } from "../../domain/commands.js";
 import {
+  inputRunParserLabel,
+  inputRunSeparatorLabel,
+  inputRunValueNoun,
   parseInputRunText,
   toRawSubmission,
-  type InputParserSpec,
   type InputRunSurface,
   type ParsedInputEntry,
 } from "../../domain/workflow/ingress.js";
 import type { WorkflowModuleRole } from "../../domain/workflow/module-role.js";
+import type { EnqueuePolicy } from "../../domain/workflow/presentation.js";
 import type { StartPlanResponse } from "../client/index.js";
 import { useDashboardClient } from "../state/client-context.js";
 import {
@@ -92,6 +101,7 @@ import {
 } from "./run-start-kit.js";
 import { type InstanceChoice, type SystemInstancePrimitive } from "./run-start-kit-model.js";
 import { testSystemsOf } from "./run-start-kit-model.js";
+import { ENQUEUE_POLICY_MEANING, ENQUEUE_POLICY_REASON } from "./run-start-model.js";
 
 /** the surface id this command family is audited under (doc 13 §3.4) */
 const SOURCE_SURFACE = "run-start";
@@ -128,6 +138,20 @@ export interface RunStartWorkflow {
    * composition has none: a fabricated identity is the value this tree bans.
    */
   readonly code?: string;
+  /**
+   * D229's own sentence about what this workflow does — the demo's
+   * `capability.note`, and the descriptor's plain data (D251). Optional because
+   * the declaration is: a workflow with none draws no paragraph rather than a
+   * composed one.
+   */
+  readonly summary?: string;
+  /**
+   * The descriptor's DECLARED active-run policy (D251). It is a fact, not a
+   * control: `planStart` reads `descriptor.enqueue` and `StartPlanIngress`
+   * carries no per-start override, so the demo's select would offer an answer
+   * the server would ignore.
+   */
+  readonly enqueue: EnqueuePolicy;
   /** the descriptor's declared typed-input surface, or why there is none */
   readonly inputRun:
     | { readonly state: "present"; readonly surface: InputRunSurface }
@@ -357,17 +381,19 @@ function WorkflowPicker({
         )}
       </nav>
 
-      {/* Not offered, and it says so. A workflow that simply vanishes from a
+      {/* Not offered, and it says WHY. A workflow that simply vanishes from a
           picker teaches the operator the list is arbitrary.
 
           A DISCLOSURE, not a Popover: `dsLayer.menu` is z-20 and a Dialog is
           z-40, so a popover opened from inside a modal renders BEHIND it — the
           a11y tree says it opened and the screen says nothing happened.
 
-          The demo draws a `<dl>` because it has a REASON per workflow. This
-          tree serves none (the wire gap is on the audit's ledger), so it draws
-          the names as a list rather than a definition list whose definitions
-          would all be empty — and it invents no reason text. */}
+          D251: the demo's `<dl>` is drawn, because the reason exists and always
+          did — the app composes it beside the surface it is the absence of. An
+          earlier comment here claimed this tree served none, which was the same
+          false-deferral shape R8 finding 1 found on the park cards. The reason
+          is the MODAL's own precondition and is worded as one; see
+          `run-start-model.ts`. */}
       <div className="shrink-0 border-t border-[color:var(--ds-border)] p-[var(--ds-space-base)]">
         {/* The SAME rule as the list above it (D219): a chunk harness is a step
             of its composition here too, so the two halves of one picker cannot
@@ -380,15 +406,27 @@ function WorkflowPicker({
                 <PickerEntries
                   nodes={group.entries}
                   row={(node) => (
-                    <span
-                      className={cn(
-                        "flex min-w-0 items-center gap-[var(--ds-space-snug)] px-[var(--ds-space-snug)]",
-                        dsText.meta,
-                        node.harness === undefined ? cn("font-semibold", dsFg.base) : dsFg.secondary,
+                    /* The demo pairs each name with its reason in a `<dl>`; this
+                       stays a `<ul>` because the list also carries the D219
+                       HIERARCHY — a chunk harness is a step under its
+                       composition here exactly as it is above — and a nested
+                       definition list inside a `<dd>` would claim a harness is a
+                       definition of the composition it belongs to. The pair
+                       renders as the demo draws it: name, then reason beneath. */
+                    <span className="flex min-w-0 flex-col gap-[var(--ds-space-hair)] px-[var(--ds-space-snug)]">
+                      <span
+                        className={cn(
+                          "flex min-w-0 items-center gap-[var(--ds-space-snug)]",
+                          dsText.meta,
+                          node.harness === undefined ? cn("font-semibold", dsFg.base) : dsFg.secondary,
+                        )}
+                      >
+                        <span className="min-w-0 truncate">{node.entry.label}</span>
+                        {node.harness !== undefined && <WorkflowHarnessTag harness={node.harness} />}
+                      </span>
+                      {node.entry.inputRun.state === "absent" && (
+                        <span className={cn(dsText.meta, dsFg.muted)}>{node.entry.inputRun.reason}</span>
                       )}
-                    >
-                      <span className="min-w-0 truncate">{node.entry.label}</span>
-                      {node.harness !== undefined && <WorkflowHarnessTag harness={node.harness} />}
                     </span>
                   )}
                 />
@@ -463,13 +501,6 @@ function RunControlGroup({
 // The descriptor's own parser, previewed
 // ---------------------------------------------------------------------------
 
-function separatorLabel(spec: InputParserSpec): string {
-  if (spec.split.kind === "whole-text") return "the whole box is one entry";
-  const shown = spec.split.delimiters.map((delimiter) => (delimiter === "\n" ? "a new line" : `“${delimiter}”`));
-  if (shown.length === 1) return `separated by ${shown[0]}`;
-  return `separated by ${shown.slice(0, -1).join(", ")} or ${shown[shown.length - 1]}`;
-}
-
 interface ParsePreview {
   readonly entries: readonly ParsedInputEntry[];
   /** the parser's own refusal, surfaced verbatim — never swallowed to an empty list */
@@ -509,8 +540,31 @@ function TypedInput({
 }) {
   return (
     <div className="flex flex-col gap-[var(--ds-space-snug)]">
+      {/* D250 — each button types the descriptor's own declared text, verbatim.
+          `defineWorkflowDescriptor` has already proved it parses AND satisfies
+          the workflow's input schema, so a click can never fill the box with
+          something the plan refuses. A surface declaring none draws no row. */}
+      {surface.examples !== undefined && (
+        <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
+          <SectionLabel>Examples</SectionLabel>
+          {surface.examples.map((example) => (
+            <Button
+              key={example.key}
+              size="sm"
+              variant="outline"
+              title={example.note}
+              onClick={() => onText(example.text)}
+            >
+              {example.label}
+            </Button>
+          ))}
+        </div>
+      )}
       <Field
-        label={`Entries — ${separatorLabel(surface.parser)}`}
+        // D250 — both halves are DERIVED from the parser spec, so the box cannot
+        // describe a rule it does not apply.
+        label={`${inputRunValueNoun(surface.parser)} — ${inputRunSeparatorLabel(surface.parser)}`}
+        description={inputRunParserLabel(surface.parser)}
         hint={`${String(preview.entries.length)} parsed`}
         error={preview.problem}
       >
@@ -780,6 +834,13 @@ export function RunStartDialog({
                 {categoryLabel !== undefined && <Chip label="group">{categoryLabel}</Chip>}
                 <RunFlagChips dryRun={dryRun} test={test} priority={priority} />
               </div>
+              {/* The demo's `capability.note`, which is D229's own sentence on
+                  the descriptor (D251). Absent declaration → absent paragraph:
+                  a composed sentence about a workflow would be this surface
+                  claiming to know one, which the header above rules out. */}
+              {workflow?.summary !== undefined && (
+                <p className={cn(dsText.body, dsFg.secondary, "max-w-[74ch]")}>{workflow.summary}</p>
+              )}
             </section>
 
             {stage === "input" && (
@@ -883,26 +944,48 @@ export function RunStartDialog({
             </header>
 
             <div className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)] overflow-y-auto p-[var(--ds-space-cozy)]">
-              {/* The demo's `Active-run policy` select belongs in this group and
-                  is deliberately absent: the policy is a descriptor declaration
-                  in this tree, not an operator choice. */}
               <RunControlGroup
                 step="01"
                 title="Queue behavior"
                 description="Choose how this work enters the browser queue."
               >
-                <Field label="Priority" description="Bulk work yields whenever interactive work needs the browser.">
-                  <Select
-                    value={priority}
-                    onChange={(event) => {
-                      setPriority(event.target.value === "bulk" ? "bulk" : "interactive");
-                      setPlan(null);
-                    }}
-                  >
-                    <option value="interactive">Interactive</option>
-                    <option value="bulk">Bulk</option>
-                  </Select>
-                </Field>
+                <div className="flex flex-col gap-[var(--ds-space-cozy)]">
+                  {/* The demo's `Active-run policy` sits here as a `Select`, and
+                      it is drawn READ-ONLY here (D251): `planStart` reads
+                      `descriptor.enqueue` and `StartPlanIngress` carries no
+                      per-start override, so a select would let the operator
+                      choose an answer the server would ignore. The shape is the
+                      `LockedValue` pair the design system already uses for
+                      "you may not change this" — told apart by SHAPE, not by a
+                      badge (DESIGN.md, the ValueField/LockedValue rule).
+
+                      The pre-plan "nothing is running for this subject" note the
+                      demo hangs off this Field has no producer before a plan:
+                      the active-run check happens per submission inside
+                      `planStart` and its answer is a served `active-run-exists`
+                      refusal, which `PlanRefusals` already draws. */}
+                  {workflow !== undefined && (
+                    <div className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
+                      <span className={cn(dsText.meta, "font-medium", dsFg.secondary)}>Active-run policy</span>
+                      <LockedValue
+                        value={ENQUEUE_POLICY_MEANING[workflow.enqueue]}
+                        reason={ENQUEUE_POLICY_REASON}
+                      />
+                    </div>
+                  )}
+                  <Field label="Priority" description="Bulk work yields whenever interactive work needs the browser.">
+                    <Select
+                      value={priority}
+                      onChange={(event) => {
+                        setPriority(event.target.value === "bulk" ? "bulk" : "interactive");
+                        setPlan(null);
+                      }}
+                    >
+                      <option value="interactive">Interactive</option>
+                      <option value="bulk">Bulk</option>
+                    </Select>
+                  </Field>
+                </div>
               </RunControlGroup>
 
               <RunControlGroup

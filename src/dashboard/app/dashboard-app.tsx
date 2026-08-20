@@ -64,6 +64,7 @@ import {
   type BulkVerbPlan,
 } from "./bulk-dispatch.js";
 import { RunStartButton, RunStartSurfaces, type RunStartWorkflow } from "../surfaces/run-start.js";
+import { START_DOOR_ABSENCE } from "../surfaces/run-start-model.js";
 import {
   SessionPanel,
   StatusFilters,
@@ -464,7 +465,15 @@ function LoadedApp({
     const systemInstances = SystemInstancePrimitiveSchema.array().parse(boot.systemInstances);
     return workflows.map((entry): RunStartWorkflow => {
       const workflowId = String(entry.id);
-      const declared = WORKFLOW_DESCRIPTORS.find((d) => d.id === workflowId)?.surfaces?.inputRun;
+      /**
+       * The descriptor the browser already holds. D251's three modal facts —
+       * `summary`, `enqueue` and the typed-input surface (with D250's declared
+       * examples riding on it) — are all plain data on `AnyWorkflowDescriptor`,
+       * so none of them grows a wire: serving a fact the bundle already carries
+       * would give this surface two sources for one value.
+       */
+      const descriptor = WORKFLOW_DESCRIPTORS.find((d) => d.id === workflowId);
+      const declared = descriptor?.surfaces.inputRun;
       return {
         workflowId,
         label: entry.label,
@@ -473,9 +482,16 @@ function LoadedApp({
         // groups by the same rule the rail does, and neither infers it.
         role: entry.role,
         code: entry.code,
+        ...(descriptor?.summary === undefined ? {} : { summary: descriptor.summary }),
+        // A workflow the bundle cannot resolve has no declared policy to state,
+        // and `reject-active` is the fail-closed reading of "we do not know".
+        // It cannot happen — the boot list IS the registry — but a substituted
+        // `allow-parallel` would be the dangerous guess, so the safe arm is the
+        // one written down.
+        enqueue: descriptor?.enqueue ?? "reject-active",
         inputRun:
           declared === undefined
-            ? { state: "absent", reason: "this workflow declares no typed-input surface" }
+            ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
             : { state: "present", surface: InputRunSurfaceSchema.parse(declared) },
         systemInstances,
       };

@@ -615,6 +615,78 @@ its row has an implementation and a test.
 5. Final command atomically stores the immutable manifest, coordinator, members, and dependencies.
 6. Group/member queue patches then follow the ordinary projection path.
 
+#### D250 — the typed box DESCRIBES itself, and its examples are proved typeable (2026-08-20)
+
+The demo's typed-input block carries three things this tree served none of (R8 finding 17): an
+`Examples` row of buttons that fill the box, a value-noun on the Field's label, and a `parserLabel`
+sentence under it. They close in **two different ways, and the split is the decision.**
+
+**Derived, never authored: the value-noun, the separator phrase and the parser sentence.** The demo
+authors `parserLabel` per method ("Kuali document IDs, comma-separated — 3 to 6 digits each") because
+its parser is fixture code in the same file. Here the parser is a **closed spec** —
+`InputParserSpec.split` plus an ordered `rules[]` over the closed `EntryPatternName` enum — so every
+word that sentence needs is already declared. `src/domain/workflow/ingress.ts` exports
+`inputRunValueNoun`, `inputRunSeparatorLabel` and `inputRunParserLabel` over a legend
+(`ENTRY_PATTERN_NOUNS`) declared **beside `ENTRY_PATTERNS`**, so a pattern whose regex moves has its
+words in the same diff and a guard pins the two key sets equal. An authored per-workflow string could
+say a box takes document ids while its only rule matches EIDs; a lookup over the rule's own enum
+cannot. Two arms are load-bearing rather than cosmetic: a spec whose only rule is `otherwise` reads
+**"entries"** (the absence of a pattern claim, stated — not a guessed noun), and a spec with **no**
+`otherwise` rule says so, because `parseInputRunText` then throws on the WHOLE text and an operator
+never told that reads a correct refusal as a defect.
+
+**Declared, and PROVED: `examples[]`.** `InputRunSurfaceSchema` grows optional
+`examples: [{ key, label, text, note }]`. It carries the **exact text** the box receives, never the
+demo's `values[]` that the surface re-joins with a separator character: reconstructing the delimiter
+client-side re-implements `splitEntries` outside the boundary that owns it, and a client that split
+differently would fill the box with something the server never receives — R8 finding 17's own
+argument, from the writing side. `defineWorkflowDescriptor` refuses an example that does not
+**parse under this surface's own parser** AND whose every entry does not **satisfy the workflow's own
+input schema** — the two checks `services/start/plan.ts` performs on each submission, run at build
+time. An example failing either is a button that fills the box with a guaranteed refusal, which
+teaches the operator the modal lies about what it accepts. Absent examples render **no row**; nothing
+fabricates a sample identifier.
+
+No wire grows: the run modal composes `surfaces.inputRun` from the client-bundled descriptor
+(R8 finding 12's precedent), so the declaration reaches the surface by the path the placeholder and
+the parser already take. Any descriptor-closure edit re-runs `npm run build:manifest`.
+
+#### D251 — the run modal's three remaining facts are SERVED ALREADY, and the fourth is refused (2026-08-20)
+
+The audit's ledger booked three more run-modal rows as wire gaps — `capability.note` + method tabs,
+the active-run policy control, and per-workflow unstartable reasons. **None of the three needs a wire
+addition, and one of them needed no server work at all**; recording that is the point, because a row
+left saying "to declare" reads as backend work nobody has scheduled.
+
+- **`capability.note` is `descriptor.summary` (D229).** It is plain data on `AnyWorkflowDescriptor`,
+  which the modal already holds, so the workflow-setup block draws the descriptor's own sentence.
+  Absent summary → no paragraph.
+- **The active-run policy is a DECLARATION, not a control.** `descriptor.enqueue` is what
+  `planStart` reads, and there is no per-start override on `StartPlanIngress` — so the demo's
+  `Select` would let an operator choose `allow-parallel` and get `reject-active`, which is an operator
+  choice the server would not honour. Group 01 draws the declared value **read-only**, in the demo's
+  slot, with the reason. The label table is exhaustive over `EnqueuePolicy` and states **what the
+  planner does**, not what the arm's name suggests: `reject-active` refuses (`plan.ts`'s active-run
+  check), `allow-parallel` runs no check, and **`supersede-active` supersedes nothing — no planner
+  path implements it and no registered descriptor declares it.** A label claiming otherwise would be
+  the same lie one level down. Whether that arm earns an implementation or leaves the enum is the
+  owning decision of the first workflow that wants it.
+- **The unstartable reason was already composed and thrown away.** The picker's disclosure carried a
+  comment claiming "this tree serves none", and `dashboard-app.tsx` had been composing the reason
+  since R8 finding 12's own commit. It draws the demo's `<dl>` now. The reason set is the MODAL's,
+  and it says so: a workflow with no declared `surfaces.inputRun` has no box to type into, and that
+  is not a server refusal — `POST /start-plans` takes JSON submissions and parses them with
+  `descriptor.input`, so a caller that composes its own submission can start such a workflow. The
+  modal must never spell a refusal the server would not make. `availability` is deliberately NOT a
+  second arm: `buildBootstrap` serves every workflow `available` unconditionally and no start path
+  reads it, so an arm keyed on it would be a reason nothing produces and nothing enforces.
+- **The method tabs are NOT built.** The demo renders them only at `methods.length > 1`, and this
+  tree has one method kind: `WorkflowSurfaces.uploadRun` is declared by no registered workflow and
+  the upload/capture/spreadsheet/bare bodies are 2h-deferred. A tab strip over a set of one is
+  D186's sample-of-one, and the demo-faithful rendering of one method is no tabs at all. The demo's
+  per-method `note` goes with them — with one method it would be a second sentence about the same
+  thing the summary already says.
+
 ---
 
 ## 6. Delivery sequence mapped to doc 07
