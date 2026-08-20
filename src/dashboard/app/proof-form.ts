@@ -185,3 +185,55 @@ export function composeProofValue(
   }
   return { state: "composed", value };
 }
+
+/**
+ * The field's ACCESSIBLE NAME, derived from the dot path the schema gave it.
+ *
+ * It lives here rather than in the dialog for the reason D126 and D187 both
+ * found the hard way: an accessible name is a load-bearing operator-facing
+ * string, and one that exists only inside JSX is pinned by nothing in a tree
+ * that renders no React in the unit lane.
+ *
+ * The path is the label, humanised and nothing more — no dictionary of
+ * friendlier words. A proof leaf is named by the contract author, and a second
+ * naming layer here would let the form call a field something the contract,
+ * the receipt and the ledger all call something else.
+ */
+export function proofFieldLabel(field: ProofFieldWire): string {
+  const words = (segment: string): string =>
+    segment.replace(/([a-z0-9])([A-Z])/gu, "$1 $2").toLowerCase();
+  const segments = field.path.split(".").map(words);
+  const [first, ...rest] = segments;
+  if (first === undefined) return field.path;
+  const head = `${first.slice(0, 1).toUpperCase()}${first.slice(1)}`;
+  return [head, ...rest].join(" · ");
+}
+
+/**
+ * What the contract requires of this box, in one sentence, or `undefined` when
+ * the control itself already says it (a `choice` renders its options and a
+ * `boolean` renders both answers).
+ *
+ * The pattern is printed VERBATIM. It is the contract's own regex and it is
+ * cryptic, and a friendlier paraphrase here would be this surface claiming to
+ * know what `^T\d{6,}$` means about a UCPath receipt — which is exactly the
+ * kind of restatement that goes stale the first time the contract moves.
+ */
+export function proofFieldHint(field: ProofFieldWire): string | undefined {
+  const parts: string[] = [];
+  if (field.kind === "text") {
+    if (field.format === "iso-datetime") parts.push("an ISO-8601 instant with an offset");
+    else if (field.pattern !== undefined) parts.push(`must match ${field.pattern}`);
+    if (field.minLength !== undefined) parts.push(`at least ${String(field.minLength)} character(s)`);
+    if (field.maxLength !== undefined) parts.push(`at most ${String(field.maxLength)} character(s)`);
+    if (field.serverOnlyRules) {
+      parts.push("the server checks more rules on this one than this box can");
+    }
+  }
+  if (field.kind === "integer") {
+    parts.push("a whole number");
+    if (field.minimum !== undefined) parts.push(`at least ${String(field.minimum)}`);
+    if (field.maximum !== undefined) parts.push(`at most ${String(field.maximum)}`);
+  }
+  return parts.length === 0 ? undefined : parts.join(" · ");
+}

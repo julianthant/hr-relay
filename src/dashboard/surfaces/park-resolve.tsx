@@ -18,7 +18,7 @@
  * it) and a second, friendlier paraphrase beside it would be this surface
  * guessing at what happened to a live transaction.
  *
- * THREE THINGS THE DEMO DREW THAT THIS ONE DOES NOT, and why each absence is
+ * TWO THINGS THE DEMO DREW THAT THIS ONE DOES NOT, and why each absence is
  * the honest rendering rather than a porting shortfall:
  *
  *  - **The settle fence** (`fence clears at …`, "twice, at least 10 minutes
@@ -31,7 +31,15 @@
  *    ported in the only form the wire supports: it renders when the section
  *    carries settling data, and the section carries none, so it is ABSENT. It
  *    is not stubbed and it is not faked.
- *  - **The proof entry for `resolve-write-present`.** See `ProofUnserved`.
+ *
+ * THE THIRD ABSENCE IS CLOSED (D245). `resolve-write-present` used to be
+ * refused on this surface with `proof-contract-unserved`, because the wire
+ * served neither the proof's schema hash nor its shape — and the copy told the
+ * operator to resolve the write from a CLI that has never had a run-mutation
+ * command. The section now serves the commit contract's proof as an ordered
+ * field list, `ProofForm` renders it, and the composed value goes out bound to
+ * the SERVED hash. Where a build genuinely cannot describe the proof, the
+ * server says why and `ProofUnavailable` prints that reason.
  */
 import { useEffect, useState } from "react";
 import { CheckCircle2, CircleSlash, PauseCircle } from "lucide-react";
@@ -48,9 +56,11 @@ import {
   DialogContent,
   DialogFooter,
   Field,
+  Input,
   MetaLine,
   Refusal,
   SectionLabel,
+  Select,
   StatusPill,
   Textarea,
   Well,
@@ -61,7 +71,16 @@ import {
   useDsEnterTransition,
   useToasts,
 } from "../ds/ui.js";
-import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
+import type { ProofFieldWire, RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
+import {
+  PROOF_BOOLEAN_OPTIONS,
+  composeProofValue,
+  initialProofDrafts,
+  isOperatorSuppliedProofField,
+  proofFieldHint,
+  proofFieldLabel,
+  proofFieldProblem,
+} from "../app/proof-form.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { BannerActions, ParkResolutions, type DashboardActionHandler } from "./actions.js";
@@ -255,35 +274,130 @@ function parkedExpectedVersion(parked: ParkedWritePayload): number {
 /* ── the resolution dialog ───────────────────────────────────────────────── */
 
 /**
- * `resolve-write-present` CANNOT BE SENT FROM ANY SURFACE IN THIS BUILD, and
- * this says so rather than drawing a control that quietly does nothing.
+ * THE PROOF THIS BUILD CANNOT DESCRIBE (D245).
  *
- * The kernel's payload is `{ proof: SchemaBoundCanonicalValue, evidenceNote }`,
- * and `createWriteResolutionExecutor.resolvePresent` refuses any proof whose
- * `schemaHash` is not the commit contract's own
- * (`deriveSchemaHash(node.commit.uses.writeSafety.completion.proofSchema)`).
- * The `parked-write` wire serves no proof schema identity and no proof shape,
- * so a client can compose neither half — and minting a plausible `schemaHash`
- * to make the button clickable is precisely the fabricated-constant failure
- * this program exists to refuse.
+ * The `unavailable` arm carries the SERVER's own reason — an unregistered
+ * workflow, no transaction node committing this task, or a proof schema the
+ * describer refuses by name — and this prints it verbatim. It composes no
+ * sentence about the shape, because the shape is precisely what the server just
+ * said it cannot state.
  *
- * It is drawn DISABLED WITH ITS REASON rather than hidden: DESIGN.md's rule for
- * an option that exists in the target system but is not wired, because hiding
- * it teaches the operator the product has never heard of it. The refusal names
- * the missing wire so the next slice has a code to search for.
+ * It is drawn DISABLED WITH ITS REASON rather than hidden: hiding it would
+ * teach the operator the product has never heard of the answer they came to
+ * give, and the confirmed-ABSENT arm beside it stays fully reachable.
+ *
+ * The old copy on this refusal told the operator to "resolve this write from
+ * the CLI". No run-mutation CLI has ever existed — `POST /api/v1/commands` is
+ * the only mutation door in the system — so the sentence sent people looking
+ * for a door that is not there.
  */
-function ProofUnserved() {
+function ProofUnavailable({ reason }: { reason: string }) {
   return (
     <Refusal
-      title="This build cannot record a present write"
-      code="proof-contract-unserved"
+      title="This build cannot describe the proof for this write"
+      code="proof-contract-unavailable"
       outcome="nothing was sent · the write is still parked and still fenced"
     >
-      A confirmed-present resolution carries the transaction proof, parsed by the same schema the
-      run&apos;s own completion would have parsed it with. The parked-write section serves no proof
-      schema for this commit, so this surface has nothing to parse a proof against. Record the
-      absence instead, or resolve this write from the CLI.
+      <span>
+        A confirmed-present resolution carries the transaction proof, parsed by the same schema the
+        run&apos;s own completion would have parsed it with. {reason} Record the absence instead if
+        that is what you found.
+      </span>
     </Refusal>
+  );
+}
+
+/**
+ * THE TYPED PROOF FORM (D245).
+ *
+ * One control per operator-supplied leaf of the commit contract's own
+ * completion proof schema, in the schema's declaration order. Three things
+ * about it are decisions rather than layout:
+ *
+ *  - **Nothing is pre-filled.** The run holds what it TRIED to write, and
+ *    offering that back as the proof would turn an attestation about a live HR
+ *    system into a click-through of the system's own guess.
+ *  - **The literals the schema pins are shown, not typed.** `kind` and `source`
+ *    are the contract's statement of which page shape these fields come from;
+ *    who vouched for the reading is recorded one level up, as the outcome's
+ *    `proofSource: operator-attestation`.
+ *  - **A field's problem appears once it has been TOUCHED.** Painting every box
+ *    red before the operator has typed anything states a fault they have not
+ *    made yet; the disabled verb names the first outstanding field, and every
+ *    problem is in the Field's own accessible `error` channel the moment it is
+ *    real.
+ */
+function ProofForm({
+  contract,
+  drafts,
+  touched,
+  disabled,
+  onChange,
+}: {
+  contract: Extract<ParkedWritePayload["proofContract"], { state: "served" }>;
+  drafts: Readonly<Record<string, string>>;
+  touched: ReadonlySet<string>;
+  disabled: boolean;
+  onChange: (path: string, value: string) => void;
+}) {
+  const fixed = contract.fields.filter((field) => field.kind === "fixed");
+  return (
+    <section className="flex flex-col gap-[var(--ds-space-cozy)]">
+      <div className="flex flex-col gap-[var(--ds-space-snug)]">
+        <SectionLabel>The proof, as {contract.commitTaskId} defines it</SectionLabel>
+        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+          Every box below is part of the transaction proof. Type what the target system shows you —
+          the server parses it through the same schema the run&apos;s own completion would have.
+        </span>
+      </div>
+
+      {fixed.length > 0 && (
+        <Well className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
+          {fixed.map((field) => (
+            <Chip key={field.path} label={proofFieldLabel(field)}>
+              {String(field.value)}
+            </Chip>
+          ))}
+        </Well>
+      )}
+
+      {contract.fields.filter(isOperatorSuppliedProofField).map((field) => {
+        const draft = drafts[field.path] ?? "";
+        const problem = touched.has(field.path) ? proofFieldProblem(field, draft) : undefined;
+        return (
+          <Field
+            key={field.path}
+            label={proofFieldLabel(field)}
+            description={proofFieldHint(field)}
+            error={problem ?? null}
+            required
+          >
+            {field.kind === "choice" || field.kind === "boolean" ? (
+              <Select
+                value={draft}
+                disabled={disabled}
+                onChange={(event) => onChange(field.path, event.target.value)}
+              >
+                {/* An empty first option, so nothing is chosen for the
+                    operator: a select that opens on a valid answer is a
+                    pre-filled proof wearing a control's clothes. */}
+                <option value="">—</option>
+                {(field.kind === "choice" ? field.options : PROOF_BOOLEAN_OPTIONS).map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </Select>
+            ) : (
+              <Input
+                value={draft}
+                disabled={disabled}
+                inputMode={field.kind === "integer" ? "numeric" : undefined}
+                onChange={(event) => onChange(field.path, event.target.value)}
+              />
+            )}
+          </Field>
+        );
+      })}
+    </section>
   );
 }
 
@@ -343,6 +457,26 @@ function RefusedNotice({ refusal }: { refusal: Refused }) {
 }
 
 /**
+ * The blocked verb's reason, naming the FIRST outstanding proof field.
+ *
+ * The per-field sentences only appear once a field has been touched, so a verb
+ * disabled with nothing but a shrug is exactly what this file refuses one
+ * control over ("the Field's `error` is the accessible channel"). A problem
+ * whose path names no served field cannot happen — the composer only reports
+ * paths it was given — so the fallback prints the path rather than inventing a
+ * friendlier name for a field nobody described.
+ */
+function firstProofProblemSentence(
+  fields: readonly ProofFieldWire[],
+  problems: readonly { readonly path: string; readonly message: string }[],
+): string | undefined {
+  const first = problems[0];
+  if (first === undefined) return undefined;
+  const field = fields.find(({ path }) => path === first.path);
+  return `${field === undefined ? first.path : proofFieldLabel(field)}: ${first.message}`;
+}
+
+/**
  * A refusal as this surface holds it: the server's sentence, and its code when
  * the server sent one. `conflict` never carries a code and `rejected` always
  * does, so the optional field is the wire's own shape, not a guess.
@@ -389,6 +523,8 @@ export function ParkResolveDialog({
   const client = useDashboardClient();
   const { toast } = useToasts();
   const [evidenceNote, setEvidenceNote] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set());
   const [outcome, setOutcome] = useState<Outcome>({ state: "idle" });
 
   // A fresh open starts a fresh answer. A refusal does NOT — keeping what the
@@ -396,6 +532,9 @@ export function ParkResolveDialog({
   useEffect(() => {
     if (target === null) return;
     setEvidenceNote("");
+    const contract = target.parked.proofContract;
+    setDrafts(contract.state === "served" ? initialProofDrafts(contract.fields) : {});
+    setTouched(new Set());
     setOutcome({ state: "idle" });
   }, [target]);
 
@@ -419,9 +558,31 @@ export function ParkResolveDialog({
     : note.length > 500
       ? `An evidence note is at most 500 characters; this one is ${String(note.length)}.`
       : undefined;
-  const blocked = arm === "present"
-    ? "This build serves no proof contract for this commit."
-    : noteProblem;
+  /*
+   * D245 — WHAT BLOCKS THE VERB, per arm.
+   *
+   * The present arm needs BOTH halves of the kernel's payload: a proof that
+   * composes through the served field list, and the same evidence note the
+   * absent arm takes. The note's own bound is the kernel's `OperatorReasonSchema`,
+   * stated here rather than discovered from a rejection.
+   *
+   * The proof half's refusal names the FIRST outstanding field, because the
+   * per-field sentences only appear once a field has been touched and a
+   * disabled verb with no reason is the thing this file already refuses
+   * elsewhere.
+   */
+  const proofContract = parked.proofContract;
+  const composed = arm === "present" && proofContract.state === "served"
+    ? composeProofValue(proofContract.fields, drafts)
+    : undefined;
+  const proofProblem = arm !== "present"
+    ? undefined
+    : proofContract.state !== "served"
+      ? "This build cannot describe the proof for this write."
+      : composed?.state === "invalid"
+        ? firstProofProblemSentence(proofContract.fields, composed.problems)
+        : undefined;
+  const blocked = arm === "present" ? proofProblem ?? noteProblem : noteProblem;
 
   const { writeTarget } = action;
   /**
@@ -442,7 +603,26 @@ export function ParkResolveDialog({
     });
   };
   const submit = (): void => {
-    if (arm !== "absent" || blocked !== undefined) return;
+    if (arm === undefined || blocked !== undefined) return;
+    /*
+     * D245: the present arm sends the composed proof BOUND to the schema hash
+     * the server served. The hash is echoed, never computed — a client that
+     * derived it would be a second implementation of the contract's identity,
+     * and one that minted a plausible one to make the button work is the
+     * fabricated constant this program exists to refuse. If the build moved
+     * between the serve and the send, the kernel answers `schema-mismatch` and
+     * this dialog prints it.
+     */
+    if (arm === "present" && (composed === undefined || composed.state !== "composed")) return;
+    const request = arm === "present" && proofContract.state === "served" && composed?.state === "composed"
+      ? {
+        type: "resolve-write-present" as const,
+        payload: {
+          proof: { schemaHash: proofContract.schemaHash, value: composed.value },
+          evidenceNote: note,
+        },
+      }
+      : { type: "resolve-write-absent" as const, payload: { evidenceNote: note } };
     setOutcome({ state: "sending" });
     client.executeCommand({
       commandId: crypto.randomUUID(),
@@ -450,14 +630,14 @@ export function ParkResolveDialog({
       requestedBy: actorId,
       source: "run-detail",
       family: "run",
-      type: "resolve-write-absent",
+      type: request.type,
       target: {
         runId: parked.runId,
         expectedVersion: action.expectedVersion,
         writeIntentId: writeTarget.writeIntentId,
         intentGeneration: writeTarget.intentGeneration,
       },
-      payload: { evidenceNote: note },
+      payload: request.payload,
     }).then((result) => {
       // `conflict` and `rejected` are VALUES, not exceptions (doc 13 §3.4). The
       // server's sentence is printed verbatim: a stale generation is exactly
@@ -508,12 +688,38 @@ export function ParkResolveDialog({
             <SubjectFacts subject={parked.subject} inline />
           </Well>
 
-          {arm === "present" ? (
-            <ProofUnserved />
-          ) : (
+          {arm === "present" && (
+            proofContract.state === "served"
+              ? (
+                  <ProofForm
+                    contract={proofContract}
+                    drafts={drafts}
+                    touched={touched}
+                    disabled={sending}
+                    onChange={(path, value) => {
+                      setDrafts((current) => ({ ...current, [path]: value }));
+                      setTouched((current) => new Set(current).add(path));
+                    }}
+                  />
+                )
+              : <ProofUnavailable reason={proofContract.reason} />
+          )}
+
+          {/*
+            THE EVIDENCE NOTE IS ON BOTH ARMS (D245). The kernel's
+            `resolve-write-present` payload requires it just as the absent one
+            does, and it is the only place the operator says WHERE they looked —
+            the proof above says what the page held, and the two are different
+            facts. It is retained with the request in the command journal.
+          */}
+          {(arm === "absent" || proofContract.state === "served") && (
             <Field
-              label="What did you check, and what did you see?"
-              description="The only record of why a retry was permitted to submit for real."
+              label={arm === "present"
+                ? "Where did you see this, and how did you get there?"
+                : "What did you check, and what did you see?"}
+              description={arm === "present"
+                ? "The proof says what the page held; this says where you stood when you read it."
+                : "The only record of why a retry was permitted to submit for real."}
               /*
                 BOTH note problems land here — the empty note as well as the
                 over-long one (R8 finding 16). The empty-note sentence used to

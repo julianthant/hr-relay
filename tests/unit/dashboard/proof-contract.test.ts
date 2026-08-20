@@ -26,6 +26,8 @@ import { describeProofShape, type ProofShapeField } from "../../../src/validatio
 import {
   composeProofValue,
   initialProofDrafts,
+  proofFieldHint,
+  proofFieldLabel,
   proofFieldProblem,
 } from "../../../src/dashboard/app/proof-form.js";
 import { ProofContractWireSchema, type ProofFieldWire } from "../../../src/domain/dashboard/run-detail.js";
@@ -270,5 +272,68 @@ describe("the client-side refusal, per field (D245)", () => {
       kind: "kuali-saved-finalization",
       fields: { timekeeperName: "HEIN, JULIAN", requestAcknowledged: true },
     });
+  });
+});
+
+/**
+ * The label is an ACCESSIBLE NAME and the hint is the sentence beside the box,
+ * so both are pinned here rather than only in the parity corpus — this tree
+ * renders no React in the unit lane, which is exactly why `terminalOutcomeText`
+ * became an exported pure function too (D187's lesson from the other side).
+ */
+describe("what the proof form calls each field (D245)", () => {
+  it("humanises the schema's own path and never renames the field", () => {
+    const label = (path: string): string =>
+      proofFieldLabel({ kind: "boolean", path: path as ProofFieldWire["path"] });
+    assert.equal(label("transactionId"), "Transaction id");
+    assert.equal(label("emplId"), "Empl id");
+    assert.equal(label("fields.separationDate"), "Fields · separation date");
+  });
+
+  it("prints the contract's own constraint, verbatim where it is a pattern", () => {
+    assert.equal(
+      proofFieldHint({
+        kind: "text",
+        path: "transactionId" as ProofFieldWire["path"],
+        pattern: "^T\\d{6,}$",
+        serverOnlyRules: false,
+      }),
+      "must match ^T\\d{6,}$",
+    );
+    assert.match(
+      proofFieldHint({
+        kind: "text",
+        path: "observedAt" as ProofFieldWire["path"],
+        format: "iso-datetime",
+        pattern: "whatever",
+        serverOnlyRules: false,
+      }) ?? "",
+      /ISO-8601 instant with an offset/u,
+    );
+    // The one honest half-measure: the box cannot re-check a `.refine()`, and
+    // says so instead of implying its own tick is the verdict.
+    assert.match(
+      proofFieldHint({
+        kind: "text",
+        path: "comments" as ProofFieldWire["path"],
+        maxLength: 4000,
+        serverOnlyRules: true,
+      }) ?? "",
+      /server checks more rules on this one than this box can/u,
+    );
+    // A choice and a boolean render their answers, so a sentence would repeat
+    // the control.
+    assert.equal(
+      proofFieldHint({ kind: "boolean", path: "flag" as ProofFieldWire["path"] }),
+      undefined,
+    );
+    assert.equal(
+      proofFieldHint({
+        kind: "choice",
+        path: "status" as ProofFieldWire["path"],
+        options: ["Approved"],
+      }),
+      undefined,
+    );
   });
 });
