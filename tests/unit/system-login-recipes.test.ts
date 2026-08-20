@@ -38,7 +38,12 @@ import {
   verifyUcpathAuthenticatedApplication,
 } from "../../src/stores/ucpath/session.js";
 import { verifyKualiAuthenticatedApplication } from "../../src/stores/kuali/session.js";
-import { fakeLoginPage, type FakeCookie, type FakePageScript } from "./fixtures/fake-login-page.js";
+import {
+  NEVER_SETTLES,
+  fakeLoginPage,
+  type FakeCookie,
+  type FakePageScript,
+} from "./fixtures/fake-login-page.js";
 
 const CONFIG = resolveConfig({}, {}, manualClock(new Date("2026-08-03T09:00:00.000Z")));
 const CREDENTIALS = Object.freeze({ userId: "fixture-user", password: "fixture-value" });
@@ -48,6 +53,8 @@ const UCPATH_PORTAL = CONFIG.urls.ucpath.prod.login;
 /** The page that produced the false pass: public, unauthenticated, same host. */
 const UCPATH_PUBLIC_PORTAL = "https://ucpath.universityofcalifornia.edu/";
 const SSO = "https://a5.ucsd.edu/idp/profile/SAML2/Redirect/SSO";
+/** The Duo Universal Prompt, as the live wedge observed it (§9.21, 2026-08-19). */
+const DUO_PROMPT = "https://api-ce13a1a7.duosecurity.com/prompt/DA6QL3UFNF54WTIT1EQC";
 const DISCOVERY = "https://ucpath.universityofcalifornia.edu/ucpathdiscovery/disco?entity=ucsd";
 const CRM_APP = "https://act-crm.my.site.com/hr/ONB_SearchOnboardings";
 const CRM_ENTRY = CONFIG.urls.crm.prod.entry;
@@ -431,6 +438,64 @@ describe("ucpath login recipe", () => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.step, "duo-clearance");
       assert.doesNotMatch(error.message, /fixture-value|fixture-user/);
+      return true;
+    });
+  });
+
+  it("refuses the moment Duo renders its terminal refusal, without waiting out the landing", async () => {
+    // D243 / §9.21. The live wedge does NOT time out on the Duo host — Duo
+    // ANSWERS, about a second after the assertion, with "Your login request
+    // using your security key was canceled or timed out", and then sits there.
+    // `NEVER_SETTLES` is that shape: the landing wait can only ever learn "not
+    // yet", so a recipe that watches only the URL is structurally unable to
+    // finish, and 48 s later the acquisition bound blames Duo hand-approval.
+    const { context } = contextFor({
+      url: "about:blank",
+      elements: {
+        "portal-login": { navigatesTo: SSO },
+        "campus-link": { count: 0 },
+        "sso-submit": { navigatesTo: DUO_PROMPT },
+        "sso-username": {},
+        "sso-password": {},
+        "duo-refusal": { count: 1 },
+      },
+      settlesTo: [NEVER_SETTLES],
+    });
+    const settled: unknown = await Promise.race([
+      ucpathLoginRecipe(context).then(() => "the recipe reported success", (error: unknown) => error),
+      new Promise((resolve) => setTimeout(() => resolve("the recipe was still waiting"), 500)),
+    ]);
+    assert.ok(settled instanceof BrowserLoginError, `expected a refusal; got ${String(settled)}`);
+    assert.equal(settled.step, "duo-clearance");
+    assert.match(settled.message, /signCount/);
+    assert.match(settled.message, /Duo REFUSED/);
+    assert.doesNotMatch(settled.message, /fixture-value|fixture-user/);
+  });
+
+  it("still reports a plain Duo stall as a stall — the refusal probe is not a catch-all", async () => {
+    // The negative control. Two different failures share the Duo host, and the
+    // fix must not collapse them: a prompt that is merely slow (or genuinely
+    // waiting on a hand approval) is the one case where
+    // `timeouts.duoApprovalSeconds` IS the leaf to move, and saying "signCount"
+    // there would be the same mis-attribution pointed the other way.
+    const { context } = contextFor({
+      url: "about:blank",
+      elements: {
+        "portal-login": { navigatesTo: SSO },
+        "campus-link": { count: 0 },
+        "sso-submit": { navigatesTo: DUO_PROMPT },
+        "sso-username": {},
+        "sso-password": {},
+        "stale-request": { count: 0 },
+        "duo-refusal": { count: 0 },
+      },
+      settlesTo: [],
+    });
+    await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
+      assert.ok(error instanceof BrowserLoginError);
+      assert.equal(error.step, "duo-clearance");
+      assert.match(error.message, /the Duo prompt never cleared/);
+      assert.doesNotMatch(error.message, /signCount/);
       return true;
     });
   });

@@ -379,6 +379,44 @@ with its own evidence, not something this criterion has already claimed.
 
 ---
 
+### 4.2 A refused Duo ceremony is an OBSERVATION, and the counter it refuses on is SHARED (D243, 2026-08-19)
+
+**A login recipe MUST refuse on Duo's own terminal refusal, and MUST NOT wait for its landing bound
+to expire in order to learn that Duo already answered.** `waitForAuthenticatedLanding` races the
+landing predicate against Duo's rendered refusal (`ucsd-sso.ts`, live-observed 2026-08-19: *"Your
+login request using your security key was canceled or timed out"*, offering only a manual **Try
+again**, which nothing here clicks). That screen is TERMINAL for this runtime — it was observed
+unchanged for 46 s — so a login that reaches it is already dead and every further second is spent
+watching a page that has stopped being about our request.
+
+**Why the wait could not learn this by timing out.** The landing bound is `duoApprovalSeconds`
+(180 s) and the acquisition envelope is `sessionAcquireMs` (60 s), so on any Duo stall the envelope
+fires FIRST and cancels the wait. `describeStalledLanding` — the function whose entire job is to
+explain a stalled Duo login — is therefore **unreachable at the shipped defaults**, and the operator
+receives D125's bound message naming Duo hand-approval and `duoApprovalSeconds` instead: a real
+cause, and never this one (separations §9.17 item 5 recorded exactly that mis-attribution). The
+repair is not to move either leaf — §4.1's rule applies here too. Authentication is decided by
+CONTENT, and so is its refusal: Duo says so in words about a second after the assertion, so the
+recipe observes that instead of inferring it from elapsed time. The generic stall message survives
+for a prompt that is merely slow, and a negative control keeps the two arms distinct.
+
+**The counter is a shared resource with unsynchronised writers.** Duo's WebAuthn signature counter
+is per CREDENTIAL and lives on Duo's side; Duo Autopilot's copy lives in `chrome.storage.local`,
+which is per BROWSER PROFILE; and §1 partitions profiles per
+`(worker, system, instance, configFingerprint)`. One credential covers every UCSD system
+(`duo-autopilot/README.md`), so N profiles write one server-side counter and none of them can see
+another's copy. **The counter a ceremony presents must therefore be computed from a source every
+profile shares.** `duo-autopilot/src/sign-count.js` floors it at wall-clock seconds
+(`max(stored + 1, nowSec)`); `stored + 1` is forbidden, because a cold profile's import stamp jumps
+the shared counter to `now` while a warm profile creeps by one, and a warm profile that was
+cold-stamped earlier can then never catch up — every subsequent login on it is refused, permanently,
+with profile deletion as the only exit. That is the whole of the "browser-profile wedge" recorded in
+separations §9.17 item 5 / §9.20 item 6 and root-caused in §9.21. The rule is pinned by
+`tests/unit/duo-sign-count.test.ts`, whose load-bearing case is the two-profile simulation rather
+than any single arithmetic example: the defect is only visible across writers.
+
+---
+
 ## 6. Failure isolation
 
 ### 6.1 Page/subject-isolation invariant

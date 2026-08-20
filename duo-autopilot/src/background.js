@@ -4,6 +4,7 @@
 // assertion components. See BUILD_PLAN.md §3 and §7.
 
 import { base64ToBytes, bytesToBase64, bytesEqual, createAssertion, createRegistration } from "./crypto.js";
+import { nextSignCount } from "./sign-count.js";
 
 const STORAGE_KEY = "duoCredentials";
 const ENROLL_KEY = "enroll";
@@ -76,6 +77,12 @@ async function autoImportPackagedCredential() {
     // fresh profile — the counter must strictly increase across sessions. The
     // current unix time (seconds) is monotonic across fresh loads, always ahead
     // of Duo's view, and fits uint32 until 2106.
+    //
+    // D243: this stamp is now belt-and-braces, not the invariant. Stamping only
+    // COLD profiles is exactly what wedged warm ones — see sign-count.js. The
+    // invariant is held at SIGN time, where the same wall-clock floor applies to
+    // every ceremony; this line survives because it also lifts a stale counter
+    // out of a packaged credential file before the first ceremony reads it.
     const nowSec = Math.floor(Date.now() / 1000);
     for (const c of creds) c.signCount = Math.max(Number(c.signCount) || 0, nowSec);
     await chrome.storage.local.set({ [STORAGE_KEY]: creds });
@@ -171,13 +178,17 @@ async function handleSign(req) {
     );
     return { ok: false, reason: "no-matching-credential" };
   }
-  console.debug("[Duo Autopilot SW] signing with %s credential, signCount %d -> %d", cred.transport, Number(cred.signCount) || 0, (Number(cred.signCount) || 0) + 1);
-
   // Counter is load-bearing: advance and PERSIST before returning. Duo may
   // observe the new counter even if the login later fails, so persisting eagerly
   // keeps the file at-or-ahead of Duo's view (BUILD_PLAN §6.5).
+  //
+  // D243: the advance is floored at WALL-CLOCK seconds, not `+ 1`. Duo's counter
+  // is per-credential and shared by every browser profile that replays this key,
+  // while our copy is per-profile — see sign-count.js for the whole argument and
+  // for the wedge that `+ 1` caused.
   const oldCount = Number(cred.signCount) || 0;
-  const newCount = oldCount + 1;
+  const newCount = nextSignCount(oldCount, Math.floor(Date.now() / 1000));
+  console.debug("[Duo Autopilot SW] signing with %s credential, signCount %d -> %d", cred.transport, oldCount, newCount);
   await persistSignCount(cred.credentialId, newCount);
 
   const { authenticatorData, clientDataJSON, signature } = await createAssertion({
