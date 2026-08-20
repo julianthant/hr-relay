@@ -42,6 +42,41 @@ export const DUO_HOST = "duosecurity.com";
 const SSO_SUBMIT_SELECTOR = 'button[name="_eventId_proceed"]';
 /** legacy src/infra/auth/duo-poll.ts — the Shibboleth expired-execution page. */
 const STALE_REQUEST_TEXT = "Web Login Service - Stale Request";
+/**
+ * Duo's OWN terminal refusal of a WebAuthn assertion (D243).
+ *
+ * Live-observed 2026-08-19, verbatim, on `api-ce13a1a7.duosecurity.com/prompt/…`:
+ *
+ * > Couldn't use security key
+ * > Your login request using your security key was canceled or timed out.
+ * > Show other options · Try again · Need help?
+ *
+ * It is TERMINAL for this runtime: it offers only a manual "Try again", nothing
+ * here clicks it, and the observed screen sat unchanged for 46 s until the
+ * acquisition bound tore the context down. So a login that reaches it is
+ * already dead, and every further second is spent waiting for a page that has
+ * stopped being about our request.
+ *
+ * The wording matched is the SENTENCE, not the heading: the heading names the
+ * factor ("security key" for the `usb` credential, and only that arm has been
+ * observed), while the sentence carries the outcome. `.first()` — a Duo prompt
+ * renders it once, and a union that assumed exclusivity is D213's defect.
+ */
+const DUO_TERMINAL_REFUSAL_TEXT = /login request .*(?:canceled|cancelled) or timed out/i;
+/**
+ * What the refusal MEANS, stated where an operator reads it. §9.21's live
+ * bisection is the evidence: the same profile logs in at ~19 s with a counter
+ * ahead of Duo's view and burns the whole 60 s bound with one forced 1 063
+ * BELOW it, with nothing else changed.
+ */
+const DUO_TERMINAL_REFUSAL_MESSAGE =
+  "Duo REFUSED the WebAuthn assertion and rendered its terminal \"canceled or timed out\" screen; "
+  + "this login is dead and the prompt will not clear on its own. The cause is almost never Duo "
+  + "hand-approval: it is a Duo Autopilot signCount regression, where this browser profile's stored "
+  + "counter has fallen BEHIND the value Duo has already observed for the shared credential (a "
+  + "counter that does not advance is a cloned-key signal), which is what happens when any other "
+  + "profile using the same credential signed more recently. Check the extension's stored signCount "
+  + "before touching timeouts.duoApprovalSeconds or timeouts.sessionAcquireMs";
 
 export function abortIfCancelled(
   system: BrowserSystemId,
@@ -255,6 +290,29 @@ export async function submitSsoForm(
   }
 }
 
+/** The locator for Duo's terminal refusal. Exported so a probe can assert it. */
+export function duoTerminalRefusalLocator(page: Page): Locator {
+  return page.getByText(DUO_TERMINAL_REFUSAL_TEXT).first();
+}
+
+/**
+ * Resolves ONLY when Duo has rendered its terminal refusal.
+ *
+ * Absence is deliberately not an answer this arm may give. It races the landing
+ * wait, which owns the timeout; settling here on "the refusal never appeared"
+ * would report a healthy-but-slow login as a refusal AND would pre-empt the
+ * landing's own diagnosis with a locator error. So the absent case never
+ * settles — it is bounded entirely by the arm beside it, which always settles.
+ */
+async function observeDuoTerminalRefusal(page: Page, timeoutMs: number): Promise<"duo-refused"> {
+  try {
+    await duoTerminalRefusalLocator(page).waitFor({ state: "visible", timeout: timeoutMs });
+  } catch {
+    return await new Promise<"duo-refused">(() => undefined);
+  }
+  return "duo-refused";
+}
+
 /**
  * Waits for Duo to clear into the authenticated landing.
  *
@@ -263,6 +321,21 @@ export async function submitSsoForm(
  * cleared, the Shibboleth stale-request page, or an unrecognized landing — so
  * the operator is not left guessing. There is NO fallback path: an unverified
  * page never counts as authenticated.
+ *
+ * ## D243 — why the wait also WATCHES for a refusal
+ *
+ * Waiting for the landing alone can only ever learn "it did not happen", and
+ * only when its own bound expires. That bound is `duoApprovalSeconds` (180 s by
+ * default), which is deliberately LARGER than `sessionAcquireMs` (60 s), so on
+ * a Duo stall the acquisition envelope always fires first and cancels this wait
+ * — which means `describeStalledLanding`, the function whose whole job is to
+ * explain a stalled Duo login, is unreachable at the shipped defaults and the
+ * operator is handed a bound message naming Duo hand-approval instead (D125's
+ * message, a real cause and not this one — separations §9.17 item 5).
+ *
+ * Duo does not make us infer it. It SAYS so, in words, about a second after the
+ * assertion is rejected. So the wait races the landing against that observation
+ * and refuses by name in ~12 s instead of burning 60 s and mis-attributing it.
  */
 export async function waitForAuthenticatedLanding(
   system: BrowserSystemId,
@@ -271,12 +344,24 @@ export async function waitForAuthenticatedLanding(
   timeoutMs: number,
 ): Promise<void> {
   try {
-    await raceCancellation(
-      context.page.waitForURL((url) => landed(url.href), { timeout: timeoutMs }),
+    const outcome = await raceCancellation(
+      Promise.race<"landed" | "duo-refused">([
+        context.page.waitForURL((url) => landed(url.href), { timeout: timeoutMs })
+          .then(() => "landed"),
+        observeDuoTerminalRefusal(context.page, timeoutMs),
+      ]),
       system,
       "duo-clearance",
       context,
     );
+    if (outcome === "duo-refused") {
+      throw new BrowserLoginError(
+        system,
+        "duo-clearance",
+        DUO_TERMINAL_REFUSAL_MESSAGE,
+        context.page.url(),
+      );
+    }
   } catch (error) {
     if (error instanceof BrowserLoginError) throw error;
     const observed = context.page.url();
@@ -309,6 +394,17 @@ async function describeStalledLanding(
     return "Shibboleth served its stale-request page; the SAML execution expired during login";
   }
   if (observed.includes(DUO_HOST)) {
+    // D243: a stall ON the Duo host is two different failures wearing one
+    // message. Ask the page which one it is before generalising, because the
+    // generic answer sends the operator at `timeouts.duoApprovalSeconds`, and
+    // for the refusal that leaf is not the cause and moving it changes nothing.
+    let refusalCount: number;
+    try {
+      refusalCount = await duoTerminalRefusalLocator(context.page).count();
+    } catch (error) {
+      return `the Duo prompt never cleared, and whether Duo had already refused it could not be probed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    if (refusalCount > 0) return DUO_TERMINAL_REFUSAL_MESSAGE;
     return "the Duo prompt never cleared; check that Duo Autopilot is loaded and its credential is current";
   }
   // Live-verified 2026-08-03: TritON re-renders its OWN form, on the same URL,

@@ -3,9 +3,10 @@
 > **STATUS (2026-08-18): BUILT AND LIVE-PROVEN THROUGH THE PREVIEW TERMINAL — the controlled
 > commits are the remaining work.** All build chunks (1, 2, 3, 4, 5a/5b/5c, 6a, 6b, 6c) are LANDED;
 > the composed workflow ran live end-to-end to a real preview terminal on doc 4502 (§9.17). The §6
-> exit checklist stands at **7 of 9**: open are the three §4f2 controlled commits (blocked on the
-> operator naming a canary — doc 4524, the recorded candidate, completed on 2026-08-14 and is gone)
-> and the browser-profile-wedge regression record (§9.17 item 5). Current work and ordering:
+> exit checklist stands at **8 of 9**: open are the three §4f2 controlled commits (blocked on the
+> operator naming a canary — doc 4524, the recorded candidate, completed on 2026-08-14 and is gone).
+> The browser-profile-wedge regression record closed with **§9.21 / D243** — the wedge was a shared
+> WebAuthn counter with per-profile writers, not a profile defect. Current work and ordering:
 > `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md`.
 >
 > *(Historical header, true 2026-08-12→08-14: the §5 questionnaire was fully answered 2026-08-12 —
@@ -1707,7 +1708,7 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 - [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **OPEN on all three commits**; the §4f2 canary is **NAMED — doc 4537 (operator, 2026-08-19)**, and §9.19 carries its live mapping pass with the per-commit verdicts: ② the UCPath filing unblocks on Pacific calendar day **2026-08-28** (S7 passes on equality), ③ the Kuali finalization runs only AFTER ② (its `transactionNumber` ingress does not exist until ② files), and ① the pending sweep has no live pending row until ② creates one (re-run ① immediately after ② files). The live document inventory lives in §9.19 with a date on it, not in this sentence. _Historical: doc 4524's recommendation WITHDRAWN (§9.16 §3 — action completed 2026-08-14); doc 4510, once the best-mapped standalone Kuali candidate (composed-graph refusal live-proved 2026-08-14, §9.17 item 2: run `ee9824f7`, `NO_ACTIVE_EMPLOYMENT`, EID 10001799), is also GONE (§9.19 §7: action completed, `document: null`)._
 - [x] `identity-gate-before-separation-commit` green — every commit is graph-reachable only through the gate node (doc 09 §14.6 guard #2; the structural half of §4d) — and §14.5's digest binding is now proved LIVE (§9.14): the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's
 - [x] D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved — **MET 2026-08-14 (§9.17 item 6)**: three entries touched (`legacy-workflow-separations`, `legacy-tool-debug-kronos`, `legacy-tool-ops-sanity-check-record`), all correctly `open` at the runtime's own milestone, nothing stale under D188's arm, no legacy path deleted. One finding for the operator: **D192's deferral condition on `legacy-tool-ops-sanity-check-record` is now materially satisfied** — the §14.2 packet's `comparisons` array is exactly the prose-observations-beside-the-gate shape D192 asked for — and it is flagged rather than re-dispositioned, because closing an inventory entry is an operator decision
-- [ ] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above became D214/D215 and both landed with theirs; the `already-present` receipt arm platform slice 2 named landed at `b73b546`.** **PARTLY MET after §9.17**: the re-run's own defect — D215's `not-observed` subject verdict missing from the span WIRE leaf, which killed the worker on the first preview that ever settled — landed with its regression case at `e1ba81b`. **Of the two findings the pass named rather than pinned, one is now closed**: the retry checkpoint re-collision (§9.17 item 8) landed as **D221** with `tests/unit/retry-item-attempt.test.ts` — the attempt in an item-scoped checkpoint key is the ITEM's attempt, so a retry takes the item's next one and its `always-rerun` executions can no longer land on the retried run's key — and it is now **LIVE-PROVED on the composed graph (§9.20, 2026-08-19)**: six retries through the real command endpoint across two logical items (attempts 2→3 on doc 4510, 2→3→4→5→6 on doc 4502), every one minting the item's next unspent attempt, none refused, no collision, `timecard-search` — §9.18 item 8's own node — re-executed at three separate attempts, one retried run replaying eight checkpoints written by two earlier runs at two different attempts, and the last of them reaching a terminal **`done`** at D215's `already-present` preview terminal with zero durable write rows. **Still open**: the browser-profile wedge (§9.17 item 5), now with a much tighter reproduction from §9.20 item 6 — a UCPath profile that had completed exactly ONE Duo ceremony minutes earlier wedged on the very next acquisition (60.01 s, no `PS_TOKEN`, one `frameless-session-binding-*` cookie) while a cold profile logged in in 16.9 s, so "stale accumulation over days" is ruled out and the shape is narrower; still recorded rather than diagnosed to root cause, and §9.20 item 7 adds a second, unrelated cold-profile observation on New Kronos
+- [x] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above became D214/D215 and both landed with theirs; the `already-present` receipt arm platform slice 2 named landed at `b73b546`.** **PARTLY MET after §9.17**: the re-run's own defect — D215's `not-observed` subject verdict missing from the span WIRE leaf, which killed the worker on the first preview that ever settled — landed with its regression case at `e1ba81b`. **Of the two findings the pass named rather than pinned, one is now closed**: the retry checkpoint re-collision (§9.17 item 8) landed as **D221** with `tests/unit/retry-item-attempt.test.ts` — the attempt in an item-scoped checkpoint key is the ITEM's attempt, so a retry takes the item's next one and its `always-rerun` executions can no longer land on the retried run's key — and it is now **LIVE-PROVED on the composed graph (§9.20, 2026-08-19)**: six retries through the real command endpoint across two logical items (attempts 2→3 on doc 4510, 2→3→4→5→6 on doc 4502), every one minting the item's next unspent attempt, none refused, no collision, `timecard-search` — §9.18 item 8's own node — re-executed at three separate attempts, one retried run replaying eight checkpoints written by two earlier runs at two different attempts, and the last of them reaching a terminal **`done`** at D215's `already-present` preview terminal with zero durable write rows. **The last one is now CLOSED**: the browser-profile wedge (§9.17 item 5, §9.20 item 6) was root-caused, fixed and live-proved in **§9.21** as **D243/D244** — it was never about the profile. Duo's WebAuthn counter is per CREDENTIAL and Duo Autopilot's copy is per BROWSER PROFILE, so a cold profile's import stamp jumped the shared counter to `now` while every warm profile crept by `+ 1` and could never catch up; one behind-counter assertion is then refused as a cloned key AND burns that profile's Duo device binding permanently, which is both the 60 s wedge and the reason deleting the directory was the only remediation anyone found. Bisected one variable in both directions on the same profile (stored counter 1 063 behind → **60.01 s** refused, no `PS_TOKEN`; the same state with the wall-clock floor → presented 1787193576 and **`logged-in` in 17.83 s**), and the runtime now refuses on Duo's own rendered refusal in **9.52 s** naming the real cause instead of burning the bound and blaming Duo hand-approval. Pinned by `tests/unit/duo-sign-count.test.ts` (the load-bearing case is a two-profile simulation) and two arms in `tests/unit/system-login-recipes.test.ts`, both verified RED pre-fix. §9.20 item 7's unrelated cold-profile New Kronos observation stays open and is a different finding
 - [x] **§2.6 confirmed and ratified: D194 recorded in doc 01 §2.8, pointer in doc 04 round 48, `STORES.md` §1 updated** (2026-08-12) — every new read task this migration authors is authored under it
 
 ---
@@ -5104,4 +5105,171 @@ file by hand. Same for the `server` lock this pass inherited.
   observed, but the migration path itself was not exercised.
 - **`probeToFenceMaxMs`'s per-beat decomposition**, unchanged from §9.17 item 4: a preview has no
   fence.
+- **The parity lane**, unchanged: no dashboard bytes moved in this pass.
+
+---
+
+### 9.21 The browser-profile wedge, ROOT-CAUSED — a shared WebAuthn counter with unsynchronised writers, 2026-08-19
+
+§9.17 item 5 recorded it as *"a shape, not diagnosed to root cause"*. §9.20 item 6 sharpened it and
+said the same thing. This pass diagnosed it, fixed it, and proved the fix live. **It was never about
+the browser profile.** It is a Duo WebAuthn signature-counter regression that a per-profile counter
+makes inevitable, and every remediation anyone had found — delete the profile directory — worked for
+a reason nobody had identified.
+
+Everything below ran against production through the REAL session code: the real
+`PlaywrightWorkerSessionFactory`, the real `ucpathLoginRecipe`, the real `WorkerSessionManager` lease
+under the real 60 s `sessionAcquireMs`. The only addition was observation, attached through the
+factory's own declared `PersistentContextLauncher` seam plus direct interrogation of the extension's
+MV3 service worker (`worker.evaluate`), so nothing in the login path was simulated or bypassed.
+
+#### 1. What the tight reproduction actually showed — and what it ruled out
+
+§9.20's narrowing (*"a profile that has completed exactly ONE Duo ceremony wedges on its next
+acquisition"*) **is not the invariant, and this pass falsified it first.** A cold profile logged in
+in **19.16 s**; the very next acquisition on that same one-ceremony-old profile logged in in
+**19.14 s**; a third, after another profile had been cold-started in between, logged in in
+**20.48 s**. Three successes where the recorded shape predicted a wedge.
+
+What the instrumented runs DID show sat in the extension's own storage, read live off the service
+worker:
+
+| when | `internal` | `usb` |
+|---|---|---|
+| cold profile, before login | 1787191796 | 1787191796 |
+| same profile, after login | 1787191796 | 1787191797 |
+| second acquisition, before | 1787191796 | 1787191797 |
+| second acquisition, after | 1787191796 | **1787191798** |
+
+The counter is a **unix timestamp**, and it is stamped as one only on a COLD profile's auto-import
+(`autoImportPackagedCredential`, whose own comment says why: *"a unix timestamp is monotonic across
+fresh browser profiles"*). Afterwards the sign path advanced it by exactly **one**.
+
+#### 2. The bisection — one variable, both directions
+
+Duo's server-observed counter for the shared credential stood at **1787192063**. On the same warm
+profile, with nothing else changed, the stored counter was forced to **1787191000** (1 063 behind)
+through the extension's own options page:
+
+> `[+10.25s] console(debug): [Duo Autopilot] answered Duo WebAuthn ceremony (usb)`
+> `[+56.99s] url: https://api-ce13a1a7.duosecurity.com/prompt/DA6QL3UFNF54WTIT1EQC`
+> `[+56.99s] bodyText:`
+> `Couldn't use security key`
+> `Your login request using your security key was canceled or timed out.`
+> `Show other options · Try again · Need help?`
+> `[+60.01s] RESULT: acquisition FAILED: … exceeded its 60000ms timeouts.sessionAcquireMs bound`
+
+That is the wedge, on demand: **60.01 s, on the Duo host the entire time, zero `PS_TOKEN`** — every
+number §9.17 and §9.20 recorded. The shim ANSWERED the ceremony (so this is Duo rejecting the
+assertion, not Duo Autopilot failing to answer it), which is precisely the failure mode the
+extension's own README has always described as *"the first assertion is rejected and the prompt just
+hangs"* — a sentence written about a stale imported file, never connected to the profile wedge.
+
+#### 3. Why a per-profile counter cannot work here
+
+A WebAuthn server treats a counter that does not ADVANCE as a cloned-key signal. Duo's counter is per
+**credential** and one credential covers every UCSD system (`duo-autopilot/README.md`). Duo
+Autopilot's copy is per **browser profile** (`chrome.storage.local`), and doc 05 §1 partitions
+profiles per `(worker, system, instance, configFingerprint)`. So N writers share one server-side
+counter and none of them can see another's copy.
+
+Under `stored + 1`, a **cold** profile JUMPS the shared counter to `now` on import while a **warm**
+profile creeps by one. A warm profile that was cold-stamped earlier is therefore behind by however
+much wall clock elapsed between the two stamps, and it advances one per login against a gap measured
+in seconds — **it can never catch up.** Every subsequent login on it is refused, forever, and
+recreating the directory is the only exit, because that is what re-stamps `now`. That is the whole
+observed shape: §9.17's days-old profile, §9.20's six-minute-old one (a Kronos profile was cold-
+started in that same window, §9.20 item 7 — which is the ceremony that jumped the counter past it),
+and the fact that deleting the directory always worked.
+
+#### 4. The second half nobody had seen: a clone signal BURNS the profile
+
+The pure counter model does not explain §9.17's **three consecutive** 60 s failures — the extension
+bumps `+1` on every attempt, so attempts two and three presented advancing counters and still failed.
+This pass reproduced that too, by accident and then deliberately. Once Duo had refused one
+behind-counter assertion, **that profile kept being refused across three further acquisitions whose
+presented counters were more than a thousand AHEAD** (~9 s each, same terminal screen), and only a
+freshly created profile recovered — which it did immediately, **18.94 s, `PS_TOKEN` proved**, showing
+the credential itself was never damaged.
+
+**Recorded as an observation, not a mechanism**: Duo's reason is not visible to us. What is proved is
+that the refusal is sticky to the profile (its `trc|` / `hac|` / `lam|` device cookies) rather than to
+the credential, and that a single clone signal converts one failed login into a permanently unusable
+profile. That is what makes the counter defect a *wedge* rather than a retryable error, and it is why
+the fix has to prevent the first refusal rather than recover from it.
+
+#### 5. The fix, and the live proof of it
+
+**(a) `duo-autopilot/src/sign-count.js` (D243).** Every ceremony floors its counter at wall-clock
+seconds: `max(stored + 1, nowSec)`. That is monotonic across every profile sharing the credential,
+because they all read the same clock — the property the shared server-side counter actually requires,
+and the property the import path already assumed while the sign path did not. `stored + 1` survives
+underneath so two ceremonies inside one second still advance and a backwards clock can never lower
+what we present.
+
+**The counterfactual, run on a clean profile:**
+
+| stored counter | presented | outcome |
+|---|---|---|
+| 1787191000 (pre-fix) | 1787191001 (`stored + 1`) | refused — **60.01 s** bound burned, no `PS_TOKEN` |
+| 1787191000 (post-fix) | **1787193576** (wall clock) | **`logged-in` in 17.83 s**, `PS_TOKEN` proved |
+
+The presented value was read off the service worker's own storage as it moved
+(`counters: [1787191000, 1787191000]` → `[1787191000, 1787193576]`), so this is what the extension
+actually sent, not an inference from the outcome.
+
+**(b) `waitForAuthenticatedLanding` (D243, second half).** The runtime's own defect is that it could
+not SAY any of this. The landing bound is `duoApprovalSeconds` (180 s) and the acquisition envelope is
+`sessionAcquireMs` (60 s), so the envelope always fires first and cancels the wait —
+`describeStalledLanding`, the function whose entire job is explaining a stalled Duo login, is
+**unreachable at the shipped defaults**, and the operator gets D125's message naming Duo hand-approval
+and `timeouts.duoApprovalSeconds`. §9.17 flagged that message as a mis-attribution and it stayed. Doc
+05 §4.1's rule answers it: authentication is decided by CONTENT, and so is its refusal — Duo says so
+in words about a second after the assertion. The wait now races the landing against that observation.
+Live, on the burned profile:
+
+> `[+9.52s] RESULT: acquisition FAILED: ucpath login failed at duo-clearance: Duo REFUSED the`
+> `WebAuthn assertion and rendered its terminal "canceled or timed out" screen; … it is a Duo`
+> `Autopilot signCount regression, where this browser profile's stored counter has fallen BEHIND the`
+> `value Duo has already observed for the shared credential … Check the extension's stored signCount`
+> `before touching timeouts.duoApprovalSeconds or timeouts.sessionAcquireMs`
+
+**9.52 s instead of 60.01 s, naming the real cause.** A negative control keeps a merely-slow Duo
+prompt reporting the old message, because collapsing two Duo failures into one is the same
+mis-attribution pointed the other way.
+
+**(c) The pins (D244).** `tests/unit/duo-sign-count.test.ts` imports the real production function —
+the rule lives in one chrome-free ESM module with a sibling `.d.ts` precisely so this repository's own
+gate can hold it, since `duo-autopilot/npm test` is not part of `npm run test:coverage` and a rule
+pinned only there is a rule no per-commit gate checks. Its load-bearing case is a **two-profile
+simulation**, because the defect is invisible to any single-writer example — which is exactly how
+`stored + 1` survived from the extension's first day. `tests/unit/system-login-recipes.test.ts` pins
+the refusal arm plus its negative control. Both were verified RED against the pre-fix code; the
+counter pin's failure output is the wedge in one line:
+`warm@1210 presented 1003 <= observed 1201`.
+
+#### 6. Two side facts, recorded rather than claimed
+
+- **The extension version was bumped `0.1.0` → `0.2.0`** with the change, which is ordinary hygiene
+  for anything a browser may cache by version. This pass **cannot claim it was required**: the runs
+  that appeared to ignore the fix were all on the profile burned in §4 above, and the service worker
+  reported `backgroundHasFix: true` both before and after. Recorded so nobody later infers a
+  cache-invalidation rule this evidence does not support.
+- **`Local Extension Settings` was observed being recreated on some relaunches**, which re-runs the
+  cold-import stamp and silently self-heals a stale counter. That is a real behaviour and is
+  deliberately NOT relied on: a fix that works because storage sometimes disappears is not a fix, and
+  it is part of why the wedge looked intermittent.
+
+#### What is honestly NOT RUN
+
+- **No workflow ran.** This pass performed logins and neutral resets only — no node, no read, no
+  write, no durable row. It is the same lane as `scripts/live-browser-login-smoke.ts`.
+- **Only UCPath, only the `usb` credential.** `pickCredential` chose the security key on every
+  ceremony, so the `internal` (Touch ID) arm was never exercised and the refusal screen's Touch ID
+  wording has never been observed — the marker matches the outcome SENTENCE rather than the heading
+  for exactly that reason, and the Touch ID heading remains unverified.
+- **CRM, Kuali, New Kronos and ServiceNow** were not re-tested. They share the credential and the
+  same shared-counter argument applies to them unchanged, but no login on any of them was run here.
+- **§9.20 item 7's cold-profile New Kronos observation** is untouched and still open; it is a
+  different finding that happened to sit in the same window.
 - **The parity lane**, unchanged: no dashboard bytes moved in this pass.

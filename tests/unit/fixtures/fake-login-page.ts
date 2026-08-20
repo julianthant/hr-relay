@@ -28,7 +28,30 @@ export type FakeElementName =
   | "peoplesoft-signon"
   | "communities-login"
   | "kuali-app-chrome"
-  | "stale-request";
+  | "stale-request"
+  | "duo-refusal";
+
+/**
+ * Page states that are EXCEPTIONAL, so a script that does not mention them does
+ * not have them (D243).
+ *
+ * Every other element defaults to present, which is the right default for a
+ * control a recipe expects to find. Duo's terminal refusal is the opposite: it
+ * is the screen a login lands on when it has already failed, and defaulting it
+ * present would make every unrelated arm in this suite report a Duo refusal —
+ * an assertion that passes for the wrong reason is the same defect this fake
+ * exists to prevent.
+ */
+const ABSENT_UNLESS_SCRIPTED: ReadonlySet<FakeElementName> = new Set<FakeElementName>(["duo-refusal"]);
+
+/**
+ * A `waitForURL` settlement that NEVER resolves — a real page that simply sits
+ * where it is. This is the live shape of the wedge §9.21 reproduced: the URL
+ * stays on the Duo prompt for the whole window while the refusal renders beside
+ * it, so a test that models the stall as an instant timeout cannot tell a wait
+ * that OBSERVES the refusal from one that merely outlives its own bound.
+ */
+export const NEVER_SETTLES = "fake:never-settles";
 
 export interface FakeElementScript {
   /** How many nodes match. Default 1. */
@@ -102,6 +125,11 @@ function classify(kind: string, argument: string): FakeElementName | undefined {
   if (kind === "role" && /university of california, san diego/i.test(argument)) return "campus-link";
   if (kind === "role" && /log in to ucpath/i.test(argument)) return "portal-login";
   if (kind === "text" && /stale request/i.test(argument)) return "stale-request";
+  // The recipe asks with a RegExp, so `argument` here is that pattern's SOURCE
+  // (`/login request .*(?:canceled|cancelled) or timed out/i`) rather than a
+  // sentence — the two spellings are alternated inside a group, so the phrase
+  // is not contiguous and only its parts can be matched.
+  if (kind === "text" && /cancell?ed/i.test(argument) && /timed out/i.test(argument)) return "duo-refusal";
   return undefined;
 }
 
@@ -114,7 +142,9 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   const rendered = new Set<FakeElementName>();
 
   const scriptFor = (name: FakeElementName): FakeElementScript =>
-    script.elementsByUrl?.[current]?.[name] ?? script.elements?.[name] ?? {};
+    script.elementsByUrl?.[current]?.[name]
+    ?? script.elements?.[name]
+    ?? (ABSENT_UNLESS_SCRIPTED.has(name) ? { count: 0 } : {});
 
   function makeLocator(name: FakeElementName | undefined): Record<string, unknown> {
     const locator: Record<string, unknown> = {
@@ -186,13 +216,14 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
     },
     waitForURL: async (predicate: (url: URL) => boolean) => {
       const settled = settlements.shift();
+      if (settled === NEVER_SETTLES) return await new Promise<void>(() => undefined);
       if (settled === undefined) throw new Error("fake page: waitForURL timed out");
       if (!predicate(new URL(settled))) throw new Error("fake page: waitForURL timed out");
       current = settled;
     },
     locator: (selector: string) => makeLocator(classify("locator", selector)),
     getByLabel: (text: string) => makeLocator(classify("label", text)),
-    getByText: (text: string) => makeLocator(classify("text", text)),
+    getByText: (text: string | RegExp) => makeLocator(classify("text", String(text))),
     getByRole: (_role: string, options: Readonly<{ name: string | RegExp }>) =>
       makeLocator(classify("role", String(options.name))),
   };

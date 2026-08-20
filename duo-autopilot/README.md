@@ -182,6 +182,24 @@ Fix: Options → **Credential → Resync signCount**. It bumps every stored coun
 to at least **1,000,000**, safely ahead of Duo's view. Then retry the login.
 (Freshly *enrolled* credentials start at 0 and never hit this — Duo just saw 0.)
 
+### The automation case this used to break (2026-08-19)
+
+Duo's counter is per **credential** and lives on Duo's side. This extension's
+copy is per **browser profile**, and the hr-automation rebuild runs one profile
+per `(worker, system, instance, config fingerprint)` — many profiles, one
+credential, no shared counter. While the sign path advanced by `+ 1`, every cold
+profile jumped the shared counter to `now` on import and every warm profile
+crept by one, so a warm profile could never catch up: **every** subsequent login
+on it was refused, permanently, and the only exit was deleting the profile
+directory. Live-reproduced by forcing one profile's counter 1 063 below Duo's
+observed value — 60.01 s, refused, with the same profile logging in at ~19 s a
+minute earlier.
+
+`src/sign-count.js` now floors every ceremony at wall-clock seconds
+(`max(stored + 1, nowSec)`), which is monotonic across profiles because they all
+read the same clock. See `docs/migrations/separations.md` §9.21 for the
+bisection and the measured numbers.
+
 ---
 
 ## Controls (Options page)
