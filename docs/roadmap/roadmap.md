@@ -281,6 +281,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion step 5.0 | `duo-lease` · `parallel-runs` · `observed-logs` drawn under this node (R11/R12 and the operator's observed-logs ruling), each with its own section in doc 03a · left: 5.3a builds the lease, 5.3b the pool and the session view
+- 2026-08-20 | docs-cohesion 03a | doc 03a written to the phase-doc contract — every surface verified against `src/dashboard/**` and `src/server/dashboard/**`, four of nine exit criteria MET; two honest gaps recorded rather than assumed built: the run-detail Review and People bodies have no producer (`availableSections` cannot return them) and belong to the OCR and group migrations
 
 #### Track B · dashboard completion {#track-b}
 status: done
@@ -298,6 +299,9 @@ builds:
 - [x] BOTH B6 explorer: field census, the declared `when` in words, descriptor prose (D227–D229)
 - [x] WIRE B7 worker-card / session-footer batch; the rail names step, direction and bound; a CAS conflict is a refusal (D252/D253)
 - [x] BE B8 findings ledger zero-or-decided; `span.patched` RETIRED; a span close binds to an OPEN entry (D254/D255)
+
+log:
+- 2026-08-20 | docs-cohesion 03a | all eight re-verified present in the tree for doc 03a's status block; the ledger's own README records five open records across two files and zero undecided ones, which is what makes "frontend done" checkable
 
 #### Track C · connection proof {#track-c}
 status: done
@@ -317,6 +321,10 @@ builds:
 
 needs:
 - track-b
+
+log:
+- 2026-08-20 | docs-cohesion 03a | evidence pinned in doc 03a — separations §9.22 items 1–8 plus §9.24's live `sp-105225-1e0b`, and the re-freeze commit's own numbers: 139 references, 151 assert-mode cases green (`81287bb1`)
+
 #### Track D · dashboard hardening, pre-cutover budgets {#track-d}
 status: planned
 date: D264 · audit 2026-08-20
@@ -346,12 +354,13 @@ note: D6–D10 are the maintainability slice and carry ONE trigger — they star
 
 log:
 - 2026-08-20 | docs-cohesion step 4a | ratified by D264 — D1–D5 planned, D6–D10 proposed, D11 added (77a0be76)
+- 2026-08-20 | docs-cohesion 03a | every one of the eleven rows re-verified UNLANDED at HEAD rather than carried on the audit's say-so, with the file:line of each finding recorded in doc 03a's Track D table (no exported `deriveRunStatus`, two `TASK_OUTCOME` vocabularies, two `panelKindOf` copies, `settleCommandResult` imported by two surfaces, zero `React.memo`, `WORKFLOW_DESCRIPTORS` at `dashboard-app.tsx:25`)
 
 #### Duo ceremony lease — one login at a time per credential {#duo-lease}
 status: planned
 date: R12 · 2026-08-20
 size: S
-doc: 03a §Duo ceremony lease — one login at a time per credential · ref:execution-and-sessions
+doc: 03a §Duo ceremony lease — one login at a time per credential · ref:execution-and-sessions §4.1 · ref:execution-and-sessions §4.2
 
 > A durable per-credential lease in authority serializes EVERY Duo ceremony — from "navigate to SSO" until the content verifier proves the session — across every worker and every system. TTL is `sessionAcquireMs` + grace; waiters are bounded and refuse loud naming the holder; a refused assertion poison-closes and retries ONCE under the same lease on a FRESH profile, then fails naming the profile; `defineVerifiedLoginRecipe` takes a lease token only the lease store mints, pinned by a guard with a violating fixture. The hazard exists TODAY — two workflows' workers cold-starting together share one credential's server-side counter (D243).
 
@@ -365,16 +374,20 @@ builds:
 needs:
 - track-d
 
+log:
+- 2026-08-20 | docs-cohesion 03a | doc 03a §Duo ceremony lease written; verified UNBUILT at HEAD — nothing named `duo_ceremony_leases` exists in `src/` and `defineVerifiedLoginRecipe` (`src/infra/browser/authenticated-application.ts:159`) takes system + verify + flow and no lease token; `doc:` tightened to ref execution-and-sessions §4.1 and §4.2
+
 #### Parallel runs — sessions and the worker pool {#parallel-runs}
 status: planned
 date: R11 · 2026-08-20
 size: L
-doc: 03a §Parallel runs — sessions and the worker pool · ref:execution-and-sessions
+doc: 03a §Parallel runs — sessions and the worker pool · ref:execution-and-sessions §1 · ref:execution-and-sessions §3 · ref:execution-and-sessions §7.1
 
 > A SESSION is a dashboard-started group of N runs. Every workflow follows the same browser-profile recipe and every worker owns its own profile INSTANCE (doc 05's `(worker, system, instance, configFingerprint)` partition); N workers per workflow, spawned and stopped from the dashboard. Sessions never share information and workers never message each other — they know what the others are doing through AUTHORITY only: run claims, session leases, write fences, the concurrency matrix. The dashboard shows the session and what each of its workers is doing.
 
 builds:
-- [ ] BE worker pool — N workers per workflow, spawned and stopped from the dashboard
+- [ ] BE worker pool — N workers per workflow, spawned and stopped from the dashboard (the kernel command arms exist and are validated; `createDashboardWorkerSupervisor` refuses spawn BY NAME today)
+- [ ] BE the projection serves a worker-POOL version — `spawn-worker`/`plan-worker-count` target `{workflowId, expectedVersion}` and `WorkerCardWire.revision` is ONE worker's row, so the FE control has no honest CAS basis until this lands
 - [ ] BE durable session record + grouping (B4's bulk dispatch is the seed)
 - [ ] FE session view — worker cards show membership and what each worker is doing, from authority
 - [ ] PROOF two separations dry-run scenarios in parallel, recorded
@@ -383,11 +396,14 @@ needs:
 - track-d
 - duo-lease
 
+log:
+- 2026-08-20 | docs-cohesion 03a | doc 03a §Parallel runs written; one `builds:` line ADDED from reading the code — the pool version is a prerequisite of the spawn control, not a detail of it (`src/dashboard/surfaces/shell.tsx:1036` states the CAS reason the demo's `+` is absent); `doc:` tightened to ref execution-and-sessions §1, §3 and §7.1
+
 #### Observed logs — the log carries what the page said {#observed-logs}
 status: planned
 date: operator 2026-08-20
 size: M
-doc: 03a §Observed logs — the log carries what the page said · ref:dashboard-surfaces · ref:operator-trust
+doc: 03a §Observed logs — the log carries what the page said · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.1 · ref:operator-trust §2.3
 
 > The log stream quotes the facts each task RECORDED — the provenance points: field, value, system, observed-at — redacted by the declared evidence classification, and never a second scrape. A transaction node's beats stream their observations while the step is still running, so the operator watches the page's own words rather than a step name. The log emission path and the log structure are rebuilt around recorded observations; the scope may widen when the operator reviews phase 3a.
 
@@ -399,6 +415,9 @@ builds:
 
 needs:
 - track-d
+
+log:
+- 2026-08-20 | docs-cohesion 03a | doc 03a §Observed logs written; the emission is a real build, not a re-read — `finalizeRead` validates the recorded points and the executor stores only `provenance` plus the parsed output (`src/core/task-provenance.ts:264`, `src/core/run-executor.ts:1052`), and `DataPoint` carries `direction` natively but NO system, which the store's declaration owns (D252/D106)
 
 ### Testing tiers — the suite organized by what a test needs {#test-tiers}
 status: planned
