@@ -117,6 +117,39 @@ export const ENTRY_PATTERNS = Object.freeze({
 export const EntryPatternNameSchema = z.enum(["eid", "digits", "email", "non-empty"]);
 export type EntryPatternName = z.infer<typeof EntryPatternNameSchema>;
 
+/**
+ * The operator's words for each pattern — D250.
+ *
+ * It sits BESIDE `ENTRY_PATTERNS` on purpose. The run modal's typed box needs
+ * to say what it accepts ("employee IDs, semicolon-separated — an employee ID
+ * is eight digits beginning 10"), and the demo's oracle carries that as an
+ * authored `parserLabel` string per method. An authored sentence can disagree
+ * with the rule it describes, and a sentence that misstates what a box accepts
+ * is a wrong value about what is being started; a legend keyed by the CLOSED
+ * pattern enum cannot, because the words and the regex are declared together
+ * and `ingress-parser-prose.test.ts` pins the two key sets equal.
+ *
+ * `shape` describes the regex one line above it, so a pattern whose regex moves
+ * has its description in the same diff.
+ */
+const ENTRY_PATTERN_PROSE = Object.freeze({
+  eid: { one: "an employee ID", many: "employee IDs", shape: "eight digits beginning 10" },
+  digits: { one: "a number", many: "numbers", shape: "digits only" },
+  email: { one: "an email address", many: "email addresses", shape: "text either side of one @, with a dot after it" },
+  "non-empty": { one: "a value", many: "values", shape: "any text that is not blank" },
+} satisfies Readonly<Record<EntryPatternName, Readonly<{ one: string; many: string; shape: string }>>>);
+
+/** The pattern legend, exposed so a guard can pin it against `ENTRY_PATTERNS`. */
+export const ENTRY_PATTERN_NOUNS: Readonly<
+  Record<EntryPatternName, Readonly<{ one: string; many: string; shape: string }>>
+> = ENTRY_PATTERN_PROSE;
+
+/** "a", "a or b", "a, b or c" — the one list-joining rule this module's prose uses. */
+function listPhrase(items: readonly string[]): string {
+  if (items.length === 1) return items[0];
+  return `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
+}
+
 export const EntryRuleSchema = z.strictObject({
   when: z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("pattern"), pattern: EntryPatternNameSchema }),
@@ -205,6 +238,54 @@ export function toRawSubmission(entry: ParsedInputEntry): unknown {
     }
   }
   return submission;
+}
+
+/* ── the parser, described to the operator (D250) ────────────────────────── */
+
+/**
+ * What this box accepts, as a plural noun phrase — the demo's `START_VALUE_NOUN`
+ * half of its Field label, derived rather than authored.
+ *
+ * A spec whose only rule is `otherwise` claims nothing about its values, so it
+ * gets "entries": the honest word for "whatever you type, one per entry". It is
+ * not a fabricated constant — it is the absence of a pattern claim, stated.
+ */
+export function inputRunValueNoun(spec: InputParserSpec): string {
+  const nouns = [...new Set(spec.rules.flatMap((rule) =>
+    rule.when.kind === "pattern" ? [ENTRY_PATTERN_PROSE[rule.when.pattern].many] : []))];
+  return nouns.length === 0 ? "entries" : listPhrase(nouns);
+}
+
+/** How the box is split, in words — the other half of the Field's label. */
+export function inputRunSeparatorLabel(spec: InputParserSpec): string {
+  if (spec.split.kind === "whole-text") return "the whole box is one entry";
+  const shown = spec.split.delimiters.map((delimiter) => (delimiter === "\n" ? "a new line" : `“${delimiter}”`));
+  return `separated by ${listPhrase(shown)}`;
+}
+
+/**
+ * The rules, stated. This is the demo's `parserLabel`, derived from the ordered
+ * rule list instead of authored per workflow.
+ *
+ * The last clause is load-bearing and is the reason this is worth deriving at
+ * all: a spec with NO `otherwise` rule refuses the whole text when one entry
+ * matches nothing (`parseInputRunText` throws by design), and an operator who
+ * was never told that reads the refusal as a bug. A spec WITH one takes
+ * anything, which is equally worth saying before they paste forty lines.
+ *
+ * Field names never appear: `rule.emit` is an input-schema identifier, and the
+ * factory already binds it (`assertSurfaceFields`). The operator is choosing
+ * what to type, not which field it lands in.
+ */
+export function inputRunParserLabel(spec: InputParserSpec): string {
+  const shapes = [...new Set(spec.rules.flatMap((rule) => rule.when.kind === "pattern"
+    ? [`${ENTRY_PATTERN_PROSE[rule.when.pattern].one} is ${ENTRY_PATTERN_PROSE[rule.when.pattern].shape}`]
+    : []))];
+  const fallback = spec.rules.some((rule) => rule.when.kind === "otherwise")
+    ? "anything else is taken exactly as typed"
+    : "an entry matching none of these refuses the whole box, and nothing is started";
+  const sentence = [...shapes, fallback].join("; ");
+  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`;
 }
 
 /* ── upload ingress ──────────────────────────────────────────────────────── */
@@ -320,9 +401,39 @@ export function assertFileAccepted(accepts: readonly FileAcceptSpec[], file: Upl
 
 /* ── the descriptor's `surfaces` container ───────────────────────────────── */
 
+/**
+ * One example the run modal offers as a button that TYPES FOR THE OPERATOR
+ * (D250). It carries the exact `text` the box receives — never a value list the
+ * surface re-joins with a delimiter, because reconstructing the separator on the
+ * client re-implements `splitEntries` outside the boundary that owns it, and a
+ * client that split differently would fill the box with something the server
+ * never receives (R8 finding 17's argument, from the writing side).
+ *
+ * `note` is the button's `title`: what this example demonstrates, so an operator
+ * can tell "two ordinary values" from "one that gets refused" before clicking.
+ */
+export const InputRunExampleSchema = z.strictObject({
+  key: z.string().regex(/^[a-z][a-z0-9-]*$/),
+  label: z.string().min(1),
+  text: z.string().min(1),
+  note: z.string().min(1),
+});
+export type InputRunExample = z.infer<typeof InputRunExampleSchema>;
+
 export const InputRunSurfaceSchema = z.strictObject({
   placeholder: z.string().min(1),
   parser: InputParserSpecSchema,
+  /**
+   * D250 — declared, and PROVED typeable by `defineWorkflowDescriptor`: every
+   * example's text must parse under this surface's own parser AND every entry it
+   * yields must satisfy the workflow's own input schema. An example that does
+   * not is a button that fills the box with a refusal, which teaches the
+   * operator the modal is lying about what it accepts.
+   *
+   * Optional: a workflow with nothing worth demonstrating declares none and the
+   * row simply does not render — never a fabricated sample identifier.
+   */
+  examples: z.array(InputRunExampleSchema).min(1).optional(),
   /**
    * **DERIVED, never authored (D209).** `defineWorkflowDescriptor` stamps this
    * from the graph — every transaction node declaring `dryRun:"stop-after-prepare"`

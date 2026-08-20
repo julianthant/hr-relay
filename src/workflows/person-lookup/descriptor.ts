@@ -217,6 +217,29 @@ export const personLookupDescriptor = defineWorkflowDescriptor({
           { field: "includeCrmDates", value: { kind: "boolean", value: false } },
         ],
       },
+      /**
+       * D250. Both texts are the placeholder's own values, so nothing new is
+       * introduced here, and the factory proves each one parses AND satisfies
+       * `PersonLookupInput` before this descriptor exists. The pair is chosen to
+       * show the parser's discrimination — the arm an operator cannot guess from
+       * a placeholder is that a name goes in the SAME box, unquoted, with the
+       * comma inside it left alone because the delimiter is a semicolon.
+       */
+      examples: [
+        {
+          key: "one-eid",
+          label: "One EID",
+          text: "10873698",
+          note: "the ordinary case — one run for one employee id",
+        },
+        {
+          key: "eid-and-name",
+          label: "An EID and a name",
+          text: "10873698; Battistessa, Johnnie",
+          note: "two runs from one box: the parser reads the first as an employee id and the second as a name, "
+            + "and the comma inside the name is not a separator",
+        },
+      ],
     },
   },
   details: [
