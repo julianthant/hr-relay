@@ -1413,63 +1413,73 @@ Rationale against alternatives:
 
 ### 2.2 Projections are computed server-side — the wire carries surfaces, not rows
 
-Today the client re-implements queue-surface classification, status keying, and pipeline math. In
-the rebuild repo the SSE stream carries **finished projections**; the client renders and never re-derives.
-Descriptor metadata is served as ref workflow-model's validated client projection; the SPA never imports
-workflow modules. The SSE hello carries its fingerprint so a stale bundle fails loud.
+<!-- roadmap: p1-spine -->
 
-```ts
-// src/server/topics.ts — SSE topic payloads (all change-gated snapshots, as today)
-interface EventsHubPayload {
-  descriptorHash: string;                  // ref workflow-model's skew tripwire — NOT the descriptors themselves
-  queue: { workflow: string; date: string; surfaces: QueueSurfaceWire[] };  // per subscribed panel
-  queuePatch?: { workflow: string; date: string; surface: QueueSurfaceWire }[];
-  //  ^ after the initial snapshot, a changed surface re-sends ONLY that complete strict surface — a
-  //    100-member operation tick re-serializes one member row, never the resolved member tree (D10)
-  wfCounts: readonly { workflow: WorkflowId; count: NonNegativeInt }[];
-                                             // closed tuples, backend-authoritative rail badges
-  sessions: WorkerCardWire[];              // worker-span projections
-  notifications: NotificationWire[];       // incl. gate.opened rising edges (kills App.tsx:386)
-}
+The legacy client re-implements queue-surface classification, status keying and pipeline math. Here
+the wire carries **finished projections**: the client renders and never re-derives. Descriptor
+metadata reaches the SPA as `ref workflow-model`'s validated client projection — the SPA never
+imports a workflow module — and every payload carries `descriptorHash`, the skew tripwire, so a
+stale bundle fails loud rather than rendering against a graph that moved.
 
-interface QueueSurfaceWire {
-  surface: "single" | "preview" | "operation";      // group collapse already applied server-side
-  runId: string; itemId: string; workflow: string;
-  traceId: string;                                   // review #11 — was missing
-  parentRunId?: string;
-  attempt: number;
-  dryRun?: boolean;                                  // review #11 — RunEnvelope mirror (D6)
-  enqueuedAt: string; startedAt?: string; endedAt?: string;   // review #11 — timestamps; queue-wait
-                                                              // and elapsed derive from these
-  title: string; subtitle?: string;                  // kind dispatch applied server-side
-  status: StatusWire;                                // { key, label, tone, secondaryTag? } — final
-  pipeline: { step: string; label: string; state: "pending"|"running"|"done"|"failed"|"cancelled"|"skipped"; durationMs?: number; attempt?: number }[];
-  gates: { gate: string; open: boolean; resolutionKey?: GateResolutionKey }[];
-  actions: ActionDescriptorWire[];                   // ported from the standard command projection;
-                                                     // display-only rows get Hide only (§4.3)
-  memberRunIds?: string[];                           // operation only — ids, NEVER nested trees (D10);
-  memberRollup?: readonly { status: StatusKey; count: NonNegativeInt }[];
-                                                     // closed status/count tuples for the mini-badge
-  //  members are ordinary flat surfaces in the same queue payload (joined client-side by
-  //  parentRunId); each is change-gated individually via queuePatch
-  detailSurfaces: ("logs"|"review"|"receipt"|"people"|"data")[]; // panel-kind tabs + Context Data section
-  links?: { review?: { workflow: string; runId: string } };  // "Open OCR review" jump
-  evidence: { receiptId?: EvidenceReceiptId; failureId?: FailureId;
-              confidence: "verified" | "partial" | "unknown" };
-}
-```
+**The shapes live in `src/domain/dashboard/`, and this section names them rather than restating
+them.** A TS sketch here would be a second, staler copy of a strict zod schema, which is the drift
+this whole layer exists to delete; `ref frontend-backend-integration` §5.1 owns the per-square wire
+and §3 the transport. What each one IS:
+
+| shape | module | what it carries |
+|---|---|---|
+| `DashboardDayWire` | `projection.ts` | one day: `day`, `descriptorHash`, `projectionGeneration`, `snapshotCursor`, `monthCounts`, `workflowCounts`, `statusCounts`, `queueSurfaces`, `workerCards`, `notifications` — with uniqueness refinements on all six collections |
+| `QueueSurfaceWire` | `projection.ts` | a union of three variants over one shared `QueueBaseFields`: `single`/`preview`, `member`, and `operation` (which alone adds `memberRunIds`, `memberRollup{total,terminal,failed}` and `memberPreview`) |
+| `RunDetailWire`, its sections and pages | `run-detail.ts` | the per-run panel: header, timeline, and the lazily-fetched sections |
+| `ActionDescriptorWire` | `actions.ts` | the ONLY source a surface may render an interactive control from (§2.4) |
+| `NotificationWireSchema` | `projection.ts` | the bell's row (§2.6) |
+| the SSE envelope and its patches | `subscription.ts` | six topics (`dashboard-day`, `run-detail`, `run-logs`, `run-review`, `run-people`, `artifact`) and one patch shape per topic |
+
+The 1g draft's `EventsHubPayload`/`QueueSurfaceWire` sketches stood in this section until
+2026-08-20 and were two generations behind. The corrections worth carrying forward, because each
+was a design decision and not a rename: the day payload is ONE object per day rather than a
+per-panel queue plus a parallel `wfCounts` array (D81 — every count folds from the same `surfaces`
+array in one loop); a member is a first-class surface VARIANT rather than an optional field, and
+`memberRollup` is three integers with a refinement tying `total` to `memberRunIds.length` rather
+than a status/count tuple list; `detailSurfaces`, `links` and `evidence` are gone, replaced by
+`availableSections` (§2.4's served-not-guessed rule applied to tabs), `linkedRuns` (which carries
+the target's label and status, because serving a bare id would make the client re-derive a status
+— the second path D81 deletes) and the receipt/failure lookups the run-detail sections do; and
+every fact that can be absent is a discriminated `{state:"present"|"absent", reason}` union rather
+than an optional — `endedAt`, `gateOpenedAt`, `displayName`, `subtitle`, `facts`, `warnings`,
+`runNumber`, `memberPreview`. That last one is the load-bearing pattern of the whole wire: an
+absence carries the reason it is absent, so a surface can say *why* there is nothing instead of
+drawing an empty slot.
+
+**Patching.** After the initial snapshot a changed row re-sends ONLY that complete strict surface
+(`replace-queue-surface`, whose refinement pins the patch's `(runId, rowRevision)` to the
+replacement's own), so a 100-member operation tick re-serializes one row and never a resolved
+member tree (D10). The client applies and never merges: `applyDashboardDayPatch` replaces one
+surface by id, ignores a lower `rowRevision` as a resume replay, and raises a protocol error for a
+patch naming a run the snapshot does not hold — which the subscription turns into a resnapshot,
+never a silent insert.
+
+Two removal arms are declared and have **no producer**: `remove-queue-surface` and
+`tombstone-queue-surface` (`subscription.ts`). The client handles them — identically, both dropping
+the surface — and no code in `src/` ever emits one. They are the shape D254 retired one layer over:
+two names for one behaviour that nothing can reach. Build one (a row leaving the day needs a reason
+and a distinct tombstone rendering) or retire both; leaving them declared makes the wire claim a
+capability the server does not have.
 
 For a run parked on an unfinished write intent, the server replaces ordinary retry/done actions
 with the closed kernel actions `resolve-write-present` and `resolve-write-absent` (ref write-safety §4.1),
-including intent generation+version tokens and the proof/evidence form spec. The descriptor cannot
-re-enable generic Done/Retry for that state. These actions derive from durable intent state, not a
-workflow-id registry; stale tokens fail with a conflict and trigger a fresh projection.
+including intent generation+version tokens. The descriptor cannot re-enable generic Done/Retry for
+that state. These actions derive from durable intent state, not a workflow-id registry; stale
+tokens fail with a conflict and trigger a fresh projection.
 
-Per-run detail (timeline, notes, screenshots) stays request/response + a per-run SSE topic, as
-today — but the payload is the span tree + notes, already merged and ordered; `LogStream` stops
-owning merge/dedup heuristics (`mergeDisplayItems` collapse survives as a server-side fold).
+Per-run detail (timeline, sections) stays request/response plus a per-run SSE topic, and the
+payload is already merged and ordered server-side — no client owns merge or dedup heuristics.
 
 ### 2.3 SQLite (role per D14)
+
+<!-- roadmap: p1-authority -->
+
+_Its checklist is the `p1-authority` status block under §2 — one block per node per doc._
 
 `state.db` has **two classes of table with different authority**:
 
@@ -1512,6 +1522,15 @@ in §2.4; ordinary cleanup, Hide, projection rebuild, and runtime code cannot re
 
 #### D218 — the projector consumes the span stream FROM DISK, cross-process (2026-08-14)
 
+<!-- roadmap: platform-fixes -->
+<!-- roadmap-status: platform-fixes -->
+- [x] D218 — the projection's ONE live feed is an offset-aware disk tail; the `onEvent` hook is deleted, so "append first, fold after" is structural (`ingestFromDisk`, `src/server/dashboard/projectors/run-queue-projection.ts`)
+- [x] D218 — two triggers, one cursor: the 250 ms dashboard poll and the command service's own tick after `run.queued`/`gate.resolved`
+- [x] D218 — a torn trailing line is not consumed until its newline lands; an unparsable line degrades and the guarded rebuild refuses it by name; a file shorter than its cursor throws
+- [x] D222 — the backup hazard publishes a durable `storage-degraded` notification on TRANSITIONS and leaves the every-view banner to authority-unavailable alone (§2.6)
+> 2026-08-20 | docs-dash-surfaces 5.1b | verified against run-queue-projection.ts, src/infra/events/jsonl-streams.ts, src/server/dashboard/{compose,commands/command-service}.ts and src/services/notifications/storage-health.ts; the node's other fixes (D219–D221, D243/D244) are `ref workflow-model` §1.2.1/§4 and `ref execution-and-sessions` §4.2
+<!-- /roadmap-status -->
+
 "One projector" had been implemented single-process: a one-shot boot `rebuildFromJsonl` plus an
 in-process post-append hook on the BFF's OWN span writer. The worker is a separate OS process, so
 its task spans never reached the projection — every run enqueued after the dashboard booted served
@@ -1548,6 +1567,8 @@ As-built contract:
   an ingest gap).
 
 #### D255 — a `span.ended` binds to an OPEN entry, and one producer still owes its execution identity (2026-08-20)
+
+<!-- roadmap: track-b -->
 
 **The fold rule.** A task `span.ended` binds to the LAST entry at `(attempt, spanPath)` whose
 `endedAt` is absent; when every entry at that identity is already closed (or none exists) the close
@@ -1590,6 +1611,8 @@ UNDER the node's own span path (`<nodeSpanPath>/<beat>`), which needs the execut
 sequencer the node span path it already computed.
 
 #### D258 — the timeline event id carries the OCCURRENCE ordinal, read forward (2026-08-20)
+
+<!-- roadmap: track-c -->
 
 **The rule.** A timeline event's `noteId` is `deterministicUuid("timeline:<runId>:<seed>")` where the
 seed is the event's whole span identity (`task:<attempt>:<spanPath>`, or the gate's own
