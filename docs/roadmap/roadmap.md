@@ -1,12 +1,12 @@
 # HR Rebuild Roadmap
-<!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (doc 07 §0.1) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
+<!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
 asOf: 2026-08-20
 head: 8eb77ab
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
-source: Stems from `docs/rebuild/07-master-plan.md` (§2 phases, §3.3 order, §3.7 sizes)
+source: Stems from the phase docs `docs/rebuild/00`–`05` (§Phases at a glance below, `03c`'s migration order, `00`'s size model)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
-source: `docs/plans/2026-08-20-dashboard-architecture-audit.md` (Track D) · doc 07 wins on any disagreement
-footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; `/custom-update-plan` keeps plan, site and owning docs in step. The normative plan is `docs/rebuild/07-master-plan.md`; the decision changelog `docs/rebuild/04-reconciliation.md`. Sizes are relative build sizes (doc 07 §3.7), not calendar.
+source: `docs/plans/2026-08-20-dashboard-architecture-audit.md` (Track D) · the phase docs win on any disagreement
+footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; `/custom-update-plan` keeps plan, site and owning docs in step. The normative plan is the phase docs `docs/rebuild/00`–`05`; the decision changelog `docs/rebuild/reference/decisions.md`. Sizes are relative build sizes (doc 00 §Size model + delivery tiers), not calendar.
 > The ground-up rebuild of UCSD's UCPath HR automation, as a tree. **Phases 0–2 are complete** — the platform is built and proven; **Phase 3** migrates the 13 remaining legacy workflows one at a time and entered at **separations**; legacy stays the sole production authority until one all-at-once cutover. Every box shows what it **builds** (by layer, filled when built) and what it **needs** — select one for detail, hover to light up what it unlocks.
 
 tiles:
@@ -45,7 +45,7 @@ date: D77 · doc 09 §14
 
 ### Size model + delivery tiers {#phase0-size-model}
 status: done
-date: D76 · doc 07 §3.7
+date: D76 · doc 00 §Size model + delivery tiers
 
 > MUST (the spine) · SHOULD (Phase-2 tails) · LATER (explorer, advisories, catalog) — what may slip without invalidating the base.
 
@@ -244,7 +244,7 @@ size: XL
 chip: active
 open: yes
 
-> One workflow at a time through the seven-step loop (doc 07 §3.1): questionnaire → author → guards → **live dry run** → **controlled commit** → rebuild-ready → close-out. The order of work inside the phase: **the dashboard defaults first** (the generic surfaces every workflow inherits), then each workflow as ONE migration node — its store chunks, its live proofs, its controlled commits, and its own **dashboard wiring** on top of the defaults. Separations went first and forced the defaults into existence; they are now a prerequisite every later migration reads.
+> One workflow at a time through the seven-step loop (doc 03c §Phase summary): questionnaire → author → guards → **live dry run** → **controlled commit** → rebuild-ready → close-out. The order of work inside the phase: **the dashboard defaults first** (the generic surfaces every workflow inherits), then each workflow as ONE migration node — its store chunks, its live proofs, its controlled commits, and its own **dashboard wiring** on top of the defaults. Separations went first and forced the defaults into existence; they are now a prerequisite every later migration reads.
 
 needs:
 - p2-2j
@@ -458,7 +458,7 @@ needs:
 | A5 | Obligations only the commits discharge (timings, propagation window, seven payload shapes, the preview arm live) | after A2–A4 |
 | ✓A6 | Live RETRY on the composed graph — six retries, no collision, one reached `done` (§9.20) | done |
 | ✓A7 | Root-cause the browser-profile wedge — **closed by D243/D244** | done |
-| A8 | Close-out (§3.1 step 7) → separations **rebuild-ready** | after A2–A7 |
+| A8 | Close-out (doc 03c's loop, step 7) → separations **rebuild-ready** | after A2–A7 |
 #### Dashboard · wire separations {#sep-dash}
 status: active
 chip: 9 of 9 wired — every square filled (D262 closed the last)
@@ -506,7 +506,7 @@ when: next | undated — order, not calendar
 chip: 12 workflows · order by risk / reuse
 open: yes
 
-> Doc 07 §3.3's risk-proof ordering, kept as-is after the separations entry (order 8 is the migration in flight, under Phase 3 above): reads populate the stores, the OCR service unblocks four consumers, write-heavy lands last. **No workflow after separations is named yet.** Each owes the 12-item §b questionnaire before building, a live dry run, (for writes) a controlled commit on a target you approve — and its own **Dashboard · wire** task on top of the defaults. **Store reality:** only ucpath, crm, kuali, new-kronos have real drivers today; onbase, servicenow, i9, old-kronos, sharepoint are 3-line session declarations with zero tasks.
+> Doc 03c §Recommended migration order's risk-proof ordering, kept as-is after the separations entry (order 8 is the migration in flight, under Phase 3 above): reads populate the stores, the OCR service unblocks four consumers, write-heavy lands last. **No workflow after separations is named yet.** Each owes the 12-item §b questionnaire before building, a live dry run, (for writes) a controlled commit on a target you approve — and its own **Dashboard · wire** task on top of the defaults. **Store reality:** only ucpath, crm, kuali, new-kronos have real drivers today; onbase, servicenow, i9, old-kronos, sharepoint are 3-line session declarations with zero tasks.
 
 needs:
 - phase-3
@@ -868,7 +868,7 @@ needs:
 ### Trust UCPath / ServiceNow wait-before-negative-read windows {#def-propagation}
 status: planned
 
-> Rebuild-verified propagation measurements replace ported legacy knowledge at each system's own live probe (doc 07 §3.8).
+> Rebuild-verified propagation measurements replace ported legacy knowledge at each system's own live probe (doc 03c §Live probe status).
 
 needs:
 - order-7
@@ -916,7 +916,7 @@ needs:
 - cross-cutting
 - track-d
 - fact: legacy capability register at zero open (48 open today)
-- fact: doc 07 §6 definition of done + doc 07 §7.4 / doc 13 §10 integration criteria green in the real built app
+- fact: doc 05 §Exit criteria — the definition of done + the program-wide integration criteria (ref frontend-backend-integration §10) green in the real built app
 
 ### Rollback window, then closure {#rollback-window}
 status: planned
@@ -938,11 +938,12 @@ chip: ideas, not a hosted future
 
 ## Governance (the plan's own rules)
 
-_Lifted from `docs/rebuild/07-master-plan.md` §0 on 2026-08-20 (cohesion step 3a) — verbatim except
+_Lifted from the master plan's §0 on 2026-08-20 (cohesion step 3a) — verbatim except
 where a name moved: the design docs are now cited by slug under `docs/rebuild/reference/`, and the
 plan's own numbers are the phase docs `docs/rebuild/00`–`05` (the number IS the phase; phase 3 is
-three docs, `03a`/`03b`/`03c`). Doc 07's own §0 stays in place until step 3b dissolves that file
-whole._
+three docs, `03a`/`03b`/`03c`). The master plan itself was dissolved into those docs on the same day
+(step 3b); its as-written record, with a section-by-section table of where everything went, is
+`docs/rebuild/reviews/2026-08-20-master-plan-dissolved.md`._
 
 ### The one-plan rule
 
@@ -952,8 +953,8 @@ Per charter §"One master plan": the owning design docs (now `reference/task-con
 `reference/write-safety` through `reference/frontend-backend-integration`) are the binding detail;
 THE PLAN — this file, the tree, plus the phase docs `docs/rebuild/00`–`05` — is the authoritative
 build order. No second plan, no per-workflow "alt plan," no execution doc that re-sequences
-phases. Per-workflow *migration plan docs* (Phase 3+) are **children** of this plan — they answer the §b questionnaire (doc 07 §3.4,
-which step 3b moves into `doc 03c`) and record what a workflow reuses/adds; they never re-order the
+phases. Per-workflow *migration plan docs* (Phase 3+) are **children** of this plan — they answer the §b questionnaire
+(`doc 03c` §The §b migration questionnaire) and record what a workflow reuses/adds; they never re-order the
 program.
 
 **D263 (2026-08-20) — the plan has a machine-readable form, and it is bound to the docs both ways.**
@@ -975,7 +976,7 @@ class, so the next agent reads a node's own history rather than re-deriving it f
 ### D1 ownership map — the quick index (concept → owning doc)
 
 Every concept has exactly one owner (`reference/decisions` D1). Reference the owner; never redefine.
-The rows below are the same map 07 §0.2 carried, re-pointed to the shelf's new names.
+The rows below are the same map the master plan's §0.2 carried, re-pointed to the shelf's new names.
 
 | Concept | Owner |
 |---|---|
@@ -1010,232 +1011,57 @@ line there naming what landed and what is left.
 
 ---
 
-## Appendix A · Decision log and future gates (prose, not rendered)
+## Phases at a glance
 
-  this graph is still owed as evidence.
+_Moved from 07-master-plan §2 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite
+re-verifies it, and its four internal §-refs are repointed to the phase docs that now own those
+sections. Each phase's detail — its work items, what is done, its exit criteria — is its own doc
+under `docs/rebuild/`; the tree above is the same set of phases as nodes._
 
-### Decided
+| Phase | Headline deliverable | Gate to exit | Size |
+|---|---|---|---|
+| **0** | Corrected foundation design approved; empty rebuild repo | **COMPLETE 2026-07-31:** decisions reconciled through Round 12; testing policy ratified; executable feasibility + honest gate baseline recorded; write-proof probes carry explicit later milestone gates (`doc 03c` §Live probe status) | **M** |
+| **1** | **The SPINE** — the minimum base that can carry one workflow end to end (1a–1f + the span/projection slice + the queue-surface slice) | **COMPLETE 2026-08-04.** 1a + 1b COMPLETE 2026-07-31; 1c + 1d + 1e COMPLETE 2026-08-01; **1f + 1g-spine + 1i-spine COMPLETE 2026-08-04**. The phase exit — **person-lookup ran LIVE on the spine** (D74) against real UCPath + CRM, run `4ebf7275-0158-49af-a78f-1f37948efb27` / trace `pl-000619-4ebf` — is **MET**; full gates green; strict/subject/control/delegation/recovery/scenario fixtures pinned. Evidence and the carried-forward presentation defects are recorded under §Phase 1's exit criteria | **XL** |
+| **2** | **Transaction proof, then the deferred base tails** — controlled real commit + crash/recovery, *then* trust tails, data services/intake/capture, explorer | subject-bound dry-run and controlled commit/crash/outbox/ledger proof green; then evidence/notification/knowledge, intake/capture/Edit-Data, and read-only explorer land against a proven spine | **XL** |
+| **3+** | Per-workflow rebuild migration, one at a time (order: `doc 03c` §Recommended migration order), plus explicit non-workflow capability closure (`doc 03c` §Non-workflow capability closure inventory) | each: §b questionnaire answered; isolated live dry-run + controlled write evidence where applicable; every capability inventory entry advances to native/replaced/retired; docs updated; legacy production remains authoritative until the final gate | **XL** |
+| **Cutover** | One all-at-once production authority switch (D89) | every workflow/shared capability ready; legacy enqueues stopped; active/uncertain work reconciled; both states backed up; imports versioned/idempotent; launcher switches atomically; rollback bridge verified; legacy code/tests preserved | **L** |
 
-- **The 08-14→08-15 platform + dashboard delta (D214–D221 and the detail-fidelity wave)** —
-  2026-08-14/15. Platform: **D214** — a checkpoint's identity gains `claimGeneration`, because a
-  gate park + resume are two executions inside one attempt (schema **v14**, rebuilds
-  `run_checkpoints`); **D215** — a dry-run preview runs beat ①'s probe in the real order and
-  REPORTS `already-present` instead of failing where the real path succeeds; **D216** — both repos'
-  browser profile root is ONE name, `.auth`, distinctness carried by the session namespace;
-  **D217** — legacy step-13's two Kuali date write-backs join §4e's one-pass staged set (ten fields
-  → twelve, one save, one twelve-field read-back); **D218** — the run/queue projector tails
-  `spans/*.jsonl` from disk with byte cursors, the in-process `onEvent` hook deleted, so a
-  cross-process worker's runs render their timelines; **D219/D220** — every workflow module
-  declares a closed `role` (`standalone`/`composition`/`chunk-harness of`/`proving`), harnesses
-  nest under their composition, and the rail lists main workflows only; **D221** — the checkpoint
-  key's `attempt` is the ITEM's attempt, so a retry no longer collides with its own checkpoint
-  (no migration — the field's MEANING moved, not a byte on disk). Dashboard: queue rows serve and
-  draw `liveMessage`/`dryRun`/gate-age/warnings/per-row action descriptors/subject-as-title;
-  run-detail timeline events carry each step's own measured duration; archive gained the instance
-  filter, computed per-record retention, and the write-ledger read-through; the Activity report
-  gained the per-workflow × status cross-tab with the Who column. Findings-ledger policy stands:
-  backend problems found in frontend sessions are recorded in `docs/findings/`, never fixed there.
-  canary 4510 refused before the gate** — 2026-08-14 (`docs/migrations/separations.md` §9.17). Two
-  parts, and **nothing was written by either**: the only write-intent / write-attempt / outbox rows
-  in the database are still 2026-08-04's Phase-2 commit on Kuali doc 4489, and no separations
-  transaction node has ever written a checkpoint. **(1) The last blocked deliverable is DONE.** With
-  the BFF restarted on the current tree, the composed dry run on doc 4502 ran the whole chain live,
-  parked at the ALWAYS-GATE, took a real approval through the real command endpoint, resumed, and
-  ended at a genuine **preview terminal** — the `transaction.previewed` span, a terminal record bound
-  to the PREVIEW schema hash (never the workflow's declared result), and a receipt that says
-  `partial` / `unknown` with a load-bearing `DRY_RUN_PREVIEW` warning naming the probe. That also
-  proves **D215's `already-present` arm live** for the first time and **D214** across three claim
-  generations. **(2) Your canary answered its own question.** The composed `separations` graph, run
-  for REAL (not dry) on doc **4510**, refused `NO_ACTIVE_EMPLOYMENT` 17.6 s in, **before the gate
-  opened and before any human was asked** — UCPath still shows exactly one employment row for EID
-  10001799 and it is `Inactive`. Deleting `T002209631` cleared a *transaction*; it did not change an
-  *employment status*, and the already-Approved `T002197996` is why. **For 4510 to move on this graph
-  you must make an active terminable employment exist in UCPath** — that is yours, not the code's,
-  and doc 4510 remains the best-mapped target for a Kuali finalization commit on the STANDALONE
-  graph, which has no such node. **(3) Reaching the preview found a fourth defect**: D215's fourth
-  subject verdict (`not-observed`) had been ratified and landed in the kernel but never reached the
-  span WIRE schema, so the first preview that ever settled killed the worker one emit short of its
-  terminal — the run itself was correct throughout, and the platform's own self-sweep released the
-  orphaned claim on the next boot. Fixed with its test. **(4) One correction to the record**: the
-  `probeToFenceMaxMs` measurement does **not** ride on the preview terminal — a preview has no fence
-  at all — so it moves to the controlled commits, which is the one §3.2 criterion still open.
-  **(5) One thing you should know about operating this**: a run that fails at or after the Kronos
-  timecard search **cannot be retried** — the retry re-collides on that node's checkpoint — so the
-  way to re-run a document today is the explicit re-read affordance, which is what this pass used.
-
-- **Separations 6b completion — §4e's last three unknowns closed, doc 4510 re-observed, and the
-  canary you were pointed at is GONE** — 2026-08-14 (`docs/migrations/separations.md` §9.16). A
-  read-only pass, nothing submitted or saved anywhere. Five things worth your attention.
-  **(1) The two Kuali date write-backs are fully mapped now.** One passive read of Kuali's own
-  `ActionPage` query — the one the app issues itself when a document opens — answered all three
-  things §9.15 said the next pass owed: the section that owns `Last Day Worked` and `Separation
-  Date` is `eTURtLdMM` and it reports `edit` at BOTH live workflow steps, so **one save still
-  carries all twelve fields**; both `formKey`s are captured; and both controls are live-verified as
-  exactly one EDITABLE node on two open documents. §4e's section caveat is now discharged for twelve
-  fields rather than ten.
-  **(2) Doc 4524 is no longer available.** Its Kuali action was **completed at 15:45 today** — after
-  yesterday's live run read it — and Kuali now serves no form for it at all. So the Kuali
-  controlled-commit candidate this program has recorded since chunk 5c is withdrawn on the facts.
-  Doc **4510** is the best-mapped open document for a Kuali finalization commit today.
-  **(3) Your deletion worked, and it moved a target.** `T002209631` is gone from UCPath for EID
-  10001799 — three transactions remain and all three are `Approved`, and the in-progress grid holds
-  no row. That clears the canary path as intended. It also means the pending-sweep's *committed* arm
-  now has **no live subject at all**: 10001799 was the only mapped subject that had anything to
-  sweep.
-  **(4) The composed workflow still refuses doc 4510 — and the refusal is OURS, not UCPath's.**
-  Person Org shows one employment row and it is `Inactive`, so `match-active-employment` refuses
-  before the gate. But UCPath itself would happily stage a termination for that EID: typed on the
-  wizard's Page B it resolved the name in **836 ms**. The standalone Kuali-finalization graph has no
-  such refusal, which is why 4510 is legal for *that* commit.
-  **(5) One deliverable did not run, and it is operational, not a defect.** The composed dry run to
-  its preview terminal needs the dashboard to plan and start it, the dashboard is a singleton by
-  design, and the one running has been up since before this morning's changes — so it hands out runs
-  no current worker will accept. **Restarting it is the entire remedy**, and doc 4502 is the subject
-  when it happens.
-
-- **Separations chunk 6b ran the composition LIVE — the whole read chain, a real gate approval, and
-  zero writes — and it is blocked one node short of the preview by two PLATFORM items** —
-  **D212/D213**, 2026-08-14 (`docs/migrations/separations.md` §9.14). Six runs over four real Kuali
-  documents, planned through the real start-plan endpoint, started through the real command endpoint,
-  claimed by a real worker. **Nothing was submitted, saved or finalized**, and that is proved from the
-  authority database rather than logs: zero write intents, zero write attempts, zero outbox rows, and
-  **zero checkpoints for any of the three transaction nodes, ever**. Five things worth your attention.
-  **(1) The chain works end to end on a real person.** Thirteen nodes — Kuali document → plan → UCPath
-  name search → subject → Job Summary → employment → department option → New Kronos search → timecard
-  → reconciled dates → identity packet → gate — in **82 seconds** cold across three browsers, twice,
-  on two different subjects.
-  **(2) The write plan you approve is real now.** On doc 4524 the gate served the template
-  `UC_INVOL_TERM`, reason code `No Longer Student`, department `000412 - Housing/Dining/Hospitality`,
-  and a separation date that genuinely **MOVED** — Kuali's `06/18/2026` reconciled forward to
-  `07/03/2026` on a holiday — plus two pay codes the classifier declined to count, named rather than
-  hidden. That is 6a's write-plan block doing exactly what it was built for, and it was inside the
-  digest your approval bound to.
-  **(3) Two live defects found and fixed**, each with its own gated commit: a Kronos read that kept a
-  stale grid because it trusted the period LABEL over the repainted body (D212), and a UCPath search
-  that could not survive a person whose name matched **four** people — the "no results" marker turned
-  out to be a result-COUNT banner, so a normal multi-result page crashed the wait (D213). Neither
-  could have been caught earlier: every previous live subject matched exactly one person.
-  **(4) Two things stop the preview, and neither is a write-safety problem.** A dry run previews the
-  pending-sweep's prepare WITHOUT its probe, so it reports a failure the real run would never produce
-  for the ordinary subject who has no pending transaction; and a node marked "always re-run" collides
-  with its own checkpoint when a gate resume brings it back inside the same attempt, which means the
-  composed workflow cannot pass its own gate on the normal path. Both are platform decisions with the
-  mechanism written down, and both need an owner.
-  **(5) Your controlled commits are untouched.** All three stay OPEN on the §4f2 canary you have not
-  named. _(Both platform items in (4) were fixed the same day — **D215** and **D214**. The doc-4524
-  recommendation here is superseded: see the 6b-completion entry above.)_
-
-- **Separations chunk 6a landed — THE COMPOSITION, built and test-proven, nothing live yet** —
-  **D211**, 2026-08-14 (`docs/migrations/separations.md` §9.13, doc 09 §14.10). One Kuali document
-  number in, three systems written, one human decision in the middle: **eighteen nodes, ONE
-  ALWAYS-GATE, THREE fenced transactions**, assembled from the tasks the five sub-workflow
-  descriptors already made provable. **Zero new store tasks for the browser half** — every page it
-  visits was already mapped and live-proved by a chunk. Four things worth your attention.
-  **(1) The gate now shows you what the writes will consume.** Chunks 4 and 5 each left the same open
-  item; the packet gained a write-plan block carrying the template, the reason code, the department
-  option, the payroll titles, the reconciled dates beside the dates the form carried, the exact
-  comment text, and the pay codes the classifier declined to count. Because an approval binds to the
-  DIGEST of the packet you saw, a reconciled date that moves after you approve now RE-OPENS the gate
-  — before this, approving a person and approving a date were the same click.
-  **(2) Your "read it again" exists** (the re-run wall, item 2): an explicit `reRead` ordinal makes a
-  re-read a NEW logical item with fresh reads and its own gate, and it changes no permanent key, so a
-  re-read can never file a second termination. **(3) §4c is asserted in ONE run** — the UCPath
-  termination commits for real, the Kuali save lands nothing, and the durable rows afterwards are a
-  settled receipt PAIR beside a parked finalization intent, which is the state that used to live only
-  in the operator's head. **(4) A Denied UCPath transaction can no longer reach the Kuali document**:
-  a refused transaction still carries a well-formed `T…` (D130), and a node between the two writes
-  now refuses it by name. **Nothing has touched the live system** — 6b owes the composed live
-  pipeline dry run (start-plan → command → worker → preview), and the controlled real commits still
-  wait on your named canaries.
-
-- **Chunk 5c's live pass — the prepare arm is proved on a real Kuali document, and §4e's caveat is ANSWERED** — 2026-08-14 (`docs/migrations/separations.md` §9.12). Four live separation documents surveyed at two workflow steps, read-only, behind a route guard that aborts `submitDocumentV2` by name. **Nothing was saved.** Three things you should see. **§4e's one-save model stands** — the ten fields really do span three form sections, and Kuali's own `ActionPage` query reports all three as `edit` at BOTH live steps, so one fence, one save and one reload read-back are correct and nothing is restructured. **The live dry run staged all ten controls on real doc 4524 in 8.06 s, then abandoned by hard reload and re-read the document unchanged** — five blanks, the `- - -` sentinel, two unchecked boxes, no radio — with zero write intents and zero checkpoints. That is S61 proved on real data, against legacy's dry run, which leaves a timekeeper name and a name rewrite on a live draft. **And all ten `formKey`s were captured — which found that §9.10's "filling the table is a one-line change" was wrong.** `submitDocumentV2` sends the document MODEL, and only a Text/Textarea gadget holds the staged string there: a Date holds epoch milliseconds, a Dropdown/Radios holds `{id,label}`, Checkboxes an array of them. Filling the keys without moving the comparison would have turned every landed save into a post-fence park for six of ten fields, so the wire check now asserts five (up from one) and names the five the controlled commit closes by observing the real payload. `probeToFenceMaxMs` is **CONFIRMED at 45 s** on a measured 11.4 s worst leg (~4x headroom). Still open by design: the controlled real commit on your named canary — doc **4524** is recorded as the natural candidate.
-
-- **Separations chunk 5a/5b landed — the Kuali finalization write, built whole and not yet run** — **D207**, 2026-08-14 (`docs/migrations/separations.md` §9.10/§9.11, doc 09 §4.2). §4e's staged-variables model as code: every read lands first as a typed variable, ONE prepare stages all TEN Kuali fields in one pass, ONE save, ONE reload read-back comparing every written field against the exact staged variables — which is also §5 item 1D's answer, since mutations C and D collapse into a single transaction node. Three things worth seeing. **The ALWAYS-GATE is in front of a Kuali write now too**, and the department resolution hangs off the GATE rather than the transaction, so an S55 refusal lands before a human is asked and the department the write stages is data the operator saw. **The department fold matches on the CODE and nothing else** — legacy's two substring tiers do not port, and neither does a normalized-exact description tier, which would be a quieter fuzzy match; UCPath's `HOUSING/DINING/HOSPITALITY` and Kuali's `Housing/Dining/Hospitality` ride side by side on the resolution so you compare them, and the option text comes back verbatim (5c corrected what "verbatim" means here: the DOM carries `000719 -  Supply Chain Services` with a double space, and every read in this pipeline normalizes it consistently). **And D207 states what a measured propagation window is a measurement OF**: the mechanism, not the field — so this write reuses D135's 30 s Kuali window on a named argument, *provisionally*, until 5c's own controlled commit confirms it. **Nothing has touched the live system.** _(That chunk's one known red — the twelve stale explorer parity references — was cleared by chunk 6a's re-freeze, which moved the same twelve for the same mechanical reason.)_
-
-- **Chunk 4's live dry-run pass — the prepare arm is proved live, and the pipeline half is BLOCKED on two named platform gaps** — 2026-08-14 (`docs/migrations/separations.md` §9.9). The whole three-page wizard staged against production for a real employee, through the REAL sequencer and the REAL driver, and **the durable footprint was empty on all five attempts** — no write intent, no checkpoint, no click. It found three more defects, all at the subject binding and all refusing BEFORE the fence: the sweep named an anchor its own staged page cannot render, the JOB effective date turned out to be display-only (so it is now verified rather than written), and the wizard's beat-③ anchor was on Page B while beat ③ observes Page C. What is NOT done, and why: a dry run cannot be STARTED for this workflow at all, because `supportsDryRun` hangs off the paste-a-line input surface this workflow deliberately does not have — and even past that, the interpreter has no dry-run preview arm, so doc 01 §6.2's `transaction.previewed` span has no producer. Both are platform decisions, not chunk 4's to take. **§4f3's 120 s bound is CONFIRMED by live measurement** (≈65 s worst observed probe + prepare on a cold session, ~1.8x headroom); the per-beat decomposition stays open behind the preview arm. **Nothing was submitted** — the controlled real commit still waits on your named canary.
-
-- **Separations chunk 4 landed — the UCPath termination write, and the first live read found a duplicate-filing defect** — **D206**, 2026-08-14 (doc 01 §2.12, `docs/migrations/separations.md` §9.7/§9.8). The tree's second commit-contract family, and its first graph with TWO transaction nodes. Three things you should see. **The wizard persists NOTHING before Save** — verified live and re-confirmed by abandoning two staged wizards, which is why `prepare` stages all three pages and the commit is one click, and why a dry run of a real termination is a genuine no-effect preview. **The pending sweep is its own fenced transaction** — legacy deletes every in-progress termination row as the run's FIRST mutation with no fence, no key and no read-back; here it has all three and runs before the filing. **And the first live probe found a real defect**: the code matched legacy's `Terminat` prefix, but the SS Smart HR grid and detail page render the PeopleSoft code `TER`, so every probe would have answered "no duplicate" about EID 10001799 — who has a Pending `T002209631` effective 06/11/2026. Fixed, and both vocabularies are now accepted. Also settled live: **S48 is conclusive** (an unrecognized Empl ID never renders a name, so the wrong-person check and the bad-EID refusal are the same check — a check legacy has nowhere in this flow, which is why `T002173685` happened), and **`NSE|Never Started Employment` was confirmed first-hand**, so §4a's map line rests on this session's own observation. **NOTHING was submitted** — the controlled real commit still waits on your named canary.
-
-- **Separations chunk 3 landed — the whole UCPath employment grid, and the ALWAYS-GATE is real** — **D201/D202/D203**, 2026-08-12 (doc 01 §2.11, doc 09 §14.9, doc 02 §4, `docs/migrations/separations.md` §9.5/§9.6). One task reads the Person Org detail page's entire *Employment Instances* grid in one visit; "already terminated", "two concurrent jobs" and "unreadable department" are a pure fold over it rather than throws inside a page module. Doc 09 §14's gate is a registered graph with **no branch and no `when`**, so no run mode can skip it, and its packet + digest + schema hash + typed resolutions are served on the wire for a later UI to bind without server changes. Three things you should see: **the first live subject was already terminated in UCPath** — S22's silent-risk scenario found in the wild, the case legacy structurally never checks · **the `T002173685` incident's own name pair classifies `same`** under the ported tier function, so a tier-triggered gate would not have fired on the case it exists for · **the first live gated run found a kernel defect** — a task depending on a gate could not run at all, because a gate's durable record is a `gate_results` row and provenance demanded a checkpoint. Two live runs; the second reached terminal `done` with a `verified-done` receipt in 53.9 s. **Closed 2026-08-12 by D204** (doc 12): the approver now reaches the receipt — a resolved gate emits its payload as `gate-result`-sourced facts carrying authority's own `resolvedBy`/`resolvedAt`, plus a `gate` decision naming the approver, the instant, the resolving command and the bound evidence digest, so §14.6 risk 6 is answered on the trust surface as well as durably.
-
-- **Separations chunk 2 landed — the Kuali separation-document read, and §4a is now settled with real data** — **D197**, 2026-08-12 (doc 01 §2.10, `docs/migrations/separations.md` §9.3/§9.4). One task reads the WHOLE RRSS form in one page visit; the `Type of Termination` dropdown was captured live and the map refuses anything it does not carry, by name. Three findings you should see: **`Death` is not an option on that form at all** (§4a's worked example cannot arise from it) · **`Never Started Employment` is genuinely unmapped and legacy misfiles it** — involuntary template, voluntary default reason code — and it now REFUSES pending your reason code · **S13 was never an optional field**: legacy asks for `"Location  *"` and the live name is `"Location*"`, so it matched zero nodes on every document and its `catch` reported that as absent. Five live runs, all `done`.
-- **Read tasks are authored RICH: one task per page visit, one fixed strict output, consumers project downstream — the `read(fields…)` shape is banned** — **D194**, 2026-08-12 (doc 01 §2.8, `STORES.md` §1). Applies to all new tasks; existing tasks are not rewritten, and `crm`'s duplicate record/dates page visit merges the next time that store is touched.
-- **Separations questionnaire fully answered (2026-08-12) — READY TO BUILD** — `docs/migrations/separations.md`: unmapped termination type **fails loud** plus a live capture of the whole Kuali dropdown (§4a) · an unavailable or unreadable **Kronos hard-fails the whole run** (§4b) · a UCPath-filed / Kuali-unfinalized run **parks** with the transaction number durable (§4c) · **ALWAYS-GATE in every run mode**, no preset or resume can disable identity approval (§4d) · Kuali writes are **staged from variables, one pass, one save, one reload read-back** (§4e) · **no I-9 packet** in this workflow (§4f1) · production **canary** for the commit proof, target named by you at the time (§4f2) · `probeToFenceMaxMs` **measured**, never guessed (§4f3) · the scenario inventory stays open with a **MAP-EVERYTHING** directive on every build chunk (§4f4) · the final-pay radio stays **hardcoded** as your ratified business assertion (§4g) · scenario variability is served by **lego recomposition**, never by branches inside one workflow (§3.1) · and the last residual, **item 5's freshness values**: **5A** — no automatic freshness refresh in separations, the Kuali document/Job Summary/timecard reads all take the argued-unbounded arm (a saved, stable artifact does not churn; refresh only on an explicit operator re-run, including via Edit Data) while the identity-approval gate result keeps its drafted 4-hour bound (`Infinity` is illegal there, D8) · **5B** — every non-forbidden payload field (dates, department, titles) is `audited`, overridable only by explicit operator confirmation and never automatically; identity/person-selection/idempotency-key/write-proof stay `forbidden` for everyone. **Chunk 1 — the `new-kronos` store + the `separations-kronos-timecard` sub-workflow — starts now.**
-- **Scope: solo, local, never hosted; local-app packaging and any cooperation mode are LATER and unplanned** — D193, 2026-08-12 (doc 00 §Non-negotiables, doc 12 §7)
-- **Storage is done for this scope: manual `.tracker-rebuild/` folder copies (app stopped) are an acceptable backup; retention-sweep scheduling and the artifact refcount are `wont-build-unless-asked`** — D193, 2026-08-12 (doc 12 §D137, doc 03 §2.5). *Why:* this DB stores records of **completions**, not primary records — the real record of a completed transaction lives in UCPath/Kuali and is checkable there; these rows show *how* and *whether* something completed and mean little once it is completed and approved. (Unchanged: the fence rows are still load-bearing **during** a write.)
-- **Phase 3 enters at separations (order 8)** — D193, 2026-08-12 (doc 07 §3.1) — chosen to force the store task libraries into existence; §3.3's ordering is unchanged
-- **`test:coverage` becomes the per-commit gate** — D191, 2026-08-12 (doc 10 §3.14)
-- **AI advisory tools dispositioned: run-summary and selector-suggestion retire; record-sanity-check stays open, deferred to order-8 separations** — D192, 2026-08-12 (doc 12 §4.4)
-- **Production byte path timing confirmed: builds at the first phone-consuming migration (orders 3–4), not earlier, not at cutover** — D189 timing confirmed 2026-08-12 (doc 13 §6.9)
-
-### Named to you at specific future gates
-
-- **ServiceNow live-probe target** — name one before order 7 (doc 07 §3.8).
-- **OnBase probe target** — none exists today; blocked until you name one (before order 7).
-- **Per-workflow §b questionnaire** — 12 answers before each migration starts (doc 07 §3.4).
-- **Order-8 identity approval** — separations runs under the ratified ALWAYS-GATE policy; you approve each identity match (doc 09 §14).
-- **Canary/test-instance approval** — every write workflow's controlled commit needs a target you approve; dry-run alone can never prove landing (doc 07 §3.1 step 5). *For separations this is no longer a future gate — it is the current blocker (see "Needed from you right now").*
+**Reading the Size column.** These are relative build sizes, not calendar — the calendar depends
+on session cadence, which the plan does not own. The unit is *work sessions of the kind this
+program actually runs in*: **S** ≈ 1, **M** ≈ 2–4, **L** ≈ 5–10, **XL** ≈ 10+. They expose
+delivery risk and help keep a long coexistence program tractable. Per-item sizes are in `doc 00` §Size model + delivery tiers; they are estimates
+offered for correction, not commitments.
 
 ---
 
----
+## Where things went
 
-## Appendix B · Legacy vs rebuild (prose, not rendered)
+The master plan (`07-master-plan.md`) was dissolved on 2026-08-20 and no longer exists as a doc. Its
+sections are now:
 
-### Already built — what the rebuild does differently
+| Was | Is |
+|---|---|
+| §0 governance | this file, §Governance above (lifted 3a) |
+| §1 the base's dependency graph · §3 Phase 0 · §3.7 sizes | `docs/rebuild/00-design-the-foundation.md` |
+| §2 the phase table | this file, §Phases at a glance above |
+| §3 Phase 1 · §7.1–§7.2's Phase-1 rows | `docs/rebuild/01-build-the-spine.md` |
+| §3 Phase 2 · §7.1–§7.2's Phase-2 rows | `docs/rebuild/02-prove-writes-build-the-tails.md` |
+| §7.1's approved-target bullet · §7.3 the integration execution rule | `docs/rebuild/03a-finish-the-dashboard.md` |
+| §3.1's PHASE 3 ENTRY block + separations' status | `docs/rebuild/03b-finish-separations.md` |
+| §3.1 the migration loop · §3.2 · §3.3 · §3.4 · §3.6 · §3.8 | `docs/rebuild/03c-migrate-the-remaining-workflows.md` |
+| §3.5 · Phase 0's deferred decisions | `docs/rebuild/04-close-the-deferrals.md` |
+| §4 · §5 · §5.1 · §6 · §7.4 | `docs/rebuild/05-cut-over.md` |
 
-| Area | Legacy | Rebuild |
-|---|---|---|
-| Run kernel | Daemon holds state in memory; crash mid-run leaves the row to be inferred | Authority re-read + CAS before **every** transition; lost claim can never terminalize over another owner; every task races an injected deadline |
-| Write safety | No fence; a failed save leaves unknown state; a retry can double-file | Seven beats: probe → prepare → subject binding → **durable fence before the click** → commit → read-back proof → settle; uncertainty **parks** with durable intent; same permanent key re-run answers `already-present` in 2 ms |
-| Dry run | A flag the workflow honors | On the run's immutable envelope; `commit` structurally absent; zero durable rows **asserted** |
-| Evidence | Reconstructed from log files | `RunEvidenceReceipt` = pure function of authority, byte-identical on re-derivation, per-field declared redaction; CLI and dashboard read the same derivation |
-| Failures | `error: string` on a span | Structured `FailureRecord` + auto-captured, capture-time-redacted diagnostic bundle, committed with the terminal state |
-| Ledger | None | Ordered, actor-attributed, fsync'd, digest-chained; any corruption stops the partition rather than renumbering history |
-| Storage | JSONL + SQLite, no backup, no restore | ONE authority DB, SHA-pinned immutable migrations, live backup cadence, byte-verifying doctor, **drilled** restore |
-| Notifications | In-memory React store — reload loses it | Durable inbox row committed **before** any OS toast; repeated triggers fold into a count; no free-text (structurally can't leak form contents) |
-| Intake | Parse at enqueue, then gone | Durable session → mapping (suggestions can never auto-bind) → validation → **immutable manifest** + N runs + CAS in one transaction; reruns hash-diff |
-| Edit Data | Exists | Resume claim IS the fence; edits become authority only by re-parsing through the producing node's own schema |
-| Start | Fire-and-forget enqueue | Plan-then-consume; exact raw JSON retained beside canonical — defaults can never erase what you typed |
-| Registries | ~10 hand-maintained parallel registries; a typo compiles | ONE `WORKFLOW_MODULES` tuple; stale fingerprint manifest is a red gate |
-| Guards | 31 guards, accepted lint debt | 60 guards, zero debt, every mechanical arm proven against a violating fixture |
+The whole as-written file, with a section-by-section table of where every § landed, is preserved at
+`docs/rebuild/reviews/2026-08-20-master-plan-dissolved.md`.
 
-### Where legacy is still ahead (the honest list — this IS the Phase 3 surface)
+This file's own appendices went too:
 
-OCR review/approve UI · screenshots gallery + artifact-bytes route · cross-date search · Excel
-exports (3 writers incl. the master I-9 retention workbook) · workflow graph editor + data bank ·
-editable settings · the record-sanity-check AI tool (deferred to order-8; run-summary and
-selector-suggest are **retired**, D192 — not gaps, decided) · production phone-capture delivery
-path · LAN mode · setup wizard · `test-login` · **six system drivers** (onbase, servicenow, i9,
-new-kronos, old-kronos, sharepoint — declaration-only in the rebuild).
-
-### What the rebuild will never do, by design
-
-- **Unverified silent fallbacks** — the founding rule; enforced by ratchets run against violating fixtures
-- **Selector `.or()` fallback chains** — live re-verification at migration replaces them
-- **Per-daemon stdout logs / ~30 bespoke polling hooks / secondary count caches** — one projection, one SSE spine; a second data path cannot disagree with the first
-- **Per-action mutation routes / fire-and-forget enqueue** — one idempotent actor-stamped command endpoint
-- **Generic retry on a parked write** — only proof-of-presence or operator-confirmed-absence releases one
-- **DSL/codegen workflow authoring (D79a)** — selectors, schemas, proof, and graph structure stay code, forever
-- **LAN/remote operator mode** — loopback only; the token-scoped phone ingress is the one deny-by-default exception
-- **Hosting** (D193) — never deployed to a platform; it runs on your machine. A locally-run app package and a cooperation mode over solo are *later, unplanned* ideas, not a hosted future
-- **Legacy change accounting (D150)** — replaced by mandatory live re-verification at each migration
-
----
-
-## Appendix C · Verify any of this yourself
-
-```bash
-npm run cli phase        # completedThrough 2j · active 3-workflow-migration
-npm run typecheck && npm run lint && npm run test:coverage   # the per-commit gate (D191)
-npm run test                     # 1998 across 209 files (verified green 2026-08-16)
-npm run test:architecture        # the 61-guard suite — available for a targeted run
-npm run test:parity              # 147/147 in ASSERT mode
-npm run cli storage doctor
-git log --oneline master         # D194–D221 landed 2026-08-12 → 2026-08-15, never pushed
-```
-
-Primary references: `docs/rebuild/07-master-plan.md` (plan + exit criteria) ·
-`docs/rebuild/04-reconciliation.md` (D1–D221 index) · `docs/migrations/separations.md` (§6 exit
-checklist, §9.17 latest as-built) · `docs/findings/` (the open frontend/backend findings ledger) ·
-`docs/plans/2026-08-13-detail-fidelity-audit.md` (frontend wave status + remaining tails) ·
+- **Appendix A (the prose decision log and the "named to you at specific future gates" list)** —
+  **deleted.** `docs/rebuild/reference/decisions.md` is the append-only authority for every `D<n>`
+  (its round headings carry the date, its rows the owning doc), and every future gate it listed is
+  already a `you:` line on the node that owes it in the tree above.
+- **Appendix B (legacy vs rebuild)** — `docs/rebuild/05-cut-over.md` §Legacy vs rebuild (as of
+  2026-08-20), dated because it is an inventory of a moving world.
+- **Appendix C (verify any of this yourself)** — the project `CLAUDE.md` §Commands, which already
+  carries every command it listed (`phase` and `storage doctor` are subcommands of `npm run cli`).

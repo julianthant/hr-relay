@@ -70,7 +70,7 @@ against real UCPath + CRM on the new executor, recovered a dead CRM session mid-
 `done` at attempt 2 with a correct result, and rendered all four parity surfaces from the ONE
 projection. The three presentation defects that run exposed were all FIXED the same day (D123
 skipped-arm, D124 terminal duration, D126 accessible-name collision) — see doc 03's _Phase 1g/
-1i-spine as-built presentation deltas_ and doc 07 §Phase 1's exit-criteria block. Doc 02 §8.1 is the
+1i-spine as-built presentation deltas_ and `docs/rebuild/01-build-the-spine.md` §Exit criteria. Doc 02 §8.1 is the
 worked example's as-built and records the five deltas the live run forced. What Phase 1f itself landed, for context on the contracts below:
 registry/task-binding corrections, worker-owned browser-session lifecycle, and mandatory task
 provenance collection landed 2026-08-02. D109's start-plan ingress authority now retains exact raw
@@ -114,8 +114,12 @@ on uncertain outcomes; production provider pools and consumers remain Phase 2h.
   `clock-config-secrets` (clock, config resolver, secrets) · `operator-trust` (failures, receipts,
   knowledge, the explorer) · `frontend-backend-integration` (the BFF, the wire, the parity lane) ·
   `foundation-gap-audit` (frozen — a design input, owns nothing).
-- `docs/rebuild/07-master-plan.md` — the old master plan, being dissolved into the phase docs
-  (cohesion step 3b). Until it lands in `reviews/`, doc 07 §0/§3 still wins on any disagreement.
+- `docs/rebuild/00`–`05` — the ACTIONABLE plan: one doc per phase, the number IS the phase
+  (`03a`/`03b`/`03c` are phase 3). Each owns its phase's tasks, its "Decisions this phase ratified"
+  and its **exit criteria**; `docs/roadmap/roadmap.md` is the summary (the tree + the governance
+  prose + the phases at a glance). The old `07-master-plan.md` was dissolved into them on
+  2026-08-20 and is preserved, with a section-by-section table of where everything went, at
+  `docs/rebuild/reviews/2026-08-20-master-plan-dissolved.md`.
 - `docs/rebuild/guard-inventory.json` — the reviewed guard manifest. `tests/unit/architecture/`
   must match it exactly, both directions.
 - `docs/rebuild/reviews/` — history. Superseded by the owning docs wherever they differ.

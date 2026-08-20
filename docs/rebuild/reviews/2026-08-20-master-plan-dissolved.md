@@ -1,3 +1,58 @@
+# Superseded — 07 Master Plan, dissolved into the phase docs (2026-08-20)
+
+**This file is history, not a plan.** It is `docs/rebuild/07-master-plan.md` exactly as it stood at
+commit `8bd97c2f`, preserved because the cohesion pass (`docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md`,
+ruling R6, step 3b) distributed its content into the phase docs and the roadmap's governance prose
+rather than deleting it. **Nothing here is normative.** Where a section below disagrees with the doc
+that now owns it, the owning doc wins.
+
+Read it only to check what the plan said before the move; the destinations are:
+
+| § | Where it went |
+|---|---|
+| title + status/amendment preamble (Rounds 10–18) | nowhere — a running record of amendments the phase docs now state as-built; kept here |
+| §0 · §0.1 the one-plan rule · §0.2 the D1 ownership map · §0.3 each phase documents itself | `docs/roadmap/roadmap.md` §Governance (lifted by step 3a, re-pointed to the new shelf names) |
+| §1 dependency graph of the base | `docs/rebuild/00-design-the-foundation.md` §The base's dependency graph |
+| §2 phase table (at a glance) | `docs/roadmap/roadmap.md` §Phases at a glance |
+| §3 Phase 0 — goal / status / feasibility / measured baseline | `00-design-the-foundation.md` §Phase summary |
+| §3 Phase 0 — deferred decisions (logged, resolved at the named point) | `04-close-the-deferrals.md` §Phase summary |
+| §3 Phase 0 — exit criteria | `00-design-the-foundation.md` §Exit criteria |
+| §3 Phase 1 — goal / D74 / the in-spine table / the program invariant | `01-build-the-spine.md` §Phase summary |
+| §3 Phase 1 — the ordered work-item rows | `01-build-the-spine.md`, split per node: 1a·1b → §1a · 1b, 1c·1d·1e (+ the real-scale type proof) → §1c · 1d · 1e, 1f → §1f, 1g-spine·1i-spine → §1g-spine · 1i-spine |
+| §3 Phase 1 — hard exit criteria + the three presentation defects | `01-build-the-spine.md` §Exit criteria |
+| §3 Phase 2 — goal / order / the read half / what it still does not prove | `02-prove-writes-build-the-tails.md` §Phase summary |
+| §3 Phase 2 — transactional work items + target status | `02-prove-writes-build-the-tails.md` §Transaction proof |
+| §3 Phase 2 — the deferred-base-tails table | `02-prove-writes-build-the-tails.md`, split per row into §2g, §2h, §2i, §2j |
+| §3 Phase 2 — workflow editor scope (D79a) | `02-prove-writes-build-the-tails.md` §Left Phase 2 by explicit disposition |
+| §3 Phase 2 — hard exit criteria (incl. D186 and D189) | `02-prove-writes-build-the-tails.md` §Exit criteria |
+| §3 Phase 3+ goal · §3.1 the migration loop | `03c-migrate-the-remaining-workflows.md` §Phase summary |
+| §3.1 the PHASE 3 ENTRY block (D193) | `03b-finish-separations.md` §Phase summary |
+| §3.1 separations' §3.2 status block (2026-08-14) | `03b-finish-separations.md` §Separations — order 8 |
+| §3.2 exit criteria (per workflow) | `03c-migrate-the-remaining-workflows.md` §Exit criteria |
+| §3.3 recommended migration order | `03c-migrate-the-remaining-workflows.md` §Recommended migration order |
+| §3.3 the order-8 prerequisite block (D77) | `00-design-the-foundation.md` §ALWAYS-GATE identity approval — D77 pulled that design into Phase 0 |
+| §3.4 the §b migration questionnaire | `03c-migrate-the-remaining-workflows.md` §The §b migration questionnaire |
+| §3.5 where the data systems slot | `04-close-the-deferrals.md` §Phase summary |
+| §3.6 non-workflow capability closure inventory (D58) | `03c-migrate-the-remaining-workflows.md` §Non-workflow capability closure inventory |
+| §3.7 size model and delivery tiers (D76) | `00-design-the-foundation.md` §Size model + delivery tiers |
+| §3.8 live probe status | `03c-migrate-the-remaining-workflows.md` §Live probe status |
+| §4 two-repo coexistence and all-at-once cutover | `05-cut-over.md` §Phase summary |
+| §5 risk register | `05-cut-over.md` §Risk register |
+| §5.1 program stop-loss / abort gate | `05-cut-over.md` §Program stop-loss / abort gate |
+| §6 definition of done (whole program) | `05-cut-over.md` §Exit criteria |
+| §7 intro · §7.1 bullet 2 · §7.2 rows 1b/1c/1e/1g-spine/1i-spine | `01-build-the-spine.md` §Integration amendment — Phase 1's share |
+| §7.1 bullets 3–4 · §7.2 rows transaction-proof/2g/2h/2i | `02-prove-writes-build-the-tails.md` §Integration amendment — Phase 2's share |
+| §7.1 bullet 1 (the approved target's panel-kind tabs) | `03a-finish-the-dashboard.md` §Phase summary |
+| §7.3 integration execution rule | `03a-finish-the-dashboard.md` §Integration execution rule |
+| §7.4 added program-wide exit criteria | `05-cut-over.md` §Exit criteria |
+
+Two notes for anyone resolving a citation. **A `§x.y` inside the moved prose still names this file's
+own sections** — the blocks were moved verbatim (step 3b is a distribution; the per-doc rewrite is
+step 5), so use the table above to resolve them. And the repo-wide citation sweep is step 3c: until
+it lands, other docs may still cite `doc 07 §x`, which means the row above.
+
+---
+
 # 07 — Master Plan: the single phased build order for the rebuild repo
 
 Status: **Plan ratified 2026-08-02 through Round 18 (amended through Round 20, 2026-08-03).

@@ -26,7 +26,7 @@ import {
  * The plan is the website's single source: phases → tasks → sub-tasks, what
  * every node BUILDS (`builds:` checklist, one layer tag per line) and what it
  * NEEDS (`needs:`) — from which this script derives each node's "unlocks" and
- * the prerequisite links. `docs/rebuild/07-master-plan.md` stays normative;
+ * the prerequisite links. The phase docs `docs/rebuild/00`–`05` stay normative;
  * the `/custom-update-plan` skill edits plan + site + owning docs together.
  *
  *   npm run roadmap            # regenerate docs/roadmap/index.html
