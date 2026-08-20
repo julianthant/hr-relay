@@ -330,6 +330,39 @@ additionally carries `memberPreview`, composed from its members' own served titl
 these carries its absence as a reasoned arm rather than a zero, an empty band, or a plausible
 number.
 
+**A worker card IS the authority lease, joined with what its spans hold open** (D248, 2026-08-20).
+`WorkerCardWireSchema` carries `workflowId`, `state`, `directive`, `startedAt`, `endedAt` +
+`stopReason`, `browsers[]`, `leaseVersion` and `revision`. The card SET is authority's: every live
+lease is a card, a settled lease is a card while the retained span stream still names its worker,
+and a worker the spans name but authority does not is NOT a card — authority is what says a worker
+exists. Until D248 the projector derived a worker's phase from whichever rows happened to be
+claimed, which is exactly the inference doc 05 §3 says the lease exists to make unnecessary, and it
+cost three of the six state arms the Session Panel drew: a daemon that had started and not yet
+reported read as `idle`, and a worker whose PROCESS DIED was drawn identically to one the operator
+had asked to stop.
+
+Four rules travel with it. **`state` and `directive` are separate fields**, because
+`src/domain/run/worker.ts` separates them: a command writes what was ASKED and the worker writes
+what is TRUE, so folding a pending `pause` into the state word would let a card read `Paused` while
+its worker is mid-transaction on a live HR system. **Every arm of both has a producer** — the
+lifecycle's own `paused` and `stopping` states are NOT mirrored, because nothing reports them (the
+worker's heartbeat writes `idle`/`busy` and its exit writes `stopped`), and the demo's `waiting`
+arm is gone because this platform gives every worker its own browser session per system (doc 05 §1),
+so there is no cross-worker lease to wait on and no holder to name. **`stopped` and `failed` split
+the terminal lifecycle by its RECORDED reason** (`operator`/`shutdown` versus `crashed`/
+`lease-expired`, the latter written by the recovery sweep), pinned by a refinement — that split is
+the whole content of `failed`. And **`leaseVersion` is the lease's row version, never `revision`**,
+which counts folded span events and is a patch cursor: binding the Stop control to it would have
+fabricated the exact fact a version check exists to check.
+
+`browsers[]` is the sessions a worker HOLDS — started, not yet closed, keyed by the session id its
+span path carries — and a settled card holds none, because its process is gone and its Chromium
+children went with it. It carries no `health` and no `url`: nothing in this build probes a live
+session, so the only verdict available is "never probed" and a six-arm health enum would be five
+unreachable arms; and no span, checkpoint or lease records a page address, so a URL would have to be
+composed rather than observed. The tile therefore states which system a session speaks to and how
+long it has been open, which is what the wire actually knows.
+
 The approved queue contract must include:
 
 - immutable identity, attempt/lineage, actor, descriptor/app/config versions and resolved instance;
@@ -429,6 +462,18 @@ the returned `ArtifactRef`.
 Bulk commands return one complete per-target vector. A partial result can never collapse to one
 success toast. Server action descriptors are the only source for command availability, labels,
 placement, confirmation copy, required forms, and revision tokens.
+
+**A command whose target is not a run is composed beside the composer, not inside it** (D249,
+2026-08-20). `composeCommandRequest` is exhaustive over the SERVED row-action vocabulary and every
+one of its arms targets a `runId`; the Session Panel's `Stop` targets a worker lease, so widening
+the shared `ActionTarget` to hold either would make every run arm accept a target it can never use.
+`composeStopWorkerCommand` therefore stands beside it, composes the whole envelope from facts the
+card already carries, and has no refusal arm — the two states where stopping is meaningless (a
+settled lease, a worker already asked to stop) disable the control AT the card rather than being
+discovered after a click. Its `expectedVersion` is the served `leaseVersion`; the kernel revalidates
+the lease inside its own transaction and CASes on what it reads there, so the field states the
+operator's BASIS rather than claiming to be the check — the shape doc 05 §"A capture command's
+`expectedVersion` is not a CAS" already ratified.
 
 **A served descriptor may also declare how much CEREMONY its command costs, and a surface obeys it
 or refuses (D226, 2026-08-19).** The identity gate is the case that forced the rule: doc 09 §14.6

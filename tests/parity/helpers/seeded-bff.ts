@@ -22,7 +22,14 @@ import { extname, join, normalize } from "node:path";
 import type { Hono } from "hono";
 import { buildRunResult } from "../../../src/core/run-result.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
+import { browserSessionSpanPath, workerSpanPath } from "../../../src/core/span-emitter.js";
 import { manualClock } from "../../../src/domain/clock.js";
+import {
+  BrowserSessionIdSchema,
+  BrowserSystemIdSchema,
+  WorkerIdSchema,
+  WorkflowIdSchema,
+} from "../../../src/domain/ids.js";
 import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import {
@@ -476,16 +483,30 @@ function terminalizeDone(world: SeedWorld, run: RunRecord, outboxId: string): vo
  * before the rows that must stay queued are enqueued at all.
  */
 function seed(world: SeedWorld): Record<string, string> {
-  // A worker must exist (and know its system) before run.claimed, or the
-  // projection has no card to attach the current run to.
+  /*
+   * The worker's own spans, composed by the SAME functions the executor emits
+   * them with. They were hand-written paths until D248 gave the browser path a
+   * reader (`worker/<workflow>/<worker>/browser:<system>#<sessionId>` carries
+   * the session identity the tile grid folds), and a fixture that spells a path
+   * production never emits is a fixture asserting over a shape the projector
+   * would refuse in the field.
+   *
+   * The card itself is the LEASE (D248): the run below claims through the real
+   * `runs.claimNext`, so authority already holds a `person-lookup-worker-1`
+   * lease by the time the day is built.
+   */
+  const workerSpan = workerSpanPath(
+    WorkflowIdSchema.parse(WORKFLOW_ID),
+    WorkerIdSchema.parse("person-lookup-worker-1"),
+  );
   world.spans.emit({
     t: "span.started",
     kind: "worker",
     ts: SEEDED_NOW,
     workflow: WORKFLOW_ID,
     workerId: "person-lookup-worker-1",
-    spanPath: "worker/person-lookup-worker-1",
-    name: "worker",
+    spanPath: workerSpan,
+    name: WORKFLOW_ID,
   });
   world.spans.emit({
     t: "span.started",
@@ -493,9 +514,14 @@ function seed(world: SeedWorld): Record<string, string> {
     ts: SEEDED_NOW,
     workflow: WORKFLOW_ID,
     workerId: "person-lookup-worker-1",
-    spanPath: "worker/person-lookup-worker-1/ucpath",
-    parentSpanPath: "worker/person-lookup-worker-1",
-    name: "browser",
+    spanPath: browserSessionSpanPath(
+      WorkflowIdSchema.parse(WORKFLOW_ID),
+      WorkerIdSchema.parse("person-lookup-worker-1"),
+      BrowserSystemIdSchema.parse("ucpath"),
+      BrowserSessionIdSchema.parse(uuidOf(950)),
+    ),
+    parentSpanPath: workerSpan,
+    name: "browser-session:ucpath",
     system: "ucpath",
   });
 
@@ -710,6 +736,8 @@ export async function startSeededServer(
     authority: {
       getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
+      listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
+      getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),

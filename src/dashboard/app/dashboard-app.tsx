@@ -1254,6 +1254,9 @@ function LoadedApp({
 
       <SessionPanel
         workerCards={dayWire?.workerCards ?? []}
+        workflows={workflows}
+        counts={dayWire?.workflowCounts ?? []}
+        nowIso={boot.serverClock.now}
         connection={connection}
         appVersion={boot.appVersion}
       />

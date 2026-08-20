@@ -43,3 +43,41 @@ export function nodeIdOfTaskSpanPath(spanPath: string): string | undefined {
   if (segment === undefined || !segment.includes("#")) return undefined;
   return segment.slice(0, segment.lastIndexOf("#"));
 }
+
+/**
+ * The SYSTEM and SESSION inside a browser span's path (D248) —
+ * `worker/<workflow>/<worker>/browser:<system>#<sessionId>`, composed by
+ * `browserSessionSpanPath` on every emit.
+ *
+ * Unlike the node reader above it REFUSES rather than answering `undefined`,
+ * because its two callers are the Session Panel's tile grid and the fold that
+ * closes a tile: a path this cannot read is a producer that has stopped
+ * composing the identity, and a session folded under a guessed id would open a
+ * tile nothing can ever close. The refusal degrades the projection by name,
+ * which is what the health state is for.
+ *
+ * `system` is read from the path rather than from the event's own optional
+ * field so that a CLOSE — which carries no system — reads the same identity the
+ * open did; when the field is present it is cross-checked, because two
+ * independent statements of one fact that disagree mean the emitter is broken.
+ */
+export function browserSessionOfSpanPath(
+  spanPath: string,
+  declaredSystem?: string,
+): { readonly sessionId: string; readonly system: string } {
+  const segment = spanPath.split("/").at(-1);
+  const marker = segment === undefined ? -1 : segment.lastIndexOf("#");
+  if (segment === undefined || !segment.startsWith("browser:") || marker <= "browser:".length) {
+    throw new Error(
+      `browser span path ${spanPath} does not name a session; `
+      + "expected worker/<workflow>/<worker>/browser:<system>#<sessionId>",
+    );
+  }
+  const system = segment.slice("browser:".length, marker);
+  if (declaredSystem !== undefined && declaredSystem !== system) {
+    throw new Error(
+      `browser span ${spanPath} declares system ${declaredSystem} while its own path names ${system}`,
+    );
+  }
+  return { sessionId: segment.slice(marker + 1), system };
+}
