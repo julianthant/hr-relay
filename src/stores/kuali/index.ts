@@ -5,6 +5,7 @@ import { fillTimekeeperAnnotationTask } from "./tasks/fill-timekeeper-annotation
 import { matchSeparationFinalizationTask } from "./tasks/match-separation-finalization.js";
 import { readSeparationDocumentTask } from "./tasks/read-separation-document.js";
 import { readTimekeeperAnnotationTask } from "./tasks/read-timekeeper-annotation.js";
+import { searchSeparationActionTask } from "./tasks/search-separation-action.js";
 import { saveSeparationFinalizationTask } from "./tasks/save-separation-finalization.js";
 import { saveTimekeeperAnnotationTask } from "./tasks/save-timekeeper-annotation.js";
 import { stageSeparationFinalizationTask } from "./tasks/stage-separation-finalization.js";
@@ -14,6 +15,7 @@ import { verifyTimekeeperAnnotationTask } from "./tasks/verify-timekeeper-annota
 export { kualiDriver };
 
 export const kualiStore = defineBrowserStore("kuali", kualiDriver, kualiSession, {
+  searchSeparationAction: searchSeparationActionTask,
   readTimekeeperAnnotation: readTimekeeperAnnotationTask,
   readSeparationDocument: readSeparationDocumentTask,
   verifyTimekeeperAnnotation: verifyTimekeeperAnnotationTask,

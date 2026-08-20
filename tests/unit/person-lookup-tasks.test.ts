@@ -156,6 +156,7 @@ describe("Phase 1f Person Lookup task implementations", () => {
         "kuali/read-timekeeper-annotation",
         "kuali/save-separation-finalization",
         "kuali/save-timekeeper-annotation",
+      "kuali/search-separation-action",
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization",
         "kuali/verify-timekeeper-annotation",

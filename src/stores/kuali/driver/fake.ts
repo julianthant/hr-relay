@@ -22,6 +22,15 @@ import type { Clock } from "../../../domain/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../domain/ids.js";
 import type { ElementId, ObservationId } from "../../../domain/ids.js";
 import { assertMintedMutationCapability } from "../../../base/mutation-capability.js";
+import {
+  KUALI_ACTION_LIST_MATCHED_NUMBER,
+  KUALI_ACTION_LIST_READY,
+  KualiActionListObservationSchema,
+} from "../../../domain/ui/kuali-action-list.js";
+import type {
+  KualiActionListLink,
+  KualiActionListObservation,
+} from "../../../domain/ui/kuali-action-list.js";
 import type { MutationCapability, UiActionProof } from "../../../domain/ui/driver.js";
 import { UiActionProofSchema } from "../../../domain/ui/driver.js";
 import {
@@ -157,6 +166,14 @@ const KUALI_FAKE_FINAL_PAY_OPTIONS: readonly string[] = Object.freeze([
   "Other",
 ]);
 
+/**
+ * The real RRSS space id (legacy `src/config.ts:131`), repeated here rather
+ * than imported: `driver/fake.ts` models the PAGE, and importing the registry's
+ * constant would make a fixture's href agree with the registry by construction
+ * instead of by observation.
+ */
+const KUALI_FAKE_SPACE_ID = "5e47518b90adda9474c14adb";
+
 export interface KualiFakeWorld {
   /** Ordered call log: `open:<doc>`, `stage:<value>`, `read:<observation>`, `commit:<element>`. */
   readonly events: string[];
@@ -168,6 +185,27 @@ export interface KualiFakeWorld {
   persistedTimekeeperName: string;
   /** When set, the EID field returns this raw string instead of a readable EID. */
   unreadableEid?: string;
+  /**
+   * The Kuali Build space whose Action List this fake models. It defaults to the
+   * real RRSS space so the href shape a fixture writes is the shape the live
+   * page carries.
+   */
+  actionListSpace?: string;
+  /**
+   * What the Action List renders for a document number, when the fixture wants
+   * something other than the ordinary row.
+   *
+   * Unset means the ordinary LIVE rendering, which is TWO links at this
+   * document's own action (Kuali publishes the number in both `Document #` and
+   * `Document Title`, measured 2026-08-20). A fixture sets this to drive the
+   * refusal arms: an empty array is "not in the Action List", two different
+   * hrefs is the ambiguity, and a `null` href is the unlinked cell.
+   */
+  actionListLinks?: Readonly<Record<string, readonly KualiActionListLink[]>>;
+  /** Every bare-number link the filtered list renders. Defaults to the matched ones. */
+  actionListListedNumbers?: readonly string[];
+  /** When set, reading the Action List throws (a dead page / a lost session). */
+  actionListThrows?: Error;
   /** When set, staging refuses to read back (the `fillWithVerify` failure arm). */
   stagingRefuses?: boolean;
   /**
@@ -310,6 +348,8 @@ export function createDeterministicKualiDriver(
   let stagedTimekeeperName: string | undefined;
   /** The finalization staged on this page, if any — the other thing `Save` may commit. */
   let stagedFinalization: KualiObservedFinalizationFields | undefined;
+  /** The document number the last Action-List resolve matched on this page. */
+  let matchedActionListNumber: string | undefined;
   /** What the field SHOWS: the staged value when one is staged, else the persisted one. */
   const displayedTimekeeper = (): string =>
     (stagedTimekeeperName === undefined ? world.persistedTimekeeperName : stagedTimekeeperName);
@@ -724,8 +764,45 @@ export function createDeterministicKualiDriver(
     }
   }
 
+  /**
+   * The Action-List resolve. It states what the list showed and classifies
+   * nothing — exactly like the live driver, so the pure fold under test is the
+   * production one.
+   */
+  async function readActionListForDocument(input: Readonly<{
+    documentNumber: string;
+  }>): Promise<KualiActionListObservation> {
+    world.events.push(`action-list:${input.documentNumber}`);
+    if (world.actionListThrows !== undefined) throw world.actionListThrows;
+    const space = world.actionListSpace ?? KUALI_FAKE_SPACE_ID;
+    const authored = world.actionListLinks?.[input.documentNumber];
+    const matchedLinks = authored ?? (input.documentNumber === world.documentNumber
+      ? [
+        { name: input.documentNumber, href: `/build/space/${space}/actions/${world.actionId}` },
+        { name: input.documentNumber, href: `/build/space/${space}/actions/${world.actionId}` },
+      ]
+      : []);
+    if (matchedLinks.length > 0) matchedActionListNumber = input.documentNumber;
+    return KualiActionListObservationSchema.parse({
+      pageStateId: KUALI_ACTION_LIST_READY,
+      space,
+      requestedDocumentNumber: input.documentNumber,
+      matchedLinks,
+      listedDocumentNumbers: world.actionListListedNumbers
+        ?? matchedLinks.map((link) => link.name),
+      observedAt: now(),
+    });
+  }
+
   async function read(id: ObservationId): Promise<string> {
     world.events.push(`read:${id}`);
+    if (id === KUALI_ACTION_LIST_MATCHED_NUMBER) {
+      const matched = matchedActionListNumber;
+      if (matched === undefined) {
+        throw new Error(`Kuali ${KUALI_ACTION_LIST_MATCHED_NUMBER} has no value on this page`);
+      }
+      return matched;
+    }
     if (id === KUALI_RRSS_DISPLAYED_EID) return readEid();
     if (id === KUALI_RRSS_DISPLAYED_TIMEKEEPER) {
       return displayedTimekeeper().trim();
@@ -777,6 +854,7 @@ export function createDeterministicKualiDriver(
   return Object.freeze(KualiRrssDocumentDriverSchema.parse({
     system: "kuali" as const,
     read,
+    readActionListForDocument,
     openDocument,
     readSeparationDocument,
     stageTimekeeperName,

@@ -147,11 +147,29 @@ export const COMPOSITION_VARIABLES: KualiFinalizationVariables = Object.freeze({
 export const COMPOSITION_FINALIZATION_FIELDS: KualiFinalizationFields =
   kualiFinalizationFields(COMPOSITION_VARIABLES);
 
+/**
+ * D261 removed `actionId` from the ingress — the graph's head node resolves it
+ * — so the run input is the one number an operator types plus the constant the
+ * start surface contributes. `COMPOSITION_ACTION_ID` stays, because it is still
+ * the value the RESOLVE NODE produces and every downstream fixture binds.
+ */
 export const COMPOSITION_RUN_INPUT = Object.freeze({
-  actionId: COMPOSITION_ACTION_ID,
   documentNumber: COMPOSITION_DOCUMENT,
   timekeeperName: COMPOSITION_TIMEKEEPER,
   searchTimeoutMs: 15_000,
+});
+
+/** What `resolve-action` produces, as the live Action List renders it. */
+export const COMPOSITION_ACTION_HREF =
+  `/build/space/5e47518b90adda9474c14adb/actions/${COMPOSITION_ACTION_ID}`;
+
+export const COMPOSITION_ACTION_RESOLUTION = Object.freeze({
+  pageStateId: "kuali.action-list.ready" as const,
+  documentNumber: COMPOSITION_DOCUMENT,
+  actionId: COMPOSITION_ACTION_ID,
+  actionHref: COMPOSITION_ACTION_HREF,
+  matchedLinkCount: 2,
+  observedAt: COMPOSITION_NOW,
 });
 
 /** The natural keys the three commit contracts derive — recomputed, never copied. */
@@ -170,6 +188,7 @@ export const FINALIZATION_IDEMPOTENCY_KEY = kualiFinalizationIdempotencyKey({
  * against — the exact node outputs the composed descriptor names.
  */
 export const COMPOSITION_SCOPE_OUTPUTS = Object.freeze({
+  "resolve-action": COMPOSITION_ACTION_RESOLUTION,
   document: {
     timekeeper: { comments: { state: "absent" as const, reason: "the control was empty" } },
   },

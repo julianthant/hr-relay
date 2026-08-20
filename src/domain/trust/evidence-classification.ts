@@ -160,6 +160,7 @@ const KRONOS_TIMECARD = taskOutput("new-kronos/read-separation-timecard");
 const KUALI_READ_INPUT = workflowInput("separations-kuali-read");
 const KUALI_READ_RESULT = workflowResult("separations-kuali-read");
 const KUALI_SEPARATION = taskOutput("kuali/read-separation-document");
+const KUALI_ACTION_SEARCH = taskOutput("kuali/search-separation-action");
 const TERMINATION_TYPE = taskOutput("workflow:separations/match-termination-type");
 const IDENTITY_CHECK_INPUT = workflowInput("separations-identity-check");
 const IDENTITY_CHECK_RESULT = workflowResult("separations-identity-check");
@@ -511,6 +512,14 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
      DOCUMENT, not a person, so both are open. */
   ...open(KUALI_READ_INPUT, "actionId", "documentNumber"),
 
+  /* kuali/search-separation-action — D261's Action-List resolve. Every leaf
+     describes the ADDRESS of a document, never a person: a document number, a
+     workflow-step id, the link it was read from, and how many links carried it.
+     Nothing here is about the employee, which is exactly why the resolve can
+     run before the identity gate has anything to show. */
+  ...open(KUALI_ACTION_SEARCH, "pageStateId", "documentNumber", "actionId", "actionHref",
+    "matchedLinkCount", "observedAt"),
+
   /* kuali/read-separation-document — the whole form, one declaration. */
   ...separationDocumentLeaves(KUALI_SEPARATION, ""),
 
@@ -664,7 +673,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
      operator's explicit re-read — a document and a decision, not a person,
      except the timekeeper's own name. */
   ...person(SEPARATIONS_INPUT, "timekeeperName"),
-  ...open(SEPARATIONS_INPUT, "actionId", "documentNumber", "searchTimeoutMs",
+  ...open(SEPARATIONS_INPUT, "documentNumber", "searchTimeoutMs",
     "reRead.ordinal", "reRead.reason"),
 
   /* The ALWAYS-GATE a FOURTH time, on the composition's own scope (D204) — and

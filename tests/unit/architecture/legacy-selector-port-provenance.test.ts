@@ -35,8 +35,17 @@ describe("legacy selector port provenance", { timeout: 180_000 }, () => {
     // the Smart HR wizard's three pages, the pending-sweep delete, and the SS
     // Smart HR search filter — one of which (`ssSmartHRTransactions.emplIdInput()`)
     // binds TWO canonical ids by context.
-    assert.equal(portMap.entries.filter((entry) => entry.disposition === "candidate").length, 339);
-    assert.equal(portMap.entries.filter((entry) => entry.disposition === "ported").length, 66);
+    //
+    // **D261 moved THREE more, all kuali**: `actionList.searchInput()`,
+    // `actionList.searchGoButton()` and `actionList.docLink()`, which is the
+    // Action-List resolve the operator's "document number should work" ruling
+    // asked for. The other two of that family stay CANDIDATE and stay named:
+    // `actionList.menuItem()` is superseded by the list's own route (a direct
+    // `goto` rendered it in 1.1 s live 2026-08-20) and `actionList.docLinks()`
+    // enumerates every pending document, which is candidate discovery no
+    // workflow here performs.
+    assert.equal(portMap.entries.filter((entry) => entry.disposition === "candidate").length, 336);
+    assert.equal(portMap.entries.filter((entry) => entry.disposition === "ported").length, 69);
     assert.equal(portMap.entries.filter((entry) => entry.disposition === "driver-internal").length, 1);
   });
 

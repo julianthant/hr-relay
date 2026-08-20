@@ -617,6 +617,60 @@ moves the fingerprint, and every checkpoint this database holds for `separations
 (separations §9.22 measured exactly that: `2c9cb58e…` ≠ `59830cf6…` forced a full live re-read).
 **Never spend a fingerprint on a change that buys no behavior.**
 
+#### D261 — the action id is a GRAPH OUTPUT, so `separations` starts from one typed number (2026-08-20)
+
+**Read D260 first; this section is the operator exercising the choice it handed them.** They ruled,
+verbatim: *"document number should work. no need action id."* That is D260's **shape 2**, and the
+build landed the same day.
+
+**D260's rule is unchanged, and is not withdrawn.** A workflow is `inputRun`-startable iff its input
+schema has exactly one required field that varies per run. It is still a property of the SCHEMA
+rather than a declaration a descriptor may choose, and `constants[]` still may carry only a value
+that does not vary per run. **What moved is the schema the rule is applied to**, which is the only
+honest way to satisfy a structural rule: `SeparationsInput` drops `actionId` and the graph resolves
+it.
+
+| Field | Varies per run | Where it comes from now |
+|---|---|---|
+| `documentNumber` | yes | The ONE typed value. Unchanged in every other respect: it is still the run's own CLAIM, still proved against the opened document's level-1 heading (D129) — and now proved TWICE, because the Action-List link's ANCHORED accessible name had to equal it before the id was read at all |
+| `actionId` | — | **A graph output.** The head node `resolve-action` binds `kuali/search-separation-action`, which filters the Action List's own search box and reads the matched row's `href` |
+| `timekeeperName` | no (per operator) | `constants[]`. Legitimate ONLY because it does not vary per RUN — §9.16 6a-2 ratified it as ingress and D260's table records it as constant |
+
+**The constant's scope is stated, because it is the weakest thing here.** `timekeeperName` in
+`constants[]` is a fact about WHO is filing, baked into a bundle-safe descriptor. It is a
+per-OPERATOR constant, not a per-run one, so it satisfies the rule — and the trigger that ends it is
+a SECOND timekeeper, at which point it must become D260 shape 1's typed form field rather than a
+second baked constant. `config.operator.timekeeperName` stays deliberately unused: a descriptor is
+bundle-safe and cannot read config, and a value retained in the canonical input is one `explain run`
+can show for the run that used it.
+
+**Why a resolve node does not weaken the check D260 was protecting.** D260 refused "drop
+`documentNumber` and let the page supply it" because that deletes the check catching a stale action
+id. This does the opposite: the number stays the operator's input and the ID becomes derived, so the
+document number is now compared against the page TWICE — once as the anchored accessible name of the
+Action-List link the id was read from, and once as the level-1 heading `openDocument` proves before
+anything else runs.
+
+**Where the derivation lives, and why it is not the ingress D260 refused.** D260's refusal of
+"derive `actionId` at plan time" stands untouched: `services/start/plan.ts` performs exactly ONE
+ingress parse with no I/O, and an ingress that could resolve a value it was not given is the second
+unaudited ingress path `ingress.ts` refuses by name. The resolve is a BROWSER act and it lives where
+D260 said any such lookup could only live — **in the graph, one node past where the input schema is
+parsed**. Nothing about `plan.ts` changed.
+
+**The parser has one rule and no `otherwise` arm.** A separation is filed against a Kuali document
+and there is nothing else the box could mean, so an entry that is not a document number refuses the
+WHOLE box and starts nothing — which `inputRunParserLabel` states before an operator pastes forty
+lines. The `document-number` entry pattern is `KualiDocumentNumberSchema`'s own rule restated
+(`^\d{3,8}$`), because a box that accepted a shape the workflow's schema then refused would be a
+modal lying about what it starts.
+
+**The fingerprint moved, and that is the cost rather than a defect.** D260 declined to spend a
+fingerprint on a comment; this change spends one on behaviour. Every stored `separations` checkpoint
+stops replaying, exactly as §9.22 measured for a smaller change — the run's identity genuinely moved,
+because its input schema is a different shape. Nothing durable is lost: a checkpoint miss means the
+next run re-reads live.
+
 **Fingerprint construction is build-manifest based, never `Function.toString()`.** Codegen hashes
 canonical relative-path + file-content tuples for the descriptor source and its bundle-safe
 transitive contract/domain dependency closure, plus canonical generated schema/projection JSON and

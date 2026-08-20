@@ -81,9 +81,34 @@ export const UiVerificationEvidenceManifestSchema = z.strictObject({
     scenarioId: ScenarioIdSchema,
     portMapRows: z.array(UiPortMapRowReferenceSchema).min(1),
     assertion: UiVerificationAssertionSchema,
-    matchedCount: z.literal(1),
+    /**
+     * How many nodes the recipe resolved, VERBATIM (D261).
+     *
+     * It was `z.literal(1)` while every published recipe named a form control,
+     * where one node is the invariant. Kuali's Action-List document link is the
+     * first published recipe whose live count is legitimately TWO — a row
+     * publishes its document number in both `Document #` and `Document Title`,
+     * and the surface's real invariant is one distinct ACTION, not one node. A
+     * schema that could only record `1` would have forced that pass to write a
+     * number it did not measure, which is the fabricated constant this program
+     * bans; the `exactly-one-*` assertions still pin the count themselves in the
+     * refinement below, so nothing that meant "one node" got weaker.
+     */
+    matchedCount: z.number().int().positive(),
     capturedValue: z.literal(false),
-  })).min(1),
+  })).min(1).superRefine((assertions, ctx) => {
+    for (const [index, assertion] of assertions.entries()) {
+      if (assertion.assertion === "recipe-resolves") continue;
+      if (assertion.matchedCount !== 1) {
+        ctx.addIssue({
+          code: "custom",
+          path: [index, "matchedCount"],
+          message: `${assertion.semanticId} claims ${assertion.assertion} and recorded `
+            + `${String(assertion.matchedCount)} matched nodes; that assertion IS the count`,
+        });
+      }
+    }
+  }),
   rejectedCandidates: z.array(z.strictObject({
     legacyKey: z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/),
     candidateDescription: z.string().min(1),

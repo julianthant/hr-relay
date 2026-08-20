@@ -35,6 +35,9 @@ import type { UcpathPersonSelection } from "../../src/domain/contracts/ucpath/se
 import type { UcpathJobRow, UcpathJobSummary } from "../../src/domain/ui/ucpath-job-summary.js";
 import type { UcpathTerminationProof } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
 import type { UcpathTransactionRow } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
+import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../src/stores/kuali/driver/fake.js";
+import { searchSeparationActionTask } from "../../src/stores/kuali/tasks/search-separation-action.js";
+import { manualClock } from "../../src/domain/clock.js";
 import { matchActiveEmploymentTask } from "../../src/stores/separations/tasks/match-active-employment.js";
 import { matchDepartmentOptionTask } from "../../src/stores/separations/tasks/match-department-option.js";
 import { matchIdentityTask } from "../../src/stores/separations/tasks/match-identity.js";
@@ -52,13 +55,16 @@ import { KUALI_FAKE_UNFINALIZED_FIELDS } from "../../src/stores/kuali/driver/fak
 import { SEPARATIONS_CLAIMS } from "./coverage-claims.js";
 import { walkDescriptor } from "./helpers/pure-walk.js";
 import {
+  COMPOSITION_ACTION_HREF,
   COMPOSITION_ACTION_ID,
+  COMPOSITION_ACTION_RESOLUTION,
   COMPOSITION_AS_OF_DATE,
   COMPOSITION_DEPARTMENT_OPTION,
   COMPOSITION_DOCUMENT,
   COMPOSITION_DOCUMENT_NAME,
   COMPOSITION_EFFECTIVE_DATE,
   COMPOSITION_EID,
+  COMPOSITION_NOW,
   COMPOSITION_FINALIZATION_COMMENTS,
   COMPOSITION_FINALIZATION_FIELDS,
   COMPOSITION_KUALI_LDW,
@@ -239,7 +245,94 @@ function harness(options?: Parameters<typeof compositionHarness>[0]): Compositio
   return created;
 }
 
+/* ── D261's head node: one document number becomes one Kuali action ───────── */
+
+/**
+ * The resolve task over the deterministic Kuali driver. It runs the REAL task
+ * implementation and the REAL pure fold, so what these three arms falsify is
+ * the refusal — that a document the Action List does not hold, and a number two
+ * actions answer to, each become a distinct named failure rather than a
+ * plausible id.
+ */
+async function runResolveAction(world: Parameters<typeof createDeterministicKualiDriver>[0]): Promise<unknown> {
+  const clock = manualClock(new Date(COMPOSITION_NOW));
+  return await searchSeparationActionTask.impl.run({
+    input: { documentNumber: COMPOSITION_DOCUMENT },
+    ctx: { ...taskCtx, driver: createDeterministicKualiDriver(world, clock) },
+  });
+}
+
+function actionListWorld(): ReturnType<typeof createKualiFakeWorld> {
+  return createKualiFakeWorld({
+    actionId: COMPOSITION_ACTION_ID,
+    documentNumber: COMPOSITION_DOCUMENT,
+    displayedEid: String(COMPOSITION_EID),
+  });
+}
+
 describe("separations scenarios — the composition", () => {
+  it("separations/action-resolved — the operator types a document number and the graph finds the action", async () => {
+    const resolved = await runResolveAction(actionListWorld()) as {
+      actionId: string; documentNumber: string; matchedLinkCount: number; actionHref: string;
+    };
+    assert.equal(resolved.actionId, COMPOSITION_ACTION_ID);
+    assert.equal(resolved.documentNumber, COMPOSITION_DOCUMENT);
+    // TWO links for one document is the ORDINARY live row — Kuali publishes the
+    // number in both `Document #` and `Document Title` (measured 2026-08-20) —
+    // so a surface that demanded exactly one node would refuse every real row.
+    assert.equal(resolved.matchedLinkCount, 2);
+    assert.equal(resolved.actionHref, COMPOSITION_ACTION_HREF);
+    // The node walks no graph path: a head read produces no branch, gate,
+    // delegation or transaction point, so it correctly claims none.
+    assert.equal(SEPARATIONS_CLAIMS.some(({ scenarioId }) => scenarioId === "separations/action-resolved"), false);
+  });
+
+  it("separations/action-not-in-action-list — a document nobody holds an action on refuses BY NAME", async () => {
+    const world = actionListWorld();
+    world.actionListLinks = { [COMPOSITION_DOCUMENT]: [] };
+    world.actionListListedNumbers = ["4537", "4495"];
+    const code = await refusalCode(async () => await runResolveAction(world));
+    // Not an empty answer and not a fallback: a completed Kuali step leaves the
+    // Action List, which is a REAL and common state, and the run that cannot be
+    // addressed must say so rather than open something else.
+    assert.equal(code, "document-not-in-action-list");
+  });
+
+  it("separations/action-ambiguous — two actions for one number is a refusal, never a choice", async () => {
+    const world = actionListWorld();
+    world.actionListLinks = {
+      [COMPOSITION_DOCUMENT]: [
+        { name: COMPOSITION_DOCUMENT, href: COMPOSITION_ACTION_HREF },
+        {
+          name: COMPOSITION_DOCUMENT,
+          href: "/build/space/5e47518b90adda9474c14adb/actions/0123456789abcdef01234568",
+        },
+      ],
+    };
+    const code = await refusalCode(async () => await runResolveAction(world));
+    assert.equal(code, "ambiguous-action-list-match");
+  });
+
+  it("an Action-List link with no href is unreadable, not absent", async () => {
+    const world = actionListWorld();
+    world.actionListLinks = { [COMPOSITION_DOCUMENT]: [{ name: COMPOSITION_DOCUMENT, href: null }] };
+    // The distinction is load-bearing: "the row is not there" and "the row is
+    // there and carries no address" are different facts about a real document,
+    // and only one of them means the separation cannot be filed today.
+    assert.equal(await refusalCode(async () => await runResolveAction(world)), "unreadable-action-link");
+  });
+
+  it("an href addressing another space is unreadable, never trusted for its last segment", async () => {
+    const world = actionListWorld();
+    world.actionListLinks = {
+      [COMPOSITION_DOCUMENT]: [{
+        name: COMPOSITION_DOCUMENT,
+        href: `/build/space/ffffffffffffffffffffffff/actions/${COMPOSITION_ACTION_ID}`,
+      }],
+    };
+    assert.equal(await refusalCode(async () => await runResolveAction(world)), "unreadable-action-link");
+  });
+
   it("separations/plan-refusals — the document's own facts, validated before any other read", async () => {
     const planned = await runPlan();
     assert.equal(planned.employeeName, COMPOSITION_DOCUMENT_NAME);
@@ -1057,6 +1150,7 @@ describe("separations scenarios — the composition", () => {
 
     const walk = walkDescriptor(separationsDescriptor, { ...COMPOSITION_RUN_INPUT }, {
       outputs: {
+        "resolve-action": COMPOSITION_ACTION_RESOLUTION,
         document,
         plan,
         "termination-type": terminationType,

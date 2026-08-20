@@ -111,10 +111,18 @@ export function renderTextTemplate(
 export const ENTRY_PATTERNS = Object.freeze({
   eid: /^10\d{6}$/,
   digits: /^\d+$/,
+  /**
+   * A Kuali Build document number (D261). It is `KualiDocumentNumberSchema`'s
+   * own rule restated as an ingress pattern — three to eight digits — and the
+   * two are pinned equal by `tests/unit/ingress-parser-prose.test.ts`, because
+   * a box that accepted a shape the workflow's schema then refused would be a
+   * modal lying about what it starts.
+   */
+  "document-number": /^\d{3,8}$/,
   email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
   "non-empty": /\S/,
 });
-export const EntryPatternNameSchema = z.enum(["eid", "digits", "email", "non-empty"]);
+export const EntryPatternNameSchema = z.enum(["eid", "digits", "document-number", "email", "non-empty"]);
 export type EntryPatternName = z.infer<typeof EntryPatternNameSchema>;
 
 /**
@@ -135,6 +143,11 @@ export type EntryPatternName = z.infer<typeof EntryPatternNameSchema>;
 const ENTRY_PATTERN_PROSE = Object.freeze({
   eid: { one: "an employee ID", many: "employee IDs", shape: "eight digits beginning 10" },
   digits: { one: "a number", many: "numbers", shape: "digits only" },
+  "document-number": {
+    one: "a Kuali document number",
+    many: "Kuali document numbers",
+    shape: "three to eight digits, the number printed at the top of the separation request",
+  },
   email: { one: "an email address", many: "email addresses", shape: "text either side of one @, with a dot after it" },
   "non-empty": { one: "a value", many: "values", shape: "any text that is not blank" },
 } satisfies Readonly<Record<EntryPatternName, Readonly<{ one: string; many: string; shape: string }>>>);

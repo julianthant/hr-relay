@@ -243,10 +243,16 @@ describe("start planning", () => {
   });
 
   /**
-   * D209's whole point, stated as a test on the SHIPPED descriptors: every
-   * registered write workflow carries `surfaces: {}` and every one of them is
-   * now dry-startable, because the question is what the graph writes rather than
-   * whether an operator can paste a line into a textbox.
+   * D209's whole point, stated as a test on the SHIPPED descriptors: dry-run
+   * support is a property of what the graph WRITES, never of whether an
+   * operator can paste a line into a textbox.
+   *
+   * Three of these four still carry `surfaces: {}` and are previewable anyway,
+   * which is the original claim. **`separations` now carries a typed box (D261)
+   * and is previewable for exactly the same reason** — the surface changed and
+   * the derivation did not — so it is asserted from the other side: the point
+   * is the INDEPENDENCE of the two, and a list where every member lacked a
+   * surface could no longer show it.
    */
   it("makes all four registered write workflows dry-startable through the graph (D209)", () => {
     for (const descriptor of [
@@ -257,7 +263,6 @@ describe("start planning", () => {
       // D209's "every transaction node, not only the first a preview reaches".
       separationsDescriptor,
     ]) {
-      assert.deepEqual(descriptor.surfaces, {}, `${descriptor.id} still has no input surface`);
       assert.equal(supportsDryRun(descriptor), true, `${descriptor.id} must be previewable`);
       const support = workflowDryRunSupport(descriptor);
       assert.equal(support.state, "supported");
@@ -268,6 +273,11 @@ describe("start planning", () => {
       assert.ok(firstTransaction);
       assert.equal(support.state === "supported" ? support.stopsAt : "", String(firstTransaction.id));
     }
+    // The independence, stated in both directions on the shipped set.
+    assert.deepEqual(kualiTimekeeperAnnotationDescriptor.surfaces, {});
+    assert.deepEqual(separationsUcpathTerminationDescriptor.surfaces, {});
+    assert.deepEqual(separationsKualiFinalizationDescriptor.surfaces, {});
+    assert.notEqual(separationsDescriptor.surfaces.inputRun, undefined, "D261 gave separations a box");
   });
 
   it("refuses a graph whose transaction node declares no preview arm, by node name (D209)", () => {

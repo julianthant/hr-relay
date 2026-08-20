@@ -37,6 +37,15 @@ import type { Clock } from "../../../domain/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../domain/ids.js";
 import type { ElementId, ObservationId } from "../../../domain/ids.js";
 import { assertMintedMutationCapability } from "../../../base/mutation-capability.js";
+import {
+  KUALI_ACTION_LIST_DOCUMENT_LINK,
+  KUALI_ACTION_LIST_MATCHED_NUMBER,
+  KUALI_ACTION_LIST_READY,
+  KUALI_ACTION_LIST_SEARCH_GO_BUTTON,
+  KUALI_ACTION_LIST_SEARCH_INPUT,
+  KualiActionListObservationSchema,
+} from "../../../domain/ui/kuali-action-list.js";
+import type { KualiActionListObservation } from "../../../domain/ui/kuali-action-list.js";
 import type { MutationCapability, UiActionProof } from "../../../domain/ui/driver.js";
 import { UiActionProofSchema } from "../../../domain/ui/driver.js";
 import {
@@ -119,6 +128,7 @@ import type {
   KualiObservedFinalizationFields,
 } from "../../../domain/ui/kuali-separation-finalization.js";
 import { KUALI_RRSS_SPACE_ID, KUALI_UI_REGISTRY } from "./ui-registry.js";
+import type { KualiLocatorRecipe } from "./ui-registry.js";
 
 const KUALI_HOST = "ucsd.kualibuild.com";
 const NAVIGATION_TIMEOUT_MS = 60_000;
@@ -189,10 +199,23 @@ const FINAL_PAY_OPTION_LABELS: readonly string[] = Object.freeze([
   INTERNAL_FINAL_PAY_OTHER,
 ]);
 
-function elementRecipe(id: ElementId) {
+function elementLocator(id: ElementId): KualiLocatorRecipe {
   const element = KUALI_UI_REGISTRY.elements.find((candidate) => candidate.id === id);
   if (element === undefined) throw new Error(`Kuali UI registry has no element ${id}`);
   return element.locator;
+}
+
+/**
+ * The exact-name arm, or a loud refusal. A caller that asked for a role+name
+ * recipe and got the Action List's anchored one has resolved the wrong kind of
+ * element, and guessing which name it meant is not available.
+ */
+function elementRecipe(id: ElementId): Extract<KualiLocatorRecipe, { kind: "role-exact-name" }> {
+  const locator = elementLocator(id);
+  if (locator.kind !== "role-exact-name") {
+    throw new Error(`Kuali element ${id} is not addressed by an exact accessible name (${locator.kind})`);
+  }
+  return locator;
 }
 
 /**
@@ -226,6 +249,43 @@ async function exactlyOne(page: Page, id: ElementId): Promise<Locator> {
 
 function documentUrl(actionId: string): string {
   return `https://${KUALI_HOST}/build/space/${KUALI_RRSS_SPACE_ID}/actions/${actionId}`;
+}
+
+/**
+ * The Action List's own route (D261).
+ *
+ * NOT a port: legacy reaches this page by navigating the space and clicking the
+ * `Action List` menu item (`navigate.ts:44-65`). The direct route is
+ * live-verified knowledge — 2026-08-20, a `goto` straight here rendered the
+ * list's search box in 1 100 ms — and it removes a click, a menu recipe, and
+ * the whole class of "the menu had not painted yet" failures the same file
+ * carries a comment about.
+ */
+function actionListUrl(): string {
+  return `https://${KUALI_HOST}/build/space/${KUALI_RRSS_SPACE_ID}/actions`;
+}
+
+/**
+ * The anchored Action-List link recipe, ported verbatim from legacy
+ * `actionList.docLink()`: `^\s*<n>\s*$`.
+ *
+ * The anchoring is the safety property and legacy states why in its own
+ * comment — Kuali's Action-List search is SUBSTRING-based, so filtering for
+ * `414` returns 4140–4149. An unanchored match would resolve a neighbouring
+ * document, which is a different person's separation.
+ */
+function documentLinks(page: Page, documentNumber: string): Locator {
+  const recipe = elementLocator(KUALI_ACTION_LIST_DOCUMENT_LINK);
+  if (recipe.kind !== "role-anchored-value-name") {
+    throw new Error(
+      `Kuali element ${KUALI_ACTION_LIST_DOCUMENT_LINK} is not an anchored-value recipe (${recipe.kind})`,
+    );
+  }
+  // The value is schema-parsed before it reaches a pattern, so the only
+  // characters that can appear here are digits — there is no regex-injection
+  // surface and no escaping to get wrong.
+  const number = KualiDocumentNumberSchema.parse(documentNumber);
+  return page.getByRole(recipe.role, { name: new RegExp(`^\\s*${number}\\s*$`, "u") });
 }
 
 /**
@@ -267,6 +327,26 @@ function assertExactKualiDocumentUrl(rawUrl: string, actionId: string): void {
  * the run's, so opening a different document refuses with both numbers named.
  */
 const DOCUMENT_NUMBER_HEADING_NAME = /^\s*\d{3,8}\s*$/u;
+
+/**
+ * Every bare-number link the Action List renders — legacy `actionList.docLinks()`
+ * (NOT ported as a registry element, because this driver never enumerates the
+ * list as a candidate source). It is read for ONE purpose: a miss says *"4502
+ * is not here — 4537, 4495 are"*, and "not found" alone is a sentence nobody
+ * can act on. The bare-number filter is legacy's own and excludes the page's
+ * word-labelled nav / action / pagination links.
+ */
+const BARE_DOCUMENT_NUMBER_NAME = /^\s*\d+\s*$/u;
+
+/**
+ * How long the filtered Action List may take to render the matched row.
+ *
+ * A bounded wait for the SAME fact, never a fallback: when it expires the
+ * observation records zero matched links and the pure classifier refuses by
+ * name. Live 2026-08-20 the filtered list settled well inside 5 s; 15 s is 3x
+ * that and still far below the run's own task bound.
+ */
+const ACTION_LIST_FILTER_TIMEOUT_MS = 15_000;
 
 type DocumentNumberProbe =
   | { readonly state: "read"; readonly documentNumber: string }
@@ -711,6 +791,72 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
 
   /** See `StagedExpectation` — the staging this page's `Save` may act on, if any. */
   let staged: StagedExpectation | undefined;
+
+  /**
+   * The document number the LAST Action-List resolve proved on this page, if
+   * any — the value `read(KUALI_ACTION_LIST_MATCHED_NUMBER)` answers with. It
+   * is retained rather than re-read for the same reason `staged` is: the
+   * observation is a fact about a page state this driver reached, and a
+   * re-read would be a second, different observation wearing the first's name.
+   */
+  let matchedActionListNumber: string | undefined;
+
+  /* ── The Action-List resolve (D261) ────────────────────────────────────── */
+
+  /**
+   * Filter the Action List to ONE document number and report every link that
+   * carried it, verbatim. It classifies nothing (D201) and it clicks nothing:
+   * the action id is on the page as an `href`, so reading it costs no
+   * navigation and mutates no document.
+   */
+  async function readActionListForDocument(input: Readonly<{
+    documentNumber: string;
+  }>): Promise<KualiActionListObservation> {
+    const documentNumber = KualiDocumentNumberSchema.parse(input.documentNumber);
+    // A navigation away from a document discards Kuali's in-page form model, so
+    // any staging is gone — the same invariant `openDocument` maintains.
+    staged = undefined;
+    matchedActionListNumber = undefined;
+    await page.goto(actionListUrl(), {
+      waitUntil: "domcontentloaded",
+      timeout: NAVIGATION_TIMEOUT_MS,
+    });
+    // The list's own two controls ARE the ready state: legacy waits for the
+    // search box for the same reason, and it renders whether or not the list
+    // holds anything — an empty Action List is a real answer, not a dead page.
+    const search = await exactlyOne(page, KUALI_ACTION_LIST_SEARCH_INPUT);
+    const go = await exactlyOne(page, KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
+    await search.fill(documentNumber, { timeout: FIELD_TIMEOUT_MS });
+    await go.click({ timeout: FIELD_TIMEOUT_MS });
+    // Kuali refetches the filtered list server-side. Waiting for the MATCHED
+    // link is a bounded wait for the fact we came for; when it never renders
+    // the count below is 0 and `classifyKualiActionResolution` refuses by name,
+    // which is the same verdict an immediately-empty list produces.
+    const matched = documentLinks(page, documentNumber);
+    try {
+      await matched.first().waitFor({ state: "attached", timeout: ACTION_LIST_FILTER_TIMEOUT_MS });
+    } catch {
+      // Not a swallow: a document nobody holds an action on is a REAL outcome,
+      // and the observation below records it as zero matched links with the
+      // list's own contents beside it.
+    }
+    const matchedLinks = await matched.evaluateAll((elements) => elements.map((element) => ({
+      name: (element.textContent ?? "").trim(),
+      href: element.getAttribute("href"),
+    })));
+    const listed = await page
+      .getByRole("link", { name: BARE_DOCUMENT_NUMBER_NAME })
+      .evaluateAll((elements) => elements.map((element) => (element.textContent ?? "").trim()));
+    if (matchedLinks.length > 0) matchedActionListNumber = documentNumber;
+    return KualiActionListObservationSchema.parse({
+      pageStateId: KUALI_ACTION_LIST_READY,
+      space: KUALI_RRSS_SPACE_ID,
+      requestedDocumentNumber: documentNumber,
+      matchedLinks,
+      listedDocumentNumbers: listed,
+      observedAt: now(),
+    });
+  }
 
   async function openDocument(input: Readonly<{
     actionId: string;
@@ -1480,6 +1626,16 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
   }
 
   async function read(id: ObservationId): Promise<string> {
+    if (id === KUALI_ACTION_LIST_MATCHED_NUMBER) {
+      const matched = matchedActionListNumber;
+      if (matched === undefined) {
+        throw new Error(
+          `Kuali ${KUALI_ACTION_LIST_MATCHED_NUMBER} has no value on this page: no Action-List resolve has `
+          + "matched a document here, and there is no number to read that would not be a guess",
+        );
+      }
+      return matched;
+    }
     if (id === KUALI_RRSS_DISPLAYED_EID) return readDisplayedEid(page);
     if (id === KUALI_RRSS_DISPLAYED_TIMEKEEPER) {
       return readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_FIELD);
@@ -1537,6 +1693,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
   const driver: KualiRrssDocumentDriver = {
     system: "kuali" as const,
     read,
+    readActionListForDocument,
     openDocument,
     readSeparationDocument,
     stageTimekeeperName,

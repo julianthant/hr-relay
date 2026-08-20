@@ -1551,6 +1551,32 @@
     },
     {
       "system": "kuali",
+      "label": "Kuali Build Action List",
+      "searchTerms": [
+        "kuali build action list screen"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-20",
+        "fixtureEvidenceRef": "evidence/ui/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/action-list.live.json",
+        "scenarios": [
+          "ui/kuali-action-list-resolve-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation",
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "screen",
+      "id": "kuali.action-list"
+    },
+    {
+      "system": "kuali",
       "label": "RRSS document EID field",
       "searchTerms": [
         "kuali rrss document eid field"
@@ -1630,6 +1656,93 @@
       "screen": "kuali.rrss-document",
       "role": "button",
       "effect": "external-commit"
+    },
+    {
+      "system": "kuali",
+      "label": "Action List search box",
+      "searchTerms": [
+        "kuali action list search box filter document number"
+      ],
+      "sensitivity": "public",
+      "verification": {
+        "verifiedAt": "2026-08-20",
+        "fixtureEvidenceRef": "evidence/ui/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/action-list.live.json",
+        "scenarios": [
+          "ui/kuali-action-list-resolve-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation",
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.action-list.search-input",
+      "screen": "kuali.action-list",
+      "role": "field",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "Action List search GO button",
+      "searchTerms": [
+        "kuali action list search go submit button"
+      ],
+      "sensitivity": "public",
+      "verification": {
+        "verifiedAt": "2026-08-20",
+        "fixtureEvidenceRef": "evidence/ui/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/action-list.live.json",
+        "scenarios": [
+          "ui/kuali-action-list-resolve-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation",
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.action-list.search-go-button",
+      "screen": "kuali.action-list",
+      "role": "button",
+      "effect": "observe"
+    },
+    {
+      "system": "kuali",
+      "label": "Action List document link for one document number",
+      "searchTerms": [
+        "kuali action list document link exact anchored number"
+      ],
+      "sensitivity": "public",
+      "verification": {
+        "verifiedAt": "2026-08-20",
+        "fixtureEvidenceRef": "evidence/ui/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/action-list.live.json",
+        "scenarios": [
+          "ui/kuali-action-list-resolve-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation",
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "element",
+      "id": "kuali.action-list.document-link",
+      "screen": "kuali.action-list",
+      "role": "link",
+      "effect": "observe"
     },
     {
       "system": "kuali",
@@ -1983,6 +2096,33 @@
     },
     {
       "system": "kuali",
+      "label": "Action List loaded and filterable",
+      "searchTerms": [
+        "kuali action list ready state"
+      ],
+      "sensitivity": "restricted",
+      "verification": {
+        "verifiedAt": "2026-08-20",
+        "fixtureEvidenceRef": "evidence/ui/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/action-list.live.json",
+        "scenarios": [
+          "ui/kuali-action-list-resolve-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation",
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "page-state",
+      "id": "kuali.action-list.ready",
+      "screen": "kuali.action-list"
+    },
+    {
+      "system": "kuali",
       "label": "RRSS document loaded and identifiable",
       "searchTerms": [
         "kuali rrss document ready state"
@@ -2081,6 +2221,36 @@
       "kind": "page-state",
       "id": "kuali.rrss-document.finalization-staged",
       "screen": "kuali.rrss-document"
+    },
+    {
+      "system": "kuali",
+      "label": "Action List matched document number",
+      "searchTerms": [
+        "authoritative kuali action list matched document number"
+      ],
+      "sensitivity": "public",
+      "verification": {
+        "verifiedAt": "2026-08-20",
+        "fixtureEvidenceRef": "evidence/ui/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/action-list.live.json",
+        "scenarios": [
+          "ui/kuali-action-list-resolve-surface"
+        ]
+      },
+      "taskUses": [
+        "kuali/read-timekeeper-annotation",
+        "kuali/verify-timekeeper-annotation",
+        "kuali/fill-timekeeper-annotation",
+        "kuali/save-timekeeper-annotation",
+        "kuali/read-separation-document"
+      ],
+      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "kind": "observation",
+      "id": "kuali.action-list.matched-document-number",
+      "screen": "kuali.action-list",
+      "authoritativeFor": [
+        "subject"
+      ]
     },
     {
       "system": "kuali",

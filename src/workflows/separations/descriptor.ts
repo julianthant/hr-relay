@@ -92,6 +92,7 @@ import { z } from "zod";
 import { flow } from "../../base/flow.js";
 import { defineWorkflowDescriptor, requireFact } from "../../base/workflow.js";
 import { KualiReadSeparationDocument } from "../../domain/contracts/kuali/read-separation-document.js";
+import { KualiSearchSeparationAction } from "../../domain/contracts/kuali/search-separation-action.js";
 import { KualiSaveSeparationFinalization } from "../../domain/contracts/kuali/save-separation-finalization.js";
 import { KualiStageSeparationFinalization } from "../../domain/contracts/kuali/stage-separation-finalization.js";
 import { NewKronosReadSeparationTimecard } from "../../domain/contracts/new-kronos/read-separation-timecard.js";
@@ -122,7 +123,6 @@ import {
 } from "../../domain/separations/separation-dates.js";
 import { TerminationReceiptSchema } from "../../domain/separations/termination-receipt.js";
 import {
-  KualiActionIdSchema,
   KualiDocumentNumberSchema,
   KualiTimekeeperNameSchema,
 } from "../../domain/ui/kuali-document-identity.js";
@@ -157,9 +157,25 @@ const SeparationReReadSchema = z.strictObject({
 });
 
 const SeparationsInputShape = {
-  /** Kuali's action id for the document's CURRENT workflow step (D129). */
-  actionId: KualiActionIdSchema,
-  /** The run's own claim about which separation this is, proved off the heading. */
+  /**
+   * The ONE varying value a run carries — D261, and the operator's ruling of
+   * 2026-08-20: *"document number should work. no need action id."*
+   *
+   * Kuali's `actionId` used to sit beside it, because `…/actions/<actionId>` is
+   * the only address Kuali offers. D260 measured the consequence: two varying
+   * values per run, and therefore no typed start box, because `EntryRule.emit`
+   * is a single field and `constants[]` can only carry a value that does not
+   * vary. The id is now a GRAPH OUTPUT — the `resolve-action` node reads it off
+   * the Action List's own row — so this schema has exactly one required field
+   * that varies per run and the modal has a box.
+   *
+   * The number keeps doing its old job unchanged: it is the run's own CLAIM,
+   * proved against the document's level-1 heading before anything else runs
+   * (D129 — an `actionId` names a workflow STEP, not a document). Resolving the
+   * id from the number does not weaken that check; it is now proved TWICE, once
+   * against the Action-List link's anchored accessible name and once against
+   * the opened document's heading.
+   */
   documentNumber: KualiDocumentNumberSchema,
   /**
    * The timekeeper this separation is filed by: staged into the Kuali document
@@ -189,12 +205,10 @@ export const SeparationsCanonicalInput = defineCanonicalInput(
   }),
   [
     {
-      actionId: "6a7a33b2ac106d428b3217e0",
       documentNumber: "4510",
       timekeeperName: "Julian Zaw",
     },
     {
-      actionId: "6a7e45bcbac487bbc6a2ceae",
       documentNumber: "4524",
       timekeeperName: "Julian Zaw",
       searchTimeoutMs: 30_000,
@@ -245,6 +259,7 @@ export const SeparationsResultSchema = z.strictObject({
   }),
 });
 
+const ACTION_NODE = "resolve-action";
 const DOCUMENT_NODE = "document";
 const PLAN_NODE = "plan";
 const TERMINATION_TYPE_NODE = "termination-type";
@@ -270,9 +285,30 @@ function existingComments(comments: { state: "present"; value: string } | { stat
 }
 
 const separationsFlow = flow(SeparationsInput)
+  .step(ACTION_NODE, KualiSearchSeparationAction, {
+    label: "Kuali Action",
+    dependsOn: [],
+    /**
+     * D261's head node. It turns the one number a human knows into the address
+     * Kuali actually answers to, by filtering the Action List's own search box
+     * and reading the matched row's `href` — no click into a document, nothing
+     * staged, nothing written.
+     *
+     * `replay: "checkpoint"` for `document`'s reason, one node earlier: the
+     * node's product is a VALUE, so restoring it into a fresh browser leaves
+     * nothing broken, and the gate releases every session on the way in. The
+     * value CAN go stale between the checkpoint and a post-gate finalization —
+     * an action id names a workflow step — and that is exactly the case
+     * `openDocument` refuses loudly on, by proving the document number off the
+     * page's own heading. A freshness bound here would replace a precise
+     * refusal with a timer, and §5A already ruled that out for this graph.
+     */
+    replay: "checkpoint",
+    bind: ({ input }) => ({ documentNumber: input.documentNumber }),
+  })
   .step(DOCUMENT_NODE, KualiReadSeparationDocument, {
     label: "Separation Document",
-    dependsOn: [],
+    dependsOn: [ACTION_NODE],
     /**
      * Chunk 2's argument verbatim: this node's product is its VALUE, not browser
      * state, so restoring the checkpoint into a fresh browser leaves nothing
@@ -281,7 +317,10 @@ const separationsFlow = flow(SeparationsInput)
      * the gate is replayed into a browser that has never seen these pages.
      */
     replay: "checkpoint",
-    bind: ({ input }) => ({ actionId: input.actionId, documentNumber: input.documentNumber }),
+    bind: ({ input, outputs }) => ({
+      actionId: outputs[ACTION_NODE].actionId,
+      documentNumber: input.documentNumber,
+    }),
   })
   .step(PLAN_NODE, SeparationsReadSeparationPlan, {
     label: "Separation Plan",
@@ -595,13 +634,13 @@ const separationsFlow = flow(SeparationsInput)
   .transaction(FINALIZE_NODE, {
     label: "Finalize Kuali Document",
     dependsOn: [
-      APPROVAL_NODE, DOCUMENT_NODE, PLAN_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE,
+      APPROVAL_NODE, ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE,
       DATES_NODE, RECEIPT_NODE,
     ],
     prepare: {
       uses: KualiStageSeparationFinalization,
       bind: ({ input, outputs }) => ({
-        actionId: input.actionId,
+        actionId: outputs[ACTION_NODE].actionId,
         documentNumber: input.documentNumber,
         emplId: outputs[APPROVAL_NODE].approved.emplId,
         variables: {
@@ -640,7 +679,7 @@ const separationsFlow = flow(SeparationsInput)
        */
       uses: KualiSaveSeparationFinalization,
       bind: ({ input, outputs }) => ({
-        actionId: input.actionId,
+        actionId: outputs[ACTION_NODE].actionId,
         documentNumber: input.documentNumber,
         emplId: outputs[APPROVAL_NODE].approved.emplId,
         variables: {
@@ -741,13 +780,70 @@ export const separationsDescriptor = defineWorkflowDescriptor({
   enqueue: "reject-active",
   actions: STANDARD_WORKFLOW_ACTIONS,
   /**
-   * No `inputRun` surface: the paste-a-line parser splits ONE token per item and
-   * this ingress is three correlated values, so a parser here would have to
-   * invent the two it did not receive. Runs start through the generic start-plan
-   * / command path with structured input, and the queue and run-detail wires
-   * already render this workflow off the registry.
+   * **The one-box door (D261).** D260 refused to build this surface and stated
+   * exactly what would unblock it: `inputRun` carries ONE varying value per
+   * run, and `separations` needed two. The operator ruled *"document number
+   * should work. no need action id."*, the graph's new head node resolves the
+   * action from the number, and the schema now has exactly one required field
+   * that varies — so the modal has a box and the rule D260 wrote is unchanged.
+   *
+   * `timekeeperName` rides in `constants[]`, which is only legitimate because
+   * it does not vary per RUN — §9.16 decision 6a-2 ratified it as ingress, and
+   * D260's own table records it as constant *per operator*. That is the honest
+   * scope of this constant and it is worth stating where somebody will read it:
+   * it is a fact about WHO is filing, baked into a bundle-safe descriptor, and
+   * the trigger that ends it is a SECOND timekeeper — at which point it must
+   * become a typed form field (D260 shape 1) rather than a second constant.
+   * `config.operator.timekeeperName` stays deliberately unused: a descriptor is
+   * bundle-safe and cannot read config, and a value retained in the canonical
+   * input is one `explain run` can show for the run that used it.
    */
-  surfaces: {},
+  surfaces: {
+    inputRun: {
+      placeholder: "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
+      parser: {
+        split: { kind: "delimited", delimiters: [";", "\n"] },
+        /**
+         * ONE rule and NO `otherwise` arm, deliberately. A separation is filed
+         * against a Kuali document and there is no second thing this box could
+         * mean, so an entry that is not a document number refuses the whole box
+         * and starts nothing — which `inputRunParserLabel` says out loud before
+         * an operator pastes forty lines. An `otherwise` arm here would send
+         * arbitrary text into `documentNumber` for the input schema to refuse
+         * one layer later, with a worse message.
+         */
+        rules: [
+          { when: { kind: "pattern", pattern: "document-number" }, emit: "documentNumber" },
+        ],
+        constants: [
+          { field: "timekeeperName", value: { kind: "text", text: "Julian Zaw" } },
+        ],
+      },
+      /**
+       * D250. Both texts are real document numbers this migration has read live
+       * (4502 on 2026-08-12 and again on 2026-08-20; 4510 on 2026-08-12), and
+       * the factory proves each one parses AND satisfies `SeparationsInput`
+       * before this descriptor exists. The pair shows the one thing a
+       * placeholder cannot: that the SAME box starts several separations at
+       * once, one run per document.
+       */
+      examples: [
+        {
+          key: "one-document",
+          label: "One document",
+          text: "4502",
+          note: "the ordinary case — one run for one Kuali separation document",
+        },
+        {
+          key: "two-documents",
+          label: "Two documents",
+          text: "4502; 4510",
+          note: "two runs from one box: each document number starts its own separation, and the "
+            + "action id for each is resolved from the Kuali Action List at run time",
+        },
+      ],
+    },
+  },
   /**
    * No `capabilities` block, and here it is a SAFETY property. Every value this
    * graph would let Edit Data patch is a value some read established: the punch
@@ -840,7 +936,7 @@ export const separationsDescriptor = defineWorkflowDescriptor({
    * category's `×N` marker instead of drawing duplicate segments.
    */
   timeline: [
-    { label: "Kuali extraction", nodes: [DOCUMENT_NODE, PLAN_NODE, TERMINATION_TYPE_NODE] },
+    { label: "Kuali extraction", nodes: [ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, TERMINATION_TYPE_NODE] },
     { label: "Identity check", nodes: [NAME_SEARCH_NODE, SUBJECT_NODE, COMPARISON_NODE, GATE_NODE, APPROVAL_NODE] },
     { label: "Job summary", nodes: [JOB_SUMMARY_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE] },
     { label: "Kronos timecard", nodes: [TIMECARD_SEARCH_NODE, TIMECARD_NODE, DATES_NODE] },
@@ -862,12 +958,24 @@ export const separationsDescriptor = defineWorkflowDescriptor({
   },
   presentation: {
     title: (input) => `Separation ${input.documentNumber}`,
+    /**
+     * D261 removed the action id from the ingress, so the subtitle no longer
+     * has one to abbreviate — and it never should have carried it: an operator
+     * reading a queue row learns nothing from eight hex characters of a
+     * workflow-step address. The filer is the fact the row was missing.
+     */
     subtitle: (input) => (input.reRead === undefined
-      ? `Kuali action ${input.actionId.slice(0, 8)}…`
+      ? `Filed by ${input.timekeeperName}`
       : `re-read ${String(input.reRead.ordinal)} — ${input.reRead.reason}`),
   },
   /** D229 — the descriptor's own words about each node, projected by the explorer. */
   nodePurposes: [
+    {
+      nodeId: "resolve-action",
+      purpose: "Turns the Kuali document number the operator typed into the action id Kuali is actually "
+        + "addressed by, by filtering the Action List's own search box and reading the matched row's link. "
+        + "It refuses a document nobody holds an action on, and refuses two actions for one number.",
+    },
     {
       nodeId: "document",
       purpose: "Reads the entire Kuali RRSS separation request form in ONE page visit: the employee, the "
@@ -964,6 +1072,9 @@ export const separationsDescriptor = defineWorkflowDescriptor({
     },
   ],
   scenarios: [
+    "separations/action-resolved",
+    "separations/action-not-in-action-list",
+    "separations/action-ambiguous",
     "separations/plan-refusals",
     "separations/subject-resolution",
     "separations/employment-refusals",
