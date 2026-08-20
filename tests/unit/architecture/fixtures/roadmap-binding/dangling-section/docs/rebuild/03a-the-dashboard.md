@@ -1,0 +1,20 @@
+# 03a · Phase 3a — the fixture dashboard
+
+The mini phase doc. A `doc: 03a` ref resolves to it by its number prefix, exactly
+as `docs/rebuild/03a-finish-the-dashboard.md` does in the repo.
+
+## Phase summary
+<!-- roadmap: fx-phase -->
+
+An unnumbered heading — the phase docs number none, so `§Phase summary` names it
+by text.
+
+## The wire
+<!-- roadmap: fx-task -->
+
+The section the fixture task is bound to.
+
+## The tail
+<!-- roadmap: fx-range -->
+
+The sub-task's section, so arm (d) is satisfied and arm (a) is the only thing left to fail.
