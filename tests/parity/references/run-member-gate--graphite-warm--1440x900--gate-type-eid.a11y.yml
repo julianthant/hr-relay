@@ -1,0 +1,35 @@
+# run-member-gate--graphite-warm--1440x900--gate-type-eid
+# adapter: fixture
+# fixture: run-member-gate
+# descriptorHash: 133518350fbc3fae96c4d2ba9f7603071952db75aca79c610a759bc35c397fc9
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: gate-type-eid
+# capturedAt: 2026-08-03
+
+- main:
+  - complementary "Run data":
+    - region "Extracted fields":
+      - paragraph: No unsaved changes.
+- dialog "Approve this identity":
+  - banner:
+    - heading "Approve this identity" [level=2]
+    - paragraph: "2 field(s) DISAGREE: name, name-search. Approving files the rest of this separation against this person anyway."
+    - button "Close"
+  - text: document 4502 document name Okonkwo, Adaeze UCPath name Blirea, Glaundi name tier different EID read 10688204 observed 9:23 AM packet a68ede777ed6…ceremony type-the-eidparked 9:24 AM What disagrees
+  - term: name
+  - definition: Okonkwo, Adaeze → Blirea, Glaundi · the names do not match; a common-name re-search resolving a different career employee is exactly how T002173685 terminated the wrong person (S17)
+  - term: name-search
+  - definition: a UCPath search on "Okonkwo, Adaeze" → Blirea, Glaundi (10412770, BLDG MAINT WORKER SR) · searching the document's name does NOT resolve the person being checked; both candidates are shown because only a human can say which one the document means
+  - text: What agrees
+  - term: eid
+  - definition: 10688204 · the checked EID is the one the separation document carries
+  - term: employment
+  - definition: a separation is being prepared for this person · exactly one active employment, which is the ordinary separation shape
+  - text: Approvable candidates Blirea, Glaundi EID 10688204 from checked the EID this run checked (document-eid) Blirea, Glaundi EID 10412770 from name-search a UCPath search on the document's name "Okonkwo, Adaeze" resolved this person What this approval authorizes this workflow reads an identity and files nothing, so it composes no separation write plan Type the employee ID this separation is about (required)
+  - textbox "Type the employee ID this separation is about (required)":
+    - /placeholder: "10001799"
+  - paragraph: The server called this decision ambiguous, so the EID is stated rather than selected. It must still be one this packet showed.
+  - contentinfo:
+    - text: 00000000-0044-4000-8000-000000000044 · gate identity-approval · rev 44
+    - button "Not yet"
+    - button "Approve" [disabled]

@@ -1,0 +1,11 @@
+{
+  "stateId": "run-member-gate",
+  "viewport": "1440x900",
+  "theme": "graphite-warm",
+  "adapter": "fixture",
+  "fixtureId": "run-member-gate",
+  "descriptorHash": "133518350fbc3fae96c4d2ba9f7603071952db75aca79c610a759bc35c397fc9",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-08-03",
+  "variant": "gate-type-eid"
+}

@@ -1,7 +1,7 @@
 # run-parked-write--graphite-warm--1440x900--resolve-present
 # adapter: fixture
 # fixture: run-parked-write
-# descriptorHash: 964e299f88af95492bc7a545ad23257fbe29ce01c2ca6a272ac1d57611a9273d
+# descriptorHash: 133518350fbc3fae96c4d2ba9f7603071952db75aca79c610a759bc35c397fc9
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: resolve-present
 # capturedAt: 2026-08-03
@@ -16,8 +16,31 @@
     - heading "Confirm the transaction exists" [level=2]
     - paragraph: This files ucpath transaction 00000000-0906-4000-8000-000000000906 as committed on this run's evidence. If it is not actually there, the run finishes reporting work nobody did.
     - button "Close"
-  - text: system ucpath fenced 9:44 AM generation 1 key 777777777777… eid 7012 binding 333333333333… proof 00000000-0907-4000-8000-000000000907 observed 9:44 AM
-  - alert: This build cannot record a present write A confirmed-present resolution carries the transaction proof, parsed by the same schema the run's own completion would have parsed it with. The parked-write section serves no proof schema for this commit, so this surface has nothing to parse a proof against. Record the absence instead, or resolve this write from the CLI. code proof-contract-unservednothing was sent · the write is still parked and still fenced
+  - text: system ucpath fenced 9:44 AM generation 1 key 777777777777… eid 7012 binding 333333333333… proof 00000000-0907-4000-8000-000000000907 observed 9:44 AM The proof, as ucpath/terminate-person defines it Every box below is part of the transaction proof. Type what the target system shows you — the server parses it through the same schema the run's own completion would have. Kind ucpath-termination Source ss-smart-hr-detail-read Empl id (required)
+  - textbox "Empl id (required)"
+  - paragraph: "must match ^10\\d{6}$"
+  - text: Effective date (required)
+  - textbox "Effective date (required)"
+  - paragraph: "must match ^(0[1-9]|1[0-2])/(0[1-9]|[12]\\d|3[01])/\\d{4}$"
+  - text: Transaction id (required)
+  - textbox "Transaction id (required)"
+  - paragraph: "must match ^T\\d{6,}$"
+  - text: Approval status (required)
+  - combobox "Approval status (required)":
+    - option "—" [selected]
+    - option "Approved"
+    - option "Denied"
+    - option "Error"
+    - option "Manually Processed"
+    - option "Pending"
+    - option "Pushed Back"
+  - text: Displayed name (required)
+  - textbox "Displayed name (required)"
+  - paragraph: at least 1 character(s)
+  - text: Where did you see this, and how did you get there? (required)
+  - textbox "Where did you see this, and how did you get there? (required)" [invalid]:
+    - /placeholder: Job Data and Person Org Summary for this EID — no termination row of any effective date; last action is the 2024 hire.
+  - alert: Write what you checked — an empty note is not evidence.
   - contentinfo:
     - text: 00000000-0006-4000-8000-000000000006 · rev 6 · generation 1
     - button "Not yet"

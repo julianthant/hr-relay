@@ -1,7 +1,7 @@
 # start-run--graphite-warm--narrow-1024x768
 # adapter: fixture
 # fixture: start-run
-# descriptorHash: 964e299f88af95492bc7a545ad23257fbe29ce01c2ca6a272ac1d57611a9273d
+# descriptorHash: 133518350fbc3fae96c4d2ba9f7603071952db75aca79c610a759bc35c397fc9
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -26,9 +26,15 @@
     - button "3 Result" [disabled]
   - text: Workflow setup
   - heading "Person Lookup" [level=3]
-  - text: group Search Entries — separated by “;” or a new line 0 parsed
-  - textbox "Entries — separated by “;” or a new line":
+  - text: group Search
+  - paragraph: "Resolves ONE person across UCPath and the CRM: searches Person Org by EID or name, cross-verifies the match against the CRM onboarding record, folds the two into an active / inactive verdict, and reads the CRM onboarding dates when the run asks for them."
+  - text: Examples
+  - button "One EID"
+  - button "An EID and a name"
+  - text: employee IDs — separated by “;” or a new line 0 parsed
+  - textbox "employee IDs — separated by “;” or a new line":
     - /placeholder: Enter EIDs or names, semicolon-separated (e.g. 10873698; Battistessa, Johnnie)
+  - paragraph: An employee ID is eight digits beginning 10; anything else is taken exactly as typed.
   - text: How this run is shaped keepNonHdh no includeCrmDates no
   - complementary "Run controls":
     - text: Shared settings
@@ -36,7 +42,7 @@
     - paragraph: These options work the same way for every workflow.
     - heading "Queue behavior" [level=4]
     - paragraph: Choose how this work enters the browser queue.
-    - text: Priority
+    - text: Active-run policy Refuses the start while a run for the same subject is unfinished Priority
     - combobox "Priority":
       - option "Interactive" [selected]
       - option "Bulk"

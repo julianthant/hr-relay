@@ -1,7 +1,7 @@
 # explorer-transaction--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: explorer-transaction
-# descriptorHash: 964e299f88af95492bc7a545ad23257fbe29ce01c2ca6a272ac1d57611a9273d
+# descriptorHash: 133518350fbc3fae96c4d2ba9f7603071952db75aca79c610a759bc35c397fc9
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -29,7 +29,7 @@
       - text: Workflows 8 Separations
       - list:
         - listitem:
-          - button "Separation 18"
+          - button "Separation 19"
           - list "Proving harnesses of Separation":
             - listitem:
               - button "Separation Document a proving harness of Separation 2"
@@ -47,11 +47,11 @@
       - list:
         - listitem:
           - button "Person Lookup 4"
-      - text: Operations
+      - text: Test equipment
       - list:
         - listitem:
           - button "Kuali Timekeeper Annotation 1"
-    - text: Kuali Timekeeper Annotation v1 1 node · 0 reads · 2 writes
+    - text: Kuali Timekeeper Annotation v1 1 node · 0 reads · 4 writes
     - button "What is this graph? — Kuali Timekeeper Annotation"
     - group "Kuali Timekeeper Annotation identity": code kt category operations version 1 shape single enqueue reject-active subject eid system kuali
     - list:
@@ -64,25 +64,105 @@
     - text: Transaction system kuali changes a system of record a dry run stops here — the commit does not run
     - table "annotate-timekeeper contract":
       - rowgroup:
-        - row "Contract System Declared":
-          - columnheader "Contract"
+        - row "Field System Recorded":
+          - columnheader "Field"
           - columnheader "System"
-          - columnheader "Declared"
+          - columnheader "Recorded"
       - rowgroup:
         - row "Writes":
           - cell "Writes"
-        - row "kuali/fill-timekeeper-annotation prepares · Stage Kuali Timekeeper Annotation kuali checkpoint in-memory-only":
-          - cell "kuali/fill-timekeeper-annotation prepares · Stage Kuali Timekeeper Annotation"
+        - row "kuali/fill-timekeeper-annotation prepares · Stage Kuali Timekeeper Annotation checkpoint in-memory-only":
+          - cell "kuali/fill-timekeeper-annotation prepares · Stage Kuali Timekeeper Annotation checkpoint in-memory-only"
+        - row "actionId in · string kuali bound by the graph":
+          - cell "actionId in · string"
           - cell "kuali"
-          - cell "checkpoint in-memory-only"
-        - row "kuali/save-timekeeper-annotation commits · Save Kuali Timekeeper Annotation kuali proof save-verify":
-          - cell "kuali/save-timekeeper-annotation commits · Save Kuali Timekeeper Annotation"
+          - cell "bound by the graph"
+        - row "documentNumber in · string kuali bound by the graph":
+          - cell "documentNumber in · string"
           - cell "kuali"
-          - cell "proof save-verify"
+          - cell "bound by the graph"
+        - row "emplId in · string kuali bound by the graph":
+          - cell "emplId in · string"
+          - cell "kuali"
+          - cell "bound by the graph"
+        - row "timekeeperName in · string kuali bound by the graph":
+          - cell "timekeeperName in · string"
+          - cell "kuali"
+          - cell "bound by the graph"
+        - row "actionId out · string kuali not recorded":
+          - cell "actionId out · string"
+          - cell "kuali"
+          - cell "not recorded"
+        - row "documentNumber out · string kuali not recorded":
+          - cell "documentNumber out · string"
+          - cell "kuali"
+          - cell "not recorded"
+        - row "observedAt out · string kuali not recorded":
+          - cell "observedAt out · string"
+          - cell "kuali"
+          - cell "not recorded"
+        - row "observedEid out · string kuali not recorded":
+          - cell "observedEid out · string"
+          - cell "kuali"
+          - cell "not recorded"
+        - row "previousTimekeeperName out · string kuali not recorded":
+          - cell "previousTimekeeperName out · string"
+          - cell "kuali"
+          - cell "not recorded"
+        - row "stagedPageState out · literal kuali not recorded":
+          - cell "stagedPageState out · literal"
+          - cell "kuali"
+          - cell "not recorded"
+        - row "stagedTimekeeperName out · string kuali not recorded":
+          - cell "stagedTimekeeperName out · string"
+          - cell "kuali"
+          - cell "not recorded"
+        - row "kuali/save-timekeeper-annotation commits · Save Kuali Timekeeper Annotation proof save-verify":
+          - cell "kuali/save-timekeeper-annotation commits · Save Kuali Timekeeper Annotation proof save-verify"
+        - row "actionId in · string kuali bound by the graph":
+          - cell "actionId in · string"
+          - cell "kuali"
+          - cell "bound by the graph"
+        - row "documentNumber in · string kuali bound by the graph":
+          - cell "documentNumber in · string"
+          - cell "kuali"
+          - cell "bound by the graph"
+        - row "emplId in · string kuali bound by the graph":
+          - cell "emplId in · string"
+          - cell "kuali"
+          - cell "bound by the graph"
+        - row "timekeeperName in · string kuali bound by the graph":
+          - cell "timekeeperName in · string"
+          - cell "kuali"
+          - cell "bound by the graph"
+        - row "savedState.actionId out · string kuali stored transaction checkpoint":
+          - cell "savedState.actionId out · string"
+          - cell "kuali"
+          - cell "stored transaction checkpoint"
+        - row "savedState.documentNumber out · string kuali stored transaction checkpoint":
+          - cell "savedState.documentNumber out · string"
+          - cell "kuali"
+          - cell "stored transaction checkpoint"
+        - row "savedState.kind out · literal kuali stored transaction checkpoint":
+          - cell "savedState.kind out · literal"
+          - cell "kuali"
+          - cell "stored transaction checkpoint"
+        - row "savedState.observedEid out · string kuali stored transaction checkpoint":
+          - cell "savedState.observedEid out · string"
+          - cell "kuali"
+          - cell "stored transaction checkpoint"
+        - row "savedState.source out · literal kuali stored transaction checkpoint":
+          - cell "savedState.source out · literal"
+          - cell "kuali"
+          - cell "stored transaction checkpoint"
+        - row "savedState.timekeeperName out · string kuali stored transaction checkpoint":
+          - cell "savedState.timekeeperName out · string"
+          - cell "kuali"
+          - cell "stored transaction checkpoint"
     - text: Depends on Nothing — this node may start immediately. Write sequence dry run stop-after-prepare probe always probe→fence 45s lease transaction retry before fence none Detail projections Timekeeper savedState.timekeeperName Coverage points transaction:annotate-timekeeper/dry-run — transaction annotate-timekeeper previews prepare and creates no intent transaction:annotate-timekeeper/subject-mismatch — transaction annotate-timekeeper observes a mismatched subject and never fences transaction:annotate-timekeeper/committed — transaction annotate-timekeeper commits once and proves it transaction:annotate-timekeeper/already-present — transaction annotate-timekeeper finds its permanent key already satisfied
-    - region "kuali/fill-timekeeper-annotation": prepares kuali/fill-timekeeper-annotation Stage Kuali Timekeeper Annotation Implemented by store kuali kind browser driver kuali Subject binding kind person from input emplId identity eid observes kuali.rrss-document.displayed-eid match normalized-exact-eid required at after-prepare-before-fence Errors kuali-unavailable unexpected-page-state subject-mismatch fill-not-persisted UI vocabulary screen kuali.rrss-document observation kuali.rrss-document.displayed-eid observation kuali.rrss-document.displayed-timekeeper observation kuali.rrss-document.displayed-transaction-number element kuali.rrss-document.eid-field page-state kuali.rrss-document.finalization-staged page-state kuali.rrss-document.ready element kuali.rrss-document.timekeeper-field page-state kuali.rrss-document.timekeeper-staged Scenarios kuali-timekeeper-annotation/dry-run-preview Source contract src/domain/contracts/kuali/fill-timekeeper-annotation.ts impl src/stores/kuali/tasks/fill-timekeeper-annotation.ts input 6308707bae18output 453b257cb9e7impl 0ab8d330cb06
-    - region "kuali/save-timekeeper-annotation": commits kuali/save-timekeeper-annotation Save Kuali Timekeeper Annotation Implemented by store kuali kind browser driver kuali Subject binding kind person from input emplId identity eid observes kuali.rrss-document.displayed-eid match normalized-exact-eid required at after-prepare-before-fence Write safety completion save-verify verifies with kuali/verify-timekeeper-annotation probes with kuali/read-timekeeper-annotation absence after fence stabilized · 30000ms · 2 reads Errors kuali-unavailable unexpected-page-state subject-mismatch save-refused UI vocabulary screen kuali.rrss-document observation kuali.rrss-document.displayed-eid observation kuali.rrss-document.displayed-transaction-number element kuali.rrss-document.eid-field page-state kuali.rrss-document.finalization-staged page-state kuali.rrss-document.ready element kuali.rrss-document.save-button page-state kuali.rrss-document.timekeeper-staged Scenarios kuali-timekeeper-annotation/dry-run-preview Source contract src/domain/contracts/kuali/save-timekeeper-annotation.ts impl src/stores/kuali/tasks/save-timekeeper-annotation.ts input 6308707bae18output 159d3f0de361impl e200203f59d8
+    - region "kuali/fill-timekeeper-annotation": prepares kuali/fill-timekeeper-annotation Stage Kuali Timekeeper Annotation Implemented by store kuali kind browser driver kuali Subject binding kind person from input emplId identity eid observes kuali.rrss-document.displayed-eid match normalized-exact-eid required at after-prepare-before-fence Errors kuali-unavailable unexpected-page-state subject-mismatch fill-not-persisted UI vocabulary screen kuali.action-list element kuali.action-list.document-link observation kuali.action-list.matched-document-number page-state kuali.action-list.ready element kuali.action-list.search-go-button element kuali.action-list.search-input screen kuali.rrss-document observation kuali.rrss-document.displayed-eid observation kuali.rrss-document.displayed-timekeeper observation kuali.rrss-document.displayed-transaction-number element kuali.rrss-document.eid-field page-state kuali.rrss-document.finalization-staged page-state kuali.rrss-document.ready element kuali.rrss-document.timekeeper-field page-state kuali.rrss-document.timekeeper-staged Scenarios kuali-timekeeper-annotation/dry-run-preview Source contract src/domain/contracts/kuali/fill-timekeeper-annotation.ts impl src/stores/kuali/tasks/fill-timekeeper-annotation.ts input 6308707bae18output 453b257cb9e7impl 6e70b0d1cbb7
+    - region "kuali/save-timekeeper-annotation": commits kuali/save-timekeeper-annotation Save Kuali Timekeeper Annotation Implemented by store kuali kind browser driver kuali Subject binding kind person from input emplId identity eid observes kuali.rrss-document.displayed-eid match normalized-exact-eid required at after-prepare-before-fence Write safety completion save-verify verifies with kuali/verify-timekeeper-annotation probes with kuali/read-timekeeper-annotation absence after fence stabilized · 30000ms · 2 reads Errors kuali-unavailable unexpected-page-state subject-mismatch save-refused UI vocabulary screen kuali.action-list element kuali.action-list.document-link observation kuali.action-list.matched-document-number page-state kuali.action-list.ready element kuali.action-list.search-go-button element kuali.action-list.search-input screen kuali.rrss-document observation kuali.rrss-document.displayed-eid observation kuali.rrss-document.displayed-transaction-number element kuali.rrss-document.eid-field page-state kuali.rrss-document.finalization-staged page-state kuali.rrss-document.ready element kuali.rrss-document.save-button page-state kuali.rrss-document.timekeeper-staged Scenarios kuali-timekeeper-annotation/dry-run-preview Source contract src/domain/contracts/kuali/save-timekeeper-annotation.ts impl src/stores/kuali/tasks/save-timekeeper-annotation.ts input 6308707bae18output 159d3f0de361impl d677f923641b
 - region "Session Panel":
-  - button "Sessions 1 running 1 waiting 1 idle 1 paused 1 failed 2 workers need attention"
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 worker need attention"
   - text: app 0.1.0
   - status: Live

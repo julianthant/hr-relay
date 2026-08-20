@@ -1,0 +1,35 @@
+# run-open-gate--graphite-warm--1440x900--gate-reject
+# adapter: fixture
+# fixture: run-open-gate
+# descriptorHash: 133518350fbc3fae96c4d2ba9f7603071952db75aca79c610a759bc35c397fc9
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: gate-reject
+# capturedAt: 2026-08-03
+
+- main:
+  - complementary "Run data":
+    - region "Extracted fields":
+      - paragraph: No unsaved changes.
+- dialog "Reject this identity":
+  - banner:
+    - heading "Reject this identity" [level=2]
+    - paragraph: The run ends and records why. Separation document 4502 stays untouched.
+    - button "Close"
+  - text: document 4502 document name Blirea, Glaundi UCPath name Blirea, Glaundi name tier same EID read 10688204 observed 9:48 AM packet 7adf06ff1c4c…ceremony choose-a-candidateparked 9:49 AM What disagrees
+  - term: name-search
+  - definition: a UCPath search on "Blirea, Glaundi" → Blirea, Glaundi (10412770, BLDG MAINT WORKER SR) · searching the document's name does NOT resolve the person being checked; both candidates are shown because only a human can say which one the document means
+  - text: What agrees
+  - term: name
+  - definition: Blirea, Glaundi · the two spellings agree token for token
+  - term: eid
+  - definition: 10688204 · the checked EID is the one the separation document carries
+  - term: employment
+  - definition: a separation is being prepared for this person · exactly one active employment, which is the ordinary separation shape
+  - text: Approvable candidates Blirea, Glaundi EID 10688204 from checked the EID this run checked (document-eid) Blirea, Glaundi EID 10412770 from name-search a UCPath search on the document's name "Blirea, Glaundi" resolved this person What this approval authorizes this workflow reads an identity and files nothing, so it composes no separation write plan Why is this not the right person? (required)
+  - textbox "Why is this not the right person? (required)":
+    - /placeholder: The UCPath detail is a different person — same name, different department, and the document's EID belongs to the STDT 3 in Housing.
+  - paragraph: Recorded on the run's failure record. It is the only account of why nothing was filed.
+  - contentinfo:
+    - text: 00000000-0005-4000-8000-000000000005 · gate identity-approval · rev 5
+    - button "Not yet"
+    - button "Reject" [disabled]
