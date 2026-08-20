@@ -47,7 +47,7 @@ the uncalibrated one was caught hiding content drift *and* blocking its own repa
 > text lives in the owner. Rounds 1–7 predate that rule and still carry normative prose; treat
 > the owning doc as authoritative wherever they differ.
 
-Three adversarial reviews (`reviews/01-review.md`, `reviews/02-review.md`, `reviews/03-review.md`)
+Three adversarial reviews (`docs/rebuild/history/doc-reviews/2026-07-17-task-contract-review.md`, `docs/rebuild/history/doc-reviews/2026-07-17-workflow-model-review.md`, `docs/rebuild/history/doc-reviews/2026-07-17-dashboard-surfaces-review.md`)
 found that ref task-contract / ref workflow-model / ref dashboard-surfaces describe divergent systems at
 their seams. This memo is the orchestrator's binding resolution. **Every decision below overrides
 anything contradicting it in those three.**
@@ -226,7 +226,7 @@ imports it verbatim.
 
 ---
 
-## Reconciliation round 2 (2026-07-18) — write-safety skeptic (`reviews/09-review.md`)
+## Reconciliation round 2 (2026-07-18) — write-safety skeptic (`docs/rebuild/history/doc-reviews/2026-07-18-write-safety-review.md`)
 
 _phase: 0_
 
@@ -647,7 +647,7 @@ implementation plan to what the tools proved and close the failures the experime
 _phase: 0_
 
 Answers given by the operator in the 2026-07-23 and 2026-07-24 review sessions (recorded in
-`reviews/second-look-2026-07-22.md` §6.5/§6.6) plus the 2026-07-26 migration-order answer. They
+`docs/rebuild/history/design-inputs/2026-07-22-second-look.md` §6.5/§6.6) plus the 2026-07-26 migration-order answer. They
 had sat in the review file while ref charter, the master plan and ref write-safety still specified the world they replaced; this round
 records them and the same commit folds each into its owner. **One line each — read the owner.**
 

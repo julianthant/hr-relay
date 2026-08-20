@@ -1,3 +1,5 @@
+_History — superseded by `reference/dashboard-surfaces.md` (see `history/README.md`); kept verbatim as written on 2026-07-25._
+
 # Legacy Queue Row + Log Panel — keep / ditch ledger (2026-07-25)
 
 **Status:** proposal, awaiting operator ratification. Feeds `docs/rebuild/reference/dashboard-surfaces.md`.

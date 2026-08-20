@@ -943,7 +943,7 @@ where a name moved: the design docs are now cited by slug under `docs/rebuild/re
 plan's own numbers are the phase docs `docs/rebuild/00`–`05` (the number IS the phase; phase 3 is
 three docs, `03a`/`03b`/`03c`). The master plan itself was dissolved into those docs on the same day
 (step 3b); its as-written record, with a section-by-section table of where everything went, is
-`docs/rebuild/reviews/2026-08-20-master-plan-dissolved.md`._
+`docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`._
 
 ### The one-plan rule
 
@@ -1013,7 +1013,7 @@ line there naming what landed and what is left.
 
 ## Phases at a glance
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §2 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite
+_Moved from `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md` §2 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite
 re-verifies it, and its four internal §-refs are repointed to the phase docs that now own those
 sections. Each phase's detail — its work items, what is done, its exit criteria — is its own doc
 under `docs/rebuild/`; the tree above is the same set of phases as nodes._
@@ -1053,7 +1053,7 @@ sections are now:
 | §4 · §5 · §5.1 · §6 · §7.4 | `docs/rebuild/05-cut-over.md` |
 
 The whole as-written file, with a section-by-section table of where every § landed, is preserved at
-`docs/rebuild/reviews/2026-08-20-master-plan-dissolved.md`.
+`docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`.
 
 This file's own appendices went too:
 

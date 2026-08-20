@@ -1,3 +1,5 @@
+_History — superseded by `reference/decisions.md` round 8 (D73–D86) and the owners each answer was folded into (see `history/README.md`); kept verbatim as written on 2026-07-22._
+
 # Second-look review — whole program + legacy evidence (2026-07-22)
 
 Reviewer: Claude (Fable 5), at operator request, after Codex's three passes (`e4e8d742`,

@@ -9,7 +9,7 @@ what is left, its exit criteria; contracts it built live in `reference/`.
 <!-- roadmap-status: phase-1 -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 1 — the SPINE) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 1 — the SPINE) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Goal.** Build the minimum of the dependency graph (§1) that can carry **one real workflow end to
 end**, in the rebuild repo's `src/`, inside that repo's own tsconfig project + unit tests +
@@ -51,7 +51,7 @@ proves only inside the rebuild repo and never changes production routing.
 <!-- roadmap-status: p1-base -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's ordered work items — 1a and 1b) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's ordered work items — 1a and 1b) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | # | Work item | Owner | Key guards that must be green at this step |
 |---|---|---|---|
@@ -64,7 +64,7 @@ _Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's ordered
 <!-- roadmap-status: p1-authority -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's ordered work items — 1c, 1d and 1e) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's ordered work items — 1c, 1d and 1e) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | # | Work item | Owner | Key guards that must be green at this step |
 |---|---|---|---|
@@ -89,7 +89,7 @@ shape simplification rather than being normalized as editor lag.
 <!-- roadmap-status: p1-kernel -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's ordered work items — 1f) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's ordered work items — 1f) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | # | Work item | Owner | Key guards that must be green at this step |
 |---|---|---|---|
@@ -101,7 +101,7 @@ _Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's ordered
 <!-- roadmap-status: p1-spine -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's ordered work items — 1g-spine and 1i-spine) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's ordered work items — 1g-spine and 1i-spine) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | # | Work item | Owner | Key guards that must be green at this step |
 |---|---|---|---|
@@ -118,7 +118,7 @@ _The live exit test's full record — the run, the four parity surfaces, the spe
 
 ## Integration amendment — Phase 1's share (master plan §7)
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §7 intro, §7.1's parity-surface bullet, §7.2's `1b`/`1c`/`1e`/`1g-spine`/`1i-spine` rows on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §7 intro, §7.1's parity-surface bullet, §7.2's `1b`/`1c`/`1e`/`1g-spine`/`1i-spine` rows on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 `docs/rebuild/reference/frontend-backend-integration.md` is now the owning companion for the composition
 boundary between the approved rebuild frontend and refs workflow-model/dashboard-surfaces/data-intake-and-edit-data/write-safety/clock-config-secrets/operator-trust's backend contracts. It
@@ -157,7 +157,7 @@ Rounds 22 and 25 onward belong to Phase 2 (`02-prove-writes-build-the-tails.md`)
 
 ## Exit criteria
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's hard exit criteria, with the three presentation defects the exit run exposed) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's hard exit criteria, with the three presentation defects the exit run exposed) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Hard exit criteria (Phase 1) — ALL MET 2026-08-04.**
 

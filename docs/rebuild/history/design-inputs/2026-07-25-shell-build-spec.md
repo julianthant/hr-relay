@@ -1,3 +1,5 @@
+_History — superseded by `reference/dashboard-surfaces.md` for the naming canon and the surface contracts; its pixel detail has no successor doc — the shipped `src/dashboard/` is the as-built (see `history/README.md`); kept verbatim as written on 2026-07-25._
+
 # Shell build spec — Top Bar · Workflow Panel · Status Bar · Session Panel (2026-07-25)
 
 **Status:** reference spec for the rebuild. Extracted from the shipped `src/dashboard/` so the four

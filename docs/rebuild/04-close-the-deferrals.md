@@ -10,7 +10,7 @@ contracts it built live in `reference/`.
 <!-- roadmap-status: deferred -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.5 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.5 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 - **Service stores** (`extraction`/`normalization`/`ocr`/`roster` contract+impl) — **Phase 2h** (they need 01+11+12)
   so they exist before consumers; the **ocr pipeline workflow** migrates at **order 3** (before its
@@ -30,7 +30,7 @@ _Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.5 on 2026-08-20 (3
   in **2i** over synthetic handoffs. Legacy capture remains production-authoritative; rebuild
   capture uses isolated state and hands off only within the rebuild repo. Both switch together at final cutover.
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 0's deferred decisions — logged with the point each resolves at) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 0's deferred decisions — logged with the point each resolves at) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Deferred decisions (logged, resolved at the named point).** OnBase
 `upload-verify` vs `unverifiableByPage` (ref write-safety OQ2—before order 7); per-workflow prewrite

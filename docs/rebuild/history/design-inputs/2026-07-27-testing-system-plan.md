@@ -1,3 +1,5 @@
+_History — superseded by `reference/guards-and-tests.md` (D91, 2026-07-31) (see `history/README.md`); kept verbatim as written on 2026-07-27._
+
 # Testing-system plan — coverage policy, test-value standard, and legacy-suite preservation
 
 Status: **RATIFIED 2026-07-31 (D91).** The operator accepted the coverage floors, Phase-2 branch

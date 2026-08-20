@@ -2762,7 +2762,7 @@ decisions.)*
 ## 9. Ratified delegation and presentation decisions (**row-model** D6–D24)
 
 Status: **ratified by the operator 2026-07-25.** These continue the **row-model decision series**
-ratified 2026-07-24 (`reviews/second-look-2026-07-22.md` §6.6 — D1: three row types Run/Group/Member
+ratified 2026-07-24 (`docs/rebuild/history/design-inputs/2026-07-22-second-look.md` §6.6 — D1: three row types Run/Group/Member
 with review-as-status and eight statuses; D2: a PDF upload is always a Group; D3: unrunnable items
 are typed Rejected Member Rows, delete-only; D4: a delegated OCR run keeps its own Run Row in the
 OCR panel plus a link from the parent; D5: groups default collapsed, auto-expand on a member
@@ -2772,8 +2772,8 @@ collision is real: this section's **row-model D22** shortens the status vocabula
 bare **D22** is an unrelated contract-shape/guards ownership split. `reference/decisions.md` carries
 the matching warning at its top; keep both in step.
 
-D6–D17 close the twelve delegation questions in `reviews/delegation-layouts-2026-07-25.md` §7;
-D18–D20 close three build-gating decisions in `reviews/demo-feature-plan-2026-07-25.md` §6. The
+D6–D17 close the twelve delegation questions in `docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md` §7;
+D18–D20 close three build-gating decisions in `docs/rebuild/history/design-inputs/2026-07-25-demo-feature-plan.md` §6. The
 vocabulary is that ledger's: **`containment`** = `member | linked | rejected` (§3), Group Row anatomy
 + presentation ladder + rollup precedence (§4), delegation shapes S0–S7 (§5).
 
@@ -2818,7 +2818,7 @@ under the upload row, and are never removed from their own panel.
 Rationale: a signer run is independently meaningful and independently viewable; the upload row's job
 is the ticket, not the roster.
 
-**Supersedes `reviews/delegation-layouts-2026-07-25.md` §7 Q1, which recommended the opposite**
+**Supersedes `docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md` §7 Q1, which recommended the opposite**
 (signers as `member`, delisted from the Oath Signature panel), **and deletes that ledger's §5 S4
 layout ("Packet that ends in one filing")** — oath-upload is a Run Row that waits on linked children
 and then performs its one final act. It has no Group Row anatomy, no member ladder, no member
@@ -2901,7 +2901,7 @@ status counts plus the separate waiting / rejected tallies (D9's `50 people · 3
 detail an inline card carried survives on the member's own drill-in and the group's People tab;
 and `Open all N people` is still the route into the full member list at every size.
 
-**Supersedes** the original D11 ladder in full, `reviews/delegation-layouts-2026-07-25.md` §4's
+**Supersedes** the original D11 ladder in full, `docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md` §4's
 four-rung ladder and its "at 41+ the attention strip renders **above** the matrix" rule, and the
 2026-07-27 three-rung amendment this entry previously recorded.
 
@@ -2936,7 +2936,7 @@ the question at start time, like choosing an OCR form spec, rather than navigati
 workflow identity for the same person-check domain.
 
 This supersedes the earlier D15 decision to keep a standalone `person-match` entry and
-`reviews/delegation-layouts-2026-07-25.md` §7 Q10's recommendation to hide that entry. The two
+`docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md` §7 Q10's recommendation to hide that entry. The two
 UCPath surfaces remain distinct; only their workflow/panel identity is unified.
 
 ### D16 — cancelling a group is tree-scoped, final, with no dialog and no undo
@@ -2949,7 +2949,7 @@ history.
 intentional cancel.** Cancel is used deliberately and often; a confirm on each one costs more than
 the occasional re-run.
 
-**Supersedes the "with a confirm naming the casualties" half of `reviews/delegation-layouts-2026-07-25.md`
+**Supersedes the "with a confirm naming the casualties" half of `docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md`
 §7 Q11**; the tree-scope half is ratified as recommended. Mechanically this is §2.4's `Cancel`
 semantics unchanged — full dependency tree resolved from SQLite authority, every edge's ref workflow-model
 cancel policy applied, all-or-none, visible queue roots never an authority fallback. What D16
@@ -3060,7 +3060,7 @@ and clock — under both full and short receipt states. The failure capture keep
 tile and lightbox; the filter chips and Export menu carry over unchanged.
 
 **Supersedes the "Log Panel tabs are therefore FIVE: Logs / Data / Review / Receipt / Screenshots"
-wording in `reviews/second-look-2026-07-22.md` §6.6.** Unchanged from that decision sheet: the step
+wording in `docs/rebuild/history/design-inputs/2026-07-22-second-look.md` §6.6.** Unchanged from that decision sheet: the step
 timeline is **not** a tab (persistent strip + hover detail — see D21 for its width rule), and tab
 defaults stay state-driven (`Waiting on you` / `Write parked` → Review, terminal → Receipt, running
 → Logs; a group with a member needing attention → People).

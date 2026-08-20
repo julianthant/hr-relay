@@ -1,3 +1,5 @@
+_History — superseded by `reference/frontend-backend-integration.md` (see `history/README.md`); kept verbatim as written on 2026-07-28._
+
 # Backend capabilities the demo discovered (2026-07-28)
 
 **Status (2026-07-30): harvest complete and incorporated.** The numbered findings remain the

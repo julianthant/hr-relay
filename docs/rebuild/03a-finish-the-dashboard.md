@@ -13,7 +13,7 @@ left, and its exit criteria; contracts it built live in `reference/`.
 <!-- roadmap-status: dash-defaults -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §7.1 (the approved target's panel-kind tabs — the shell every later surface lands in) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §7.1 (the approved target's panel-kind tabs — the shell every later surface lands in) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 - The approved target has panel-kind tabs: run/member `Logs · Receipt`, review
   `Review · Logs · Receipt`, group `People · Logs · Receipt`; Data is in the permanent Context rail
@@ -39,7 +39,7 @@ _Moved from `reviews/2026-08-20-master-plan-dissolved.md` §7.1 (the approved ta
 
 ## Integration execution rule (master plan §7.3)
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §7.3 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §7.3 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 Every surface lands as one vertical slice: strict schema → server query/projector → subscription
 invalidation/patch → command path (when interactive) → production component → schema fixture →

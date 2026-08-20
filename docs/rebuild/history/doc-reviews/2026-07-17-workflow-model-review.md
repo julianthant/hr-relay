@@ -1,3 +1,5 @@
+_History — superseded by `reference/workflow-model.md` and `reference/decisions.md` round 1 (D1–D3, D6–D9, D16) (see `history/README.md`); kept verbatim as written on 2026-07-17._
+
 # Adversarial review — reference/workflow-model.md (2026-07-17)
 
 Verdict: **buildable with amendments** — direction sound, but docs 01/02 describe two different

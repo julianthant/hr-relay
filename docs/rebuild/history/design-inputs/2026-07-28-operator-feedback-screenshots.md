@@ -1,3 +1,5 @@
+_History — superseded by `reference/dashboard-surfaces.md` §9 and the shipped `src/dashboard/` surfaces (see `history/README.md`); kept verbatim as written on 2026-07-28._
+
 # Operator screenshot feedback — 2026-07-28
 
 **Surface under review:** the rebuild demo at `http://localhost:<port>/?view=rebuild-demo`

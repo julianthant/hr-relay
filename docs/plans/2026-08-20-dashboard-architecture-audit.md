@@ -29,7 +29,7 @@ is a short list of targeted moves.
 
 ## 2 · The rebuild plan — phases, and what is done
 
-Source: `docs/rebuild/reviews/2026-08-20-master-plan-dissolved.md` §2 (the phase table), `ROADMAP.md` §1–§3, and
+Source: `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md` §2 (the phase table), `ROADMAP.md` §1–§3, and
 `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` §6 (the Phase 3
 tracks). The phase docs win on any disagreement.
 

@@ -9,7 +9,7 @@ what is left, its exit criteria; contracts it built live in `reference/`.
 <!-- roadmap-status: phase-0 -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 0 — foundation design) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 0 — foundation design) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Goal.** Every foundational contract is designed, adversarially reviewed, and operator-approved
 before any rebuild code is built (charter §Process: nothing is built before its design part is
@@ -44,7 +44,7 @@ milestone may report `npm run lint:tests` green until it actually is.
 
 ## The base's dependency graph
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §1 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §1 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 The base/kernel is built along one critical path. Guard plumbing lands before the tree; the first
 real rebuild `src/` leaf and every applicable type/lint/architecture arm activate in the same commit
@@ -135,7 +135,7 @@ than inventing one mid-migration.
 <!-- roadmap-status: phase0-always-gate -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.3 (the order-8 prerequisite block — the gate was pulled into Phase 0 by D77, so it is filed here rather than with the migration order) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.3 (the order-8 prerequisite block — the gate was pulled into Phase 0 by D77, so it is filed here rather than with the migration order) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Order-8 prerequisite — RESOLVED, and pulled into Phase 0 (D77).** This slot previously read "the
 separations identity-approval GATE-NODE has no design yet." That was the sharpest priority
@@ -153,7 +153,7 @@ designed gate instead of owing one.
 <!-- roadmap-status: phase0-size-model -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.7 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.7 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 This plan previously contained **no sizing of any kind**. Sizing keeps the isolated coexistence
 program reviewable and exposes overruns before they compound integration risk.
@@ -226,7 +226,7 @@ ratification act and the normative pointer stay in the ledger; this is the phase
 
 ## Exit criteria
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 0's exit criteria) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 0's exit criteria) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Exit criteria.** **MET 2026-07-31.** Every reference spec and this build order are approved; every deferred
 question has an owner, evidence needed, and resolution point.

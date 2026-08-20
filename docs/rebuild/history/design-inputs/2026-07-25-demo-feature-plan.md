@@ -1,3 +1,5 @@
+_History — superseded by `reference/frontend-backend-integration.md` (the wiring contract) and the phase docs `00`–`05` (the build sequence) (see `history/README.md`); kept verbatim as written on 2026-07-25._
+
 # Rebuild demo — production feature & data plan (2026-07-25)
 
 **Status (2026-07-30): completed historical build plan; do not execute its tiers.** The target

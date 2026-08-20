@@ -13,7 +13,7 @@ tasks, what is done and what is left, and its exit criteria; contracts it built 
 <!-- roadmap-status: phase-3 -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.1 (the PHASE 3 ENTRY block — D193's operator choice and its reasoning) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.1 (the PHASE 3 ENTRY block — D193's operator choice and its reasoning) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **PHASE 3 ENTRY — SEPARATIONS (order 8). Operator choice, 2026-08-12 (D193).** This loop has always
 left *which workflow goes first* to the operator; the choice is now made and it is **separations**.
@@ -48,7 +48,7 @@ this plan; they answer §3.4 and record reuse/additions, and never re-order the 
 <!-- roadmap-status: order-8 -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.1 (separations' §3.2 status block, 2026-08-14) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.1 (separations' §3.2 status block, 2026-08-14) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 > **Separations' §3.2 status, 2026-08-14 (`docs/migrations/separations.md` §6 owns the checklist;
 > §9.17 is the latest as-built).** **The live dry-run criterion and the D58 sweep are now MET; the

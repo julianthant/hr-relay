@@ -1,3 +1,5 @@
+_History — superseded by `reference/task-contract.md` and `reference/decisions.md` round 1 (D4, D5, D15) (see `history/README.md`); kept verbatim as written on 2026-07-17._
+
 # Adversarial review — reference/task-contract.md (2026-07-17)
 
 Verdict: **buildable with amendments.** Findings 1–2 must be answered in doc 01 itself; 3–9 need

@@ -14,7 +14,7 @@ recorded only in a review file or decision sheet are *proposals*. The commit tha
 answer must also fold it into the owning doc (D1 matrix, `reference/decisions.md`) and add one
 changelog line to ref decisions. Review files and ref decisions are decision *history*; the owning doc is the
 only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications sat four days in
-`reviews/second-look-2026-07-22.md` while ref charter, the master plan and ref write-safety still
+`docs/rebuild/history/design-inputs/2026-07-22-second-look.md` while ref charter, the master plan and ref write-safety still
 specified the world they replaced.)
 
 ## Why we're rebuilding (evidence from the 2026-07-17 structural survey)
@@ -365,7 +365,7 @@ piece of information needed to build — there must never be multiple competing 
 mix-ups. _(As built: that plan is the eight phase docs `docs/rebuild/00`–`05`, one per phase, plus
 `docs/roadmap/roadmap.md`'s governance prose and phase table. It was ONE file, `07-master-plan.md`,
 until 2026-08-20, when it was dissolved into them and preserved at
-`docs/rebuild/reviews/2026-08-20-master-plan-dissolved.md`; the one-plan rule is unchanged — the
+`docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`; the one-plan rule is unchanged — the
 phase docs are one plan, split by phase, and nothing else may sequence the build.)_ Each concept has
 exactly one owning doc (the D1 matrix in `reference/decisions.md`); the plan sequences phases and
 references the owners, it does not redefine contracts. **After each build phase completes, it is documented**: subsequent

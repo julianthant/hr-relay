@@ -1,3 +1,5 @@
+_History — superseded by `reference/dashboard-surfaces.md` and `reference/decisions.md` round 1 (D1, D10–D14) (see `history/README.md`); kept verbatim as written on 2026-07-17._
+
 # Adversarial review — reference/dashboard-surfaces.md (2026-07-17)
 
 Verdict: **structurally flawed until reconciliation** — direction sound (spans, server-resolved

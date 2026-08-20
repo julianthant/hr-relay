@@ -132,7 +132,7 @@ Ref frontend-backend-integration's rewrite agent should tag `ref:frontend-backen
   section untagged and report it; §3(b) already carries the ones this pass found, with a suggested title
   and parent for the orchestrator to accept or reject.
 - **`SUPERSEDED`** — narrative the as-built has overtaken. Candidate for
-  `docs/rebuild/reviews/<NN>-<section>-superseded-2026-08-20.md` per plan ruling Q5. Nothing is deleted.
+  `docs/rebuild/history/superseded/2026-08-20-<doc>-<section>.md` per plan ruling Q5. Nothing is deleted.
 - **`REFERENCE`** — ownership headers, grounding, adversarial self-reviews, settled-question lists,
   port inventories. Stays where it is, untagged.
 
@@ -444,7 +444,7 @@ The largest doc (109 sections) and the one whose structure diverges most from th
 **Ordering note for the ref data-intake-and-edit-data agent.** §4's subsections run 4.1, 4.2, 4.3, 4.4, 4.10, 4.11, 4.9, 4.8,
 4.7, 4.6, 4.5 and §5's run 5.0, 5.2, 5.1. Reordering is a pure move; do it in the rewrite.
 
-### Doc 07 — `07-master-plan.md` (DISSOLVED 2026-08-20 into the phase docs; see `reviews/2026-08-20-master-plan-dissolved.md`)
+### Doc 07 — `07-master-plan.md` (DISSOLVED 2026-08-20 into the phase docs; see `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`)
 
 The phase docs stay normative over the tree (plan ruling Q3). This block was written before 07 dissolved:
 every phase node's `doc:` cited `07 §2` plus its
@@ -818,7 +818,7 @@ must not settle alone. Suggestions only — **no node exists until the orchestra
 - `### 7.2 Dual-adapter parity harness during construction` — classified SUPERSEDED on the reading that the
   shipped lane (§7.1 + D132) builds ONE bundle and asserts against a frozen corpus, with no second
   adapter. If the fixture adapter genuinely exists in `tests/parity/`, this is not superseded and needs no
-  node; if it does not, it is superseded narrative for `reviews/`. **Verify before moving.**
+  node; if it does not, it is superseded narrative for `docs/rebuild/history/superseded/`. **Verify before moving.**
 
 **Two audit items, not node suggestions.** `ref:foundation-gap-audit §5 PARTIALs` and `ref:operator-trust §10 Explicit residuals` are lists of
 things a doc admitted it under-specified. Every item needs re-checking against the code; any that is still
@@ -857,7 +857,7 @@ Seven, in the order they will bite. Each names the choice; **the orchestrator pi
    (ref dashboard-surfaces is two units: audit → rewrite), and (i) is a large rewrite. Decide before dispatching 03-audit.
 4. **Ref foundation-gap-audit — owns nothing, and 17 of its 26 sections are superseded.** All three TOP GAPs closed in
    Phase 1; their normative text is in 09/10/11. **Choice:** (i) move §2–§4 to
-   `reviews/08-top-gaps-superseded-2026-08-20.md` and leave ref foundation-gap-audit as its four closure matrices + §0/§1 +
+   `docs/rebuild/history/superseded/2026-08-20-foundation-gap-audit-top-gaps.md` and leave ref foundation-gap-audit as its four closure matrices + §0/§1 +
    §5 PARTIALs + step 4's incoming Appendix B; (ii) freeze ref foundation-gap-audit whole as a dated audit record, tag
    nothing, and let step 4's Appendix B be its only new content. **Recommendation: (ii)** — ref foundation-gap-audit is
    already explicitly a historical design input, and gutting a memo makes the record harder to read, not

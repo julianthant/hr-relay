@@ -1,3 +1,5 @@
+_History — superseded by `reference/dashboard-surfaces.md` §9 (D6–D20) (see `history/README.md`); kept verbatim as written on 2026-07-25._
+
 # Delegation — topology, shapes, and layouts (2026-07-25)
 
 **Status:** proposal — **§7 ANSWERED and ratified 2026-07-25 as D6–D20 in

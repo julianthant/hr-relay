@@ -10,7 +10,7 @@ built live in `reference/`.
 <!-- roadmap-status: cutover -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §4 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §4 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **The two addresses.** The **legacy repo** (`hr-automation`) holds the production automation and
 remains the sole production authority — live-runnable, maintainable, and never deleted before
@@ -86,7 +86,7 @@ _The rollback asset and what re-crossing it costs are step 5 of the single cutov
 
 ## Risk register (top sequencing risks)
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §5 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §5 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | # | Risk | Why it bites | Mitigation |
 |---|---|---|---|
@@ -104,7 +104,7 @@ _Moved from `reviews/2026-08-20-master-plan-dissolved.md` §5 on 2026-08-20 (3b)
 
 ## Program stop-loss / abort gate
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §5.1 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §5.1 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 The migration is reversible because production remains on the legacy repo until the single cutover. Rather than sink cost into a base
 that is not holding, the program has **objective STOP-AND-REASSESS triggers**. Hitting any one
@@ -194,7 +194,7 @@ A decision taken for the cutover itself lands here in the same commit that recor
 
 ## Exit criteria
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §6 (definition of done, whole program) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §6 (definition of done, whole program) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 The rebuild is complete when **all** hold:
 
@@ -239,7 +239,7 @@ The rebuild is complete when **all** hold:
     LAN mode. Diagnostic/backup/evidence permissions + redaction tests pass; the only remote
     listener is a live-session-scoped mobile-capture ingress whose deny-by-default route tests pass.
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §7.4 (added program-wide exit criteria) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §7.4 (added program-wide exit criteria) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 Before definition-of-done item 2 (single cutover), all of ref frontend-backend-integration §10 must pass. In particular:
 

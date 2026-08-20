@@ -1,3 +1,5 @@
+_History — superseded by the owners it recommended: `reference/operator-trust.md`, `reference/execution-and-sessions.md`, `reference/dashboard-surfaces.md` (see `history/README.md`); kept verbatim as written on 2026-07-26._
+
 # Gap audit, round 2 — the full 12-doc corpus (2026-07-26)
 
 **Why this exists.** Doc `08` was a principal-architect pass over **four** docs (01, 02, 03, 05) plus

@@ -1,0 +1,68 @@
+# `history/`
+
+Records superseded by the owning docs wherever they differ — kept so nothing is deleted; **never
+cite as normative.**
+
+Everything here was true when it was written and is preserved verbatim. What is normative now lives
+in the phase docs (`docs/rebuild/00`–`05`), the contract specs (`docs/rebuild/reference/`) and the
+tree plus its governance prose (`docs/roadmap/roadmap.md`). Each file carries a one-line header
+naming its successor; the tables below say the same thing in one place, with the old filename in
+the **what it was** column so an old citation resolves.
+
+Cross-references *inside* these files still name their siblings by the pre-2026-08-20 filenames
+(`<what>-<date>.md`, `NN-review.md`) and their subjects by the old doc numbers. That is deliberate:
+the files are kept as written, and correcting them would make the record a second, quieter opinion
+about the past. Read a name here through the tables below.
+
+This folder was `docs/rebuild/reviews/` until 2026-08-20 (cohesion plan ruling R6, step 3d).
+
+## `doc-reviews/` — adversarial reviews OF a design doc
+
+| file | date | what it was | what superseded it |
+|---|---|---|---|
+| `2026-07-17-task-contract-review.md` | 2026-07-17 | was `reviews/01-review.md` — adversarial review of doc 01 (the task contract): nine findings, two BLOCKERs (parked/polling tasks; session ownership), verdict "buildable with amendments" | `reference/task-contract.md`; resolutions in `reference/decisions.md` round 1 (D4, D5, D15) |
+| `2026-07-17-workflow-model-review.md` | 2026-07-17 | was `reviews/02-review.md` — adversarial review of doc 02 (the workflow model): docs 01/02 described two different systems at the task-identity seam, plus two correctness holes | `reference/workflow-model.md`; `reference/decisions.md` round 1 (D1–D3, D6–D9, D16) |
+| `2026-07-17-dashboard-surfaces-review.md` | 2026-07-17 | was `reviews/03-review.md` — adversarial review of doc 03 (the tracker dashboard): two incompatible `SpanEvent` wire contracts, and both flagship mechanisms checked against the OCR happy path | `reference/dashboard-surfaces.md`; `reference/decisions.md` round 1 (D1, D10–D14) |
+| `2026-07-18-write-safety-review.md` | 2026-07-18 | was `reviews/09-review.md` — skeptic pass over doc 09 and its 10/11 seams: exactly-once sound only with amendments; same-key concurrent double-file found | `reference/write-safety.md`; `reference/decisions.md` round 2 (D17–D22) |
+
+## `design-inputs/` — memos the design was built from
+
+| file | date | what it was | what superseded it |
+|---|---|---|---|
+| `2026-07-22-second-look.md` | 2026-07-22 | was `second-look-2026-07-22.md` — whole-program second-look review after Codex's three passes: six parallel audits (docs, legacy typing, bug archaeology, authoring cost, lessons), recommendations only | `reference/decisions.md` round 8 (D73–D86 — the operator answers this file's §6.5/§6.6 recorded) and, per decision, each answer's owning doc |
+| `2026-07-25-delegation-layouts.md` | 2026-07-25 | was `delegation-layouts-2026-07-25.md` — delegation topology, shapes and layouts across all 16 legacy workflows; §7 posed twelve questions | `reference/dashboard-surfaces.md` §9 (D6–D20), which wins on any disagreement and explicitly supersedes §7 Q1, §4's ladder and half of §7 Q10 |
+| `2026-07-25-demo-feature-plan.md` | 2026-07-25 | was `demo-feature-plan-2026-07-25.md` — the coverage plan that made `?view=rebuild-demo` a faithful preview of every capability the rebuilt backend serves; do not execute its tiers | `reference/frontend-backend-integration.md` (the production wiring/completeness contract); the build sequence is the phase docs `00`–`05` |
+| `2026-07-25-legacy-keep-ditch.md` | 2026-07-25 | was `legacy-keep-ditch-2026-07-25.md` — keep/ditch ledger for the legacy Queue Row + Log Panel, against 114 special-casing sites in 30 files | `reference/dashboard-surfaces.md` |
+| `2026-07-25-shell-build-spec.md` | 2026-07-25 | was `shell-build-spec-2026-07-25.md` — pixel spec for Top Bar · Workflow Panel · Status Bar · Session Panel, extracted from the shipped legacy dashboard | `reference/dashboard-surfaces.md` for the naming canon and the surface contracts. Its pixel detail has **no successor doc** — the shipped `src/dashboard/` is the as-built |
+| `2026-07-26-gap-audit-round2.md` | 2026-07-26 | was `gap-audit-round2-2026-07-26.md` — round-2 gap audit over the full 12-doc corpus (a re-run of doc 08's method): six ranked gaps, no BLOCKER, headline "nothing owns the operator's attention" | the owners it recommended: `reference/operator-trust.md` (the cross-run operator work queue), `reference/execution-and-sessions.md` (kernel self-health), `reference/dashboard-surfaces.md` (retention/growth, archive sizing, single-instance safety) |
+| `2026-07-27-testing-system-plan.md` | 2026-07-27 | was `testing-system-plan-2026-07-27.md` — coverage policy, test-value standard, suite sizing and legacy-suite preservation; RATIFIED 2026-07-31 as D91 | `reference/guards-and-tests.md` (D91). Still named as the `owner` of the `legacy-test-disposition` entry in `guard-inventory.json` — a live guard owned by a history file, to be re-owned by the guards-and-tests rewrite |
+| `2026-07-28-backend-capabilities-from-the-demo.md` | 2026-07-28 | was `backend-capabilities-from-the-demo-2026-07-28.md` — the harvest of what the demo programme proved the backend must serve, item by item with evidence | `reference/frontend-backend-integration.md` (which still cites this file as its backend-discovery record) |
+| `2026-07-28-operator-feedback-screenshots.md` | 2026-07-28 | was `operator-feedback-2026-07-28-screenshots.md` — the operator's numbered screenshot feedback on the rebuild demo, transcribed so the surface is locatable from the text without the images | `reference/dashboard-surfaces.md` §9 and the shipped `src/dashboard/` surfaces |
+
+## `superseded/` — prose an owning doc has overtaken
+
+This folder also receives the narrative the per-doc rewrites (cohesion plan step 5) fold out of the
+reference and phase docs, one file per source section, named
+`YYYY-MM-DD-<source-doc>-<section>.md`. Nothing is deleted: a section that stops being true moves
+here with a header naming the doc that now answers it.
+
+| file | date | what it was | what superseded it |
+|---|---|---|---|
+| `2026-08-20-master-plan-dissolved.md` | 2026-08-20 | `docs/rebuild/07-master-plan.md` exactly as it stood at commit `8bd97c2f`, preserved when step 3b distributed it | the phase docs `00`–`05` and `docs/roadmap/roadmap.md` §Governance; the file's own header carries the 35-row § → destination table (`ce5d87fa`). Still named as the `owner` of the planned `one-time-import-offline` entry in `guard-inventory.json`, whose invariant already points at `doc 05 §Exit criteria` |
+
+## How to add to history
+
+1. **Name it date-first**: `YYYY-MM-DD-<what>.md`, where the date is when the content was *written*,
+   not when it moved. Recover it from the file's own title before trusting `git log` — every file
+   in this folder was added to the repository on 2026-07-31, the day the rebuild tree was seeded.
+2. **Give it a one-line header**, at the very top, naming what took over:
+
+   ```
+   _History — superseded by <owner> (see `history/README.md`); kept verbatim as written on <date>._
+   ```
+
+   Then change nothing else inside it — a record that gets edited is not a record.
+3. **Put it in the folder that matches its kind**: `doc-reviews/` a review of a doc ·
+   `design-inputs/` a memo the design was built from · `superseded/` prose an owning doc overtook.
+4. **Add its row to the table above** (file · date · what it was · what superseded it; `—` only
+   when genuinely nothing succeeded it), and repoint whatever cited the old path.

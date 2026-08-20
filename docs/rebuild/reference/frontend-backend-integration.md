@@ -19,7 +19,7 @@ Visual authority (all demo paths below are in the **legacy repo**, where the dem
 - `src/dashboard/components/dev/rebuild-demo/ds/` — tokens and primitive behavior;
 - `src/dashboard/components/dev/rebuild-demo/` — the rendered product target;
 - `docs/rebuild/reference/dashboard-surfaces.md` §9 — ratified presentation decisions;
-- `docs/rebuild/reviews/backend-capabilities-from-the-demo-2026-07-28.md` — backend discoveries
+- `docs/rebuild/history/design-inputs/2026-07-28-backend-capabilities-from-the-demo.md` — backend discoveries
   made while building the target.
 
 The demo is a **visual specification and contract fixture**, not production infrastructure. The

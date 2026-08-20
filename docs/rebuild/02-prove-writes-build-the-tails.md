@@ -9,7 +9,7 @@ what is left, its exit criteria; contracts it built live in `reference/`.
 <!-- roadmap-status: phase-2 -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2 — the transaction proof, then the deferred base tails) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2 — the transaction proof, then the deferred base tails) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Goal.** Prove the half the spine could not: a page-scoped external-write transaction with fresh
 subject binding, crash recovery, and durable dedupe. **Then**, and only then, build the base tails
@@ -43,7 +43,7 @@ to order 6. One later checkpoint remains:
 <!-- roadmap-status: p2-proof -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's transactional work items and its target status) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's transactional work items and its target status) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Transactional work items.** Choose the smallest controlled test-instance or sacrificial test
 record whose prepare and commit paths are real and whose outcome is independently queryable. Build
@@ -82,7 +82,7 @@ ids: ref write-safety §Phase-2 controlled-commit as-built.
 <!-- roadmap-status: p2-2g -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2g) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2g) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | Tail | Content | Owner |
 |---|---|---|
@@ -94,7 +94,7 @@ _Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferre
 <!-- roadmap-status: p2-2h -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2h) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2h) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | Tail | Content | Owner |
 |---|---|---|
@@ -106,7 +106,7 @@ _Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferre
 <!-- roadmap-status: p2-2i -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2i) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2i) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | Tail | Content | Owner |
 |---|---|---|
@@ -118,7 +118,7 @@ _Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferre
 <!-- roadmap-status: p2-2j -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2j) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2j) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | Tail | Content | Owner |
 |---|---|---|
@@ -130,7 +130,7 @@ _Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferre
 <!-- roadmap-status: phase2-dispositions -->
 <!-- /roadmap-status -->
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's workflow-editor scope) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's workflow-editor scope) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Workflow editor scope (D79a — DSL mode TRIMMED).** The read-only explorer is 2i. Editing is
 limited to presentation overrides (hot-applied through their strict atomic file) plus a closed set
@@ -149,7 +149,7 @@ and their owners, in §Exit criteria below, where the master plan's §3 wrote th
 
 ## Integration amendment — Phase 2's share (master plan §7)
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §7.1's two deferral bullets and §7.2's transaction-proof / `2g` / `2h` / `2i` rows on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §7.1's two deferral bullets and §7.2's transaction-proof / `2g` / `2h` / `2i` rows on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 - Data-service contract/impl work and its mapping/capture/Edit Data UI are deferred to `2h` under
   D74; only their boundary primitives and command type shells land earlier where required.
@@ -184,7 +184,7 @@ ratification act and the normative pointer stay in the ledger; this is the phase
 
 ## Exit criteria
 
-_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's hard exit criteria, with every bullet's final disposition) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's hard exit criteria, with every bullet's final disposition) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Hard exit criteria (Phase 2) — ALL MET 2026-08-09, with ONE criterion explicitly REASSIGNED
 (the explorer's edit half, D186).** Every bullet below carries its final disposition. The one

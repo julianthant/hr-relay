@@ -1,3 +1,5 @@
+_History — superseded by `reference/write-safety.md` and `reference/decisions.md` round 2 (D17–D22) (see `history/README.md`); kept verbatim as written on 2026-07-18._
+
 # Adversarial review — reference/write-safety.md (+ 10/11 seams) — 2026-07-18
 
 Verdict: exactly-once is **sound only with amendments** — holds for single-run crash seams, breaks

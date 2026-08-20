@@ -40,7 +40,7 @@ Consequences of that one line, in order of authority:
    success styling on an unverified write. This mirrors the codebase's
    fail-loud rule at the pixel level.
 4. **Parity is ratified.** The rebuilt dashboard must still read as the same
-   product to the operator who uses it daily (`docs/rebuild/reviews/second-look-2026-07-22.md`
+   product to the operator who uses it daily (`docs/rebuild/history/design-inputs/2026-07-22-second-look.md`
    §6.6). Raise quality *within* the existing language; never introduce a new one.
 5. **A surface renders what the descriptor SERVES.** Grouping comes from a
    workflow's own `category`; what a start accepts, offers and flags comes from
