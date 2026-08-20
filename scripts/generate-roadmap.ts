@@ -3,18 +3,18 @@ import { dirname, resolve } from "node:path";
 import { z } from "zod";
 
 /**
- * `npm run roadmap` — render `docs/roadmap/index.html` from the ONE structured
- * roadmap source, `docs/roadmap/roadmap.json`.
+ * `npm run roadmap` — render `docs/roadmap/index.html` from the plan itself:
+ * `ROADMAP.md`, written in the roadmap notation (see `parsePlan` below).
  *
- * The JSON is the website's single source of truth: the timeline (phases →
- * tracks → chunks), what every node BUILDS (`features`), and what every node
- * REQUIRES (`requires`) — from which this script derives each node's
- * "unlocks" list and the dependency tree. `ROADMAP.md` and
- * `docs/rebuild/07-master-plan.md` stay the prose authorities; the
- * `/custom-update-plan` skill edits all three together.
+ * The plan is the website's single source: phases → tasks → sub-tasks, what
+ * every node BUILDS (`builds:` checklist, one layer tag per line) and what it
+ * NEEDS (`needs:`) — from which this script derives each node's "unlocks" and
+ * the prerequisite links. `docs/rebuild/07-master-plan.md` stays normative;
+ * the `/custom-update-plan` skill edits plan + site + owning docs together.
  *
  *   npm run roadmap            # regenerate docs/roadmap/index.html
  *   npm run roadmap -- --check # fail if the committed html is stale
+ *   npm run roadmap -- --json  # print the parsed plan (schema-validated) as JSON
  */
 
 // ─── schema ────────────────────────────────────────────────────────────────
@@ -310,6 +310,7 @@ interface TreeNode {
   status: Status;
   title: string;
   eyebrow: string | undefined;
+  whenSecondary: string | undefined;
   chip: z.infer<typeof ChipSchema> | undefined;
   size: Item["size"];
   features: ResolvedFeature[];
@@ -325,10 +326,10 @@ interface TreeNode {
 }
 
 const NODE_W = 224;
-const NODE_H = 60;
+const NODE_H = 72;
 const PHASE_H = 88;
 const COL_STEP = 248;   // one leaf column
-const DEPTH_STEP = 104; // one task row (NODE_H + 44)
+const DEPTH_STEP = 116; // one task row (NODE_H + 44)
 const PHASE_DROP = 44;  // phase box bottom → first task row top
 const PAD = 28;
 const BAND_GAP = 52;    // between phase bands
@@ -353,6 +354,7 @@ function buildItemNode(item: Item, parentKey: string, index: number, registry: M
     status: item.status,
     title: item.title,
     eyebrow: item.date,
+    whenSecondary: undefined,
     chip: item.chip,
     size: item.size,
     features,
@@ -377,7 +379,8 @@ function buildPhaseNode(node: PhaseNode, registry: Map<string, Registered>): Tre
     kind: "phase",
     status: node.status,
     title: node.title,
-    eyebrow: `${node.phase} · ${node.when.primary}${node.when.secondary === undefined ? "" : ` · ${node.when.secondary}`}`,
+    eyebrow: `${node.phase} · ${node.when.primary}`,
+    whenSecondary: node.when.secondary,
     chip: node.chip,
     size: node.size,
     features,
@@ -562,15 +565,21 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
       const available = node.requires.every((r) => requirementMet(r, registry));
       const cls = `nd ${node.kind} ${node.status}${available ? " avail" : " locked"}`;
       const titleLines = wrapTitle(node.title, isPhase ? 27 : 28, 2);
-      const titleY = isPhase ? node.y + 36 : node.y + (titleLines.length === 1 ? 24 : 19);
+      const titleY = isPhase ? node.y + 36 : node.y + 19;
       const title = titleLines
         .map((line, i) => `<tspan x="${N(node.x + 26)}" dy="${i === 0 ? 0 : 15}">${escapeHtml(line)}</tspan>`)
         .join("");
       const eyebrow = isPhase && node.eyebrow !== undefined
         ? `<text class="eb" x="${N(node.x + 12)}" y="${N(node.y + 17)}">${escapeHtml((wrapTitle(node.eyebrow, 30, 1)[0] ?? "").toUpperCase())}</text>`
         : "";
-      const dotY = isPhase ? node.y + 32 : node.y + (titleLines.length === 1 ? 20 : 15);
+      const dotY = isPhase ? node.y + 32 : node.y + 15;
       const dot = `<circle class="st" cx="${N(node.x + 14)}" cy="${N(dotY)}" r="4.5"/>`;
+      // the info line: an item's chip (in its tone) or its date / decision
+      const infoText = !isPhase && node.chip !== undefined ? node.chip.text.replace(/\*\*/g, "") : !isPhase && node.eyebrow !== undefined ? node.eyebrow : undefined;
+      const infoTone = !isPhase && node.chip !== undefined ? (node.chip.tone ?? node.status) : "meta";
+      const info = infoText === undefined
+        ? ""
+        : `<text class="info ${infoTone}" x="${N(node.x + 26)}" y="${N(node.y + 49)}">${escapeHtml(wrapTitle(infoText, 36, 1)[0] ?? "")}</text>`;
       // the built-by-layer bar: one square per feature, filled when done
       const squares = node.features.slice(0, 14).map((f, i) => {
         const sx = node.x + 26 + i * 11;
@@ -585,7 +594,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
       const chip = isPhase && node.chip !== undefined
         ? `<text class="pc ${node.chip.tone ?? node.status}" x="${N(node.x + 12)}" y="${N(node.y + node.h - 11)}">${escapeHtml(node.chip.text.replace(/\*\*/g, "").toUpperCase())}</text>`
         : "";
-      const phaseBar = isPhase ? "" : squares + more;
+      const phaseBar = isPhase ? "" : squares + more + info;
       return `<a class="${cls}" href="#${node.key}" data-key="${node.key}" aria-label="${escapeHtml(`${node.title} — ${node.status}`)}"><g><rect class="bx" x="${N(node.x)}" y="${N(node.y)}" width="${N(node.w)}" height="${N(node.h)}" rx="${isPhase ? "10" : "8"}"/>${eyebrow}${dot}<text class="tt" x="${N(node.x + 26)}" y="${N(titleY)}">${title}</text>${phaseBar}${isPhase ? chip : right}</g></a>`;
     })
     .join("");
@@ -598,7 +607,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
   for (const node of all) {
     const entry = registry.get(node.key);
     const chip = node.chip !== undefined && node.chip.text.toLowerCase() === node.status ? undefined : node.chip;
-    const header = `<div class="dh"><span class="chip ${node.status}">${node.status === "you" ? "needs you" : node.status}</span>${renderChip(chip, node.status)}${node.size === undefined ? "" : `<span class="size">${node.size}</span>`}${node.eyebrow === undefined ? "" : `<span class="eb2">${inline(node.eyebrow)}</span>`}</div>`;
+    const header = `<div class="dh"><span class="chip ${node.status}">${node.status === "you" ? "needs you" : node.status}</span>${renderChip(chip, node.status)}${node.size === undefined ? "" : `<span class="size">${node.size}</span>`}${node.eyebrow === undefined ? "" : `<span class="eb2">${inline(node.eyebrow)}${node.kind === "phase" && node.whenSecondary !== undefined ? ` · ${inline(node.whenSecondary)}` : ""}</span>`}</div>`;
     data[node.key] = {
       title: node.title,
       html: header + node.detail,
@@ -646,41 +655,37 @@ const CSS = String.raw`
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
   button{font:inherit;font-size:12.5px;padding:5px 10px;border-radius:6px;border:1px solid var(--line-strong);background:var(--card);color:var(--fg-2);cursor:pointer} button:hover{border-color:var(--fg-4);color:var(--fg)} button[aria-pressed="true"]{background:var(--accent-quiet);border-color:var(--accent);color:var(--accent)}
 
-  /* ─ masthead ─ */
-  .mast{padding:14px 24px 10px;border-bottom:1px solid var(--line);background:var(--card);display:flex;flex-direction:column;gap:8px}
-  .mast .hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 18px}
-  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-3)}
-  h1{font-size:22px;line-height:1.15;margin:0;font-weight:600;letter-spacing:-.01em}
-  .lede{color:var(--fg-2);max-width:120ch;margin:0;font-size:13px;flex:1 1 40ch} .lede b{color:var(--fg)}
-  .tiles{display:flex;flex-wrap:wrap;gap:8px}
-  .tile{background:var(--well);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:120px}
+  /* ─ masthead (one line) ─ */
+  .mast{padding:8px 16px;border-bottom:1px solid var(--line);background:var(--card);display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 16px}
+  .hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+  h1{font-size:16px;line-height:1.2;margin:0;font-weight:600;letter-spacing:-.01em}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3)}
+  .ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap} .pct{font-family:var(--mono);font-size:11.5px;min-width:36px;text-align:center}
+  /* ─ tiles: one slim strip ─ */
+  .tiles{display:flex;gap:6px;padding:6px 16px;border-bottom:1px solid var(--line);background:var(--bg);overflow-x:auto}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:4px 10px;min-width:max-content;display:flex;align-items:baseline;gap:8px;font-size:12px}
   .tile .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3)}
-  .tile .v{font-size:16px;font-weight:600;line-height:1.2;font-variant-numeric:tabular-nums} .tile .s{font-size:11px;color:var(--fg-3)}
+  .tile .v{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums} .tile .s{font-size:11px;color:var(--fg-3)}
   .tile.hot{border-color:var(--warn-mark);background:var(--warn-quiet)} .tile.hot .v{color:var(--warn)}
-
-  /* ─ toolbar ─ */
-  .bar{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;justify-content:space-between;padding:8px 24px;border-bottom:1px solid var(--line);background:var(--bg)}
-  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--fg-2)} .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--fg-2);margin:10px 0} .legend span{display:inline-flex;align-items:center;gap:6px}
   .sw{width:11px;height:11px;border-radius:50%;border:2px solid var(--line-strong);background:var(--card);flex:none}
   .sw.done{background:var(--ok-mark);border-color:var(--ok-mark)} .sw.active{background:var(--info-mark);border-color:var(--info-mark);box-shadow:0 0 0 3px var(--info-quiet)}
   .sw.you{background:var(--warn-mark);border-color:var(--warn-mark)} .sw.proposed{background:var(--accent);border-color:var(--accent)} .sw.never{background:transparent;border-style:dashed}
   .sw.avail{border-color:var(--fg-2);border-width:2.5px} .sw.locked{border-style:dashed}
-  .ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   .lay{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;font-weight:600;padding:0 5px;border-radius:3px;border:1px solid var(--line);color:var(--fg-3);background:var(--well);display:inline-block;vertical-align:middle;line-height:1.5;margin:0 4px 1px 0}
   .lay.frontend{color:var(--info);border-color:var(--info-quiet);background:var(--info-quiet)} .lay.backend{color:var(--fg-2);border-color:var(--line-strong)}
   .lay.both{color:var(--accent);border-color:var(--accent-quiet);background:var(--accent-quiet)} .lay.wiring{color:var(--warn);border-color:var(--warn-quiet);background:var(--warn-quiet)}
-  .sq{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;border:1.5px solid var(--fg-3)} .sq.f{background:var(--fg-3)}
-
-  /* ─ workspace: canvas + drawer ─ */
-  .work{display:grid;grid-template-columns:minmax(0,1fr) 400px;flex:1;min-height:0}
-  @media (max-width:900px){.work{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) 42vh}}
-  .canvas{overflow:auto;position:relative;background:
+  /* ─ workspace: the canvas IS the page; the drawer floats over it ─ */
+  .work{position:relative;flex:1;min-height:0}
+  .canvas{position:absolute;inset:0;overflow:auto;background:
     radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--fg) 7%, transparent) 1px, transparent 0) 0 0/22px 22px, var(--bg)}
   .tree{display:block;font-family:var(--sans);transform-origin:0 0}
-  .drawer{border-left:1px solid var(--line);background:var(--card);overflow:auto;padding:16px 18px 28px;font-size:13.5px}
-  @media (max-width:900px){.drawer{border-left:0;border-top:1px solid var(--line)}}
-  .drawer h2{font-size:17px;margin:0 0 6px;line-height:1.3;font-weight:600}
-  .drawer .hint{color:var(--fg-3);font-size:13px;max-width:46ch}
+  .drawer{position:absolute;top:14px;right:14px;width:min(400px, calc(100% - 28px));max-height:calc(100% - 28px);overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 32px rgba(11,15,25,.16);padding:14px 16px 20px;font-size:13.5px;z-index:2}
+  .drawer[hidden]{display:none}
+  .dtop{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px}
+  .drawer h2{font-size:16px;margin:0;line-height:1.3;font-weight:600}
+  #drawer-close{padding:0 8px;line-height:1.4;font-size:16px}
+  .drawer .hint{color:var(--fg-3);font-size:12.5px;margin:0 0 8px}
   .dh{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px} .eb2{font-family:var(--mono);font-size:11px;color:var(--fg-3)}
   .dnav{display:flex;gap:6px;margin:0 0 10px;flex-wrap:wrap}
 
@@ -695,6 +700,7 @@ const CSS = String.raw`
   .tree .tt{fill:var(--fg);font-size:12.5px;font-weight:500} .tree .phase .tt{font-size:13.5px;font-weight:600}
   .tree .eb{fill:var(--fg-3);font-family:var(--mono);font-size:9.5px;letter-spacing:.06em}
   .tree .meta{fill:var(--fg-3);font-family:var(--mono);font-size:9.5px}
+  .tree .info{font-family:var(--mono);font-size:9.5px;fill:var(--fg-3)} .tree .info.done{fill:var(--ok)} .tree .info.active{fill:var(--info)} .tree .info.you{fill:var(--warn)} .tree .info.proposed{fill:var(--accent)} .tree .info.never{fill:var(--fg-4)}
   .tree .pc{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;font-weight:600;fill:var(--fg-3)}
   .tree .pc.done{fill:var(--ok)} .tree .pc.active{fill:var(--info)} .tree .pc.you{fill:var(--warn)} .tree .pc.proposed{fill:var(--accent)}
   .tree .st{fill:var(--card);stroke:var(--line-strong);stroke-width:2}
@@ -746,7 +752,7 @@ const CSS = String.raw`
   tr.y td{background:var(--warn-quiet)} tr.y td:first-child{color:var(--warn);font-weight:500} tr.g td b{color:var(--ok)}
   .note{margin:10px 0 0;padding:9px 12px;border-radius:8px;background:var(--well);border:1px solid var(--line);font-size:12.5px;color:var(--fg-2)}
   .note.you{border-color:var(--warn-mark);background:var(--warn-quiet)} .note.you b{color:var(--warn)}
-  footer{padding:8px 24px;border-top:1px solid var(--line);font-size:11.5px;color:var(--fg-3);background:var(--card)}
+  footer{padding:5px 16px;border-top:1px solid var(--line);font-size:11px;color:var(--fg-3);background:var(--card);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 `;
 
 const JS = String.raw`
@@ -755,6 +761,11 @@ const JS = String.raw`
   var svg = document.getElementById('canvas');
   var canvas = document.getElementById('canvas-wrap');
   var drawer = document.getElementById('drawer-body');
+  var panel = document.getElementById('drawer');
+  var aboutBtn = document.getElementById('about');
+  var aboutHtml = drawer.innerHTML;
+  function openPanel(){ panel.hidden = false; }
+  function closePanel(){ panel.hidden = true; aboutBtn.setAttribute('aria-pressed', 'false'); }
   var title = document.getElementById('drawer-title');
   var baseW = parseFloat(svg.getAttribute('width'));
   var baseH = parseFloat(svg.getAttribute('height'));
@@ -780,6 +791,8 @@ const JS = String.raw`
     if (data[key].requires.length + data[key].unlocks.length > 0) {
       nodes().forEach(function(n){ if (!related[n.getAttribute('data-key')]) n.classList.add('dim'); });
     }
+    openPanel();
+    aboutBtn.setAttribute('aria-pressed', 'false');
     title.textContent = data[key].title;
     var nav = '';
     if (data[key].requires.length + data[key].unlocks.length > 0) nav = '<div class="dnav"><button type="button" id="clear-dim">Show all nodes</button></div>';
@@ -808,11 +821,16 @@ const JS = String.raw`
     select(a.getAttribute('data-go'), true);
   });
   function applyScale(){ svg.setAttribute('width', baseW * scale); svg.setAttribute('height', baseH * scale); document.getElementById('zoom-pct').textContent = Math.round(scale * 100) + '%'; }
+  // the drawer floats over the canvas; keep the right gutter clear for it when centring a node
+  var work = document.getElementById('work');
   document.getElementById('zoom-in').addEventListener('click', function(){ scale = Math.min(2.5, scale * 1.2); applyScale(); });
   document.getElementById('zoom-out').addEventListener('click', function(){ scale = Math.max(0.15, scale / 1.2); applyScale(); });
   document.getElementById('zoom-fit').addEventListener('click', function(){ scale = Math.max(0.25, Math.min(2.5, (canvas.clientWidth - 8) / baseW)); applyScale(); });
   document.getElementById('zoom-all').addEventListener('click', function(){ scale = Math.max(0.15, Math.min(2.5, (canvas.clientWidth - 8) / baseW, (canvas.clientHeight - 8) / baseH)); applyScale(); });
   document.getElementById('zoom-100').addEventListener('click', function(){ scale = 1; applyScale(); });
+  document.getElementById('drawer-close').addEventListener('click', closePanel);
+  aboutBtn.addEventListener('click', function(){ selected = null; nodes().forEach(function(n){ n.classList.remove('sel'); n.classList.remove('dim'); }); edges().forEach(function(e){ e.classList.remove('on'); }); title.textContent = 'About this roadmap'; drawer.innerHTML = aboutHtml; openPanel(); aboutBtn.setAttribute('aria-pressed', 'true'); if (history.replaceState) history.replaceState(null, '', location.pathname); });
+  window.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') closePanel(); });
   var showAll = document.getElementById('show-all');
   showAll.addEventListener('click', function(){ var on = svg.classList.toggle('show-all'); showAll.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   // drag to pan
@@ -832,43 +850,253 @@ function renderPage(roadmap: Roadmap): string {
     .map((t) => `<div class="tile${t.hot ? " hot" : ""}"><div class="k">${inline(t.label)}</div><div class="v">${inline(t.value)}</div>${t.sub === undefined ? "" : `<div class="s">${inline(t.sub)}</div>`}</div>`)
     .join("");
   const dataJson = JSON.stringify(data).replaceAll("<", "\\u003c");
+  const aboutHtml = `<p class="hint">${inline(roadmap.meta.lede)}</p>
+<div class="legend" aria-label="Legend">
+<span><i class="sw done"></i>complete</span><span><i class="sw active"></i>active</span><span><i class="sw you"></i>needs you</span><span><i class="sw avail"></i>available next</span><span><i class="sw locked"></i>locked</span><span><i class="sw proposed"></i>proposed</span><span><i class="sw never"></i>won't build / deferred</span>
+</div>
+<p class="hint">Phases stack on the time spine at the left; each phase's tasks fan out to its right, sub-tasks beneath their parent. The squares inside a box are its features — one per feature, coloured by layer, filled when built — so a box reads "3 of 5 built, the missing two are wiring": <span class="lay frontend">FE</span>React only · <span class="lay backend">BE</span>BFF / kernel · <span class="lay both">BOTH</span>vertical slice · <span class="lay wiring">WIRE</span>connecting two halves that exist · <span class="lay docs">DOCS</span> · <span class="lay proof">PROOF</span>live run / measurement.</p>
+<p class="hint">Click a box for its detail; hover to light up what it <b>needs</b> and what it <b>unlocks</b> (green when the prerequisite is met, dashed when open; amber = an act only you can take). Drag to pan; zoom with the controls; <code>Esc</code> closes this panel.</p>`;
   return `<meta charset="utf-8">
 <title>${escapeHtml(roadmap.meta.title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>${CSS}</style>
 <header class="mast">
-<div class="eyebrow">${inline(roadmap.meta.eyebrow)}</div>
-<div class="hd"><h1>${escapeHtml(roadmap.meta.title)}</h1><p class="lede">${inline(roadmap.meta.lede)}</p></div>
-<div class="tiles">${tiles}</div>
-</header>
-<div class="bar">
-<div class="legend" aria-label="Legend">
-<span><i class="sw done"></i>complete</span><span><i class="sw active"></i>active</span><span><i class="sw you"></i>needs you</span><span><i class="sw avail"></i>available next</span><span><i class="sw locked"></i>locked</span><span><i class="sw proposed"></i>proposed</span><span><i class="sw never"></i>won't build / deferred</span>
-<span>built-by-layer bar: <i class="sq f"></i> built · <i class="sq"></i> not yet · <span class="lay frontend">FE</span><span class="lay backend">BE</span><span class="lay both">BOTH</span><span class="lay wiring">WIRE</span><span class="lay docs">DOCS</span><span class="lay proof">PROOF</span></span>
-</div>
+<div class="hd"><h1>${escapeHtml(roadmap.meta.title)}</h1><span class="eyebrow">${inline(roadmap.meta.eyebrow)} · as of ${escapeHtml(roadmap.meta.asOf)} · HEAD ${escapeHtml(roadmap.meta.head)}</span></div>
 <div class="ctl">
-<button type="button" id="show-all" aria-pressed="false">Show all prerequisite links</button>
-<button type="button" id="zoom-out" aria-label="Zoom out">−</button><span id="zoom-pct" style="font-family:var(--mono);font-size:12px;min-width:38px;text-align:center">100%</span><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-fit">Fit width</button><button type="button" id="zoom-all">Fit all</button><button type="button" id="zoom-100">100%</button>
+<button type="button" id="about" aria-pressed="true">Legend</button>
+<button type="button" id="show-all" aria-pressed="false">All prerequisite links</button>
+<button type="button" id="zoom-out" aria-label="Zoom out">−</button><span id="zoom-pct" class="pct">100%</span><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-fit">Fit width</button><button type="button" id="zoom-all">Fit all</button><button type="button" id="zoom-100">100%</button>
 </div>
-</div>
-<div class="work">
+</header>
+<div class="tiles">${tiles}</div>
+<div class="work" id="work">
 <div class="canvas" id="canvas-wrap">${svg}</div>
-<aside class="drawer" aria-live="polite">
-<h2 id="drawer-title">Select a node</h2>
-<div id="drawer-body"><p class="hint">Each box is one piece of the plan: phases stack top-to-bottom on the time spine at the left, and each phase's slices, tracks and chunks fan out to its right, sub-tasks hanging beneath their parent. The small squares inside a box are its features — one per feature, coloured by layer, filled when built — so a node reads as "3 of 5 built, the missing two are wiring". Click a box for its full detail; hover to light up what it needs and what it unlocks (green when the prerequisite is met, dashed when open); drag to pan, zoom with the controls.</p><p class="hint"><b>Needs</b> chips are prerequisites: green-ticked when met, hollow when another node must land first, amber when it is an act only you can take.</p></div>
+<aside class="drawer" id="drawer" aria-live="polite">
+<div class="dtop"><h2 id="drawer-title">About this roadmap</h2><button type="button" id="drawer-close" aria-label="Close">×</button></div>
+<div id="drawer-body">${aboutHtml}</div>
 </aside>
 </div>
-<footer>${inline(roadmap.meta.footer)} Status as of <span style="font-family:var(--mono)">${escapeHtml(roadmap.meta.asOf)}</span>, HEAD <span style="font-family:var(--mono)">${escapeHtml(roadmap.meta.head)}</span>. Generated by <code>npm run roadmap</code> from <code>docs/roadmap/roadmap.json</code> — edit the JSON, never this file.</footer>
+<footer>${inline(roadmap.meta.footer)}</footer>
 <script type="application/json" id="rm-data">${dataJson}</script>
 <script>${JS}</script>
 `;
 }
 
+
+// ─── the plan notation: ROADMAP.md → Roadmap ─────────────────────────────────
+//
+//   # Title                      asOf: / head: / eyebrow: / footer: / source: (repeatable) / > lede
+//   tiles:  - Label | value | sub   (a leading "!" marks the hot tile)
+//   <!-- roadmap:start -->
+//   ## Phase title {#id}         phase: / status: / when: primary | secondary / size: / chip: / chip-tone: / open: yes|no
+//   > summary                    builds: - [x] BE text   needs: - id · - you: text · - you(met): text · - fact: text · - fact(met): text
+//   ### Task title {#id}         status: / date: / size: / chip: / chip-tone:     (#### and ##### nest further)
+//   > desc · builds: · needs: · note: text · note!: text · a markdown table whose first cell may start with ! (you) or ✓ (done)
+//   ## flag: when | text         a dated milestone on the spine
+//   ## today: text               the TODAY rule
+//   <!-- roadmap:end -->         everything after is prose and is not rendered
+//
+// Every line inside the region must be one of those shapes — anything else fails loud with its line number.
+
+const BOX_STATUS: Record<string, Status> = { x: "done", " ": "planned", "~": "active", "?": "proposed", "-": "never", "!": "you" };
+const LAYER_TOKEN: Record<string, Layer> = { FE: "frontend", BE: "backend", BOTH: "both", WIRE: "wiring", DOCS: "docs", PROOF: "proof" };
+
+interface RawNode {
+  level: number;
+  title: string;
+  id: string | undefined;
+  attrs: Record<string, string>;
+  quote: string[];
+  features: Record<string, unknown>[];
+  requires: Record<string, unknown>[];
+  notes: string[];
+  table: { columns: string[]; rows: Record<string, unknown>[] } | undefined;
+  items: RawNode[];
+}
+
+function fail(lineNo: number, message: string): never {
+  throw new Error(`ROADMAP.md:${String(lineNo)}: ${message}`);
+}
+
+function parsePlan(text: string): unknown {
+  const lines = text.split("\n");
+  const start = lines.indexOf("<!-- roadmap:start -->");
+  const end = lines.indexOf("<!-- roadmap:end -->");
+  if (start < 0 || end < 0 || end < start) throw new Error("ROADMAP.md: missing <!-- roadmap:start --> / <!-- roadmap:end --> markers");
+
+  // ── meta ──
+  const meta: Record<string, unknown> = {};
+  const sources: string[] = [];
+  const lede: string[] = [];
+  const tiles: Record<string, unknown>[] = [];
+  let inTiles = false;
+  for (let i = 0; i < start; i++) {
+    const line = lines[i] ?? "";
+    if (line.trim().length === 0 || line.startsWith("<!--")) { inTiles = false; continue; }
+    if (line.startsWith("# ")) { meta.title = line.slice(2).trim(); continue; }
+    if (line.startsWith("> ")) { lede.push(line.slice(2).trim()); continue; }
+    if (line === "tiles:") { inTiles = true; continue; }
+    if (inTiles && line.startsWith("- ")) {
+      const parts = line.slice(2).split(" | ").map((p) => p.trim());
+      const label = parts[0] ?? "";
+      const hot = label.startsWith("!");
+      tiles.push({ label: hot ? label.slice(1) : label, value: parts[1] ?? "", ...(parts[2] === undefined ? {} : { sub: parts[2] }), hot });
+      continue;
+    }
+    const kv = /^([a-zA-Z]+): (.*)$/.exec(line);
+    if (kv === null) fail(i + 1, `unrecognised line before roadmap:start: "${line}"`);
+    const [, key, value] = kv;
+    if (key === "source") sources.push(value ?? "");
+    else meta[key ?? ""] = value;
+  }
+  meta.sources = sources;
+  meta.lede = lede.join(" ");
+
+  // ── region ──
+  const spine: unknown[] = [];
+  const stack: RawNode[] = [];
+  let current: RawNode | undefined;
+  let mode: "attrs" | "body" | "builds" | "needs" | "table" = "body";
+  const headingRe = /^(#{2,5}) (.*?)(?: \{#([a-z0-9][a-z0-9-]*)\})?\s*$/;
+
+  const finishNode = (): void => {
+    // nothing to do eagerly; nodes are attached on creation
+  };
+
+  for (let i = start + 1; i < end; i++) {
+    const line = lines[i] ?? "";
+    const lineNo = i + 1;
+    const heading = headingRe.exec(line);
+    if (heading !== null) {
+      finishNode();
+      const level = (heading[1] ?? "").length;
+      const title = (heading[2] ?? "").trim();
+      const id = heading[3];
+      if (level === 2 && title.startsWith("flag: ")) {
+        const [when, ...rest] = title.slice(6).split(" | ");
+        if (rest.length === 0) fail(lineNo, "flag needs `when | text`");
+        spine.push({ kind: "flag", status: "done", when: (when ?? "").trim(), text: rest.join(" | ").trim() });
+        current = undefined;
+        stack.length = 0;
+        continue;
+      }
+      if (level === 2 && title.startsWith("today: ")) {
+        spine.push({ kind: "today", text: title.slice(7).trim() });
+        current = undefined;
+        stack.length = 0;
+        continue;
+      }
+      const node: RawNode = { level, title, id, attrs: {}, quote: [], features: [], requires: [], notes: [], table: undefined, items: [] };
+      if (level === 2) {
+        if (id === undefined) fail(lineNo, `phase "${title}" needs an {#id}`);
+        stack.length = 0;
+        stack.push(node);
+        spine.push(node);
+      } else {
+        while (stack.length > 0 && (stack[stack.length - 1]?.level ?? 0) >= level) stack.pop();
+        const parent = stack[stack.length - 1];
+        if (parent === undefined || parent.level !== level - 1) fail(lineNo, `"${title}" (level ${String(level)}) has no parent one level up`);
+        parent.items.push(node);
+        stack.push(node);
+      }
+      current = node;
+      mode = "attrs";
+      continue;
+    }
+    if (current === undefined) {
+      if (line.trim().length === 0) continue;
+      fail(lineNo, `text outside any node: "${line}"`);
+    }
+    if (line.trim().length === 0) { if (mode !== "table") mode = "body"; else mode = "body"; continue; }
+    if (mode === "attrs") {
+      const kv = /^([a-z-]+): (.*)$/.exec(line);
+      if (kv !== null && !line.startsWith("note")) { current.attrs[kv[1] ?? ""] = (kv[2] ?? "").trim(); continue; }
+      mode = "body";
+    }
+    if (line === "builds:") { mode = "builds"; continue; }
+    if (line === "needs:") { mode = "needs"; continue; }
+    if (mode === "builds") {
+      const f = /^- \[(x| |~|\?|-|!)\] (FE|BE|BOTH|WIRE|DOCS|PROOF) (.+)$/.exec(line);
+      if (f === null) fail(lineNo, `a builds: line must be "- [x| |~|?|-|!] LAYER text": "${line}"`);
+      current.features.push({ text: (f[3] ?? "").trim(), layer: LAYER_TOKEN[f[2] ?? ""], status: BOX_STATUS[f[1] ?? ""] });
+      continue;
+    }
+    if (mode === "needs") {
+      const yf = /^- (you|fact)(\(met\))?: (.+)$/.exec(line);
+      if (yf !== null) { current.requires.push({ kind: yf[1], text: (yf[3] ?? "").trim(), met: yf[2] !== undefined }); continue; }
+      const ref = /^- ([a-z0-9][a-z0-9-]*)$/.exec(line);
+      if (ref === null) fail(lineNo, `a needs: line must be "- <id>", "- you: text", "- you(met): text", "- fact: text" or "- fact(met): text": "${line}"`);
+      current.requires.push({ kind: "node", ref: ref[1] });
+      continue;
+    }
+    if (line.startsWith("> ")) { current.quote.push(line.slice(2).trim()); continue; }
+    if (line.startsWith("note!: ")) { current.notes.push(`!${line.slice(7).trim()}`); continue; }
+    if (line.startsWith("note: ")) { current.notes.push(line.slice(6).trim()); continue; }
+    if (line.startsWith("|")) {
+      const cells = line.slice(1, line.endsWith("|") ? -1 : undefined).split("|").map((c) => c.trim());
+      if (current.table === undefined) { current.table = { columns: cells, rows: [] }; mode = "table"; continue; }
+      if (cells.every((c) => /^:?-+:?$/.test(c))) continue;
+      const first = cells[0] ?? "";
+      const tone = first.startsWith("!") ? "you" : first.startsWith("✓") ? "done" : undefined;
+      const stripped = tone === undefined ? cells : [first.slice(1), ...cells.slice(1)];
+      current.table.rows.push({ cells: stripped, ...(tone === undefined ? {} : { tone }) });
+      continue;
+    }
+    fail(lineNo, `unrecognised line inside node "${current.title}": "${line}"`);
+  }
+  finishNode();
+
+  const chipOf = (attrs: Record<string, string>): Record<string, unknown> | undefined =>
+    attrs.chip === undefined ? undefined : { text: attrs.chip, ...(attrs["chip-tone"] === undefined ? {} : { tone: attrs["chip-tone"] }) };
+  const toItem = (node: RawNode): Record<string, unknown> => {
+    const chip = chipOf(node.attrs);
+    return {
+      ...(node.id === undefined ? {} : { id: node.id }),
+      status: node.attrs.status,
+      title: node.title,
+      ...(node.attrs.date === undefined ? {} : { date: node.attrs.date }),
+      ...(chip === undefined ? {} : { chip }),
+      ...(node.attrs.size === undefined ? {} : { size: node.attrs.size }),
+      ...(node.quote.length === 0 ? {} : { desc: node.quote.join(" ") }),
+      ...(node.features.length === 0 ? {} : { features: node.features }),
+      ...(node.requires.length === 0 ? {} : { requires: node.requires }),
+      ...(node.table === undefined ? {} : { table: node.table }),
+      ...(node.notes.length === 0 ? {} : { notes: node.notes }),
+      ...(node.items.length === 0 ? {} : { items: node.items.map(toItem) }),
+    };
+  };
+  const toPhase = (node: RawNode): Record<string, unknown> => {
+    const chip = chipOf(node.attrs);
+    const [primary, ...secondary] = (node.attrs.when ?? "").split(" | ");
+    return {
+      kind: "phase",
+      id: node.id,
+      status: node.attrs.status,
+      when: { primary: (primary ?? "").trim(), ...(secondary.length === 0 ? {} : { secondary: secondary.join(" | ").trim() }) },
+      phase: node.attrs.phase,
+      title: node.title,
+      ...(chip === undefined ? {} : { chip }),
+      ...(node.attrs.size === undefined ? {} : { size: node.attrs.size }),
+      summary: node.quote.join(" "),
+      open: node.attrs.open === "yes",
+      ...(node.features.length === 0 ? {} : { features: node.features }),
+      ...(node.requires.length === 0 ? {} : { requires: node.requires }),
+      items: node.items.map(toItem),
+      ...(node.notes.length === 0 ? {} : { notes: node.notes }),
+    };
+  };
+  return {
+    meta,
+    tiles,
+    spine: spine.map((entry) => ("level" in (entry as object) ? toPhase(entry as RawNode) : entry)),
+  };
+}
+
 // ─── entry ─────────────────────────────────────────────────────────────────
 
 const ROOT = resolve(import.meta.dirname, "..");
-const SOURCE = resolve(ROOT, "docs/roadmap/roadmap.json");
+const SOURCE = resolve(ROOT, "ROADMAP.md");
 const TARGET = resolve(ROOT, "docs/roadmap/index.html");
 
 async function publish(path: string, content: string): Promise<void> {
@@ -879,17 +1107,20 @@ async function publish(path: string, content: string): Promise<void> {
 }
 
 const argv = process.argv.slice(2);
-if (argv.length > 1 || (argv.length === 1 && argv[0] !== "--check")) {
-  throw new Error("usage: npm run roadmap [-- --check]");
+if (argv.length > 1 || (argv.length === 1 && argv[0] !== "--check" && argv[0] !== "--json")) {
+  throw new Error("usage: npm run roadmap [-- --check | --json]");
 }
-const raw: unknown = JSON.parse(await readFile(SOURCE, "utf8"));
+const raw: unknown = parsePlan(await readFile(SOURCE, "utf8"));
 const roadmap = RoadmapSchema.parse(raw);
 const html = renderPage(roadmap);
 
-if (argv[0] === "--check") {
+if (argv[0] === "--json") {
+  // the parsed plan, for inspection and for tools that want the structure without the page
+  process.stdout.write(`${JSON.stringify(roadmap, null, 2)}\n`);
+} else if (argv[0] === "--check") {
   const committed = await readFile(TARGET, "utf8").catch(() => "");
   if (committed !== html) {
-    throw new Error(`docs/roadmap/index.html is stale — run \`npm run roadmap\` and commit the result`);
+    throw new Error("docs/roadmap/index.html is stale — run `npm run roadmap` and commit the result");
   }
   process.stdout.write("docs/roadmap/index.html is fresh.\n");
 } else {
