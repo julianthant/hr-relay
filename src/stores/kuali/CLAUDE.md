@@ -9,6 +9,7 @@ only the task-safe declaration at `../declaration.ts`.
 
 | Task | Effect | What it visits |
 |---|---|---|
+| `kuali/search-separation-action` | read | the Action List, filtered to ONE document number — resolves its action id |
 | `kuali/read-separation-document` | read | the whole RRSS separation form, in one page visit |
 | `kuali/read-timekeeper-annotation` | read | the timekeeper field, as the write's beat-① probe |
 | `kuali/fill-timekeeper-annotation` | prepare | stages the timekeeper value |
@@ -38,6 +39,34 @@ observation" rule is now one PER SUBJECT IDENTITY — narrowed per kind rather t
 and it is the exact field the operator authorized for the 2026-07-23 live write round-trip on doc
 4444 (D78). `Send Back` and `Mark Complete` — the buttons that advance a real separation — are not
 addressable through this store at all.
+
+## The Action-List resolve (D261)
+
+`kuali/search-separation-action` turns the ONE number an operator knows into the address Kuali
+answers to. It exists because D260 measured `separations` as needing two varying values per run and
+therefore as having no typed start box; the operator ruled *"document number should work. no need
+action id."*, and the id became a graph output.
+
+- **It is strictly read-only, and cheaper than legacy's.** Legacy CLICKS the row to open the document
+  and reads the resulting URL. The action id is already on the page as the row's link `href`, so this
+  filters, reads, and navigates nowhere.
+- **TWO matched links for one document is the ORDINARY row**, not an ambiguity: Kuali publishes the
+  number in both `Document #` and `Document Title`. The invariant is one distinct ACTION, which is
+  why the verification scenario claims `recipe-resolves` and deliberately not `exactly-one-visible` —
+  a claim of one node would be false of every real row.
+- **The anchored name match is the safety property.** Kuali's Action-List search is SUBSTRING-based
+  (legacy's own comment: a search for `414` returns 4140–4149), so the link recipe matches
+  `^\s*<n>\s*$`. Unanchored, this would open a neighbouring person's separation.
+- **The read classifies nothing** (D201). `classifyKualiActionResolution` is a pure fold with four
+  named refusals and no arm that answers with an id the page did not show. `parseKualiActionHref`
+  requires the WHOLE path including the space — "the last path segment" would read an id out of a
+  pagination link — and returns `undefined` rather than throwing, so the caller decides.
+- **A document nobody holds an action on is a REFUSAL, not an empty answer.** A completed workflow
+  step leaves the Action List, which is real and common; the refusal names the numbers the list did
+  show, because "not found" alone is a sentence nobody can act on.
+- **Resolving the id does not weaken the D129 check — it doubles it.** The document number is now
+  compared against the page twice: once as the anchored accessible name of the link the id came from,
+  and once as the level-1 heading `openDocument` proves before anything else runs.
 
 ## Read-family invariants
 
@@ -191,10 +220,23 @@ fabricated): `Division*`, `Employee Type*`, `Student Title Code*`,
 `Additional Separation Comments (Optional)`, and the `Submitted Final Pay Request` /
 `Does not need Final Pay (transfer employee)` / `Other` radios.
 
-**NOT ported:** the whole `actionList.*` family (`menuItem`, `docLink`, `docLinks`, `searchInput`,
-`searchGoButton`). A run names its document and opens the deep link; enumerating the Action List is a
-candidate-discovery surface no chunk needs yet. The live Action List DOES carry a
-**Document Type** column, which is worth remembering when one does.
+**The Action-List surface — THREE of five keys ported (D261, live-verified 2026-08-20):**
+`actionList.searchInput()` :67 → `kuali.action-list.search-input` (**narrowed** — legacy's
+`.kp-input-group:has(.kp-input-button-right)` CSS scope is dropped; this registry has no CSS arm and
+the live page renders exactly one `textbox "Search"`, so `exactlyOne` refuses ambiguity instead of
+silently picking) · `actionList.searchGoButton()` :79 →
+`kuali.action-list.search-go-button` · `actionList.docLink()` :33 →
+`kuali.action-list.document-link` (**narrowed** — the link is READ for its `href` rather than
+clicked; the ANCHORED accessible-name match is ported verbatim and is the safety half).
+
+**Still NOT ported, with reasons:** `actionList.menuItem()` — the Action List's own route
+(`…/build/space/<space>/actions`) replaces the menu click, live-verified 2026-08-20 at **1 100 ms**
+to a rendered search box; and `actionList.docLinks()` — enumerating every pending document is
+candidate discovery no workflow here performs. `docLinks`' recipe IS read driver-internally, for one
+purpose: a miss reports *"4502 is not here — 4537, 4495 are"*. The live Action List carries
+**Document Type**, **Submitted By**, **Workflow Step**, **Created On** and **Action Requested**
+columns beside the number; none is modelled, because binding a column needs a row-scoped locator
+vocabulary this registry does not have and binding by ordinal is exactly D205's defect.
 
 Also ported: `src/systems/kuali/navigate.ts:16-39` (`fillWithVerify`), `:626-652` (`clickSave`),
 `src/config.ts:131-132` (`KUALI_SPACE_URL`), and `src/infra/auth/login.ts:649-755` (the login flow).

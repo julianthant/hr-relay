@@ -318,6 +318,34 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-20: a structural rule is satisfied by moving the SCHEMA, not by arguing with the rule —
+  and the value you were told to type is often already on the page (D261).** D260 proved, correctly
+  and normatively, that a typed-text start surface carries exactly ONE varying value per run and that
+  `separations` needed two, then named two shapes and handed the operator the choice. The operator
+  chose *"document number should work. no need action id."* and the build took **one day**: the id
+  became a graph output, read off the Action-List row's `href`. Nothing about D260 was wrong, nothing
+  was withdrawn, and `services/start/plan.ts` did not move — the derivation lives exactly where D260
+  said any such lookup could only live, one node past the ingress parse. **When a rule blocks a
+  feature, the question is which of the rule's INPUTS can honestly change**, and here the input was a
+  required field nobody had to type because the system already published it. Four more things travel.
+  **The refusal is where the value is**: a document nobody holds an action on is a real and common
+  state (a completed step leaves the list), so it refuses BY NAME and prints the numbers the list did
+  show — "not found" alone is a sentence nobody can act on — and two DISTINCT action ids for one
+  number refuses rather than choosing, because choosing is how the wrong person's separation gets
+  filed. **Two matched nodes was the ordinary row, not the ambiguity**: Kuali publishes a document
+  number in both `Document #` and `Document Title`, so a surface asserting `exactly-one-visible`
+  would have been false of every real row — the honest invariant was one distinct ACTION, and saying
+  so cost a shared schema change (`matchedCount` widened from `z.literal(1)` with a refinement
+  pinning every `exactly-one-*` assertion to 1), because the alternative was writing a number nobody
+  measured. **Deriving a value can STRENGTHEN the check it looked like it was replacing**: D129's
+  document-number proof is now made twice — against the link's anchored accessible name and against
+  the opened document's heading — where D260 had correctly refused the tempting version of this
+  ("drop `documentNumber` and let the page supply it"), which deletes a check to gain a text box.
+  And **a per-OPERATOR constant is not a per-RUN constant, but it is still a constant**: baking
+  `timekeeperName` into a bundle-safe descriptor satisfies the rule and is the weakest thing in the
+  change, so its scope and its trigger (a second timekeeper) are written where somebody will read
+  them rather than left to be discovered.
+
 - **2026-08-20: an unhandled union arm IS a fallback, and it is the one nobody greps for (D253).**
   `CommandResultSchema` has three arms and TWO are refusals — `rejected` and the CAS `conflict`. The
   Context rail's Data save and the notification bell each branched on `rejected` alone, so a

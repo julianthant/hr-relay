@@ -5665,3 +5665,179 @@ worktree live pass:
   comment already carries this reason, and `contractFingerprint` hashes file CONTENT, so a
   comment-only edit would stop every stored `separations` checkpoint replaying (§9.22 measured that
   exact effect) in exchange for no behavior.
+
+> **SUPERSEDED THE SAME DAY by §9.24 / D261.** The operator answered §9.23 item 3's question by
+> choosing **shape 2** — *"document number should work. no need action id."* — and the build landed
+> live. This section is kept VERBATIM because it is the analysis that produced the choice, and an
+> analysis rewritten after its answer stops being evidence. Its rule (one varying value per run) is
+> unchanged and still normative; what moved is the schema the rule is applied to. The two §9.22 rows
+> above recording `Separation` under *7 not startable* are likewise a true record of that pass and a
+> stale statement about the tree: as of 2026-08-20 that count is **6**.
+
+---
+
+### 9.24 The start door, BUILT — one typed document number, live end to end, 2026-08-20
+
+§9.23 recorded the door as unbuildable where it was asked for and named two shapes with their costs.
+The operator ruled, verbatim: **"document number should work. no need action id."** That is §9.23's
+shape 2 — *make `actionId` a graph output* — and this section is that build, live-proved the same day.
+The decision is **D261** (doc 02 §1.1). §9.23 and D260 are NOT withdrawn: their rule is unchanged and
+this is the choice they handed the operator, exercised.
+
+#### 1. The selectors, ported and live-verified
+
+Three of legacy's five `actionList.*` keys move candidate→ported, from
+`hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc`, `src/systems/kuali/selectors.ts`
+(blob `1c55c7d307891e07951ca38a89548418bdc23f49`):
+
+| Legacy key | Line | Canonical id | Live 2026-08-20 |
+|---|---|---|---|
+| `actionList.searchInput()` | :67 | `kuali.action-list.search-input` | **1 node** |
+| `actionList.searchGoButton()` | :79 | `kuali.action-list.search-go-button` | **1 node** |
+| `actionList.docLink()` | :33 | `kuali.action-list.document-link` | **2 nodes** (see below) |
+
+Two narrowings, both recorded on the port row rather than left silent:
+
+- **The search box drops legacy's CSS scope.** Legacy scopes to
+  `.kp-input-group:has(.kp-input-button-right)` because a second textbox named `Search` existed when
+  it was written (2026-06-17). This registry has no CSS arm, and the live page renders **exactly one**
+  `textbox "Search"` — today's global nav control is `Search apps`, a different accessible name. The
+  port keeps role+name and lets `exactlyOne` refuse any other count. That is a deliberate
+  correctness-over-availability trade: if a second box ever renders, this refuses by name instead of
+  silently typing into one of two.
+- **The document link is READ, not clicked.** Legacy clicks it and reads the resulting URL. The
+  `href` carries the same fact one navigation cheaper and strictly read-only. The ANCHORED
+  accessible-name match (`^\s*<n>\s*$`) is ported verbatim and is the safety half — legacy's own
+  comment records that Kuali's Action-List search is SUBSTRING-based, so a search for `414` returns
+  4140–4149.
+
+Two keys stay CANDIDATE, with reasons: `actionList.menuItem()` is superseded by the list's own route
+(a direct `goto` to `…/actions` rendered its search box in **1 100 ms**, so the menu click and its
+"the menu had not painted yet" failure class are gone), and `actionList.docLinks()` enumerates every
+pending document — candidate discovery no workflow here performs. It IS read, driver-internally and
+unpublished, for one purpose: a miss says *"4502 is not here — 4537, 4495 are"*.
+
+**What the live pass measured**, read-only through the production factory + Duo Autopilot on space
+`5e47518b90adda9474c14adb`: direct route rendered in 1 100 ms; unfiltered list held 3 documents
+publishing **6** bare-number links; filtering to `4502` left **2** links, both carrying
+`/build/space/5e47518b90adda9474c14adb/actions/6a766ae6f0549046f7f0dc06` — the action id §9.18/§9.22
+had recorded by hand.
+
+**Two links for one document is the ORDINARY row.** Kuali publishes the number in both `Document #`
+and `Document Title`, which legacy's own `docLink` comment records. That is why the surface's
+verification scenario claims `recipe-resolves` and deliberately NOT `exactly-one-visible`: a claim of
+one node would be false of every real row. The invariant this surface actually holds is one distinct
+ACTION.
+
+#### 2. The refusal arms
+
+The driver states what the list showed and classifies nothing (D201); `classifyKualiActionResolution`
+is a pure fold, and four negatives are distinct durable codes because each means something different
+to whoever reads the run:
+
+| Code | When | Why not an empty answer |
+|---|---|---|
+| `document-not-in-action-list` | zero matched links | A completed Kuali step LEAVES the list, so this is a real and common state. The refusal names the numbers the list did show, because "not found" alone is a sentence nobody can act on |
+| `ambiguous-action-list-match` | two or more DISTINCT action ids | A run cannot choose which workflow step it is filing against, and choosing for it is how the wrong thing gets written |
+| `unreadable-action-link` | a matched link with no `href`, or an href not addressing this space's `…/actions/<24 hex>` | The id is only on the page as a link target. A looser parse — "the last path segment" — would read an id out of a pagination or profile link |
+| `unexpected-page-state` | the driver answered about a different document than asked | — |
+
+There is no arm that answers with an id the page did not show. `parseKualiActionHref` requires the
+whole path including the space, accepts Kuali's `…/view` redirect, and returns `undefined` rather
+than throwing so the CALLER decides.
+
+#### 3. The graph, and what did not move
+
+`resolve-action` is a new head node; `document` now depends on it and binds the resolved id, and
+`finalize-kuali` adds it to `dependsOn` and binds the resolved id in both its `prepare` and its
+`commit`. **Nothing else in the graph moved** — no edge, gate, permanent key or `when` changed.
+
+**The identity gate is unaffected and still dominates both sinks.** `comparison` depends on
+`document`, which now depends on `resolve-action`, so the new node is inside the gate's own ANCESTRY;
+`finalize-kuali` reading it is therefore a read of a node the operator's approval already covered,
+which is exactly the rule D202's walk applies.
+
+`replay: "checkpoint"`, for `document`'s reason one node earlier: the node's product is a VALUE, so
+restoring it into a fresh browser leaves nothing broken. The id CAN go stale across a gate park — an
+`actionId` names a workflow STEP — and that is precisely the case `openDocument` refuses loudly on,
+by proving the document number off the page's own heading. A freshness bound would replace a precise
+refusal with a timer, and §5A already ruled that out for this graph.
+
+**The standalone chunk harnesses are untouched.** `separations-kuali-read`,
+`separations-kuali-finalization` and the rest keep their explicit `actionId` inputs: each is a
+scaffold that proves one piece, and adding a resolve to each would be re-proving the composition's
+node five times.
+
+#### 4. The ingress
+
+`SeparationsInput` is now `{documentNumber, timekeeperName, searchTimeoutMs?, reRead?}` — ONE varying
+value. `surfaces.inputRun` is declared with a `document-number` entry pattern (added to
+`ENTRY_PATTERNS` beside its operator prose, key sets pinned equal by `ingress-parser-prose.test.ts`),
+ONE rule and **no `otherwise` arm**, and `timekeeperName` as the single constant. D250 examples are
+`4502` and `4502; 4510`, both real numbers this migration has read live.
+
+**THE FINGERPRINT MOVED: `2c9cb58e…` → `c9a7c426…`.** Every stored `separations` checkpoint stops
+replaying across this contract change. That is the honest cost, not a defect — the run's identity
+genuinely moved, because its input schema is a different shape — and §9.22 measured the mechanics of
+exactly this. Nothing durable is lost: a checkpoint miss means the next run re-reads live.
+
+#### 5. The live proof — one typed number to a parked gate
+
+**Against this worktree's OWN authority**, per §9.23 item 4: a BFF and worker booted from
+`.hr-rebuild-worktrees/door-resolve` write to `<worktree>/.tracker-rebuild`, a **fresh empty
+database**, and the browser profile is COLD (which since D243/D244 is the SAFE state). Ports 3938 and
+5174 were observed free before boot and silent after teardown. The served descriptor fingerprint was
+compared against the tree's before the run — `c9a7c4266fbe4fd260183d548ccc634e574cbd39ee662e28284c35e43c8362d9`,
+identical — which is §9.16 §5's standing habit.
+
+Typed into the run modal: **`4502`**, and nothing else. The modal rendered the surface as declared —
+`Examples · One document · Two documents`, the field labelled *"Kuali document numbers — separated by
+";" or a new line"*, the derived prose *"A Kuali document number is three to eight digits, the number
+printed at the top of the separation request; an entry matching none of these refuses the whole box,
+and nothing is started."*, and **`How this run is shaped` showing `timekeeperName` → `Julian Zaw`
+fixed by this workflow's input surface**. **Separation had moved out of the modal's `not startable`
+list**, which §9.22 item 2 recorded it in (7 → 6).
+
+| Fact | Value |
+|---|---|
+| run / trace | `1e0b7cc2-173a-438b-954a-2f118175f8fa` / **`sp-105225-1e0b`** |
+| plan | `537ab15e-96fc-4ab3-9833-508533a887a3`, 1 run, `dryRun: true` |
+| match key / item | `separations:4502` / `c9837287-f3c5-5697-89f4-73e727fbfe04` |
+| row title at plan time | `Separation 4502` · **`Filed by Julian Zaw`** (the D261 subtitle) |
+| `resolve-action` | started 17:52:58.992Z, done 17:53:24.789Z — **25 797 ms**, including the cold Kuali SSO + Duo ceremony |
+| resolved | `actionId` **`6a766ae6f0549046f7f0dc06`**, `actionHref` `/build/space/5e47518b90adda9474c14adb/actions/6a766ae6f0549046f7f0dc06`, `matchedLinkCount` **2** |
+| gate | opened **17:54:34.316Z** — 1 m 52 s after start, status `awaiting-approval` |
+| row title at the gate | **`Dreitho Cramia`** — the subject projection, from UCPath's Job Summary |
+| checkpoints | **13** |
+| `write_intents` / `write_attempts` / `durable_outbox` | **0 / 0 / 0** |
+
+The run read Kuali (Action List **and** document), UCPath (Person Org and Job Summary) and New Kronos
+(search and timecard) LIVE off one typed number. `GET /api/v1/runs/<id>` answered **200** with
+`Kuali Action` as the timeline's first step and the gate `open`.
+
+#### 6. What is honestly NOT RUN
+
+- **The gate APPROVAL.** The packet derived and rendered (`approvalShape: "one-click"`, one candidate
+  `10001754 / Dreitho Cramia`, `expectedVersion 51`) and was not clicked through. The ceremony is
+  D226's and is unchanged by this seam — §9.20 live-proved it six times — and what D261 needed to
+  prove is the resolve, which is proved to its durable checkpoint. The dry run would have stopped at
+  `clear-pending` in any case, so **`finalize-kuali`'s binding of the RESOLVED action id is not
+  exercised live by any dry run** and is the one thing this pass leaves for the controlled commit.
+- **Every real write**, unchanged from §9.17/§9.20/§9.22.
+- **The multi-entry door.** `4502; 4510` parses to two runs and is pinned by a unit arm through
+  `planStart`; only the single-entry path was driven live.
+
+#### 7. A finding this pass leaves open, recorded because nothing else will see it
+
+**`auditKualiUiRegistry` and `auditKualiUiEvidenceBindings` have ZERO callers.** The ucpath, crm and
+new-kronos registries are all wired into `tests/unit/architecture/semantic-ui-registry.test.ts`; the
+Kuali pair is not, so the Kuali registry's own audits are dead code — machinery with no consumer
+doing nothing, which is D222's shape at the guard layer. Both were run manually against this build
+and the registry audit is **clean**; the evidence-binding audit reports **two pre-existing rows**,
+`kuali.rrss-document.last-day-worked-field` and `…separation-date-field`, each carrying TWO
+assertions in `separation-document.live.json` (chunk 6b added the `exactly-one-editable` write-path
+verification beside the read's) against a rule demanding exactly one. That is a second seam — the
+rule needs to admit a fact verified under two assertions before the audits can be wired — so it is
+NAMED here rather than half-fixed. The Kuali registry is not unguarded in the meantime: the UI
+catalog freshness guard covers its published content byte-for-byte, and
+`legacy-selector-port-provenance` covers every ported key.
