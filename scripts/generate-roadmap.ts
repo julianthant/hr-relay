@@ -327,14 +327,14 @@ interface TreeNode {
 const NODE_W = 224;
 const NODE_H = 60;
 const PHASE_H = 88;
-const COL_STEP = 248;
-const DEPTH_STEP = 104;
-const PHASE_DROP = 54;
+const COL_STEP = 248;   // one leaf column
+const DEPTH_STEP = 104; // one task row (NODE_H + 44)
+const PHASE_DROP = 44;  // phase box bottom → first task row top
 const PAD = 28;
-const PHASE_GAP = 56;
-const FLAG_W = 250;
-const TODAY_W = 48;
-const ARC_BAND = 110;
+const BAND_GAP = 52;    // between phase bands
+const FLAG_H = 44;
+const TODAY_H = 40;
+const CHILD_X = PAD + NODE_W + 64; // tasks start to the right of the phase column
 
 function buildItemNode(item: Item, parentKey: string, index: number, registry: Map<string, Registered>): TreeNode {
   const key = item.id ?? `${parentKey}-${String(index + 1)}`;
@@ -392,16 +392,16 @@ function leafRows(node: TreeNode): number {
   return node.children.length === 0 ? 1 : node.children.reduce((sum, child) => sum + leafRows(child), 0);
 }
 
-/** Tidy top→down placement: leaves take consecutive columns, a parent sits centred over its children. */
-function place(node: TreeNode, depth: number, startCol: number, blockLeft: number): void {
+/** Tidy top→down placement inside one phase band: leaves take consecutive columns, a parent sits centred over its children. */
+function place(node: TreeNode, depth: number, startCol: number, blockLeft: number, bandTop: number): void {
   node.depth = depth;
-  node.y = depth === 0 ? PAD : PAD + PHASE_H + PHASE_DROP + (depth - 1) * DEPTH_STEP;
+  node.y = depth === 0 ? bandTop : bandTop + PHASE_H + PHASE_DROP + (depth - 1) * DEPTH_STEP;
   if (node.children.length === 0) {
     node.rowCenter = startCol + 0.5;
   } else {
     let col = startCol;
     for (const child of node.children) {
-      place(child, depth + 1, col, blockLeft);
+      place(child, depth + 1, col, blockLeft, bandTop);
       col += leafRows(child);
     }
     const first = node.children[0];
@@ -409,6 +409,10 @@ function place(node: TreeNode, depth: number, startCol: number, blockLeft: numbe
     node.rowCenter = first === undefined || last === undefined ? startCol + 0.5 : (first.rowCenter + last.rowCenter) / 2;
   }
   node.x = blockLeft + node.rowCenter * COL_STEP - node.w / 2;
+}
+
+function maxDepth(node: TreeNode): number {
+  return node.children.length === 0 ? node.depth : Math.max(...node.children.map(maxDepth));
 }
 
 function flatten(node: TreeNode, into: TreeNode[]): TreeNode[] {
@@ -442,14 +446,24 @@ function wrapTitle(title: string, width: number, maxLines: number): string[] {
 
 const N = (value: number): string => String(Math.round(value * 10) / 10);
 
-function connector(x1: number, y1: number, x2: number, y2: number): string {
-  const dy = Math.max(24, Math.abs(y2 - y1) / 2);
-  return `M${N(x1)},${N(y1)} C${N(x1)},${N(y1 + dy)} ${N(x2)},${N(y2 - dy)} ${N(x2)},${N(y2)}`;
+/** Org-chart rail: parent bottom-centre drops to a rail, the rail spans the children, each child gets a stub. */
+function railConnector(parent: TreeNode): string {
+  if (parent.children.length === 0) return "";
+  const px = parent.x + parent.w / 2;
+  const py = parent.y + parent.h;
+  const first = parent.children[0];
+  const last = parent.children[parent.children.length - 1];
+  if (first === undefined || last === undefined) return "";
+  const railY = first.y - (first.y - py) / 2;
+  const left = Math.min(px, first.x + first.w / 2);
+  const right = Math.max(px, last.x + last.w / 2);
+  const stubs = parent.children.map((c) => `M${N(c.x + c.w / 2)},${N(railY)} V${N(c.y)}`).join(" ");
+  return `M${N(px)},${N(py)} V${N(railY)} M${N(left)},${N(railY)} H${N(right)} ${stubs}`;
 }
 
 interface Band {
   kind: "flag" | "today";
-  left: number;
+  top: number;
   status: Status;
   key: string;
   text: string;
@@ -463,36 +477,36 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
   for (const node of roadmap.spine) {
     if (node.kind === "phase") {
       const root = buildPhaseNode(node, registry);
-      const cols = leafRows(root);
-      const width = Math.max(cols * COL_STEP, NODE_W + 8);
-      place(root, 0, 0, cursor + (width - cols * COL_STEP) / 2);
+      place(root, 0, 0, CHILD_X, cursor);
+      root.x = PAD;
+      root.y = cursor;
       roots.push(root);
-      cursor += width + PHASE_GAP;
+      const depth = maxDepth(root);
+      const bandHeight = depth === 0 ? PHASE_H : PHASE_H + PHASE_DROP + (depth - 1) * DEPTH_STEP + NODE_H;
+      cursor += bandHeight + BAND_GAP;
     } else if (node.kind === "flag") {
       flagIndex += 1;
-      bands.push({ kind: "flag", left: cursor, status: node.status, key: `flag-${String(flagIndex)}`, text: node.text });
-      cursor += FLAG_W + PHASE_GAP / 2;
+      bands.push({ kind: "flag", top: cursor, status: node.status, key: `flag-${String(flagIndex)}`, text: node.text });
+      cursor += FLAG_H + BAND_GAP / 2;
     } else {
-      bands.push({ kind: "today", left: cursor, status: "active", key: "today", text: node.text });
-      cursor += TODAY_W + PHASE_GAP / 2;
+      bands.push({ kind: "today", top: cursor, status: "active", key: "today", text: node.text });
+      cursor += TODAY_H + BAND_GAP / 2;
     }
   }
   const all = roots.flatMap((root) => flatten(root, []));
-  const maxDepth = Math.max(...all.map((n) => n.depth));
-  const width = cursor - PHASE_GAP + PAD;
-  const treeBottom = PAD + PHASE_H + PHASE_DROP + Math.max(0, maxDepth - 1) * DEPTH_STEP + NODE_H;
-  const height = treeBottom + ARC_BAND + PAD;
+  const width = Math.max(...all.map((n) => n.x + n.w)) + PAD;
+  const height = cursor - BAND_GAP + PAD;
   const byKey = new Map(all.map((n) => [n.key, n] as const));
-  const spineY = PAD + PHASE_H / 2;
+  const spineX = PAD + NODE_W / 2;
 
-  // tree edges (containment) — parent bottom-centre to child top-centre
+  // tree edges (containment) — org-chart rails
   const treeEdges = all
-    .flatMap((parent) => parent.children.map((child) => `<path class="te" d="${connector(parent.x + parent.w / 2, parent.y + parent.h, child.x + child.w / 2, child.y)}"/>`))
+    .filter((parent) => parent.children.length > 0)
+    .map((parent) => `<path class="te" d="${railConnector(parent)}"/>`)
     .join("");
 
-  // prerequisite edges (shown on hover/selection, or all at once) — arcs BELOW the
-  // tree, from the prerequisite's bottom-centre to the dependent's bottom-centre,
-  // dipping deeper the longer the span so they never cross through sibling boxes
+  // prerequisite edges (shown on hover/selection, or all at once): a vertical
+  // S-curve between rows; an arc below both boxes when they share a row
   const reqEdges = all
     .flatMap((node) =>
       node.requires.flatMap((requirement) => {
@@ -500,13 +514,24 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
         const from = byKey.get(requirement.ref);
         if (from === undefined) return [];
         const met = from.status === "done";
-        const x1 = from.x + from.w / 2;
-        const y1 = from.y + from.h;
-        const x2 = node.x + node.w / 2;
-        const y2 = node.y + node.h;
-        const span = Math.abs(x2 - x1);
-        const lane = treeBottom + 24 + Math.min(ARC_BAND - 30, span / 60);
-        const d = `M${N(x1)},${N(y1)} C${N(x1)},${N(lane + (lane - Math.max(y1, y2)) / 3)} ${N(x2)},${N(lane + (lane - Math.max(y1, y2)) / 3)} ${N(x2)},${N(y2)}`;
+        const fx = from.x + from.w / 2;
+        const tx = node.x + node.w / 2;
+        let d: string;
+        if (Math.abs(from.y - node.y) < NODE_H) {
+          const y = Math.max(from.y + from.h, node.y + node.h);
+          const dip = y + 26 + Math.min(60, Math.abs(tx - fx) / 40);
+          d = `M${N(fx)},${N(from.y + from.h)} C${N(fx)},${N(dip)} ${N(tx)},${N(dip)} ${N(tx)},${N(node.y + node.h)}`;
+        } else if (from.y < node.y) {
+          const y1 = from.y + from.h;
+          const y2 = node.y;
+          const dy = Math.max(30, (y2 - y1) / 2);
+          d = `M${N(fx)},${N(y1)} C${N(fx)},${N(y1 + dy)} ${N(tx)},${N(y2 - dy)} ${N(tx)},${N(y2)}`;
+        } else {
+          const y1 = from.y;
+          const y2 = node.y + node.h;
+          const dy = Math.max(30, (y1 - y2) / 2);
+          d = `M${N(fx)},${N(y1)} C${N(fx)},${N(y1 - dy)} ${N(tx)},${N(y2 + dy)} ${N(tx)},${N(y2)}`;
+        }
         return [`<path class="rq ${met ? "met" : "open"}" data-from="${from.key}" data-to="${node.key}" d="${d}"/>`];
       }),
     )
@@ -517,17 +542,16 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
   const lastRoot = roots[roots.length - 1];
   const spine = firstRoot === undefined || lastRoot === undefined
     ? ""
-    : `<line class="spine" x1="${N(firstRoot.x + firstRoot.w / 2)}" y1="${N(spineY)}" x2="${N(lastRoot.x + lastRoot.w / 2)}" y2="${N(spineY)}"/>`;
+    : `<line class="spine" x1="${N(spineX)}" y1="${N(firstRoot.y + firstRoot.h / 2)}" x2="${N(spineX)}" y2="${N(lastRoot.y + lastRoot.h / 2)}"/>`;
   const bandSvg = bands
     .map((band) => {
       if (band.kind === "today") {
-        const x = band.left + TODAY_W / 2;
-        return `<g class="today"><line x1="${N(x)}" y1="${N(PAD)}" x2="${N(x)}" y2="${N(height - PAD)}"/><circle cx="${N(x)}" cy="${N(spineY)}" r="7"/><text x="${N(x + 12)}" y="${N(height - PAD - 6)}">TODAY · ${escapeHtml(band.text)}</text></g>`;
+        const y = band.top + TODAY_H / 2;
+        return `<g class="today"><line x1="${N(PAD)}" y1="${N(y)}" x2="${N(width - PAD)}" y2="${N(y)}"/><circle cx="${N(spineX)}" cy="${N(y)}" r="7"/><text x="${N(spineX + 16)}" y="${N(y - 8)}">TODAY · ${escapeHtml(band.text)}</text></g>`;
       }
-      const label = wrapTitle(band.text.replace(/\*\*/g, "").replace(/`/g, ""), 30, 2);
-      const cx = band.left + FLAG_W / 2;
-      const lines = label.map((line, i) => `<tspan x="${N(cx)}" dy="${i === 0 ? 0 : 14}">${escapeHtml(line)}</tspan>`).join("");
-      return `<a class="nd flag ${band.status}" href="#${band.key}" data-key="${band.key}" aria-label="${escapeHtml(label.join(" "))}"><g><rect x="${N(band.left + 10)}" y="${N(spineY - 22)}" width="${N(FLAG_W - 20)}" height="44" rx="22"/><circle cx="${N(band.left + 26)}" cy="${N(spineY)}" r="5"/><text x="${N(cx)}" y="${N(spineY - (label.length === 1 ? 0 : 7))}" dy="0.35em" text-anchor="middle">${lines}</text></g></a>`;
+      const y = band.top + FLAG_H / 2;
+      const label = wrapTitle(band.text.replace(/\*\*/g, "").replace(/`/g, ""), 110, 1)[0] ?? "";
+      return `<a class="nd flag ${band.status}" href="#${band.key}" data-key="${band.key}" aria-label="${escapeHtml(label)}"><g><circle cx="${N(spineX)}" cy="${N(y)}" r="6"/><rect x="${N(spineX + 14)}" y="${N(y - 14)}" width="${N(Math.min(width - spineX - 14 - PAD, 760))}" height="28" rx="14"/><text x="${N(spineX + 28)}" y="${N(y)}" dy="0.35em">${escapeHtml(label)}</text></g></a>`;
     })
     .join("");
 
@@ -832,7 +856,7 @@ function renderPage(roadmap: Roadmap): string {
 <div class="canvas" id="canvas-wrap">${svg}</div>
 <aside class="drawer" aria-live="polite">
 <h2 id="drawer-title">Select a node</h2>
-<div id="drawer-body"><p class="hint">Each box is one piece of the plan: phases sit on the horizontal time spine (left = earliest), and their slices, tracks and chunks hang beneath them. The small squares inside a box are its features — one per feature, coloured by layer, filled when built — so a node reads as "3 of 5 built, the missing two are wiring". Click a box for its full detail; hover to light up what it needs and what it unlocks (arcs below the tree — green when the prerequisite is met); drag to pan, zoom with the controls.</p><p class="hint"><b>Needs</b> chips are prerequisites: green-ticked when met, hollow when another node must land first, amber when it is an act only you can take.</p></div>
+<div id="drawer-body"><p class="hint">Each box is one piece of the plan: phases stack top-to-bottom on the time spine at the left, and each phase's slices, tracks and chunks fan out to its right, sub-tasks hanging beneath their parent. The small squares inside a box are its features — one per feature, coloured by layer, filled when built — so a node reads as "3 of 5 built, the missing two are wiring". Click a box for its full detail; hover to light up what it needs and what it unlocks (green when the prerequisite is met, dashed when open); drag to pan, zoom with the controls.</p><p class="hint"><b>Needs</b> chips are prerequisites: green-ticked when met, hollow when another node must land first, amber when it is an act only you can take.</p></div>
 </aside>
 </div>
 <footer>${inline(roadmap.meta.footer)} Status as of <span style="font-family:var(--mono)">${escapeHtml(roadmap.meta.asOf)}</span>, HEAD <span style="font-family:var(--mono)">${escapeHtml(roadmap.meta.head)}</span>. Generated by <code>npm run roadmap</code> from <code>docs/roadmap/roadmap.json</code> — edit the JSON, never this file.</footer>
