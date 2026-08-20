@@ -379,6 +379,30 @@ describe("dashboard wire primitives", () => {
       timeline: { events: [...DETAIL.timeline.events, DETAIL.timeline.events[0]] },
     }).success, false);
   });
+
+  it("D259 — a replayed step names the checkpoint it replayed, and measures nothing", () => {
+    const stepped = (member: unknown) => ({
+      ...DETAIL,
+      timeline: { ...DETAIL.timeline, steps: [{ label: "Kronos timecard", state: "replayed", members: [member] }] },
+    });
+    assert.equal(RunDetailWireSchema.safeParse(
+      stepped({ label: "Timecard", state: "replayed", replayedFrom: { attempt: 8, claimGeneration: 2 } }),
+    ).success, true);
+    // A pre-D214 checkpoint names no execution, and the wire must not invent one.
+    assert.equal(RunDetailWireSchema.safeParse(
+      stepped({ label: "Timecard", state: "replayed", replayedFrom: { attempt: 8 } }),
+    ).success, true);
+    // Replayed with no source is a claim with no citation.
+    assert.equal(RunDetailWireSchema.safeParse(stepped({ label: "Timecard", state: "replayed" })).success, false);
+    // A source on anything else says a step both ran and did not.
+    assert.equal(RunDetailWireSchema.safeParse(
+      stepped({ label: "Timecard", state: "done", replayedFrom: { attempt: 8 } }),
+    ).success, false);
+    // `took 0s` is exactly the sentence this arm exists to delete.
+    assert.equal(RunDetailWireSchema.safeParse(
+      stepped({ label: "Timecard", state: "replayed", durationSec: 0, replayedFrom: { attempt: 8 } }),
+    ).success, false);
+  });
 });
 
 describe("lazy detail and artifact resources", () => {

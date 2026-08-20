@@ -694,6 +694,58 @@ reference records the per-event fallback. That is a corpus gap with an owner (D1
 a reference nobody takes is a defect nobody catches), and it closes with Track B's fixture work and
 its one deliberate re-freeze, not with a second re-freeze here.
 
+#### D259 — a REPLAYED step is its own arm, and it is never `pending` (2026-08-20)
+
+**The defect.** A replayed node emits no spans, by design (doc 02 §5.3 — "replayed nodes emit no
+spans" is the executor's structural replay policy), and this timeline folds spans. So a step whose
+checkpoint the run replayed had nothing to render and came out **`pending`**. Track C's connection
+proof watched a finished run report `Kuali extraction — pending`, `Job summary — pending` and
+`Identity check — pending, took 0s` — the last one on the very category whose gate the operator had
+personally approved a minute earlier — with `GET /api/v1/runs/:id` serving `steps[0].state =
+"pending"` after the run was terminal (separations §9.22 item 3). `pending` means *this has not
+happened yet*, which is false twice over: it did happen, and its result is the one the run consumed.
+
+**The fix is D144's shape — the reader moves, and nothing fabricates a span.** `TimelineStepWire.state`
+and its members gain a `replayed` arm, and a replayed member carries `replayedFrom` — the stored
+checkpoint's own `attempt` (D221's item attempt) and, when the row names one, its `claimGeneration`
+(D214's execution). A pre-D214 row names no generation, so the wire omits it rather than fabricating
+`1`. A replayed member carries **no duration**: a replay emits no span, so nothing measured it, and
+`0` would read as "it ran instantly" — the `took 0s` this decision exists to delete. The schema
+refuses both halves of the pairing (a `replayed` member with no source, a source on any other state)
+and refuses a measured replay.
+
+**Three conditions, each closing a way the claim could be false.** A step is `replayed` when it has
+no task span AND:
+
+1. **the run is terminal `done`** — only then did the executor visit every node, so "no span" cannot
+   also mean "the run stopped before reaching it". A failed or cancelled run keeps `pending`, because
+   nodes after the stop genuinely never ran while a prior run's checkpoints sit under them;
+2. **a checkpoint exists at `(workflow, itemId, nodeId)`** — the SAME item-scoped read the executor's
+   own planner makes (doc 02 §5.7);
+3. **a DIFFERENT run wrote it** — a row this run wrote is evidence the node executed HERE.
+
+A category is `replayed` only when EVERY member replayed; one member that executed makes it `done`,
+and the member disclosure carries the breakdown. A settled gate is untouched: a gate never replays
+across runs (`replay-gate` reads this run's own `gate_results` row), so it still reads `done` from
+its durable record.
+
+**On screen:** the hollow ring and outlined bar `skipped` uses — nothing happened HERE — in the
+verified-done hue, because the fact is settled; the word `replayed` where a measured step prints its
+duration; and the member line names `attempt N`. Hue is never the distinguisher: shape and word are.
+
+**Two residuals, stated rather than hidden.** A node this run's branch excluded — or whose declared
+`when` was false — while an EARLIER run of the same item executed it also lands in the replayed arm,
+because the executor's replay/skip decision is durable nowhere this projection reads; the trigger
+that closes it is D114's terminal `not-run` reasons reaching this query. And a node whose checkpoint
+THIS run wrote but whose spans are gone (a pruned stream) stays `pending`; "executed, span not
+folded" is a different honest arm and this build does not claim it.
+
+**Rejected:** emitting a span for a replayed node (it would make the executor's own replay policy
+untrue, and a synthetic span is exactly the fabrication D144 refused); inferring reach from the
+declared timeline order (a declared category order is author-controlled presentation, not a
+topological one); and leaving the fold alone and explaining `pending` in a tooltip (the wrong word is
+what the operator reads at a glance).
+
 ---
 
 ### D234 — the queue's model is runs and archived runs (2026-08-19)
