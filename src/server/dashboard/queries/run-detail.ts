@@ -124,6 +124,38 @@ export interface RunDetailWriteContractView {
   readonly proof: ProofShape;
 }
 
+/**
+ * D252 — one graph node, in the shape the Data rail's origin line needs.
+ *
+ * Derived at the composition root beside `gateNodes` and `writeContracts`, for
+ * the reason those two state: this directory never reaches the descriptor
+ * builders or the module's store list, so a query that re-derived a node's
+ * label, a task's effect or a freshness precedence would be a second copy of a
+ * declaration the runtime already owns.
+ *
+ * `dir` is the node's own task EFFECT, not an inference: a task node runs a
+ * `read` contract and a transaction node's sink is a `commit`. `system` is the
+ * driver system of the store that implements the task — absent for a headless
+ * store, which owns none. `freshness` is pre-resolved per field path through
+ * `resolveFreshnessBound`, already in the wire's shape (`unbounded` rather than
+ * an `Infinity` that `JSON.stringify` would flatten to `null`); a path with no
+ * entry has no declared bound, and a `prepare`/`commit` contract declares no
+ * policy at all.
+ */
+export interface RunDetailDataOriginView {
+  readonly nodeId: string;
+  readonly step: string;
+  readonly dir: "read" | "write";
+  readonly system?: string;
+  readonly freshness?: readonly Readonly<{
+    fieldPath: string;
+    maxAge: number | "unbounded";
+    override: "forbidden" | "audited";
+  }>[];
+  /** Commit nodes this node's facts can statically reach (doc 02 §5.5). */
+  readonly feeds: readonly Readonly<{ nodeId: string; label: string }>[];
+}
+
 export interface RunDetailDescriptorView {
   readonly details: readonly Readonly<{
     key: string;
@@ -157,6 +189,13 @@ export interface RunDetailDescriptorView {
    * unavailable reason rather than a form.
    */
   readonly writeContracts?: readonly RunDetailWriteContractView[];
+  /**
+   * D252 — one entry per node that can produce a Data-section value. Optional
+   * in the VIEW only because a fixture may omit it; the registry's descriptors
+   * always carry it, and an absent entry serves an entry with no origin block,
+   * which is the honest "this build cannot attribute this value".
+   */
+  readonly dataOrigins?: readonly RunDetailDataOriginView[];
   readonly capabilities?: Readonly<{
     editData?:
       | boolean
@@ -1173,7 +1212,27 @@ type FactProvenanceWire = {
   correctedAt?: string;
 };
 
-type ContextDataEntry = FactProvenanceWire & {
+/**
+ * D252 — the origin/freshness half of an entry, projected onto the wire's
+ * shape. Both are omitted together when the descriptor names no origin for
+ * the entry's node: `ContextDataSectionSchema` refuses a bound with no step to
+ * attribute it to.
+ */
+type ContextDataOriginWire = {
+  origin?: {
+    nodeId: string;
+    step: string;
+    dir: "read" | "write";
+    system?: string;
+  };
+  freshness?: {
+    maxAge: number | "unbounded";
+    override: "forbidden" | "audited";
+    feeds: readonly Readonly<{ nodeId: string; label: string }>[];
+  };
+};
+
+type ContextDataEntry = FactProvenanceWire & ContextDataOriginWire & {
   label: string;
   valueRedacted: string;
   edit:
@@ -1312,6 +1371,36 @@ function provenanceFor(
 }
 
 /**
+ * D252 — where this entry's value came from, and the bound it is held under.
+ *
+ * Both facts are the DESCRIPTOR's, not the row's: the node that produced the
+ * value declares whether its task reads or writes, which system it runs
+ * against, and how old the fact may be before a scheduled commit refuses it.
+ * A node the current build has no origin for yields neither — the same
+ * absence as an entry with no field identity at all.
+ */
+function originOf(
+  descriptor: RunDetailDescriptorView | undefined,
+  nodeId: string,
+  fieldPath: string,
+): ContextDataOriginWire {
+  const origin = descriptor?.dataOrigins?.find((entry) => entry.nodeId === nodeId);
+  if (origin === undefined) return {};
+  const bound = origin.freshness?.find((entry) => entry.fieldPath === fieldPath);
+  return {
+    origin: {
+      nodeId: origin.nodeId,
+      step: origin.step,
+      dir: origin.dir,
+      ...(origin.system === undefined ? {} : { system: origin.system }),
+    },
+    ...(bound === undefined
+      ? {}
+      : { freshness: { maxAge: bound.maxAge, override: bound.override, feeds: origin.feeds } }),
+  };
+}
+
+/**
  * One entry for a correctable field: the raw recorded scalar from the latest
  * compatible checkpoint plus any pending injected correction. `display` is
  * the already-projected detail value when the field also backs a detail —
@@ -1321,10 +1410,15 @@ function editableEntryOf(
   deps: RunDetailQueryDeps,
   row: RunFoldRecord,
   authority: RunRecord,
+  descriptor: RunDetailDescriptorView | undefined,
   label: string,
   source: { nodeId: string; fieldPath: string },
   display: string | undefined,
 ): ContextDataEntry {
+  // D252 — the origin is a DESCRIPTOR fact, so it is served on every arm
+  // below including the checkpoint-less one: "which step owns this value" is
+  // exactly the question a missing checkpoint makes more pressing.
+  const attribution = originOf(descriptor, source.nodeId, source.fieldPath);
   const stored = deps.authority.latestCheckpoint(
     row.queued.workflow,
     authority.envelope.itemId,
@@ -1338,6 +1432,7 @@ function editableEntryOf(
         state: "locked",
         reason: `step "${source.nodeId}" has no stored checkpoint yet; a correction supersedes a recorded fact`,
       },
+      ...attribution,
     };
   }
   // Dated once, for EVERY arm below: a locked row is as much a recorded fact
@@ -1354,6 +1449,7 @@ function editableEntryOf(
         reason: `the recorded outcome carries no ${source.fieldPath} — there is no stored value to correct`,
       },
       ...provenance,
+      ...attribution,
     };
   }
   if (lookup.kind === "not-scalar") {
@@ -1365,6 +1461,7 @@ function editableEntryOf(
         reason: "not a single text/number value; structured output is corrected by a new run, not a field edit",
       },
       ...provenance,
+      ...attribution,
     };
   }
   const pending = pendingCorrectionOf(authority, source);
@@ -1377,6 +1474,7 @@ function editableEntryOf(
         reason: "a pending correction holds a structured value; it applies when the run resumes",
       },
       ...provenance,
+      ...attribution,
     };
   }
   return {
@@ -1390,6 +1488,7 @@ function editableEntryOf(
       pendingCorrection: pending,
     },
     ...provenance,
+    ...attribution,
   };
 }
 
@@ -1443,6 +1542,7 @@ function buildContextDataPayload(
         valueRedacted: display,
         edit: { state: "locked", reason: "not declared correctable by this workflow" },
         ...(stored === undefined ? {} : provenanceFor(stored, spec.source.fieldPath)),
+        ...originOf(descriptor, String(spec.source.nodeId), spec.source.fieldPath),
       });
       continue;
     }
@@ -1451,6 +1551,7 @@ function buildContextDataPayload(
       deps,
       row,
       authority,
+      descriptor,
       spec.label,
       { nodeId: String(spec.source.nodeId), fieldPath: spec.source.fieldPath },
       display,
@@ -1471,6 +1572,7 @@ function buildContextDataPayload(
       deps,
       row,
       authority,
+      descriptor,
       field.label,
       { nodeId: String(field.nodeId), fieldPath: field.fieldPath },
       undefined,

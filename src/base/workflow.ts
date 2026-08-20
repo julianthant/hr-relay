@@ -682,13 +682,26 @@ function terminalEvidenceOf(node: RuntimeFlowNode): TerminalEvidenceBinding | un
   }
 }
 
-function labelOf(node: RuntimeFlowNode): string {
+/**
+ * The node's display label, following doc 02 §1.5's precedence: an authored
+ * `label`, else the contract's own `title`, else the node id.
+ *
+ * Exported so every surface that names a step names it identically — the
+ * explorer's node panel, the timeline's segments and (D252) the Data rail's
+ * origin line. Three private copies of this switch is three ways for one node
+ * to be called three things.
+ */
+export function runtimeNodeLabel(node: RuntimeFlowNode): string {
   switch (node.kind) {
     case "task": return node.label ?? node.uses.title;
     case "transaction": return node.label ?? node.commit.uses.title;
     case "gate": return node.label;
     default: return node.id;
   }
+}
+
+function labelOf(node: RuntimeFlowNode): string {
+  return runtimeNodeLabel(node);
 }
 
 function deriveSteps(nodes: readonly RuntimeFlowNode[]): readonly StepProjection[] {

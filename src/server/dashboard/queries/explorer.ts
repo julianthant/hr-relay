@@ -31,7 +31,7 @@ import {
   workflowProjections,
   workflowTerminalResultExecution,
 } from "../../../base/workflow.js";
-import { descriptorRuntimeNodes } from "../../../base/workflow.js";
+import { descriptorRuntimeNodes, runtimeNodeLabel } from "../../../base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import type { RegisteredTaskStore } from "../../../base/store.js";
 import { ContractFieldPathSchema } from "../../../domain/contracts/base.js";
@@ -590,19 +590,8 @@ function nodeShape(node: RuntimeFlowNode): ExplorerNodeShapeWire {
   }
 }
 
-/** The node's display label, following doc 02 §1.5's precedence. */
-function nodeLabel(node: RuntimeFlowNode): string {
-  switch (node.kind) {
-    case "task":
-      return node.label ?? node.uses.title;
-    case "transaction":
-      return node.label ?? node.commit.uses.title;
-    case "gate":
-      return node.label;
-    default:
-      return String(node.id);
-  }
-}
+/** The node's display label — `src/base/workflow.ts` owns the precedence rule. */
+const nodeLabel = runtimeNodeLabel;
 
 function nodeTasks(
   node: RuntimeFlowNode,

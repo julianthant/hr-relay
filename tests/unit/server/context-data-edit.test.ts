@@ -12,6 +12,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
+import { ContextDataSectionSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { buildRunSection } from "../../../src/server/dashboard/queries/run-detail.js";
 import { HASH_A, HASH_B, NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import {
@@ -418,6 +419,138 @@ describe("context-data edit projection (2i-C)", () => {
         assert.equal(entry.source, undefined);
         assert.equal(entry.correctedAt, undefined);
       }
+    });
+  });
+  /**
+   * D252 — where a value came from, and the bound it is held under.
+   *
+   * Both are DESCRIPTOR facts served through `dataOrigins`, so the tests below
+   * pin the present arm, the absent arm, and the refusal that keeps a bound
+   * from being served without a step to attribute it to.
+   */
+  describe("origin and reuse bound (D252)", () => {
+    const ORIGIN_VIEW = {
+      ...DATE_FIELDS_VIEW,
+      dataOrigins: [{
+        nodeId: "crm-dates",
+        step: "CRM dates",
+        dir: "read",
+        system: "crm",
+        freshness: [
+          { fieldPath: "invitedOn.value", maxAge: 900_000, override: "audited" },
+          { fieldPath: "startsOn.value", maxAge: "unbounded", override: "forbidden" },
+        ],
+        feeds: [{ nodeId: "file-termination", label: "File the termination" }],
+      }],
+    } as const;
+
+    it("attributes every entry to its step, with the direction the contract DECLARES", () => {
+      const w = world();
+      queuedEventOf(w, { seed: 1 });
+      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
+      w.authority.putCheckpoint(crmDatesCheckpoint(1));
+
+      for (const entry of contextData(w, ORIGIN_VIEW).entries) {
+        assert.deepEqual(entry.origin, {
+          nodeId: "crm-dates",
+          step: "CRM dates",
+          dir: "read",
+          system: "crm",
+        });
+      }
+    });
+
+    it("serves the bound only for the field paths the descriptor declares one for", () => {
+      const w = world();
+      queuedEventOf(w, { seed: 1 });
+      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
+      w.authority.putCheckpoint(crmDatesCheckpoint(1));
+
+      const entries = contextData(w, ORIGIN_VIEW).entries;
+      const invited = entries.find((entry) => entry.label === "Invited on");
+      assert.deepEqual(invited?.freshness, {
+        maxAge: 900_000,
+        override: "audited",
+        feeds: [{ nodeId: "file-termination", label: "File the termination" }],
+      });
+      // `unbounded` is a DECLARED limit and travels as the word — the surface,
+      // not the wire, decides that an unbounded bound has no sentence.
+      assert.equal(entries.find((entry) => entry.label === "Starts on")?.freshness?.maxAge, "unbounded");
+      // Declared correctable, but the policy names no bound for it.
+      assert.equal(entries.find((entry) => entry.label === "Completed on")?.freshness, undefined);
+    });
+
+    it("attributes a step with NO stored checkpoint — the lock makes the question more pressing, not less", () => {
+      const w = world();
+      queuedEventOf(w, { seed: 1 });
+      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
+      // The fold carries the detail; authority carries NO checkpoint, so the
+      // entry takes the "no stored checkpoint yet" arm — and the origin is
+      // still the descriptor's to state.
+      w.writer.emit({
+        t: "span.patched",
+        ts: w.clock.now().toISOString(),
+        workflow: "person-lookup",
+        runId: uuidOf(1),
+        attempt: 1,
+        traceId: traceOf(1),
+        spanPath: traceOf(1),
+        updates: [{ key: "selection-status", value: "resolved" }],
+      });
+      const payload = contextData(w, {
+        details: [{
+          key: "selection-status",
+          label: "Selection",
+          source: { nodeId: "searching", fieldPath: "selection.status" },
+        }],
+        capabilities: {
+          editData: { fields: [{ nodeId: "searching", fieldPath: "selection.status", label: "Selection" }] },
+        },
+        dataOrigins: [{
+          nodeId: "searching",
+          step: "Search UCPath",
+          dir: "read",
+          system: "ucpath",
+          freshness: [],
+          feeds: [],
+        }],
+      });
+      const selection = payload.entries[0];
+      assert.equal(selection?.edit.state, "locked");
+      assert.match(
+        selection?.edit.state === "locked" ? selection.edit.reason : "",
+        /has no stored checkpoint yet/u,
+      );
+      assert.equal(selection?.origin?.step, "Search UCPath");
+      assert.equal(selection?.freshness, undefined);
+    });
+
+    it("serves NEITHER when the build has no origin for the node (read forward, D133)", () => {
+      const w = world();
+      queuedEventOf(w, { seed: 1 });
+      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
+      w.authority.putCheckpoint(crmDatesCheckpoint(1));
+
+      for (const entry of contextData(w).entries) {
+        assert.equal(entry.origin, undefined);
+        assert.equal(entry.freshness, undefined);
+      }
+    });
+
+    it("REFUSES a bound with no step to attribute it to", () => {
+      assert.throws(
+        () => ContextDataSectionSchema.parse({
+          runId: uuidOf(1),
+          editing: { state: "editable", expectedVersion: 4 },
+          entries: [{
+            label: "Invited on",
+            valueRedacted: "2026-06-01",
+            edit: { state: "locked", reason: "fixture" },
+            freshness: { maxAge: 900_000, override: "audited", feeds: [] },
+          }],
+        }),
+        /cannot be served without an origin/u,
+      );
     });
   });
 });

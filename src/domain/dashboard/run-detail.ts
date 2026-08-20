@@ -391,6 +391,56 @@ const ContextDataEntryEditSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("locked"), reason: z.string().min(1) }),
 ]);
 
+/**
+ * D252 — WHERE a ledger value came from: the step that recorded it, whether
+ * that step READ it or WROTE it, and the system it was recorded against.
+ *
+ * Every leaf is DECLARED, not sniffed. `dir` is the producing node's own task
+ * `effect` (`read` on a task node, `commit` on a transaction node), which is
+ * the contract's word for what it does to the world — the rail's header used
+ * to say "nothing durable says whether a recorded field was read or written",
+ * and that was true of the CHECKPOINT ROW and false of the descriptor that
+ * produced it. `system` is the driver system of the store that implements the
+ * task, the same binding the explorer's node panel reads; a headless store
+ * owns none, so the field is absent rather than a fabricated "internal".
+ *
+ * The whole block is optional and read forward (D133): an entry recorded under
+ * an earlier descriptor has no field identity, so nothing can name its step —
+ * which is the same absence the `edit` lock already states in words.
+ */
+const ContextDataOriginSchema = z.strictObject({
+  nodeId: NodeIdSchema,
+  /** The node's display label — what the timeline calls the same step. */
+  step: z.string().min(1),
+  dir: z.enum(["read", "write"]),
+  system: BrowserSystemIdSchema.optional(),
+});
+
+/**
+ * D252 — the REUSE bound this value is recorded under (doc 02 §5.5).
+ *
+ * `maxAge` and `override` are the producing read contract's own
+ * `FreshnessPolicy`, resolved at this entry's exact field path by the same
+ * `byField`-beats-default rule `auditCheckpointFreshness` applies, so the
+ * sentence the rail prints and the rule the executor enforces are one
+ * declaration. `feeds` is the static set of commit nodes the value can reach —
+ * the walk that decides whether the bound BITES at all, since a fact that
+ * reaches no write is never refused for age.
+ *
+ * `Number.POSITIVE_INFINITY` is a legal limit and `JSON.stringify` turns it
+ * into `null`, which would arrive as a MISSING bound rather than a deliberate
+ * one, so an unbounded policy travels as the word (the explorer wire's rule).
+ *
+ * Absent for an entry whose producing node declares no freshness policy at
+ * all — a `prepare` or `commit` contract has none, because a write is not a
+ * fact anyone reuses.
+ */
+const ContextDataFreshnessSchema = z.strictObject({
+  maxAge: z.union([z.number().int().nonnegative(), z.literal("unbounded")]),
+  override: z.enum(["forbidden", "audited"]),
+  feeds: z.array(z.strictObject({ nodeId: NodeIdSchema, label: z.string().min(1) })),
+});
+
 export const ContextDataSectionSchema = z.strictObject({
   runId: RunIdSchema,
   /**
@@ -439,7 +489,23 @@ export const ContextDataSectionSchema = z.strictObject({
     observedAt: IsoInstantSchema.optional(),
     source: z.enum(["live", "derived", "operator"]).optional(),
     correctedAt: IsoInstantSchema.optional(),
-  })),
+    origin: ContextDataOriginSchema.optional(),
+    freshness: ContextDataFreshnessSchema.optional(),
+  })).superRefine((entries, context) => {
+    entries.forEach((entry, index) => {
+      // A bound with no origin is a bound about nothing: `freshness` is
+      // resolved from the producing node's contract, so an entry that cannot
+      // name its step cannot have one either. Refused here rather than left to
+      // a surface that would print an unattributed age.
+      if (entry.freshness !== undefined && entry.origin === undefined) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "freshness"],
+          message: "a freshness bound is the producing step's declaration; it cannot be served without an origin",
+        });
+      }
+    });
+  }),
 });
 export type ContextDataSectionWire = z.infer<typeof ContextDataSectionSchema>;
 
