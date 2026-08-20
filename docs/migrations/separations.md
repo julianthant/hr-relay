@@ -5349,7 +5349,16 @@ run 1 re-read everything live; runs 2 and 3 replayed what their predecessors had
 | Terminal result | — | `run_results` bound to the PREVIEW schema `86cd007a59d4ae67…` — §9.17's exact hash — `kind: dry-run-preview`, `externalCommit: none`, `clear-pending` settled `already-present` off a `live-probe` at `15:20:37.714Z` | **MET** |
 | Zero writes | — | counts above | **MET** |
 
-#### 3. Four defects this pass found, none of them fixed here
+#### 3. Four defects this pass found, none of them fixed here — **ALL FIXED 2026-08-20**
+
+> **RESOLVED same day.** (1) the replayed arm is D259 (a replayed node renders `replayed from
+> attempt N`, derived from the checkpoint it replayed — never `pending`, never a fabricated
+> duration); (2) the frozen elapsed is D256 (the page's now is DERIVED: one served-clock
+> calibration plus the browser's monotonic delta, signed elapsed, every consumer on one clock);
+> (3) the always-on shape hazard is fixed as a doc 03 as-built correction (a run compares against
+> its OWN workflow's served fingerprint, three verdicts incl. `unserved`); (4) the stale panel is
+> D257 (the open panel follows its run's served `rowRevision` off the day stream). The records
+> below stay as found.
 
 **(1) A REPLAYED node is indistinguishable from a node that never ran, on every surface that folds
 spans.** Run `e1b8ae3e` replayed eleven checkpoints written by its two predecessors and executed four
@@ -5396,7 +5405,13 @@ Because `receipt` enters `availableSections` only at terminal, **the evidence re
 from a panel you had open** — the surface whose whole job is to explain a run does not notice the run
 finishing. A reload fixes it; per the e2e rule, a workaround is a finding.
 
-#### 4. The connection gap the pass could not close: Separation has no start door
+#### 4. The connection gap the pass could not close: Separation has no start door — **CLOSED by D261 (§9.24)**
+
+> **RESOLVED 2026-08-20.** After D260 recorded why one typed box cannot carry two varying values,
+> the operator ruled *"document number should work; no need action id"* — so the workflow now
+> resolves its own action id (`resolve-action`, the ported Action-List lookup) and the modal takes
+> ONE box. Live-proved in §9.24: typing `4502` planned, started, resolved
+> `6a766ae6f0549046f7f0dc06` and parked at the identity gate with zero write rows.
 
 The dispatch's step 2 — *plan doc 4502 through the run modal* — cannot be performed, and the modal
 says so honestly: `Separation` sits under **7 not startable** with *"This workflow declares no
@@ -5430,7 +5445,14 @@ landing-verification refusal rather than a Duo one**, because its Duo ceremony f
 WFD landing. Kuali was never affected in this pass and logged in on every run. Both remediations are
 still operator-level directory deletions.
 
-#### 6. The archive could not be reached — and the reason is one 2026-08-14 run
+#### 6. The archive could not be reached — and the reason is one 2026-08-14 run — **UNBLOCKED by D258**
+
+> **RESOLVED 2026-08-20.** The timeline event id now carries its occurrence ordinal at its seed
+> (read-forward: a first occurrence appends nothing, so every stored and frozen id is
+> byte-identical). Re-folded from the real 32 span lines, run `00419600` serves 14 events with 14
+> distinct ids and both `Timecard Search` executions measured separately — its detail answers 200
+> and the version bump can apply. The per-archived-run storage delta stays OWED and is measured at
+> the first real archive.
 
 `Archive` renders (read-only badge, both views, filters, retention) with the honest empty state *"A
 run reaches the archive only when its workflow's version bumps."* `Versions & bumps` renders the
