@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
-<!-- `docs/rebuild/14-roadmap.md` is the plan as written, in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. -->
+<!-- `docs/rebuild/14-roadmap.md` is the plan as written, in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (doc 07 §0.1) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
 asOf: 2026-08-20
-head: 81287bb
+head: 8eb77ab
 eyebrow: hr-automation-rebuild · the plan · source: docs/rebuild/14-roadmap.md
 source: Stems from `docs/rebuild/07-master-plan.md` (§2 phases, §3.3 order, §3.7 sizes)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
@@ -13,7 +13,7 @@ tiles:
 - Phases complete | 0 · 1 · 2 | runtime marker `completedThrough: 2j`
 - Active | Phase 3 | per-workflow migration · entered at separations
 - Workflows migrated | 2 of 15 | + separations at 8 of 9 exit criteria
-- Decisions | D1–D261 | rounds 68–85 landed this wave · D131 retired, never reused
+- Decisions | D1–D264 | rounds 68–88 landed this wave · D131 retired, never reused
 - Gates | 64 guards | 2,271 tests · parity 151/151 re-frozen 08-20 · schema v15
 - !Critical-path blocker | Wait for 08-28 | canary **4537 named** — S7 admits its separation date then; the three commits run ② → ① → ③
 
@@ -25,6 +25,7 @@ status: done
 when: 2026-07-31 | seeded from legacy @5879004
 size: M
 chip: complete
+doc: 07 §2 · 07 §3 · 00
 open: no
 
 > Docs 00–13 reconciled through Round 12 (D1–D94); testing policy ratified; the all-at-once cutover (D89/D93) and the two-repo model ratified; the separations identity gate designed here, not at order 8 (D77).
@@ -316,6 +317,10 @@ needs:
 - fact(met): operator ruling 2026-08-20 — D1–D5 planned, D6–D10 proposed, §3.5 → move (D264)
 
 note: D6–D10 are the maintainability slice and carry ONE trigger — they start before the second migration's `Dashboard · wire` task does, and until then they stay proposed; once D1–D5 land they can be dispatched as independent worktree units.
+
+log:
+- 2026-08-20 | docs-cohesion step 4a | ratified by D264 — D1–D5 planned, D6–D10 proposed, D11 added (77a0be76)
+
 ### Separations — order 8, the first migration {#order-8}
 status: planned
 size: XL
@@ -490,7 +495,9 @@ chip: needs you
 
 > The gate-age pill (D12 vs your later direction) · D192 re-disposition of `legacy-tool-ops-sanity-check-record` · A6's first live retry as evidence. (The decide-first findings are settled: hours-saved DROPPED by D239; archive tabs and export closed by D223/D240.)
 
-## today: 2026-08-20 · HEAD 81287bb · separations 8 / 9 · Tracks B+C DONE · parity re-frozen 151/151 · the three commits wait for 08-28
+## session: 2026-08-20 | docs-cohesion steps 1–2 | the plan moved to docs/rebuild/14-roadmap.md (0990ebc5); the notation grew doc: · log: · session: (ea7704e0); D263 + D264 ratified; Track D redrawn
+
+## today: 2026-08-20 · HEAD 8eb77ab · separations 8 / 9 · Tracks B+C DONE · parity re-frozen 151/151 · the three commits wait for 08-28
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued
