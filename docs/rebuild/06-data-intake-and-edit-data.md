@@ -23,7 +23,7 @@ completed work.
 | **Canonical field definitions** — the field vocabulary + zod schemas live in the rebuild repo's `src/domain/` (defined THERE). This doc owns the *mapping/intake semantics onto* those fields, not the vocabulary itself |
 | Task contract/impl split (`defineTaskContract`/`defineTask`), service stores (D4), `freshness` field, error taxonomy → **doc 01** |
 | The **injected-data mechanism** (`RunEnvelope.injected`, §5.6 #3), checkpoint store + resume scope (D9), freshness walk (D8), the "Live Edit Data over checkpoints" subsection → **doc 02** |
-| SSE wire shapes (`detailSurfaces` incl. the Context-rail `data` section), `span.patched`, notes stream, SQLite projection role (D14) → **doc 03** |
+| SSE wire shapes (`detailSurfaces` incl. the Context-rail `data` section), the span vocabulary (incl. D254's retirement of `span.patched`), notes stream, SQLite projection role (D14) → **doc 03** |
 | Standard CAS command path for Edit Data → **doc 03** |
 | Scenario manifests, evidence receipts, run explanation, knowledge/fix records → **doc 12** |
 

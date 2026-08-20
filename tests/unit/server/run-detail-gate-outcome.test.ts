@@ -67,7 +67,7 @@ function depsOf(w: DashboardWorld): RunDetailQueryDeps {
     stateRoot: w.stateRoot,
     projection: w.projection,
     authority: w.authority,
-    descriptors: { resolve: () => ({ details: [] }) },
+    descriptors: { resolve: () => ({}) },
   };
 }
 

@@ -171,8 +171,11 @@ export const kualiTimekeeperAnnotationDescriptor = defineWorkflowDescriptor({
   // `output.savedState.timekeeperName` and where `disposition` lives (which is why the
   // disposition is surfaced by the result schema instead, and why a detail cannot name it).
   // Declaring the scope path here fails loud at build: `output` is not a field of the
-  // commit output. Nothing resolves this path to a VALUE yet — detail values travel the
-  // `span.patched` channel keyed by `key`, and that channel has no producer (doc 03 §3.3).
+  // commit output. Nothing resolves this path to a VALUE, and after D254 nothing is
+  // expected to: the `span.patched` detail channel that was to carry one is RETIRED
+  // (it never had a producer). A `details` declaration is read as a DECLARATION —
+  // the evidence receipt's mandatory-leaf set, the run-detail data-origin bound, and
+  // the Explorer's field census (doc 03 §3.3).
   details: [
     {
       key: "timekeeper-name",

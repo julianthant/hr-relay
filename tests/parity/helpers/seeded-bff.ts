@@ -751,10 +751,6 @@ export async function startSeededServer(
     stateRoot,
     clock,
     pid: 4242,
-    declaredDetails: (workflow) => {
-      const descriptor = descriptors.resolve(workflow);
-      return descriptor === undefined ? undefined : new Set(descriptor.details.map(({ key }) => key));
-    },
   });
   // D218: the projection's one live feed is the disk tail; the seeder ticks
   // it after every append so each event folds through the production path.

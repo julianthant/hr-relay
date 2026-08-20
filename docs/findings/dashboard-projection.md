@@ -3,17 +3,33 @@
 Records about the BFF's span-fold/projection layer — cases where a served surface
 disagrees with what the on-disk streams and authority actually hold.
 
-Two open records (below): the dead `span.patched` channel (B8 retires it by operator ruling) and
-the requeue span-fold duplicate.
+One open record (below): the requeue span-fold duplicate.
+
+_(The 2026-08-14 "`span.patched` has a declared vocabulary and no emitter" record was CLOSED
+2026-08-20 by **D254**, an operator ruling: the channel is retired rather than built. The
+normative text — every removal site, what stayed and why, and the trigger that would re-open the
+question — is doc 03 §1.1's D254 block. The record's own text is kept below, struck through, so the
+diagnosis that led to the ruling stays readable.)_
 
 _(The 2026-08-14 "run timeline empty for runs enqueued after dashboard boot" record was
 resolved the same day by **D218** — the cross-process disk tail. The diagnosis and fix
 shape it carried are ratified as-built in doc 03 §2.3's D218 block; the regression tests
 live in `tests/unit/server/run-queue-projection.test.ts` and `bff-flow.test.ts`.)_
 
-## `span.patched` has a declared vocabulary and no emitter — the detail-projection channel is dead
+## ~~`span.patched` has a declared vocabulary and no emitter — the detail-projection channel is dead~~ CLOSED
 
-**Recorded:** 2026-08-14 · **Status:** diagnosed · **Owning doc:** doc 03 (span vocabulary / detail projections)
+**Recorded:** 2026-08-14 · **Status:** CLOSED 2026-08-20 by **D254** (retired, not built — operator
+ruling) · **Owning doc:** doc 03 §1.1 (span vocabulary / detail projections)
+
+**Disposition.** The channel was removed end to end: the wire arm, the writer's declared-key
+enforcement and its `declaredDetails` dep, the projector fold and `RunFoldRecord.details`, and the
+Context rail's read of it. `descriptor.details` stayed — three live readers (the receipt's
+mandatory-leaf set, the run-detail data-origin bound, the Explorer's field census) — with its
+meaning restated as a DECLARATION rather than a patch vocabulary. Verified against the real state
+root as well as the source tree: `.tracker-rebuild/spans` holds no `span.patched` line, so no
+history was orphaned by the removal.
+
+_The original diagnosis follows, unchanged._
 
 **Symptom.** `descriptor.details` declares per-node detail projections (`{nodeId, fieldPath}`)
 and the projector folds `span.patched` events into `row.details`, run-detail's Data/dataFacts
@@ -37,6 +53,11 @@ guard the channel never had: a fixture asserting a run with declared `details` p
 one `span.patched` per resolved detail leaf. Until then, every `details`-fed surface is
 structurally empty and any test asserting through fixtures proves nothing about production (the
 "fixture emitter hides the fork" lesson).
+
+**What was decided instead (D254).** Not that fix. Building the producer would have spent the work
+on making a dead channel live, when the one surface that genuinely needed a value — the subject
+title, and later the Context rail — had already been served from the CHECKPOINT, which is the
+record the executor really writes. So the channel went and the readers stayed on checkpoints.
 
 ## A requeue duplicates a task-span entry at the same fold key
 

@@ -219,7 +219,6 @@ export interface DashboardWorld {
 }
 
 export function makeWorld(input?: Readonly<{
-  declaredDetails?: ReadonlySet<string>;
   collectRebuilds?: boolean;
   /**
    * The registry the projection resolves labels, categories and runtime nodes
@@ -257,7 +256,6 @@ export function makeWorld(input?: Readonly<{
     stateRoot,
     clock,
     pid: 4242,
-    declaredDetails: () => input?.declaredDetails ?? new Set(["selection-status", "active-state"]),
   });
   // D218: the projection's one live feed is the disk tail. The harness ticks
   // it after every append so each emitted event folds through the same

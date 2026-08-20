@@ -20,7 +20,6 @@ import { BrowserSystemIdSchema } from "../../../src/domain/ids.js";
 import { RequeueCauseSchema, RunOutcomeSchema } from "../../../src/domain/run/record.js";
 import {
   NoteWireSchema,
-  SPAN_IDENTITY_ATTRIBUTE_KEYS,
   SpanBrowserSystemSchema,
   SpanEventWireSchema,
   SpanNotRunReasonSchema,
@@ -134,20 +133,23 @@ describe("span wire strictness", () => {
     assert.throws(() => SpanEventWireSchema.parse(withoutRunId));
   });
 
-  it("refuses a span.patched update that names an identity attribute", () => {
-    for (const key of ["runId", "traceId", "shape", "dryRun", "contractFingerprint"]) {
-      assert.equal(SPAN_IDENTITY_ATTRIBUTE_KEYS.has(key), true);
+  /**
+   * D254 — `span.patched` is RETIRED, so the wire owes a NEGATIVE control: the
+   * arm nothing ever emitted must now be refused by name rather than silently
+   * re-admitted by a future edit. Both shapes the old arm accepted (a declared
+   * detail key, an identity key it always refused) are refused identically,
+   * because there is no longer an arm to distinguish them.
+   */
+  it("refuses every span.patched shape — the retired detail channel is not in the union", () => {
+    for (const key of ["resolvedName", "selection-status", "runId", "traceId", "contractFingerprint"]) {
       assert.throws(() => SpanEventWireSchema.parse({
-        t: "span.patched", ...BASE, ...RUN_IDENTITY, updates: [{ key, value: "clobbered" }],
-      }), new RegExp("write-once|Invalid"));
+        t: "span.patched", ...BASE, ...RUN_IDENTITY, updates: [{ key, value: "x" }],
+      }));
     }
-    SpanEventWireSchema.parse({
-      t: "span.patched", ...BASE, ...RUN_IDENTITY, updates: [{ key: "resolvedName", value: "Ada Lovelace" }],
-    });
+    assert.throws(() => SpanEventWireSchema.parse({ t: "span.patched", ...BASE, ...RUN_IDENTITY, updates: [] }));
   });
 
-  it("refuses an empty patch and a malformed gate resolution", () => {
-    assert.throws(() => SpanEventWireSchema.parse({ t: "span.patched", ...BASE, ...RUN_IDENTITY, updates: [] }));
+  it("refuses a malformed gate resolution", () => {
     assert.throws(() => SpanEventWireSchema.parse({
       t: "gate.resolved", ...BASE, ...RUN_IDENTITY, gate: "approval", resolutionKey: "resolved", resultHash: "short",
     }));

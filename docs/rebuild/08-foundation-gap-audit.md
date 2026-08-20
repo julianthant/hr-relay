@@ -221,9 +221,11 @@ lacks.
 - **Doc 02 §5.6/§5.7** — receipts are `replay:"checkpoint"` outputs; a mutate step whose receipt
   checkpoint exists already refuses re-execution. Gap 1 upgrades "park on crash" to "probe then
   park only if indeterminate."
-- **Doc 03** — `write.attempting`/`write.committed` are two new span events; the receipt is a
-  `span.patched` detail on the run; the audit ledger (gap 5) is the durable set of `write.committed`
-  events kept past the pruning floor.
+- **Doc 03** — `write.attempting`/`write.committed` are two new span events; the audit ledger (gap 5)
+  is the durable set of `write.committed` events kept past the pruning floor. _(This entry also
+  predicted the receipt would ride a `span.patched` detail on the run. It does not, twice over: D82
+  DERIVES the receipt from authority and D141 persists it on demand, and D254 retired the
+  `span.patched` channel outright.)_
 
 ### 2.5 The guard (fail-loud, ratchet)
 

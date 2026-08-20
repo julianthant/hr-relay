@@ -368,15 +368,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     scheduler,
     newSessionId: () => ids.uuid(),
   });
-  const emitter = createSpanJsonlWriter({
-    stateRoot,
-    clock,
-    declaredDetails: (workflow) => {
-      const known = SERVER_REGISTRY[workflow]?.descriptor;
-      if (known === undefined) return undefined;
-      return new Set(known.details.map((detail) => detail.key));
-    },
-  });
+  const emitter = createSpanJsonlWriter({ stateRoot, clock });
 
   // D162 (doc 06 §4.11): ctx.artifacts' writer, shared with the OCR adapter's
   // page reads. The artifact root is the isolation-pinned literal.

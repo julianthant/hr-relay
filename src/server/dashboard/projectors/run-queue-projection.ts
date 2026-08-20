@@ -113,7 +113,6 @@ const RunFoldRecordSchema = z.strictObject({
   claimedBy: z.string().min(1).optional(),
   requeues: z.number().int().nonnegative(),
   taskSpans: z.array(TaskSpanFoldSchema),
-  details: z.record(z.string(), z.unknown()),
   openGates: z.array(z.strictObject({ gate: z.string().min(1), openedAt: z.iso.datetime({ offset: true }) })),
   resolvedGates: z.array(z.strictObject({
     gate: z.string().min(1),
@@ -212,11 +211,12 @@ export interface RunQueueProjectionDeps {
      * row derives from a stored node output: the subject's display name, at the
      * leaf the descriptor declares (doc 03 §1.2, `run-subject-title.ts`).
      *
-     * It is read here rather than folded from a span because no producer emits
-     * one — the `span.patched` detail channel has a declared vocabulary and no
-     * emitter in this build, so a title that read `row.details` would be a title
-     * that never changes. The checkpoint is the record the identity chunk
-     * actually writes.
+     * It is read here rather than folded from a span because the fold has no
+     * such fact to offer: D254 retired the `span.patched` detail channel — a
+     * declared vocabulary with zero production emitters — so `row.details` no
+     * longer exists in either direction. The checkpoint is the record the
+     * identity chunk actually writes, and the only stored node output this row
+     * reads.
      */
     latestCheckpoint(
       workflowId: string,
@@ -553,7 +553,6 @@ export class RunQueueProjection {
         attempt: event.attempt,
         requeues: 0,
         taskSpans: [],
-        details: {},
         openGates: [],
         resolvedGates: [],
         memberRunIds: [],
@@ -598,14 +597,6 @@ export class RunQueueProjection {
       row.lastEventAt = event.ts;
       row.eventCount += 1;
       return { runIds: [event.runId], workerChanged: worker !== undefined };
-    }
-
-    if (event.t === "span.patched") {
-      const row = this.#row(event.runId, event.t);
-      for (const update of event.updates) row.details[update.key] = update.value;
-      row.lastEventAt = event.ts;
-      row.eventCount += 1;
-      return { runIds: [event.runId], workerChanged: false };
     }
 
     if (event.t === "gate.opened") {
