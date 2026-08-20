@@ -891,6 +891,146 @@ one an operator must not read past. Before this the panel drew a gate only while
 settled gated run said nothing about the one step a human performed.
 ---
 
+## Wave-2 connection-proof presentation deltas (2026-08-20)
+
+Track C drove the REAL dashboard against a REAL composed dry run for the first time
+(`docs/migrations/separations.md` §9.22) and found four defects that every unit, architecture,
+scenario and parity gate had been green over. Three of them are this doc's, and they share one
+shape: **a surface that reads the right kind of fact from the wrong instance of it.** All three are
+fixed and are as-built contract below. (The fourth — a REPLAYED node rendering as `pending` on
+every span-folding surface — is the projection's, and is owned elsewhere.)
+
+### A live elapsed TICKS, from ONE calibration against the server's instant (D256)
+
+**What was wrong.** `useBootstrap` fetches once, and `boot.serverClock.now` — the instant that ONE
+fetch carried — was the only value the queue row's in-flight timer, the gate-age pill, the session
+footer and the worker cards computed against. Every live elapsed on the dashboard was therefore
+frozen at page load. The proof measured it twice over: a parked run displayed **`0s` for more than
+two minutes** (the tab had loaded at 15:03:32, the run started at 15:12:17, so the difference was
+negative and `elapsedSecondsBetween`'s clamp made it a plausible zero), and a plain reload at
+15:15:15 made the same row jump to **`2m 54s`** — exactly `bootstrapInstant − startedAt` — and
+freeze again from there. A terminal row was unaffected, because D124 already made its duration two
+served instants; so this was invisible on every settled run and wrong on every run an operator is
+actually watching.
+
+As-built contract:
+
+- **The server's instant stays the authority, and the browser contributes only elapsed.**
+  Substituting the browser's wall clock is what D124 forbids, and a machine whose clock is minutes
+  off would then print a duration nobody can act on. What the browser IS authoritative about is how
+  much time has passed since that instant arrived, which it reads from the monotonic clock
+  (`systemClock.monotonicMs()`, doc 11's single source) — a value an NTP step or a user editing the
+  system clock cannot move.
+- **One calibration, one value, every consumer.** `src/dashboard/state/served-clock.ts` holds
+  `(servedInstant, monotonicMs at receipt)` and derives
+  `deriveServedNow = servedInstant + (monotonicNow − monotonicAtReceipt)` on a one-second tick, on
+  `visibilitychange` (a backgrounded tab's interval is throttled to about once a minute, and an
+  operator returning to it must not read a minute-old age), and on any re-render.
+  `dashboard-app.tsx` calls the hook ONCE and passes the result down every path that used to carry
+  the frozen instant, including the keyboard order's own sort key — the queue's drawn order and the
+  keyboard's traversal order must not be able to date one row two ways.
+- **No surface reads a clock of its own.** The notification bell's `systemClock.now()` — the last
+  display-time wall-clock read in the bundle — is now the same passed-down instant. A second clock
+  on one screen is how two chips come to disagree about one gate's age.
+- **A backwards elapsed is DRAWN, not clamped.** `elapsedSecondsBetween` returns the SIGNED
+  interval and `fmtElapsed` spells a negative one with its sign. The clamp is what let "the clock
+  reading this is behind the fact it is reading" wear the shape of "this happened just now", and
+  those are different facts. A sub-second skew still renders `0s` on its own, because
+  `Math.round` of a fraction of a second is zero — the signed arm appears only when something is
+  genuinely wrong.
+- **Re-calibration is deliberately NOT built, with the trigger that ends the deferral named.** The
+  BFF is a loopback singleton (`config/runtime-isolation.json` pins the port; D181's `server` role
+  lock admits one holder), so the served clock and the browser's clock are the same machine's
+  clock: there is no skew to re-converge on, only the monotonic clock's own drift, which is
+  immaterial at the seconds granularity `fmtElapsed` renders. A server instant on the SSE `health`
+  heartbeat is a wire change with a server emitter and two fixture emitters behind it, bought for a
+  skew this deployment cannot have. What buys it is doc 13 §6.9's deferred exposed path (D189) —
+  the day the BFF serves a browser it does not share a machine with. Add the field in that commit.
+- **The parity corpus is held by pinning the OTHER half of the clock.** A ticking elapsed dated by
+  real browser time would make `45m 0s` and `45m 1s` a coin flip between the run that froze a
+  reference and the run that asserts it. `installFrozenMonotonic`
+  (`tests/parity/helpers/app-driver.ts`) freezes `performance.now` before navigation — and nothing
+  else, so timers, rAF and CSS animation all still run — which makes the derived instant EXACTLY
+  the fixture's served instant, i.e. byte-identical to what every existing reference was captured
+  against. `assertMonotonicFrozen` proves the page adopted it by reading the clock twice across
+  real wall time: D187's rule, applied to a clock instead of a theme.
+- **Measured, not asserted (2026-08-20).** The whole assert lane was run against the corpus as it
+  stands: **139 captures fail and 12 behaviour cases pass**. Every capture was ALREADY failing
+  before this change — the corpus is stale from wave 2 itself, since each reference's stamped
+  `descriptorHash` predates D226–D255 and the queue rows now carry D230's `#N` ordinal — and that
+  re-freeze is Track B's, deliberately not performed here. What matters is what the drift is MADE
+  of: across **678 diverging lines, not one is an elapsed**. Every `18m 0s`, `21m 0s`, `45m 0s` in
+  the corpus reads back byte-identical through the ticking clock, which is the freeze doing exactly
+  what it claims — and it is the strongest evidence available until the corpus is re-frozen.
+
+### The open run-detail panel FOLLOWS its run (D257)
+
+**What was wrong.** `useRunDetail` refetched only when `runId` or `detailNonce` moved, and
+`detailNonce` was bumped ONLY by a dispatched command or an applied Data edit — never by the SSE
+day stream. So a panel left open through a run's own progress froze on the wire as of the last
+thing the operator clicked. On the proof: after the gate approval, the panel's header still read
+**`Queued` / "run is queued"** while the queue row beside it read **`Done · took 8m 20s`** and the
+BFF served `status: "done"`, and its tablist still offered only `Logs`. Because `receipt` enters
+`availableSections` only at terminal, **the evidence receipt was unreachable from a panel you had
+open** — the surface whose whole job is to explain a run did not notice the run finishing. A reload
+fixed it, and a workaround is a finding.
+
+As-built contract:
+
+- **The run's own served `rowRevision` is the follow key.** It is already on the day wire (it is
+  what every served action's CAS `expectedVersion` binds to), it is the authority version the
+  detail is read at, and it moves exactly when the run moves. The app hands the open run's row
+  revision to `useRunDetail`; nothing polls, and a run whose row this day does not hold (an
+  archived run, another day's run) serves no revision and is not followed, because it cannot move.
+- **It tracks CHANGES, never a difference.** Comparing the served revision against the loaded
+  detail's would refetch in a loop for as long as the two disagreed — and they legitimately can,
+  since one is read from authority and the other from the projection, so one is routinely a beat
+  ahead. The decision is a pure fold (`planRunDetailFollow`: `adopt` on a run switch, `settle`
+  after the window on a move, `hold` otherwise) so it is pinned by a test rather than only by a
+  live run.
+- **A burst coalesces; a switch does not wait.** A run's version moves on every heartbeat, node
+  transition and rename, and several can land inside one span-tail poll, so a moved revision is
+  adopted after a short settling window rather than per envelope. A run SWITCH adopts at once —
+  the switch already refetches, and waiting would spend a second read on a run just read.
+- **The sections follow for free, and neither half blanks.** `usePanelSections` already keys on the
+  detail's own `rowRevision`, so a followed detail re-reads every open section with it. Both keep
+  what they are showing while the next read is in flight: a panel that blanked to a spinner every
+  time its run advanced a node would be unreadable for exactly the runs worth watching. Opening a
+  DIFFERENT run still clears both, because the previous run's sections beside this run's header is
+  the wrong answer rather than a stale one.
+
+### The shape hazard compares a run against ITS OWN workflow's served shape (as-built correction)
+
+**This mints no decision.** The hazard's contract was already stated — a run whose descriptor moved
+is not comparable with a current one, and a retry would replay retired code. The code compared the
+wrong pair, so this is a defect fix ratified in place rather than a new ruling.
+
+**What was wrong.** `RunProvenanceBar` computed `shapeMoved = surface.descriptorHash !==
+currentDescriptorHash`, where `surface.descriptorHash` is the RUN's one-workflow
+`contractFingerprint` (`run-queue-projection.ts`, from `queued.contractFingerprint`) and
+`currentDescriptorHash` was the bootstrap's `descriptorHash` — the hash of the whole eight-workflow
+SET. **Two different kinds of value, so never equal.** Every run the dashboard has ever drawn wore
+the amber *"Ran under Separation shape 59830cf6; runs are served by 76a28eef now … a retry would
+replay retired code"*, including the proof's three runs whose fingerprint was byte-identical to the
+one `GET /api/v1/explorer` served for `separations` and the build manifest held. This is D179's
+`staleApp` defect inverted, and worse: a warning that could never fire is bad, and one that can
+never NOT fire trains the eye past the one chip that would announce a genuinely retired shape.
+
+As-built contract:
+
+- **The comparison is against the run's OWN workflow's served fingerprint**, which the boot document
+  has always carried per workflow (`WorkflowBootstrapPrimitive.descriptorFingerprint`, served
+  straight from that descriptor's `contractFingerprint`). **No wire grows** — this is D251's rule
+  again: check what the served document already answers before booking a row.
+- **Three verdicts, not a boolean.** `classifyRunShape` returns `current`, `moved` (carrying the
+  shape now serving, so the sentence names it) or **`unserved`** — a run whose workflow this build
+  does not register has no current shape to have moved to, and calling that "moved" would state a
+  fact nobody established. It is still drawn as a hazard, with its own sentence, because a retry
+  there has nothing to run.
+- **Both directions are pinned by a test** (`tests/unit/dashboard/run-shape-hazard.test.ts`):
+  identical → silent, moved → warns naming the served shape, unregistered → `unserved`. A hazard is
+  only as trustworthy as its negative case, and this one had never had one.
+
 ## 0. What exists today (and what specifically hurts)
 
 | Today | Mechanism | Pain |

@@ -1015,7 +1015,7 @@ function LogsTab({
   surface,
   workflowLabel,
   currentAppVersion,
-  currentDescriptorHash,
+  servedDescriptorHash,
   aiAdvisory,
 }: {
   detail: RunDetailWire;
@@ -1037,7 +1037,7 @@ function LogsTab({
   surface?: QueueSurfaceWire;
   workflowLabel: string;
   currentAppVersion: string;
-  currentDescriptorHash: string;
+  servedDescriptorHash: string | undefined;
   aiAdvisory: CapabilityAvailability;
 }) {
   const [query, setQuery] = useState("");
@@ -1197,7 +1197,7 @@ function LogsTab({
               surface={surface}
               workflowLabel={workflowLabel}
               currentAppVersion={currentAppVersion}
-              currentDescriptorHash={currentDescriptorHash}
+              servedDescriptorHash={servedDescriptorHash}
             />
           </span>
         )}
@@ -1239,7 +1239,14 @@ export interface LogPanelProps {
   onAction?: DashboardActionHandler;
   workflowLabel: string;
   currentAppVersion: string;
-  currentDescriptorHash: string;
+  /**
+   * The fingerprint THIS RUN'S OWN workflow is served under today, for the
+   * provenance bar's shape hazard; `undefined` when this build registers no
+   * such workflow. It was the bootstrap's whole-descriptor-SET hash until
+   * §9.22 item 3 — a value a one-workflow fingerprint can never equal, so the
+   * hazard was structurally always on.
+   */
+  servedDescriptorHash: string | undefined;
   /** Who a Data-section correction is requested by (2i-C). */
   actorId: string;
   /** An applied correction bumped the run version — the owner refetches detail. */
@@ -1401,7 +1408,7 @@ export function LogPanel({
   onAction = NOOP_ACTION,
   workflowLabel,
   currentAppVersion,
-  currentDescriptorHash,
+  servedDescriptorHash,
   actorId,
   onDetailEdited,
   aiAdvisory,
@@ -1939,7 +1946,7 @@ export function LogPanel({
               surface={surface}
               workflowLabel={workflowLabel}
               currentAppVersion={currentAppVersion}
-              currentDescriptorHash={currentDescriptorHash}
+              servedDescriptorHash={servedDescriptorHash}
               aiAdvisory={aiAdvisory}
             />
           )}

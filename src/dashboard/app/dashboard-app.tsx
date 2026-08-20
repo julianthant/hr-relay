@@ -28,6 +28,7 @@ import { Button, EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, d
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
+import { useServedNow } from "../state/served-clock.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
 import { useRunDetail } from "../state/use-run-detail.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
@@ -286,11 +287,35 @@ function LoadedApp({
   onBulkIds,
 }: LoadedAppProps) {
   const { day: dayResource, connection } = useDashboardDay(day);
+  /**
+   * THE clock (D256). The server's instant is the authority; the browser
+   * contributes only the monotonic time since that instant arrived, and every
+   * live elapsed on the screen — the queue row's timer, the gate-age pill, the
+   * session footer, the worker cards, the notification ages — is computed
+   * against this ONE value. Before it, `boot.serverClock.now` was frozen at
+   * page load and a parked run read `0s` for over two minutes.
+   */
+  const nowIso = useServedNow(boot.serverClock.now);
+  const dayWire = dayResource.state === "loaded" ? dayResource.value : undefined;
   // Bumped by an applied Data correction: the save moved the run version, so
   // the open detail (and, through its rowRevision, every fetched section)
   // refetches rather than serving a CAS basis the kernel will now refuse.
   const [detailNonce, setDetailNonce] = useState(0);
-  const detail = useRunDetail(route.run, detailNonce);
+  /**
+   * THE OPEN PANEL FOLLOWS ITS RUN (D257).
+   *
+   * The day stream is the one live feed this app has, and the run's own row on
+   * it carries `rowRevision` — the authority version the panel's detail is
+   * read at. Handing it to `useRunDetail` is what makes the panel notice its
+   * run moving: before it, the nonce above was bumped ONLY by a dispatched
+   * command or an applied Data edit, so a panel left open through a run's
+   * progress kept serving the wire as of the last thing the operator clicked.
+   * A run whose row is not on this day (an archived run, another day's run)
+   * serves no revision and is not followed — it cannot move.
+   */
+  const servedRowRevision = dayWire?.queueSurfaces
+    .find((row) => String(row.runId) === route.run)?.rowRevision;
+  const detail = useRunDetail(route.run, detailNonce, servedRowRevision);
   const detailValue = detail.state === "loaded" ? detail.value : undefined;
   // Precedence: what the operator clicked this session, then what the URL asked
   // for, then the panel's own default. The URL arm is what makes a link to a
@@ -340,9 +365,24 @@ function LoadedApp({
   const client = useDashboardClient();
   const { toast } = useToasts();
 
-  const dayWire = dayResource.state === "loaded" ? dayResource.value : undefined;
   const workflowLabelOf = useCallback(
     (workflowId: string): string => workflows.find((w) => w.id === workflowId)?.label ?? workflowId,
+    [workflows],
+  );
+  /**
+   * The fingerprint ONE workflow is served under today (§9.22 item 3).
+   *
+   * The provenance bar's shape hazard compares a run's own
+   * `contractFingerprint` against this. It used to compare against
+   * `boot.descriptorHash` — the hash of the whole descriptor SET — which a
+   * one-workflow fingerprint can never equal, so the amber "the run's SHAPE
+   * moved" chip was on for every run ever drawn. A workflow this build does
+   * not register serves no fingerprint, and that is its own verdict rather
+   * than an assumed move.
+   */
+  const workflowShapeOf = useCallback(
+    (workflowId: string): string | undefined =>
+      workflows.find((w) => w.id === workflowId)?.descriptorFingerprint,
     [workflows],
   );
   /**
@@ -510,7 +550,7 @@ function LoadedApp({
     selectMode,
     bulkIds,
     panelWorkflowId: activeWorkflowId,
-    nowIso: boot.serverClock.now,
+    nowIso,
   };
 
   /**
@@ -749,7 +789,7 @@ function LoadedApp({
           });
           return;
         }
-        setPendingRename({ action, target, surface, nowIso: boot.serverClock.now });
+        setPendingRename({ action, target, surface, nowIso });
         return;
       }
       if (action.confirm !== undefined) {
@@ -768,7 +808,7 @@ function LoadedApp({
       }
       dispatchCommand(action, target);
     },
-    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, boot.serverClock.now],
+    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, nowIso],
   );
 
   /**
@@ -781,12 +821,12 @@ function LoadedApp({
    * renders, so a keyboard walk and a scroll cannot disagree.
    */
   const keyboardOrder = useMemo(
-    () => visibleRunIds(surfaces, sort, boot.serverClock.now),
-    [surfaces, sort, boot.serverClock.now],
+    () => visibleRunIds(surfaces, sort, nowIso),
+    [surfaces, sort, nowIso],
   );
   const keyboardAttention = useMemo(
-    () => attentionRunIds(surfaces, sort, boot.serverClock.now),
-    [surfaces, sort, boot.serverClock.now],
+    () => attentionRunIds(surfaces, sort, nowIso),
+    [surfaces, sort, nowIso],
   );
   useGlobalKeys({
     onStartRun: () => setStartOpen(true),
@@ -924,6 +964,7 @@ function LoadedApp({
         onOpenRun={selectRun}
         notifications={dayWire?.notifications ?? []}
         actorId={boot.actor.id}
+        nowIso={nowIso}
         storage={boot.storage}
         // Same story as `systemInstances` below: the boot document composes
         // this array from zod parts so it infers as `unknown[]`; re-parsing is
@@ -1260,14 +1301,16 @@ function LoadedApp({
                   onTab={onTab}
                   workflowLabel={workflowLabelOf(detailValue.header.workflowId)}
                   currentAppVersion={boot.appVersion}
-                  currentDescriptorHash={boot.descriptorHash}
+                  servedDescriptorHash={workflowShapeOf(detailValue.header.workflowId)}
                   actorId={boot.actor.id}
                   onDetailEdited={() => setDetailNonce((nonce) => nonce + 1)}
                   aiAdvisory={advisoryAvailability}
                   /* The SAME instant `viewState.nowIso` dates the queue's rows
                      from, so a waiting run's age is one number wherever it is
-                     read. The panel used to take its own wall clock. */
-                  servedNow={boot.serverClock.now}
+                     read. The panel used to take its own wall clock; since
+                     D256 the shared instant TICKS instead of being frozen at
+                     page load. */
+                  servedNow={nowIso}
                 />
             ) : (
               <Panel className="min-h-0">
@@ -1309,7 +1352,7 @@ function LoadedApp({
         workerCards={dayWire?.workerCards ?? []}
         workflows={workflows}
         counts={dayWire?.workflowCounts ?? []}
-        nowIso={boot.serverClock.now}
+        nowIso={nowIso}
         connection={connection}
         appVersion={boot.appVersion}
         onStopWorker={stopWorker}

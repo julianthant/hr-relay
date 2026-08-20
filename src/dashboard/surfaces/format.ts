@@ -27,19 +27,41 @@ export function fmtClock(iso: string): string {
   return `${h12}:${String(date.getMinutes()).padStart(2, "0")} ${suffix}`;
 }
 
+/**
+ * An interval in the operator's words.
+ *
+ * The NEGATIVE arm is drawn, not swallowed (D256). An elapsed can only come
+ * out negative when the instant being measured from is in the FUTURE of the
+ * clock measuring it, which is a defect in one of the two — and rendering it
+ * as `0s`, which is what `elapsedSecondsBetween`'s old clamp did, spells that
+ * defect as *"this just started"*. The Track C proof read exactly that: a run
+ * that had been parked for over two minutes showed `0s`, because the page's
+ * frozen clock predated it (separations §9.22 item 2). A sub-second skew still
+ * renders `0s` on its own — `Math.round` of a fraction of a second is zero —
+ * so this arm only appears when something is genuinely wrong.
+ */
 export function fmtElapsed(sec: number): string {
+  if (sec < 0) return `-${fmtElapsed(-sec)}`;
   if (sec < 60) return `${sec}s`;
   if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`;
   return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
 }
 
-/** Whole seconds between two served instants; throws on an unparseable one. */
+/**
+ * Whole seconds between two served instants — SIGNED; throws on an
+ * unparseable one.
+ *
+ * It used to clamp at zero, which made "the clock reading this is behind the
+ * fact it is reading" indistinguishable from "this happened just now". Those
+ * are different facts and this program does not let a wrong one wear a right
+ * one's shape (D256).
+ */
 export function elapsedSecondsBetween(fromIso: string, toIso: string): number {
   const from = Date.parse(fromIso);
   const to = Date.parse(toIso);
   if (Number.isNaN(from)) throw new Error(`elapsedSecondsBetween: not an ISO instant: ${fromIso}`);
   if (Number.isNaN(to)) throw new Error(`elapsedSecondsBetween: not an ISO instant: ${toIso}`);
-  return Math.max(0, Math.round((to - from) / 1000));
+  return Math.round((to - from) / 1000);
 }
 
 /**

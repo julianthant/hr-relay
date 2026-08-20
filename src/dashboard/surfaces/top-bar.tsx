@@ -582,17 +582,24 @@ type NotificationFilterKey = (typeof NOTIFICATION_FILTERS)[number]["key"];
 export function NotificationBell({
   notifications,
   actorId,
+  nowIso,
   onOpenRun,
 }: {
   notifications: readonly NotificationRowWire[];
   actorId: string;
+  /**
+   * The app's ONE live instant (D256), passed in rather than read here. A
+   * notification's age is a fact about a served instant, so it must be
+   * measured against the clock every other served instant on this screen is
+   * measured against — never against this browser's own wall clock.
+   */
+  nowIso: string;
   onOpenRun: (runId: string) => void;
 }) {
   const client = useDashboardClient();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<NotificationFilterKey>("all");
   const [commandError, setCommandError] = useState<string | null>(null);
-  const nowIso = systemClock.now().toISOString();
 
   const unread = notifications.filter((entry) => entry.state === "unread").length;
   const critical = notifications.some((entry) => entry.state === "unread" && entry.severity === "error");
@@ -973,6 +980,7 @@ function ShellViewSwitcher({
 export function TopBar({
   notifications,
   actorId,
+  nowIso,
   preflight,
   onPreflightRerun,
   storage,
@@ -994,6 +1002,14 @@ export function TopBar({
 }: {
   notifications: readonly NotificationRowWire[];
   actorId: string;
+  /**
+   * The app's ONE live instant (D256) — the same value the queue rows, the
+   * gate pill and the session footer date themselves from. The bell used to
+   * read `systemClock.now()` here, which put a SECOND clock on one screen: a
+   * browser whose wall clock is off would have aged a notification against an
+   * instant no served fact was measured with.
+   */
+  nowIso: string;
   /**
    * The doctor's served checks (doc 13 §3.1). Absent on every build today —
    * `FrontendBootstrapWireSchema#preflight` is declared-unserved — and its
@@ -1074,7 +1090,7 @@ export function TopBar({
             absent entirely while nothing serves the checks, because an
             indicator that reports on nothing reports a pass. */}
         {preflight !== undefined && <PreflightPopover checks={preflight} onRerun={onPreflightRerun} />}
-        <NotificationBell notifications={notifications} actorId={actorId} onOpenRun={onOpenRun} />
+        <NotificationBell notifications={notifications} actorId={actorId} nowIso={nowIso} onOpenRun={onOpenRun} />
         {/* THE KEYBOARD GLYPH IS GONE. Operator, on the demo: *"the keyboard
             icon will be removed from there since we already have help in
             settings."* `ShortcutsPopover` above is unchanged and keeps its one
