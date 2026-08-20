@@ -1094,9 +1094,10 @@ coupling between two private methods; deleting it to buy a coverage point would 
 `#status`'s current shape. A guard against a state the code cannot currently reach is not the same
 thing as an untested feature, and the two must not be conflated to make a number.
 
-**Why nobody saw it, which is the useful half.** `test:coverage` is **not in the per-commit gate
-family** (`typecheck` · `lint` · `test` · `test:architecture` · `test:parity` · `build:manifest
---check`). It is an end-of-slice check — and *an end-of-slice check that a slice forgets is a check
+**Why nobody saw it, which is the useful half** (present tense as of 2026-08-09; D191 below reverses
+it, and the paragraph is kept because the REASON is what generalizes). `test:coverage` was **not in
+the per-commit gate family** (`typecheck` · `lint` · `test` · `test:architecture` · `test:parity` ·
+`build:manifest --check`). It was an end-of-slice check — and *an end-of-slice check that a slice forgets is a check
 that cannot fail*. `gate-coverage` did its job the whole time: it asserts the lane stays
 **registered** (`--coverage` and `suite-size.ts` still in `package.json`), never that it was **run**,
 so registration was green across every red commit. That is the same rot shape as §5 item 4 (an
@@ -1266,7 +1267,7 @@ project any surface fails the build:
 | `verdicts` | `queue-row-status-index` + `statusExtensions` | closed tuple keys unique; emitted verdict must belong to descriptor (ref dashboard-surfaces) |
 | `completion` targets | OCR approve branching | targets typecheck vs target descriptors' strict `input` and terminal `result` (#5) |
 | graph branch/fork/child/gate subscriptions | handler-side delegation and wait registries | all edges/joins/targets/results/policies typed and validated; target input/result generics may not erase to unknown |
-| scenario corpus + minimal happy stub | e2e stub map | examples seed the minimal happy execution; descriptor references every branch/delegation/gate/control scenario in the checked manifest corpus (§7) |
+| scenario corpus | e2e stub map | descriptor references every branch/delegation/gate/control scenario in the checked manifest corpus. **As-built:** the "examples seed the minimal happy execution" half never shipped — no runtime reads a contract's `example` (§7), and what replaced it is the structural scenario over `walkDescriptor` plus the live dry-run scenario (§10.3, §10.4) |
 | runtimePolicy actions | `runtime-policy-coverage` | actions/gates read off descriptor (retires parity) |
 | `details`, capabilities, coordinator, completion-consumption, artifact projections | detail/runtime-policy special cases and i9 retention append | every emitted detail/action/member/coordinator projection validates; Edit Data paths exist in producing schemas and exclude identity/idempotency/proof/provenance; artifact source/key paths exist in exact node outputs and every sink kind resolves |
 | `enqueue`, actions, delegation policies | workflow-specific route/control handlers | only closed ref dashboard-surfaces policies/actions; every action projects the standard versioned command target, CAS is enforced only for ref dashboard-surfaces's real-race arms, and no custom row mutation callback exists |
