@@ -28,7 +28,8 @@ This plan is itself interactive: every step carries a checkbox the executing age
 
 ## 2 · Steps
 
-### Step 1 — relocate the source (sequential, master) `[ ]`
+### Step 1 — relocate the source (sequential, master) `[x]`
+_log: `0990ebc5` · step-1 agent 2026-08-20 — whole file moved (region + appendices); generator, `CLAUDE.md`, the skill and the site repointed; root `ROADMAP.md` deleted per Q1._
 - `git mv ROADMAP.md docs/rebuild/14-roadmap.md` (whole file, region + appendices — the appendices fold out in step 4).
 - `scripts/generate-roadmap.ts`: `SOURCE` → `docs/rebuild/14-roadmap.md`; every `ROADMAP.md` mention in its doc comment and error strings becomes the new path.
 - `14-roadmap.md` header: `eyebrow:`/`footer:`/`source:` lines name the new path; the first comment line names the skill.
@@ -71,3 +72,4 @@ _(pending)_
 ## 4 · Session log
 
 - 2026-08-20 | docs-cohesion orchestrator | plan written from the brief; Q1–Q5 + session-log mechanism ruled by the operator; step 1 dispatched.
+- 2026-08-20 | step-1 agent | `git mv ROADMAP.md docs/rebuild/14-roadmap.md`; `SOURCE`/doc-comment/parse-error paths, header `eyebrow:`+`footer:`, `CLAUDE.md` (row, commands, doc list, stray pre-heading fragments deleted) and `/custom-update-plan` repointed; site regenerated, `roadmap:check` fresh, gate green (`0990ebc5`). Title kept as `# HR Rebuild Roadmap` — `parsePlan` has one title slot. Historical records (handoffs, the 08-18 plan, the dashboard-audit plan) left naming the old path.
