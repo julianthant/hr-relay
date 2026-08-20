@@ -50,7 +50,8 @@ import type { Layer, Status } from "./schema.js";
 
 export const PLAN_SOURCE_PATH = "docs/rebuild/14-roadmap.md";
 
-const BOX_STATUS: Record<string, Status> = { x: "done", " ": "planned", "~": "active", "?": "proposed", "-": "never", "!": "you" };
+/** The checklist box vocabulary, shared by `builds:` lines and the docs' `roadmap-status` items. */
+export const BOX_STATUS: Record<string, Status> = { x: "done", " ": "planned", "~": "active", "?": "proposed", "-": "never", "!": "you" };
 const LAYER_TOKEN: Record<string, Layer> = { FE: "frontend", BE: "backend", BOTH: "both", WIRE: "wiring", DOCS: "docs", PROOF: "proof" };
 
 const HEADING_RE = /^(#{2,5}) (.*?)(?: \{#([a-z0-9][a-z0-9-]*)\})?\s*$/;
@@ -89,7 +90,7 @@ function fail(lineNo: number, message: string): never {
 }
 
 /** `YYYY-MM-DD` AND a real calendar day — `2026-02-31` parses as a date object and is not one. */
-function isRealIsoDate(value: string): boolean {
+export function isRealIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime())) return false;

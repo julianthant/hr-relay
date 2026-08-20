@@ -163,6 +163,58 @@ export const SpineEntrySchema = z.discriminatedUnion("kind", [
 ]);
 export type SpineEntry = z.infer<typeof SpineEntrySchema>;
 
+// ─── the doc side of the binding (D263 / plan R7) ──────────────────────────
+
+/** A plan node's stable anchor — the `{#id}` the notation declares. */
+export const NodeIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
+
+/** A repo-relative markdown path with forward slashes, e.g. `docs/rebuild/03a-…md`. */
+export const DocPathSchema = z.string().regex(/^docs\/[A-Za-z0-9._/-]+\.md$/);
+
+/**
+ * The doc section a tag or a status block sits under: the nearest heading above
+ * it, split into its number (when the heading starts with one) and the rest of
+ * its text. `## 3.1 The wire boundary` → `{ section: "3.1", text: "The wire
+ * boundary" }`; an unnumbered heading carries `text` alone.
+ */
+export const DocHeadingSchema = z.object({ text: z.string().min(1), section: z.string().min(1).optional() }).strict();
+export type DocHeading = z.infer<typeof DocHeadingSchema>;
+
+/** `<!-- roadmap: <id> -->` — "the section above describes this node". */
+export const DocTagSchema = z
+  .object({ id: NodeIdSchema, doc: DocPathSchema, heading: DocHeadingSchema, line: z.number().int().positive() })
+  .strict();
+export type DocTag = z.infer<typeof DocTagSchema>;
+
+/** One `- [x| |~|?|-|!] text` line: the doc's own checklist item, with NO layer tag. */
+export const DocStatusItemSchema = z.object({ box: StatusSchema, text: z.string().min(1) }).strict();
+export type DocStatusItem = z.infer<typeof DocStatusItemSchema>;
+
+/**
+ * One `<!-- roadmap-status: <id> -->` … `<!-- /roadmap-status -->` block. Its
+ * notes are `LogEntry`s — a doc note and a `log:` line record the same three
+ * facts (day, session, what happened), so they are the same shape on purpose.
+ * `items` and `notes` may both be empty: an empty block is a section that has
+ * not been assessed yet, which is a fact worth stating.
+ */
+export const DocStatusBlockSchema = z
+  .object({
+    id: NodeIdSchema,
+    doc: DocPathSchema,
+    heading: DocHeadingSchema,
+    line: z.number().int().positive(),
+    items: z.array(DocStatusItemSchema),
+    notes: z.array(LogEntrySchema),
+  })
+  .strict();
+export type DocStatusBlock = z.infer<typeof DocStatusBlockSchema>;
+
+/** Everything one scan found, flat and in sorted path order. */
+export const DocBindingsSchema = z
+  .object({ tags: z.array(DocTagSchema), statuses: z.array(DocStatusBlockSchema) })
+  .strict();
+export type DocBindings = z.infer<typeof DocBindingsSchema>;
+
 export const RoadmapSchema = z
   .object({
     meta: z

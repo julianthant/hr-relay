@@ -91,11 +91,13 @@
   .tree .planned.avail .bx{stroke:var(--fg-2);stroke-width:2}
   .tree .phase .bx{stroke-width:2}
   .tree .nd.sel .bx{stroke:var(--accent);stroke-width:3;stroke-dasharray:none;filter:drop-shadow(0 0 6px var(--accent-quiet))}
-  .tree .nd.dim .bx,.tree .nd.dim text,.tree .nd.dim .st,.tree .nd.dim .fq{opacity:.35}
+  .tree .nd.dim .bx,.tree .nd.dim text,.tree .nd.dim .st,.tree .nd.dim .fq,.tree .nd.dim .dpt{opacity:.35}
   .tree .fq{fill:var(--card);stroke:var(--fg-4);stroke-width:1.2}
   .tree .fq.frontend{stroke:var(--info-mark)} .tree .fq.both{stroke:var(--accent)} .tree .fq.wiring{stroke:var(--warn-mark)} .tree .fq.backend{stroke:var(--fg-3)} .tree .fq.docs,.tree .fq.proof{stroke:var(--fg-4)}
   .tree .fq.done{fill:var(--fg-3)} .tree .fq.frontend.done{fill:var(--info-mark)} .tree .fq.both.done{fill:var(--accent)} .tree .fq.wiring.done{fill:var(--warn-mark)} .tree .fq.backend.done{fill:var(--fg-3)} .tree .fq.docs.done,.tree .fq.proof.done{fill:var(--fg-4)}
   .tree .fq-more{fill:var(--fg-3);font-family:var(--mono);font-size:9px}
+  /* the doc-progress tick: a hairline, muted in both themes — it must read as a hint, never as a second status */
+  .tree .dpt{fill:var(--line-strong)} .tree .dpt.on{fill:var(--fg-3)}
   .tree .flag rect{fill:var(--well);stroke:var(--line)} .tree .flag circle{fill:var(--ok-mark)} .tree .flag text{fill:var(--fg-2);font-size:11.5px}
   /* a session is a working day, not a ratified milestone: hollow dot, dashed pill, its own eyebrow */
   .tree .sess rect{fill:transparent;stroke:var(--line-strong);stroke-dasharray:4 3} .tree .sess circle{fill:var(--card);stroke:var(--fg-3);stroke-width:2}
@@ -136,6 +138,16 @@
   .slog li{color:var(--fg-2);font-size:12.5px;padding-left:9px;border-left:2px solid var(--line)}
   .slog .sd{font-family:var(--mono);font-size:11px;color:var(--fg-3);font-variant-numeric:tabular-nums}
   .slog .ss{font-family:var(--mono);font-size:11px;color:var(--accent)}
+  /* ─ from the docs: the doc sections' own checklists ─ */
+  .docn{font-family:var(--mono);font-size:10.5px;color:var(--fg-3);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+  .droll{margin:0 0 2px;font-size:12.5px;color:var(--fg-2)} .droll b{color:var(--fg);font-weight:600}
+  .fdocs .dsec{margin-top:9px;padding-left:9px;border-left:2px solid var(--line)}
+  .fdocs .dsh{font-family:var(--mono);font-size:10.5px;line-height:1.6;color:var(--fg-3);overflow-wrap:anywhere}
+  .fdocs .dsh code{font-size:1em;background:none;padding:0}
+  .fdocs .dpath{color:var(--fg-4)}
+  .fdocs .feat{margin-top:3px} .fdocs .feat li{font-size:12.5px} .fdocs .feat li.done{color:var(--fg-4)}
+  .fdocs .slog{margin-top:6px} .fdocs .slog li{border-left:none;padding-left:0}
+  .fdocs .dna{margin:2px 0 0;font-size:12px;color:var(--fg-4);font-style:italic}
   .note{margin:10px 0 0;padding:9px 12px;border-radius:8px;background:var(--well);border:1px solid var(--line);font-size:12.5px;color:var(--fg-2)}
   .note.you{border-color:var(--warn-mark);background:var(--warn-quiet)} .note.you b{color:var(--warn)}
   footer{padding:5px 16px;border-top:1px solid var(--line);font-size:11px;color:var(--fg-3);background:var(--card);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
