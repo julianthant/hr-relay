@@ -37,6 +37,57 @@ _Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §7.1 (the 
 <!-- roadmap-status: track-d -->
 <!-- /roadmap-status -->
 
+## Duo ceremony lease — one login at a time per credential
+<!-- roadmap: duo-lease -->
+
+<!-- roadmap-status: duo-lease -->
+<!-- /roadmap-status -->
+
+A durable per-credential lease in authority (`duo_ceremony_leases`) serializes every Duo ceremony
+across all workers and all systems, from "navigate to SSO" until the content verifier proves the
+session. TTL is `timeouts.sessionAcquireMs` plus grace; waiters are bounded and refuse loud naming
+the holder; D243's counter arithmetic is unchanged and a warm profile skips the ceremony entirely;
+on a refused assertion the worker poison-closes, recreates a FRESH profile under the same lease and
+retries ONCE, then fails naming the profile. `defineVerifiedLoginRecipe` takes a lease token only
+the lease store mints, pinned by a guard with a violating fixture. This is platform hardening, not
+a parallel-runs feature — the hazard exists today, whenever two workflows' workers cold-start
+together against the one credential every UCSD system shares — so it lands BEFORE the worker pool.
+Owning spec: `reference/execution-and-sessions.md`; a decision when it is built (R12).
+
+## Parallel runs — sessions and the worker pool
+<!-- roadmap: parallel-runs -->
+
+<!-- roadmap-status: parallel-runs -->
+<!-- /roadmap-status -->
+
+A **session** is a dashboard-started group of N runs. Every workflow follows the same
+browser-profile recipe, and every worker owns its own profile INSTANCE — Chromium locks a profile
+directory, and `reference/execution-and-sessions.md`'s
+`(worker, system, instance, configFingerprint)` partition is what keeps them apart. N workers per
+workflow, spawned and stopped from the dashboard (today the runtime starts one process per
+workflow; the pool is the build). Sessions never share information, and workers know what the
+others are doing through AUTHORITY only — run claims, session leases, write fences, the
+concurrency matrix — never peer messaging. The dashboard shows the session and its workers: the
+worker cards Track B built already carry the shape, so what is missing is the membership and the
+durable session record behind them. Proof is two separations dry-run scenarios in parallel,
+recorded (R11).
+
+## Observed logs — the log carries what the page said
+<!-- roadmap: observed-logs -->
+
+<!-- roadmap-status: observed-logs -->
+<!-- /roadmap-status -->
+
+The log stream quotes the facts each task RECORDED — the provenance points collected through
+`ctx.recordData`: field, value, system, observed-at — redacted by the declared evidence
+classification, and never a second scrape of the page. A transaction node's beats stream their
+observations while the step is still running (probe → stage → fence → click → read-back), so the
+operator watches what the page said rather than a step name and a spinner. The log emission path
+and the log structure are rebuilt around recorded observations rather than around messages; the
+scope may widen when the operator reviews phase 3a. Owning specs:
+`reference/dashboard-surfaces.md` for the log panel, `reference/operator-trust.md` for the
+redaction declaration an unclassified leaf must fail loud against (operator ruling, 2026-08-20).
+
 ## Integration execution rule (master plan §7.3)
 
 _Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §7.3 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._

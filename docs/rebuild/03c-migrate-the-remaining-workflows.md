@@ -3,7 +3,10 @@
 This doc is the dedicated home of **Phase 3c**, tree node `{#migrations}` — the remaining twelve
 workflow migrations after separations. Phase 3 is three docs: **3a** finishes the dashboard
 (`03a`), **3b** finishes separations (`03b`), **3c** is this one. It holds those tasks, what is done
-and what is left, and its exit criteria; contracts it built live in `reference/`.
+and what is left, and its exit criteria; contracts it built live in `reference/`. It also hosts
+**§Testing tiers** — the shape every migration below adds its tests to — because the tiers are a
+property of migrating a workflow, not of any one workflow; the tiers' own normative spec is
+`reference/guards-and-tests.md`.
 
 ## Phase summary
 <!-- roadmap: migrations -->
@@ -262,6 +265,34 @@ Each probe is read-only-plus-restorable in the Kuali shape: read the completion 
 deterministic anchor, and where a write is authorized, write → verify → restore. If OnBase lands
 on `unverifiableByPage`, order-7 automation degrades to "operator manually confirms every upload"
 — which changes the rebuilt workflow contract, so it must be settled at order 7 before readiness.
+
+## Testing tiers
+<!-- roadmap: test-tiers -->
+
+<!-- roadmap-status: test-tiers -->
+<!-- /roadmap-status -->
+
+`tests/` is organized by **what a test needs**, and this is what every migration below adds its
+tests to. The **no-dry-run** tests — unit, the architecture guards, ONE honest structural fixture
+scenario per workflow, the dashboard feature scenarios, and parity — run per commit, per workflow
+update, and all of them on a dashboard update. Every test that must RUN a workflow is built on a
+**live dry run** of it (`dryRun=true`), declared as a scenario with **checkpoints asserted over
+authority** (nodes reached, checkpoints, gate results, write intents, receipt shapes — Track C's
+`docs/migrations/separations.md` §9.22 double-entry, as a file), **subject-parameterized** against
+a canary registry per workflow (labels live in the repo, sensitive values — EIDs — stay in `.env`
+and are referenced by label; a missing subject reports `blocked: needs <subject>`, never
+`failed`), with **dashboard conditions attachable** (drive the real ceremony while the run is
+parked, assert the timeline while it is running) and the result **recorded durably** — an evidence
+row plus a dated line in the workflow's migration record, which is what a `PROOF` tick on a
+migration node cites. The **end-to-end tier** is an agent-operated run of MANY dry-run scenarios in
+parallel, across workflows and across two runs of the same workflow (`{#parallel-runs}`). Fixture
+scenarios that pretend are rewritten into the honest structural one or into a dry-run scenario.
+The coverage floor moves to **80 %** lines/statements/functions global. So a migration below owes
+three test artefacts, not one: its T1 pair (the structural fixture scenario and the dry-run
+scenario), its T3 pair (the dashboard conditions attached to that dry-run scenario), and its
+`Dashboard · wire` task's T2 dashboard scenario. The normative spec — folder layout, file naming,
+the vitest project per tier, the run policy, the subject registry, the durable result row — is
+`reference/guards-and-tests.md` (R10, 2026-08-20).
 
 ## Order 0 · person-lookup
 <!-- roadmap: order-0 -->

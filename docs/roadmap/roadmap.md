@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
 asOf: 2026-08-20
-head: 8eb77ab
+head: 81bf48d
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from the phase docs `docs/rebuild/00`–`05` (§Phases at a glance below, `03c`'s migration order, `00`'s size model)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
@@ -265,6 +265,9 @@ open: yes
 needs:
 - p2-2j
 
+log:
+- 2026-08-20 | docs-cohesion step 5.0 | every node in the tree now carries `doc:` — its phase-doc home section plus the reference specs that own its contracts (`81bf48dd`); `test-tiers` drawn as this phase's testing spine (R10) · left: step 4b's binding guard, then the per-doc rewrites
+
 ### Dashboard defaults — the generic surfaces every workflow inherits {#dash-defaults}
 status: active
 chip: B+C done · D ratified (D264)
@@ -275,6 +278,9 @@ doc: 03a §Phase summary · ref:frontend-backend-integration §5 · ref:frontend
 
 needs:
 - p2-2i
+
+log:
+- 2026-08-20 | docs-cohesion step 5.0 | `duo-lease` · `parallel-runs` · `observed-logs` drawn under this node (R11/R12 and the operator's observed-logs ruling), each with its own section in doc 03a · left: 5.3a builds the lease, 5.3b the pool and the session view
 
 #### Track B · dashboard completion {#track-b}
 status: done
@@ -340,6 +346,80 @@ note: D6–D10 are the maintainability slice and carry ONE trigger — they star
 
 log:
 - 2026-08-20 | docs-cohesion step 4a | ratified by D264 — D1–D5 planned, D6–D10 proposed, D11 added (77a0be76)
+
+#### Duo ceremony lease — one login at a time per credential {#duo-lease}
+status: planned
+date: R12 · 2026-08-20
+size: S
+doc: 03a §Duo ceremony lease — one login at a time per credential · ref:execution-and-sessions
+
+> A durable per-credential lease in authority serializes EVERY Duo ceremony — from "navigate to SSO" until the content verifier proves the session — across every worker and every system. TTL is `sessionAcquireMs` + grace; waiters are bounded and refuse loud naming the holder; a refused assertion poison-closes and retries ONCE under the same lease on a FRESH profile, then fails naming the profile; `defineVerifiedLoginRecipe` takes a lease token only the lease store mints, pinned by a guard with a violating fixture. The hazard exists TODAY — two workflows' workers cold-starting together share one credential's server-side counter (D243).
+
+builds:
+- [ ] BE `duo_ceremony_leases` in authority + the lease token `defineVerifiedLoginRecipe` requires
+- [ ] BE bounded waiters + the fresh-profile-once recovery, both failing by name
+- [ ] BE the guard: no login path without the lease, with a violating fixture
+- [ ] PROOF two workers' cold starts serialize (unit) + a live two-worker cold start
+- [ ] DOCS the decision in `reference/execution-and-sessions` + `reference/decisions`
+
+needs:
+- track-d
+
+#### Parallel runs — sessions and the worker pool {#parallel-runs}
+status: planned
+date: R11 · 2026-08-20
+size: L
+doc: 03a §Parallel runs — sessions and the worker pool · ref:execution-and-sessions
+
+> A SESSION is a dashboard-started group of N runs. Every workflow follows the same browser-profile recipe and every worker owns its own profile INSTANCE (doc 05's `(worker, system, instance, configFingerprint)` partition); N workers per workflow, spawned and stopped from the dashboard. Sessions never share information and workers never message each other — they know what the others are doing through AUTHORITY only: run claims, session leases, write fences, the concurrency matrix. The dashboard shows the session and what each of its workers is doing.
+
+builds:
+- [ ] BE worker pool — N workers per workflow, spawned and stopped from the dashboard
+- [ ] BE durable session record + grouping (B4's bulk dispatch is the seed)
+- [ ] FE session view — worker cards show membership and what each worker is doing, from authority
+- [ ] PROOF two separations dry-run scenarios in parallel, recorded
+
+needs:
+- track-d
+- duo-lease
+
+#### Observed logs — the log carries what the page said {#observed-logs}
+status: planned
+date: operator 2026-08-20
+size: M
+doc: 03a §Observed logs — the log carries what the page said · ref:dashboard-surfaces · ref:operator-trust
+
+> The log stream quotes the facts each task RECORDED — the provenance points: field, value, system, observed-at — redacted by the declared evidence classification, and never a second scrape. A transaction node's beats stream their observations while the step is still running, so the operator watches the page's own words rather than a step name. The log emission path and the log structure are rebuilt around recorded observations; the scope may widen when the operator reviews phase 3a.
+
+builds:
+- [ ] BE provenance points emitted on the span at record time, redacted by declaration (an unclassified leaf fails loud)
+- [ ] BE transaction beats stream their observations (probe → stage → fence → click → read-back)
+- [ ] FE the log panel renders observed rows per step, in the Context rail's vocabulary
+- [ ] PROOF a separations dry run reads as a ledger of page facts
+
+needs:
+- track-d
+
+### Testing tiers — the suite organized by what a test needs {#test-tiers}
+status: planned
+date: R10 · 2026-08-20
+size: L
+doc: 03c §Testing tiers · ref:guards-and-tests
+
+> The no-dry-run tests — unit, architecture guards, ONE honest structural fixture scenario per workflow, dashboard feature scenarios, parity — run per commit, per workflow update, and all of them on a dashboard update. Every test that must RUN a workflow is built on a LIVE dry run of it, declared as a scenario with checkpoints asserted over authority, subject-parameterized against a canary registry (sensitive values outside git, referenced by label; a missing subject reports `blocked`, never `failed`), with dashboard conditions attachable and the result recorded durably. The end-to-end tier is an agent-operated run of MANY dry-run scenarios in parallel. Coverage floor 80 %.
+
+builds:
+- [ ] DOCS the spec — `reference/guards-and-tests` rewritten: tiers, layout, naming, run policy, subject registry, durable results (R10)
+- [ ] BE T1 layout — one structural fixture scenario per workflow + its dry-run scenario manifest (checkpoints + subject labels), the pretending scenarios rewritten
+- [ ] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard`
+- [ ] BE T3 dashboard conditions attachable to a dry-run scenario — the first: separations §9.22 as a file
+- [ ] BE the subject registry (labels in config, values outside git) + the durable `dry_run_scenario_results` row + `cli dry-run-scenario`
+- [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded
+- [ ] BE coverage floor 80/80/80 global
+
+needs:
+- dash-defaults
+- fact: a named canary subject per workflow the dry-run scenarios run against (03b's registry first)
 
 ### Separations — order 8, the first migration {#order-8}
 status: planned
@@ -506,6 +586,8 @@ builds:
 - [x] WIRE activity — separations in the per-workflow cross-tab + the write-ledger block (D236)
 - [x] WIRE notifications — a park at the ALWAYS-GATE publishes a needs-you row to the durable inbox, by re-derivation over authority; the bell links to the run (D262)
 - [x] PROOF connection proof — every surface read against the real composed run, each UI assertion paired with authority (Track C, separations §9.22; five defects found and fixed same-day)
+- [ ] PROOF T1 scenario tests for separations (structural fixture + dry-run scenario) and its T3 pair (R10)
+- [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
 
 needs:
 - dash-defaults
@@ -530,7 +612,9 @@ doc: 03b §Smaller operator calls open · ref:dashboard-surfaces §9 · 03c §No
 
 ## session: 2026-08-20 | docs-cohesion steps 1–2 | the plan moved out of the repo root (0990ebc5) and now sits at docs/roadmap/roadmap.md; the notation grew doc: · log: · session: (ea7704e0); D263 + D264 ratified; Track D redrawn
 
-## today: 2026-08-20 · HEAD 8eb77ab · separations 8 / 9 · Tracks B+C DONE · parity re-frozen 151/151 · the three commits wait for 08-28
+## session: 2026-08-20 | docs-cohesion step 5.0 | doc: on every node; test-tiers · duo-lease · parallel-runs · observed-logs drawn (R10–R12)
+
+## today: 2026-08-20 · HEAD 81bf48d · separations 8 / 9 · Tracks B+C DONE · parity re-frozen 151/151 · the three commits wait for 08-28
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued
@@ -554,6 +638,7 @@ doc: 03c §Recommended migration order (by risk / complexity / reuse) · ref:wor
 
 builds:
 - [x] BOTH resolve a person by name / EID against real UCPath + CRM
+- [ ] PROOF T1 scenario tests for person-lookup (structural fixture + dry-run scenario) and its T3 pair (R10)
 
 #### Dashboard · wire person-lookup {#order-0-dash}
 status: done
@@ -567,6 +652,7 @@ builds:
 - [x] WIRE queue row — the person-lookup row, status and timing (D123/D124/D126 fixes from the live run)
 - [x] WIRE run detail — timeline, receipt, Context rail; the two-pixel panel found and fixed in 2j (D187)
 - [x] WIRE archive · activity · explorer — person-lookup rows appear through the generic surfaces
+- [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
 
 needs:
 - dash-defaults
@@ -582,6 +668,7 @@ builds:
 - [ ] BOTH Search + Match modes on person-lookup (D15)
 - [ ] BE the `i9` store: driver, login recipe, tasks (zero today)
 - [ ] BOTH i9-lookup workflow + its queue/detail surfaces
+- [ ] PROOF T1 scenario tests for person-lookup Search + Match · i9-lookup (structural fixture + dry-run scenario) and its T3 pair (R10)
 
 needs:
 - phase-2
@@ -600,6 +687,7 @@ builds:
 - [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
 - [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
+- [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
 
 needs:
 - dash-defaults
@@ -615,6 +703,7 @@ builds:
 - [ ] BE the `sharepoint` and `old-kronos` stores (declaration-only today)
 - [ ] BE crm document download on the existing crm driver
 - [ ] BOTH downloads land as content-addressed artifacts; the artifact-bytes route
+- [ ] PROOF T1 scenario tests for crm-doc-download · sharepoint-download · old-kronos-reports (structural fixture + dry-run scenario) and its T3 pair (R10)
 
 needs:
 - phase-2
@@ -634,6 +723,7 @@ builds:
 - [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] BOTH download viewer — the artifact-bytes route + a per-run downloads tile
+- [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
 
 needs:
 - dash-defaults
@@ -649,6 +739,7 @@ builds:
 - [ ] BE the OCR pipeline workflow over the 2h extraction / normalization / ocr / roster stores
 - [ ] BE **D189's byte path**: BFF static handler + `capture.html` + ngrok launcher + the phone-origin guard arm; `--prod` starts meaning what it says
 - [ ] WIRE capture → workflow binding (`CAPTURE_INTAKE_BINDINGS` filled for the first honest consumer)
+- [ ] PROOF T1 scenario tests for the OCR pipeline workflow (structural fixture + dry-run scenario) and its T3 pair (R10)
 
 needs:
 - p2-2h
@@ -669,6 +760,7 @@ builds:
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] BOTH OCR review UI — expanded page ↔ extracted-text pair, approve / reject / retry page, one atomic correction list
 - [ ] WIRE review/approve commands + progressive record patches over the SSE stream
+- [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
 
 needs:
 - dash-defaults
@@ -684,6 +776,7 @@ builds:
 - [ ] BOTH first operation fan-out + approval gates through the real review UI
 - [ ] BE oath-signature and emergency-contact workflows
 - [ ] PROOF the first non-separations controlled commits on UCPath enter/fill
+- [ ] PROOF T1 scenario tests for oath-signature · emergency-contact (structural fixture + dry-run scenario) and its T3 pair (R10)
 
 needs:
 - order-3
@@ -704,6 +797,7 @@ builds:
 - [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] FE Group People — paged members + rollup + containment over real operation members
+- [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
 
 needs:
 - dash-defaults
@@ -719,6 +813,7 @@ builds:
 - [ ] BE the operation coordinator at scale
 - [ ] BE stable-keyed SQLite outbox + serialized workbook projector
 - [ ] BE the first Excel export writer (the master I-9 retention workbook)
+- [ ] PROOF T1 scenario tests for i9-check (structural fixture + dry-run scenario) and its T3 pair (R10)
 
 needs:
 - order-1
@@ -739,6 +834,7 @@ builds:
 - [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] FE member rows with retention status; the workbook export control
+- [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
 
 needs:
 - dash-defaults
@@ -754,6 +850,7 @@ builds:
 - [ ] BE work-study and kronos-pay-rule commit contracts
 - [ ] PROOF the canonical-EID audit gate: replay real stored inputs through `Eid` `/^10\d{6}$/`, surface every rejection
 - [ ] BE the new-kronos store gains its pay-rule write family
+- [ ] PROOF T1 scenario tests for work-study · kronos-pay-rule (structural fixture + dry-run scenario) and its T3 pair (R10)
 
 needs:
 - sep-1
@@ -774,6 +871,7 @@ builds:
 - [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] BOTH intake grid constants entry + unbind arm (`effectiveDate`, D172/D173)
+- [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
 
 needs:
 - dash-defaults
@@ -790,6 +888,7 @@ builds:
 - [ ] BE ServiceNow receipt probe; OnBase upload-verify
 - [ ] BE oath-upload's born-at-upload fence
 - [ ] PROOF rebuild-verified propagation windows for ServiceNow
+- [ ] PROOF T1 scenario tests for oath-upload · onbase (structural fixture + dry-run scenario) and its T3 pair (R10)
 
 needs:
 - order-6
@@ -810,6 +909,7 @@ builds:
 - [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] WIRE ServiceNow ticket receipt + OnBase upload-verify on the run-detail receipt
+- [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
 
 needs:
 - dash-defaults
@@ -825,6 +925,7 @@ builds:
 - [ ] BE the hire probe with the no-EID key (`ProbeVerdict`-widened)
 - [ ] BE roster ingest
 - [ ] BE the onboarding composition over the ucpath / crm / kuali / kronos stores
+- [ ] PROOF T1 scenario tests for onboarding (structural fixture + dry-run scenario) and its T3 pair (R10)
 
 needs:
 - order-8
@@ -846,6 +947,7 @@ builds:
 - [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] BOTH roster ingest surface; the hire canary's ceremony
+- [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
 
 needs:
 - dash-defaults
