@@ -48,7 +48,7 @@ import {
 } from "../surfaces/queue-model.js";
 import { ConfirmCommandDialog, type ActionTarget, type PendingCommand } from "../surfaces/actions.js";
 import { RenameRunDialog, type PendingRename } from "../surfaces/run-identity.js";
-import { composeCommandRequest, type CommandAction } from "./command-dispatch.js";
+import { composeCommandRequest, composeStopWorkerCommand, type CommandAction } from "./command-dispatch.js";
 import { useGlobalKeys } from "./global-keys.js";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/status-model.js";
 import {
@@ -77,6 +77,7 @@ import {
   useWorkflowPanelMode,
   workflowStatusCounts,
   type StatusBucket,
+  type WorkerCardWire,
 } from "../surfaces/shell-model.js";
 import { StorageBanner } from "../surfaces/settings.js";
 import { TopBar } from "../surfaces/top-bar.js";
@@ -644,6 +645,42 @@ function LoadedApp({
             description: "Each run's own outcome is listed under the selection bar.",
           });
           setDetailNonce((nonce) => nonce + 1);
+        },
+        (caught: unknown) => {
+          toast({
+            tone: "danger",
+            title: "Nothing was recorded",
+            description: caught instanceof Error ? caught.message : String(caught),
+          });
+        },
+      );
+    },
+    [boot.actor.id, client, toast],
+  );
+
+  /**
+   * The Session Panel's `Stop` (D249). It posts through the SAME one command
+   * route and reads the answer the same way — `conflict` and `rejected` are
+   * values the server owns and this app prints verbatim, because a stop the
+   * kernel refused (the lease settled while the drawer was open) must never
+   * look like one that landed.
+   */
+  const stopWorker = useCallback(
+    (card: WorkerCardWire): void => {
+      client.executeCommand(composeStopWorkerCommand(
+        { workerId: String(card.workerId), leaseVersion: Number(card.leaseVersion) },
+        { actorId: boot.actor.id, source: "session-panel" },
+      )).then(
+        (result) => {
+          if (result.state === "conflict" || result.state === "rejected") {
+            toast({ tone: "danger", title: "Nothing was recorded", description: result.message });
+            return;
+          }
+          toast({
+            tone: "success",
+            title: `Stop ${String(card.workerId)}`,
+            description: "Recorded. The worker finishes its current item, then stops claiming.",
+          });
         },
         (caught: unknown) => {
           toast({
@@ -1259,6 +1296,7 @@ function LoadedApp({
         nowIso={boot.serverClock.now}
         connection={connection}
         appVersion={boot.appVersion}
+        onStopWorker={stopWorker}
       />
 
       <RunStartSurfaces
