@@ -5571,3 +5571,97 @@ after which the gate ceremonies D226 built are photographed for the first time.
 - **`person-lookup` end to end.** Only its start-modal surface was exercised; no live person-lookup
   run was made.
 
+
+---
+
+### 9.23 The start door, asked and answered — why the composed workflow has no typed box, 2026-08-20
+
+§9.22 item 2 recorded the run modal listing **Separation** under *7 not startable* with the sentence
+*"This workflow declares no typed-input surface, so this dialog has no box for it."* — and marked it
+**MET as declared**, because the descriptor's `surfaces: {}` says exactly that with its reason. The
+operator then ruled: **build it.** This pass is that build attempted, and the finding is that it
+cannot be built where it was asked for. **Nothing was written, nothing was run live, and no code
+changed** — the ruling is **D260** (doc 02 §1.1), and this section is its evidence.
+
+#### 1. What a separations run actually ingests
+
+`SeparationsInput` (`src/workflows/separations/descriptor.ts`) requires three fields, plus a
+defaulted `searchTimeoutMs` and an optional `reRead`:
+
+| Field | Example (doc 4502, §9.22's subject) | Varies per run |
+|---|---|---|
+| `actionId` | `6a766ae6f0549046f7f0dc06` | **yes** |
+| `documentNumber` | `4502` | **yes** |
+| `timekeeperName` | `Julian Zaw` | no, per operator |
+
+#### 2. Why a typed box cannot carry it
+
+`InputParserSpec` splits operator text into entries and each entry emits **one** field —
+`EntryRule.emit` is a single `InputFieldName`, and `parseInputRunText` composes
+`[{ field: rule.emit, value: <the entry text> }, ...constants]`. `constants[]` contributes the SAME
+value to every entry of every run, so a per-run value placed there would be a constant baked into a
+bundle-safe descriptor, which is the fabricated constant this program bans. **One varying value per
+run is the ceiling**, and separations needs two.
+
+Three exits were checked and each is closed for a stated reason, not for want of effort:
+
+- **Drop `documentNumber` and let the page supply it.** Refused: the number is the run's own CLAIM,
+  proved against the document's level-1 heading before anything else runs, and it is the check that
+  catches a stale action id (2026-08-04 — *an `actionId` names a workflow STEP, not a document*;
+  doc 4453's captured id silently landed on the Action List with no form). Dropping it removes a
+  safety check to gain a text box.
+- **Derive `actionId` from `documentNumber` at plan time.** Refused: Kuali's only address is
+  `…/actions/<actionId>`, and the reverse lookup is the Action List, whose whole `actionList.*`
+  selector family `src/stores/kuali/CLAUDE.md` records as deliberately **NOT ported**. Even if it
+  were ported it would be a BROWSER act, and `services/start/plan.ts` performs exactly ONE ingress
+  parse per raw submission (`planning.parseInput(rawInput)`) with no I/O, no per-workflow enrichment
+  seam and no resolution step — an ingress that could resolve a value it was not given is the second,
+  unaudited ingress path `src/domain/workflow/ingress.ts` refuses by name.
+- **Move `timekeeperName` to config.** Not proposed, and it would not help: §9.16's decision 6a-2
+  ratified it as INGRESS with `config.operator.timekeeperName` deliberately unused, and reversing it
+  reaches **two** varying values rather than one. **This is not one decision away.**
+
+#### 3. What would end the deferral — two shapes, with their costs
+
+Named so the operator can rule rather than re-derive:
+
+1. **A third `surfaces` arm: a typed FORM.** The multi-field vocabulary already exists and is already
+   interpreted server-side — `UploadFieldSpec` (`text`/`boolean`/`select`) with `resolveUploadFields`
+   — and the arm is `uploadRun` minus its mandatory `accepts[]`. Doc 02 §1.1 already permits exactly
+   this ("a genuinely new run-surface behavior extends that union and both exhaustive interpreters").
+   **The honest cost: no client renderer for `UploadFieldSpec` exists.** `uploadRun` is declared by no
+   registered workflow and `src/dashboard/surfaces/run-start.tsx` renders it nowhere, so this surface
+   would be that vocabulary's first live consumer, and the parity corpus gains a panel.
+2. **Make `actionId` a graph output.** A head node resolving the action from the document number
+   through Kuali's Action List: a live selector port of the family the Kuali store left behind, a new
+   contract, a new driver capability, a graph change — and it still leaves `timekeeperName` typed, so
+   it does not on its own reach one value either.
+
+Shape 1 is the cheaper and the more honest of the two: it changes no graph, ports no selector, and
+leaves every value the operator controls under the operator's hand.
+
+#### 4. An operational finding for every worktree boot, recorded because it is not obvious
+
+`defaultRuntimePaths()` resolves `stateRoot: resolve(".tracker-rebuild")` — `node:path`'s `resolve`
+against **`process.cwd()`**. So a BFF or worker booted from a git worktree writes its authority to
+`<worktree>/.tracker-rebuild`, **a fresh empty database**, not the checkout's. The same is true of
+`.auth` (the browser profile root) and `duo-autopilot`. Three consequences worth knowing before a
+worktree live pass:
+
+- §9.17 / §9.20 / §9.22's `write_intents` **2** · `write_attempts` **3** · `durable_outbox` **2**
+  baseline is **absent** there; the honest assertion against a worktree boot is that all three are
+  **0**, and a *"no new write rows"* claim must name which authority it was made against.
+- Every checkpoint replays as absent, so every run re-reads live — including the reads §9.22's runs 2
+  and 3 replayed.
+- The Duo profile is COLD, which since **D243/D244** is the SAFE state (a cold import stamps the
+  shared WebAuthn counter to wall-clock `now`), at the cost of a full SSO ceremony per system.
+
+#### 5. What is honestly NOT RUN
+
+- **No live pass at all.** No BFF, no vite, no worker, no browser, no run. Ports 3938 and 5174 were
+  observed free and deliberately left free — with no surface built there is nothing new to prove, and
+  §9.22 exercised the modal's separations row against this same tree the same day.
+- **No code changed.** In particular the descriptor is untouched on purpose: its `surfaces: {}`
+  comment already carries this reason, and `contractFingerprint` hashes file CONTENT, so a
+  comment-only edit would stop every stored `separations` checkpoint replaying (§9.22 measured that
+  exact effect) in exchange for no behavior.
