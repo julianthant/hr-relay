@@ -14,6 +14,10 @@ This plan is itself interactive: every step carries a checkbox the executing age
 | Q4 | Track D | **Ratified** under `{#dash-defaults}` after Track C. **D1–D5 `planned`**, D6–D10 stay `proposed` with the trigger "before the second migration's `Dashboard · wire` task starts". **§3.5: `WORKFLOW_DESCRIPTORS` moves OUT of the bundle to bootstrap** — filed as Track D row **D11** (amends D251 / doc 13 §4); code work, not done in this docs pass. |
 | Q5 | Superseded narrative | Goes to **`docs/rebuild/reviews/`** (dated, named by source doc + section). Nothing is deleted. |
 | — | Session-end interactivity | The notation gains a **`log:` block per node** (`- YYYY-MM-DD \| <session> \| what landed (commit)`, rendered newest-first in the drawer) and a **`## session:` spine marker**; **`/custom-update-plan` is extended** with a `session` class (tick `builds:` boxes → append `log:` lines → bump `asOf`/`head`/`today` → regenerate → commit). No new skill. |
+| R6 | The doc SET (operator, later on 2026-08-20) | **Renumbered to the build order and split actionable vs reference.** `docs/rebuild/` holds ONLY the plan: `00-roadmap.md` (the tree source, with the governance rules in its prose) + one dedicated doc per tree phase `01`–`08`. Everything non-actionable (charter, decisions ledger, every contract spec) moves to `docs/rebuild/reference/<name>.md`, unnumbered, cited by name. **07-master-plan ceases to exist** — its content distributes into the phase docs; the original is preserved in `reviews/`. Churn from renumbering is accepted; a mechanical citation sweep covers it. Shelf and mapping: §3. |
+| R7 | Interactive status in the docs | Every doc section that describes a node carries, besides its tag, a **status block** (`<!-- roadmap-status: <id> -->` … `<!-- /roadmap-status -->`: tick-off lines + dated notes) which the generator READS and renders in that node's drawer under "From the docs", with a per-phase roll-up — so clicking a phase shows which parts are fully done and where to start. A per-doc subagent determines what is complete / left and fills it. Format: §3.4. |
+| R8 | Decisions | `reference/decisions.md` stays the append-only D-ledger (citations, ratification act, no re-litigation); it gains a **phase** column, and each phase doc lists the decisions it ratified. Never split. |
+| R9 | Structure choices from the node map (§3(c), orchestrator) | (1) as-built delta blocks are FOLDED into the numbered section they amend (tag-only is a reported fallback, not a choice); (2) charter items → numbered `###` headings; (3) dashboard-surfaces reorganized per wire square; (4) foundation-gap-audit frozen + minimally tagged; (5) frontend-backend-integration §5.1 split per square; (6) guard arm (b) also scans `docs/migrations/*.md`; (7) out-of-order subsections reordered, named in the commit. Ids `phase0-always-gate`, `phase0-size-model`, `phase2-dispositions` land before the rewrites; operator-trust §5.5 stays folded into `def-explorer-edit`; guards-and-tests §7 and frontend-backend-integration §7.2 are verified against code by their agents. |
 
 ## 1 · Standing constraints (from `CLAUDE.md` and the brief — the agents' contract)
 
@@ -46,31 +50,88 @@ _log: part a `04507479` + `ea7704e0` · step-2a agent 2026-08-20 — `parsePlan`
 - Decision **D263** (number = next free at HEAD — D262 was taken by the sibling gate-notify merge; owner doc 07 §0.1 "one-plan rule"): "`docs/rebuild/14-roadmap.md`, in the roadmap notation, is the plan's machine-readable form and the operator tracking view; doc 07 wins on any disagreement; every node cites its owning doc sections (`doc:`) and every doc section describing a node carries `<!-- roadmap: id -->`; session work is recorded in `log:` blocks." 04 gets one pointer line. Number to be confirmed against 04's tail at HEAD.
 - Commits: `feat(roadmap): doc: · log: · session: — the notation grows its binding and its session log`, then `docs(07): D263 — the roadmap is the plan's machine-readable form` (+ skill in either).
 
-### Step 3 — the two-way binding guard (sequential, master, after step 2) `[ ]`
-- `tests/unit/architecture/roadmap-doc-binding.test.ts` + `guard-inventory.json` entry in one commit. Arms: (a) every `doc:` ref on every node resolves to an existing `docs/rebuild/NN-*.md` heading whose section number matches; (b) every `<!-- roadmap: <id> -->` tag in `docs/rebuild/*.md` names a node id that exists in `14-roadmap.md`; (c) every node that is not a phase carries at least one `doc:` ref (phases may cite 07 §2 only); (d) every `builds:` line carries a layer tag (belt-and-braces with the parser). Executed against a violating fixture per `guard-manifest.test.ts`'s convention, so a walker resolving nothing cannot report the tree clean.
-- Until step 5 finishes, arm (c) may be staged as a ratchet (allowlist of not-yet-bound node ids that shrinks per doc rewrite and is deleted at step 6) — the allowlist lives IN the test file, never in a manifest.
+### Step 3 — the restructure: the phase shelf + reference/ (sequential, master) `[ ]`
+Three narrow units, in order; each commits on master with the full gate green and `roadmap:check` fresh.
+- **3a — moves + skeletons.** `git mv` every reference doc to `docs/rebuild/reference/<name>.md` (mapping §3.1); `git mv 14-roadmap.md 00-roadmap.md`; `PLAN_SOURCE_PATH` → `docs/rebuild/00-roadmap.md`; create the eight phase docs `01`–`08` as SKELETONS: a title, a one-paragraph purpose, then one `##`/`###` section per tree node under that phase (the node map is the list; ids verbatim; the three new ids minted here) each with its `<!-- roadmap: <id> -->` tag and an EMPTY status block (§3.4), and a closing "Decisions this phase ratified" + "Exit criteria" section (empty, to be filled by 3b). 00-roadmap.md: the notation region unchanged; AFTER `roadmap:end` a "Governance" prose section receives 07 §0 (one-plan rule, D1 ownership map re-pointed to the new names, §0.3, D263) and the appendix pointers. `CLAUDE.md` ("Before you start", "What lives where"), `src/dashboard/CLAUDE.md` if it cites paths, `.claude/skills/custom-update-plan/SKILL.md` paths. Commit `docs(rebuild): the phase shelf — reference/ split, 00-roadmap, phase docs 01–08 as skeletons`.
+- **3b — 07 dissolves.** Distribute `07-master-plan.md` into the phase docs: §3's Phase 0/1/2/3 detail + §7 into `01`–`04`/`05` (by phase), §3.1/§3.3/§3.6/§3.8 into `06-phase-3-remaining-migrations`, the deferral sentences (§3.5 and every "deferred/LATER" disposition) into `07-deferred-traceback`, §4/§5/§6 into `08-cutover`, §2's phase table into `00-roadmap`'s governance prose as the at-a-glance table; fill each phase doc's "Decisions this phase ratified" (the D-range from `reference/decisions.md` round headings) and "Exit criteria" (from §3's exit blocks, verbatim, with their MET/open state). `git mv 07-master-plan.md reviews/07-master-plan-dissolved-2026-08-20.md` with a header naming where every section went. The roadmap file's old appendices (after `roadmap:end`): A (prose decision log) dropped — the ledger is the authority; B (legacy vs rebuild) → `08-cutover.md` as a dated section; C (verify commands) → `CLAUDE.md` Commands. Commit `docs(rebuild): the master plan dissolves into the phase docs — 07 → reviews/`.
+- **3c — citation sweep + `doc:` grammar.** A scratch script applies §3.2's mapping to every citation form (`doc NN §x`, `doc NN's`, `docs NN–MM`, `(NN §x)`, `docs/rebuild/NN-<slug>.md`, `NN-<slug>`) across `docs/rebuild/**`, `docs/migrations/**`, `docs/findings/**`, `docs/plans/2026-08-20-*.md`, `CLAUDE.md`, `src/dashboard/CLAUDE.md`, `.claude/**`, `config/*.json`, `src/**`, `tests/**` (comments and strings only — a citation inside a string that a test ASSERTS on is changed in both places); historical handoffs/plans/reviews are left. The `doc:` attribute grammar becomes `NN §x` (NN = 00–08, a phase doc) or `ref:<slug> §x` (slug = a file in `reference/`); parser + schema + renderer + skill updated; `reference/decisions.md` gains the phase column (mechanical: round → phase by date/content, `unknown` where unclear — never guessed). Post-sweep proof: `grep` for every old form returns only the historical files; gate green. Commit `docs(rebuild): the citation sweep — every doc reference names the new shelf; doc: accepts ref:<slug>`.
 
-### Step 4 — Track D ratified; 07/04/08/CLAUDE.md absorb the appendices (sequential, master) `[ ]`
-- **D264** (next free at HEAD; owner doc 13 §4 + §7.4; amends D251): Track D placed under `{#dash-defaults}`; D1–D5 `planned`, D6–D10 `proposed` with the named trigger; D11 = `WORKFLOW_DESCRIPTORS` leaves the bundle for bootstrap. Plan node `{#track-d}` moves `proposed → planned` with `builds:` lines per row and layers; 04 pointer.
-- Appendix A (prose decision log) dropped — 04 is the authority; Appendix B (legacy vs rebuild) → `08-foundation-gap-audit.md` (or 07 §4) as a dated section; Appendix C (verify commands) → `CLAUDE.md` Commands / 07 §6. `14-roadmap.md` keeps nothing after `roadmap:end` except a one-line pointer to where each appendix went.
-- Doc 07: §0.1 cites D263; §2 phase table and §3.3 order read as the source the tree derives from; a `<!-- roadmap: phase-N -->` tag per phase section.
+### Step 4 — the generator reads the docs' status blocks; the binding guard (sequential, master) `[ ]`
+- **4a — status blocks in the drawer.** `scripts/roadmap/` gains a doc scanner: reads `docs/rebuild/*.md` + `reference/*.md`, collects every `<!-- roadmap: <id> -->` tag (doc, heading) and every status block (§3.4) keyed by node id; validates fail-loud (unknown id, malformed line, unclosed block, duplicate block per id per doc); `--json` carries them. Drawer: a "From the docs" section per node listing each doc+section with its ticks (done/total) and notes (newest-first); a PHASE node's drawer rolls up its subtree (docs-complete n/m, the first not-done item named). The node's canvas square set is unchanged (builds by layer stays the plan's); a small doc-progress ring or count beside the title is enough. `roadmap:check` therefore goes stale when a doc's status moves — intended. Skill: the `session` class ticks status blocks too; rules: status lines are the doc's own checklist (no layer tag required; `[x]` only at HEAD with commit/D cited), notes are append-only.
+- **4b — the guard** `tests/unit/architecture/roadmap-doc-binding.test.ts` + `guard-inventory.json` entry: (a) every `doc:` ref resolves (phase doc number + section heading, or reference slug + section); (b) every tag and every status-block id in `docs/rebuild/**` and `docs/migrations/**` names an existing node; (c) every non-phase node carries `doc:`; (d) every node has at least one tagged section somewhere (a node no doc describes is a planning gap — ratchet allowlist IN the test, to be emptied by step 6); (e) `builds:` layer tag present. Violating fixtures per arm.
 
-### Step 5 — audit-then-rewrite, doc by doc, dashboard first (parallel worktrees, batches of ≤3) `[ ]`
-Order: **13, 03** → **12, 06** → 02, 09, 01 → 00, 05, 08, 10, 11. Each doc is one unit (doc 03 and 02 are two units each: audit → rewrite). Per doc the agent: (a) lists every section; (b) classifies each claim **done-as-built / needs-attention / to-build** with code evidence (file:line); (c) verifies "done" against the code (D252); (d) restructures the doc so its sections mirror the tree's nodes for that area — one heading per node, the `builds:` items' layers named in prose — moving superseded narrative to `docs/rebuild/reviews/<NN>-<section>-superseded-<date>.md`; (e) tags sections `<!-- roadmap: <id> -->`; (f) adjusts `14-roadmap.md` only for ITS nodes: `doc:` refs, new `builds:` lines with layers for to-build items, `needs:` for prerequisites, and — where a node is genuinely missing — a new node with a stable id; (g) appends its own `log:` line on each node it touched; (h) runs the guard + gate; commits per doc on its worktree branch. Out of scope per unit: other docs, `src/`, the generator.
-- Node map (step 5.0, sequential, master, before the batches): one agent produces the **doc ↔ node map** — for every node in `14-roadmap.md` the owning doc sections, and for every doc the nodes it describes — written into this plan's §3 and pre-applied as `doc:` lines on every node. Rewrite agents then follow the map; new nodes need the orchestrator's ok (report, do not invent).
-- Batches: {13-audit+rewrite, 03-audit} → {03-rewrite, 12, 06} → {02-audit, 09, 01} → {02-rewrite, 00, 05} → {08, 10, 11}. Orchestrator verifies each worktree (branch, clean, commits), merges `--no-ff` in dispatch order, resolves `14-roadmap.md` conflicts itself, removes the worktree, re-runs the guard + `roadmap:check` on master after each merge.
+### Step 5 — apply the node map; then the per-doc rewrite (parallel worktrees, batches ≤ 3) `[ ]`
+- **5.0 — `doc:` on every node** (sequential, master): from the node map translated through §3.2 — every node gets its `doc:` line (phase docs first, then `ref:` slugs); tiles/`today:` bumped; commit.
+- **5.1 — per-doc units.** Every doc is one unit (big ones two: audit → rewrite). Per doc the agent: (a) inventories sections; (b) classifies every claim **done-as-built / needs-attention / to-build** with `file:line` evidence, verifying "done" against the code (D252); (c) restructures so sections mirror the tree's nodes (R9 rulings), folds as-built deltas into the sections they amend, moves superseded narrative to `reviews/<doc>-<section>-superseded-<date>.md`; (d) tags and FILLS each section's status block — ticks for what is landed (commit/D cited), `[ ]` for what is left, a dated note saying what the agent verified and what remains; (e) adjusts `00-roadmap.md` only for ITS nodes (`builds:` lines with layers for to-build items, `needs:`, a `log:` line; a NEW node only with the orchestrator's ok); (f) guard + gate; commits on its worktree branch. Out of scope per unit: other docs, `src/`, the generator.
+- Order (dashboard + separations first, then the migrations path, then platform): `04-phase-3-dashboard-defaults` + `reference/dashboard-surfaces` (audit) → `reference/dashboard-surfaces` (rewrite) + `reference/frontend-backend-integration` + `05-phase-3-separations` → `reference/operator-trust` + `reference/data-intake-and-edit-data` + `06-phase-3-remaining-migrations` → `07-deferred-traceback` + `08-cutover` + `03-phase-2-proof-and-tails` → `01-phase-0` + `02-phase-1-spine` + `reference/workflow-model` (audit) → `reference/workflow-model` (rewrite) + `reference/task-contract` + `reference/write-safety` → `reference/execution-and-sessions` + `reference/guards-and-tests` + `reference/clock-config-secrets` → `reference/charter` + `reference/foundation-gap-audit` (minimal) + `reference/decisions` (phase column check). Orchestrator verifies each worktree (branch, clean, commits), merges `--no-ff` in dispatch order, resolves `00-roadmap.md` conflicts itself, removes the worktree, re-runs guard + `roadmap:check` after each merge.
 
 ### Step 6 — review + close (sequential) `[ ]`
-- `doc-reviewer` per rewritten doc against the code (read-only; parallel is fine). Findings fixed inline by the orchestrator or a narrow re-dispatch.
-- Ratchet allowlist in the binding guard deleted; guard green clean.
-- `14-roadmap.md`: `## session:` marker for this effort; tiles/`today:` updated; regenerate; republish the artifact to `https://claude.ai/code/artifact/8e678086-ab5f-44c0-8fdb-f04986fb95ff` (WebFetch first — a sibling republished after the brief).
-- Memory updated (`roadmap-site.md`); this plan's checkboxes ticked with commits; handoff written if anything is left open.
+- `doc-reviewer` per rewritten doc against the code; findings fixed inline or by a narrow re-dispatch. Guard ratchet emptied.
+- `00-roadmap.md`: `## session:` marker for the effort; tiles/`today:`; regenerate; republish the artifact to `https://claude.ai/code/artifact/8e678086-ab5f-44c0-8fdb-f04986fb95ff` (WebFetch first).
+- Memory (`roadmap-site.md`) + this plan ticked; handoff if anything stays open.
 
-## 3 · Doc ↔ node map (filled by step 5.0)
+## 3 · The target shelf, the mapping, the citation grammar, the status block
 
-_(pending)_
+### 3.1 Target shelf (ruling R6)
+```
+docs/rebuild/                          ← ACTIONABLE: the plan
+  00-roadmap.md                        the tree source (notation region) + governance prose after roadmap:end
+  01-phase-0-foundation-design.md      {#phase-0}
+  02-phase-1-spine.md                  {#phase-1}
+  03-phase-2-proof-and-tails.md        {#phase-2}  (2g–2j, the controlled-commit proof)
+  04-phase-3-dashboard-defaults.md     {#dash-defaults} + Tracks B/C/D — every surface, what remains
+  05-phase-3-separations.md            {#sep-*}, Track A, 8/9 criteria, the 08-28 commits (as-built record stays docs/migrations/separations.md)
+  06-phase-3-remaining-migrations.md   {#migrations} + every order-N node — the 7-step loop, the order, the `Dashboard · wire` template
+  07-deferred-traceback.md             {#deferred} + def-* nodes — each deferral with its trigger
+  08-cutover.md                        {#cutover} — two-repo model, all-at-once switch, risks, definition of done
+  reference/                           ← NOT actionable: vision, ledger, contracts (cited by name)
+    charter.md (00) · decisions.md (04) · task-contract.md (01) · workflow-model.md (02) · execution-and-sessions.md (05)
+    write-safety.md (09) · clock-config-secrets.md (11) · guards-and-tests.md (10) · dashboard-surfaces.md (03)
+    frontend-backend-integration.md (13) · operator-trust.md (12) · data-intake-and-edit-data.md (06) · foundation-gap-audit.md (08, frozen)
+  reviews/                             history (+ 07-master-plan-dissolved-2026-08-20.md)
+  guard-inventory.json                 stays (a manifest, not a doc)
+```
+
+### 3.2 Mapping (old → new) for the citation sweep
+| old | new | citation form |
+|---|---|---|
+| 00-charter | `reference/charter.md` | `ref charter §N` |
+| 01-task-contract | `reference/task-contract.md` | `ref task-contract §x` |
+| 02-workflow-model | `reference/workflow-model.md` | `ref workflow-model §x` |
+| 03-tracker-dashboard | `reference/dashboard-surfaces.md` | `ref dashboard-surfaces §x` |
+| 04-reconciliation | `reference/decisions.md` | `ref decisions` (+ round/D) |
+| 05-execution-parallelism | `reference/execution-and-sessions.md` | `ref execution-and-sessions §x` |
+| 06-data-intake-and-edit-data | `reference/data-intake-and-edit-data.md` | `ref data-intake-and-edit-data §x` |
+| 07-master-plan §0 | `00-roadmap.md` governance prose | `doc 00 §Governance` |
+| 07 §2 / §3 Phase N | `0N-phase-…` (§3 Phase 0→01, 1→02, 2→03, 3 dash→04, 3 separations→05) | `doc 0N §x` |
+| 07 §3.1/§3.3/§3.6/§3.8 | `06-phase-3-remaining-migrations.md` | `doc 06 §x` |
+| 07 §3.5 + deferral dispositions | `07-deferred-traceback.md` | `doc 07 §x` |
+| 07 §4/§5/§6 | `08-cutover.md` | `doc 08 §x` |
+| 08-foundation-gap-audit | `reference/foundation-gap-audit.md` | `ref foundation-gap-audit §x` |
+| 09-write-safety | `reference/write-safety.md` | `ref write-safety §x` |
+| 10-guard-test-architecture | `reference/guards-and-tests.md` | `ref guards-and-tests §x` |
+| 11-clock-config-secrets | `reference/clock-config-secrets.md` | `ref clock-config-secrets §x` |
+| 12-operator-trust-and-authoring | `reference/operator-trust.md` | `ref operator-trust §x` |
+| 13-frontend-backend-integration | `reference/frontend-backend-integration.md` | `ref frontend-backend-integration §x` |
+| 14-roadmap | `00-roadmap.md` | `doc 00` |
+Section numbers survive the move unchanged (the rewrite may renumber later; the sweep does not). In prose, **`doc NN`** means a phase/plan doc (00–08) and **`ref <slug>`** a reference doc. In the tree's `doc:` attribute: `NN §x` or `ref:<slug> §x`, joined by ` · `.
+
+### 3.3 Where 07's sections go — see 3.2; the full per-section table is written by unit 3b into `reviews/07-master-plan-dissolved-2026-08-20.md`'s header.
+
+### 3.4 The status block (ruling R7)
+Immediately under a tagged section's prose (one per node id per doc):
+```
+<!-- roadmap-status: sep-1 -->
+- [x] the virtualized timecard read terminates on range coverage (D205, 2026-08-13)
+- [ ] the Kronos controlled commit — waits for 08-28
+> 2026-08-20 | docs-cohesion 05-separations | verified against src/stores/kronos/…; left: the commit proof
+<!-- /roadmap-status -->
+```
+Lines: `- [x| |~|?|-|!] text` (same boxes as `builds:`, NO layer tag — these are the doc's own checklist), and `> YYYY-MM-DD | session | note` (append-only). The generator validates and renders them; the guard checks the id resolves. `[x]` only for what is landed at HEAD with its commit or D cited.
 
 ## 4 · Session log
+
+- 2026-08-20 | docs-cohesion orchestrator | the OLD step 4a (Track D ratified, D264 in doc 13 §4/§7.4, `{#track-d}` redrawn D1–D11) landed as `77a0be76` → merge `9f9dac4d`; the node map landed `284e62dc` → merge `0819cf7a`. Then the operator re-shaped the target: renumber to the build order, one doc per phase, reference/ split, status blocks in the docs rendered in the drawer (rulings R6–R9) — steps 3–6 rewritten accordingly.
 
 - 2026-08-20 | docs-cohesion orchestrator | plan written from the brief; Q1–Q5 + session-log mechanism ruled by the operator; step 1 dispatched.
 - 2026-08-20 | step-1 agent | `git mv ROADMAP.md docs/rebuild/14-roadmap.md`; `SOURCE`/doc-comment/parse-error paths, header `eyebrow:`+`footer:`, `CLAUDE.md` (row, commands, doc list, stray pre-heading fragments deleted) and `/custom-update-plan` repointed; site regenerated, `roadmap:check` fresh, gate green (`0990ebc5`). Title kept as `# HR Rebuild Roadmap` — `parsePlan` has one title slot. Historical records (handoffs, the 08-18 plan, the dashboard-audit plan) left naming the old path.
