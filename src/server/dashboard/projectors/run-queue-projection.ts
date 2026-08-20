@@ -1584,7 +1584,12 @@ export class RunQueueProjection {
       return {
         ...counts,
         workflowId,
-        registration: { state: "registered", label: descriptor.label, categoryId: descriptor.category },
+        registration: {
+          state: "registered",
+          label: descriptor.label,
+          code: descriptor.code,
+          categoryId: descriptor.category,
+        },
       };
     });
 

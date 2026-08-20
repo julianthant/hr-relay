@@ -200,21 +200,21 @@ describe("the Activity report (D180)", () => {
     assert.deepEqual(report.workflows, [
       {
         workflowId: fixtureDescriptor.id,
-        registration: { state: "registered", label: "Fixture Graph", categoryId: "operations" },
+        registration: { state: "registered", label: "Fixture Graph", code: "fx", categoryId: "operations" },
         runs: 1,
         completion: clean,
         failed: 0, cancelled: 0, partial: 0, open: 1,
       },
       {
         workflowId: "kuali-timekeeper-annotation",
-        registration: { state: "registered", label: "Kuali Timekeeper Annotation", categoryId: "operations" },
+        registration: { state: "registered", label: "Kuali Timekeeper Annotation", code: "kt", categoryId: "operations" },
         runs: 2,
         completion: clean,
         failed: 2, cancelled: 0, partial: 0, open: 0,
       },
       {
         workflowId: "person-lookup",
-        registration: { state: "registered", label: "Person Lookup", categoryId: "search" },
+        registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "search" },
         runs: 4,
         // The one `done` run has no derived receipt, so its warning set is
         // UNREAD — never folded into `readBack`, which would report a run

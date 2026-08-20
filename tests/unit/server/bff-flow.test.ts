@@ -557,7 +557,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(report.days, [{ day: DAY, runs: 1 }]);
     assert.deepEqual(report.workflows, [{
       workflowId: "fixture-graph",
-      registration: { state: "registered", label: "Fixture Graph", categoryId: "operations" },
+      registration: { state: "registered", label: "Fixture Graph", code: "fx", categoryId: "operations" },
       runs: 1,
       completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
       failed: 0, cancelled: 0, partial: 0, open: 1,

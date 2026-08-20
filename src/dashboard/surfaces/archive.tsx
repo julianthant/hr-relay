@@ -272,8 +272,43 @@ function endedInstant(entry: ArchiveEntryWire): string | undefined {
   return entry.endedAt.state === "present" ? entry.endedAt.value : undefined;
 }
 
+/**
+ * The row's leading identity token (doc 02 §1.1.1, D242).
+ *
+ * The demo reads `Tomás Rivera · pl v3.0` where this list read
+ * `EID 10873698 · Person Lookup v1`, and the reason is width: at 800 rows a
+ * full label costs the name column real space and the code costs four
+ * characters. So the ROW carries the code and the row's `title` carries the
+ * whole label — nothing is lost, it moves to the hover.
+ *
+ * A record with no frozen code falls back to its LABEL rather than to a
+ * derived one. That is not a fabricated value — the label is a real name this
+ * record actually holds — and the reason the code is missing travels in the
+ * title, so a row reading `Separation Documents v1` beside rows reading
+ * `sd v1` explains itself on hover instead of looking like a rendering bug.
+ */
+function workflowToken(entry: ArchiveEntryWire): string {
+  return entry.workflowCode.state === "present" ? entry.workflowCode.value : entry.workflowLabel;
+}
+
+function workflowTokenTitle(entry: ArchiveEntryWire): string {
+  const version = `v${String(entry.archivedIdentity.descriptorVersion)}`;
+  return entry.workflowCode.state === "present"
+    ? `${entry.workflowLabel} ${version}`
+    : `${entry.workflowLabel} ${version} — no short code: ${entry.workflowCode.reason}`;
+}
+
 function haystack(entry: ArchiveEntryWire): string {
-  return [entry.title, entry.traceId, entry.workflowLabel, entry.workflowId, entry.runId]
+  return [
+    entry.title,
+    entry.traceId,
+    entry.workflowLabel,
+    // An operator who has learned `sd` types `sd`, and the label no longer
+    // contains it once the row prints the code.
+    entry.workflowCode.state === "present" ? entry.workflowCode.value : "",
+    entry.workflowId,
+    entry.runId,
+  ]
     .join(" ")
     .toLowerCase();
 }
@@ -419,12 +454,12 @@ function ArchiveRow({
               onSelect();
             }}
             className={cn("min-w-0 flex-1 truncate text-left text-[color:var(--ds-fg)]", dsFocus)}
-            title={`${entry.title} · ${entry.workflowLabel} v${String(entry.archivedIdentity.descriptorVersion)} — archived because ${driftWords(entry.drift)}`}
+            title={`${entry.title} · ${workflowTokenTitle(entry)} — archived because ${driftWords(entry.drift)}`}
           >
             {entry.title}
             <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
               {" "}
-              · {entry.workflowLabel} v{entry.archivedIdentity.descriptorVersion}
+              · {workflowToken(entry)} v{entry.archivedIdentity.descriptorVersion}
             </span>
           </button>
           {/*
@@ -1136,7 +1171,9 @@ function ArchivedRunDetail({
     <Panel className="min-h-0" aria-label={`Archived run ${detail.detail.header.title}`}>
       <PanelHeader
         title={detail.detail.header.title}
-        subtitle={`${detail.workflowLabel} · archived ${fmtClock(detail.archivedAt)} by ${detail.archivedBy}`}
+        subtitle={detail.workflowCode.state === "present"
+          ? `${detail.workflowLabel} · code ${detail.workflowCode.value} · archived ${fmtClock(detail.archivedAt)} by ${detail.archivedBy}`
+          : `${detail.workflowLabel} · archived ${fmtClock(detail.archivedAt)} by ${detail.archivedBy}`}
         icon={<FileClock aria-hidden className={dsIcon.lg} />}
         meta={<StatusPill status={status} size="sm" />}
         actions={(
@@ -2330,6 +2367,9 @@ function VersionsView({
                   <TR key={state.workflowId}>
                     <TD>
                       <span className="flex items-baseline gap-[var(--ds-space-snug)]">
+                        <span className={cn(dsText.nums, dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
+                          {state.workflowCode}
+                        </span>
                         <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>{state.workflowLabel}</span>
                         <span className={cn(dsText.nums, dsText.micro, "text-[color:var(--ds-fg-faint)]")}>
                           {shortHash(state.current.contractFingerprint)}

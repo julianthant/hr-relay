@@ -38,6 +38,7 @@ import {
   RunIdSchema,
   WorkflowIdSchema,
 } from "../ids.js";
+import { WorkflowCodeSchema } from "../workflow/presentation.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 import { QueueStatusSchema, TERMINAL_QUEUE_STATUSES } from "./projection.js";
 
@@ -70,7 +71,19 @@ const CategoryIdSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
  * pipeline already takes for an unregistered descriptor.
  */
 export const ActivityWorkflowRegistrationSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("registered"), label: z.string().min(1), categoryId: CategoryIdSchema }),
+  z.strictObject({
+    state: z.literal("registered"),
+    label: z.string().min(1),
+    /**
+     * The workflow's SHORT CODE (doc 02 §1.1.1, D242) — the table's leading
+     * token, so the name column can carry a name instead of a full label at
+     * every row. It sits INSIDE the registered arm, not beside it, because the
+     * code is resolved by the same registry lookup as the label and an
+     * unregistered workflow has neither.
+     */
+    code: WorkflowCodeSchema,
+    categoryId: CategoryIdSchema,
+  }),
   z.strictObject({ state: z.literal("unregistered"), reason: z.string().min(1) }),
 ]);
 
@@ -118,9 +131,9 @@ export type ActivityCompletion = z.infer<typeof ActivityCompletionSchema>;
  *
  * NOT here, deliberately: the demo's `Est. min saved` column, whose only input
  * is an operator-entered minutes-per-workflow constant with no durable home
- * (`docs/findings/activity.md`, decide-first), and the two-letter workflow
- * `code`, which is a descriptor presentation attribute awaiting the taxonomy
- * question rather than a total this pass could compute.
+ * (`docs/findings/activity.md`, decide-first). The workflow `code` that was
+ * also deferred here has landed — it is a registry fact, not a total, so it
+ * rides on `registration` beside the label rather than on this row (D242).
  */
 export const ActivityWorkflowTotalSchema = z.strictObject({
   workflowId: WorkflowIdSchema,

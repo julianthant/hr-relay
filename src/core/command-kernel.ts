@@ -2113,6 +2113,10 @@ function executeVersionBumpApply(
     if (drift === undefined) {
       throw new Error(`run ${candidate.runId} was assessed as prior-version with no recorded drift`);
     }
+    // ONE lookup, both frozen facts (D179 label, D242 code). Resolving twice
+    // would let a registry that moved between the two calls freeze a label
+    // beside a blank code — a half-resolved descriptor the record refuses.
+    const registered = dependencies.descriptors.resolve(candidate.workflowId);
     repositories.archivedRuns.insert(deriveArchivedRunRecord({
       repositories,
       run,
@@ -2121,7 +2125,8 @@ function executeVersionBumpApply(
       drift,
       archivedBy: request.requestedBy,
       archivedAt: now,
-      workflowLabel: dependencies.descriptors.resolve(candidate.workflowId)?.label,
+      workflowLabel: registered?.label,
+      workflowCode: registered?.code,
     }));
     affectedTargets.push(runTarget(candidate.runId));
   }

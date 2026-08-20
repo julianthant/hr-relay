@@ -55,6 +55,7 @@ import { VersionBumpChangeRecordSchema } from "./change-record.js";
 import { ArchivedRunSectionsSchema } from "./sections.js";
 import { sha256Hex } from "../sha256.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
+import { WorkflowCodeSchema } from "../workflow/presentation.js";
 
 /**
  * The archive record's OWN schema generation. It is bound into every stored
@@ -62,7 +63,7 @@ import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
  * implement refuses by name instead of parsing an older shape through a newer
  * schema and reporting the difference as data.
  */
-export const ArchiveSchemaGenerationSchema = z.union([z.literal(1), z.literal(2)]);
+export const ArchiveSchemaGenerationSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
 export type ArchiveSchemaGeneration = z.infer<typeof ArchiveSchemaGenerationSchema>;
 
 /**
@@ -78,8 +79,19 @@ export type ArchiveSchemaGeneration = z.infer<typeof ArchiveSchemaGenerationSche
  * shape (§`refineSectionGeneration`), so a record that names no sections is
  * unambiguously one written before they existed rather than one this build
  * failed to freeze.
+ *
+ * Generation 3 is D242: the record freezes the workflow's SHORT CODE beside the
+ * label it already froze, for the same reason and by the same rules. The
+ * archive index prints `sd v1` where it printed `Separation Documents v1`, and
+ * resolving that code from the live registry when the Archive renders would be
+ * a descriptor read on the archived path — the exact coupling charter §25
+ * forbids, and the one the frozen label exists to avoid. Read-forward again:
+ * a generation-1 or -2 record carries no `workflowCode` key, keeps parsing, and
+ * keeps its byte-identical `contentDigest`; a WRITER may not produce one,
+ * because a new record that named no code would be indistinguishable from a
+ * record written before codes were frozen.
  */
-export const CURRENT_ARCHIVE_SCHEMA_GENERATION = 2;
+export const CURRENT_ARCHIVE_SCHEMA_GENERATION = 3;
 
 /** What "the current version of this workflow" means, as a value. */
 export const WorkflowVersionIdentitySchema = z.strictObject({
@@ -296,6 +308,23 @@ const ArchivedRunContentFields = {
     z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
+  /**
+   * The workflow's SHORT CODE, FROZEN at archive time beside the label
+   * (doc 02 §1.1.1, D242). The index prints `<code> v<N>` as the row's leading
+   * token, and every argument the frozen label makes applies unchanged: a
+   * resolve at render time would be a descriptor read on the archived path,
+   * and `traceId.slice(0, indexOf("-"))` would be a plausible-looking
+   * derivation that is wrong for exactly the case this field exists for — a
+   * run planned under a code the workflow has since changed.
+   *
+   * OPTIONAL for reading only. A record written before generation 3 carries no
+   * key at all and says so through its generation; `refineCodeGeneration`
+   * refuses a WRITER that tries to adopt the same shape.
+   */
+  workflowCode: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: WorkflowCodeSchema }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]).optional(),
   traceId: TraceIdSchema,
   /** The identity that made it prior-version, retained verbatim. */
   archivedIdentity: WorkflowVersionIdentitySchema,
@@ -363,18 +392,68 @@ function refineSectionGeneration(
   }
 }
 
+/**
+ * The frozen short code and the generation, checked against each other in both
+ * directions — the same shape `refineSectionGeneration` uses, for the same
+ * reason (D242).
+ *
+ * The second half also pins the code to the LABEL's own state. Both are
+ * resolved from the ONE registry lookup the sweep performs, so a record
+ * claiming a label and no code (or the reverse) would be describing a
+ * half-resolved descriptor that cannot exist — and the surface reading it
+ * would then print a code beside "workflow no longer registered", or a label
+ * beside a blank token, either of which is a sentence nobody wrote.
+ */
+function refineCodeGeneration(
+  record: Readonly<{
+    archiveSchemaGeneration: number;
+    workflowLabel: { state: string };
+    workflowCode?: { state: string };
+  }>,
+  context: z.RefinementCtx,
+): void {
+  if (record.archiveSchemaGeneration >= 3 && record.workflowCode === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["workflowCode"],
+      message: "an archive record at generation 3 or later must carry the workflow's frozen short code (D242); "
+        + "an absent field means generation 1 or 2, and a record that could not resolve one says so with a reason",
+    });
+    return;
+  }
+  if (record.archiveSchemaGeneration < 3 && record.workflowCode !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["archiveSchemaGeneration"],
+      message: "a pre-generation-3 archive record predates D242's frozen short code and cannot carry one",
+    });
+    return;
+  }
+  if (record.workflowCode !== undefined && record.workflowCode.state !== record.workflowLabel.state) {
+    context.addIssue({
+      code: "custom",
+      path: ["workflowCode"],
+      message: "the frozen short code and the frozen label come from ONE registry lookup, so they must be "
+        + `present or absent together; label is ${record.workflowLabel.state} and code is ${record.workflowCode.state}`,
+    });
+  }
+}
+
 function refineArchivedIdentity(
   record: Readonly<{
     runId: string;
     traceId: string;
     archiveSchemaGeneration: number;
     sections?: unknown;
+    workflowLabel: { state: string };
+    workflowCode?: { state: string };
     row: { runId: string; traceId: string };
     detail: { runId: string };
   }>,
   context: z.RefinementCtx,
 ): void {
   refineSectionGeneration(record, context);
+  refineCodeGeneration(record, context);
   if (record.row.runId !== record.runId) {
     context.addIssue({ code: "custom", path: ["row", "runId"], message: "archived row identity must match the record" });
   }

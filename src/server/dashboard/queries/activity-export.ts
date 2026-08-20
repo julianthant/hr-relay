@@ -121,11 +121,18 @@ export function activityReportCsv(report: ActivityReportWire): string {
   blocks.push([
     row(["By workflow"]),
     row([
-      "Workflow", "Label", "Category", "Runs",
+      "Workflow", "Code", "Label", "Category", "Runs",
       "Read back", "Warnings", "Unread", "Failed", "Cancelled", "Partial", "Open",
     ]),
     ...report.workflows.map((workflow) => row([
       workflow.workflowId,
+      // The short code gets its own column rather than being folded into the
+      // label: a spreadsheet sorts and filters columns, and gluing `sd` onto
+      // the front of a label would make both halves unfilterable. An
+      // unregistered workflow exports an EMPTY code for the same reason it
+      // exports an empty category — it has no registry row to read one from,
+      // and the reason it has none is already in the Label cell.
+      workflow.registration.state === "registered" ? workflow.registration.code : "",
       // Never an id dressed as a label: an unregistered workflow exports the
       // reason the report gives on screen.
       workflow.registration.state === "registered" ? workflow.registration.label : workflow.registration.reason,

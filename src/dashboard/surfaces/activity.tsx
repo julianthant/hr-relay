@@ -513,9 +513,21 @@ function WorkflowsByCategory({ report }: { report: ActivityReportWire }) {
       )
       .map((workflow) => ({
         workflowId: workflow.workflowId,
+        // The SHORT CODE leads the name cell (D242), for the reason the archive
+        // index adopted it: the label is the wide half and the code is four
+        // characters. An UNREGISTERED workflow has neither, so it keeps its
+        // amber id — the code is a registry fact, and this row is exactly the
+        // row that says the registry no longer has one.
         label:
           workflow.registration.state === "registered"
-            ? workflow.registration.label
+            ? (
+              <span className="inline-flex items-baseline gap-[var(--ds-space-snug)]">
+                <span className={cn(dsText.nums, dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
+                  {workflow.registration.code}
+                </span>
+                <span>{workflow.registration.label}</span>
+              </span>
+            )
             : <span className="text-[color:var(--ds-status-waiting-fg)]">{workflow.workflowId}</span>,
         runs: workflow.runs,
         cells: cellsOf(workflow),

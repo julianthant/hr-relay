@@ -3123,6 +3123,22 @@ on the archived path, and falling back to the id would substitute a plausible va
 recorded. Evidence is pointers only — the content-addressed bytes, the checkpoints and the ledger
 lines all stay exactly where they are.
 
+**The workflow's SHORT CODE is frozen beside the label (D242, generation 3).** The index row's
+leading identity token is `<code> v<N>` — `sd v1`, not `Separation Documents v1` — because at 800
+rows a full label costs the name column real width and the code costs four characters; the whole
+label moves to the row's `title`, so nothing is lost, it moves to the hover. Every argument the
+frozen label makes applies unchanged, and one more: `traceId.slice(0, indexOf("-"))` looks like a
+free derivation and is silently wrong for exactly the case a frozen field exists for — a run
+planned under a code the workflow has since changed. Both facts come from ONE registry lookup at
+sweep time, so the record refuses a half-resolved pair (a label present beside an absent code) and
+the sweep passes both from a single `resolve`. Two absences reach the wire and each keeps its own
+sentence: a record written before generation 3 holds no code at all, and a record swept after its
+workflow was unregistered says so itself. A row whose code is absent falls back to its LABEL, which
+is a real name the record holds, and puts the reason in the title — never a derived code. The
+version registry and the Activity per-workflow table print the CURRENT registry's code beside the
+label; the Activity CSV gives it its own column rather than gluing it onto the label, because a
+spreadsheet sorts and filters columns. The code itself is doc 02 §1.1.1's.
+
 **The three arms, and where each refusal is computed:**
 
 - `plan-version-bump` mints an immutable plan **even when it cannot be applied**, because the
