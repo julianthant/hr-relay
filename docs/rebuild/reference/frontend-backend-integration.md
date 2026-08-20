@@ -911,6 +911,19 @@ Three rules hold across every square and are stated once here.
 **A server-declared ceremony is obeyed or refused by name**, never downgraded to the cheapest
 control the bundle knows (D226, §3.4).
 
+<!-- roadmap-status: track-b -->
+- [x] B1 the three identity-approval ceremonies + rejection, against the SERVER's shape (D226) — §5.1.4
+- [x] B2 a settled gate's decision on the panel; a rehearsal never wears `verified-done` (D237/D238) — §5.1.3
+- [x] B3 the run modal's four rows — three already in the bundle, one drawn read-only (D250/D251) — §5.1.1
+- [x] B4 queue rows: `QueueBaseFields` served + drawn, rename, the bulk strip + result vector (D230–D235) — §5.1.2
+- [x] B5 archive: frozen sections, five tabs, Export, ledger read-through (D223) — §5.1.5
+- [x] B6 explorer: field census, the declared `when` in words, descriptor prose (D227–D229) — §5.1.5
+- [x] B7 worker-card / session-footer batch; the rail names step, direction and bound; a CAS conflict is a refusal (D248/D249/D252/D253) — §3.2, §5.1.3
+- [x] B8 findings ledger zero-or-decided; `span.patched` retired (D254/D255)
+- [ ] the fold is called by 2 of 9 command surfaces (Track D row D3) and `src/dashboard/CLAUDE.md` claims all 9 (row D2)
+> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/**, src/dashboard/app/command-result.ts, tests/unit/architecture/command-result-exhaustive.test.ts; left: D3's seven call sites and the CLAUDE.md sentence
+<!-- /roadmap-status -->
+
 #### D253 — a refused command that looks like a save (2026-08-20)
 
 `CommandResultSchema` has carried three arms since the kernel's first command, and **two of them
@@ -963,24 +976,19 @@ not a wire projection. The trigger is named: the first change to `executeEditChe
 payload. Until then the rail states the version and sends the operator back to a reopened run, which
 is a true sentence about a stale basis rather than a partial re-offer.
 
-<!-- roadmap-status: track-b -->
-- [x] B1 the three identity-approval ceremonies + rejection, against the SERVER's shape (D226) — §5.1.4
-- [x] B2 a settled gate's decision on the panel; a rehearsal never wears `verified-done` (D237/D238) — §5.1.3
-- [x] B3 the run modal's four rows — three already in the bundle, one drawn read-only (D250/D251) — §5.1.1
-- [x] B4 queue rows: `QueueBaseFields` served + drawn, rename, the bulk strip + result vector (D230–D235) — §5.1.2
-- [x] B5 archive: frozen sections, five tabs, Export, ledger read-through (D223) — §5.1.5
-- [x] B6 explorer: field census, the declared `when` in words, descriptor prose (D227–D229) — §5.1.5
-- [x] B7 worker-card / session-footer batch; the rail names step, direction and bound; a CAS conflict is a refusal (D248/D249/D252/D253) — §3.2, §5.1.3
-- [x] B8 findings ledger zero-or-decided; `span.patched` retired (D254/D255)
-- [ ] the fold is called by 2 of 9 command surfaces (Track D row D3) and `src/dashboard/CLAUDE.md` claims all 9 (row D2)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/**, src/dashboard/app/command-result.ts, tests/unit/architecture/command-result-exhaustive.test.ts; left: D3's seven call sites and the CLAUDE.md sentence
-<!-- /roadmap-status -->
-
 #### 5.1.1 Run modal — plan, confirm, enqueue
 
 <!-- roadmap: dash-defaults -->
 <!-- roadmap: sep-dash -->
 <!-- roadmap: order-0-dash -->
+<!-- roadmap: order-1-dash -->
+<!-- roadmap: order-2-dash -->
+<!-- roadmap: order-3-dash -->
+<!-- roadmap: order-4-dash -->
+<!-- roadmap: order-5-dash -->
+<!-- roadmap: order-6-dash -->
+<!-- roadmap: order-7-dash -->
+<!-- roadmap: order-9-dash -->
 
 1. The descriptor projection determines which start doors exist; absence includes the reason.
 2. Upload bytes, when present, become immutable artifact refs before planning.
@@ -1091,6 +1099,14 @@ D251's fourth premise — that the bundle already carrying a fact makes a wire a
 <!-- roadmap: track-b -->
 <!-- roadmap: sep-dash -->
 <!-- roadmap: order-0-dash -->
+<!-- roadmap: order-1-dash -->
+<!-- roadmap: order-2-dash -->
+<!-- roadmap: order-3-dash -->
+<!-- roadmap: order-4-dash -->
+<!-- roadmap: order-5-dash -->
+<!-- roadmap: order-6-dash -->
+<!-- roadmap: order-7-dash -->
+<!-- roadmap: order-9-dash -->
 
 1. The day snapshot paints counts, rows, worker cards and the notification summary from ONE cursor.
 2. A row states its ordinal, class, containment, linked runs, facts and pipeline (§3.2), and carries
@@ -1119,6 +1135,14 @@ re-parsing the whole day (row D4); and the projector's member-preview and duplic
 <!-- roadmap: track-b -->
 <!-- roadmap: sep-dash -->
 <!-- roadmap: order-0-dash -->
+<!-- roadmap: order-1-dash -->
+<!-- roadmap: order-2-dash -->
+<!-- roadmap: order-3-dash -->
+<!-- roadmap: order-4-dash -->
+<!-- roadmap: order-5-dash -->
+<!-- roadmap: order-6-dash -->
+<!-- roadmap: order-7-dash -->
+<!-- roadmap: order-9-dash -->
 
 1. Bootstrap validates hashes and renders shell vocabulary.
 2. Selecting a row fetches the detail header and the default panel section.
@@ -1242,6 +1266,14 @@ describes the built one.
 <!-- roadmap: track-b -->
 <!-- roadmap: sep-dash -->
 <!-- roadmap: order-0-dash -->
+<!-- roadmap: order-1-dash -->
+<!-- roadmap: order-2-dash -->
+<!-- roadmap: order-3-dash -->
+<!-- roadmap: order-4-dash -->
+<!-- roadmap: order-5-dash -->
+<!-- roadmap: order-6-dash -->
+<!-- roadmap: order-7-dash -->
+<!-- roadmap: order-9-dash -->
 
 1. Archive serves a paged index and a **self-contained** archived detail — frozen row, detail,
    receipt and failure plus evidence POINTERS, readable with the descriptor list empty (D179).
@@ -1268,6 +1300,14 @@ workflow-versioning half is row **D8**.
 
 <!-- roadmap: dash-defaults -->
 <!-- roadmap: sep-dash -->
+<!-- roadmap: order-1-dash -->
+<!-- roadmap: order-2-dash -->
+<!-- roadmap: order-3-dash -->
+<!-- roadmap: order-4-dash -->
+<!-- roadmap: order-5-dash -->
+<!-- roadmap: order-6-dash -->
+<!-- roadmap: order-7-dash -->
+<!-- roadmap: order-9-dash -->
 
 1. A service publishes a durable, actor-keyed notification row on a closed trigger; the row commits
    before any OS delivery is attempted (D138).
