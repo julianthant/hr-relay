@@ -839,6 +839,70 @@ one an operator must not read past. Before this the panel drew a gate only while
 settled gated run said nothing about the one step a human performed.
 ---
 
+## Wave-2 connection-proof presentation deltas (2026-08-20)
+
+Track C drove the REAL dashboard against a REAL composed dry run for the first time
+(`docs/migrations/separations.md` §9.22) and found four defects that every unit, architecture,
+scenario and parity gate had been green over. Three of them are this doc's, and they share one
+shape: **a surface that reads the right kind of fact from the wrong instance of it.** All three are
+fixed and are as-built contract below. (The fourth — a REPLAYED node rendering as `pending` on
+every span-folding surface — is the projection's, and is owned elsewhere.)
+
+### A live elapsed TICKS, from ONE calibration against the server's instant (D256)
+
+**What was wrong.** `useBootstrap` fetches once, and `boot.serverClock.now` — the instant that ONE
+fetch carried — was the only value the queue row's in-flight timer, the gate-age pill, the session
+footer and the worker cards computed against. Every live elapsed on the dashboard was therefore
+frozen at page load. The proof measured it twice over: a parked run displayed **`0s` for more than
+two minutes** (the tab had loaded at 15:03:32, the run started at 15:12:17, so the difference was
+negative and `elapsedSecondsBetween`'s clamp made it a plausible zero), and a plain reload at
+15:15:15 made the same row jump to **`2m 54s`** — exactly `bootstrapInstant − startedAt` — and
+freeze again from there. A terminal row was unaffected, because D124 already made its duration two
+served instants; so this was invisible on every settled run and wrong on every run an operator is
+actually watching.
+
+As-built contract:
+
+- **The server's instant stays the authority, and the browser contributes only elapsed.**
+  Substituting the browser's wall clock is what D124 forbids, and a machine whose clock is minutes
+  off would then print a duration nobody can act on. What the browser IS authoritative about is how
+  much time has passed since that instant arrived, which it reads from the monotonic clock
+  (`systemClock.monotonicMs()`, doc 11's single source) — a value an NTP step or a user editing the
+  system clock cannot move.
+- **One calibration, one value, every consumer.** `src/dashboard/state/served-clock.ts` holds
+  `(servedInstant, monotonicMs at receipt)` and derives
+  `deriveServedNow = servedInstant + (monotonicNow − monotonicAtReceipt)` on a one-second tick, on
+  `visibilitychange` (a backgrounded tab's interval is throttled to about once a minute, and an
+  operator returning to it must not read a minute-old age), and on any re-render.
+  `dashboard-app.tsx` calls the hook ONCE and passes the result down every path that used to carry
+  the frozen instant, including the keyboard order's own sort key — the queue's drawn order and the
+  keyboard's traversal order must not be able to date one row two ways.
+- **No surface reads a clock of its own.** The notification bell's `systemClock.now()` — the last
+  display-time wall-clock read in the bundle — is now the same passed-down instant. A second clock
+  on one screen is how two chips come to disagree about one gate's age.
+- **A backwards elapsed is DRAWN, not clamped.** `elapsedSecondsBetween` returns the SIGNED
+  interval and `fmtElapsed` spells a negative one with its sign. The clamp is what let "the clock
+  reading this is behind the fact it is reading" wear the shape of "this happened just now", and
+  those are different facts. A sub-second skew still renders `0s` on its own, because
+  `Math.round` of a fraction of a second is zero — the signed arm appears only when something is
+  genuinely wrong.
+- **Re-calibration is deliberately NOT built, with the trigger that ends the deferral named.** The
+  BFF is a loopback singleton (`config/runtime-isolation.json` pins the port; D181's `server` role
+  lock admits one holder), so the served clock and the browser's clock are the same machine's
+  clock: there is no skew to re-converge on, only the monotonic clock's own drift, which is
+  immaterial at the seconds granularity `fmtElapsed` renders. A server instant on the SSE `health`
+  heartbeat is a wire change with a server emitter and two fixture emitters behind it, bought for a
+  skew this deployment cannot have. What buys it is doc 13 §6.9's deferred exposed path (D189) —
+  the day the BFF serves a browser it does not share a machine with. Add the field in that commit.
+- **The parity corpus is held by pinning the OTHER half of the clock.** A ticking elapsed dated by
+  real browser time would make `45m 0s` and `45m 1s` a coin flip between the run that froze a
+  reference and the run that asserts it. `installFrozenMonotonic`
+  (`tests/parity/helpers/app-driver.ts`) freezes `performance.now` before navigation — and nothing
+  else, so timers, rAF and CSS animation all still run — which makes the derived instant EXACTLY
+  the fixture's served instant, i.e. byte-identical to what every existing reference was captured
+  against. `assertMonotonicFrozen` proves the page adopted it by reading the clock twice across
+  real wall time: D187's rule, applied to a clock instead of a theme.
+
 ## 0. What exists today (and what specifically hurts)
 
 | Today | Mechanism | Pain |

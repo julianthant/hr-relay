@@ -28,6 +28,7 @@ import { Button, EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, d
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
+import { useServedNow } from "../state/served-clock.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
 import { useRunDetail } from "../state/use-run-detail.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
@@ -286,6 +287,15 @@ function LoadedApp({
   onBulkIds,
 }: LoadedAppProps) {
   const { day: dayResource, connection } = useDashboardDay(day);
+  /**
+   * THE clock (D256). The server's instant is the authority; the browser
+   * contributes only the monotonic time since that instant arrived, and every
+   * live elapsed on the screen — the queue row's timer, the gate-age pill, the
+   * session footer, the worker cards, the notification ages — is computed
+   * against this ONE value. Before it, `boot.serverClock.now` was frozen at
+   * page load and a parked run read `0s` for over two minutes.
+   */
+  const nowIso = useServedNow(boot.serverClock.now);
   // Bumped by an applied Data correction: the save moved the run version, so
   // the open detail (and, through its rowRevision, every fetched section)
   // refetches rather than serving a CAS basis the kernel will now refuse.
@@ -510,7 +520,7 @@ function LoadedApp({
     selectMode,
     bulkIds,
     panelWorkflowId: activeWorkflowId,
-    nowIso: boot.serverClock.now,
+    nowIso,
   };
 
   /**
@@ -749,7 +759,7 @@ function LoadedApp({
           });
           return;
         }
-        setPendingRename({ action, target, surface, nowIso: boot.serverClock.now });
+        setPendingRename({ action, target, surface, nowIso });
         return;
       }
       if (action.confirm !== undefined) {
@@ -768,7 +778,7 @@ function LoadedApp({
       }
       dispatchCommand(action, target);
     },
-    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, boot.serverClock.now],
+    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, nowIso],
   );
 
   /**
@@ -781,12 +791,12 @@ function LoadedApp({
    * renders, so a keyboard walk and a scroll cannot disagree.
    */
   const keyboardOrder = useMemo(
-    () => visibleRunIds(surfaces, sort, boot.serverClock.now),
-    [surfaces, sort, boot.serverClock.now],
+    () => visibleRunIds(surfaces, sort, nowIso),
+    [surfaces, sort, nowIso],
   );
   const keyboardAttention = useMemo(
-    () => attentionRunIds(surfaces, sort, boot.serverClock.now),
-    [surfaces, sort, boot.serverClock.now],
+    () => attentionRunIds(surfaces, sort, nowIso),
+    [surfaces, sort, nowIso],
   );
   useGlobalKeys({
     onStartRun: () => setStartOpen(true),
@@ -924,6 +934,7 @@ function LoadedApp({
         onOpenRun={selectRun}
         notifications={dayWire?.notifications ?? []}
         actorId={boot.actor.id}
+        nowIso={nowIso}
         storage={boot.storage}
         // Same story as `systemInstances` below: the boot document composes
         // this array from zod parts so it infers as `unknown[]`; re-parsing is
@@ -1266,8 +1277,10 @@ function LoadedApp({
                   aiAdvisory={advisoryAvailability}
                   /* The SAME instant `viewState.nowIso` dates the queue's rows
                      from, so a waiting run's age is one number wherever it is
-                     read. The panel used to take its own wall clock. */
-                  servedNow={boot.serverClock.now}
+                     read. The panel used to take its own wall clock; since
+                     D256 the shared instant TICKS instead of being frozen at
+                     page load. */
+                  servedNow={nowIso}
                 />
             ) : (
               <Panel className="min-h-0">
@@ -1309,7 +1322,7 @@ function LoadedApp({
         workerCards={dayWire?.workerCards ?? []}
         workflows={workflows}
         counts={dayWire?.workflowCounts ?? []}
-        nowIso={boot.serverClock.now}
+        nowIso={nowIso}
         connection={connection}
         appVersion={boot.appVersion}
         onStopWorker={stopWorker}

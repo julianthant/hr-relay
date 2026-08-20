@@ -47,13 +47,71 @@ export function routeUrl(baseUrl: string, route: AppRoute): string {
   return url.toString();
 }
 
+/**
+ * Freeze the page's MONOTONIC clock, before navigation (D256).
+ *
+ * The fixture BFF pins the server's instant (`FIXTURE_NOW`). Since D256 the
+ * app no longer renders that instant directly: it renders
+ * `servedInstant + (monotonicNow − monotonicAtReceipt)`, so every live elapsed
+ * advances instead of being frozen at page load. That second term is real
+ * browser time, and a reference photographed at load+0.8 s would disagree with
+ * one asserted at load+1.2 s — `45m 0s` against `45m 1s`.
+ *
+ * Freezing `performance.now` is the other half of the pin, and it is the whole
+ * of it: with no monotonic time passing, the derived instant is EXACTLY the
+ * served one, which is what every reference in the corpus was captured
+ * against. Nothing else is faked — `setTimeout`, `requestAnimationFrame` and
+ * CSS animation all keep running, so the app's own settling behaves as it
+ * always did (Playwright's own `animations: "disabled"` still handles the
+ * screenshot). It is installed idempotently because a spec may navigate twice
+ * on one page.
+ */
+export async function installFrozenMonotonic(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const scope = window as unknown as { __parityMonotonicFrozen?: true };
+    if (scope.__parityMonotonicFrozen === true) return;
+    scope.__parityMonotonicFrozen = true;
+    const frozen = performance.now();
+    Object.defineProperty(performance, "now", {
+      configurable: true,
+      writable: true,
+      value: () => frozen,
+    });
+  });
+}
+
+/**
+ * Prove the page adopted the freeze — D187's rule, on the clock this time.
+ *
+ * A harness that installs a script and never checks it has only expressed a
+ * preference. Two reads separated by real wall time is the only observation
+ * that can tell a frozen monotonic clock from a running one, and a drift here
+ * means the whole capture is dated by a clock nobody pinned.
+ */
+export async function assertMonotonicFrozen(page: Page): Promise<void> {
+  const observed = await page.evaluate(async () => {
+    const first = performance.now();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    return { first, second: performance.now() };
+  });
+  if (observed.first !== observed.second) {
+    throw new Error(
+      `the page's monotonic clock advanced ${String(observed.second - observed.first)}ms during the capture `
+      + "(performance.now was not frozen), so every live elapsed on this screen is dated by real browser "
+      + "time and no reference holding one can be stable",
+    );
+  }
+}
+
 /** Navigates and waits for the app's own readiness statement. */
 export async function gotoAppState(page: Page, baseUrl: string, route: AppRoute): Promise<void> {
+  await installFrozenMonotonic(page);
   await page.goto(routeUrl(baseUrl, route), { waitUntil: "domcontentloaded" });
   await expect(page.locator("[data-parity-ready='true']")).toBeVisible({ timeout: 30_000 });
   // Enter transitions are one frame of opacity/translate; settle them so a
   // capture is of the resting state rather than of the animation.
   await page.waitForTimeout(250);
+  await assertMonotonicFrozen(page);
 }
 
 /**
