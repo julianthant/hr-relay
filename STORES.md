@@ -173,8 +173,14 @@ store is touched for other reasons — not before; the merge moves an output sch
 ### `kuali` — browser store, real (Phase 2's transaction proof + separations' document read + finalization write)
 
 **Status:** driver `semantic-ready` (`KualiRrssDocumentDriver`, `src/domain/ui/kuali-rrss-document.ts`)
-· real login recipe (`kualiLoginRecipe`, `src/stores/kuali/session.ts`) · **9 tasks**, carrying two of
-the tree's three `effect:"commit"` contracts. Wired into `BROWSER_SYSTEM_BINDINGS`.
+· real login recipe (`kualiLoginRecipe`, `src/stores/kuali/session.ts`) · **10 tasks**, carrying two of
+the tree's three `effect:"commit"` contracts. Wired into `BROWSER_SYSTEM_BINDINGS`. The tenth task
+(D261, 2026-08-20) is `kuali/search-separation-action` (`src/stores/kuali/tasks/search-separation-action.ts`,
+UI model `src/domain/ui/kuali-action-list.ts`): the Action List resolves a document number to its
+action id — the head node of the composed separations graph, which is what lets the run modal take
+ONLY a document number. Ported from legacy's `actionList.*` selector family with provenance,
+live-verified 2026-08-20; refuses zero matches, ambiguous matches (two DISTINCT action ids), and an
+unreadable link, each by name.
 
 This is the tree's first **CUSTOMIZE** of a semantic-ready store (§1 step 2), and the shape it
 settled is normative (D197): separations chunk 2 added a read family as **sibling tasks on the SAME
