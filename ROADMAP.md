@@ -1,5 +1,7 @@
 # Rebuild Roadmap — Operator Tracking View
 
+> **Site:** `docs/roadmap/index.html` — the same roadmap as a timeline + dependency tree with every node's features tagged by layer (FE / BE / BOTH / WIRE); generated from `docs/roadmap/roadmap.json` by `npm run roadmap`. Keep this file, the json and the site in step with `/custom-update-plan`.
+
 > **This is a derived convenience view, not a source of truth.** The plan SSOT is
 > `docs/rebuild/07-master-plan.md` (phases, exit criteria) and the owning docs 00–13; the decision
 > changelog is `docs/rebuild/04-reconciliation.md`. If this file ever disagrees with those, **they
