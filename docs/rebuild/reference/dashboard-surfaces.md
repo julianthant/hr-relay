@@ -1866,6 +1866,18 @@ digest without editing history.
 
 ### 2.5 Non-rebuildable SQLite recovery contract
 
+<!-- roadmap: p1-authority -->
+<!-- roadmap: p2-2j -->
+<!-- roadmap-status: p2-2j -->
+- [x] the boot interlock: `quick_check`, schema-version validation, foreign keys, every authority row's `record_json` parsed through its registered strict schema, and the invariant queries — any failure starts read-only degraded with one named cause and blocks enqueue/claim/commit/control
+- [x] the verified online backup: `node:sqlite.backup`, the copy self-verified read-only, the manifest bound to the final bytes, fsync + atomic rename; no `VACUUM INTO` and no live-WAL file copy (D72)
+- [x] 2i-D's cadence — one backup at process start, a coalesced verified backup on each 15-minute tick ONLY when the store is dirty, and a graceful-drain backup inside `stop()`
+- [x] the two health readings, and which is which: the cheap bootstrap summary versus the doctor's on-demand byte re-verification (`cli storage doctor [--json]`, exit 0 only when authority is healthy AND a verified current backup exists)
+- [x] **D181** — `cli storage restore --from <manifest>` is live and DRILLED (2026-08-09, on a copy of the standing local authority database), because its missing precondition finally exists: one runtime lock file per role, written before the authority database opens and released after its handle closes
+- [ ] the 14/8/5 retention sweep and a configurable backup path — both D193 `wont-build-unless-asked` (§2.1's `def-retention` block carries them)
+> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/infra/sqlite/{offline-restore,recovery-stop-proof,runtime-process-locks}.ts, src/server/storage/compose.ts, src/server/dashboard/queries/storage.ts and the drill table below; left: only D193's two remainders
+<!-- /roadmap-status -->
+
 Calling `state.db` authoritative without a recovery path would make a single corrupt file capable
 of erasing claim, delegation, checkpoint, and write-fence truth. The base therefore includes:
 
@@ -1938,6 +1950,8 @@ the next read-write open, and a summary that had guessed "healthy" would have hi
 this.
 
 #### D181 — the restore command, and the process locks the interlock was always about (2j, 2026-08-09)
+
+<!-- roadmap: p2-2j -->
 
 **`cli storage restore --from <manifest.json>` is live, and the reason it could not have
 been built earlier is that its precondition did not exist.** `OfflineAuthorityRestoreService` has
@@ -2026,34 +2040,79 @@ the restore interlock are safety floor and remain mandatory.
 
 ### 2.6 Durable single-operator notifications
 
-Desktop notifications are delivery conveniences, not the record. A `notifications` authority
-table stores a strict event with `notificationId`, dedupe key, severity, run/workflow/failure refs,
-created time, message template+arguments, read state (`unread|read`), and optional snooze expiry.
-Triggers are closed and base-owned: run failure, subject mismatch, open operator gate, unknown write
-outcome, storage degradation, stalled lease/outbox, and failed backup. Repeated identical triggers
-update count/lastSeen instead of spamming.
+<!-- roadmap: p2-2g -->
+<!-- roadmap-status: p2-2g -->
+- [x] D134 — the durable row is the record: one row per `(actorId, dedupeFingerprint)`, folded in place, with schema v10's unique index and the triggers freezing identity, creation and a strictly advancing `version`
+- [x] D138 — publish settles create-or-fold in ONE authority transaction and only then attempts OS delivery; a delivery that throws is reported and never written back
+- [x] D138 — the trigger union is ids, closed codes and counts, with no free-text argument, so captured form contents have nowhere to enter
+- [x] D222 — the first production publisher: the backup-health watch, on state TRANSITIONS only
+- [x] D262 — the second: the open-operator-gate watch over `runs.listParkedAtGate()`, with `link` moved onto the wire
+- [ ] FIVE of the seven trigger arms have no publisher — `run-failed`, `subject-mismatch`, `write-parked`, `repeating-failure`, `verified-done` (below); each belongs to the surface or slice that owns the state it announces
+> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/domain/notification-triggers.ts, src/services/notifications/{inbox,storage-health,gate-park}.ts, src/domain/dashboard/projection.ts and `grep -rn '\.publish(' src/`; left: the five unpublished arms
+<!-- /roadmap-status -->
 
-The dashboard inbox and per-run timeline always render durable state. OS notification delivery is
+<!-- roadmap: platform-fixes -->
+
+_D218 and D222 are both `platform-fixes`; that node's checklist is the status block under §2.3's
+D218 — one block per node per doc._
+
+Desktop notifications are delivery conveniences, not the record. A `notifications` authority table
+stores a strict event with `notificationId`, dedupe key, severity, run/workflow/failure refs, created
+time, message template + arguments, read state (`unread|read`) and optional snooze expiry. Triggers
+are closed and base-owned. Repeated identical triggers fold into count/lastSeen instead of spamming.
+
+The dashboard inbox and the per-run timeline always render durable state. OS delivery is
 best-effort; a failed toast never loses the unread inbox item. Snooze suppresses delivery until its
 expiry without changing read state. Notification text uses redacted arguments and links to the
-evidence/failure/run—not raw secrets or captured form contents.
+evidence/failure/run — never raw secrets or captured form contents.
 
-```ts
-export interface NotificationWire {
-  notificationId: NotificationId;
-  dedupeKey: NotificationDedupeKey;
-  trigger: NotificationTrigger;
-  severity: "info" | "warning" | "error" | "critical";
-  state: "unread" | "read";
-  title: string;
-  message: string;
-  count: PositiveInt;
-  createdAt: IsoInstant;
-  lastSeenAt: IsoInstant;
-  snoozedUntil?: IsoInstant;
-  link?: { kind: "run" | "failure" | "storage"; id: string };
-}
-```
+**The trigger union, and which arms anything actually publishes.** `NotificationTriggerEventSchema`
+(`src/domain/notification-triggers.ts`) has seven arms; `projectNotificationTrigger` maps each onto
+its D79b channel, severity and title, and that routing is implemented exactly as §10.4 describes it.
+Only two arms have a production publisher — `grep -rn '\.publish(' src/` returns exactly two callers:
+
+| trigger arm | routes to | publisher |
+|---|---|---|
+| `storage-degraded` | `storage` · warning | `src/services/notifications/storage-health.ts` (D222) |
+| `gate-opened` | `gate-waiting` · warning | `src/services/notifications/gate-park.ts` (D262) |
+| `run-failed` | `failed` · error | **none** |
+| `subject-mismatch` | `failed` · error | **none** |
+| `write-parked` | `write-parked` · error | **none** |
+| `repeating-failure` | `repeating` · warning | **none** |
+| `verified-done` | `verified-done` · info | **none** |
+
+Five of seven is the honest number and this section had never stated it. Each of the five is
+schema-declared, routed, rendered by the bell, and unreachable — D222's finding and D262's, still
+standing for the rest of the vocabulary. They are not one gap: each announces a state a different
+slice owns (a terminal failure, a beat-③ subject refusal, a post-fence park, a repeat threshold
+nothing counts yet, a verified-done receipt), so each lands with the surface or slice that already
+holds that state, and the shape to copy is D222's — publish on a TRANSITION, advance the memory only
+after the durable row commits, and never invent a "recovered" arm.
+
+**The wire is not the durable row** (`NotificationWireSchema`, `src/domain/dashboard/projection.ts`).
+It serves `notificationId`, `actorId`, `severity`, `title`, `state`, `occurredAt`, `revision` and an
+optional `link`, and the three differences from the durable record are each deliberate:
+
+- **Severity is three values, not four.** There is no `critical`: severity is DERIVED from the
+  trigger by what the operator must DO, and the seven arms map onto three outcomes —
+  `failed`/`write-parked` → `error`, `verified-done` → `info`, and the waiting/storage family
+  (`gate-waiting`, `repeating`, `storage`) → `warning`. A fourth level would need a trigger meaning
+  "worse than error", and none does; adding one is a decision about the trigger vocabulary, not
+  about the wire.
+- **`state` is a single three-value axis `unread | read | snoozed`.** The DURABLE model keeps
+  read-state and snooze as two independent axes exactly as D138 requires — `NotificationRecord`
+  carries `status` and `snooze` separately, and snoozing never changes read state. The WIRE folds
+  them because the inbox renders one row state: `snoozed` wins **only while the snooze is still in
+  force**, and an expired snooze reads as its underlying status again with nothing written back.
+  Serving `snoozedUntil` as its own field would have invited the client to re-derive that comparison
+  against its own clock, which is how two surfaces come to disagree about whether a row is snoozed.
+- **`dedupeKey`, `trigger`, `message` and `count` stay durable and off the wire.** The bell and inbox
+  render the title and the state; `revision` IS the durable `version`, which is what the
+  read/unread/snooze commands CAS against. `link` is the one field that MOVED onto the wire (D262),
+  because a needs-you alert whose only affordance is "mark read" is an alert nobody can act on — and
+  the line it respects is the union's own: ids and closed codes may cross to a surface, prose may
+  not. It names a `run` or a `failure`; a `storage` row names none and draws no button, because an
+  affordance that navigated nowhere would be worse than none.
 
 **Durable representation (D134).** "Repeated identical triggers update count/lastSeen" is stored as
 **one row per `(actorId, dedupeFingerprint)`, updated in place** — schema v10 adds that unique index
@@ -2069,37 +2128,12 @@ and `version` are untouched — and no per-attempt delivery state is stored at a
 channel reports `no-channel`, never success. Snooze is evaluated at delivery time only: a snoozed
 row still folds durably, it just does not ping.
 
-**AS-BUILT (2i-B, 2026-08-08; recorded 2j) — the `NotificationWire` sketch above is SUPERSEDED by
-what the wire actually serves.** The `interface NotificationWire` block in this section was written
-before the durable row existed and does not describe `NotificationWireSchema`
-(`src/domain/dashboard/projection.ts`). Three differences, each deliberate:
-
-- **There is no `critical` severity.** The sketch's four-value ladder had no consumer: severity is
-  DERIVED from the trigger by what the operator must DO, and D79b's six trigger keys map onto three
-  outcomes — `failed`/`write-parked` → `error`, `verified-done` → `info`, and the waiting/storage
-  family (`gate-waiting`, `repeating`, `storage`) → `warning`. A fourth level would have needed a
-  trigger that means "worse than error", and no trigger does. Adding one is a decision about the
-  trigger vocabulary, not about the wire.
-- **`state` is a single three-value axis `unread | read | snoozed`, not `state` plus `snoozedUntil`.**
-  The DURABLE model keeps read-state and snooze as two independent axes exactly as D138 requires —
-  `NotificationRecord` carries `status` and `snooze` separately, and snoozing never changes read
-  state. The WIRE folds them because the inbox renders one row state: `snoozed` wins **only while
-  the snooze is still in force**, and an expired snooze reads as its underlying status again with
-  nothing written back. Serving `snoozedUntil` as its own field would have invited the client to
-  re-derive that comparison against its own clock, which is how two surfaces come to disagree about
-  whether a row is snoozed.
-- **`dedupeKey`, `trigger`, `message`, `count` and `link` are not on the wire.** The row carries all
-  of them durably; the bell and inbox render `title`, `severity`, `state`, `occurredAt` and
-  `revision`. `revision` IS `version`, which is what the read/snooze commands CAS against — the
-  sketch had no version at all, and without it the three arms could not have been safe.
-
 **Trigger arguments are closed (D138).** "Notification text uses redacted arguments" is enforced by
 having no free-text argument: every trigger-event arm is ids, closed codes, and counts, and the
 title/message are composed from those. A caller cannot hand the inbox prose, so captured form
-contents have nowhere to enter. The ref dashboard-surfaces trigger list routes onto D79b's six keys as: run failure
-and subject mismatch → `failed`; open operator gate → `gate-waiting`; unknown write outcome →
-`write-parked`; repeat threshold → `repeating`; storage degradation, stalled lease/outbox, and
-failed backup → `storage`; verified-done receipt → `verified-done`.
+contents have nowhere to enter. This section's seven triggers route onto D79b's six channels in the
+table above, and that routing is `projectNotificationTrigger`'s exhaustive switch — one place, not a
+per-caller choice.
 
 **As-built (2026-08-18, D222) — the first wired producer is the backup-health watch, and the
 stale/missing backup moves OFF the every-view banner it had been riding.** 2g built the durable
@@ -2166,14 +2200,12 @@ Four rules bound it, the first two D222's exactly:
   the packet is exactly the HR data the closed-argument rule exists to keep out of a notification.
   The alert names WHERE to look; the run it links to is where the operator sees WHAT.
 
-**`link` moves onto the wire, and only `link`.** The as-built block above kept it off beside
-`summary`, `trigger` and `count`, and a needs-you alert whose only affordance is "mark read" is an
-alert nobody can act on — `NotificationRowExtras.link` and `NotificationBell`'s `onOpenRun` had been
-built since 2i-B and were unreachable for want of the id. The line that moves is the union's own:
-**ids and closed codes may cross to a surface, prose may not.** The wire serves the first durable link
-naming a run (`run` or `failure`); a `storage` row names none and draws no button, because an
-affordance that navigated nowhere would be worse than none. The button's word stays in the surface —
-the server says which run, never what to call the trip.
+**`link` moves onto the wire, and only `link`.** `NotificationRowExtras.link` and
+`NotificationBell`'s `onOpenRun` had been built since 2i-B and were unreachable for want of the id,
+so a needs-you alert's only affordance was "mark read". The rule the move respects is the union's
+own — **ids and closed codes may cross to a surface, prose may not** — and the field's shape is in
+the wire list above: the first durable link naming a run, no button at all for a `storage` row. The
+button's word stays in the surface; the server says which run, never what to call the trip.
 
 ---
 
