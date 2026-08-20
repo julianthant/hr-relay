@@ -42,7 +42,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "../lib/utils.js";
-import { IconActionButton } from "../shared/icon-action-button.js";
+import { IconActionButton } from "./icon-action-button.js";
 import {
   bannerPills,
   intentPill,

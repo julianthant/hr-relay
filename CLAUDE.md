@@ -289,6 +289,9 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 ## Conventions
 
 - No default exports.
+- A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
+  its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
+  (`dashboard-refresh-boundary`, doc 13 §8.14, `src/dashboard/CLAUDE.md`).
 - Kebab-case filenames; `.tsx` only under `src/dashboard/`.
 - `verbatimModuleSyntax` + `.js` extensions on relative imports.
 - Every durable / wire / config boundary is a recursively strict zod schema; no open records at a
@@ -310,6 +313,18 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-20: a module that exports one helper beside its component is not a Fast Refresh
+  boundary, and the failure shows up two directories away (doc 13 §8.14).** Every surface under
+  `src/dashboard` exported folds, hooks or `Record` constants beside its components, so
+  `@vitejs/plugin-react` refused each as a refresh boundary and every save invalidated upward into
+  `dashboard-app.tsx` — the whole app remounted and lost its state on each edit, and nothing in the
+  gate family could see it because a test suite never hot-swaps a module. The rule the plugin actually
+  applies (read from its refresh runtime, not the README): every export must be a likely component
+  OR reference-equal across re-evaluation — so a primitive constant survives, and a function, hook,
+  object or array does not. The fix is purely structural (no behaviour moved): each surface keeps
+  components and its pure half lives in `<surface>-model.ts`; the guard runs against a violating
+  fixture so it cannot pass by resolving nothing. Verified live the only way it can be: a browser
+  connected, a surface touched, and the server's `hmr update` line naming that one module.
 - **2026-08-19: a counter kept per WRITER cannot describe a resource shared by many writers — and the
   code that knew this had already written the reason down, one function away (D243/D244).** The
   "browser-profile wedge" recorded twice as an unexplained operational finding (separations §9.17

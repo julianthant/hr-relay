@@ -855,7 +855,7 @@ Each workflow migration uses the same integration checklist:
 path 404s, and the only servers in this tree that deliver `dist/dashboard` are the parity lane's
 test fixtures. Three consequences, all real:
 
-1. **`npm run rebuild:dashboard:prod` claims a mode the runtime does not implement.** The script
+1. **`npm run dashboard:prod` claims a mode the runtime does not implement.** The script
    passes `--prod`; `startRebuildRuntime` never parses it. Today the operator's working path is the
    Vite dev server on 5174 beside the BFF on 3938 (doc 03 §Operational isolation), which is why this
    went unnoticed — the frontend has always been served by something else.
@@ -975,7 +975,7 @@ pair. No parity spec or helper may pass its own `maxDiffPixels` / `maxDiffPixelR
 — the comparison is config-wide, and the guard scans for per-call overrides in both directions.
 
 **The lane serves the working tree, never whatever is on disk.** `tests/parity/helpers/bundle.ts`
-builds `dist/dashboard` through the repo's own `rebuild:dashboard:web:build` before anything serves
+builds `dist/dashboard` through the repo's own `web:build` before anything serves
 it, and writes a stamp binding two digests: every build input (all of `src/**`, the Vite config,
 `tsconfig.json`, `package.json`, `package-lock.json`) and every emitted output file. Each parity
 server asserts that stamp **before it binds a port** and declares what it serves — `proof:
@@ -1096,6 +1096,24 @@ Add these to doc 10’s inventory when their owning code lands:
     without it gets a loud zod error naming the leaf.
 
 ---
+
+14. **Refresh-boundary purity:** every `src/dashboard/surfaces/*.tsx` and `src/dashboard/app/*.tsx`
+    module exports components only — uppercase-named functions/classes or `memo`/`forwardRef`/`lazy`
+    wrappers; type exports are erased and legal. Hooks, pure folds, vocabularies and object/array
+    constants live in a sibling `<surface>-model.ts`.
+
+    `@vitejs/plugin-react` accepts a module as a Fast Refresh boundary only when every export is a
+    likely component or is reference-equal across the module's re-evaluation. One exported helper,
+    hook or object constant is a fresh reference every save, so the module refuses the update and the
+    invalidation climbs to `dashboard-app.tsx` — the whole app remounts and loses its state on each
+    edit, which is exactly what the operator saw once every surface carried its folds beside its
+    components. `src/dashboard/ds/**` is out of scope on purpose: `ui.tsx` is the design system's one
+    mixed barrel, and a full remount when a primitive changes is the accepted price of one import
+    for the whole system.
+
+    **LANDED as `dashboard-refresh-boundary` (2026-08-20).** Both arms run against checked-in
+    fixtures — one violating in every way the rule can break, one clean — so a walker that resolved
+    nothing could not pass.
 
 ## 9. Decisions rejected
 
