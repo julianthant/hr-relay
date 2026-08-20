@@ -743,6 +743,14 @@ export function notificationWireOf(
       ? "info"
       : "warning";
   const snoozed = record.snooze.state === "snoozed" && Date.parse(record.snooze.until) > nowMs;
+  /**
+   * D262: the FIRST durable link that names a run. `storage` names none, so a
+   * storage row carries no link and the bell draws no button — an affordance
+   * that navigated nowhere would be worse than none. The row's other durable
+   * facts (summary, trigger, count) still stay off the wire: they are prose and
+   * derived counts, and this is an id.
+   */
+  const runLink = record.links.find((link) => link.kind === "run" || link.kind === "failure");
   return NotificationWireSchema.parse({
     notificationId: record.notificationId,
     actorId: record.actorId,
@@ -751,8 +759,21 @@ export function notificationWireOf(
     state: snoozed ? "snoozed" : record.status,
     occurredAt: record.lastSeenAt,
     revision: record.version,
+    ...(runLink === undefined ? {} : { link: { kind: runLink.kind, runId: runLink.runId } }),
   });
 }
+
+/**
+ * D262: the one row fact that is a NAVIGATION TARGET rather than prose. §2.6's
+ * as-built kept `link` off the wire beside `summary`, `trigger` and `count`, and
+ * a needs-you alert whose only affordance is "mark read" is an alert nobody can
+ * act on. The line it draws is the one §2.6 already draws inside the trigger
+ * union: ids and closed codes may cross to a surface, prose may not.
+ */
+const NotificationLinkWireSchema = z.strictObject({
+  kind: z.enum(["run", "failure"]),
+  runId: RunIdSchema,
+});
 
 export const NotificationWireSchema = z.strictObject({
   notificationId: NotificationIdSchema,
@@ -762,6 +783,7 @@ export const NotificationWireSchema = z.strictObject({
   state: z.enum(["unread", "read", "snoozed"]),
   occurredAt: IsoInstantSchema,
   revision: RowRevisionSchema,
+  link: NotificationLinkWireSchema.optional(),
 });
 
 function requireUnique(values: readonly string[], path: string, context: z.RefinementCtx): void {

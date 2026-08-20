@@ -76,6 +76,11 @@ import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
 import { createNotificationInbox } from "../../services/notifications/inbox.js";
 import { createBackupHealthNotifier } from "../../services/notifications/storage-health.js";
+import {
+  GateParkObservationSchema,
+  createGateParkNotifier,
+  type GateParkObservation,
+} from "../../services/notifications/gate-park.js";
 import { createIntakeParser } from "../intake/intake-parser.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
 import { createIntakeService } from "./commands/intake-service.js";
@@ -286,6 +291,17 @@ export const ADVISORY_GEMINI_MODEL_ID = "gemini-3-flash-preview";
  */
 export const SPAN_TAIL_POLL_MS = 250;
 
+/**
+ * D262: how often the needs-you watch re-derives the parked-at-gate set from
+ * authority. Its own timer rather than the span tail's, because a notification
+ * cadence is not the projection's to decide, and its own interval rather than
+ * the 15-minute backup cadence, because a run waiting on a person should not
+ * wait a quarter of an hour to say so. The read is an index scan
+ * (`tasks_heartbeat_idx` leads on `state`) over a set that is almost always
+ * empty.
+ */
+export const GATE_PARK_WATCH_MS = 5_000;
+
 export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint {
   return FingerprintSchema.parse(
     sha256Hex(`hrauto:descriptor-set:v1\0${[...fingerprints].sort().join("\n")}`),
@@ -469,6 +485,51 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     }
   }, AUTHORITY_BACKUP_INTERVAL_MS);
   backupTimer.unref();
+
+  /**
+   * D262: the second wired producer — doc 03 §2.6's open operator gate. A run
+   * parked at a gate is the one state in this product that cannot move without a
+   * person, and until now nothing told anybody. The park itself is written by
+   * the worker (a separate process, no operator attached, and a run must park
+   * even when the inbox cannot be written), so the fact is READ back here from
+   * authority, where it stands until a human resolves it.
+   */
+  const gateParkNotifier = createGateParkNotifier({ inbox });
+  const readGateParks = (): readonly GateParkObservation[] =>
+    database.authority.runs.listParkedAtGate().map((run) => {
+      // The repository refuses such a row before it reaches here; this keeps the
+      // narrowing below a checked fact rather than an assertion.
+      if (run.lifecycle.state !== "parked-gate") {
+        throw new Error(`run ${run.envelope.runId} was listed as parked at a gate but reads ${run.lifecycle.state}`);
+      }
+      return GateParkObservationSchema.parse({
+        runId: run.envelope.runId,
+        workflowId: run.envelope.workflow,
+        gateId: run.lifecycle.gateId,
+      });
+    });
+  const publishGateParks = async (): Promise<void> => {
+    try {
+      await gateParkNotifier.observed(readGateParks());
+    } catch {
+      /*
+       * This catch keeps the timer alive; it does not decide the alert was
+       * sent. The notifier advances its memory only after a durable row
+       * commits, so the failed park is still pending and the NEXT tick retries
+       * the same publish — the tree's own "retrying the same operation" arm,
+       * not a substituted value. Nothing about the park is hidden meanwhile:
+       * the run is `Waiting` on the queue with its gate named, served from
+       * authority by a path that shares nothing with the inbox, and if
+       * authority itself cannot be written the `StorageBanner`'s
+       * authority-unavailable arm is already the surface that says so — D222's
+       * structural argument (an authority that cannot be written cannot record
+       * a notification about its own death), from the other side.
+       */
+    }
+  };
+  void publishGateParks();
+  const gateParkTimer = setInterval(() => void publishGateParks(), GATE_PARK_WATCH_MS);
+  gateParkTimer.unref();
 
   const descriptors = {
     resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,
@@ -827,6 +888,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       hub.close();
       clearInterval(spanTailTimer);
       clearInterval(backupTimer);
+      clearInterval(gateParkTimer);
       // Doc 03 §2.5's graceful-drain trigger: one final verified backup while
       // the database is still open. A failure surfaces AFTER cleanup — loud
       // to the stopper, never a half-closed process.
