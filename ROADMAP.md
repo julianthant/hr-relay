@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- This file is written in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. -->
 asOf: 2026-08-20
-head: 5f6713f
+head: 81287bb
 eyebrow: hr-automation-rebuild · derived view · source: ROADMAP.md
 source: Stems from `docs/rebuild/07-master-plan.md` (§2 phases, §3.3 order, §3.7 sizes)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
@@ -12,10 +12,10 @@ footer: Generated from `ROADMAP.md` (the plan, written in the roadmap notation) 
 tiles:
 - Phases complete | 0 · 1 · 2 | runtime marker `completedThrough: 2j`
 - Active | Phase 3 | per-workflow migration · entered at separations
-- Workflows migrated | 2 of 15 | + separations at 7 of 9 exit criteria
-- Decisions | D1–D259 | D256/D257/D260 in flight in a sibling wave · D131 retired, never reused
-- Gates | 61 guards | 2,017 tests · parity 147/147 · schema v14
-- !Critical-path blocker | Name the canary | §4f2 — the three controlled commits wait on you
+- Workflows migrated | 2 of 15 | + separations at 8 of 9 exit criteria
+- Decisions | D1–D261 | rounds 68–85 landed this wave · D131 retired, never reused
+- Gates | 64 guards | 2,271 tests · parity 151/151 re-frozen 08-20 · schema v15
+- !Critical-path blocker | Wait for 08-28 | canary **4537 named** — S7 admits its separation date then; the three commits run ② → ① → ③
 
 <!-- roadmap:start -->
 
@@ -275,8 +275,8 @@ builds:
 - [x] BE B8 findings ledger zero-or-decided; `span.patched` RETIRED; a span close binds to an OPEN entry (D254/D255)
 
 #### Track C · connection proof {#track-c}
-status: active
-chip: in progress — §9.22 written today
+status: done
+chip: done 08-20 — §9.22 + the five same-day fixes + the ONE re-freeze
 
 > One pass: the REAL dashboard drives a REAL composed separations dry run — plan → start → gate parks → approve through the B1 ceremony → resume → preview terminal → archive — every UI assertion paired against a direct authority-database check. Closes with the ONE deliberate parity re-freeze. Re-runs over the real commits as Track A's final evidence. Already found and fixed two projection defects on the real run (D258/D259).
 
@@ -284,8 +284,10 @@ builds:
 - [x] PROOF `docs/migrations/separations.md` §9.22 — items 1–8 recorded
 - [x] BE D258 a timeline event id carries its occurrence ordinal, read forward — the one pre-D214 run that was refusing every archive reads again
 - [x] BOTH D259 a replayed step is its own timeline arm (`replayed`, with `replayedFrom`), never `pending`
-- [~] PROOF every surface's assertion paired against a direct authority check over the ONE run
-- [ ] PROOF the deliberate parity re-freeze
+- [x] PROOF every surface's assertion paired against a direct authority check over the ONE run (§9.22 items 1–8)
+- [x] BOTH the five §9.22 defects fixed same-day — ticking served clock (D256), SSE-followed panel (D257), honest shape hazard, replayed arm (D259), archive unblocked (D258)
+- [x] BOTH D261 the start door — `resolve-action` finds the action id from the document number; the modal takes ONE box; live run `sp-105225-1e0b` parked at the gate, zero writes
+- [x] PROOF the deliberate parity re-freeze — 151/151 assert-green, every drift mapped to its decision
 
 needs:
 - track-b
@@ -311,11 +313,11 @@ needs:
 - track-c
 - you: rule placement, the descriptor-bundle question (§3.5), and scope (D1–D3 / D1–D5 / all)
 ### Separations — order 8, the first migration {#order-8}
-status: you
+status: planned
 size: XL
-chip: chunks 1–6c landed — commits blocked on your canary
+chip: 8 of 9 — the three commits wait for 08-28 (S7)
 
-> write-heavy — UCPath termination + Kuali finalization. The wrong-person incident (`T002173685`); the deepest write-safety proof, entered first by your choice (D193). Built bottom-up: store tasks first, one small provable sub-workflow per system interaction, then composed — lego recomposition, never conditional branches inside one monolith (§3.1/§3.2 directives). What remains is the one thing code cannot do (name the canary) and the dashboard wiring's last two squares.
+> write-heavy — UCPath termination + Kuali finalization. The wrong-person incident (`T002173685`); the deepest write-safety proof, entered first by your choice (D193). Built bottom-up: store tasks first, one small provable sub-workflow per system interaction, then composed — lego recomposition, never conditional branches inside one monolith (§3.1/§3.2 directives). What remains is the calendar: canary 4537 is named and mapped, and S7 admits it on 2026-08-28; plus one notification wire square below.
 
 needs:
 - dash-defaults
@@ -423,33 +425,34 @@ builds:
 needs:
 - sep-6b
 #### Track A · separations backend completion {#track-a}
-status: you
-chip: blocked at A1 — needs you
+status: planned
+chip: canary 4537 named — S7 unblocks 08-28
 
-> Separations is at **7 of 9 exit criteria**. What remains is the one thing code cannot do: name the target the three real writes may touch.
+> Separations is at **8 of 9 exit criteria**. The canary is **doc 4537** (named 08-19, mapped live in §9.19: the first subject with an active terminable employment). S7 refuses to plan until its separation date, **2026-08-28** — then ② UCPath filing, ① the pending sweep on the row ② creates, ③ Kuali finalization.
 
 builds:
 - [ ] PROOF controlled commit ① pending sweep · ② UCPath termination · ③ Kuali finalization — each with fence + read-back evidence
 - [ ] PROOF `probeToFenceMaxMs` per beat; D207's 30 s Kuali window on this write's own evidence; seven Kuali payload shapes observed live; the `would-prepare` preview arm live
-- [ ] PROOF the first live RETRY on the composed graph (D221 exercised)
+- [x] PROOF the first live RETRY on the composed graph — six retries, two lineages, one `done` (§9.20)
 - [x] BE browser-profile wedge root-caused (A7)
 - [ ] DOCS close-out: regression scenarios, knowledge records, capability dispositions → separations **rebuild-ready**
 
 needs:
 - sep-6c
-- you: name the §4f2 canary target(s)
+- you(met): name the §4f2 canary target(s) — doc 4537, 2026-08-19
+- fact: S7 admits doc 4537 on 2026-08-28 (its separation date)
 
 | # | Step | Status |
 |---|---|---|
-| !A1 | **You name the §4f2 canary** — doc 4524 withdrawn (its Kuali action completed 08-14); doc 4510 is legal for the standalone Kuali finalization but the composed graph refuses it pre-gate (its one employment row is `Inactive` — making an active terminable employment exist is an operator act); the UCPath termination and the pending-sweep's committed arm have **no live subject at all** | **YOU** |
-| A2–A4 | Controlled commits ① pending sweep · ② UCPath termination · ③ Kuali finalization | after A1 |
+| ✓A1 | **Canary named: doc 4537 / EID 10628128** (08-19) — §9.19 mapped it live: one Active terminable employment, every finalization control resolving; 4524 and 4510 both gone | done |
+| A2–A4 | Controlled commits, in the order the facts force: ② UCPath filing → ① pending sweep (on the row ② creates) → ③ Kuali finalization | **08-28** (S7) |
 | A5 | Obligations only the commits discharge (timings, propagation window, seven payload shapes, the preview arm live) | after A2–A4 |
-| A6 | One live RETRY on the composed graph — D221 landed and tested, never exercised on a real run | executable now |
+| ✓A6 | Live RETRY on the composed graph — six retries, no collision, one reached `done` (§9.20) | done |
 | ✓A7 | Root-cause the browser-profile wedge — **closed by D243/D244** | done |
 | A8 | Close-out (§3.1 step 7) → separations **rebuild-ready** | after A2–A7 |
 #### Dashboard · wire separations {#sep-dash}
 status: active
-chip: 7 of 9 wired — Track C proving the rest
+chip: 8 of 9 wired — the gate-park notification is the last square
 
 > What the generic surfaces learned about separations, and the two separations-specific things no default covers (the ALWAYS-GATE's ceremonies, the three commit contracts' ledger lines). Built with Track B as the forcing function, so most squares are already filled; the empty ones are wires not yet run — not sloppy surfaces.
 
@@ -462,7 +465,7 @@ builds:
 - [x] WIRE explorer — field census, the declared `when` in words, the descriptor's prose (D227–D229)
 - [x] WIRE activity — separations in the per-workflow cross-tab + the write-ledger block (D236)
 - [ ] WIRE notifications — a park at the ALWAYS-GATE publishes a needs-you row to the durable inbox; today only `storage-degraded` has a publisher (D222; doc 03 §2.6)
-- [~] PROOF connection proof — every surface read against the real composed run, each UI assertion paired with authority (Track C, separations §9.22)
+- [x] PROOF connection proof — every surface read against the real composed run, each UI assertion paired with authority (Track C, separations §9.22; five defects found and fixed same-day)
 
 needs:
 - dash-defaults
@@ -483,7 +486,7 @@ chip: needs you
 
 > The gate-age pill (D12 vs your later direction) · D192 re-disposition of `legacy-tool-ops-sanity-check-record` · A6's first live retry as evidence. (The decide-first findings are settled: hours-saved DROPPED by D239; archive tabs and export closed by D223/D240.)
 
-## today: 2026-08-20 · HEAD 5f6713f · separations 7 / 9 · dashboard defaults landed · Track C live
+## today: 2026-08-20 · HEAD 81287bb · separations 8 / 9 · Tracks B+C DONE · parity re-frozen 151/151 · the three commits wait for 08-28
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued
