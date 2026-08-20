@@ -2089,6 +2089,61 @@ record a notification about its own death — the banner is the only surface tha
 and it still appends the backup sentence when both are true. The gear's attention dot is
 unchanged; Settings remains the page that explains either state.
 
+**As-built (2026-08-20, D262) — the OPEN OPERATOR GATE is produced, by a watch over authority rather
+than by the park itself, and the row gains the one fact that makes it actionable.** This section has
+routed "open operator gate" onto `gate-waiting` since D79b, the trigger union has carried the
+`gate-opened` arm since D138, and the bell has rendered its rows since 2i-B — and nothing ever
+published one. So the ONE state in this product that cannot move without a person produced no alert
+at all, which is D222's finding a second time: machinery with zero producers.
+
+**The seam is a transition-watcher over authority, not the park's own transaction.** The park is
+written by the WORKER (doc 02 §4's gate arm, `src/core/run-executor.ts`), a separate OS process with
+no operator attached and no desktop channel, and D82's rule stands — authority must never depend on
+a projection to settle a run, so a run must park even when the inbox cannot be written. What makes
+the watcher sound rather than merely convenient is that **a park is a STANDING authority fact**:
+`parked-gate` does not go away until a human resolves it, so the set of runs waiting on a person is
+re-derivable from authority at any later instant by any process. That is a strictly stronger recovery
+story than atomicity would be — publishing inside the park's transaction covers only parks that
+happen after the producer ships, while re-derivation also covers a run already parked when it
+shipped, one parked while the dashboard was down, and one parked while the inbox write was failing.
+The dashboard composition owns it (`src/services/notifications/gate-park.ts`, wired beside D222's
+watch) on its own `GATE_PARK_WATCH_MS` timer: the notification cadence is not the span projection's
+to decide, and a run waiting on a person must not wait the backup cadence's quarter hour to say so.
+Its one authority read is `runs.listParkedAtGate()`, an index scan on the column `tasks_heartbeat_idx`
+already leads with.
+
+Four rules bound it, the first two D222's exactly:
+
+- A **transition** publishes and a standing park does not. The D134 fold marks a row unread again on
+  every publish, so re-publishing the same park each tick would make the row unreadable-forever —
+  this section's spam by another route.
+- A **failed publish forgets nothing**: the memory advances only after the durable row commits, so
+  the next observation retries that park. Publishes already committed in the same pass keep their
+  memory — they are durable facts, not part of the failure. The watch has no served failure arm and
+  needs none: nothing about the park is hidden meanwhile (the run is `Waiting` on the queue with its
+  gate named, served from authority by a path sharing nothing with the inbox), and if authority
+  itself cannot be written, D222's structural argument already puts that on the `StorageBanner`.
+- A **resolved gate publishes nothing and rewrites nothing.** The trigger union has no "resolved" arm
+  and inventing one is a new decision (D222's own reasoning); beyond that, a resolution is an act the
+  operator just performed, so announcing it is precisely the spam this section forbids. The row is
+  not marked read either — read state is the operator's own axis, which D138 keeps independent of
+  even snooze, and a watcher that cleared it would erase the record that a human was ever asked,
+  including for a gate resolved from a surface this operator never saw. What the notifier does do is
+  FORGET the park, so a later re-park at the same gate is a transition again rather than a silent
+  fold nobody would see move.
+- **Nothing from the gate's evidence packet travels.** The event is `runId`/`workflowId`/`gateId` —
+  the packet is exactly the HR data the closed-argument rule exists to keep out of a notification.
+  The alert names WHERE to look; the run it links to is where the operator sees WHAT.
+
+**`link` moves onto the wire, and only `link`.** The as-built block above kept it off beside
+`summary`, `trigger` and `count`, and a needs-you alert whose only affordance is "mark read" is an
+alert nobody can act on — `NotificationRowExtras.link` and `NotificationBell`'s `onOpenRun` had been
+built since 2i-B and were unreachable for want of the id. The line that moves is the union's own:
+**ids and closed codes may cross to a surface, prose may not.** The wire serves the first durable link
+naming a run (`run` or `failure`); a `storage` row names none and draws no button, because an
+affordance that navigated nowhere would be worse than none. The button's word stays in the surface —
+the server says which run, never what to call the trip.
+
 ---
 
 ## 3. Descriptor fields this layer consumes (shape owned by doc 02)

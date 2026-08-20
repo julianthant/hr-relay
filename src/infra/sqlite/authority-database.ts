@@ -427,6 +427,18 @@ type RunRepository = Readonly<{
    */
   nextWorkflowRunNumber(workflow: string): number;
   listByWorker(workerId: string): readonly RunRecord[];
+  /**
+   * D262 — every run currently parked at an operator gate.
+   *
+   * The needs-you notification watch reads this and nothing else: a park is a
+   * STANDING authority fact (it does not go away until a human resolves it),
+   * so the set of runs waiting on a person is derivable at any later instant by
+   * any process, which is what makes a missed publish recoverable rather than
+   * lost. Deliberately not a general `listByState` — nothing else needs one,
+   * and a query named for its one job cannot be reused for a state whose
+   * lifecycle arm carries different fields.
+   */
+  listParkedAtGate(): readonly RunRecord[];
   listChildren(parentRunId: string): readonly RunRecord[];
   /**
    * Doc 12 §2.5: `explain run <traceId|runId>` accepts either identity. The
@@ -3999,6 +4011,30 @@ export class AuthorityDatabase implements Disposable {
           SELECT record_json FROM tasks WHERE owner_worker_id = ? ORDER BY created_at, record_key
         `).all(WorkerIdSchema.parse(workerId));
         return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
+      },
+      /**
+       * D262. `tasks_heartbeat_idx ON tasks(state, heartbeat_at)` leads on
+       * `state`, so this is an index scan over a set that is almost always
+       * empty. The parsed record is re-checked against the column the scan
+       * selected on: the two are written together by `#writeRunRow`, and a row
+       * whose column and lifecycle disagree is an integrity defect that must
+       * name the run rather than quietly publish a notification about a gate
+       * the record does not hold.
+       */
+      listParkedAtGate: () => {
+        const rows = this.#database.prepare(`
+          SELECT record_json FROM tasks WHERE state = 'parked-gate' ORDER BY created_at, record_key
+        `).all();
+        return Object.freeze(rows.map((row) => {
+          const record = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+          if (record.lifecycle.state !== "parked-gate") {
+            throw new Error(
+              `run ${record.envelope.runId} is stored under state 'parked-gate' but its record's lifecycle `
+              + `reads ${record.lifecycle.state}; the tasks row and its record_json disagree`,
+            );
+          }
+          return record;
+        }));
       },
       listChildren: (parentRunId: string) => {
         const rows = this.#database.prepare(`

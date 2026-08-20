@@ -511,6 +511,66 @@ describe("run claim store", () => {
     assert.equal(resumed.run.lifecycle.state, "queued");
   });
 
+  /**
+   * D262 — the needs-you watch's ONE authority read. The park is a STANDING
+   * fact, so the query must answer it for as long as the run holds it and stop
+   * answering the instant a human resolves it; that pair is what makes the
+   * watcher's transition rule derivable from authority rather than from a
+   * process's memory of what it saw.
+   */
+  it("lists a run parked at a gate for exactly as long as it is parked", () => {
+    const database = openDatabase();
+    database.authority.runs.enqueue(QUEUED_RUN);
+    assert.deepEqual(database.authority.runs.listParkedAtGate(), []);
+
+    const claimed = claimOne(database);
+    const validating = database.authority.runs.transition({
+      runId: RUN_ID,
+      expectedVersion: claimed.version,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
+      now: LATER,
+    });
+    if (validating.state !== "applied") throw new Error("validating transition should apply");
+    const running = database.authority.runs.transition({
+      runId: RUN_ID,
+      expectedVersion: validating.run.version,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: { state: "running", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: LATER },
+      now: LATER,
+    });
+    if (running.state !== "applied") throw new Error("running transition should apply");
+    // A RUNNING row is not a park: the watch must not announce a run nobody is
+    // waiting on.
+    assert.deepEqual(database.authority.runs.listParkedAtGate(), []);
+
+    const parked = database.authority.runs.transition({
+      runId: RUN_ID,
+      expectedVersion: running.run.version,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: { state: "parked-gate", gateId: "approval", parkedAt: LATER, resumeAt: "active-status" },
+      now: LATER,
+    });
+    if (parked.state !== "applied") throw new Error("park should apply");
+
+    const waiting = database.authority.runs.listParkedAtGate();
+    assert.equal(waiting.length, 1);
+    assert.equal(waiting[0]?.envelope.runId, RUN_ID);
+    assert.equal(
+      waiting[0]?.lifecycle.state === "parked-gate" ? waiting[0].lifecycle.gateId : undefined,
+      "approval",
+    );
+
+    const resumed = database.authority.runs.resume({
+      runId: RUN_ID,
+      expectedVersion: parked.run.version,
+      startAt: "active-status",
+      now: MUCH_LATER,
+    });
+    if (resumed.state !== "applied") throw new Error("resume should apply");
+    assert.deepEqual(database.authority.runs.listParkedAtGate(), []);
+  });
+
   it("renames through the version gate, and refuses a stale one", () => {
     const database = openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);

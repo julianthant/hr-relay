@@ -528,10 +528,15 @@ type NotificationWire = z.infer<typeof NotificationWireSchema>;
  * carries no captured form contents" is enforceable at all (D138).
  *
  * So the markup below ports the demo whole and every one of those arms renders
- * ONLY when its field is present. Today none is, so a row is dot · glyph ·
+ * ONLY when its field is present. None of THESE is, so a row is dot · glyph ·
  * title · age · actions — the honest shape of what the server actually said.
  * This is an on-record deviation from the demo, not a placeholder: nothing
  * here invents a body, a delivery verdict, or a repeat count.
+ *
+ * D262 moved ONE of them onto the wire, and only one: the row's `link`. It is
+ * an id, not prose — the same line §2.6 draws inside the trigger union — and a
+ * needs-you alert whose only affordance is "mark read" is an alert nobody can
+ * act on.
  */
 export interface NotificationRowExtras {
   readonly body?: string;
@@ -539,8 +544,17 @@ export interface NotificationRowExtras {
   readonly delivery?: "ping" | "inbox";
   readonly count?: number;
   readonly desktopDelivered?: boolean;
-  readonly link?: { readonly label: string; readonly runId: string };
 }
+
+/**
+ * The button's word, per link kind. It lives here rather than on the wire
+ * because it is UI copy about a destination this surface owns; the SERVER says
+ * which run, never what to call the trip.
+ */
+const NOTIFICATION_LINK_LABEL: Record<"run" | "failure", string> = {
+  run: "Open run",
+  failure: "Open failure",
+};
 
 export type NotificationRowWire = NotificationWire & NotificationRowExtras;
 
@@ -848,7 +862,7 @@ function NotificationRow({
       <div className="flex flex-wrap items-center gap-[var(--ds-space-tight)]">
         {entry.link !== undefined && (
           <Button size="sm" variant="secondary" onClick={onOpen}>
-            {entry.link.label}
+            {NOTIFICATION_LINK_LABEL[entry.link.kind]}
           </Button>
         )}
         <Button
