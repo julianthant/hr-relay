@@ -58,6 +58,7 @@ import {
   COMMAND_FAMILY_REGISTRY,
   CommandRequestSchema,
   CommandResultSchema,
+  type CommandRejectionCodeSchema,
   type CommandRequest,
   type CommandResult,
 } from "../domain/commands.js";
@@ -348,6 +349,32 @@ function workerTarget(workerId: string): TargetReference {
 
 function reject(request: CommandRequest, code: string, message: string): never {
   throw new CommandRefusal({ state: "rejected", commandId: request.commandId, code, message });
+}
+
+/**
+ * The same typed rejection, reachable from an EXECUTOR the kernel calls through
+ * one of its seams (D245).
+ *
+ * `createWriteResolutionExecutor.resolvePresent` is the only caller today, and
+ * it needs it for one specific thing: a confirmed-present proof that does not
+ * bind to the commit contract's schema, or does not parse through it, is an
+ * ordinary operator mistake — the surface's own client-side check cannot cover
+ * a `.refine()`, and the schema can move between the serve and the send. Left
+ * as a thrown `Error` it reached the dialog as an uncoded transport failure,
+ * which is the one arm that surface reserves for "the server never answered".
+ * `executeResolveGate` already answers `schema-mismatch` for the identical
+ * situation one command over; this makes the write resolution match it.
+ *
+ * It is deliberately NOT a general escape hatch: the code is the closed wire
+ * enum, and the executor stays free to `throw` for the things that are genuinely
+ * inconsistent storage rather than a bad answer.
+ */
+export function rejectCommandRequest(
+  request: CommandRequest,
+  code: z.infer<typeof CommandRejectionCodeSchema>,
+  message: string,
+): never {
+  reject(request, code, message);
 }
 
 function conflict(request: CommandRequest, currentVersion: number, message: string): never {

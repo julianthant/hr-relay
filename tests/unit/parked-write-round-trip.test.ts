@@ -422,6 +422,65 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
 });
 
 /**
+ * D245 — a confirmed-present proof that does not fit is an ORDINARY ANSWER, so
+ * it comes back as a typed `rejected` the dialog can print with a code, not as
+ * an escaping error the dialog can only describe as a transport failure.
+ * `executeResolveGate` has answered `schema-mismatch` for the identical
+ * situation one command over since the gate landed.
+ *
+ * Both cases assert the same second thing: the refusal unwound everything. A
+ * parked write that refuses a bad answer must still be parked, at the same
+ * generation, on the same run version.
+ */
+describe("a confirmed-present proof that does not fit (doc 09 §4.1, D245)", () => {
+  async function refusedPresent(payload: Record<string, unknown>) {
+    const harness = roundTrip();
+    await harness.park();
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(parked);
+    const result = harness.kernel.execute(resolutionCommand("resolve-write-present", {
+      runId: WRITE_FIXTURE_RUN_ID,
+      expectedVersion: parked.version,
+      writeIntentId: intent.writeIntentId,
+      intentGeneration: intent.generation,
+    }, payload));
+    const after = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(after && after.lifecycle.state === "parked-write", "the park survived the refusal");
+    assert.equal(after.version, parked.version);
+    const settled = harness.database.authority.writeIntents.get(intent.writeIntentId);
+    assert.ok(settled && settled.status === "parked");
+    assert.equal(settled.generation, intent.generation);
+    return result;
+  }
+
+  it("rejects a proof bound to a schema this build does not have", async () => {
+    const result = await refusedPresent({
+      proof: { schemaHash: "1".repeat(64), value: { transactionId: "T998877" } },
+      evidenceNote: "pasted from a stale tab",
+    });
+    assert.ok(result.state === "rejected");
+    assert.equal(result.code, "schema-mismatch");
+    assert.match(result.message, /bound to schema/);
+  });
+
+  it("rejects a proof that does not parse, naming the leaf that failed", async () => {
+    const result = await refusedPresent({
+      proof: {
+        schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
+        // The contract's receipt is `T` + at least six digits.
+        value: { transactionId: "nope" },
+      },
+      evidenceNote: "typed what the page showed",
+    });
+    assert.ok(result.state === "rejected");
+    assert.equal(result.code, "schema-mismatch");
+    assert.match(result.message, /does not parse through/);
+    assert.match(result.message, /transactionId/);
+  });
+});
+
+/**
  * D246. The record this closes read: *"Cancelling a parked-write run strands
  * the intent with no exit."* Doc 09 §4.1's "cancel cannot alter the intent" was
  * honoured exactly — and the cancel still took both resolutions away with it,

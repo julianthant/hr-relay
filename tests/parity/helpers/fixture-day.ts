@@ -812,6 +812,45 @@ export const FIXTURE_PARKED_WRITE = {
       displaySuffix: "7012",
     },
   },
+  /**
+   * D245 — what a confirmed-present resolution has to carry. The server derives
+   * this from the commit contract's own `completion.proofSchema`
+   * (`describeProofShape`); this adapter states the same shape by hand for the
+   * fixture's own `ucpath/terminate-person`, mirroring the real
+   * `UcpathTerminationProofSchema`: two literals the schema pins, an EID and a
+   * date under their own patterns, the receipt, the closed approval-status
+   * vocabulary, and the name the page displayed.
+   *
+   * Photographing the SERVED arm rather than the `unavailable` one is
+   * deliberate. Before D245 this reference recorded the present arm as a
+   * disabled control with a refusal — which is exactly the corpus-records-a-
+   * defect shape D187 found — and a parked run in the shipped build now gets
+   * the form.
+   */
+  proofContract: {
+    state: "served",
+    commitTaskId: "ucpath/terminate-person",
+    completionKind: "save-verify",
+    schemaHash: "c".repeat(64),
+    fields: [
+      { kind: "fixed", path: "kind", value: "ucpath-termination" },
+      { kind: "text", path: "emplId", pattern: "^10\\d{6}$", serverOnlyRules: false },
+      {
+        kind: "text",
+        path: "effectiveDate",
+        pattern: "^(0[1-9]|1[0-2])/(0[1-9]|[12]\\d|3[01])/\\d{4}$",
+        serverOnlyRules: false,
+      },
+      { kind: "text", path: "transactionId", pattern: "^T\\d{6,}$", serverOnlyRules: false },
+      {
+        kind: "choice",
+        path: "approvalStatus",
+        options: ["Approved", "Denied", "Error", "Manually Processed", "Pending", "Pushed Back"],
+      },
+      { kind: "text", path: "displayedName", minLength: 1, serverOnlyRules: false },
+      { kind: "fixed", path: "source", value: "ss-smart-hr-detail-read" },
+    ],
+  },
   actions: [
     {
       key: "resolve-write-present",

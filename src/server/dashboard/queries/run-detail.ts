@@ -51,6 +51,7 @@ import {
   type TimelineStepWire,
 } from "../../../domain/dashboard/run-detail.js";
 import type { WriteBindingProof, WriteIntentRecord } from "../../../domain/write-safety.js";
+import type { ProofShape } from "../../../validation/proof-shape.js";
 import type { GateResultRecord } from "../../../domain/gates.js";
 import { evidenceLeaves } from "../../../domain/trust/evidence-classification.js";
 import { findGateDecision } from "../../../domain/trust/gate-decisions.js";
@@ -105,6 +106,24 @@ export interface RunDetailGateNodeView {
   readonly resultSchemaHash: string;
 }
 
+/**
+ * ONE transaction node's commit contract, in the shape doc 09 §4.1's
+ * confirmed-present resolution needs (D245).
+ *
+ * `proofSchemaHash` is `deriveSchemaHash(completion.proofSchema, "output")` —
+ * byte for byte the value `resolvePresent` compares an incoming
+ * `proof.schemaHash` against, so a surface that echoes it back cannot be
+ * refused for naming a schema this build does not have. `proof` is the same
+ * schema described as a field list, or the named reason it cannot be.
+ */
+export interface RunDetailWriteContractView {
+  /** The commit task the intent's `taskId` names. */
+  readonly commitTaskId: string;
+  readonly completionKind: "receipt" | "save-verify" | "upload-verify";
+  readonly proofSchemaHash: string;
+  readonly proof: ProofShape;
+}
+
 export interface RunDetailDescriptorView {
   readonly details: readonly Readonly<{
     key: string;
@@ -125,6 +144,19 @@ export interface RunDetailDescriptorView {
   }>[];
   /** Absent for a descriptor with no gate node; empty is the same answer. */
   readonly gateNodes?: readonly RunDetailGateNodeView[];
+  /**
+   * D245 — one entry per TRANSACTION node, carrying what doc 09 §4.1's
+   * confirmed-present resolution has to satisfy for that node's commit
+   * contract. Derived by the composition root beside `gateNodes` and for the
+   * same stated reason: this directory never reaches the descriptor builders,
+   * and a query that re-derived a schema hash or re-walked a proof schema
+   * would be a second copy of the contract's identity.
+   *
+   * Absent for a descriptor with no transaction node; empty is the same
+   * answer, and a parked run naming a task no entry covers gets a NAMED
+   * unavailable reason rather than a form.
+   */
+  readonly writeContracts?: readonly RunDetailWriteContractView[];
   readonly capabilities?: Readonly<{
     editData?:
       | boolean
@@ -797,6 +829,69 @@ function parkedWriteSubject(proof: WriteBindingProof): unknown {
 }
 
 /**
+ * WHAT A CONFIRMED-PRESENT RESOLUTION MUST CARRY (D245, doc 09 §4.1).
+ *
+ * `resolvePresent` refuses any proof whose `schemaHash` is not
+ * `deriveSchemaHash(node.commit.uses.writeSafety.completion.proofSchema)` and
+ * then parses the value through that exact schema. This wire served neither,
+ * so the present arm was drawn DISABLED on every parked run in the build —
+ * a fenced write that DID land could only be recorded as absent, which is a
+ * durable lie, or left parked forever.
+ *
+ * Everything here is DERIVED and nothing is re-derived: the hash and the field
+ * list are the composition root's `writeContracts` view, computed from the
+ * descriptor beside `gateNodes` and for the same stated reason — this directory
+ * never reaches the descriptor builders, and a query that recomputed a schema
+ * hash would be a second copy of the contract's identity.
+ *
+ * Every failure is a NAMED `unavailable` reason rather than a throw, and that
+ * split is deliberate: the checks above this one throw because a parked run
+ * whose intent authority cannot produce is a storage fault, while a build that
+ * cannot describe a proof is a build limitation — the panel must still render,
+ * and the confirmed-ABSENT arm must still be reachable, for a run whose
+ * workflow this build no longer registers.
+ */
+function parkedWriteProofContract(
+  deps: RunDetailQueryDeps,
+  authority: RunRecord,
+  intent: Extract<WriteIntentRecord, { status: "parked" }>,
+): unknown {
+  const unavailable = (reason: string): unknown => ({ state: "unavailable", reason });
+  const workflow = authority.envelope.workflow;
+  const descriptor = deps.descriptors.resolve(workflow);
+  if (descriptor === undefined) {
+    return unavailable(
+      `workflow ${workflow} has no registered descriptor in this build, so the proof this write would `
+      + "have to carry cannot be stated. Recording it PRESENT is unavailable until the build that "
+      + "declares this workflow is running (doc 09 §4.1, D136).",
+    );
+  }
+  const contract = (descriptor.writeContracts ?? [])
+    .find((candidate) => candidate.commitTaskId === intent.taskId);
+  if (contract === undefined) {
+    return unavailable(
+      `${workflow} declares no transaction node committing ${intent.taskId} in this build, so there is no `
+      + "commit contract to take a proof for. Recording it PRESENT is unavailable until that node is back "
+      + "— doc 09 §4.1's `transaction-node` check would refuse the resolution for the same reason.",
+    );
+  }
+  if (contract.proof.state === "undescribable") {
+    return unavailable(
+      `${contract.commitTaskId}'s completion proof cannot be rendered as a form by this build: `
+      + `${contract.proof.reason}. Nothing here will guess at a shape the kernel would then refuse — `
+      + "record the absence instead, or extend the proof describer.",
+    );
+  }
+  return {
+    state: "served",
+    commitTaskId: contract.commitTaskId,
+    completionKind: contract.completionKind,
+    schemaHash: contract.proofSchemaHash,
+    fields: contract.proof.fields,
+  };
+}
+
+/**
  * The two typed resolutions, both always served (doc 09 §4.1, doc 13 §8.5).
  *
  * Serving only one would be this query deciding what the operator's look at
@@ -1049,6 +1144,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     parkedCode: intent.parkedCode,
     parkedMessage: intent.message,
     subject: parkedWriteSubject(intent.bindingProof),
+    proofContract: parkedWriteProofContract(deps, authority, intent),
     actions: parkedWriteActions(authority, intent),
   });
 }
