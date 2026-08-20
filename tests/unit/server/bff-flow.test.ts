@@ -112,6 +112,7 @@ function harness(): Harness {
       latestCheckpoint: (workflowId: string, itemId: string, nodeId: string) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
       getWriteIntent: (writeIntentId: string) => database.authority.writeIntents.get(writeIntentId),
+      listGateResults: (runId: string) => database.authority.gateResults.listByRun(runId),
     },
     descriptors: {
       resolve: (workflowId: string) => (workflowId === fixtureDescriptor.id ? fixtureDescriptor : undefined),

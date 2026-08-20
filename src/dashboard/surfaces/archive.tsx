@@ -1311,6 +1311,13 @@ function ArchivedRunDetail({
                       </span>
                     </span>
                     <span className={cn(dsText.body, "text-[color:var(--ds-fg)]")}>{detail.detail.gate.label}</span>
+                    {/* D237 — the approver. An archived decision that names an
+                        instant and no human is the same silence the live panel
+                        carried; the frozen wire has carried the name since the
+                        arm became reachable. */}
+                    <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
+                      by {detail.detail.gate.resolvedBy}
+                    </span>
                   </div>
                 ) : (
                   <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>

@@ -463,6 +463,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
       // Doc 09 §4.1: read straight off write-safety authority, per request.
       getWriteIntent: (writeIntentId) => database.authority.writeIntents.get(writeIntentId),
+      // D237: the SAME `listByRun` read D204 gave the receipt, so the panel and
+      // the receipt name one approver for one gate.
+      listGateResults: (runId) => database.authority.gateResults.listByRun(runId),
     },
     descriptors: {
       /**

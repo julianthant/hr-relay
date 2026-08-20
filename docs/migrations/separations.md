@@ -4407,7 +4407,18 @@ three are correctly dispositioned at the milestone the runtime is actually in
   It is flagged rather than re-dispositioned here, because closing an inventory entry is an operator
   decision and `AdvisorySurfaceIdSchema`'s D178 two-value shape has not been widened.
 
-#### 7. Two surface observations, both recorded rather than fixed
+#### 7. Two surface observations, both recorded rather than fixed — **BOTH FIXED 2026-08-19 (D237 · D238)**
+
+> **RESOLVED 2026-08-19.** Both records below are struck; the text stays as the record of what was
+> observed and when. **(a)** is **D237** — the settled gate's verdict, approver and instant now come
+> off the durable `gate_results` row through D204's own declared arm table, never off the span
+> stream's `resolutionKey`, and the panel draws a DECISION RECORD in the run's own stream at
+> `resolvedAt`. Doc 12 §"D237" owns the derivation; doc 03 §"D238" owns the presentation. **(b)** is
+> **D238** — a terminal `done` run whose envelope asked for a dry run takes `partial` with
+> `rehearsal: true`, which is the verdict its own receipt derives, and a wire refinement makes
+> `verified-done` beside `rehearsal` unrepresentable. Doc 03 §"D238" owns it. Both are pinned by
+> `tests/unit/server/run-detail-gate-outcome.test.ts`. Neither needed a new vocabulary: (a) reuses
+> D204's declared arm table and (b) reuses the receipt's own `result` enum.
 
 **(a) A settled gated run's panel cannot say its gate was approved.** `run-detail.ts` maps a resolved
 gate to a wire resolution only when `resolutionKey` is literally `approved` or `rejected`, and the

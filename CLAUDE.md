@@ -363,6 +363,31 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   merely-slow prompt on the old message. The pin lives in this repo's own gate rather than the
   extension's offline lane (D244): `duo-autopilot/` is a hard runtime dependency, and a rule pinned
   where `npm run test:coverage` cannot see it is a rule no per-commit gate checks.
+- **2026-08-19: a wire arm keyed on a value nothing produces is UNREACHABLE, not merely unused — and
+  a mechanical mapping is where a label outlives its meaning (D237/D238).** Two honesty gaps on the
+  same panel, both recorded against real settled runs and both invisible to every gate. **(1)** The
+  run-detail `resolved` gate arm mapped only the literal `resolutionKey`s `approved`/`rejected`, and
+  the command service emits `resolved` for EVERY gate — deliberately, with a comment naming the
+  display-key deferral. So the arm could never be taken: every settled gated run's panel said the
+  gate was ABSENT, in a reason that reads like a data problem, while `resolvedBy` had been in
+  authority since D202 and in the receipt since D204. The fix is D144's shape once more — the READER
+  moves to the durable `gate_results` row and through D204's own declared arm table — and the
+  generalizable half is the DIVERGENCE it forces: the receipt REFUSES to derive over an undeclared
+  gate (it is the durable artifact), while the panel must still render the run it explains, so every
+  gap becomes a NAMED absence instead, including the one only the projection can create (a folded
+  `gate.resolved` with no durable row beside it). Two surfaces, one derivation, two different things
+  to do when it fails. **(2)** `done → verified-done` was mechanical, so a DRY RUN that wrote
+  nothing wore the label reserved for an independently verified real completion — while its own
+  receipt said `partial`/`unknown` and the authority schema carries `CHECK (result <>
+  'verified-done' OR confidence = 'verified')`. Nothing had to be invented: the receipt's `result`
+  enum already had `partial` and derives exactly that for a preview, so the fix reuses the verdict
+  and adds only `rehearsal` — the envelope fact D6 already puts on the queue row — with a refinement
+  making the forbidden pair unrepresentable rather than merely unwritten. **The habit both share:
+  when a label and a derived verdict describe the same run, make the surface read the derivation
+  instead of re-deriving a parallel one**, and when the two must differ, say so in the schema.
+  Side note worth keeping: this tree renders no React in the unit lane, so an operator-facing
+  sentence is only as pinned as the parity corpus unless you extract it — `terminalOutcomeText` is a
+  pure exported function for exactly that reason (D187's lesson from the other side).
 - **2026-08-18: an alert lane that lives inside the thing it reports on cannot report that thing's
   death — and machinery with zero producers is a surface doing another surface's job (D222).** The
   durable notification inbox, its dedupe fold and the bell existed since 2g/2i-B with NO production

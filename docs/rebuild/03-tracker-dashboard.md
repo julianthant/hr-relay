@@ -789,6 +789,54 @@ run — subjects frozen from the plan that was sent, because a band that printed
 nobody can read and re-deriving titles from the current day goes blank the moment a batch outlives
 its page.
 
+### D238 — a rehearsal's terminal outcome is never `verified-done` (2026-08-19)
+
+**The defect, observed on a real settled run.** `run-detail` mapped lifecycle `done →
+verified-done` mechanically, so the composed separations DRY RUN that reached its preview terminal
+on doc 4502 (separations §9.17, and again §9.20 on run `4ee84ac2`) rendered the label this product
+reserves for an **independently verified real completion** — while the receipt for the same run said
+`partial` / `unknown` with a load-bearing `DRY_RUN_PREVIEW` warning, and the authority schema itself
+carries `CHECK (result <> 'verified-done' OR confidence = 'verified')`. D210 named the gap as a
+carry-forward (*"the queue row and the timeline have no arm for a preview … Surfacing it on the
+queue row is a wire + UI change"*); §9.17 item 7(b) observed it on a settled preview. This closes
+it.
+
+**The verdict is the receipt's own, and there is no new tier.** A terminal `done` run whose OWN
+envelope asked for a dry run reached a PREVIEW terminal — nothing staged durably, no write intent,
+no fence, no commit — and it takes **`partial`**, which is exactly what `buildRunEvidenceReceipt`
+derives for it (its `completion.terminal-result` obligation is `unknown`, which makes `verified-done`
+structurally unreachable there, and its preview warning is load-bearing). The wire's `result` enum is
+unchanged and the confidence vocabulary is unchanged; the outcome arm gains only `rehearsal`, a
+statement about which KIND of run produced the verdict, restating the envelope fact D6 already puts
+on the queue row. A schema refinement makes `verified-done` beside `rehearsal` **unrepresentable**,
+so the pair cannot be re-derived by a later mapping.
+
+**Why the envelope is the right authority.** `dryRun` lives on the envelope and nowhere else (D6),
+is retained at plan time, and is the same fact D210's coherence check compares against the stored
+terminal row's preview schema hash. A run whose envelope and terminal record disagreed would be an
+incoherent record the receipt already refuses to describe; the panel does not re-litigate that, it
+reads the run's own flag.
+
+**`rehearsal` is `z.literal(true).optional()`.** Absence is the only other spelling of "not a
+rehearsal", so `false` would be a second one; and optional is D133 read-forward — a `RunDetailWire`
+frozen into an archived record before the field existed still parses, and its silence is not a claim
+that the run was real. Only the `done` arm can carry it: a dry run that **failed** or was
+**cancelled** reached no preview terminal, so `failed`/`cancelled` already say what happened and
+gain nothing.
+
+**What the operator sees.** The panel's outcome bar leads with the word — `dry run · partial ·
+09:20` — because `partial` alone reads as a run that half-worked, which is the opposite of what a
+clean rehearsal means; the verdict is only readable once you know which kind of run produced it. The
+sentence is an exported pure function (`terminalOutcomeText`) so it is pinned by a test rather than
+only by the parity corpus. D22's status vocabulary is untouched: `partial` still renders with the
+Done-with-warnings treatment, and the REAL `verified-done` path is unchanged in every particular.
+
+**Beside it, D237's decision record** (doc 12 owns the derivation): a settled gate now draws a
+DECISION RECORD in the run's own stream at its `resolvedAt`, in the same geometry as the open gate's
+decision card — verdict, approver, instant, all off one durable `gate_results` row. The card's tint
+carries the verdict and the chip goes loud only for a REFUSAL, because a rejected identity is the
+one an operator must not read past. Before this the panel drew a gate only while it was open, so a
+settled gated run said nothing about the one step a human performed.
 ---
 
 ## 0. What exists today (and what specifically hurts)

@@ -8,6 +8,7 @@
  * instead of hot-swapping the component.
  */
 import type { z } from "zod";
+import { fmtClock } from "./format.js";
 import type { RunDetailWireSchema } from "../../domain/dashboard/run-detail.js";
 import type { RunDetailSectionSchema } from "../../domain/dashboard/primitives.js";
 
@@ -45,4 +46,27 @@ export function defaultTabFor(detail: RunDetailWire): PanelTab {
   if (detail.outcome.state === "terminal" && detail.outcome.result === "failed") return pick("logs");
   if (detail.outcome.state === "terminal") return pick("receipt", "logs");
   return pick("logs", "receipt");
+}
+
+/**
+ * THE OUTCOME BAR'S WORDS for a settled run — D238.
+ *
+ * A REHEARSAL says so first. The bar states what the run came to, and for a dry
+ * run what it came to is a PREVIEW: nothing was written, nothing was fenced,
+ * and the verdict beside the word is `partial` rather than `verified-done`
+ * because the receipt for the same run derives exactly that. The word leads
+ * because the verdict is only readable once you know which kind of run produced
+ * it — `partial` alone reads as a run that half-worked, which is the opposite
+ * of what a clean rehearsal means.
+ *
+ * Exported as a pure function so the sentence is pinned by a test rather than
+ * only by a screenshot: this tree renders no React in the unit lane, and the
+ * one label that must never say `verified-done` for a preview is not a thing to
+ * leave to the parity corpus alone (D187's lesson, from the other side).
+ */
+export function terminalOutcomeText(
+  outcome: Extract<RunDetailWire["outcome"], { state: "terminal" }>,
+): string {
+  const rehearsal = outcome.rehearsal === true ? "dry run · " : "";
+  return `${rehearsal}${outcome.result} · ${fmtClock(outcome.completedAt)}`;
 }
