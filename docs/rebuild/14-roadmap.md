@@ -317,7 +317,7 @@ status: planned
 size: XL
 chip: 8 of 9 — the three commits wait for 08-28 (S7)
 
-> write-heavy — UCPath termination + Kuali finalization. The wrong-person incident (`T002173685`); the deepest write-safety proof, entered first by your choice (D193). Built bottom-up: store tasks first, one small provable sub-workflow per system interaction, then composed — lego recomposition, never conditional branches inside one monolith (§3.1/§3.2 directives). What remains is the calendar: canary 4537 is named and mapped, and S7 admits it on 2026-08-28; plus one notification wire square below.
+> write-heavy — UCPath termination + Kuali finalization. The wrong-person incident (`T002173685`); the deepest write-safety proof, entered first by your choice (D193). Built bottom-up: store tasks first, one small provable sub-workflow per system interaction, then composed — lego recomposition, never conditional branches inside one monolith (§3.1/§3.2 directives). What remains is the calendar: canary 4537 is named and mapped, and S7 admits it on 2026-08-28.
 
 needs:
 - dash-defaults
@@ -452,7 +452,7 @@ needs:
 | A8 | Close-out (§3.1 step 7) → separations **rebuild-ready** | after A2–A7 |
 #### Dashboard · wire separations {#sep-dash}
 status: active
-chip: 8 of 9 wired — the gate-park notification is the last square
+chip: 9 of 9 wired — every square filled (D262 closed the last)
 
 > What the generic surfaces learned about separations, and the two separations-specific things no default covers (the ALWAYS-GATE's ceremonies, the three commit contracts' ledger lines). Built with Track B as the forcing function, so most squares are already filled; the empty ones are wires not yet run — not sloppy surfaces.
 
@@ -464,7 +464,7 @@ builds:
 - [x] WIRE archive — separations' three commit contracts are the first `LEDGER_PRESENTATION_DECLARATIONS` entries (D223)
 - [x] WIRE explorer — field census, the declared `when` in words, the descriptor's prose (D227–D229)
 - [x] WIRE activity — separations in the per-workflow cross-tab + the write-ledger block (D236)
-- [ ] WIRE notifications — a park at the ALWAYS-GATE publishes a needs-you row to the durable inbox; today only `storage-degraded` has a publisher (D222; doc 03 §2.6)
+- [x] WIRE notifications — a park at the ALWAYS-GATE publishes a needs-you row to the durable inbox, by re-derivation over authority; the bell links to the run (D262)
 - [x] PROOF connection proof — every surface read against the real composed run, each UI assertion paired with authority (Track C, separations §9.22; five defects found and fixed same-day)
 
 needs:
