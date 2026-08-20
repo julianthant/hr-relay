@@ -566,6 +566,57 @@ and both exhaustive interpreters; it never creates a workflow-id switch or side 
 functions (`identity`, per-run presentation resolution, completion derives) stay in the validated
 descriptor and project only their resolved policy/data to the client.
 
+#### D260 — `inputRun` carries exactly ONE varying value per run, and `separations` needs two (2026-08-20)
+
+**The rule, stated once so no workflow re-derives it.** `InputParserSpec` splits operator text into
+entries and each entry emits **one** input field: `EntryRule.emit` is a single `InputFieldName`, and
+`parseInputRunText` composes `[{ field: rule.emit, value: <the entry text> }, ...constants]`.
+`constants[]` contributes the SAME value to every entry of every run, so it can only carry a value
+that does not vary per run — and a per-run value placed there would be a constant baked into a
+bundle-safe descriptor, which is the fabricated constant this tree bans. **Therefore a workflow is
+`inputRun`-startable iff its input schema has exactly one required field that varies per run.**
+`person-lookup` satisfies this (`emplId` OR `name`, with two boolean constants). It is a property of
+the INPUT SCHEMA, not a declaration a descriptor may choose.
+
+**`separations` does not, and it is not one decision away.** `SeparationsInput` requires three fields
+and **two of them vary per run**:
+
+| Field | Varies per run | Why it cannot leave the ingress |
+|---|---|---|
+| `documentNumber` | yes | It is the run's own CLAIM, proved against the document's level-1 heading before anything else runs. Dropping it deletes the check that catches a stale `actionId` — an `actionId` names a workflow STEP, not a document (2026-08-04, `src/stores/kuali/CLAUDE.md`) |
+| `actionId` | yes | It is the only address Kuali offers (`…/actions/<actionId>`). The reverse lookup is the Action List, whose whole `actionList.*` selector family is deliberately NOT ported |
+| `timekeeperName` | no (per operator) | Ingress by ratified decision (separations §9.16 6a-2); `config.operator.timekeeperName` exists and is deliberately unused |
+
+**No derivation is available, and the reason is structural rather than missing work.**
+`services/start/plan.ts` performs exactly ONE ingress parse per raw submission
+(`planning.parseInput(rawInput)`), with no I/O, no per-workflow enrichment seam and no resolution
+step — an ingress that could RESOLVE a value it was not given is the second, unaudited ingress path
+`src/domain/workflow/ingress.ts` refuses by name. A document-number → action-id lookup is a browser
+act, so it could only ever live in the graph, which is one node past where the input schema is
+parsed. And reversing the `timekeeperName` decision reaches **two** varying values, not one, so it
+does not unblock this and is not proposed.
+
+**The disposition: `separations.surfaces` stays `{}`, and the trigger is named.** The deferral ends
+when a run surface carries MORE THAN ONE typed value per run. Two shapes are available and the
+operator owns the choice:
+
+1. **A third `surfaces` arm** — a typed FORM over the existing `UploadFieldSpec` vocabulary
+   (`text`/`boolean`/`select`) with its existing exhaustive interpreter `resolveUploadFields`, minus
+   `uploadRun`'s mandatory `accepts[]`. The domain half is a union extension of the kind this section
+   already permits; the honest cost is that **no client renderer for `UploadFieldSpec` exists** —
+   `uploadRun` is declared by no registered workflow and `surfaces/run-start.tsx` renders it nowhere
+   — so the surface would be that vocabulary's first live consumer.
+2. **Make `actionId` a graph output rather than ingress** — a head node that resolves the action from
+   the document number through Kuali's Action List. This is a live selector port of a family the
+   Kuali store deliberately left behind, a new contract, a new driver capability and a graph change,
+   and it still leaves `timekeeperName` to be typed.
+
+**The descriptor is deliberately NOT edited to record this.** Its `surfaces: {}` comment already
+states the reason, and a `contractFingerprint` is hashed over file CONTENT — so a comment-only edit
+moves the fingerprint, and every checkpoint this database holds for `separations` stops replaying
+(separations §9.22 measured exactly that: `2c9cb58e…` ≠ `59830cf6…` forced a full live re-read).
+**Never spend a fingerprint on a change that buys no behavior.**
+
 **Fingerprint construction is build-manifest based, never `Function.toString()`.** Codegen hashes
 canonical relative-path + file-content tuples for the descriptor source and its bundle-safe
 transitive contract/domain dependency closure, plus canonical generated schema/projection JSON and
