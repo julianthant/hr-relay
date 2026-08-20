@@ -26,6 +26,30 @@ export type Requirement = z.infer<typeof RequirementSchema>;
 export const LayerSchema = z.enum(["frontend", "backend", "both", "wiring", "docs", "proof"]);
 export type Layer = z.infer<typeof LayerSchema>;
 
+/** `YYYY-MM-DD`. Calendar validity is checked by the parser, which owns the line number. */
+export const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/**
+ * A node's binding to the plan SSOT: which `docs/rebuild/NN-*.md` section owns
+ * the contract this node builds. `doc` is the two-digit document number,
+ * `section` the part after `§` (dotted numbers, a range, or a short heading
+ * slug), `raw` the ref exactly as it was written in the notation.
+ */
+export const DocRefSchema = z
+  .object({
+    doc: z.string().regex(/^(?:0\d|1[0-4])$/),
+    section: z.string().min(1).optional(),
+    raw: z.string().min(1),
+  })
+  .strict();
+export type DocRef = z.infer<typeof DocRefSchema>;
+
+/** One session's work on one node: what landed, by whom, when. Rendered newest-first. */
+export const LogEntrySchema = z
+  .object({ date: IsoDateSchema, session: z.string().min(1), text: z.string().min(1) })
+  .strict();
+export type LogEntry = z.infer<typeof LogEntrySchema>;
+
 /**
  * A feature is what a node BUILDS. The layer says WHERE it lives so a gap on a
  * surface can be read as "not built yet" versus "built, and sloppy": `frontend`
@@ -58,11 +82,13 @@ export interface Item {
   date?: string;
   chip?: Chip;
   size?: "S" | "M" | "L" | "XL";
+  docs?: DocRef[];
   desc?: string;
   features?: Feature[];
   requires?: Requirement[];
   table?: Table;
   notes?: string[];
+  log?: LogEntry[];
   items?: Item[];
 }
 
@@ -75,11 +101,13 @@ export const ItemSchema: z.ZodType<Item> = z.lazy(() =>
       date: z.string().optional(),
       chip: ChipSchema.optional(),
       size: z.enum(["S", "M", "L", "XL"]).optional(),
+      docs: z.array(DocRefSchema).min(1).optional(),
       desc: z.string().optional(),
       features: z.array(FeatureSchema).optional(),
       requires: z.array(RequirementSchema).optional(),
       table: TableSchema.optional(),
       notes: z.array(z.string().min(1)).optional(),
+      log: z.array(LogEntrySchema).min(1).optional(),
       items: z.array(ItemSchema).optional(),
     })
     .strict(),
@@ -97,12 +125,14 @@ export const PhaseNodeSchema = z
     title: z.string().min(1),
     chip: ChipSchema.optional(),
     size: z.enum(["S", "M", "L", "XL"]).optional(),
+    docs: z.array(DocRefSchema).min(1).optional(),
     summary: z.string().min(1),
     open: z.boolean(),
     features: z.array(FeatureSchema).optional(),
     requires: z.array(RequirementSchema).optional(),
     items: z.array(ItemSchema),
     notes: z.array(z.string().min(1)).optional(),
+    log: z.array(LogEntrySchema).min(1).optional(),
   })
   .strict();
 export type PhaseNode = z.infer<typeof PhaseNodeSchema>;
@@ -112,12 +142,23 @@ export const FlagNodeSchema = z
   .strict();
 export type FlagNode = z.infer<typeof FlagNodeSchema>;
 
+/**
+ * A dated session milestone on the spine — what one working session landed,
+ * as opposed to a `flag`, which is a ratified project milestone. Rendered
+ * distinctly (hollow dot, dashed pill) so the two are never confused.
+ */
+export const SessionNodeSchema = z
+  .object({ kind: z.literal("session"), date: IsoDateSchema, session: z.string().min(1), text: z.string().min(1) })
+  .strict();
+export type SessionNode = z.infer<typeof SessionNodeSchema>;
+
 export const TodayNodeSchema = z.object({ kind: z.literal("today"), text: z.string().min(1) }).strict();
 export type TodayNode = z.infer<typeof TodayNodeSchema>;
 
 export const SpineEntrySchema = z.discriminatedUnion("kind", [
   PhaseNodeSchema,
   FlagNodeSchema,
+  SessionNodeSchema,
   TodayNodeSchema,
 ]);
 export type SpineEntry = z.infer<typeof SpineEntrySchema>;
@@ -127,7 +168,7 @@ export const RoadmapSchema = z
     meta: z
       .object({
         title: z.string().min(1),
-        asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        asOf: IsoDateSchema,
         head: z.string().min(1),
         eyebrow: z.string().min(1),
         lede: z.string().min(1),

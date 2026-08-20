@@ -5,9 +5,11 @@ import { PLAN_SOURCE_PATH, parsePlan } from "./roadmap/parse-plan.js";
 import {
   RoadmapSchema,
   type Chip,
+  type DocRef,
   type Feature,
   type Item,
   type Layer,
+  type LogEntry,
   type PhaseNode,
   type Requirement,
   type Roadmap,
@@ -193,6 +195,39 @@ function renderNotes(notes: string[] | undefined): string {
   return notes.map((n) => `<p class="note${n.startsWith("!") ? " you" : ""}">${inline(n.replace(/^!/, ""))}</p>`).join("");
 }
 
+/**
+ * The node's binding to the plan SSOT, as a muted line under the drawer title.
+ * The site is ONE static file with no server behind it, so a ref is not a link
+ * — it is a `title` naming the file on disk, which is what a reader needs to
+ * open it. The glob stands in for the doc's slug on purpose: this renderer is
+ * pure, and reading `docs/rebuild/` to resolve `13` → `13-frontend-backend-
+ * integration.md` would put I/O in a function whose whole job is formatting.
+ */
+function renderDocs(docs: DocRef[] | undefined): string {
+  if (docs === undefined || docs.length === 0) return "";
+  const refs = docs.map((ref) => {
+    const file = `docs/rebuild/${ref.doc}-*.md`;
+    const title = ref.section === undefined ? file : `${file} §${ref.section}`;
+    return `<span class="docref" title="${escapeHtml(title)}">doc ${escapeHtml(ref.doc)}${ref.section === undefined ? "" : ` §${escapeHtml(ref.section)}`}</span>`;
+  });
+  return `<p class="docrefs">${refs.join(" · ")}</p>`;
+}
+
+/**
+ * What each session landed on this node, newest first. The sort is by date
+ * only and `Array.prototype.sort` is stable, so two entries dated the same day
+ * keep the order they were written in — the plan's own sequence, which is the
+ * only ordering the notation records within a day.
+ */
+function renderLog(log: LogEntry[] | undefined): string {
+  if (log === undefined || log.length === 0) return "";
+  const ordered = [...log].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const items = ordered
+    .map((entry) => `<li><span class="sd">${escapeHtml(entry.date)}</span> · <span class="ss">${escapeHtml(entry.session)}</span> — ${inline(entry.text)}</li>`)
+    .join("");
+  return `<div class="slog"><div class="dl">Session log</div><ul>${items}</ul></div>`;
+}
+
 // ─── the tree: every phase is a root on the time spine; its items branch right ─
 
 interface TreeNode {
@@ -204,6 +239,7 @@ interface TreeNode {
   whenSecondary: string | undefined;
   chip: Chip | undefined;
   size: Item["size"];
+  docs: DocRef[] | undefined;
   features: ResolvedFeature[];
   requires: Requirement[];
   detail: string;
@@ -228,6 +264,7 @@ const INDENT = 18;      // each nesting level steps right and narrows by this
 const PAD = 28;
 const BAND_GAP = 52;    // between phase bands
 const FLAG_H = 44;
+const SESSION_H = 52; // a flag's pill plus the "SESSION" eyebrow above it
 const TODAY_H = 40;
 const CHILD_X = PAD + NODE_W + 64; // tasks start to the right of the phase column
 const TRUNK_X = CHILD_X - 30;      // the bus line the task rows hang from
@@ -242,6 +279,7 @@ function buildItemNode(item: Item, parentKey: string, index: number, registry: M
     item.id === undefined ? "" : renderUnlocks(item.id, registry),
     renderTable(item.table),
     renderNotes(item.notes),
+    renderLog(item.log),
   ].join("");
   return {
     key,
@@ -252,6 +290,7 @@ function buildItemNode(item: Item, parentKey: string, index: number, registry: M
     whenSecondary: undefined,
     chip: item.chip,
     size: item.size,
+    docs: item.docs,
     features,
     requires: item.requires ?? [],
     detail,
@@ -268,6 +307,7 @@ function buildPhaseNode(node: PhaseNode, registry: Map<string, Registered>): Tre
     renderRequires(node.requires, registry),
     renderUnlocks(node.id, registry),
     renderNotes(node.notes),
+    renderLog(node.log),
   ].join("");
   return {
     key: node.id,
@@ -278,6 +318,7 @@ function buildPhaseNode(node: PhaseNode, registry: Map<string, Registered>): Tre
     whenSecondary: node.when.secondary,
     chip: node.chip,
     size: node.size,
+    docs: node.docs,
     features,
     requires: node.requires ?? [],
     detail,
@@ -389,11 +430,14 @@ function stackConnector(parent: TreeNode): string {
 }
 
 interface Band {
-  kind: "flag" | "today";
+  kind: "flag" | "session" | "today";
   top: number;
   status: Status;
   key: string;
   text: string;
+  /** `session` only: the day it landed and who was working. */
+  date?: string;
+  session?: string;
 }
 
 function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { svg: string; data: Record<string, { title: string; html: string; requires: string[]; unlocks: string[]; parent: string | null; children: string[] }> } {
@@ -401,6 +445,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
   const bands: Band[] = [];
   let cursor = PAD;
   let flagIndex = 0;
+  let sessionIndex = 0;
   for (const node of roadmap.spine) {
     if (node.kind === "phase") {
       const root = buildPhaseNode(node, registry);
@@ -411,6 +456,18 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
       flagIndex += 1;
       bands.push({ kind: "flag", top: cursor, status: node.status, key: `flag-${String(flagIndex)}`, text: node.text });
       cursor += FLAG_H + BAND_GAP / 2;
+    } else if (node.kind === "session") {
+      sessionIndex += 1;
+      bands.push({
+        kind: "session",
+        top: cursor,
+        status: "done",
+        key: `session-${String(sessionIndex)}`,
+        text: node.text,
+        date: node.date,
+        session: node.session,
+      });
+      cursor += SESSION_H + BAND_GAP / 2;
     } else {
       bands.push({ kind: "today", top: cursor, status: "active", key: "today", text: node.text });
       cursor += TODAY_H + BAND_GAP / 2;
@@ -460,7 +517,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
     )
     .join("");
 
-  // the spine through every phase root, plus flags / today bands
+  // the spine through every phase root, plus flag / session / today bands
   const firstRoot = roots[0];
   const lastRoot = roots[roots.length - 1];
   const spine = firstRoot === undefined || lastRoot === undefined
@@ -472,9 +529,17 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
         const y = band.top + TODAY_H / 2;
         return `<g class="today"><line x1="${N(PAD)}" y1="${N(y)}" x2="${N(width - PAD)}" y2="${N(y)}"/><circle cx="${N(spineX)}" cy="${N(y)}" r="7"/><text x="${N(spineX + 16)}" y="${N(y - 8)}">TODAY · ${escapeHtml(band.text)}</text></g>`;
       }
+      const pillW = N(Math.min(width - spineX - 14 - PAD, 760));
+      if (band.kind === "session") {
+        // a hollow dot and a SESSION eyebrow: a working session is not a
+        // ratified milestone, and the two must never read alike on the spine
+        const y = band.top + SESSION_H - FLAG_H / 2;
+        const label = wrapTitle(`${band.date ?? ""} · ${band.session ?? ""} — ${band.text.replace(/\*\*/g, "").replace(/`/g, "")}`, 110, 1)[0] ?? "";
+        return `<a class="nd sess" href="#${band.key}" data-key="${band.key}" aria-label="${escapeHtml(`Session — ${label}`)}"><g><circle cx="${N(spineX)}" cy="${N(y)}" r="6"/><text class="se" x="${N(spineX + 16)}" y="${N(band.top + 10)}">SESSION</text><rect x="${N(spineX + 14)}" y="${N(y - 14)}" width="${pillW}" height="28" rx="14"/><text x="${N(spineX + 28)}" y="${N(y)}" dy="0.35em">${escapeHtml(label)}</text></g></a>`;
+      }
       const y = band.top + FLAG_H / 2;
       const label = wrapTitle(band.text.replace(/\*\*/g, "").replace(/`/g, ""), 110, 1)[0] ?? "";
-      return `<a class="nd flag ${band.status}" href="#${band.key}" data-key="${band.key}" aria-label="${escapeHtml(label)}"><g><circle cx="${N(spineX)}" cy="${N(y)}" r="6"/><rect x="${N(spineX + 14)}" y="${N(y - 14)}" width="${N(Math.min(width - spineX - 14 - PAD, 760))}" height="28" rx="14"/><text x="${N(spineX + 28)}" y="${N(y)}" dy="0.35em">${escapeHtml(label)}</text></g></a>`;
+      return `<a class="nd flag ${band.status}" href="#${band.key}" data-key="${band.key}" aria-label="${escapeHtml(label)}"><g><circle cx="${N(spineX)}" cy="${N(y)}" r="6"/><rect x="${N(spineX + 14)}" y="${N(y - 14)}" width="${pillW}" height="28" rx="14"/><text x="${N(spineX + 28)}" y="${N(y)}" dy="0.35em">${escapeHtml(label)}</text></g></a>`;
     })
     .join("");
 
@@ -530,7 +595,9 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
     const header = `<div class="dh"><span class="chip ${node.status}">${node.status === "you" ? "needs you" : node.status}</span>${renderChip(chip, node.status)}${node.size === undefined ? "" : `<span class="size">${node.size}</span>`}${node.eyebrow === undefined ? "" : `<span class="eb2">${inline(node.eyebrow)}${node.kind === "phase" && node.whenSecondary !== undefined ? ` · ${inline(node.whenSecondary)}` : ""}</span>`}</div>`;
     data[node.key] = {
       title: node.title,
-      html: header + node.detail,
+      // title → chip/status line → doc: refs → summary → builds → needs →
+      // unlocks → table → notes → session log (the last six are `detail`)
+      html: header + renderDocs(node.docs) + node.detail,
       requires: node.requires.flatMap((r) => (r.kind === "node" ? [r.ref] : [])),
       unlocks: entry?.unlocks ?? [],
       parent: parentOf.get(node.key) ?? null,
@@ -538,8 +605,13 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
     };
   }
   for (const band of bands) {
-    if (band.kind !== "flag") continue;
-    data[band.key] = { title: "Milestone", html: `<p class="desc">${inline(band.text)}</p>`, requires: [], unlocks: [], parent: null, children: [] };
+    if (band.kind === "flag") {
+      data[band.key] = { title: "Milestone", html: `<p class="desc">${inline(band.text)}</p>`, requires: [], unlocks: [], parent: null, children: [] };
+      continue;
+    }
+    if (band.kind !== "session") continue;
+    const header = `<div class="dh"><span class="chip planned">session</span><span class="eb2">${escapeHtml(band.date ?? "")} · ${escapeHtml(band.session ?? "")}</span></div>`;
+    data[band.key] = { title: "Session", html: `${header}<p class="desc">${inline(band.text)}</p>`, requires: [], unlocks: [], parent: null, children: [] };
   }
   return { svg, data };
 }
@@ -641,6 +713,10 @@ const CSS = String.raw`
   .tree .fq.done{fill:var(--fg-3)} .tree .fq.frontend.done{fill:var(--info-mark)} .tree .fq.both.done{fill:var(--accent)} .tree .fq.wiring.done{fill:var(--warn-mark)} .tree .fq.backend.done{fill:var(--fg-3)} .tree .fq.docs.done,.tree .fq.proof.done{fill:var(--fg-4)}
   .tree .fq-more{fill:var(--fg-3);font-family:var(--mono);font-size:9px}
   .tree .flag rect{fill:var(--well);stroke:var(--line)} .tree .flag circle{fill:var(--ok-mark)} .tree .flag text{fill:var(--fg-2);font-size:11.5px}
+  /* a session is a working day, not a ratified milestone: hollow dot, dashed pill, its own eyebrow */
+  .tree .sess rect{fill:transparent;stroke:var(--line-strong);stroke-dasharray:4 3} .tree .sess circle{fill:var(--card);stroke:var(--fg-3);stroke-width:2}
+  .tree .sess text{fill:var(--fg-3);font-size:11.5px} .tree .sess .se{fill:var(--fg-4);font-family:var(--mono);font-size:9px;letter-spacing:.09em}
+  .tree .sess:hover rect{stroke:var(--fg-4)}
   .tree .today line{stroke:var(--accent);stroke-width:2;stroke-dasharray:6 5} .tree .today circle{fill:var(--accent)} .tree .today text{fill:var(--accent);font-family:var(--mono);font-size:10.5px;letter-spacing:.06em}
 
   /* ─ drawer fragments ─ */
@@ -670,6 +746,12 @@ const CSS = String.raw`
   th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
   td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--fg-2)} td:first-child{font-family:var(--mono);color:var(--fg-3);white-space:nowrap} td b{color:var(--fg)}
   tr.y td{background:var(--warn-quiet)} tr.y td:first-child{color:var(--warn);font-weight:500} tr.g td b{color:var(--ok)}
+  .docrefs{margin:-4px 0 10px;font-family:var(--mono);font-size:11px;color:var(--fg-4);line-height:1.7}
+  .docref{color:var(--fg-3);border-bottom:1px dotted var(--line-strong);cursor:help;white-space:nowrap}
+  .slog{margin-top:4px} .slog ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px}
+  .slog li{color:var(--fg-2);font-size:12.5px;padding-left:9px;border-left:2px solid var(--line)}
+  .slog .sd{font-family:var(--mono);font-size:11px;color:var(--fg-3);font-variant-numeric:tabular-nums}
+  .slog .ss{font-family:var(--mono);font-size:11px;color:var(--accent)}
   .note{margin:10px 0 0;padding:9px 12px;border-radius:8px;background:var(--well);border:1px solid var(--line);font-size:12.5px;color:var(--fg-2)}
   .note.you{border-color:var(--warn-mark);background:var(--warn-quiet)} .note.you b{color:var(--warn)}
   footer{padding:5px 16px;border-top:1px solid var(--line);font-size:11px;color:var(--fg-3);background:var(--card);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

@@ -11,13 +11,38 @@ import type { Layer, Status } from "./schema.js";
  *   # Title                      asOf: / head: / eyebrow: / footer: / source: (repeatable) / > lede
  *   tiles:  - Label | value | sub   (a leading "!" marks the hot tile)
  *   <!-- roadmap:start -->
- *   ## Phase title {#id}         phase: / status: / when: primary | secondary / size: / chip: / chip-tone: / open: yes|no
+ *   ## Phase title {#id}         phase: / status: / when: primary | secondary / size: / chip: / chip-tone: /
+ *                                doc: / open: yes|no
  *   > summary                    builds: - [x] BE text   needs: - id · - you: text · - you(met): text · - fact: text · - fact(met): text
- *   ### Task title {#id}         status: / date: / size: / chip: / chip-tone:     (#### and ##### nest further)
- *   > desc · builds: · needs: · note: text · note!: text · a markdown table whose first cell may start with ! (you) or ✓ (done)
- *   ## flag: when | text         a dated milestone on the spine
+ *   ### Task title {#id}         status: / date: / size: / chip: / chip-tone: / doc:     (#### and ##### nest further)
+ *   > desc · builds: · needs: · log: · note: text · note!: text · a markdown table whose first cell may start with ! (you) or ✓ (done)
+ *   ## flag: when | text         a ratified milestone on the spine
+ *   ## session: YYYY-MM-DD | session | text   a dated session milestone on the spine
  *   ## today: text               the TODAY rule
  *   <!-- roadmap:end -->         everything after is prose and is not rendered
+ *
+ * The three binding/journal shapes, in full:
+ *
+ *   doc: NN §x.y · NN §x.y–x.z · NN
+ *     An ATTRIBUTE line (so it sits in the attribute block under the heading,
+ *     beside `status:`), legal on a phase, a task or a sub-task. Its value is
+ *     one or more refs joined by " · ". A ref is a two-digit `docs/rebuild/`
+ *     document number (00–14), optionally followed by " §" and a section:
+ *     dotted numbers (`5.4`), a range (`5.4–5.6`), or a short heading slug
+ *     (`Phase-2`). Rendered as a muted `doc 13 §5 · doc 03 §2.6` line under the
+ *     drawer title. Absence is legal HERE — presence is a guard's business.
+ *
+ *   log:
+ *   - YYYY-MM-DD | <session> | <text>
+ *     A BLOCK, same grammar shape as `builds:` / `needs:`, legal on any node.
+ *     Exactly two " | " separators per line: a real ISO date, a non-empty
+ *     session name, and non-empty text (inline markup and D-numbers allowed).
+ *     Rendered newest-first as the drawer's last section, "Session log".
+ *
+ *   ## session: YYYY-MM-DD | <session> | <text>
+ *     A spine marker, like `## flag:` but for a working session rather than a
+ *     ratified milestone — same three fields as a `log:` line, drawn with a
+ *     hollow dot and a "SESSION" eyebrow so the two never read alike.
  *
  * Every line inside the region must be one of those shapes — anything else
  * fails loud with its line number.
@@ -29,22 +54,73 @@ const BOX_STATUS: Record<string, Status> = { x: "done", " ": "planned", "~": "ac
 const LAYER_TOKEN: Record<string, Layer> = { FE: "frontend", BE: "backend", BOTH: "both", WIRE: "wiring", DOCS: "docs", PROOF: "proof" };
 
 const HEADING_RE = /^(#{2,5}) (.*?)(?: \{#([a-z0-9][a-z0-9-]*)\})?\s*$/;
+/** `NN` or `NN §<section>`; NN is a two-digit `docs/rebuild/` number 00–14. */
+const DOC_REF_RE = /^(0\d|1[0-4])(?: §([A-Za-z0-9]+(?:[.\-–][A-Za-z0-9]+)*))?$/;
+
+interface RawDocRef {
+  doc: string;
+  section?: string;
+  raw: string;
+}
+
+interface RawLogEntry {
+  date: string;
+  session: string;
+  text: string;
+}
 
 interface RawNode {
   level: number;
   title: string;
   id: string | undefined;
   attrs: Record<string, string>;
+  docs: RawDocRef[];
   quote: string[];
   features: Record<string, unknown>[];
   requires: Record<string, unknown>[];
   notes: string[];
+  log: RawLogEntry[];
   table: { columns: string[]; rows: Record<string, unknown>[] } | undefined;
   items: RawNode[];
 }
 
 function fail(lineNo: number, message: string): never {
   throw new Error(`${PLAN_SOURCE_PATH}:${String(lineNo)}: ${message}`);
+}
+
+/** `YYYY-MM-DD` AND a real calendar day — `2026-02-31` parses as a date object and is not one. */
+function isRealIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return parsed.toISOString().slice(0, 10) === value;
+}
+
+function parseDocRefs(value: string, lineNo: number): RawDocRef[] {
+  const refs = value.split(" · ").map((ref) => ref.trim());
+  return refs.map((raw) => {
+    const match = DOC_REF_RE.exec(raw);
+    if (match === null) {
+      fail(lineNo, `a doc: ref must be "NN", "NN §x.y" or "NN §x.y–x.z" with NN a two-digit docs/rebuild number 00–14, refs joined by " · ": "${raw}"`);
+    }
+    const section = match[2];
+    return { doc: match[1] ?? "", ...(section === undefined ? {} : { section }), raw };
+  });
+}
+
+/** One `- YYYY-MM-DD | <session> | <text>` line: exactly two " | " separators, a real date, both halves non-empty. */
+function parseDatedEntry(body: string, lineNo: number, what: string, shape: string): RawLogEntry {
+  const parts = body.split(" | ");
+  if (parts.length !== 3) {
+    fail(lineNo, `${what} must carry exactly two " | " separators (${shape}): "${body}"`);
+  }
+  const date = (parts[0] ?? "").trim();
+  const session = (parts[1] ?? "").trim();
+  const text = (parts[2] ?? "").trim();
+  if (!isRealIsoDate(date)) fail(lineNo, `${what} needs a real ISO date (YYYY-MM-DD) first: "${date}"`);
+  if (session.length === 0) fail(lineNo, `${what} needs a non-empty session name between the separators: "${body}"`);
+  if (text.length === 0) fail(lineNo, `${what} needs non-empty text after the second separator: "${body}"`);
+  return { date, session, text };
 }
 
 export function parsePlan(text: string): unknown {
@@ -85,7 +161,7 @@ export function parsePlan(text: string): unknown {
   const spine: unknown[] = [];
   const stack: RawNode[] = [];
   let current: RawNode | undefined;
-  let mode: "attrs" | "body" | "builds" | "needs" | "table" = "body";
+  let mode: "attrs" | "body" | "builds" | "needs" | "log" | "table" = "body";
 
   const finishNode = (): void => {
     // nothing to do eagerly; nodes are attached on creation
@@ -108,13 +184,20 @@ export function parsePlan(text: string): unknown {
         stack.length = 0;
         continue;
       }
+      if (level === 2 && title.startsWith("session: ")) {
+        const entry = parseDatedEntry(title.slice(9).trim(), lineNo, "a session marker", '"## session: YYYY-MM-DD | <session> | <text>"');
+        spine.push({ kind: "session", ...entry });
+        current = undefined;
+        stack.length = 0;
+        continue;
+      }
       if (level === 2 && title.startsWith("today: ")) {
         spine.push({ kind: "today", text: title.slice(7).trim() });
         current = undefined;
         stack.length = 0;
         continue;
       }
-      const node: RawNode = { level, title, id, attrs: {}, quote: [], features: [], requires: [], notes: [], table: undefined, items: [] };
+      const node: RawNode = { level, title, id, attrs: {}, docs: [], quote: [], features: [], requires: [], notes: [], log: [], table: undefined, items: [] };
       if (level === 2) {
         if (id === undefined) fail(lineNo, `phase "${title}" needs an {#id}`);
         stack.length = 0;
@@ -138,11 +221,22 @@ export function parsePlan(text: string): unknown {
     if (line.trim().length === 0) { if (mode !== "table") mode = "body"; else mode = "body"; continue; }
     if (mode === "attrs") {
       const kv = /^([a-z-]+): (.*)$/.exec(line);
-      if (kv !== null && !line.startsWith("note")) { current.attrs[kv[1] ?? ""] = (kv[2] ?? "").trim(); continue; }
+      if (kv !== null && !line.startsWith("note")) {
+        const key = kv[1] ?? "";
+        const value = (kv[2] ?? "").trim();
+        if (key === "doc") {
+          if (current.docs.length > 0) fail(lineNo, `node "${current.title}" already carries a doc: line — join refs with " · " on one line`);
+          current.docs = parseDocRefs(value, lineNo);
+          continue;
+        }
+        current.attrs[key] = value;
+        continue;
+      }
       mode = "body";
     }
     if (line === "builds:") { mode = "builds"; continue; }
     if (line === "needs:") { mode = "needs"; continue; }
+    if (line === "log:") { mode = "log"; continue; }
     if (mode === "builds") {
       const f = /^- \[(x| |~|\?|-|!)\] (FE|BE|BOTH|WIRE|DOCS|PROOF) (.+)$/.exec(line);
       if (f === null) fail(lineNo, `a builds: line must be "- [x| |~|?|-|!] LAYER text": "${line}"`);
@@ -155,6 +249,12 @@ export function parsePlan(text: string): unknown {
       const ref = /^- ([a-z0-9][a-z0-9-]*)$/.exec(line);
       if (ref === null) fail(lineNo, `a needs: line must be "- <id>", "- you: text", "- you(met): text", "- fact: text" or "- fact(met): text": "${line}"`);
       current.requires.push({ kind: "node", ref: ref[1] });
+      continue;
+    }
+    if (mode === "log") {
+      const entry = /^- (.+)$/.exec(line);
+      if (entry === null) fail(lineNo, `a log: line must be "- YYYY-MM-DD | <session> | <text>": "${line}"`);
+      current.log.push(parseDatedEntry((entry[1] ?? "").trim(), lineNo, "a log: line", '"- YYYY-MM-DD | <session> | <text>"'));
       continue;
     }
     if (line.startsWith("> ")) { current.quote.push(line.slice(2).trim()); continue; }
@@ -185,11 +285,13 @@ export function parsePlan(text: string): unknown {
       ...(node.attrs.date === undefined ? {} : { date: node.attrs.date }),
       ...(chip === undefined ? {} : { chip }),
       ...(node.attrs.size === undefined ? {} : { size: node.attrs.size }),
+      ...(node.docs.length === 0 ? {} : { docs: node.docs }),
       ...(node.quote.length === 0 ? {} : { desc: node.quote.join(" ") }),
       ...(node.features.length === 0 ? {} : { features: node.features }),
       ...(node.requires.length === 0 ? {} : { requires: node.requires }),
       ...(node.table === undefined ? {} : { table: node.table }),
       ...(node.notes.length === 0 ? {} : { notes: node.notes }),
+      ...(node.log.length === 0 ? {} : { log: node.log }),
       ...(node.items.length === 0 ? {} : { items: node.items.map(toItem) }),
     };
   };
@@ -205,12 +307,14 @@ export function parsePlan(text: string): unknown {
       title: node.title,
       ...(chip === undefined ? {} : { chip }),
       ...(node.attrs.size === undefined ? {} : { size: node.attrs.size }),
+      ...(node.docs.length === 0 ? {} : { docs: node.docs }),
       summary: node.quote.join(" "),
       open: node.attrs.open === "yes",
       ...(node.features.length === 0 ? {} : { features: node.features }),
       ...(node.requires.length === 0 ? {} : { requires: node.requires }),
       items: node.items.map(toItem),
       ...(node.notes.length === 0 ? {} : { notes: node.notes }),
+      ...(node.log.length === 0 ? {} : { log: node.log }),
     };
   };
   return {
