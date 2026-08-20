@@ -4,7 +4,7 @@
     "asOf": "2026-08-20",
     "head": "5f6713f",
     "eyebrow": "hr-automation-rebuild · derived view · single source: docs/roadmap/roadmap.json",
-    "lede": "The ground-up rebuild of UCSD's UCPath HR automation, as a timeline and a dependency tree. **Phases 0–2 are complete** — the platform is built and proven. **Phase 3** migrates the 13 remaining legacy workflows one at a time and entered at **separations**. Legacy stays the sole production authority until one all-at-once cutover. Every node lists what it **builds** and what it **needs**; the tree at the bottom shows what unlocks what.",
+    "lede": "The ground-up rebuild of UCSD's UCPath HR automation, drawn as a tree. **Phases 0–2 are complete** — the platform is built and proven; **Phase 3** migrates the 13 remaining legacy workflows one at a time and entered at **separations**; legacy stays the sole production authority until one all-at-once cutover. Every box shows what it **builds** (by layer, filled when built) and what it **needs** — select one for detail, hover to light up what it unlocks.",
     "sources": [
       "Merges `ROADMAP.md` · `docs/rebuild/07-master-plan.md` (§2 phases, §3.3 order, §3.7 sizes)",
       "`docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)",

@@ -218,15 +218,11 @@ function requirementMet(requirement: Requirement, registry: Map<string, Register
   return requirement.met;
 }
 
-// ─── html rendering ────────────────────────────────────────────────────────
+// ─── drawer fragments (the node's full detail, shown beside the canvas) ────
 
 function renderChip(chip: z.infer<typeof ChipSchema> | undefined, fallback: Status): string {
   if (chip === undefined) return "";
   return `<span class="chip ${chip.tone ?? fallback}">${inline(chip.text)}</span>`;
-}
-
-function renderSize(size: Item["size"]): string {
-  return size === undefined ? "" : `<span class="size">${size}</span>`;
 }
 
 function renderRequires(requires: Requirement[] | undefined, registry: Map<string, Registered>): string {
@@ -236,7 +232,7 @@ function renderRequires(requires: Requirement[] | undefined, registry: Map<strin
     if (requirement.kind === "node") {
       const target = registry.get(requirement.ref);
       const title = target === undefined ? requirement.ref : target.title;
-      return `<a class="req ${met ? "met" : "open"}" href="#${requirement.ref}"><i>${met ? "✓" : "○"}</i>${inline(title)}</a>`;
+      return `<a class="req ${met ? "met" : "open"}" href="#${requirement.ref}" data-go="${requirement.ref}"><i>${met ? "✓" : "○"}</i>${inline(title)}</a>`;
     }
     const cls = requirement.kind === "you" ? (met ? "met" : "you") : met ? "met" : "open";
     const glyph = requirement.kind === "you" ? (met ? "✓" : "!") : met ? "✓" : "○";
@@ -245,13 +241,12 @@ function renderRequires(requires: Requirement[] | undefined, registry: Map<strin
   return `<div class="deps"><span class="dl">Needs</span>${chips.join("")}</div>`;
 }
 
-function renderUnlocks(id: string | undefined, registry: Map<string, Registered>): string {
-  if (id === undefined) return "";
+function renderUnlocks(id: string, registry: Map<string, Registered>): string {
   const entry = registry.get(id);
   if (entry === undefined || entry.unlocks.length === 0) return "";
   const chips = entry.unlocks.map((target) => {
     const t = registry.get(target);
-    return `<a class="req unl" href="#${target}"><i>→</i>${inline(t?.title ?? target)}</a>`;
+    return `<a class="req unl" href="#${target}" data-go="${target}"><i>→</i>${inline(t?.title ?? target)}</a>`;
   });
   return `<div class="deps"><span class="dl">Unlocks</span>${chips.join("")}</div>`;
 }
@@ -265,19 +260,29 @@ const LAYER_LABEL: Record<Layer, string> = {
   proof: "PROOF",
 };
 
-function renderFeatures(features: Feature[] | undefined, status: Status): string {
-  if (features === undefined || features.length === 0) return "";
-  const resolved = features.map((f) => (typeof f === "string" ? { text: f, layer: undefined, status } : { ...f, status: f.status ?? status }));
-  const built = resolved.filter((f) => f.status === "done").length;
-  const rollup = status === "done" ? "" : ` <span class="cnt">${String(built)}/${String(resolved.length)} built</span>`;
+interface ResolvedFeature {
+  text: string;
+  layer: Layer | undefined;
+  status: Status;
+}
+
+function resolveFeatures(features: Feature[] | undefined, status: Status): ResolvedFeature[] {
+  if (features === undefined) return [];
+  return features.map((f) => (typeof f === "string" ? { text: f, layer: undefined, status } : { text: f.text, layer: f.layer, status: f.status ?? status }));
+}
+
+function renderFeatures(features: ResolvedFeature[], status: Status): string {
+  if (features.length === 0) return "";
+  const built = features.filter((f) => f.status === "done").length;
+  const rollup = status === "done" ? "" : ` <span class="cnt">${String(built)}/${String(features.length)} built</span>`;
   const label = status === "done" ? "Built" : status === "never" ? "Would build" : "Builds";
-  const items = resolved
+  const items = features
     .map((f) => {
       const layer = f.layer === undefined ? "" : `<span class="lay ${f.layer}">${LAYER_LABEL[f.layer]}</span>`;
       return `<li class="${f.status}"><i class="fm ${f.status}"></i>${layer}${inline(f.text)}</li>`;
     })
     .join("");
-  return `<div class="feat"><span class="dl">${label}${rollup}</span><ul>${items}</ul></div>`;
+  return `<div class="feat"><div class="dl">${label}${rollup}</div><ul>${items}</ul></div>`;
 }
 
 function renderTable(table: z.infer<typeof TableSchema> | undefined): string {
@@ -297,142 +302,120 @@ function renderNotes(notes: string[] | undefined): string {
   return notes.map((n) => `<p class="note${n.startsWith("!") ? " you" : ""}">${inline(n.replace(/^!/, ""))}</p>`).join("");
 }
 
-function renderItem(item: Item, registry: Map<string, Registered>): string {
-  const anchor = item.id === undefined ? "" : ` id="${item.id}"`;
-  const cls = item.status === "you" ? ' class="leaf-you"' : "";
-  const date = item.date === undefined ? "" : `<span class="d">${inline(item.date)}</span>`;
-  const children = item.items === undefined || item.items.length === 0
-    ? ""
-    : `<ul>${item.items.map((child) => renderItem(child, registry)).join("")}</ul>`;
-  return `<li${anchor}${cls}>
-<div class="row"><i class="mark ${item.status}"></i><span class="n">${inline(item.title)}</span>${date}${renderChip(item.chip, item.status)}${renderSize(item.size)}</div>
-${item.desc === undefined ? "" : `<p class="desc">${inline(item.desc)}</p>`}
-${renderFeatures(item.features, item.status)}
-${renderRequires(item.requires, registry)}
-${renderUnlocks(item.id, registry)}
-${renderTable(item.table)}
-${renderNotes(item.notes)}
-${children}
-</li>`;
-}
+// ─── the tree: every phase is a root on the time spine; its items branch right ─
 
-function renderPhase(node: PhaseNode, registry: Map<string, Registered>): string {
-  const when = `<div class="when"><b>${inline(node.when.primary)}</b>${node.when.secondary === undefined ? "" : inline(node.when.secondary)}</div>`;
-  return `<article class="node ${node.status}" id="${node.id}">
-${when}
-<span class="dot" aria-hidden="true"></span>
-<details class="card"${node.open ? " open" : ""}>
-<summary>
-<div class="ttl"><span class="ph">${inline(node.phase)}</span> ${inline(node.title)} ${renderChip(node.chip, node.status)} ${renderSize(node.size)}</div>
-<span class="chev">▶</span>
-<div class="sub">${inline(node.summary)}</div>
-</summary>
-<div class="body">
-${renderFeatures(node.features, node.status)}
-${renderRequires(node.requires, registry)}
-${renderUnlocks(node.id, registry)}
-<ul class="tree">${node.items.map((item) => renderItem(item, registry)).join("")}</ul>
-${renderNotes(node.notes)}
-</div>
-</details>
-</article>`;
-}
-
-// ─── the dependency tree (talent-tree view), laid out in columns by depth ──
-
-interface GraphNode {
+interface TreeNode {
   key: string;
-  title: string;
+  kind: "phase" | "item" | "flag";
   status: Status;
-  shape: "box" | "you";
+  title: string;
+  eyebrow: string | undefined;
+  chip: z.infer<typeof ChipSchema> | undefined;
+  size: Item["size"];
+  features: ResolvedFeature[];
+  requires: Requirement[];
+  detail: string;
+  children: TreeNode[];
   depth: number;
-  row: number;
-  href: string | undefined;
-  available: boolean;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rowCenter: number;
 }
 
-function layoutGraph(registry: Map<string, Registered>): { nodes: GraphNode[]; edges: [string, string][] } {
-  const participating = new Set<string>();
-  for (const entry of registry.values()) {
-    if (entry.requires.length > 0 || entry.unlocks.length > 0) participating.add(entry.id);
-  }
-  const depthMemo = new Map<string, number>();
-  const depthOf = (id: string, trail: string[]): number => {
-    const memo = depthMemo.get(id);
-    if (memo !== undefined) return memo;
-    if (trail.includes(id)) throw new Error(`roadmap.json: dependency cycle ${[...trail, id].join(" → ")}`);
-    const entry = registry.get(id);
-    if (entry === undefined) throw new Error(`roadmap.json: unknown id "${id}"`);
-    let depth = 0;
-    for (const requirement of entry.requires) {
-      if (requirement.kind === "node") depth = Math.max(depth, depthOf(requirement.ref, [...trail, id]) + 1);
-      else depth = Math.max(depth, 1);
-    }
-    depthMemo.set(id, depth);
-    return depth;
+const NODE_W = 224;
+const NODE_H = 60;
+const PHASE_H = 88;
+const COL_W = 270;
+const ROW_H = 80;
+const PAD = 28;
+const PHASE_GAP = 44;
+const FLAG_H = 46;
+const TODAY_H = 40;
+
+function buildItemNode(item: Item, parentKey: string, index: number, registry: Map<string, Registered>): TreeNode {
+  const key = item.id ?? `${parentKey}-${String(index + 1)}`;
+  const features = resolveFeatures(item.features, item.status);
+  const detail = [
+    item.desc === undefined ? "" : `<p class="desc">${inline(item.desc)}</p>`,
+    renderFeatures(features, item.status),
+    renderRequires(item.requires, registry),
+    item.id === undefined ? "" : renderUnlocks(item.id, registry),
+    renderTable(item.table),
+    renderNotes(item.notes),
+  ].join("");
+  return {
+    key,
+    kind: "item",
+    status: item.status,
+    title: item.title,
+    eyebrow: item.date,
+    chip: item.chip,
+    size: item.size,
+    features,
+    requires: item.requires ?? [],
+    detail,
+    children: (item.items ?? []).map((child, i) => buildItemNode(child, key, i, registry)),
+    depth: 0, x: 0, y: 0, w: NODE_W, h: NODE_H, rowCenter: 0,
   };
-  const nodes: GraphNode[] = [];
-  const edges: [string, string][] = [];
-  const ordered = [...registry.values()].filter((e) => participating.has(e.id)).sort((a, b) => a.order - b.order);
-  for (const entry of ordered) {
-    const depth = depthOf(entry.id, []);
-    const available = entry.requires.every((r) => requirementMet(r, registry));
-    nodes.push({ key: entry.id, title: entry.title, status: entry.status, shape: "box", depth, row: 0, href: `#${entry.id}`, available });
-    entry.requires.forEach((requirement, index) => {
-      if (requirement.kind === "node") {
-        edges.push([requirement.ref, entry.id]);
-        return;
-      }
-      const key = `${entry.id}__req${String(index)}`;
-      nodes.push({
-        key,
-        title: requirement.text,
-        status: requirement.met ? "done" : requirement.kind === "you" ? "you" : "planned",
-        shape: requirement.kind === "you" ? "you" : "box",
-        depth: Math.max(0, depth - 1),
-        row: 0,
-        href: `#${entry.id}`,
-        available: requirement.met,
-      });
-      edges.push([key, entry.id]);
-    });
-  }
-  // Rows: a three-sweep barycenter ordering (left→right on predecessors,
-  // right→left on successors, left→right again) keeps an edge short and a
-  // prerequisite beside the thing it unlocks, instead of document order.
-  const byKey = new Map(nodes.map((n) => [n.key, n] as const));
-  const preds = new Map<string, string[]>();
-  const succs = new Map<string, string[]>();
-  for (const [from, to] of edges) {
-    preds.set(to, [...(preds.get(to) ?? []), from]);
-    succs.set(from, [...(succs.get(from) ?? []), to]);
-  }
-  const maxDepth = Math.max(...nodes.map((n) => n.depth));
-  const columns = new Map<number, GraphNode[]>();
-  for (const node of nodes) columns.set(node.depth, [...(columns.get(node.depth) ?? []), node]);
-  const assignRows = (column: GraphNode[]): void => column.forEach((node, index) => { node.row = index; });
-  for (const column of columns.values()) assignRows(column);
-  const barycenter = (node: GraphNode, neighbours: Map<string, string[]>): number | undefined => {
-    const rows = (neighbours.get(node.key) ?? []).map((k) => byKey.get(k)?.row).filter((r): r is number => r !== undefined);
-    return rows.length === 0 ? undefined : rows.reduce((a, b) => a + b, 0) / rows.length;
-  };
-  const sweep = (depths: number[], neighbours: Map<string, string[]>): void => {
-    for (const depth of depths) {
-      const column = columns.get(depth);
-      if (column === undefined) continue;
-      const keyed = column.map((node, index) => ({ node, bary: barycenter(node, neighbours) ?? node.row, index }));
-      keyed.sort((a, b) => a.bary - b.bary || a.index - b.index);
-      assignRows(keyed.map((k) => k.node));
-    }
-  };
-  const ascending = Array.from({ length: maxDepth + 1 }, (_v, i) => i);
-  sweep(ascending, preds);
-  sweep([...ascending].reverse(), succs);
-  sweep(ascending, preds);
-  return { nodes, edges };
 }
 
-function wrapTitle(title: string, width: number): string[] {
+function buildPhaseNode(node: PhaseNode, registry: Map<string, Registered>): TreeNode {
+  const features = resolveFeatures(node.features, node.status);
+  const detail = [
+    `<p class="desc">${inline(node.summary)}</p>`,
+    renderFeatures(features, node.status),
+    renderRequires(node.requires, registry),
+    renderUnlocks(node.id, registry),
+    renderNotes(node.notes),
+  ].join("");
+  return {
+    key: node.id,
+    kind: "phase",
+    status: node.status,
+    title: node.title,
+    eyebrow: `${node.phase} · ${node.when.primary}${node.when.secondary === undefined ? "" : ` · ${node.when.secondary}`}`,
+    chip: node.chip,
+    size: node.size,
+    features,
+    requires: node.requires ?? [],
+    detail,
+    children: node.items.map((item, i) => buildItemNode(item, node.id, i, registry)),
+    depth: 0, x: 0, y: 0, w: NODE_W, h: PHASE_H, rowCenter: 0,
+  };
+}
+
+function leafRows(node: TreeNode): number {
+  return node.children.length === 0 ? 1 : node.children.reduce((sum, child) => sum + leafRows(child), 0);
+}
+
+/** Tidy left→right placement: leaves take consecutive rows, a parent sits at the centre of its children. */
+function place(node: TreeNode, depth: number, startRow: number, blockTop: number): void {
+  node.depth = depth;
+  node.x = PAD + depth * COL_W;
+  if (node.children.length === 0) {
+    node.rowCenter = startRow + 0.5;
+  } else {
+    let row = startRow;
+    for (const child of node.children) {
+      place(child, depth + 1, row, blockTop);
+      row += leafRows(child);
+    }
+    const first = node.children[0];
+    const last = node.children[node.children.length - 1];
+    node.rowCenter = first === undefined || last === undefined ? startRow + 0.5 : (first.rowCenter + last.rowCenter) / 2;
+  }
+  node.y = blockTop + node.rowCenter * ROW_H - node.h / 2;
+}
+
+function flatten(node: TreeNode, into: TreeNode[]): TreeNode[] {
+  into.push(node);
+  for (const child of node.children) flatten(child, into);
+  return into;
+}
+
+function wrapTitle(title: string, width: number, maxLines: number): string[] {
   const words = title.split(/\s+/);
   const lines: string[] = [];
   let current = "";
@@ -446,64 +429,153 @@ function wrapTitle(title: string, width: number): string[] {
     }
   }
   if (current.length > 0) lines.push(current);
-  if (lines.length > 2) {
-    const tail = lines.slice(1).join(" ");
-    return [lines[0] ?? "", `${tail.slice(0, width - 1)}…`];
+  if (lines.length > maxLines) {
+    const kept = lines.slice(0, maxLines);
+    const lastIndex = maxLines - 1;
+    kept[lastIndex] = `${(kept[lastIndex] ?? "").slice(0, width - 1)}…`;
+    return kept;
   }
   return lines;
 }
 
-function renderGraph(registry: Map<string, Registered>): string {
-  const { nodes, edges } = layoutGraph(registry);
-  if (nodes.length === 0) return "";
-  const colW = 236;
-  const rowH = 74;
-  const boxW = 196;
-  const boxH = 50;
-  const padX = 20;
-  const padY = 16;
-  const maxDepth = Math.max(...nodes.map((n) => n.depth));
-  const maxRows = Math.max(...nodes.map((n) => n.row)) + 1;
-  const width = padX * 2 + (maxDepth + 1) * colW - (colW - boxW);
-  const height = padY * 2 + maxRows * rowH - (rowH - boxH);
-  const position = (node: GraphNode): { x: number; y: number } => ({
-    x: padX + node.depth * colW,
-    y: padY + node.row * rowH,
-  });
-  const byKey = new Map(nodes.map((n) => [n.key, n] as const));
-  const edgeSvg = edges
-    .map(([from, to]) => {
-      const a = byKey.get(from);
-      const b = byKey.get(to);
-      if (a === undefined || b === undefined) return "";
-      const pa = position(a);
-      const pb = position(b);
-      const x1 = pa.x + boxW;
-      const y1 = pa.y + boxH / 2;
-      const x2 = pb.x;
-      const y2 = pb.y + boxH / 2;
-      const dx = Math.max(24, (x2 - x1) / 2);
-      const met = a.status === "done";
-      return `<path class="edge ${met ? "met" : "open"}" d="M${String(x1)},${String(y1)} C${String(x1 + dx)},${String(y1)} ${String(x2 - dx)},${String(y2)} ${String(x2)},${String(y2)}"/>`;
+const N = (value: number): string => String(Math.round(value * 10) / 10);
+
+function connector(x1: number, y1: number, x2: number, y2: number): string {
+  const dx = Math.max(28, Math.abs(x2 - x1) / 2);
+  return `M${N(x1)},${N(y1)} C${N(x1 + dx)},${N(y1)} ${N(x2 - dx)},${N(y2)} ${N(x2)},${N(y2)}`;
+}
+
+interface Band {
+  kind: "flag" | "today";
+  top: number;
+  status: Status;
+  key: string;
+  text: string;
+}
+
+function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { svg: string; data: Record<string, { title: string; html: string; requires: string[]; unlocks: string[]; parent: string | null; children: string[] }> } {
+  const roots: TreeNode[] = [];
+  const bands: Band[] = [];
+  let cursor = PAD;
+  let flagIndex = 0;
+  for (const node of roadmap.spine) {
+    if (node.kind === "phase") {
+      const root = buildPhaseNode(node, registry);
+      const rows = leafRows(root);
+      const height = Math.max(rows * ROW_H, PHASE_H + 8);
+      place(root, 0, 0, cursor + (height - rows * ROW_H) / 2);
+      roots.push(root);
+      cursor += height + PHASE_GAP;
+    } else if (node.kind === "flag") {
+      flagIndex += 1;
+      bands.push({ kind: "flag", top: cursor, status: node.status, key: `flag-${String(flagIndex)}`, text: node.text });
+      cursor += FLAG_H + PHASE_GAP / 2;
+    } else {
+      bands.push({ kind: "today", top: cursor, status: "active", key: "today", text: node.text });
+      cursor += TODAY_H + PHASE_GAP / 2;
+    }
+  }
+  const all = roots.flatMap((root) => flatten(root, []));
+  const maxDepth = Math.max(...all.map((n) => n.depth));
+  const width = PAD * 2 + maxDepth * COL_W + NODE_W;
+  const height = cursor;
+  const byKey = new Map(all.map((n) => [n.key, n] as const));
+  const spineX = PAD + NODE_W / 2;
+
+  // tree edges (containment)
+  const treeEdges = all
+    .flatMap((parent) => parent.children.map((child) => `<path class="te" d="${connector(parent.x + parent.w, parent.y + parent.h / 2, child.x, child.y + child.h / 2)}"/>`))
+    .join("");
+
+  // prerequisite edges (shown on hover/selection, or all at once)
+  const reqEdges = all
+    .flatMap((node) =>
+      node.requires.flatMap((requirement) => {
+        if (requirement.kind !== "node") return [];
+        const from = byKey.get(requirement.ref);
+        if (from === undefined) return [];
+        const met = from.status === "done";
+        return [`<path class="rq ${met ? "met" : "open"}" data-from="${from.key}" data-to="${node.key}" d="${connector(from.x + from.w, from.y + from.h / 2, node.x, node.y + node.h / 2)}"/>`];
+      }),
+    )
+    .join("");
+
+  // the spine through every phase root, plus flags / today bands
+  const firstRoot = roots[0];
+  const lastRoot = roots[roots.length - 1];
+  const spine = firstRoot === undefined || lastRoot === undefined
+    ? ""
+    : `<line class="spine" x1="${N(spineX)}" y1="${N(firstRoot.y + firstRoot.h / 2)}" x2="${N(spineX)}" y2="${N(lastRoot.y + lastRoot.h / 2)}"/>`;
+  const bandSvg = bands
+    .map((band) => {
+      if (band.kind === "today") {
+        const y = band.top + TODAY_H / 2;
+        return `<g class="today"><line x1="${N(PAD)}" y1="${N(y)}" x2="${N(width - PAD)}" y2="${N(y)}"/><circle cx="${N(spineX)}" cy="${N(y)}" r="7"/><text x="${N(spineX + 16)}" y="${N(y - 7)}">TODAY · ${escapeHtml(band.text)}</text></g>`;
+      }
+      const y = band.top + FLAG_H / 2;
+      const label = wrapTitle(band.text.replace(/\*\*/g, "").replace(/`/g, ""), 88, 1)[0] ?? "";
+      return `<a class="nd flag ${band.status}" href="#${band.key}" data-key="${band.key}" aria-label="${escapeHtml(label)}"><g><circle cx="${N(spineX)}" cy="${N(y)}" r="6"/><rect x="${N(spineX + 14)}" y="${N(y - 13)}" width="${N(width - spineX - 14 - PAD)}" height="26" rx="13"/><text x="${N(spineX + 26)}" y="${N(y)}" dy="0.35em">${escapeHtml(label)}</text></g></a>`;
     })
     .join("");
-  const nodeSvg = nodes
+
+  // nodes
+  const nodeSvg = all
     .map((node) => {
-      const { x, y } = position(node);
-      const lines = wrapTitle(node.title, node.shape === "you" ? 22 : 26);
-      const text = lines
-        .map((line, i) => `<tspan x="${String(x + 14)}" dy="${i === 0 ? (lines.length === 1 ? "0.35em" : "-0.25em") : "1.2em"}">${escapeHtml(line)}</tspan>`)
+      const isPhase = node.kind === "phase";
+      const available = node.requires.every((r) => requirementMet(r, registry));
+      const cls = `nd ${node.kind} ${node.status}${available ? " avail" : " locked"}`;
+      const titleLines = wrapTitle(node.title, isPhase ? 27 : 28, 2);
+      const titleY = isPhase ? node.y + 36 : node.y + (titleLines.length === 1 ? 24 : 19);
+      const title = titleLines
+        .map((line, i) => `<tspan x="${N(node.x + 26)}" dy="${i === 0 ? 0 : 15}">${escapeHtml(line)}</tspan>`)
         .join("");
-      const cls = `gn ${node.status} ${node.shape}${node.available ? " avail" : " locked"}`;
-      const shape = node.shape === "you"
-        ? `<rect x="${String(x)}" y="${String(y)}" width="${String(boxW)}" height="${String(boxH)}" rx="25"/>`
-        : `<rect x="${String(x)}" y="${String(y)}" width="${String(boxW)}" height="${String(boxH)}" rx="8"/>`;
-      const badge = node.shape === "you" ? `<text class="gb" x="${String(x + boxW - 12)}" y="${String(y + boxH / 2)}" text-anchor="end" dy="0.35em">YOU</text>` : "";
-      const inner = `<g class="${cls}">${shape}<text x="${String(x + 14)}" y="${String(y + boxH / 2)}">${text}</text>${badge}</g>`;
-      return node.href === undefined ? inner : `<a href="${node.href}">${inner}</a>`;
+      const eyebrow = isPhase && node.eyebrow !== undefined
+        ? `<text class="eb" x="${N(node.x + 12)}" y="${N(node.y + 17)}">${escapeHtml((wrapTitle(node.eyebrow, 34, 1)[0] ?? "").toUpperCase())}</text>`
+        : "";
+      const dotY = isPhase ? node.y + 32 : node.y + (titleLines.length === 1 ? 20 : 15);
+      const dot = `<circle class="st" cx="${N(node.x + 14)}" cy="${N(dotY)}" r="4.5"/>`;
+      // the built-by-layer bar: one square per feature, filled when done
+      const squares = node.features.slice(0, 14).map((f, i) => {
+        const sx = node.x + 26 + i * 11;
+        const sy = node.y + node.h - 15;
+        return `<rect class="fq ${f.layer ?? "plain"} ${f.status}" x="${N(sx)}" y="${N(sy)}" width="8" height="8" rx="1.5"/>`;
+      }).join("");
+      const more = node.features.length > 14 ? `<text class="fq-more" x="${N(node.x + 26 + 14 * 11)}" y="${N(node.y + node.h - 8)}">+${String(node.features.length - 14)}</text>` : "";
+      const built = node.features.filter((f) => f.status === "done").length;
+      const countText = node.features.length === 0 ? "" : node.status === "done" ? `${String(node.features.length)} built` : `${String(built)}/${String(node.features.length)}`;
+      const rightText = [node.size, countText].filter((t): t is string => t !== undefined && t.length > 0).join(" · ");
+      const right = rightText.length === 0 ? "" : `<text class="meta" x="${N(node.x + node.w - 10)}" y="${N(node.y + node.h - 8)}" text-anchor="end">${escapeHtml(rightText)}</text>`;
+      const chip = isPhase && node.chip !== undefined
+        ? `<text class="pc ${node.chip.tone ?? node.status}" x="${N(node.x + 12)}" y="${N(node.y + node.h - 11)}">${escapeHtml(node.chip.text.replace(/\*\*/g, "").toUpperCase())}</text>`
+        : "";
+      const phaseBar = isPhase ? "" : squares + more;
+      return `<a class="${cls}" href="#${node.key}" data-key="${node.key}" aria-label="${escapeHtml(`${node.title} — ${node.status}`)}"><g><rect class="bx" x="${N(node.x)}" y="${N(node.y)}" width="${N(node.w)}" height="${N(node.h)}" rx="${isPhase ? "10" : "8"}"/>${eyebrow}${dot}<text class="tt" x="${N(node.x + 26)}" y="${N(titleY)}">${title}</text>${phaseBar}${isPhase ? chip : right}</g></a>`;
     })
     .join("");
-  return `<svg class="graph" viewBox="0 0 ${String(width)} ${String(height)}" width="${String(width)}" height="${String(height)}" role="img" aria-label="Dependency tree">${edgeSvg}${nodeSvg}</svg>`;
+
+  const svg = `<svg id="canvas" class="tree" viewBox="0 0 ${N(width)} ${N(height)}" width="${N(width)}" height="${N(height)}" role="group" aria-label="Roadmap tree">${spine}${treeEdges}${reqEdges}${bandSvg}${nodeSvg}</svg>`;
+
+  const parentOf = new Map<string, string>();
+  for (const node of all) for (const child of node.children) parentOf.set(child.key, node.key);
+  const data: Record<string, { title: string; html: string; requires: string[]; unlocks: string[]; parent: string | null; children: string[] }> = {};
+  for (const node of all) {
+    const entry = registry.get(node.key);
+    const chip = node.chip !== undefined && node.chip.text.toLowerCase() === node.status ? undefined : node.chip;
+    const header = `<div class="dh"><span class="chip ${node.status}">${node.status === "you" ? "needs you" : node.status}</span>${renderChip(chip, node.status)}${node.size === undefined ? "" : `<span class="size">${node.size}</span>`}${node.eyebrow === undefined ? "" : `<span class="eb2">${inline(node.eyebrow)}</span>`}</div>`;
+    data[node.key] = {
+      title: node.title,
+      html: header + node.detail,
+      requires: node.requires.flatMap((r) => (r.kind === "node" ? [r.ref] : [])),
+      unlocks: entry?.unlocks ?? [],
+      parent: parentOf.get(node.key) ?? null,
+      children: node.children.map((c) => c.key),
+    };
+  }
+  for (const band of bands) {
+    if (band.kind !== "flag") continue;
+    data[band.key] = { title: "Milestone", html: `<p class="desc">${inline(band.text)}</p>`, requires: [], unlocks: [], parent: null, children: [] };
+  }
+  return { svg, data };
 }
 
 // ─── page ──────────────────────────────────────────────────────────────────
@@ -529,83 +601,100 @@ const CSS = String.raw`
     --ok:#12b76a; --ok-mark:#12b76a; --ok-quiet:rgba(18,183,106,.14); --info:#4ea1f3; --info-mark:#4ea1f3; --info-quiet:rgba(78,161,243,.14);
     --warn:#f79009; --warn-mark:#f79009; --warn-quiet:rgba(247,144,9,.16); --danger:#f97066; --shadow:0 1px 2px rgba(0,0,0,.4);
   }
-  *{box-sizing:border-box} html{scroll-behavior:smooth}
-  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} .chev{transition:none} }
-  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;min-height:100vh}
   a{color:var(--info);text-decoration:none} a:hover{text-decoration:underline}
   code{font-family:var(--mono);font-size:.92em;background:var(--well);padding:0 4px;border-radius:3px}
-  .mono{font-family:var(--mono);font-size:.92em}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
-  .page{max-width:1180px;margin:0 auto;padding:40px 28px 96px}
-  .mast{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:end;padding-bottom:22px;border-bottom:1px solid var(--line)}
-  @media (max-width:820px){.mast{grid-template-columns:1fr}.sources{text-align:left}}
-  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-3)}
-  h1{font-size:30px;line-height:1.15;margin:6px 0 8px;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
-  h2{font-size:20px;font-weight:600;margin:44px 0 6px;letter-spacing:-.01em}
-  .lede{color:var(--fg-2);max-width:68ch;margin:0} .lede b{color:var(--fg)}
-  .sources{font-size:12.5px;color:var(--fg-3);text-align:right;line-height:1.7}
-  .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:22px 0 34px}
-  .tile{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;box-shadow:var(--shadow)}
-  .tile .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3)}
-  .tile .v{font-size:22px;font-weight:600;line-height:1.15;margin-top:4px;font-variant-numeric:tabular-nums}
-  .tile .s{font-size:12px;color:var(--fg-3);margin-top:3px}
-  .tile.hot{border-color:var(--warn-mark);background:linear-gradient(0deg,var(--warn-quiet),var(--warn-quiet)),var(--card)} .tile.hot .v{color:var(--warn);font-size:17px}
-  .bar{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:center;justify-content:space-between;margin-bottom:18px}
-  .legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12.5px;color:var(--fg-2)} .legend span{display:inline-flex;align-items:center;gap:7px}
-  .sw{width:12px;height:12px;border-radius:50%;border:2px solid var(--line-strong);background:var(--card);flex:none}
+  button{font:inherit;font-size:12.5px;padding:5px 10px;border-radius:6px;border:1px solid var(--line-strong);background:var(--card);color:var(--fg-2);cursor:pointer} button:hover{border-color:var(--fg-4);color:var(--fg)} button[aria-pressed="true"]{background:var(--accent-quiet);border-color:var(--accent);color:var(--accent)}
+
+  /* ─ masthead ─ */
+  .mast{padding:14px 24px 10px;border-bottom:1px solid var(--line);background:var(--card);display:flex;flex-direction:column;gap:8px}
+  .mast .hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 18px}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-3)}
+  h1{font-size:22px;line-height:1.15;margin:0;font-weight:600;letter-spacing:-.01em}
+  .lede{color:var(--fg-2);max-width:120ch;margin:0;font-size:13px;flex:1 1 40ch} .lede b{color:var(--fg)}
+  .tiles{display:flex;flex-wrap:wrap;gap:8px}
+  .tile{background:var(--well);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:120px}
+  .tile .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3)}
+  .tile .v{font-size:16px;font-weight:600;line-height:1.2;font-variant-numeric:tabular-nums} .tile .s{font-size:11px;color:var(--fg-3)}
+  .tile.hot{border-color:var(--warn-mark);background:var(--warn-quiet)} .tile.hot .v{color:var(--warn)}
+
+  /* ─ toolbar ─ */
+  .bar{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;justify-content:space-between;padding:8px 24px;border-bottom:1px solid var(--line);background:var(--bg)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--fg-2)} .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:11px;height:11px;border-radius:50%;border:2px solid var(--line-strong);background:var(--card);flex:none}
   .sw.done{background:var(--ok-mark);border-color:var(--ok-mark)} .sw.active{background:var(--info-mark);border-color:var(--info-mark);box-shadow:0 0 0 3px var(--info-quiet)}
   .sw.you{background:var(--warn-mark);border-color:var(--warn-mark)} .sw.proposed{background:var(--accent);border-color:var(--accent)} .sw.never{background:transparent;border-style:dashed}
-  button{font:inherit;font-size:12.5px;padding:5px 10px;border-radius:6px;border:1px solid var(--line-strong);background:var(--card);color:var(--fg-2);cursor:pointer} button:hover{border-color:var(--fg-4);color:var(--fg)}
-  .ctl{display:flex;gap:8px}
-  .spine{position:relative;padding-left:148px} .spine::before{content:"";position:absolute;left:119px;top:0;bottom:0;width:2px;background:var(--line-strong)}
-  .node{position:relative;margin-bottom:26px}
-  .node>.when{position:absolute;left:-148px;width:112px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--fg-3);padding-top:15px;line-height:1.35}
-  .node>.when b{display:block;color:var(--fg);font-weight:500}
-  .node>.dot{position:absolute;left:-35px;top:17px;width:14px;height:14px;border-radius:50%;background:var(--card);border:2.5px solid var(--line-strong);z-index:1}
-  .node.done>.dot{background:var(--ok-mark);border-color:var(--ok-mark)} .node.active>.dot{background:var(--info-mark);border-color:var(--info-mark);box-shadow:0 0 0 4px var(--info-quiet)}
-  .node.you>.dot{background:var(--warn-mark);border-color:var(--warn-mark)} .node.proposed>.dot{background:var(--accent);border-color:var(--accent)}
-  .flag{position:relative;margin:-8px 0 26px;padding:4px 0}
-  .flag>.when{position:absolute;left:-148px;width:112px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--fg-3);top:3px}
-  .flag>.tick{position:absolute;left:-31px;top:9px;width:6px;height:6px;border-radius:50%;background:var(--line-strong)} .flag.done>.tick{background:var(--ok-mark)}
-  .flag p{margin:0;font-size:13.5px;color:var(--fg-2)} .flag p b{color:var(--fg)}
-  .today{position:relative;margin:10px 0 30px;height:0;border-top:2px dashed var(--accent)}
-  .today>span{position:absolute;left:-148px;top:-10px;width:112px;text-align:right;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:500}
-  .today>i{position:absolute;left:-35px;top:-8px;width:14px;height:14px;border-radius:50%;background:var(--accent)}
-  .today>em{position:absolute;left:0;top:-10px;font-style:normal;font-size:11.5px;color:var(--accent);background:var(--bg);padding:0 6px 0 0}
-  @media (max-width:720px){.spine{padding-left:40px}.spine::before{left:11px}.node>.when,.flag>.when,.today>span{position:static;width:auto;text-align:left;margin-bottom:4px;padding-top:0}.node>.dot,.today>i{left:-34px}.flag>.tick{left:-30px}}
-  details.card{background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);overflow:hidden}
-  details.card>summary{list-style:none;cursor:pointer;padding:14px 18px;display:grid;grid-template-columns:1fr auto;gap:6px 16px;align-items:start}
-  details.card>summary::-webkit-details-marker{display:none} details.card>summary:hover{background:var(--well)}
-  .ttl{font-size:17px;font-weight:600;line-height:1.3;display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
-  .ttl .ph{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-3);font-weight:500}
-  .sub{grid-column:1/-1;color:var(--fg-2);font-size:13.5px;max-width:84ch} .sub b{color:var(--fg)}
-  .chev{color:var(--fg-4);font-size:12px;transition:transform .15s;padding-top:4px} details[open]>summary .chev{transform:rotate(90deg)}
-  .body{border-top:1px solid var(--line);padding:14px 18px 16px}
-  .chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
+  .sw.avail{border-color:var(--fg-2);border-width:2.5px} .sw.locked{border-style:dashed}
+  .ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .lay{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;font-weight:600;padding:0 5px;border-radius:3px;border:1px solid var(--line);color:var(--fg-3);background:var(--well);display:inline-block;vertical-align:middle;line-height:1.5;margin:0 4px 1px 0}
+  .lay.frontend{color:var(--info);border-color:var(--info-quiet);background:var(--info-quiet)} .lay.backend{color:var(--fg-2);border-color:var(--line-strong)}
+  .lay.both{color:var(--accent);border-color:var(--accent-quiet);background:var(--accent-quiet)} .lay.wiring{color:var(--warn);border-color:var(--warn-quiet);background:var(--warn-quiet)}
+  .sq{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;border:1.5px solid var(--fg-3)} .sq.f{background:var(--fg-3)}
+
+  /* ─ workspace: canvas + drawer ─ */
+  .work{display:grid;grid-template-columns:minmax(0,1fr) 400px;flex:1;min-height:0}
+  @media (max-width:900px){.work{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) 42vh}}
+  .canvas{overflow:auto;position:relative;background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--fg) 7%, transparent) 1px, transparent 0) 0 0/22px 22px, var(--bg)}
+  .tree{display:block;font-family:var(--sans);transform-origin:0 0}
+  .drawer{border-left:1px solid var(--line);background:var(--card);overflow:auto;padding:16px 18px 28px;font-size:13.5px}
+  @media (max-width:900px){.drawer{border-left:0;border-top:1px solid var(--line)}}
+  .drawer h2{font-size:17px;margin:0 0 6px;line-height:1.3;font-weight:600}
+  .drawer .hint{color:var(--fg-3);font-size:13px;max-width:46ch}
+  .dh{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px} .eb2{font-family:var(--mono);font-size:11px;color:var(--fg-3)}
+  .dnav{display:flex;gap:6px;margin:0 0 10px;flex-wrap:wrap}
+
+  /* ─ svg nodes ─ */
+  .tree .spine{stroke:var(--line-strong);stroke-width:2.5}
+  .tree .te{fill:none;stroke:var(--line-strong);stroke-width:1.5}
+  .tree .rq{fill:none;stroke:var(--accent);stroke-width:1.75;stroke-dasharray:5 4;opacity:0;pointer-events:none;transition:opacity .15s}
+  .tree .rq.met{stroke:var(--ok-mark)} .tree .rq.on{opacity:.95} .tree.show-all .rq{opacity:.45} .tree.show-all .rq.on{opacity:1}
+  @media (prefers-reduced-motion: reduce){.tree .rq{transition:none}}
+  .tree .nd{cursor:pointer} .tree .nd:hover .bx{filter:brightness(.97)} .tree .nd:focus{outline:none} .tree .nd:focus-visible .bx{stroke:var(--accent);stroke-width:2.5}
+  .tree .bx{fill:var(--card);stroke:var(--line-strong);stroke-width:1.5}
+  .tree .tt{fill:var(--fg);font-size:12.5px;font-weight:500} .tree .phase .tt{font-size:13.5px;font-weight:600}
+  .tree .eb{fill:var(--fg-3);font-family:var(--mono);font-size:9.5px;letter-spacing:.06em}
+  .tree .meta{fill:var(--fg-3);font-family:var(--mono);font-size:9.5px}
+  .tree .pc{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;font-weight:600;fill:var(--fg-3)}
+  .tree .pc.done{fill:var(--ok)} .tree .pc.active{fill:var(--info)} .tree .pc.you{fill:var(--warn)} .tree .pc.proposed{fill:var(--accent)}
+  .tree .st{fill:var(--card);stroke:var(--line-strong);stroke-width:2}
+  .tree .done .st{fill:var(--ok-mark);stroke:var(--ok-mark)} .tree .active .st{fill:var(--info-mark);stroke:var(--info-mark)}
+  .tree .you .st{fill:var(--warn-mark);stroke:var(--warn-mark)} .tree .proposed .st{fill:var(--accent);stroke:var(--accent)} .tree .never .st{stroke-dasharray:2 2}
+  .tree .done .bx{fill:color-mix(in srgb, var(--ok-mark) 9%, var(--card));stroke:color-mix(in srgb, var(--ok-mark) 55%, var(--line-strong))}
+  .tree .active .bx{fill:color-mix(in srgb, var(--info-mark) 10%, var(--card));stroke:var(--info-mark);stroke-width:2}
+  .tree .you .bx{fill:color-mix(in srgb, var(--warn-mark) 12%, var(--card));stroke:var(--warn-mark);stroke-width:2}
+  .tree .proposed .bx{fill:color-mix(in srgb, var(--accent) 9%, var(--card));stroke:var(--accent);stroke-dasharray:5 3}
+  .tree .never .bx{stroke-dasharray:3 3;fill:transparent} .tree .never .tt{fill:var(--fg-3)}
+  .tree .planned.locked .bx{stroke-dasharray:4 3} .tree .planned.locked .tt{fill:var(--fg-2)}
+  .tree .planned.avail .bx{stroke:var(--fg-2);stroke-width:2}
+  .tree .phase .bx{stroke-width:2}
+  .tree .nd.sel .bx{stroke:var(--accent);stroke-width:3;stroke-dasharray:none;filter:drop-shadow(0 0 6px var(--accent-quiet))}
+  .tree .nd.dim .bx,.tree .nd.dim text,.tree .nd.dim .st,.tree .nd.dim .fq{opacity:.35}
+  .tree .fq{fill:var(--card);stroke:var(--fg-4);stroke-width:1.2}
+  .tree .fq.frontend{stroke:var(--info-mark)} .tree .fq.both{stroke:var(--accent)} .tree .fq.wiring{stroke:var(--warn-mark)} .tree .fq.backend{stroke:var(--fg-3)} .tree .fq.docs,.tree .fq.proof{stroke:var(--fg-4)}
+  .tree .fq.done{fill:var(--fg-3)} .tree .fq.frontend.done{fill:var(--info-mark)} .tree .fq.both.done{fill:var(--accent)} .tree .fq.wiring.done{fill:var(--warn-mark)} .tree .fq.backend.done{fill:var(--fg-3)} .tree .fq.docs.done,.tree .fq.proof.done{fill:var(--fg-4)}
+  .tree .fq-more{fill:var(--fg-3);font-family:var(--mono);font-size:9px}
+  .tree .flag rect{fill:var(--well);stroke:var(--line)} .tree .flag circle{fill:var(--ok-mark)} .tree .flag text{fill:var(--fg-2);font-size:11.5px}
+  .tree .today line{stroke:var(--accent);stroke-width:2;stroke-dasharray:6 5} .tree .today circle{fill:var(--accent)} .tree .today text{fill:var(--accent);font-family:var(--mono);font-size:10.5px;letter-spacing:.06em}
+
+  /* ─ drawer fragments ─ */
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
   .chip.done{background:var(--ok-quiet);color:var(--ok)} .chip.active{background:var(--info-quiet);color:var(--info)} .chip.you{background:var(--warn-quiet);color:var(--warn)}
   .chip.planned{background:var(--well);color:var(--fg-3);border-color:var(--line)} .chip.proposed{background:var(--accent-quiet);color:var(--accent)} .chip.never{color:var(--fg-3);border-color:var(--line-strong);border-style:dashed}
   .size{font-family:var(--mono);font-size:10.5px;color:var(--fg-3);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
-  ul.tree,ul.tree ul{list-style:none;margin:0;padding:0} ul.tree ul{margin-left:13px;padding-left:18px;border-left:1.5px solid var(--line)}
-  ul.tree li{position:relative;padding:7px 0 7px 14px} ul.tree li::before{content:"";position:absolute;left:0;top:16px;width:10px;height:1.5px;background:var(--line)}
-  ul.tree>li{padding-left:0} ul.tree>li::before{display:none}
-  ul.tree li.leaf-you{border-left:3px solid var(--warn-mark);margin-left:-3px;padding-left:14px;background:linear-gradient(90deg,var(--warn-quiet),transparent 55%);border-radius:0 6px 6px 0} ul.tree li.leaf-you::before{display:none}
-  .row{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px} .row .n{font-weight:600} .row .d{font-family:var(--mono);font-size:11.5px;color:var(--fg-3)}
-  .desc{color:var(--fg-2);font-size:13.5px;margin:2px 0 0;max-width:86ch} .desc b,.sub b,.note b,.feat b{color:var(--fg);font-weight:600}
+  .desc{color:var(--fg-2);margin:0 0 8px} .desc b,.note b{color:var(--fg);font-weight:600}
   .dec{font-family:var(--mono);font-size:.9em;color:var(--accent)}
-  .mark{display:inline-block;width:9px;height:9px;border-radius:50%;border:2px solid var(--line-strong);background:var(--card);flex:none;margin-right:2px}
-  .mark.done{background:var(--ok-mark);border-color:var(--ok-mark)} .mark.active{background:var(--info-mark);border-color:var(--info-mark)} .mark.you{background:var(--warn-mark);border-color:var(--warn-mark)}
-  .mark.proposed{background:var(--accent);border-color:var(--accent)} .mark.never{border-style:dashed;background:transparent}
-  .dl{font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3);font-weight:500;margin-right:4px;flex:none;min-width:52px}
-  .feat{display:flex;gap:8px;align-items:baseline;margin-top:6px;font-size:13px;color:var(--fg-2)} .feat .dl{min-width:52px;white-space:nowrap}
-  .feat ul,ul.tree .feat ul{margin:0;padding:0;border:0;list-style:none;display:flex;flex-wrap:wrap;gap:3px 16px}
-  .feat li,ul.tree .feat li{display:block;position:static;padding:0;max-width:60ch} ul.tree .feat li::before{display:none} .feat li.never{color:var(--fg-3)}
+  .dl{font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3);font-weight:500;margin:10px 0 4px}
+  .cnt{font-family:var(--mono);font-size:10.5px;text-transform:none;letter-spacing:0;color:var(--fg-3);margin-left:4px}
+  .feat ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
+  .feat li{display:block;color:var(--fg-2)} .feat li.never{color:var(--fg-3)}
   .fm{display:inline-block;width:8px;height:8px;border-radius:50%;border:1.5px solid var(--line-strong);background:var(--card);margin:0 5px 1px 0;vertical-align:middle}
   .fm.done{background:var(--ok-mark);border-color:var(--ok-mark)} .fm.active{background:var(--info-mark);border-color:var(--info-mark)} .fm.you{background:var(--warn-mark);border-color:var(--warn-mark)} .fm.proposed{background:var(--accent);border-color:var(--accent)} .fm.never{border-style:dashed;background:transparent}
-  .lay{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;font-weight:600;padding:0 5px;border-radius:3px;border:1px solid var(--line);color:var(--fg-3);background:var(--well);display:inline-block;vertical-align:middle;line-height:1.5;margin:0 5px 1px 0}
-  .lay.frontend{color:var(--info);border-color:var(--info-quiet);background:var(--info-quiet)} .lay.backend{color:var(--fg-2);border-color:var(--line-strong)}
-  .lay.both{color:var(--accent);border-color:var(--accent-quiet);background:var(--accent-quiet)} .lay.wiring{color:var(--warn);border-color:var(--warn-quiet);background:var(--warn-quiet)}
-  .cnt{font-family:var(--mono);font-size:10.5px;text-transform:none;letter-spacing:0;color:var(--fg-3);margin-left:4px}
-  .deps{display:flex;flex-wrap:wrap;align-items:center;gap:5px 6px;margin-top:6px}
+  .deps{display:flex;flex-wrap:wrap;align-items:center;gap:5px 6px;margin-top:4px}
+  .deps .dl{margin:0;flex-basis:100%}
   .req{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:1px 8px 1px 5px;border-radius:999px;border:1px solid var(--line);color:var(--fg-2);background:var(--card)}
   .req i{font-style:normal;font-family:var(--mono);font-size:11px;width:15px;height:15px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:none;background:var(--well);color:var(--fg-3)}
   .req em{font-style:normal;font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--warn)}
@@ -614,75 +703,128 @@ const CSS = String.raw`
   .req.you{border-color:var(--warn-mark);background:var(--warn-quiet);color:var(--warn)} .req.you i{background:var(--warn-mark);color:#fff}
   .req.unl{border-color:var(--accent-quiet)} .req.unl i{background:var(--accent-quiet);color:var(--accent)}
   a.req:hover{text-decoration:none;border-color:var(--fg-4)}
-  .tw{overflow-x:auto;margin-top:10px} table{border-collapse:collapse;width:100%;font-size:13px;min-width:640px}
-  th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3);font-weight:500;padding:6px 10px;border-bottom:1px solid var(--line)}
-  td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--fg-2)} td:first-child{font-family:var(--mono);color:var(--fg-3);white-space:nowrap} td b{color:var(--fg)}
+  .tw{overflow-x:auto;margin-top:10px} table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
+  td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--fg-2)} td:first-child{font-family:var(--mono);color:var(--fg-3);white-space:nowrap} td b{color:var(--fg)}
   tr.y td{background:var(--warn-quiet)} tr.y td:first-child{color:var(--warn);font-weight:500} tr.g td b{color:var(--ok)}
-  .note{margin:10px 0 0;padding:10px 14px;border-radius:8px;background:var(--well);border:1px solid var(--line);font-size:13px;color:var(--fg-2);max-width:90ch}
+  .note{margin:10px 0 0;padding:9px 12px;border-radius:8px;background:var(--well);border:1px solid var(--line);font-size:12.5px;color:var(--fg-2)}
   .note.you{border-color:var(--warn-mark);background:var(--warn-quiet)} .note.you b{color:var(--warn)}
-  .gwrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:10px}
-  .graph{display:block;font-family:var(--sans);font-size:12.5px}
-  .graph .edge{fill:none;stroke:var(--line-strong);stroke-width:1.5} .graph .edge.met{stroke:var(--ok-mark);opacity:.7} .graph .edge.open{stroke-dasharray:4 4}
-  .graph .gn rect{fill:var(--card);stroke:var(--line-strong);stroke-width:1.5} .graph .gn text{fill:var(--fg);font-weight:500}
-  .graph .gn.done rect{fill:var(--ok-quiet);stroke:var(--ok-mark)} .graph .gn.done text{fill:var(--ok)}
-  .graph .gn.active rect{fill:var(--info-quiet);stroke:var(--info-mark);stroke-width:2} .graph .gn.active text{fill:var(--info)}
-  .graph .gn.you rect{fill:var(--warn-quiet);stroke:var(--warn-mark)} .graph .gn.you text{fill:var(--warn)} .graph .gb{fill:var(--warn);font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;font-weight:600}
-  .graph .gn.proposed rect{fill:var(--accent-quiet);stroke:var(--accent);stroke-dasharray:5 3} .graph .gn.proposed text{fill:var(--accent)}
-  .graph .gn.planned.locked rect{stroke-dasharray:4 3} .graph .gn.planned.locked text{fill:var(--fg-3)}
-  .graph .gn.planned.avail rect{stroke:var(--fg-2);stroke-width:2}
-  .graph .gn.never rect{stroke-dasharray:2 3;fill:transparent} .graph .gn.never text{fill:var(--fg-4)}
-  .graph a:hover rect{filter:brightness(.96)}
-  .glegend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12.5px;color:var(--fg-2);margin:8px 0 12px} .glegend span{display:inline-flex;align-items:center;gap:7px}
-  footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px;color:var(--fg-3);line-height:1.7}
+  footer{padding:8px 24px;border-top:1px solid var(--line);font-size:11.5px;color:var(--fg-3);background:var(--card)}
+`;
+
+const JS = String.raw`
+(function(){
+  var data = JSON.parse(document.getElementById('rm-data').textContent);
+  var svg = document.getElementById('canvas');
+  var canvas = document.getElementById('canvas-wrap');
+  var drawer = document.getElementById('drawer-body');
+  var title = document.getElementById('drawer-title');
+  var baseW = parseFloat(svg.getAttribute('width'));
+  var baseH = parseFloat(svg.getAttribute('height'));
+  var scale = 1;
+  var selected = null;
+  function nodes(){ return svg.querySelectorAll('.nd'); }
+  function edges(){ return svg.querySelectorAll('.rq'); }
+  function edgeOn(key, on){
+    edges().forEach(function(e){ if (e.getAttribute('data-from') === key || e.getAttribute('data-to') === key) e.classList.toggle('on', on); });
+  }
+  function clearHover(){ edges().forEach(function(e){ e.classList.remove('on'); }); if (selected) edgeOn(selected, true); }
+  function select(key, scroll){
+    if (!data[key]) return;
+    selected = key;
+    nodes().forEach(function(n){ n.classList.toggle('sel', n.getAttribute('data-key') === key); n.classList.remove('dim'); });
+    edges().forEach(function(e){ e.classList.remove('on'); });
+    edgeOn(key, true);
+    var related = {}; related[key] = true;
+    data[key].requires.forEach(function(k){ related[k] = true; });
+    data[key].unlocks.forEach(function(k){ related[k] = true; });
+    (function down(k){ related[k] = true; (data[k] ? data[k].children : []).forEach(down); })(key);
+    (function up(k){ var p = data[k] && data[k].parent; if (p) { related[p] = true; up(p); } })(key);
+    if (data[key].requires.length + data[key].unlocks.length > 0) {
+      nodes().forEach(function(n){ if (!related[n.getAttribute('data-key')]) n.classList.add('dim'); });
+    }
+    title.textContent = data[key].title;
+    var nav = '';
+    if (data[key].requires.length + data[key].unlocks.length > 0) nav = '<div class="dnav"><button type="button" id="clear-dim">Show all nodes</button></div>';
+    drawer.innerHTML = nav + data[key].html;
+    drawer.scrollTop = 0;
+    if (history.replaceState) history.replaceState(null, '', '#' + key);
+    var cd = document.getElementById('clear-dim');
+    if (cd) cd.addEventListener('click', function(){ nodes().forEach(function(n){ n.classList.remove('dim'); }); });
+    if (scroll) {
+      var el = svg.querySelector('.nd[data-key="' + key + '"] .bx, .nd[data-key="' + key + '"] rect');
+      if (el) {
+        var x = parseFloat(el.getAttribute('x')) * scale, y = parseFloat(el.getAttribute('y')) * scale;
+        canvas.scrollTo({ left: Math.max(0, x - canvas.clientWidth / 2 + 112 * scale), top: Math.max(0, y - canvas.clientHeight / 2 + 30 * scale), behavior: 'smooth' });
+      }
+    }
+  }
+  nodes().forEach(function(n){
+    n.addEventListener('click', function(ev){ ev.preventDefault(); select(n.getAttribute('data-key'), false); });
+    n.addEventListener('mouseenter', function(){ edgeOn(n.getAttribute('data-key'), true); });
+    n.addEventListener('mouseleave', clearHover);
+  });
+  drawer.addEventListener('click', function(ev){
+    var a = ev.target.closest('[data-go]');
+    if (!a) return;
+    ev.preventDefault();
+    select(a.getAttribute('data-go'), true);
+  });
+  function applyScale(){ svg.setAttribute('width', baseW * scale); svg.setAttribute('height', baseH * scale); document.getElementById('zoom-pct').textContent = Math.round(scale * 100) + '%'; }
+  document.getElementById('zoom-in').addEventListener('click', function(){ scale = Math.min(2.5, scale * 1.2); applyScale(); });
+  document.getElementById('zoom-out').addEventListener('click', function(){ scale = Math.max(0.15, scale / 1.2); applyScale(); });
+  document.getElementById('zoom-fit').addEventListener('click', function(){ scale = Math.max(0.25, Math.min(2.5, (canvas.clientWidth - 8) / baseW)); applyScale(); });
+  document.getElementById('zoom-all').addEventListener('click', function(){ scale = Math.max(0.15, Math.min(2.5, (canvas.clientWidth - 8) / baseW, (canvas.clientHeight - 8) / baseH)); applyScale(); });
+  document.getElementById('zoom-100').addEventListener('click', function(){ scale = 1; applyScale(); });
+  var showAll = document.getElementById('show-all');
+  showAll.addEventListener('click', function(){ var on = svg.classList.toggle('show-all'); showAll.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  // drag to pan
+  var drag = null;
+  canvas.addEventListener('mousedown', function(ev){ if (ev.target.closest('.nd')) return; drag = { x: ev.clientX, y: ev.clientY, l: canvas.scrollLeft, t: canvas.scrollTop }; canvas.style.cursor = 'grabbing'; });
+  window.addEventListener('mousemove', function(ev){ if (!drag) return; canvas.scrollLeft = drag.l - (ev.clientX - drag.x); canvas.scrollTop = drag.t - (ev.clientY - drag.y); });
+  window.addEventListener('mouseup', function(){ drag = null; canvas.style.cursor = ''; });
+  var initial = location.hash.replace('#', '');
+  if (initial && data[initial]) select(initial, true);
+})();
 `;
 
 function renderPage(roadmap: Roadmap): string {
   const registry = collectRegistry(roadmap);
-  const spine = roadmap.spine
-    .map((node) => {
-      if (node.kind === "phase") return renderPhase(node, registry);
-      if (node.kind === "flag") {
-        return `<div class="flag ${node.status}"><span class="when">${inline(node.when)}</span><span class="tick" aria-hidden="true"></span><p>${inline(node.text)}</p></div>`;
-      }
-      return `<div class="today" role="separator" aria-label="Today"><span>today</span><i aria-hidden="true"></i><em>${inline(node.text)}</em></div>`;
-    })
-    .join("\n");
+  const { svg, data } = renderCanvas(roadmap, registry);
   const tiles = roadmap.tiles
     .map((t) => `<div class="tile${t.hot ? " hot" : ""}"><div class="k">${inline(t.label)}</div><div class="v">${inline(t.value)}</div>${t.sub === undefined ? "" : `<div class="s">${inline(t.sub)}</div>`}</div>`)
     .join("");
-  const sources = roadmap.meta.sources.map((s) => inline(s)).join("<br>");
+  const dataJson = JSON.stringify(data).replaceAll("<", "\\u003c");
   return `<meta charset="utf-8">
 <title>${escapeHtml(roadmap.meta.title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>${CSS}</style>
-<div class="page">
 <header class="mast">
-<div>
 <div class="eyebrow">${inline(roadmap.meta.eyebrow)}</div>
-<h1>${escapeHtml(roadmap.meta.title)}</h1>
-<p class="lede">${inline(roadmap.meta.lede)}</p>
-</div>
-<div class="sources">${sources}</div>
+<div class="hd"><h1>${escapeHtml(roadmap.meta.title)}</h1><p class="lede">${inline(roadmap.meta.lede)}</p></div>
+<div class="tiles">${tiles}</div>
 </header>
-<section class="strip" aria-label="At a glance">${tiles}</section>
 <div class="bar">
 <div class="legend" aria-label="Legend">
-<span><i class="sw done"></i>complete</span><span><i class="sw active"></i>active</span><span><i class="sw you"></i>needs you</span><span><i class="sw"></i>planned</span><span><i class="sw proposed"></i>proposed</span><span><i class="sw never"></i>won't build / deferred</span>
-<span><span class="size">S · M · L · XL</span>&nbsp;relative size (sessions ≈ 1 · 2–4 · 5–10 · 10+)</span>
-<span>layers: <span class="lay frontend">FE</span> React only · <span class="lay backend">BE</span> BFF / kernel only · <span class="lay both">BOTH</span> vertical slice · <span class="lay wiring">WIRE</span> connecting two halves that exist · <span class="lay docs">DOCS</span> · <span class="lay proof">PROOF</span> live run / measurement</span>
+<span><i class="sw done"></i>complete</span><span><i class="sw active"></i>active</span><span><i class="sw you"></i>needs you</span><span><i class="sw avail"></i>available next</span><span><i class="sw locked"></i>locked</span><span><i class="sw proposed"></i>proposed</span><span><i class="sw never"></i>won't build / deferred</span>
+<span>built-by-layer bar: <i class="sq f"></i> built · <i class="sq"></i> not yet · <span class="lay frontend">FE</span><span class="lay backend">BE</span><span class="lay both">BOTH</span><span class="lay wiring">WIRE</span><span class="lay docs">DOCS</span><span class="lay proof">PROOF</span></span>
 </div>
-<div class="ctl"><button type="button" onclick="document.querySelectorAll('details.card').forEach(d=>d.open=true)">Expand all</button><button type="button" onclick="document.querySelectorAll('details.card').forEach(d=>d.open=false)">Collapse all</button></div>
+<div class="ctl">
+<button type="button" id="show-all" aria-pressed="false">Show all prerequisite links</button>
+<button type="button" id="zoom-out" aria-label="Zoom out">−</button><span id="zoom-pct" style="font-family:var(--mono);font-size:12px;min-width:38px;text-align:center">100%</span><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-fit">Fit width</button><button type="button" id="zoom-all">Fit all</button><button type="button" id="zoom-100">100%</button>
 </div>
-<main class="spine">
-${spine}
-</main>
-<h2 id="tree">Dependency tree — what unlocks what</h2>
-<p class="lede" style="margin-bottom:10px">Every node that declares a prerequisite, laid out left → right by how many things must land before it. A solid outline is <b>available now</b> (every prerequisite met); a dashed outline is <b>locked</b>; a pill marked <b>YOU</b> is an operator act no code can take. Click a node to jump to it on the timeline.</p>
-<div class="glegend"><span><i class="sw done"></i>done</span><span><i class="sw active"></i>active</span><span><i class="sw you"></i>your call</span><span><i class="sw"></i>available next</span><span><i class="sw never"></i>locked</span><span><i class="sw proposed"></i>proposed</span></div>
-<div class="gwrap">${renderGraph(registry)}</div>
-<footer>${inline(roadmap.meta.footer)}<br>Status as of <span class="mono">${escapeHtml(roadmap.meta.asOf)}</span>, HEAD <span class="mono">${escapeHtml(roadmap.meta.head)}</span>. Generated by <code>npm run roadmap</code> from <code>docs/roadmap/roadmap.json</code> — edit the JSON, never this file.</footer>
 </div>
+<div class="work">
+<div class="canvas" id="canvas-wrap">${svg}</div>
+<aside class="drawer" aria-live="polite">
+<h2 id="drawer-title">Select a node</h2>
+<div id="drawer-body"><p class="hint">Each box is one piece of the plan: phases sit on the vertical time spine, their slices, tracks and chunks branch to the right. The small squares inside a box are its features — one per feature, coloured by layer, filled when built — so a node reads as "3 of 5 built, the missing two are wiring". Click a box for its full detail; hover to light up what it needs and what it unlocks; drag to pan, zoom with the controls.</p><p class="hint"><b>Needs</b> chips are prerequisites: green-ticked when met, hollow when another node must land first, amber when it is an act only you can take.</p></div>
+</aside>
+</div>
+<footer>${inline(roadmap.meta.footer)} Status as of <span style="font-family:var(--mono)">${escapeHtml(roadmap.meta.asOf)}</span>, HEAD <span style="font-family:var(--mono)">${escapeHtml(roadmap.meta.head)}</span>. Generated by <code>npm run roadmap</code> from <code>docs/roadmap/roadmap.json</code> — edit the JSON, never this file.</footer>
+<script type="application/json" id="rm-data">${dataJson}</script>
+<script>${JS}</script>
 `;
 }
 
