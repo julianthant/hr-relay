@@ -8,7 +8,7 @@
   },
   "scripts": {
     "cli": "tsx --env-file=.env src/cli.ts",
-    "dashboard": "tsx --env-file=.env src/cli.ts dashboard",
+    "dashboard": "tsx scripts/dev-dashboard.ts",
     "dashboard:prod": "tsx --env-file=.env src/cli.ts dashboard --prod",
     "web": "vite --config vite.dashboard.config.ts",
     "web:build": "vite build --config vite.dashboard.config.ts",

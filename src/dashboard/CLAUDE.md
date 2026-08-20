@@ -38,8 +38,9 @@ Type-only exports are erased and are legal anywhere. A module-private helper or 
 ## Commands
 
 ```bash
-npm run dashboard   # the BFF (port 3938) — serves /api/v1/* and the SSE day stream
-npm run web         # the vite dev server (port 5174) proxying /api to the BFF
+npm run dashboard   # BOTH in one terminal: the BFF (3938, /api/v1/* + the SSE day stream) and vite (5174); Ctrl+C stops both
+npm run cli -- dashboard   # the BFF alone
+npm run web         # the vite dev server alone (proxies /api to 3938 — ECONNREFUSED there just means no BFF is up)
 npm run web:build   # production bundle into dist/dashboard (the parity lane builds this itself)
 npm run test:parity # doc 13 §7 visual/a11y parity lane
 ```

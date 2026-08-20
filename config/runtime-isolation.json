@@ -21,7 +21,7 @@
     "sourceRoot": "src",
     "entrypoint": "src/cli.ts",
     "commands": {
-      "dashboard": "tsx --env-file=.env src/cli.ts dashboard",
+      "dashboard": "tsx scripts/dev-dashboard.ts",
       "dashboard:prod": "tsx --env-file=.env src/cli.ts dashboard --prod",
       "cli": "tsx --env-file=.env src/cli.ts"
     },

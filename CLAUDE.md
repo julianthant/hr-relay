@@ -119,8 +119,9 @@ npm run test:parity        # doc 13 §7 visual/a11y parity lane — builds the b
 npm run test:parity:update # the ONE deliberate way to re-freeze a reference (PARITY_UPDATE=1)
 
 npm run cli               # the runtime CLI (help | phase | dashboard | worker | explain | storage | ocr)
-npm run dashboard         # the BFF on port 3938 (dashboard:prod — see D189, the prod mode is unbuilt)
-npm run web               # the vite dev server on port 5174, proxying /api to the BFF
+npm run dashboard         # the dev dashboard in ONE terminal: BFF (3938) + vite (5174); Ctrl+C stops both
+npm run cli -- dashboard  # the BFF alone (dashboard:prod — see D189, the prod mode is unbuilt)
+npm run web               # the vite dev server alone, proxying /api to a BFF you started yourself
 npm run web:build         # production bundle into dist/dashboard (test:parity builds this itself)
 
 npm run build:manifest     # regenerate src/domain/workflow/generated-build-manifest.ts
